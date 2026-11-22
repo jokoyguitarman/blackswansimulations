@@ -1,0 +1,601 @@
+{
+  "file": "outdoor-evacuation.pending.json",
+  "schema_version": 1,
+  "library": "threats",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-f053248e-fcdd-571e-8c24-5eefd7303c53), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+    "brief_key": "fire_smoke_tenability",
+    "note": "Drafted offline from public sources; nothing here is reviewed. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: engine constants and tables with no column in migrations 250/258; WS9 to decide a home",
+  "rows": [
+    {
+      "ref_key": "scdf_assembly_area_distance",
+      "topic": "assembly",
+      "value": "d_min = max(building_height_m, 20)",
+      "unit": "m",
+      "note": "Singapore. Or a protected area shielded by a fire wall, or an adjacent building with enough protection. Must not obstruct firefighting.",
+      "spec_ref": "outdoor_safe_distance_m 200 (planning)",
+      "worked_example": {
+        "inputs": [
+          {
+            "building_height_m": 45
+          },
+          {
+            "building_height_m": 12
+          }
+        ],
+        "expected": [
+          {
+            "min_distance_m": 45
+          },
+          {
+            "min_distance_m": 20
+          }
+        ],
+        "tolerance": "exact"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "scdf_evac_planning_2018",
+            "locator": "s. 4b(iv)",
+            "quoted_phrase": "A distance at least equal to the height of the building, and no less than 20m away is recommended for locating the AA"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_guide_112_explosives",
+      "topic": "isolation",
+      "value": {
+        "isolate_m": 500,
+        "initial_evacuation_m": 800,
+        "fire_involving_vehicle_m": 1600,
+        "fragments_up_to_m": 1600
+      },
+      "unit": "m",
+      "note": "Divisions 1.1-1.3, 1.5. Move people out of line of sight and away from windows.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024",
+            "locator": "Guide 112, Public safety",
+            "quoted_phrase": "Isolate spill or leak area immediately for at least 500 meters (1/3 mile) in all directions."
+          },
+          {
+            "source_key": "erg_2024",
+            "locator": "Guide 112, Fire or explosion",
+            "quoted_phrase": "MAY EXPLODE AND THROW FRAGMENTS 1600 METERS (1 MILE) OR MORE IF FIRE REACHES CARGO."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_guide_115_flammable_gas",
+      "topic": "isolation",
+      "value": {
+        "isolate_m": 100,
+        "downwind_evacuation_large_spill_m": 800,
+        "tank_fire_isolate_m": 1600
+      },
+      "unit": "m",
+      "note": "Propane, LPG, town-gas-like gases.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024",
+            "locator": "Guide 115, Public safety and Evacuation",
+            "quoted_phrase": "Consider initial downwind evacuation for at least 800 meters (1/2 mile)."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_guide_128_flammable_liquid",
+      "topic": "isolation",
+      "value": {
+        "isolate_m": 50,
+        "downwind_evacuation_large_spill_m": 300,
+        "tank_fire_isolate_m": 800
+      },
+      "unit": "m",
+      "note": "Petrol, diesel and other water-immiscible flammable liquids.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024",
+            "locator": "Guide 128, Public safety and Evacuation",
+            "quoted_phrase": "Consider initial downwind evacuation for at least 300 meters (1000 feet)."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_bleve_lpg_table",
+      "topic": "isolation",
+      "value": {
+        "columns": [
+          "capacity_L",
+          "propane_kg",
+          "fireball_radius_m",
+          "responder_distance_m",
+          "min_evacuation_m",
+          "preferred_evacuation_m",
+          "min_time_to_failure_min"
+        ],
+        "rows": [
+          [
+            100,
+            40,
+            10,
+            90,
+            154,
+            307,
+            4
+          ],
+          [
+            400,
+            160,
+            16,
+            90,
+            244,
+            488,
+            4
+          ],
+          [
+            2000,
+            800,
+            28,
+            111,
+            417,
+            834,
+            5
+          ],
+          [
+            4000,
+            null,
+            35,
+            140,
+            525,
+            1050,
+            null
+          ],
+          [
+            8000,
+            null,
+            44,
+            176,
+            661,
+            1323,
+            null
+          ],
+          [
+            22000,
+            null,
+            62,
+            247,
+            926,
+            1852,
+            null
+          ],
+          [
+            42000,
+            null,
+            77,
+            306,
+            1149,
+            2200,
+            null
+          ],
+          [
+            82000,
+            null,
+            96,
+            383,
+            1435,
+            2200,
+            null
+          ],
+          [
+            140000,
+            null,
+            114,
+            457,
+            1715,
+            2200,
+            null
+          ]
+        ]
+      },
+      "unit": "-",
+      "note": "Interpolate on capacity. Minimum distance assumes a low launch angle, preferred 45 degrees. Thermal: skin burns in 2 s at about 4 fireball radii.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024_bleve",
+            "locator": "BLEVE - Safety Precautions table (ERG 2024 p. 358-359)",
+            "quoted_phrase": "Two safety distances for public evacuation."
+          },
+          {
+            "source_key": "tc_bleve",
+            "locator": "Video transcript",
+            "quoted_phrase": "For public protection, consider evacuation distances of about 22 times the fireball radius"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "blank cells (propane mass, failure times above 2,000 L) not transcribed"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_chlorine_large_spill",
+      "topic": "isolation",
+      "value": {
+        "columns": [
+          "container",
+          "isolate_m",
+          "day_low_km",
+          "day_mod_km",
+          "day_high_km",
+          "night_low_km",
+          "night_mod_km",
+          "night_high_km"
+        ],
+        "rows": [
+          [
+            "rail_tank_car",
+            1000,
+            9.6,
+            6.3,
+            5.1,
+            11.0,
+            8.9,
+            6.5
+          ],
+          [
+            "highway_tank",
+            600,
+            5.6,
+            3.3,
+            2.5,
+            6.4,
+            4.7,
+            3.8
+          ],
+          [
+            "multiple_ton_cylinders",
+            300,
+            1.9,
+            1.3,
+            1.0,
+            3.5,
+            2.3,
+            1.3
+          ],
+          [
+            "small_cylinders_or_one_ton",
+            150,
+            1.3,
+            0.7,
+            0.5,
+            2.4,
+            1.2,
+            0.6
+          ],
+          [
+            "multiple_small_cylinders",
+            30,
+            0.3,
+            0.2,
+            0.1,
+            0.7,
+            0.3,
+            0.2
+          ]
+        ]
+      },
+      "unit": "-",
+      "note": "Downwind protective-action distances for toxic release; wind low < 10 km/h, moderate 10-20, high > 20. Night 11.0 is '11.0+'. Only for the plume engine's sanity checks; the engine uses AEGL tiers.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024",
+            "locator": "Table 3, UN1017 Chlorine large spills",
+            "quoted_phrase": "Table 1 - Initial Isolation and Protective Action Distances (green section) predicts the size of the area that could be affected"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "row order of the two smallest container rows (text extraction)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "erg_do_not_gather",
+      "topic": "assembly",
+      "value": "Evacuees should not mass at the protective-action boundary; send them to a definite place by a specific route, far enough to avoid relocating if the wind shifts.",
+      "unit": "-",
+      "note": "Behaviour rule for assembly placement outdoors (upwind, beyond the distance, not on it).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "erg_2024",
+            "locator": "Protective actions, Evacuate",
+            "quoted_phrase": "They should not be permitted to gather at such distances."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "bomb_standoff_cisa",
+      "topic": "isolation",
+      "value": {
+        "columns": [
+          "threat",
+          "explosive_lb",
+          "mandatory_evac_m",
+          "preferred_evac_m"
+        ],
+        "rows": [
+          [
+            "pipe_bomb",
+            5,
+            21,
+            366
+          ],
+          [
+            "suicide_vest",
+            20,
+            34,
+            518
+          ],
+          [
+            "briefcase",
+            50,
+            46,
+            564
+          ],
+          [
+            "car",
+            500,
+            98,
+            580
+          ],
+          [
+            "suv_van",
+            1000,
+            122,
+            732
+          ],
+          [
+            "small_delivery_truck",
+            4000,
+            195,
+            1159
+          ],
+          [
+            "container_truck",
+            10000,
+            263,
+            1555
+          ],
+          [
+            "semi_trailer",
+            60000,
+            479,
+            2835
+          ]
+        ]
+      },
+      "unit": "-",
+      "note": "Between mandatory and preferred: shelter inside away from windows; beyond preferred: outdoor people safe. Planning chart only; no device detail is implied.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nctc_ct_guide",
+            "locator": "Bomb threat stand-off distances",
+            "quoted_phrase": "Preferred area for evacuation of people in buildings and mandatory for people outdoors"
+          },
+          {
+            "source_key": "cisa_standoff_card_2025",
+            "locator": "Card table",
+            "quoted_phrase": "Recommended stand-off data should be used in conjunction with your emergency evacuation plan"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "cordon_distances_uk",
+      "topic": "isolation",
+      "value": {
+        "small_item_m": 100,
+        "car_or_large_item_m": 200,
+        "van_or_lorry_m": 400
+      },
+      "unit": "m",
+      "note": "Minimum cordons for a suspect item. Behind hard cover, away from glass; moving people inside can be safer than the street.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "protectuk_suspicious_items",
+            "locator": "Guidance for staff, Clear",
+            "quoted_phrase": "at least 200 metres away from a small vehicle or large item, such as a car or a wheelie bin"
+          },
+          {
+            "source_key": "protectuk_rb4",
+            "locator": "Method",
+            "quoted_phrase": "Since glass and other fragments from IEDs may kill or injure at a considerable distance, moving people inside is often safer"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "running_crowd_speeds",
+      "topic": "outdoor_movement",
+      "value": {
+        "walk_free_m_s": 1.44,
+        "jog_free_m_s": 3.01,
+        "jog_mean_corridor_m_s": 2.14,
+        "running_advantage_lost_above_p_m2": 1.65,
+        "max_flow_running_p_m_s": 2.5,
+        "max_flow_walking_p_m_s": 1.5
+      },
+      "unit": "-",
+      "note": "Fleeing agents run at about 3 m/s in free flow; above 1.65 p/m2 use the walking density relation. Young participants: treat as upper bounds.",
+      "spec_ref": "flee_speed (unset)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "pmc_bends_2022",
+            "locator": "Methods",
+            "quoted_phrase": "Corresponding free-flow speeds for normal speed walking and jogging were 1.44 m/s and 3.01 m/s, respectively"
+          },
+          {
+            "source_key": "ustc_running_2020",
+            "locator": "Methods summary",
+            "quoted_phrase": "When the density is higher than 1.65 m-2, the speed advantage in evacuation is obviously weakened due to the limitation of density."
+          },
+          {
+            "source_key": "monash_bends_2020",
+            "locator": "Flow characteristics",
+            "quoted_phrase": "the maximum flow for running scenarios (≈ 2.5 ped/m/s) was significantly higher than that for walking scenarios (≈ 1.5 ped/m/s)"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "primary paper for the 1.65 p/m2 breakpoint (summary page only)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "SCDF hazmat or explosive cordon distances (none public found)"
+    },
+    {
+      "subject": "dispersal speed beyond 50 m (walking 1.34 m/s assumed from movement seeds)"
+    }
+  ],
+  "refused": []
+}

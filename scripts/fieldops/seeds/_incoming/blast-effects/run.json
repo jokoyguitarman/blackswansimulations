@@ -1,0 +1,39 @@
+{
+  "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+  "run_kind": "agent",
+  "agent_model": "claude-opus (Cursor cloud agent)",
+  "agent_id": "bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7",
+  "libraries": [
+    "physics",
+    "threats"
+  ],
+  "brief_keys": [
+    "device_material",
+    "threat_profile"
+  ],
+  "started_at": "2026-11-22T08:02:00Z",
+  "finished_at": "2026-11-22T09:40:00Z",
+  "review_status": "pending",
+  "rows_drafted": 107,
+  "rows_by_file": {
+    "blast-curves.pending.json": 16,
+    "explosive-materials.pending.json": 10,
+    "injury-thresholds.pending.json": 9,
+    "human-vulnerability.pending.json": 15,
+    "structural-damage.pending.json": 12,
+    "vapour-cloud-and-fireball.pending.json": 12,
+    "fragments-and-safety-distances.pending.json": 11,
+    "indoor-effects.pending.json": 8,
+    "worked-examples.pending.json": 14
+  },
+  "rows_refused": 3,
+  "sources_cited": 28,
+  "sources_listed": 29,
+  "uncovered": 12,
+  "validation": {
+    "quotes_max_words": 25,
+    "every_row_has_source_locator_quote": true,
+    "unused_listed_sources": []
+  },
+  "note": "No brief_hash: not run through scripts/fieldops/knowledge/researchAgent.ts (not built). importApproved must skip these files while review_status is pending."
+}

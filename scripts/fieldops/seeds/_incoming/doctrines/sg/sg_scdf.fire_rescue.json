@@ -1,0 +1,192 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "fire_rescue",
+  "title": "SCDF: Fire & Rescue response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Civil Defence Force",
+  "agency_key": "sg_scdf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_scdf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CDA1986",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 4(1) and (2)(a), (b), (e), (f), (i), (j), (l)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "About SCDF",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/home/about-scdf",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "page body",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Environmental Protection Division Report 2013",
+        "publisher": "National Environment Agency",
+        "url": "https://www.nea.gov.sg/docs/default-source/resource/publications/environmental-protection-division-annual-report/neareport2013.pdf",
+        "published": "2013",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Terrain Decontamination",
+        "quoted_phrase": null
+      },
+      {
+        "title": "National inter-agency response plan for mass casualty incidents",
+        "publisher": "Ministry of Health",
+        "url": "https://www.moh.gov.sg/newsroom/national-inter-agency-response-plan-for-mass-casualty-incidents/",
+        "published": "2018-01-10",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Oral Reply, para 1",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "legal_authorities (fire-ground powers section not located)",
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission"
+        ],
+        "source_index": 1,
+        "locator": "page body"
+      },
+      {
+        "ids": [
+          "st_rescue001",
+          "st_firstaid1",
+          "st_fire00001",
+          "st_hazmat001",
+          "st_coord0001",
+          "st_inform001"
+        ],
+        "source_index": 0,
+        "locator": "s. 4(2)"
+      },
+      {
+        "ids": [
+          "ho_neadeco1"
+        ],
+        "source_index": 2,
+        "locator": "Terrain Decontamination"
+      },
+      {
+        "ids": [
+          "ho_mohcas01"
+        ],
+        "source_index": 3,
+        "locator": "para 1"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Provide fire-fighting, rescue and emergency medical services and mitigate hazardous materials incidents, protecting life and property.",
+    "sequence": [
+      {
+        "id": "st_rescue001",
+        "window": null,
+        "label": "Rescue",
+        "action": "Rescue endangered persons and remove them to areas of safety."
+      },
+      {
+        "id": "st_firstaid1",
+        "window": null,
+        "label": "First aid",
+        "action": "Provide first aid to casualties and remove them for medical treatment or to areas of safety."
+      },
+      {
+        "id": "st_fire00001",
+        "window": null,
+        "label": "Fire",
+        "action": "Take lawful measures to extinguish and prevent the spread of fire and to protect life and property."
+      },
+      {
+        "id": "st_hazmat001",
+        "window": null,
+        "label": "Hazardous materials",
+        "action": "Take lawful measures to mitigate the consequences of a hazardous materials incident."
+      },
+      {
+        "id": "st_coord0001",
+        "window": null,
+        "label": "Coordinate",
+        "action": "Ensure effective coordination between SCDF and the other emergency services."
+      },
+      {
+        "id": "st_inform001",
+        "window": null,
+        "label": "Inform the public",
+        "action": "Disseminate information and advice to the public."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_neadeco1",
+        "to_archetype": "utilities",
+        "to_label": "NEA",
+        "when": "After SCDF has saved lives, mitigated the source and done preliminary decontamination and the area is secure, NEA carries out terrain decontamination."
+      },
+      {
+        "id": "ho_mohcas01",
+        "to_archetype": "hospital_ed",
+        "to_label": "MOH",
+        "when": "Casualties need management at the incident site and in public hospitals."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": "Fire extinguished, hazardous materials mitigated, casualties removed for treatment.",
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_cda00004",
+        "instrument": "Civil Defence Act 1986",
+        "provision": "s. 4",
+        "power": "Functions of SCDF: civil defence duties and day-to-day protection of life, health and safety, including rescue, first aid, firefighting, hazardous-materials mitigation and the emergency ambulance service.",
+        "jurisdiction": null
+      }
+    ]
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Steps restate CDA s. 4 functions in order; the order is Assumed. The fire-ground powers provision (entry, cordon at a fire) was not located in the Fire Safety Act or the Civil Defence Act parts read; recorded as a gap. FSA s. 29 and s. 30 headings (abate fire hazard, close premises in an emergency) seen but not read.",
+    "history": []
+  }
+}

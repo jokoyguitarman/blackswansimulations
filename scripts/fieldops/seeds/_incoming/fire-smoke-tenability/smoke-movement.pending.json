@@ -1,0 +1,885 @@
+{
+  "file": "smoke-movement.pending.json",
+  "schema_version": 1,
+  "library": "smoke",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-f053248e-fcdd-571e-8c24-5eefd7303c53), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+    "brief_key": "fire_smoke_tenability",
+    "note": "Drafted offline from public sources; nothing here is reviewed. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: engine constants and tables with no column in migrations 250/258; WS9 to decide a home",
+  "rows": [
+    {
+      "ref_key": "yamana_tanaka_layer_height",
+      "topic": "smoke_layer",
+      "value": "z = [ (2 k Q^(1/3) t)/(3 A) + h^(-2/3) ]^(-3/2)",
+      "unit": "m",
+      "formula": "k = 0.21/rho_g * (rho_a^2 g/(cp Ta))^(1/3) = 0.076/rho_g; rho_g = 353/Tg",
+      "note": "Closed-room (or large-opening, ambient-pressure) smoke filling with a constant mean layer density. Q in kW, t in s, A floor area m2, h room height m. Valid for time-varying Q (use Q(t)).",
+      "spec_ref": "W30, AC9.63, 6.23.3 Filling",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 500.0,
+          "A_m2": 100.0,
+          "h_m": 3.0,
+          "Tg_K": 350.0
+        },
+        "expected": {
+          "rho_g": 1.0086,
+          "k": 0.0754,
+          "z_at_60s_m": 1.637,
+          "z_at_120s_m": 1.064,
+          "t_to_z_2m_s": 37.4
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, s. 2.7.3, Eq. 2-10 (p. 2-16)",
+            "quoted_phrase": "Yamana and Tanaka (1985) (also reported by Karlsson and Quintiere, 1999b) developed the expression for the height of the smoke layer interface"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "yamana_tanaka_k",
+      "topic": "smoke_layer",
+      "value": 0.076,
+      "unit": "kg/(s kW^(1/3) m^(5/3)) divided by rho_g",
+      "note": "k = 0.076/rho_g with rho_a 1.20 kg/m3, cp 1.0 kJ/kgK, Ta 298 K; rho_g = 353/Tg (Tg from MQH, Eq. 2-1).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, Eq. 2-11 to 2-13 (p. 2-16)",
+            "quoted_phrase": "Substituting the above numerical values in Equation 2-11, we get the following expression"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "heskestad_plume_entrainment",
+      "topic": "plume",
+      "value": "m_e = 0.196 (g rho^2/(cp T))^(1/3) Qc^(1/3) (z - z0)^(5/3) [1 + 2.9 Qc^(2/3)/((g^(1/2) cp rho T)^(2/3) (z - z0)^(5/3))]",
+      "unit": "kg/s",
+      "note": "Above the mean flame height. In SI at ambient 293 K this reduces to about 0.071 Qc^(1/3)(z-z0)^(5/3)(1 + 0.026 Qc^(2/3)(z-z0)^(-5/3)) (derived; to verify). Below the flame: m_e(z) = m_e(L) z/L.",
+      "extends": "exposure-reference nfpa92_plume_axisymmetric (same family); use one, not both",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 3.3.1, Eq. 3.15 and 3.17",
+            "quoted_phrase": "The plume mass entrainment, ṁe(z), at a height z above the base of the fire is estimated using Heskestad's correlation"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "simplified SI coefficients 0.071 and 0.026"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "heskestad_virtual_origin_flame_height",
+      "topic": "plume",
+      "value": "z0/D = -1.02 + 1.4 Q*^(2/5); L/D = -1.02 + 3.7 Q*^(2/5); Q* = Q/(rho cp T sqrt(g D) D^2)",
+      "unit": "m",
+      "note": "Dimensional form used by NUREG: L = 0.235 Q^(2/5) - 1.02 D (Q kW, D m). Q is the total HRR.",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 1000,
+          "D_m": 1.0
+        },
+        "expected": {
+          "L_m": 2.7
+        },
+        "tolerance": "0.01 m"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 3.3.1, Eq. 3.16-3.17",
+            "quoted_phrase": "the mean flame height is defined as the distance from the fuel source to the top of the visible flame where the intermittency is 0.5."
+          },
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 3 worked problems, pool fire flame height (p. 3-25)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "plume_wall_corner_factor",
+      "topic": "plume",
+      "value": {
+        "open": 1.0,
+        "wall": 0.63,
+        "corner": 0.4
+      },
+      "unit": "multiplier on entrainment",
+      "note": "Mirror-image method: wall doubles Qc and halves the result; corner quadruples and divides by 4. Use for studs adjacent to solid walls.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 3.3.2",
+            "quoted_phrase": "The effective entrainment rate is approximately 4^(1/3)/4 ≈ 0.40 of its unobstructed value."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "plume_centreline_temperature",
+      "topic": "plume",
+      "value": "dT0 = min(900 K, 9.1 (T/(g cp^2 rho^2))^(1/3) Qc^(2/3) (z - z0)^(-5/3))",
+      "unit": "K",
+      "note": "Heskestad; Gaussian radial profile sigma = 0.14 (T0/T)^(1/2)(z-z0). Velocity u0 = 3.4 (g/(cp rho T))^(1/3) Qc^(1/3)(z-z0)^(-1/3), capped near 2 Qc^(1/5) m/s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 3.4, Eq. 3.20-3.24",
+            "quoted_phrase": "Note that the maximum plume temperature of 900 K is suggested by Heskestad"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "plume_mass_limit_weak_plume",
+      "topic": "plume",
+      "value": "m_e < Qc/(cp (Tu - Tl))",
+      "unit": "kg/s",
+      "note": "A weak plume cannot penetrate a hotter layer; cap entrainment so the plume stays hotter than the layer. Use to stop a small fire filling a hot region.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 3.3.3, Eq. 3.18-3.19",
+            "quoted_phrase": "For the plume to be able to penetrate the hot upper layer, the density of the gas in the plume must be less than"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "alpert_ceiling_jet_dimensional",
+      "topic": "ceiling_jet",
+      "value": {
+        "dT_r_over_H_le_0.18": "16.9 Q^(2/3)/H^(5/3)",
+        "dT_r_over_H_gt_0.18": "5.38 (Q/r)^(2/3)/H",
+        "u_r_over_H_le_0.15": "0.96 (Q/H)^(1/3)",
+        "u_r_over_H_gt_0.15": "0.195 Q^(1/3) H^(1/2)/r^(5/6)"
+      },
+      "unit": "K and m/s",
+      "note": "Maximum ceiling-jet temperature rise and velocity under an unconfined ceiling; Q kW (total), H fire-to-ceiling m, r radial m. Fitted on 668 kW to 98 MW fires. The NUREG scan prints 538; the established coefficient is 5.38.",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 1000.0,
+          "H_m": 3.0,
+          "r_m": 4.0,
+          "RTI": 50,
+          "T_act_C": 68,
+          "T_amb_C": 20
+        },
+        "expected": {
+          "dT_jet_K": 71.2,
+          "u_jet_m_s": 1.064,
+          "t_activation_s": 54.4
+        },
+        "tolerance": "1 %",
+        "note": "Steady fire, C-factor ignored (NUREG Eq. 10-2)."
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 10, s. 10.3.4, Eq. 10-3 to 10-6 (p. 10-10)",
+            "quoted_phrase": "The ceiling jet temperature and velocity correlations of a fire plume are given by the following expressions"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "5.38 coefficient (decimal point lost in the scanned page)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "alpert_ceiling_jet_cfast",
+      "topic": "ceiling_jet",
+      "value": "dTcj = dT0(H) for r/H <= 0.2; 0.182 dT0(H) (0.225 + 0.27 r/H)^(-4/3) for 0.2 < r/H < 4; v = 3.61 sqrt(gH) Q*H^(1/3) (r/H <= 0.17), 1.06 (r/H)^(-0.69) x same",
+      "unit": "K, m/s",
+      "note": "Form matched to the plume; use the upper-layer temperature as background when a layer exists. Thickness delta/H = 0.112[1 - exp(-2.24 r/H)]. Rooms without a fire: layer temperature at 0.1 m/s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 6.1, Eq. 6.3-6.7",
+            "quoted_phrase": "Rooms without fires do not have ceiling jets, in which case the upper layer temperature is used, along with a fixed speed of 0.1 m/s."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "corridor_ceiling_jet",
+      "topic": "ceiling_jet",
+      "value": "dTcj(x)/dTp = 0.37 (H/W)^(1/3) exp(-0.16 (x/W)(W/H)^(1/3))",
+      "unit": "ratio",
+      "note": "Delichatsios corridor correlation for travel x along a corridor of width W.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 6.1, Eq. 6.8",
+            "quoted_phrase": "Delichatsios [42] suggests the following alternative to the ceiling jet correlation"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "exact exponent arrangement (equation garbled in text extraction)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "smoke_mass_production",
+      "topic": "smoke_production",
+      "value": "soot rate = y_s Q/dHc",
+      "unit": "kg/s",
+      "note": "Per burning stud each tick; mass of particulate = yield x mass of fuel burned. Matches spec 6.23.3 Production.",
+      "spec_ref": "6.23.3 Production",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 18, Eq. 18-2 and 18-3 (p. 18-4)",
+            "quoted_phrase": "The smoke particulates produced by a fire primarily consist of soot, and the production of particulates can be estimated as follows"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "soot_yield_by_material",
+      "topic": "smoke_production",
+      "value": {
+        "wood_red_oak": 0.015,
+        "wood_douglas_fir": 0.018,
+        "wood_hemlock": 0.015,
+        "fiberboard": 0.008,
+        "wool": 0.008,
+        "abs": 0.105,
+        "pmma": 0.022,
+        "polypropylene": 0.059,
+        "polystyrene": 0.164,
+        "silicone": 0.065,
+        "polyester": 0.09,
+        "nylon": 0.075,
+        "silicone_rubber": 0.078,
+        "pu_foam_flexible": 0.188,
+        "pu_foam_rigid": 0.118,
+        "polystyrene_foam": 0.194,
+        "polyethylene_foam": 0.076,
+        "phenolic_foam": 0.002,
+        "polyethylene": 0.06,
+        "pvc": 0.172,
+        "etfe": 0.042,
+        "pfa": 0.002,
+        "fep": 0.003,
+        "tfe": 0.003
+      },
+      "unit": "kg/kg",
+      "note": "Well-ventilated, small-scale flaming yields (Klote and Milke 2002, from Tewarson). Use for material mixes; C/VM2's 0.07 stays the design default. After flashover use 0.14 (existing seed).",
+      "extends": "spread-materials soot_yield (0.07 default)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 18, Table 18-3 (p. 18-4, 18-5)",
+            "quoted_phrase": "Table 18-3 lists values of particulate yield (yp) for a number of materials from small-scale experiments of turbulent flaming combustion."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "mass_extinction_flaming_smouldering",
+      "topic": "visibility",
+      "value": {
+        "flaming_m2_g": 7.6,
+        "smouldering_m2_g": 4.3,
+        "fds_default_m2_g": 8.7
+      },
+      "unit": "m2/g",
+      "note": "Seader and Einhorn: 37,000 ft2/lb flaming and 21,000 ft2/lb smouldering, converted (x 0.2048 m2/g per 1000 ft2/lb). FDS default 8,700 m2/kg for flaming wood and plastics. Use the smouldering value for pre-flaming or cold smoke.",
+      "extends": "movement-parameters smoke_mass_extinction 8.7",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 18, Table 18-2 (p. 18-3)",
+            "quoted_phrase": "Seader and Einhorn (1976) and Seader (1943) obtained values for the specific extinction coefficient"
+          },
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.5, Eq. 22.22",
+            "quoted_phrase": "Its default value is 8700 m2/kg, a value suggested for flaming combustion of wood and plastics"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "visibility_constant_by_object",
+      "topic": "visibility",
+      "value": {
+        "illuminated_sign": 8,
+        "reflecting_sign": 3,
+        "building_components_reflected_light": 3
+      },
+      "unit": "dimensionless",
+      "note": "S = K/(Km m) = C/K. Walls, floors, doors and stairs (what a person reads a route by) take 3 whatever the power state; only lit exit signs take 8.",
+      "spec_ref": "6.23.3 Visibility (K 8 with power, 3 without)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 18, Table 18-1 (p. 18-3)",
+            "quoted_phrase": "The proportionality constant (K) is dependent on the color of the smoke, illumination of the object, intensity of background illumination"
+          },
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.5, Eq. 22.23",
+            "quoted_phrase": "C = 8 for a light-emitting sign and C = 3 for a light-reflecting sign"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "optical_density_conversion",
+      "topic": "visibility",
+      "value": "D = K/2.3 (per m, log10 basis)",
+      "unit": "1/m",
+      "note": "Converts the existing C/VM2 detector threshold OD 0.097/m to K = 0.223/m.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.5, Eq. 22.24",
+            "quoted_phrase": "OPTICAL DENSITY’, D = K/2.3, the result of using log10 in the definition"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "smoke_detector_heskestad",
+      "topic": "detection",
+      "value": {
+        "characteristic_length_m": 1.8,
+        "activation_obscuration_pct_per_m": 3.24
+      },
+      "unit": "-",
+      "note": "Default spot detector: lag t = L/u in the ceiling jet, alarm at 3.24 %/m obscuration. Use with the ceiling-jet velocity of the stud.",
+      "spec_ref": "detector_delay_s (30 s, to verify)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 18.3.5",
+            "quoted_phrase": "The default detector parameters are for the Heskestad model with a characteristic LENGTH of 1.8 m."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "vent_flow_orifice",
+      "topic": "smoke_transfer",
+      "value": "m = (2/3) C sqrt(2 rho) w (t - b) (|dPt|^(3/2) - |dPb|^(3/2))/(|dPt| - |dPb|), C = 0.7",
+      "unit": "kg/s",
+      "note": "Flow through one horizontal slice of a door or window between pressures dPb and dPt (same sign). rho of the upwind side. The basis of door transfer between smoke regions.",
+      "spec_ref": "6.23.3 Across regions (0.5 m/s planning value)",
+      "worked_example": {
+        "inputs": {
+          "T_smoke_K": 400.0,
+          "rho_air": 1.2,
+          "depth_above_neutral_plane_m": 0.5,
+          "door_width_m": 0.9
+        },
+        "expected": {
+          "dP_top_Pa": 1.557,
+          "v_top_m_s": 1.315,
+          "v_mean_m_s": 0.877,
+          "m_dot_kg_s": 0.3482
+        },
+        "tolerance": "1 %",
+        "note": "Linear pressure profile from zero at the neutral plane; CFAST Eq. 4.3 with dP_b = 0."
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 4.1, Eq. 4.1-4.5",
+            "quoted_phrase": "Here, C is the orifice coefficient taken to be 0.7"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "spill_plume_entrainment",
+      "topic": "smoke_transfer",
+      "value": 0.44,
+      "unit": "Cm (dimensionless)",
+      "note": "Smoke leaving a door under the downstream layer rises as a spill plume entraining m = m_ul + Cm (g rho^2 T/(cp T_u))^(1/3) h^(1/3) w^(2/3)(zI - zN).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 4.1, Eq. 4.7",
+            "quoted_phrase": "where Cm is an empirical constant equal to 0.44"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "leakage_areas_cvm2",
+      "topic": "smoke_transfer",
+      "value": {
+        "fire_separation_walls": 0.0,
+        "smoke_control_door_gap_mm_under": 10,
+        "fire_door_no_seals_gap_mm_full_height": 10,
+        "lined_wall_m2_per_m2": 0.001,
+        "unlined_external_wall_m2_per_m2": 0.005
+      },
+      "unit": "-",
+      "note": "Leakage paths for closed doors and walls. Gives the wall smoke_leak a physical basis: a 0.9 x 2.1 m fire door without seals leaks as a 0.01 x 2.1 = 0.021 m2 vent.",
+      "spec_ref": "5.12.1 smoke_leak",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.1.5.5 a)-d)",
+            "quoted_phrase": "fire doors that are not smoke control doors are assumed to have a 10 mm gap over the height of the door"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "stack_pressure",
+      "topic": "smoke_transfer",
+      "value": "dP(z) = (rho_out - rho_in) g (z - zN)",
+      "unit": "Pa",
+      "note": "Hydrostatic pressure difference driving smoke up stairs and shafts, measured from the neutral plane zN. Use with vent_flow_orifice at stair doors.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 4.1",
+            "quoted_phrase": "Natural flow through windows and doors is governed by the vertical stratification of the pressure difference across the opening"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "the closed form (CFAST states the principle, not this equation)"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "mqh_hot_layer_temperature",
+      "topic": "smoke_layer",
+      "value": "dTg = 6.85 [Q^2/((Ao sqrt(Ho))(AT hk))]^(1/3)",
+      "unit": "K",
+      "note": "Naturally ventilated room; replaces the spec's Assumed 60 % wall loss with a sourced loss term. hk = sqrt(k rho c/t) for t < tp, k/delta after; tp = (rho cp/k)(delta/2)^2.",
+      "spec_ref": "6.23.3 Filling (60 % boundary loss, Assumed)",
+      "worked_example": {
+        "inputs": {
+          "room_m": [
+            4.0,
+            5.0,
+            2.6
+          ],
+          "door_m": [
+            0.9,
+            2.0
+          ],
+          "lining": "concrete kpc 2.9",
+          "t_s": 600
+        },
+        "expected": {
+          "A_T_m2": 85.0,
+          "h_k_kw_m2K": 0.0695,
+          "Q_fo_MQH_kw": 2366,
+          "Q_fo_Babrauskas_kw": 1909,
+          "Q_fo_Thomas_kw": 1625,
+          "dT_MQH_at_500kW_K": 174.8
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, s. 2.6.1, Eq. 2-1 to 2-5 (p. 2-9, 2-10)",
+            "quoted_phrase": "This MQH correlation is based on 100 experimental fires (from 8 series of tests involving several types of fuel) in conventional-sized rooms with openings."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "lining_thermal_properties",
+      "topic": "smoke_layer",
+      "value": {
+        "concrete": {
+          "krhoc": 2.9,
+          "k_kw_mK": 0.0016,
+          "c_kj_kgK": 0.75
+        },
+        "brick_concrete_block": {
+          "krhoc": 1.2,
+          "k_kw_mK": 0.00073,
+          "c_kj_kgK": 0.84
+        },
+        "gypsum_board": {
+          "krhoc": 0.18,
+          "k_kw_mK": 0.00017,
+          "c_kj_kgK": 1.1
+        },
+        "aerated_concrete": {
+          "krhoc": 0.12,
+          "k_kw_mK": 0.00026,
+          "c_kj_kgK": 0.96
+        }
+      },
+      "unit": "(kW/m2K)2 s",
+      "note": "Thermal inertia for hk in MQH and for heat loss from a smoke region's layer.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, thermal properties table (p. 2-11)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "table number and remaining columns"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "grid_smoke_transfer_scheme",
+      "topic": "grid_algorithm",
+      "value": [
+        "1. Region = studs joined without a closed solid wall (spec 6.23.3).",
+        "2. Each tick, plume mass into the region's hot layer from heskestad_plume_entrainment (or NFPA 92) at the current interface height, with wall/corner factor of the burning stud.",
+        "3. Layer volume V += m_e/rho_g * dt; rho_g = 353/Tg, Tg from mqh_hot_layer_temperature (or energy balance with hk losses).",
+        "4. Interface z = h - V/A_region; fill ceiling band (2.0 m to h), then head (1.2-2.0), waist (0.6-1.2), floor (0-0.6). A band is smoke-logged above z.",
+        "5. Soot mass += y_s Q/dHc * dt, spread uniformly over V; K = Km * soot/V in every band above z; bands below z keep K of leakage (0 unless mixed).",
+        "6. Ceiling-jet front: a stud at radius r gets smoke before the region is uniform after t = r/u_jet (alpert_ceiling_jet); until then use the jet, not the region mean, for detectors and sprinklers.",
+        "7. Doors/openings: for each open edge integrate vent_flow_orifice over the slices above the neutral plane; move that mass (and its soot) into the neighbour region's ceiling layer; closed doors use leakage_areas_cvm2.",
+        "8. Stairs and shafts: stack_pressure at each landing door; mass moves upward to the ceiling layer of the linked storey.",
+        "9. Acceptance: a closed 30 x 30 m room must match yamana_tanaka_layer_height within 25 % for the time to z = 2.0 m (AC9.63)."
+      ],
+      "unit": "-",
+      "note": "A zone model resolved per region, written for 3 m studs and the four W26 bands. The steps are an assembly of the sourced correlations above; the ordering and the jet-front rule are Assumed.",
+      "spec_ref": "W30, 6.23.3",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "ch. 2 zone model assumptions",
+            "quoted_phrase": "The assumption of a zone model is that properties such as"
+          },
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, s. 2.7.3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "step order",
+          "jet-front delay rule",
+          "uniform soot in the layer"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "Zukoski plume coefficients (no open copy; Heskestad and NFPA 92 forms cover it)"
+    },
+    {
+      "subject": "CIBSE Guide E smoke-filling text (paywalled; NUREG reproduces Yamana-Tanaka)"
+    },
+    {
+      "subject": "stair smoke velocities measured in tests"
+    }
+  ],
+  "refused": []
+}

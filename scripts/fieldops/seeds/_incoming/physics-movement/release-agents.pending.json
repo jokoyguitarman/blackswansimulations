@@ -1,0 +1,1529 @@
+{
+  "file": "release-agents.pending.json",
+  "schema_version": 1,
+  "library": "threats",
+  "target_table": "fieldops_release_agents",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "release_agent",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "rows": [
+    {
+      "agent_key": "ammonia",
+      "label": "Ammonia",
+      "cas_number": "7664-41-7",
+      "molecular_weight": 17.0,
+      "density_ratio": 0.6,
+      "boiling_point_c": -33.3,
+      "lfl_pct": 15,
+      "ufl_pct": 28,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 30
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 220
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 220
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 160
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 110
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 110
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 2700
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 1600
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 1100
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 550
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 390
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0028; US EPA compiled AEGLs (2018) p. 42",
+      "source_note": "MW 17.0, BP -28 F, LEL 15 %, UEL 28 %, RGasD 0.60 (NIOSH). AEGL 1/2/3 all durations (EPA). Boiling point converted from F. NIOSH: treat as flammable though not DOT-flammable.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0028.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 42, CAS 7664-41-7, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "chlorine",
+      "label": "Chlorine",
+      "cas_number": "7782-50-5",
+      "molecular_weight": 70.9,
+      "density_ratio": 2.47,
+      "boiling_point_c": -33.9,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.5
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 2.0
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 1.0
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 0.71
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 50
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 28
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 20
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 10
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 7.1
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018",
+        "epa_aegl_chlorine"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0115; US EPA compiled AEGLs (2018) p. 43",
+      "source_note": "MW 70.9, BP -29 F, RGasD 2.47, nonflammable strong oxidiser (NIOSH). AEGLs (EPA). WS9 5.19 holds density ratio 2.45; NIOSH gives 2.47.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0115.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 43, CAS 7782-50-5, 10 min to 8 hr table",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_chlorine",
+            "locator": "AEGL table, 60 min column",
+            "quoted_phrase": "AEGL 3 | 50 | 28 | 20 | 10 | 7.1"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "propane",
+      "label": "Propane (LPG)",
+      "cas_number": "74-98-6",
+      "molecular_weight": 44.1,
+      "density_ratio": 1.55,
+      "boiling_point_c": -42.2,
+      "lfl_pct": 2.1,
+      "ufl_pct": 9.5,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 10000
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 6900
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 5500
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 17000
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 33000
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0524; US EPA compiled AEGLs (2018) p. 10",
+      "source_note": "MW 44.1, BP -44 F, LEL 2.1 %, UEL 9.5 %, RGasD 1.55 (NIOSH). AEGL-1 >= 10 % LEL, AEGL-2 >= 50 % LEL, AEGL-3 >= 100 % LEL: explosion governs (EPA note). WS9 5.19 holds 1.52.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0524.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 10, CAS 74-98-6, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "butane",
+      "label": "n-Butane (LPG component)",
+      "cas_number": "106-97-8",
+      "molecular_weight": 58.1,
+      "density_ratio": 2.11,
+      "boiling_point_c": -0.6,
+      "lfl_pct": 1.6,
+      "ufl_pct": 8.4,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 10000
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 6900
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 5500
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 24000
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 17000
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 77000
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 53000
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 53000
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 53000
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 53000
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0068; US EPA compiled AEGLs (2018) p. 17",
+      "source_note": "MW 58.1, BP 31 F, LEL 1.6 %, UEL 8.4 %, RGasD 2.11 (NIOSH). AEGLs flagged as fractions of the 19,000 ppm LEL: explosion governs (EPA note). Not in WS9 5.19; added for LPG mixtures.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0068.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 17, CAS 106-97-8, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "carbon_monoxide",
+      "label": "Carbon monoxide (fire product)",
+      "cas_number": "630-08-0",
+      "molecular_weight": 28.0,
+      "density_ratio": 0.97,
+      "boiling_point_c": -191.7,
+      "lfl_pct": 12.5,
+      "ufl_pct": 74,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 420
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 150
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 83
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 33
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 27
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 1700
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 600
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 330
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 150
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 130
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0105; US EPA compiled AEGLs (2018) p. 33",
+      "source_note": "MW 28.0, BP -313 F, LEL 12.5 %, UEL 74 %, RGasD 0.97 (NIOSH). AEGL-1 not recommended (insufficient data); AEGL-2/3 (EPA). Fire-gas FED uses ISO 13571 (exposure-reference).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0105.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 33, CAS 630-08-0, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "hydrogen_chloride",
+      "label": "Hydrogen chloride (cable/PVC fires)",
+      "cas_number": "7647-01-0",
+      "molecular_weight": 36.5,
+      "density_ratio": 1.27,
+      "boiling_point_c": -85.0,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 1.8
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 1.8
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 1.8
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 1.8
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 1.8
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 100
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 43
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 22
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 11
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 11
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 620
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 210
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 100
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 26
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 26
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0332; US EPA compiled AEGLs (2018) p. 42",
+      "source_note": "MW 36.5, BP -121 F, RGasD 1.27, nonflammable (NIOSH). AEGLs (EPA). ISO 13571 FEC F value 1000 ppm (exposure-reference).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0332.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 42, CAS 7647-01-0, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "hydrogen_fluoride",
+      "label": "Hydrogen fluoride (battery fires)",
+      "cas_number": "7664-39-3",
+      "molecular_weight": 20.0,
+      "density_ratio": 0.69,
+      "boiling_point_c": 19.4,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 1.0
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 95
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 34
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 24
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 12
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 12
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 170
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 62
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 44
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 22
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 22
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0334; US EPA compiled AEGLs (2018) p. 42",
+      "source_note": "MW 20.0, BP 67 F, RGasD 0.69, nonflammable (NIOSH). AEGLs (EPA). ISO 13571 FEC F value 500 ppm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0334.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 42, CAS 7664-39-3, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "hydrogen_sulfide",
+      "label": "Hydrogen sulfide",
+      "cas_number": "7783-06-4",
+      "molecular_weight": 34.1,
+      "density_ratio": 1.19,
+      "boiling_point_c": -60.6,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.75
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.6
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.51
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.36
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.33
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 41
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 32
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 27
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 20
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 17
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 76
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 59
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 50
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 37
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 31
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0337; US EPA compiled AEGLs (2018) p. 44",
+      "source_note": "MW 34.1, BP -77 F, RGasD 1.19, flammable gas, UEL 44 % (NIOSH). LEL not captured in extraction, so both limits left null (gap, Unverified). Olfactory fatigue: smell is not a warning (NIOSH).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0337.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 44, CAS 7783-06-4, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "toxic_load_n",
+          "lfl_pct",
+          "ufl_pct",
+          "irritant"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "sulfur_dioxide",
+      "label": "Sulfur dioxide",
+      "cas_number": "7446-09-5",
+      "molecular_weight": 64.1,
+      "density_ratio": 2.26,
+      "boiling_point_c": -10.0,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.2
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.2
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.2
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.2
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.2
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 0.75
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 0.75
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 0.75
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 0.75
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 0.75
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 30
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 30
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 30
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 19
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 9.6
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0575; US EPA compiled AEGLs (2018) p. 41",
+      "source_note": "MW 64.1, BP 14 F, RGasD 2.26, nonflammable (NIOSH). AEGLs (EPA). ISO 13571 FEC F value 150 ppm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0575.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 41, CAS 7446-09-5, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "nitrogen_dioxide",
+      "label": "Nitrogen dioxide (fire product)",
+      "cas_number": "10102-44-0",
+      "molecular_weight": 46.0,
+      "density_ratio": 2.62,
+      "boiling_point_c": 21.1,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.5
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 20
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 15
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 12
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 8.2
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 6.7
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 34
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 25
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 20
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 14
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 11
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0454; US EPA compiled AEGLs (2018) p. 47",
+      "source_note": "MW 46.0, BP 70 F, RGasD 2.62 as NIOSH states (reflects the N2O4 equilibrium; MW/air gives 1.59: reviewer to choose). Noncombustible oxidiser. AEGLs (EPA); some effects delayed. ISO 13571 F 250 ppm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0454.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 47, CAS 10102-44-0, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "toxic_load_n",
+          "density_ratio (2.62 vs 1.59)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "acrolein",
+      "label": "Acrolein (fire product)",
+      "cas_number": "107-02-8",
+      "molecular_weight": 56.1,
+      "density_ratio": 1.94,
+      "boiling_point_c": 52.8,
+      "lfl_pct": 2.8,
+      "ufl_pct": 31,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.03
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.03
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.03
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.03
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.03
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 0.44
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 0.18
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 0.1
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 0.1
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 0.1
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 6.2
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 2.5
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 1.4
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 0.48
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 0.27
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0011; US EPA compiled AEGLs (2018) p. 17",
+      "source_note": "MW 56.1, BP 127 F, LEL 2.8 %, UEL 31 % (NIOSH; a liquid, no gas density stated). Density ratio 1.94 derived as MW/28.96 (Assumed). AEGLs (EPA). ISO 13571 F 30 ppm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0011.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 17, CAS 107-02-8, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "toxic_load_n",
+          "density_ratio (derived MW/28.96)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "agent_key": "formaldehyde",
+      "label": "Formaldehyde (fire product)",
+      "cas_number": "50-00-0",
+      "molecular_weight": 30.0,
+      "density_ratio": 1.04,
+      "boiling_point_c": -21.1,
+      "lfl_pct": 7.0,
+      "ufl_pct": 73,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.9
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.9
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.9
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.9
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.9
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 14
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 14
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 14
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 14
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 14
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 100
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 70
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 56
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 35
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 35
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "source_ref": "NIOSH Pocket Guide npgd0293; US EPA compiled AEGLs (2018) p. 53",
+      "source_note": "MW 30.0, BP -6 F, LEL 7.0 %, UEL 73 %, RGasD 1.04 (NIOSH). AEGLs (EPA). ISO 13571 F 250 ppm. Occupational carcinogen (NIOSH Ca).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0293.html: Molecular Weight, Boiling Point, LEL/UEL, Relative Gas Density",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "p. 53, CAS 50-00-0, 10 min to 8 hr table",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "toxic_load_n"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "methane / natural gas",
+      "sources_checked": [
+        "niosh_npg",
+        "epa_aegl_compiled_2018"
+      ],
+      "why": "No NIOSH Pocket Guide entry and no AEGL (simple asphyxiant). NOAA CAMEO not fetched in this run. Keep WS9 5.19 row (16.0, 0.55, 5-15 %) as Unverified."
+    },
+    {
+      "subject": "town_gas (Singapore composition)",
+      "sources_checked": [],
+      "why": "Needs Energy Market Authority / City Energy composition data; not researched (outside this run's scope)."
+    },
+    {
+      "subject": "hydrogen",
+      "sources_checked": [
+        "epa_aegl_compiled_2018"
+      ],
+      "why": "No AEGL; NIOSH has no entry. Flammable limits not fetched from a primary source in this run."
+    },
+    {
+      "subject": "toxic_load_n (ten Berge exponent) for every agent",
+      "sources_checked": [
+        "epa_aegl_compiled_2018"
+      ],
+      "why": "The compiled table does not state n; each agent's AEGL technical support document does. Not read in this run: left null (nullable column)."
+    },
+    {
+      "subject": "carbon dioxide",
+      "sources_checked": [
+        "epa_aegl_compiled_2018"
+      ],
+      "why": "No AEGL. Its fire-gas effect is the ISO 13571 hyperventilation factor (exposure-reference)."
+    }
+  ],
+  "refused": [
+    {
+      "subject": "hydrogen_cyanide as a release agent",
+      "why": "Listed in CWC Schedule 3 (also a historical warfare agent). Kept only as the ISO 13571 fire-gas FED term in exposure-reference; not offered as a release. Security reviewer to confirm (WS9 6.27.10)."
+    },
+    {
+      "subject": "phosgene",
+      "why": "CWC Schedule 3 / historical warfare agent; out of scope under WS9 6.27.10 and 9.8."
+    },
+    {
+      "subject": "any chemical warfare agent",
+      "why": "Never drafted (WS9 6.27.10)."
+    }
+  ]
+}

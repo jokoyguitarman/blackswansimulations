@@ -1,0 +1,627 @@
+{
+  "file": "sources.pending.json",
+  "schema_version": 1,
+  "library": "threats",
+  "target_table": "fieldops_knowledge_sources",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": null,
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "rows": [
+    {
+      "source_key": "epa_aegl_compiled_2018",
+      "title": "Compiled Acute Exposure Guideline Levels (AEGLs), update of 27 July 2018",
+      "publisher": "US Environmental Protection Agency",
+      "url": "https://www.epa.gov/sites/default/files/2018-08/documents/compiled_aegls_update_27jul2018.pdf",
+      "published_on": "2018-07-27",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "epa_aegl_chlorine",
+      "title": "Chlorine Results - AEGL Program",
+      "publisher": "US Environmental Protection Agency",
+      "url": "https://www.epa.gov/aegl/chlorine-results-aegl-program",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "niosh_npg",
+      "title": "NIOSH Pocket Guide to Chemical Hazards (web edition)",
+      "publisher": "US CDC, National Institute for Occupational Safety and Health",
+      "url": "https://www.cdc.gov/niosh/npg/",
+      "published_on": "2019-10-30",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain. Pages last reviewed 30 Oct 2019.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "iso_13571_2012",
+      "title": "ISO 13571:2012 Life-threatening components of fire - Guidelines for the estimation of time to compromised tenability in fires",
+      "publisher": "International Organization for Standardization",
+      "url": "https://www.iso.org/standard/56172.html",
+      "published_on": "2012-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled standard. Clauses 4-5 read in ISO's public sample; clause 6, 8, 9 values read in a publicly hosted national-adoption text of unclear licence and cross-checked against pyFDS-Evac. Confirm against a licensed copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "pyfds_evac_docs",
+      "title": "pyFDS-Evac documentation: irritant gases, walking speed in smoke, visibility through smoke",
+      "publisher": "pedestriandynamics.org (open documentation)",
+      "url": "https://pedestriandynamics.org/pyFDS-Evac/fundamentals/walking-speed/",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open web documentation; secondary source quoting ISO 13571, Jin, Purser (SFPE Handbook 6th ed. ch. 70), Frantzich and Nilsson, Fridolf et al.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "en_1991_1_2_2002",
+      "title": "EN 1991-1-2:2002 Eurocode 1, Actions on structures, Part 1-2: Actions on structures exposed to fire, Annex E",
+      "publisher": "CEN (summarised in EU JRC Eurocode workshop slides, Vassart 2012)",
+      "url": "https://eurocodes.jrc.ec.europa.eu/sites/default/files/2022-06/03a-VASSART-EC-FireDesign-WS.pdf",
+      "published_on": "2002-11-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "EN text is published law in the EU (Regulation 305/2011); JRC slides are public. Superseded by EN 1991-1-2:2024 (BS EN 2002 withdrawn by 30 Mar 2028); re-check table numbers.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nz_cvm2_2025",
+      "title": "C/VM2 Verification Method: Framework for fire safety design, Second Edition",
+      "publisher": "New Zealand Ministry of Business, Innovation and Employment",
+      "url": "https://www.building.govt.nz/assets/Uploads/building-code-compliance/c-protection-from-fire/asvm/c-protection-from-fire-vm2-second-edition.pdf",
+      "published_on": "2025-07-28",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Free public government document.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nfpa_92",
+      "title": "NFPA 92 Standard for Smoke Control Systems (2015-2021 editions)",
+      "publisher": "National Fire Protection Association",
+      "url": "https://www.nfpa.org/codes-and-standards/nfpa-92-standard-development/92",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled standard with free read-only access at nfpa.org. Equations cross-checked against the open-access paper chow_2010_smoke_filling. Confirm clause numbers in a licensed copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "chow_2010_smoke_filling",
+      "title": "The Analysis of the Natural Smoke Filling Times in an Atrium (open access)",
+      "publisher": "Hindawi, Modelling and Simulation in Engineering",
+      "url": "https://doi.org/10.1155/2010/687039",
+      "published_on": "2010-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open access article; quotes the NFPA 92 smoke-layer equations.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nfpa_68_2023",
+      "title": "NFPA 68 Standard on Explosion Protection by Deflagration Venting, 2023 edition",
+      "publisher": "National Fire Protection Association",
+      "url": "https://www.nfpa.org/codes-and-standards/nfpa-68-standard-development/68",
+      "published_on": "2022-12-19",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled standard with free read-only access at nfpa.org. Clause 7.2.1 read in a public preview; equation 7.2.1.1 garbled in extraction; confirm in a licensed copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "zalosh_2002_sfpe",
+      "title": "Zalosh, R. (2002) Explosion protection. SFPE Handbook of Fire Protection Engineering, 3rd ed., pp. 3-402 to 3-421",
+      "publisher": "NFPA and SFPE (read via the Fire Safety Academy wiki summary)",
+      "url": "https://fire-safety.academy/wiki/Explosion_venting",
+      "published_on": "2002-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Handbook is paywalled; values read in a public wiki that cites page numbers. Confirm against the handbook.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nureg_1805",
+      "title": "NUREG-1805 Fire Dynamics Tools (FDTs), damage thresholds for overpressure",
+      "publisher": "US Nuclear Regulatory Commission",
+      "url": null,
+      "published_on": "2004-12-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work. Values seen only as cited in the Fire Safety Academy wiki; locator Unverified.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "mulholland_croarkin_2000",
+      "title": "Mulholland, G.W. and Croarkin, C. (2000) Specific extinction coefficient of flame generated smoke. Fire and Materials 24(5), 227-230",
+      "publisher": "Wiley",
+      "url": null,
+      "published_on": "2000-09-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Journal article (paywalled); value widely quoted in public NIST/FDS documentation. Not re-read in this run.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "jin_1978",
+      "title": "Jin, T. (1978) Visibility through fire smoke. Journal of Fire and Flammability 9, 135-155",
+      "publisher": "Technomic (read via pyFDS-Evac and FDS User's Guide summaries)",
+      "url": "https://pedestriandynamics.org/pyFDS-Evac/fundamentals/visibility/",
+      "published_on": "1978-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Original paywalled/out of print; values read in an open secondary that cites page and figure numbers.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "sfpe_hb5_ch59",
+      "title": "Gwynne, S.M.V. and Rosenbaum, E.R. (2016) Employing the hydraulic model in assessing emergency movement. SFPE Handbook of Fire Protection Engineering, 5th ed., ch. 59",
+      "publisher": "Springer and SFPE",
+      "url": null,
+      "published_on": "2016-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled handbook; values cross-checked against NIST TN 1722 Table 1 and Imperial College's public hydraulic-model tables.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nist_tn_1722",
+      "title": "NIST Technical Note 1722: Simple Estimates of Combined Stairwell/Elevator Egress in Buildings",
+      "publisher": "US National Institute of Standards and Technology",
+      "url": "https://nvlpubs.nist.gov/nistpubs/TechnicalNotes/NIST.TN.1722.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "impvis_hydraulic_tables",
+      "title": "Hydraulic model tables (teaching visualisation of the SFPE hydraulic model)",
+      "publisher": "Imperial College London, ImpVis",
+      "url": "https://impvis.co.uk/launch/hydraulic-model/pages/0.Tables.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public teaching page; secondary restatement of SFPE Handbook tables.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "buchmueller_weidmann_2006",
+      "title": "Buchmüller, S. and Weidmann, U. (2006) Parameters of pedestrians, pedestrian traffic and walking facilities. IVT Report 132",
+      "publisher": "ETH Zürich, Institute for Transport Planning and Systems",
+      "url": "https://doi.org/10.3929/ethz-b-000047950",
+      "published_on": "2006-10-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open access report; restates Weidmann (1993).",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "fruin_1971_hrr355",
+      "title": "Fruin, J.J. (1971) Designing for pedestrians: a level-of-service concept. Highway Research Record 355",
+      "publisher": "Highway Research Board (TRB)",
+      "url": "https://onlinepubs.trb.org/Onlinepubs/hrr/1971/355/355-001.pdf",
+      "published_on": "1971-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public TRB online publication.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "metrolinx_ds12",
+      "title": "DS-12 Pedestrian Flow Modelling Design Standard v1.0 (metric Fruin levels of service)",
+      "publisher": "Metrolinx (Ontario)",
+      "url": "https://assets.metrolinx.com/image/upload/v1738255845/Documents/Engineering/DS-12_Pedestrian_Flow_Modelling_Design_Standard_v1.0.pdf",
+      "published_on": "2025-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public agency design standard.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "fruin_1993_crowd",
+      "title": "Fruin, J.J. (1993, revised 2002) The causes and prevention of crowd disasters",
+      "publisher": "First International Conference on Engineering for Crowd Safety (hosted by Working with Crowds)",
+      "url": "https://www.workingwithcrowds.com/wp-content/uploads/2018/02/THE-CAUSES-AND-PREVENTION-OF-CROWD-DISASTERS-by-John-J.-Fruin-Ph.D.-P.E..pdf",
+      "published_on": "2002-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public conference paper. Names historical incidents; no row here names any.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "sgsa_green_guide_egress",
+      "title": "Egress (summary of the Guide to Safety at Sports Grounds, 6th ed., ch. 10)",
+      "publisher": "Sports Grounds Safety Authority",
+      "url": "https://sgsa.org.uk/physical-factors/circulation/egress/",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public guidance page.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "muhdi_2006",
+      "title": "Muhdi, R., Davis, J. and Blackburn, J.T. (2006) Improving occupant characteristics in performance-based evacuation modeling. Proc. HFES 50(11), 1199-1203",
+      "publisher": "Human Factors and Ergonomics Society",
+      "url": "https://doi.org/10.1177/154193120605001118",
+      "published_on": "2006-10-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled; values read in Cao (2017) Auburn dissertation (open), Table 2.4 and section 2.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "cao_2017_dissertation",
+      "title": "Cao, L. (2017) Evaluation of evacuation performance using different locomotive postures. PhD dissertation",
+      "publisher": "Auburn University",
+      "url": "https://etd.auburn.edu/bitstream/handle/10415/5825/Dissertation%20Li%20Cao.pdf",
+      "published_on": "2017-08-05",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open electronic thesis.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nagai_2006",
+      "title": "Nagai, R., Fukamachi, M. and Nagatani, T. (2006) Evacuation of crawlers and walkers from corridor through an exit. Physica A 367, 449-460",
+      "publisher": "Elsevier",
+      "url": "https://doi.org/10.1016/j.physa.2005.11.031",
+      "published_on": "2006-07-15",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled; speed read in Cao (2017).",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "kady_davis_2009",
+      "title": "Kady, R.A. and Davis, J. (2009) The effect of occupant characteristics on crawling speed in evacuation. Fire Safety Journal 44(4)",
+      "publisher": "Elsevier",
+      "url": "https://doi.org/10.1016/j.firesaf.2008.09.010",
+      "published_on": "2009-05-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Paywalled; range read in Cao (2017).",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "tefft_2013",
+      "title": "Tefft, B.C. (2013) Impact speed and a pedestrian's risk of severe injury or death. Accident Analysis and Prevention 50, 871-878 (AAA Foundation report, 2011)",
+      "publisher": "Elsevier; AAA Foundation for Traffic Safety",
+      "url": "https://aaafoundation.org/research/impact-speed-pedestrians-risk-severe-injury-death/",
+      "published_on": "2011-09-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public foundation report and abstract; also tabulated by NHTSA (DOT HS 812 059, Table 1).",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nist_ncstar1_2005",
+      "title": "NIST NCSTAR 1: Final report on the collapse of the World Trade Center towers",
+      "publisher": "US National Institute of Standards and Technology",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/NCSTAR/ncstar1.pdf",
+      "published_on": "2005-09-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public. Used only for public-report-level fuel and fireproofing statements; no flight or approach data.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "fema_403_2002",
+      "title": "FEMA 403: World Trade Center Building Performance Study, chapters 1 and 8",
+      "publisher": "US Federal Emergency Management Agency",
+      "url": "https://www.fema.gov/pdf/library/fema403_ch8.pdf",
+      "published_on": "2002-05-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "nrc_canada_wtc_fire_resistance",
+      "title": "Role of fire resistance issues in the collapse of the Twin Towers",
+      "publisher": "National Research Council Canada",
+      "url": "https://nrc-publications.canada.ca/eng/view/object?id=144f25a9-e522-4f75-8dcb-675280c2ad58",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public NRC Canada publication; restates FEMA 403 and Rehm et al. (2002) fuel fractions.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "turner_1970_workbook",
+      "title": "Turner, D.B. (1970) Workbook of Atmospheric Dispersion Estimates (revised), Table 1",
+      "publisher": "US EPA Office of Air Programs",
+      "url": "https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=9100JEIO.TXT",
+      "published_on": "1970-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    },
+    {
+      "source_key": "briggs_1973_urban_sigmas",
+      "title": "Briggs (1973) urban dispersion coefficients as tabulated in Hanna, Briggs and Hosker (1982) and reproduced by Atmospheric Science Letters (2005) doi 10.1002/asl.94 and CCST (2015) Appendix 1.B Table 1.B-1",
+      "publisher": "Wiley; California Council on Science and Technology",
+      "url": "https://ccst.us/wp-content/uploads/Chapter-1-v2-Appendix-1-B.pdf",
+      "published_on": "1973-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public secondary tabulations; two independent tabulations agree.",
+      "content_hash": null,
+      "review_interval_days": 1825,
+      "next_review_due": "2031-11-21",
+      "libraries": [
+        "spread",
+        "threats",
+        "movement"
+      ],
+      "status": "active"
+    }
+  ],
+  "uncovered": [],
+  "refused": []
+}

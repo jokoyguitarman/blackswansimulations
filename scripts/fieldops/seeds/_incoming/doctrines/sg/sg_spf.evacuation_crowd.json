@@ -1,0 +1,191 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "evacuation_crowd",
+  "title": "SPF: Evacuation & Crowd response",
+  "applies_to": [
+    "stampede_crush"
+  ],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Police Force",
+  "agency_key": "sg_spf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_spf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Oral Reply to Parliamentary Questions on Regulatory Requirements and Policy Measures to Prevent Risks Arising from Crowd Surges During Festive Periods and at Public Events",
+        "publisher": "Ministry of Home Affairs",
+        "url": "https://www.mha.gov.sg/media-room/newsroom/oral-reply-to-pq-on-regulatory-requirements-and-policy-measures-to-prevent-risks-arising-from-crowd-surges-during-festive-periods-and-at-public-events/",
+        "published": "2022-11-28",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Answer, paras 3 to 10",
+        "quoted_phrase": "closing off high risk areas pre-emptively before they become overcrowded"
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "high",
+    "assumed_fields": [
+      "hand_offs",
+      "good_looks_like",
+      "sequence.*.window",
+      "legal_authorities.0.provision"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "st_engage001"
+        ],
+        "source_index": 0,
+        "locator": "para 3"
+      },
+      {
+        "ids": [
+          "st_monitor01",
+          "st_choke0001",
+          "st_cordon001"
+        ],
+        "source_index": 0,
+        "locator": "paras 4 and 7"
+      },
+      {
+        "ids": [
+          "st_lanes0001",
+          "st_preclose1"
+        ],
+        "source_index": 0,
+        "locator": "para 5"
+      },
+      {
+        "ids": [
+          "st_agitate01",
+          "st_disperse1"
+        ],
+        "source_index": 0,
+        "locator": "para 9"
+      },
+      {
+        "ids": [
+          "st_warnpub01"
+        ],
+        "source_index": 0,
+        "locator": "para 10"
+      },
+      {
+        "ids": [
+          "standards.0"
+        ],
+        "source_index": 0,
+        "locator": "paras 3 and 6"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Mitigate the risks of large crowds with event organisers and other stakeholders, ensure law and order at major events, and respond swiftly to incidents.",
+    "sequence": [
+      {
+        "id": "st_engage001",
+        "window": null,
+        "label": "Engage organisers",
+        "action": "Engage event organisers who notify the Police of large events on the public-safety measures to deploy."
+      },
+      {
+        "id": "st_monitor01",
+        "window": null,
+        "label": "Monitor the crowd",
+        "action": "Monitor crowd size and the ground situation, including with CCTV and drones."
+      },
+      {
+        "id": "st_choke0001",
+        "window": null,
+        "label": "Chokepoints",
+        "action": "Regulate crowds at congregation areas and potential chokepoints, and deploy security personnel."
+      },
+      {
+        "id": "st_cordon001",
+        "window": null,
+        "label": "Cordon risky areas",
+        "action": "Cordon areas with public-safety risk, such as narrow pathways and bridges, with signs for diversions and closures."
+      },
+      {
+        "id": "st_lanes0001",
+        "window": null,
+        "label": "Emergency lanes",
+        "action": "Keep emergency lanes for emergency responses within crowded areas."
+      },
+      {
+        "id": "st_preclose1",
+        "window": null,
+        "label": "Close early",
+        "action": "Close off high-risk areas pre-emptively before they become overcrowded."
+      },
+      {
+        "id": "st_agitate01",
+        "window": null,
+        "label": "Remove agitation",
+        "action": "If the mood of the crowd is disturbed, seek to remove the source of the agitation."
+      },
+      {
+        "id": "st_disperse1",
+        "window": null,
+        "label": "Dispersal",
+        "action": "Give adequate space for crowd dispersal and clear instructions on how to exit the congested area, using loudhailers to gain attention."
+      },
+      {
+        "id": "st_warnpub01",
+        "window": null,
+        "label": "Warn the public",
+        "action": "Alert the public to avoid areas or events that are already crowded."
+      }
+    ],
+    "never": [],
+    "hand_offs": [],
+    "good_looks_like": [],
+    "standards": [
+      {
+        "domain": "Crowd thresholds and occupant limits",
+        "source": "MHA oral reply, 28 Nov 2022",
+        "key_points": [
+          "Organisers must notify the Police of public events expected to draw 5,000 or more, or private events of 10,000 or more (Public Order Act).",
+          "Indoor occupant limits are set by SCDF under the Fire Code by occupant load factor, with sufficient egress capacity.",
+          "The Fire Code generally requires at least two independent exit staircases on every storey.",
+          "A fire safety manager is required for premises with 1,000 or more occupants, 5,000 sqm or more, or nine or more storeys."
+        ],
+        "decision_thresholds": "Notify the Police: public events 5,000+, private events 10,000+."
+      }
+    ],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_poa00001",
+        "instrument": "Public Order Act 2009",
+        "provision": null,
+        "power": "Event organisers must notify the Police of public events expected to attract 5,000 or more people, or private events of 10,000 or more (as MHA states; provision to verify).",
+        "jurisdiction": null
+      }
+    ]
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Single source, an MHA parliamentary reply. No hand-offs stated. Public Order Act provision for the notification duty not located (reply names the Act only).",
+    "history": []
+  }
+}

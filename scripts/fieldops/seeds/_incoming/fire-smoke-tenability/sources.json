@@ -1,0 +1,629 @@
+{
+  "file": "sources.json",
+  "schema_version": 1,
+  "target_table": "fieldops_knowledge_sources",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703"
+  },
+  "rows": [
+    {
+      "source_key": "nureg_1805",
+      "title": "NUREG-1805 Fire Dynamics Tools (FDTs), Final Report (Iqbal and Salley)",
+      "publisher": "US Nuclear Regulatory Commission (via GPO govinfo)",
+      "url": "https://www.govinfo.gov/content/pkg/GOVPUB-Y3_N88-PURL-gpo61712/pdf/GOVPUB-Y3_N88-PURL-gpo61712.pdf",
+      "published_on": "2004-12",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain. Some tables are reproduced from the SFPE Handbook 'with permission': confirm reuse of those tables.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "cfast_trg_7",
+      "title": "NIST TN 1889v1 CFAST Version 7, Volume 1: Technical Reference Guide",
+      "publisher": "NIST",
+      "url": "https://nvlpubs.nist.gov/nistpubs/TechnicalNotes/NIST.TN.1889v1.pdf",
+      "published_on": "2015",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "fds_ug_6",
+      "title": "NIST SP 1019 Fire Dynamics Simulator User's Guide, Sixth Edition (FDS 6.9.1)",
+      "publisher": "NIST",
+      "url": "https://github.com/firemodels/fds/releases/download/FDS-6.9.1/FDS_User_Guide.pdf",
+      "published_on": "2024",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nist_ir_5254",
+      "title": "NISTIR 5254 Sprinkler Fire Suppression Algorithm for HAZARD (Evans)",
+      "publisher": "NIST",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir5254.pdf",
+      "published_on": "1993",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "peacock_1999",
+      "title": "Peacock, Reneke, Bukowski and Babrauskas (1999) Defining flashover for fire hazard calculations, Fire Safety Journal 32(4) 331-345",
+      "publisher": "Elsevier (NIST authors)",
+      "url": "https://www.nist.gov/publications/defining-flashover-fire-hazard-calculations",
+      "published_on": "1999-06",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NIST-authored paper; read via the academia.edu copy linked from search; cite only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nz_cvm2_2025",
+      "title": "C/VM2 Framework for fire safety design, Second Edition (effective 28 July 2025)",
+      "publisher": "NZ Ministry of Business, Innovation and Employment",
+      "url": "https://www.building.govt.nz/assets/Uploads/building-code-compliance/c-protection-from-fire/asvm/c-protection-from-fire-vm2-second-edition.pdf",
+      "published_on": "2025-07-28",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NZ Crown copyright; reuse with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread",
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nz_cvm2_a7",
+      "title": "C/VM2 Verification Method, Amendment 7 (first edition, incl. NZBC C4.3 tables)",
+      "publisher": "NZ MBIE",
+      "url": "https://www.building.govt.nz/assets/Uploads/building-code-compliance/c-protection-from-fire/asvm/cvm2-protection-from-fire-amendment-7.pdf",
+      "published_on": "2020-11-05",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NZ Crown copyright; superseded edition, used for C4.3 text and the pain equation.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "en_1991_1_2_2002",
+      "title": "EN 1991-1-2:2002 Eurocode 1 Part 1-2, Annex F equivalent time of fire exposure",
+      "publisher": "CEN (via EU JRC)",
+      "url": "https://eurocodes.jrc.ec.europa.eu/",
+      "published_on": "2002",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Already cited by physics-movement seeds; Annex F not re-read here.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "not_reread",
+      "status": "active"
+    },
+    {
+      "source_key": "fhwa_hif24005",
+      "title": "FHWA-HIF-24-005 Fixed Fire Fighting and Emergency Ventilation Systems for Highway Tunnels, Research Report",
+      "publisher": "US Federal Highway Administration",
+      "url": "https://www.fhwa.dot.gov/bridge/tunnel/pubs/hif24005.pdf",
+      "published_on": "2024",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nfpa_502_2025_roa",
+      "title": "NFPA 502 (A2025) Second Revision Report, Annex A.11.4.1 Table A.11.4.1",
+      "publisher": "NFPA",
+      "url": "https://docinfofiles.nfpa.org/files/AboutTheCodes/502/502_A2025_ROA_AAA_SD_RevisionReport.pdf",
+      "published_on": "2025-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NFPA copyright; public revision report; transcribe values only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nfpa_sprinklers_2024",
+      "title": "US Experience with Sprinklers (McGree, April 2024)",
+      "publisher": "NFPA (copy hosted by homefiresprinklers.org.au)",
+      "url": "https://homefiresprinklers.org.au/wp-content/uploads/2025/04/ossprinklers.pdf",
+      "published_on": "2024-04",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NFPA copyright; statistics cited.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "usfa_r0204",
+      "title": "Fire Investigation: Fire Dynamics and Modeling, Student Manual (R0204)",
+      "publisher": "US Fire Administration / FEMA",
+      "url": "https://apps.usfa.fema.gov/ax/sm/sm_r0204.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "scdf_fire_code_2023_cl3_7",
+      "title": "Fire Code 2023, Clause 3.7 Compartment Walls and Compartment Floors",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-3-structural-fire-precautions/clause-3.7-compartment-walls-and-compartment-floors",
+      "published_on": "2023",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Singapore Government website; cite with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "scdf_fire_code_2023_cl3_8",
+      "title": "Fire Code 2023, Clause 3.8 Protected Shafts",
+      "publisher": "SCDF",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-3-structural-fire-precautions/clause-3.8-protected-shafts",
+      "published_on": "2023",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "As above.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "scdf_fire_code_2023_cl3_10",
+      "title": "Fire Code 2023, Clause 3.10 Exit Staircases",
+      "publisher": "SCDF",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-3-structural-fire-precautions/clause-3.10-exit-staircases",
+      "published_on": "2023",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "As above.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "spread"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "scdf_evac_planning_2018",
+      "title": "Evacuation Planning Guidelines (approved Mar 2018), Emergency Response Plan",
+      "publisher": "SCDF",
+      "url": "https://www.scdf.gov.sg/docs/default-source/fire-safety-docs/emergency-response-plan/evacuation-planning-guidelines-(approved-mar-2018).pdf",
+      "published_on": "2018-03",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Singapore Government document; cite with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement",
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "jin_1997",
+      "title": "Jin, T. (1997) Studies on Human Behavior and Tenability in Fire Smoke, Fire Safety Science 5, 3-21",
+      "publisher": "IAFSS",
+      "url": "https://publications.iafss.org/publications/fss/5/3/view/fss_5-3.pdf",
+      "published_on": "1997",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "IAFSS open-access proceedings.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "brennan_1997",
+      "title": "Brennan, P. (1997) Review of statistical studies by Wood and Bryan of human behaviour in fire, FCRC-TR 97-11",
+      "publisher": "Fire Code Reform Centre (hosted by ABCB)",
+      "url": "https://www.abcb.gov.au/sites/default/files/resources/2020/FCRC-TR-97-11-Selected-literature-reviews-human-behaviour-fire.pdf",
+      "published_on": "1997-02",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public research report; secondary source for Bryan (1977) NBS-GCR-77-94.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "wood_1972",
+      "title": "Wood, P.G. (1972) The behaviour of people in fires, Fire Research Note 953",
+      "publisher": "Fire Research Station (hosted by IAFSS)",
+      "url": "https://publications.iafss.org/publications/frn/953/-1/view/frn_953.pdf",
+      "published_on": "1972-11",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "UK Crown copyright, open archive.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "fridolf_2013_fsj",
+      "title": "Fridolf, Ronchi, Nilsson and Frantzich (2013) Movement speed and exit choice in smoke-filled rail tunnels, Fire Safety Journal 59, 8-21",
+      "publisher": "Elsevier (Lund University record)",
+      "url": "https://portal.research.lu.se/en/publications/movement-speed-and-exit-choice-in-smoke-filled-rail-tunnels",
+      "published_on": "2013",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Abstract only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "pmc_crawl_2015",
+      "title": "Development of a model to determine oxygen consumption when crawling (NIOSH), reviewing Kamon et al. 1983",
+      "publisher": "PMC / NIOSH",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4795185/",
+      "published_on": "2015",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US government author manuscript; public.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "pd_7974_6_2019_sample",
+      "title": "PD 7974-6:2019 Human factors: life safety strategies, Annex E (publisher's sample pages)",
+      "publisher": "BSI (sample via normsplash)",
+      "url": "https://www.normsplash.com/Samples/BSI/152934673/PD-7974-6-2019-en-2.pdf",
+      "published_on": "2019",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "BSI copyright; sample pages only; confirm against a licensed copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "erg_2024",
+      "title": "2024 Emergency Response Guidebook",
+      "publisher": "US DOT PHMSA, Transport Canada, SCT Mexico",
+      "url": "https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/2024-04/ERG2024-Eng-Web-a.pdf",
+      "published_on": "2024",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "erg_2024_bleve",
+      "title": "ERG 2024 BLEVE - Safety Precautions (pp. 357-359)",
+      "publisher": "NOAA CAMEO Chemicals copy of ERG 2024",
+      "url": "https://cameochemicals.noaa.gov/erg_guides/bleve_safety.pdf",
+      "published_on": "2024",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "tc_bleve",
+      "title": "BLEVE - Response and Prevention (video transcript)",
+      "publisher": "Transport Canada",
+      "url": "https://tc.canada.ca/en/dangerous-goods/bleve-response-prevention",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Government of Canada; cite with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "epa_whmhh",
+      "title": "What Makes a Hazard Hazardous: Working With Chemical Information",
+      "publisher": "US EPA",
+      "url": "https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=100038CD.TXT",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement",
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "cfr_40_68_22",
+      "title": "40 CFR 68.22 Offsite consequence analysis parameters",
+      "publisher": "US eCFR",
+      "url": "https://www.ecfr.gov/current/title-40/chapter-I/subchapter-C/part-68/subpart-B/section-68.22",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "cisa_standoff_card_2025",
+      "title": "DHS-DOJ Bomb Threat Stand-Off Card (Aug 2025)",
+      "publisher": "CISA Office for Bombing Prevention and FBI",
+      "url": "https://www.cisa.gov/sites/default/files/2025-08/Bomb_Threat_Stand-Off%20Card_082025_508.pdf",
+      "published_on": "2025-08",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nctc_ct_guide",
+      "title": "Counterterrorism Guide, Bomb Threat Stand-off Distances",
+      "publisher": "US National Counterterrorism Center",
+      "url": "https://www.dni.gov/nctc/index.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "protectuk_suspicious_items",
+      "title": "Unattended and suspicious items",
+      "publisher": "ProtectUK (UK Counter Terrorism Policing)",
+      "url": "https://www.protectuk.police.uk/advice-and-guidance/risk/unattended-and-suspicious-items",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "UK public guidance; cite with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "protectuk_rb4",
+      "title": "Tactic RB4: Ensure suitability of egress routes and muster points",
+      "publisher": "ProtectUK",
+      "url": "https://www.protectuk.police.uk/tactic-rb4-ensure-suitability-egress-routes-and-muster-points",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "As above.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "pmc_bends_2022",
+      "title": "Pedestrian flow characteristics through different angled bends (PLOS ONE 2022)",
+      "publisher": "PLOS / PMC",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8893709/",
+      "published_on": "2022",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "CC BY.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "monash_bends_2020",
+      "title": "Pedestrian flow characteristics through bends: effects of angle and desired speed, Collective Dynamics 2020",
+      "publisher": "Collective Dynamics",
+      "url": "https://doi.org/10.17815/cd.2020.89",
+      "published_on": "2020",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open access.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "ustc_running_2020",
+      "title": "Flows of walking and running pedestrians in a corridor through exits of different widths (project summary)",
+      "publisher": "USTC complex systems lab",
+      "url": "http://complex.ustc.edu.cn/2020/1213/c18202a463395/page.htm",
+      "published_on": "2020",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Summary page only; primary paper not read (to verify).",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "movement"
+      ],
+      "access_status": "accessed",
+      "status": "active"
+    }
+  ]
+}

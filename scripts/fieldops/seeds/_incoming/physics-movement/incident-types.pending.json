@@ -1,0 +1,426 @@
+{
+  "file": "incident-types.pending.json",
+  "schema_version": 1,
+  "library": "threats",
+  "target_table": "fieldops_incident_types",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "threat_profile",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "rows": [
+    {
+      "incident_type": "stampede_crush",
+      "label": "Crowd crush and stampede",
+      "type_group": "crowd_and_vehicle",
+      "phase": 1,
+      "event_kind": "crowd_trigger",
+      "threat_keys": [
+        "crowd_crush"
+      ],
+      "responder_archetypes": [
+        "evacuation_crowd",
+        "venue_operations",
+        "police_security",
+        "medical_triage",
+        "fire_rescue",
+        "incident_command",
+        "media_comms"
+      ],
+      "catalogue_needs": [
+        "stadium_venue",
+        "rail_station",
+        "place_of_worship",
+        "open_air_venue",
+        "crowd_barrier",
+        "stage"
+      ],
+      "template_file": "stampede_crush.json",
+      "sensitivity": "public",
+      "briefing_note": "Dense crowds at venues and stations; compression injuries when density and inflow exceed what an exit can pass.",
+      "source_keys": [
+        "fruin_1993_crowd",
+        "sgsa_green_guide_egress"
+      ],
+      "source_ref": "Fruin (1993, rev. 2002); SGSA Green Guide egress rates",
+      "source_note": "Responders, catalogue needs and template from WS9 6.27.2; physical basis from the public sources named.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "fruin_1993_crowd",
+            "locator": "'Force'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "sgsa_green_guide_egress",
+            "locator": "'Egress flow rate calculations'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "sensitivity"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "vehicle_ramming",
+      "label": "Vehicle strikes pedestrians",
+      "type_group": "crowd_and_vehicle",
+      "phase": 1,
+      "event_kind": "vehicle_path",
+      "threat_keys": [
+        "vehicle_ramming_generic"
+      ],
+      "responder_archetypes": [
+        "police_security",
+        "tactical_response",
+        "pursuit_investigation",
+        "medical_triage",
+        "fire_rescue",
+        "evacuation_crowd",
+        "incident_command",
+        "media_comms"
+      ],
+      "catalogue_needs": [
+        "bollard_rated",
+        "barrier_rated",
+        "shopping_mall",
+        "rail_station",
+        "stadium_venue",
+        "open_air_venue"
+      ],
+      "template_file": "vehicle_ramming.json",
+      "sensitivity": "restricted_generic",
+      "briefing_note": "A vehicle on a trainer-drawn path strikes pedestrians; injury follows public speed-risk curves; classes and bands only.",
+      "source_keys": [
+        "tefft_2013"
+      ],
+      "source_ref": "Tefft (2013) pedestrian injury-risk curves",
+      "source_note": "From WS9 6.27.3. Sensitivity set restricted_generic because WS9 6.27.10 requires a security reviewer for attack-like types (Assumed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "tefft_2013",
+            "locator": "Results",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "sensitivity"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "aircraft_impact",
+      "label": "Aircraft impact into a building",
+      "type_group": "structural_and_transport",
+      "phase": 1,
+      "event_kind": "aircraft_impact",
+      "threat_keys": [
+        "aircraft_impact_generic"
+      ],
+      "responder_archetypes": [
+        "fire_rescue",
+        "medical_triage",
+        "police_security",
+        "incident_command",
+        "evacuation_crowd",
+        "utilities",
+        "transport_operator",
+        "media_comms",
+        "military_support"
+      ],
+      "catalogue_needs": [],
+      "template_file": "aircraft_impact.json",
+      "sensitivity": "restricted_generic",
+      "briefing_note": "Accidental crash or deliberate act share one model: impact damage, fuel fireball and pool fires, multi-storey fire; no flight data.",
+      "source_keys": [
+        "nist_ncstar1_2005",
+        "fema_403_2002"
+      ],
+      "source_ref": "NIST NCSTAR 1 (2005); FEMA 403 (2002)",
+      "source_note": "From WS9 6.27.4. type_group structural_and_transport is a choice (Assumed); sensitivity restricted_generic per 6.27.10 (Assumed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nist_ncstar1_2005",
+            "locator": "Chapter 2",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "fema_403_2002",
+            "locator": "ch. 8",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "type_group",
+          "sensitivity"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "building_fire",
+      "label": "Building fire (no device)",
+      "type_group": "fire_and_explosion",
+      "phase": 1,
+      "event_kind": "ignition",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "responder_archetypes": [
+        "fire_rescue",
+        "medical_triage",
+        "police_security",
+        "evacuation_crowd",
+        "incident_command"
+      ],
+      "catalogue_needs": [
+        "pmd_battery",
+        "public_housing_block",
+        "condominium"
+      ],
+      "template_file": "building_fire.json",
+      "sensitivity": "public",
+      "briefing_note": "One ignition point grows by its contents' design fire; smoke layers, sprinklers, flashover and evacuee posture follow.",
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025",
+        "iso_13571_2012"
+      ],
+      "source_ref": "EN 1991-1-2 Annex E; NZ C/VM2 (2025); ISO 13571:2012",
+      "source_note": "From WS9 6.27.5. threat_keys needs at least one key and WS9 lists no generic contents-fire threat: pool_fire is a placeholder (Assumed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Table E.5",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "arson",
+      "label": "Arson (multiple ignitions)",
+      "type_group": "fire_and_explosion",
+      "phase": 1,
+      "event_kind": "ignition",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "responder_archetypes": [
+        "fire_rescue",
+        "medical_triage",
+        "police_security",
+        "evacuation_crowd",
+        "incident_command",
+        "pursuit_investigation"
+      ],
+      "catalogue_needs": [],
+      "template_file": "arson.json",
+      "sensitivity": "restricted_generic",
+      "briefing_note": "Up to six ignition points, optionally with flammable liquid; same fire, smoke and evacuation physics as a building fire.",
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2 Annex E; NZ C/VM2 (2025)",
+      "source_note": "From WS9 6.27.5. Sensitivity restricted_generic per 6.27.10 (Assumed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "sensitivity"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "gas_explosion",
+      "label": "Accidental gas explosion",
+      "type_group": "fire_and_explosion",
+      "phase": 1,
+      "event_kind": "gas_leak",
+      "threat_keys": [
+        "vented_deflagration_room"
+      ],
+      "responder_archetypes": [
+        "fire_rescue",
+        "utilities",
+        "medical_triage",
+        "police_security",
+        "evacuation_crowd",
+        "incident_command"
+      ],
+      "catalogue_needs": [
+        "town_gas_service",
+        "lpg_cylinder_bank"
+      ],
+      "template_file": "gas_explosion.json",
+      "sensitivity": "public",
+      "briefing_note": "Town gas or LPG accumulates; ignition in the flammable range vents through the weakest openings; glazing and partitions fail.",
+      "source_keys": [
+        "zalosh_2002_sfpe",
+        "nfpa_68_2023",
+        "niosh_npg"
+      ],
+      "source_ref": "Zalosh (2002) SFPE Handbook; NFPA 68 (2023); NIOSH flammable limits",
+      "source_note": "From WS9 6.27.6.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nfpa_68_2023",
+            "locator": "7.2.1",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "niosh_npg",
+            "locator": "npgd0524, npgd0068",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "incident_type": "chemical_release",
+      "label": "Industrial chemical release",
+      "type_group": "hazardous_materials",
+      "phase": 1,
+      "event_kind": "release",
+      "threat_keys": [
+        "toxic_release_outdoor"
+      ],
+      "responder_archetypes": [
+        "cbrn_defence",
+        "fire_rescue",
+        "medical_triage",
+        "police_security",
+        "evacuation_crowd",
+        "incident_command",
+        "ministry_liaison",
+        "media_comms"
+      ],
+      "catalogue_needs": [
+        "ammonia_refrigeration",
+        "pool_chlorination"
+      ],
+      "template_file": "chemical_release.json",
+      "sensitivity": "public",
+      "briefing_note": "An industrial chemical escapes; outdoor plume tiers and indoor infiltration drive shelter-or-evacuate decisions.",
+      "source_keys": [
+        "epa_aegl_compiled_2018",
+        "turner_1970_workbook",
+        "briggs_1973_urban_sigmas"
+      ],
+      "source_ref": "US EPA AEGLs; Turner (1970); Briggs (1973) urban sigmas",
+      "source_note": "From WS9 6.27.7. Industrial chemicals with public data only; no warfare agents.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "epa_aegl_compiled_2018",
+            "locator": "Final AEGLs",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "turner_1970_workbook",
+            "locator": "Table 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys (toxic_release_indoor not drafted)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [],
+  "refused": []
+}

@@ -1,0 +1,428 @@
+{
+  "file": "indoor-effects.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: confinement, reflection and opening rules for environment.json (spec 07 5.6) and WS9 per-stud fields",
+  "rows": [
+    {
+      "ref_key": "effective_pressure_rule",
+      "topic": "indoor",
+      "value": {
+        "person_in_open_end_on": "Ps",
+        "person_in_open_side_on_or_standing": "Ps + q",
+        "person_near_wall_or_reflecting_surface": "Pr"
+      },
+      "unit": "kPa",
+      "note": "Which pressure to feed to injury criteria. Indoors, assume anyone within about one body length of a wall facing the blast gets Pr.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 2.1.1, cases a)-c)",
+            "quoted_phrase": "Three different positions, in this respect, can be differentiated"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "Table 1-1 footnote",
+            "quoted_phrase": "Maximum effective pressure is the highest of incident pressure, incident pressure plus dynamic pressure, or reflected pressure."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "'about one body length' distance for the near-wall case"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "reflection_angle_table_iatg",
+      "topic": "indoor",
+      "value": {
+        "w_kg": 1000,
+        "ranges_m": [
+          5,
+          10,
+          20,
+          50
+        ],
+        "incident_bar": [
+          50,
+          5.0,
+          0.5,
+          0.05
+        ],
+        "reflected_bar_by_angle_deg": {
+          "0": [
+            408,
+            22.5,
+            1.18,
+            0.1
+          ],
+          "20": [
+            363,
+            21.1,
+            1.17,
+            0.1
+          ],
+          "40": [
+            296,
+            20.2,
+            1.17,
+            0.1
+          ],
+          "45": [
+            358,
+            17.1,
+            1.32,
+            0.1
+          ],
+          "50": [
+            312,
+            13.6,
+            1.41,
+            0.1
+          ],
+          "60": [
+            150,
+            9.6,
+            1.17,
+            0.11
+          ],
+          "70": [
+            65,
+            7.3,
+            0.87,
+            0.14
+          ],
+          "80": [
+            50,
+            6.0,
+            0.66,
+            0.098
+          ],
+          "85": [
+            50,
+            5.4,
+            0.58,
+            0.069
+          ]
+        }
+      },
+      "unit": "bar",
+      "note": "Oblique reflection: normal (0 deg) is a safe upper bound except near 40-50 deg at high pressure and grazing angles at low pressure (up to +50 %).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.4, Table 9",
+            "quoted_phrase": "For small overpressures (incident pressure below 1bar) there is a maximum at higher incident angles, which can exceed the perpendicular reflected pressure by 50%."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "the scaled distances printed in IATG Table 9 (4.93-234) do not match R/W^(1/3) for 1000 kg; treat the row as illustrative"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "openings_fail_early",
+      "topic": "indoor",
+      "value": 1.0,
+      "unit": "ms after shock arrival",
+      "note": "Ordinary windows and doors fail about 1 ms after the shock arrives, so treat them as open vents for blast propagation (no attenuation) unless blast-rated. The interior shock starts weaker than outside, then grows by reflections.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "Chapter 2, interior blast loads (text near Figs. 2-195/2-198 in the 2005 draft)",
+            "quoted_phrase": "Windows and doors will fail almost immediately (approximately one millisecond) after the onset of the shock front"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "same paragraph, next sentences",
+            "quoted_phrase": "This interior shock is initially weaker than the incident pressure at the building's exterior."
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "same paragraph",
+            "quoted_phrase": "the interior pressure will tend to get stronger due to reflections off interior building components."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "section number in the final 2008 C2 edition"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "jetting_through_openings",
+      "topic": "indoor",
+      "value": "several times the average interior pressure",
+      "unit": "qualitative",
+      "note": "Pressure jetting through an opening amplifies pressure on the inner side; no simple published factor was found.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 last paragraph",
+            "quoted_phrase": "jetting effect produced by pressure passing through an opening can result in amplification of the pressures at the interior side of the opening"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "numeric jetting factor"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "frangible_closure_limit",
+      "topic": "indoor",
+      "value": 25,
+      "unit": "psf (1.2 kPa) closure resistance",
+      "note": "A closure resisting at most 25 psf can be treated as failing instantly (frangible); glass is never fully frangible (some reflection).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "2-10 frangibility paragraph",
+            "quoted_phrase": "if a closure's resistance to outward motion is equal to or less than 25 pounds per square foot of surface area"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "same paragraph",
+            "quoted_phrase": "Blast tests of glass panels have shown that a true frangible material does not exist"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "quasi_static_pressure_tnt",
+      "topic": "indoor",
+      "value": "P_qs = 2.25 * (W/V)^0.72",
+      "unit": "MPa (W kg TNT, V m3 free volume)",
+      "note": "Peak gas (quasi-static) pressure after a detonation in a closed or weakly vented room, from TM5-1300. TM5-1300 uses 2.26 and limits W/V to 0-1 kg/m3. Example: 10 kg TNT in a 300 m3 shop gives about 194 kPa; in 1000 m3 about 82 kPa. Venting reduces duration, not this peak.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wu_lajss_ship_hulls",
+            "locator": "2.1, eq. (10)",
+            "quoted_phrase": "In the US military design manual TM5-1300 (1990), an empirical equation (10) is provided based on extensive experimental data analysis of damage effects."
+          },
+          {
+            "source_key": "li_2024_cjsr",
+            "locator": "1.1.1, eq. (2) and text",
+            "quoted_phrase": "2.25 的系数被改为了 2.26，使用范围被改为 0～1 kg/m"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "check against UFC 3-340-02 Figure 2-152 (graph) at W/V 0.01, 0.1, 1 kg/m3"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "pes_building_no_reduction",
+      "topic": "indoor",
+      "value": 1.0,
+      "unit": "charge-weight factor",
+      "note": "For a detonation inside a hollow clay tile or pre-engineered metal building, assume no blast reduction outside (weight factor 1). Factors for other building types are in DDESB TP-14 Table A-5 (not read).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.2",
+            "quoted_phrase": "For hollow clay tile buildings ad pre-engineered buildings are assumed to provide no blast reduction."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "DDESB TP-14 Table A-5 weight coefficients for other PES types"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "glazing_hazard_distances",
+      "topic": "glass",
+      "value": [
+        {
+          "gsa_condition": "1",
+          "key": "no_break",
+          "hazard_level": "None",
+          "description": "Glazing does not break.",
+          "fragment_reach_m": null
+        },
+        {
+          "gsa_condition": "2",
+          "key": "no_hazard",
+          "hazard_level": "None",
+          "description": "Cracks, retained by frame; dust or tiny fragments on sill/floor.",
+          "fragment_reach_m": 0.0
+        },
+        {
+          "gsa_condition": "3a",
+          "key": "very_low",
+          "hazard_level": "Very low",
+          "description": "Fragments land on floor no further than 1 m from the window.",
+          "fragment_reach_m": 1.0
+        },
+        {
+          "gsa_condition": "3b",
+          "key": "low",
+          "hazard_level": "Low",
+          "description": "Fragments land on floor no further than 3 m from the window.",
+          "fragment_reach_m": 3.0
+        },
+        {
+          "gsa_condition": "4",
+          "key": "medium",
+          "hazard_level": "Medium",
+          "description": "Fragments hit a witness panel 3 m away no higher than 0.6 m above floor.",
+          "fragment_reach_m": 3.0
+        },
+        {
+          "gsa_condition": "5",
+          "key": "high",
+          "hazard_level": "High",
+          "description": "Window fails catastrophically; fragments hit 3 m witness panel above 0.6 m.",
+          "fragment_reach_m": null
+        }
+      ],
+      "unit": "m from interior face of window",
+      "note": "Use for indoor window-hazard zones: people within 1-3 m behind failed glazing are in the fragment field; condition 5 projects beyond 3 m at head height.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "usace_pdc_tr_13_01",
+            "locator": "Table 5-3 GSA Glazing Response Definitions, 3a",
+            "quoted_phrase": "Fragments enter the occupied space but land on the floor no further than 1 meter (3.3 feet) from the interior edge of the window."
+          },
+          {
+            "source_key": "usace_pdc_tr_13_01",
+            "locator": "Table 5-2 ASTM F 1642, Low Hazard",
+            "quoted_phrase": "the fragment height at a distance of 3 meters (10 feet) from the interior edge of the window is less than 0.5 meters (20 inches)"
+          },
+          {
+            "source_key": "jrc_glazing_standards_2015",
+            "locator": "Table 17 GSA/ISC performance conditions, condition 5",
+            "quoted_phrase": "Glazing cracks and window system fails catastrophically."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "fragment_reach_m for condition 5 (beyond the 3 m test panel, not bounded)"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "published confinement multipliers on radius (open / street canyon / enclosed)",
+      "sources_checked": [
+        "ufc_3_340_02",
+        "iatg_0180_2021",
+        "tno_green_book_1992"
+      ],
+      "why": "No source gives a single multiplier; the README derives an Assumed suggestion from reflection factors and the quasi-static pressure."
+    },
+    {
+      "subject": "attenuation of blast through walls and doors (transmission factors)",
+      "sources_checked": [
+        "ufc_3_340_02",
+        "iatg_0180_2021"
+      ],
+      "why": "Not found at a simplified published level. Sourced rules: ordinary doors and windows fail within about 1 ms and act as openings; concrete or masonry walls that survive block the shock (WS9 wall model); DDESB TP-14 Table A-5 (not read) gives building attenuation as charge-weight factors."
+    }
+  ],
+  "refused": []
+}

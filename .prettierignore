@@ -1,3 +1,4 @@
 # Checked by scripts/verify-field-ops-specs.mjs and rendered by scripts/build-field-ops-spec-html.mjs as written.
 docs/field-ops/
 scripts/fieldops/seeds/**/*.json
+scripts/fieldops/seeds/**/*.md

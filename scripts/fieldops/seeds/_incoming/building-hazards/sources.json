@@ -1,0 +1,712 @@
+{
+  "file": "sources.json",
+  "schema_version": 1,
+  "library": "building_hazards",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23"
+  },
+  "rows": [
+    {
+      "source_key": "scdf-fire-code-2023",
+      "title": "Code of Practice for Fire Precautions in Buildings 2023 (Fire Code 2023), full document with annotations",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/docs/default-source/firecode-whole-document-with-annotations/firecode_full_latest_07jul2026.pdf",
+      "published_on": "2026-07-07",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-fire-code-2023-cl10-1",
+      "title": "Fire Code 2023, Clause 10.1 Liquefied Petroleum Gas (LPG) Cylinder Installations (web clause page)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-10-requirements-for-special-installations/clause-10.1-liquefied-petroleum-gas-lpg-cylinder-installations",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-fire-code-2023-cl10-3",
+      "title": "Fire Code 2023, Clause 10.3 Energy Storage Systems (web clause page)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-10-requirements-for-special-installations/clause-10.3-energy-storage-systems",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-fire-code-2023-cl10-4",
+      "title": "Fire Code 2023, Clause 10.4 Electric Vehicle (EV) Charging Installation (web clause page)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-10-requirements-for-special-installations/clause-10.4-electric-vehicle-(ev)-charging-installation",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-pfm-storage-licence",
+      "title": "P&FM Storage Licence: licence exemption quantities",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/petroleum-and-flammable-material-licences/pfm-storage-licence",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-pfm-general-info",
+      "title": "General Information of P&FM Licences (petroleum classes and licensable products)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/petroleum-and-flammable-material-licences/general-information-of-pfm-licences",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-pfm-licence-documents",
+      "title": "Documents to be submitted for P&FM storage licence (QRA applicability note for diesel tanks)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/docs/default-source/fire-safety-docs/petroleum-and-flammable-material-licences/documents-submitted-for-p-fm-storage-license.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-fsm-briefing-2023",
+      "title": "FSM Briefing 2023: Updates to FSMs (kitchen exhaust duct fire safety, LPG in eateries)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/docs/default-source/fire-safety-docs/fire-safety-manager-(fsm)/fsm-2023/updates-to-fsms.pdf",
+      "published_on": "2023-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "scdf-stats-2025",
+      "title": "Emergency Medical Services, Fire and Enforcement Statistics 2025 (news release)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/docs/default-source/media-room-%28publications%29/annual-statistics/scdf-annual-statistics-on-ems-fire-enforcement-2025.pdf",
+      "published_on": "2026-02-11",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "nfec-amd-fire-safety",
+      "title": "Fire Safety for Active Mobility Devices",
+      "publisher": "National Fire and Emergency Preparedness Council (Singapore)",
+      "url": "https://www.nfec.org.sg/resources/fire-prevention-tips/amd-fire-safety/",
+      "published_on": "2026-05-05",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "city-energy-gas-handbook-2021",
+      "title": "City Energy Handbook on Gas Supply, Version 0 (Dec 2021), Appendix B Town Gas Specifications",
+      "publisher": "City Energy Pte. Ltd.",
+      "url": "https://www.cityenergy.com.sg/wp-content/uploads/2021/11/City-Energy-Handbook-on-Gas-Supply-Dec-2021.pdf",
+      "published_on": "2021-12-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public handbook published by Singapore's town gas retailer for applicants; cited by appendix with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "sg-wsh-mhi-regs-2017",
+      "title": "Workplace Safety and Health (Major Hazard Installations) Regulations 2017, First Schedule",
+      "publisher": "Ministry of Manpower / Singapore Statutes Online",
+      "url": "https://sso.agc.gov.sg/SL/WSHA2006-S202-2017?ProvIds=Sc1-",
+      "published_on": "2017-05-02",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public subsidiary legislation; cited by schedule item with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "mom-aquatic-chem-circular-2025",
+      "title": "Guidelines on the Use of Chemicals for Disinfection of Aquatic Facilities (MOM/OSHD/2025-06)",
+      "publisher": "Ministry of Manpower with NEA, PUB, SCDF and SPF",
+      "url": "https://www.mom.gov.sg/-/media/mom/documents/safety-health/circulars/2025/circular-20251119-guidelines-on-the-use-of-chemicals-for-disinfection-of-aquatic-facilities.pdf",
+      "published_on": "2025-11-19",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "ss-683-2-2022-preview",
+      "title": "SS 683-2:2022 Specification for ammonia refrigeration system in cold chain for food businesses, Part 2 (public preview)",
+      "publisher": "Enterprise Singapore",
+      "url": "https://www.singaporestandardseshop.sg/Product/GetPdf?fileName=220805163228SS+683-2-2022+Preview.pdf&pdtid=9303f750-0e77-42b1-84b3-f888d96f19f2",
+      "published_on": "2022-08-05",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Free public preview pages of a Singapore Standard; only the introduction is cited, short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-propane",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Propane",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0524.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards",
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-chlorine",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Chlorine",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0115.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-ammonia",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Ammonia",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0028.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards",
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-gasoline",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Gasoline",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0299.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-acetylene",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Acetylene",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0008.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-hydrogen-fluoride",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Hydrogen fluoride",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0334.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "niosh-npg-carbon-monoxide",
+      "title": "NIOSH Pocket Guide to Chemical Hazards: Carbon monoxide",
+      "publisher": "US CDC / NIOSH",
+      "url": "https://www.cdc.gov/niosh/npg/npgd0105.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "cameo-diesel-fuel-oil",
+      "title": "CAMEO Chemicals: Fuel oil, [diesel]",
+      "publisher": "US NOAA",
+      "url": "https://cameochemicals.noaa.gov/chemical/11452",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "cameo-oxygen",
+      "title": "CAMEO Chemicals: Oxygen",
+      "publisher": "US NOAA",
+      "url": "https://cameochemicals.noaa.gov/chemical/8967",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "cameo-hydrogen",
+      "title": "CAMEO Chemicals: Hydrogen",
+      "publisher": "US NOAA",
+      "url": "https://cameochemicals.noaa.gov/chemical/8729",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards",
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "cameo-sodium-hypochlorite",
+      "title": "CAMEO Chemicals: Sodium hypochlorite",
+      "publisher": "US NOAA",
+      "url": "https://cameochemicals.noaa.gov/chemical/4503",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "cameo-reactivity-rg44-rg60",
+      "title": "CAMEO Chemicals reactivity documentation: Oxidizing Agents, Strong mixed with Acids, Weak",
+      "publisher": "US NOAA",
+      "url": "https://cameochemicals.noaa.gov/reactivity/documentation/RG44-RG60",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 365,
+      "next_review_due": "2027-11-22",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "epa-aegl-chlorine",
+      "title": "Acute Exposure Guideline Levels for Selected Airborne Chemicals, Volume 4: Chlorine",
+      "publisher": "US EPA / National Research Council",
+      "url": "https://www.epa.gov/sites/default/files/2014-11/documents/tsd56.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "epa-aegl-ammonia",
+      "title": "Acute Exposure Guideline Levels for Selected Airborne Chemicals, Volume 6: Ammonia",
+      "publisher": "US EPA / National Research Council",
+      "url": "https://www.epa.gov/sites/default/files/2014-11/documents/ammonia_final_volume6_2007.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "epa-aegl-hydrogen-fluoride",
+      "title": "Hydrogen fluoride Results - AEGL Program",
+      "publisher": "US EPA",
+      "url": "https://www.epa.gov/aegl/hydrogen-fluoride-results-aegl-program",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "epa-aegl-propane",
+      "title": "Propane Results - AEGL Program",
+      "publisher": "US EPA",
+      "url": "https://www.epa.gov/aegl/propane-results-aegl-program",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "epa-aegl-carbon-monoxide",
+      "title": "Carbon monoxide Results - AEGL Program",
+      "publisher": "US EPA",
+      "url": "https://www.epa.gov/aegl/carbon-monoxide-results-aegl-program",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US Government work, public domain; cited by field with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "threats"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "iec-60296-review-2021",
+      "title": "IEC 60296 (Ed. 5): a standard for classification of mineral insulating oil on performance and not on the origin",
+      "publisher": "Journal of Energy (open access, via HRCAK)",
+      "url": "https://hrcak.srce.hr/249896",
+      "published_on": "2021-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open-access peer-reviewed paper restating the IEC 60296:2020 limits; the IEC text itself was not used (only an unlicensed mirror was found).",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "nfpa-855",
+      "title": "NFPA 855, Standard for the Installation of Stationary Energy Storage Systems",
+      "publisher": "NFPA",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "ul-9540a",
+      "title": "UL 9540A, Test Method for Evaluating Thermal Runaway Fire Propagation in Battery Energy Storage Systems",
+      "publisher": "UL Standards & Engagement",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "nfpa-13",
+      "title": "NFPA 13, Standard for the Installation of Sprinkler Systems",
+      "publisher": "NFPA",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "nfpa-30b",
+      "title": "NFPA 30B, Code for the Manufacture and Storage of Aerosol Products",
+      "publisher": "NFPA",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "ccps-2010-vce-bleve",
+      "title": "CCPS (2010), Guidelines for Vapor Cloud Explosion, Pressure Vessel Burst, BLEVE and Flash Fire Hazards, 2nd edition",
+      "publisher": "AIChE CCPS",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "sfpe-handbook-2016",
+      "title": "SFPE Handbook of Fire Protection Engineering, 5th edition (2016)",
+      "publisher": "SFPE / Springer",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "tno-yellow-book-cpr14e",
+      "title": "TNO Yellow Book (CPR 14E), Methods for the calculation of physical effects",
+      "publisher": "TNO / Dutch Committee for the Prevention of Disasters",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "bre-bd2552-2010",
+      "title": "BRE report BD 2552, Fire spread in car parks (2010)",
+      "publisher": "BRE / UK DCLG",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "cpfprts",
+      "title": "Code of Practice for Fire Precautions in Rapid Transit Systems (CPFPRTS)",
+      "publisher": "Land Transport Authority / SCDF",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run; referenced by Fire Code 2023 Cl.1.1.1. Reviewer to check station values against it.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": [
+        "building_hazards"
+      ],
+      "access_status": "not_accessed_unverified"
+    }
+  ]
+}

@@ -1,0 +1,2778 @@
+{
+  "file": "unit-kinds.json",
+  "schema_version": 1,
+  "library": "responder_units",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "unreviewed",
+  "seed_status": "PENDING",
+  "note": "fieldops_unit_kinds rows (T9.50). Rows hold the columns of migration 254 (amended, 11-living-world.md) without status, row_version or updated_at, plus 'provenance' (SeedProvenance, section 5.18) and '_review' (evidence for the reviewer; the importer drops it). NOT NULL columns the sources do not state are filled from UNIT_CATALOGUE and listed in assumed_fields.",
+  "rows": [
+    {
+      "kind_key": "sg_scdf_pump_ladder",
+      "label": "Pump Ladder (compressed air foam)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 2,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "ventilate",
+        "rescue",
+        "decon"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "nas_ndp2017_d3",
+        "reaction_2018"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017; Singapore Civil Defence Force (SGFPC REaction): REaction 2018 (November edition): Rescuers in Action",
+      "source_note": "Taken: water_l 2400, foam_concentrate_l 1200, pump_lpm 4000, vehicle_class Class 4, mass_kg 18200, length_m 8.8. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Compressed Air Foam Pump Ladder, Tank Capacity",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Compressed Air Foam Pump Ladder, Pump Capacity",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Vehicle Classification",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Weight (without equipment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Dimensions 8.8m x 2.5m x 3.3m",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "reaction_2018",
+            "locator": "Dual-Skilled Responders: PL and LFAV turn out with FRS-EMTs",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "breathing_apparatus_s",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "SCDF's main fire engine; carries water, foam, pump and rescue equipment.",
+        "role_source": {
+          "source_key": "reaction_2018",
+          "locator": "Dual-Skilled Responders: PL and LFAV turn out with FRS-EMTs"
+        },
+        "catalogue_kind": "fire_engine",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "vehicle_class",
+            "value": "Class 4",
+            "unit": null,
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Vehicle Classification"
+          },
+          {
+            "param": "mass_kg",
+            "value": 18200,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Weight (without equipment)"
+          },
+          {
+            "param": "length_m",
+            "value": 8.8,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Dimensions 8.8m x 2.5m x 3.3m"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          },
+          {
+            "param": "breathing_apparatus_s",
+            "value": null,
+            "unit": "s",
+            "status": "gap",
+            "note": "No published working duration per set; catalogue value stays Assumed."
+          }
+        ],
+        "notes": [
+          "Decon task: a hasty decontamination capability of the PL (4-minute set-up; 36 walking or 6 lying casualties per lane per hour) circulates on Wikipedia only; not located in an SCDF publication, so no value is recorded.",
+          "A 2,200 L/min figure for an older Dennis-chassis PL appears only on a fan site; excluded."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_electric_pump_ladder",
+      "label": "Electric Pump Ladder (E-PL)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 6,
+      "default_count": 2,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "ventilate",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "st_epl_2024",
+        "reaction_2024_epl",
+        "mha_2024_review"
+      ],
+      "source_ref": "The Straits Times: New 'green light' traffic priority system for SCDF ambulances to reach hospitals faster; Singapore Civil Defence Force (SGFPC REaction): REaction Nov 2024: Smart and Sustainable Pump Ladder; Ministry of Home Affairs: 2024 Review (Part 3)",
+      "source_note": "Taken: crew 6 (Unverified), water_l 2000, foam_concentrate_l 400, battery_operation_h 1, backup_operation_h 6, hybrid_range_km 400, vehicle_class Class 4. Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "st_epl_2024",
+            "locator": "section 'Electric pump ladder'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "reaction_2024_epl",
+            "locator": "Smart and Sustainable Pump Ladder, KEY CAPABILITY",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "reaction_2024_epl",
+            "locator": "KEY CAPABILITY: continuous operation for up to one hour",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "reaction_2024_epl",
+            "locator": "KEY CAPABILITY: Energy Backup Unit up to six hours",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "mha_2024_review",
+            "locator": "BOOSTING ABILITIES: up to 400 km in hybrid mode",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "mha_2024_review",
+            "locator": "BOOSTING ABILITIES: class 4 vehicle",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "mha_2024_review",
+            "locator": "BOOSTING ABILITIES TO SAVE MORE LIVES",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "breathing_apparatus_s",
+          "default_count",
+          "observes_m",
+          "pump_lpm",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "crew"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Fully electric pump ladder; shorter, all-wheel-steer fire engine for congested urban roads.",
+        "role_source": {
+          "source_key": "mha_2024_review",
+          "locator": "BOOSTING ABILITIES TO SAVE MORE LIVES"
+        },
+        "catalogue_kind": "fire_engine",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 6,
+            "status": "unverified",
+            "source_key": "st_epl_2024",
+            "locator": "section 'Electric pump ladder'"
+          },
+          {
+            "column": "default_count",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "battery_operation_h",
+            "value": 1,
+            "unit": "h",
+            "status": "sourced",
+            "source_key": "reaction_2024_epl",
+            "locator": "KEY CAPABILITY: continuous operation for up to one hour"
+          },
+          {
+            "param": "backup_operation_h",
+            "value": 6,
+            "unit": "h",
+            "status": "sourced",
+            "source_key": "reaction_2024_epl",
+            "locator": "KEY CAPABILITY: Energy Backup Unit up to six hours"
+          },
+          {
+            "param": "hybrid_range_km",
+            "value": 400,
+            "unit": "km",
+            "status": "sourced",
+            "source_key": "mha_2024_review",
+            "locator": "BOOSTING ABILITIES: up to 400 km in hybrid mode"
+          },
+          {
+            "param": "vehicle_class",
+            "value": "Class 4",
+            "unit": null,
+            "status": "sourced",
+            "source_key": "mha_2024_review",
+            "locator": "BOOSTING ABILITIES: class 4 vehicle"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          },
+          {
+            "param": "breathing_apparatus_s",
+            "value": null,
+            "unit": "s",
+            "status": "gap",
+            "note": "No published working duration per set; catalogue value stays Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_lfav_6g",
+      "label": "Light Fire Attack Vehicle, 6th generation (Red Rhino, LF6G)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 3,
+      "default_count": 2,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "htx_lf6g_2022",
+        "hope_lf6g_2022",
+        "scdf_ar_2014"
+      ],
+      "source_ref": "Home Team Science and Technology Agency (HTX): Technology boost for the LF6G 6th Generation Light Fire Attack Vehicle; HOPE Technik (builder): Latest generation of Red Rhino unveiled; Singapore Civil Defence Force: SCDF Annual Report FY2014/2015",
+      "source_note": "Taken: crew 3, caf_foam_l 50 (Unverified). Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "htx_lf6g_2022",
+            "locator": "para 2: move from four-man to three-man operations",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "hope_lf6g_2022",
+            "locator": "Compressed air foam trolleys: 50 litres in total",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2014",
+            "locator": "Light Fire Attack Vehicle - An Innovation within An Innovation",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "breathing_apparatus_s",
+          "default_count",
+          "observes_m",
+          "pump_lpm",
+          "road_speed_kmh",
+          "turnout_s",
+          "water_l"
+        ],
+        "unverified_fields": [
+          "caf_foam_l"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Compact first-response fire vehicle for narrow streets, run by a three-person crew with a firefighting robot.",
+        "role_source": {
+          "source_key": "scdf_ar_2014",
+          "locator": "Light Fire Attack Vehicle - An Innovation within An Innovation"
+        },
+        "catalogue_kind": "fire_engine",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 3,
+            "status": "sourced",
+            "source_key": "htx_lf6g_2022",
+            "locator": "para 2: move from four-man to three-man operations"
+          },
+          {
+            "column": "default_count",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          },
+          {
+            "param": "breathing_apparatus_s",
+            "value": null,
+            "unit": "s",
+            "status": "gap",
+            "note": "No published working duration per set; catalogue value stays Assumed."
+          }
+        ],
+        "notes": [
+          "Three-crew concept from 1 June 2022 is also stated in scdf_ar_2022 (Workplan Seminar paragraph)."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_lfav_5g",
+      "label": "Light Fire Attack Vehicle, 5th generation (Red Rhino)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 5,
+      "default_count": 2,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_ar_2014",
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2014/2015; NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "Taken: crew 5, foam_concentrate_l 100, pump_lpm 2000, mass_kg 3100, length_m 5.5. Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2014",
+            "locator": "LFAV section: configured to house a crew of five (4th generation)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Tank Capacity 100L Foam Concentrate Tank",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Pump Capacity 2000L per minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Weight (with equipment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Dimensions 5.5m x 2m x 2m",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, 5th Generation Light Fire Attack Vehicle",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s",
+          "water_l"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Earlier compact first-response fire vehicle; kept for older fleets and comparison.",
+        "role_source": {
+          "source_key": "nas_ndp2017_d3",
+          "locator": "p.16, 5th Generation Light Fire Attack Vehicle"
+        },
+        "catalogue_kind": "fire_engine",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 5,
+            "status": "sourced",
+            "source_key": "scdf_ar_2014",
+            "locator": "LFAV section: configured to house a crew of five (4th generation)"
+          },
+          {
+            "column": "default_count",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "mass_kg",
+            "value": 3100,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Weight (with equipment)"
+          },
+          {
+            "param": "length_m",
+            "value": 5.5,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Dimensions 5.5m x 2m x 2m"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_fire_bike",
+      "label": "Fire Bike (Red Scorpion)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 1,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "triage"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "st_firebikers_2018",
+        "nas_ndp2017_d3",
+        "hope_lf6g_2022",
+        "scdf_firebikes_2021"
+      ],
+      "source_ref": "The Straits Times: SCDF firebikers help save lives as first responders in accidents and emergencies; NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017; HOPE Technik (builder): Latest generation of Red Rhino unveiled; Singapore…",
+      "source_note": "Taken: crew 1 (Unverified), engine_cc 500, mass_kg 300, caf_foam_l 9 (Unverified). Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "st_firebikers_2018",
+            "locator": "three-wheel Piaggio scooters; one firebiker per bike",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Fast Response Bike, Engine Capacity",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Fast Response Bike, Weight (without equipment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "hope_lf6g_2022",
+            "locator": "9 litres of foam that a firefighter carries in his backpack",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_firebikes_2021",
+            "locator": "paras 1-2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "caf_foam_l",
+          "crew"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Single-rider motorcycle first responder for small fires and cardiac arrest, ahead of the fire engine or ambulance.",
+        "role_source": {
+          "source_key": "scdf_firebikes_2021",
+          "locator": "paras 1-2"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "first_responder_bike",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 1,
+            "status": "unverified",
+            "source_key": "st_firebikers_2018",
+            "locator": "three-wheel Piaggio scooters; one firebiker per bike"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "engine_cc",
+            "value": 500,
+            "unit": "cc",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Fast Response Bike, Engine Capacity"
+          },
+          {
+            "param": "mass_kg",
+            "value": 300,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Fast Response Bike, Weight (without equipment)"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "label": "Fire Medical Vehicle (FMV)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 2,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue",
+        "triage",
+        "transport"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "nas_ndp2017_d3",
+        "scdf_ar_2017"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017; Singapore Civil Defence Force: SCDF Annual Report FY2017/2018",
+      "source_note": "Taken: water_l 600, foam_concentrate_l 150, pump_lpm 2000, patients_lying 2, patients_seated 3, mass_kg 8000, vehicle_class Class 4. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Fire-Medical Vehicle, Tank Capacity",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Tank Capacity 150L Foam Concentrate",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Pump Capacity 2000L per minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, up to three seated patients or two lying patients",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Weight (with equipment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Vehicle Classification",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2017",
+            "locator": "Fire Medical Vehicle paragraph",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Hybrid fire appliance and ambulance for minor industrial incidents and road traffic accidents.",
+        "role_source": {
+          "source_key": "scdf_ar_2017",
+          "locator": "Fire Medical Vehicle paragraph"
+        },
+        "catalogue_kind": "fire_engine",
+        "proposed_kind": "fire_medical_vehicle",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "mass_kg",
+            "value": 8000,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Weight (with equipment)"
+          },
+          {
+            "param": "vehicle_class",
+            "value": "Class 4",
+            "unit": null,
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Vehicle Classification"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "Same tank and pump figures also appear in reaction_2018, Fire Medical Vehicle box."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_cpl34",
+      "label": "Combined Platform Ladder 34 m (CPL34)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_ar_2022",
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023; Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "Taken: reach_m 34. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: Combined Platform Ladders (34 metres and 60 metres)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 Combined Platform Ladder 60M: existing fleet of CPL34m",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "cage_kg",
+          "crew",
+          "default_count",
+          "monitor_lpm",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Aerial platform ladder for external firefighting and rescue at high-rise buildings.",
+        "role_source": {
+          "source_key": "scdf_wps_2019",
+          "locator": "#4 Combined Platform Ladder 60M: existing fleet of CPL34m"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "aerial_appliance",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "cage_kg",
+            "value": null,
+            "unit": "kg",
+            "status": "gap"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_cpl60",
+      "label": "Combined Platform Ladder 60 m (CPL60)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_wps_2019",
+        "st_cpl60_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019; The Straits Times: Firefighting hits greater heights with new 20-storey ladder",
+      "source_note": "Taken: reach_m 60, reach_storeys 20, monitor_lpm 3800, cage_kg 500, extend_time_s 60 (Unverified). Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: maximum height of 60m",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: equivalent of a 20-storey building",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: 3,800 litres per minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: rescue cage that can hold up to 500kg",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_cpl60_2019",
+            "locator": "usually takes about a minute to extend fully",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 Combined Platform Ladder 60M (CPL60)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "extend_time_s"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Aerial platform ladder reaching about 20 storeys, with a water monitor and rescue cage.",
+        "role_source": {
+          "source_key": "scdf_wps_2019",
+          "locator": "#4 Combined Platform Ladder 60M (CPL60)"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "aerial_appliance",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "reach_storeys",
+            "value": 20,
+            "unit": "storeys",
+            "status": "sourced",
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: equivalent of a 20-storey building"
+          },
+          {
+            "param": "cage_kg",
+            "value": 500,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: rescue cage that can hold up to 500kg"
+          },
+          {
+            "param": "extend_time_s",
+            "value": 60,
+            "unit": "s",
+            "status": "unverified",
+            "source_key": "st_cpl60_2019",
+            "locator": "usually takes about a minute to extend fully"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_al56",
+      "label": "Aerial Ladder 56 m (AL56)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_ar_2022",
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023; Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "Taken: reach_m 56. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: Aerial Ladders (56 metres)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: existing fleet of CPL34m and Aerial Ladder 56m",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Aerial ladder designed mainly for aerial rescue from high-rise units.",
+        "role_source": {
+          "source_key": "scdf_wps_2019",
+          "locator": "#4 CPL60: existing fleet of CPL34m and Aerial Ladder 56m"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "aerial_appliance",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "Role 'primarily for aerial rescue operations' is stated by st_cpl60_2019 (news); the official sources only name it."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_hla90",
+      "label": "High-Level Articulated Appliance 90 m (HLA90)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_ar_2022",
+        "st_hla90_2022"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023; The Straits Times: SCDF to deploy 90m-tall emergency vehicles for firefighting, rescue in early 2023",
+      "source_note": "Taken: reach_m 90, reach_storeys 30, cage_kg 500 (Unverified), monitor_lpm 3800 (Unverified). Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: capable of reaching 90 metres",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: equivalent to a 30-storey building",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_hla90_2022",
+            "locator": "aerial platform can hold up to 500kg",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_hla90_2022",
+            "locator": "water monitor discharging 3,800 litres a minute, fed from hydrants",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HIGH LEVEL ARTICULATED APPLIANCE paragraph",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "cage_kg",
+          "monitor_lpm"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Highest-reach aerial appliance for super high-rise firefighting and rescue, up to 30 storeys.",
+        "role_source": {
+          "source_key": "scdf_ar_2022",
+          "locator": "HIGH LEVEL ARTICULATED APPLIANCE paragraph"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "aerial_appliance",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "reach_storeys",
+            "value": 30,
+            "unit": "storeys",
+            "status": "sourced",
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: equivalent to a 30-storey building"
+          },
+          {
+            "param": "cage_kg",
+            "value": 500,
+            "unit": "kg",
+            "status": "unverified",
+            "source_key": "st_hla90_2022",
+            "locator": "aerial platform can hold up to 500kg",
+            "note": "Matches the manufacturer's F90HLA figure (bronto_fhla)."
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_rescue_tender",
+      "label": "Rescue Tender",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 6,
+      "default_count": 1,
+      "turnout_s": 90,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "rescue",
+        "shore"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "station appliance lists: '1 Rescue Tender'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Rescue appliance listed in SCDF fire station fleets; no public specification found.",
+        "role_source": {
+          "source_key": "scdf_units_page",
+          "locator": "station appliance lists: '1 Rescue Tender'"
+        },
+        "catalogue_kind": "rescue_tender",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 6,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 90,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "Role text is the agent's paraphrase of an appliance list; reviewer to confirm or replace."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_frost",
+      "label": "Fire and Rescue Operations Support Tender (FROST)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "ventilate"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Central Fire Station appliances: '1 Fire and Rescue Ops Support Tender'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Support appliance listed in SCDF fleets for prolonged fire and rescue operations.",
+        "role_source": {
+          "source_key": "scdf_units_page",
+          "locator": "Central Fire Station appliances: '1 Fire and Rescue Ops Support Tender'"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "support_tender",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_hazmat_mitigation_vehicle",
+      "label": "HazMat Mitigation Vehicle (HMV)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 1,
+      "turnout_s": 120,
+      "observes_m": 60,
+      "asset_type": "hazmat_team",
+      "tasks": [
+        "decon",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "reaction_2016"
+      ],
+      "source_ref": "Singapore Civil Defence Force (SGFPC REaction): REaction 2016: Rescuers in Action",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "reaction_2016",
+            "locator": "HazMat Response: HazMat Incident Team (HIT) from the specialist HazMat fire stations",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "breathing_apparatus_s",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Carries the HazMat Incident Team from specialist HazMat fire stations for mitigation and decontamination.",
+        "role_source": {
+          "source_key": "reaction_2016",
+          "locator": "HazMat Response: HazMat Incident Team (HIT) from the specialist HazMat fire stations"
+        },
+        "catalogue_kind": "hazmat_unit",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 120,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "hazmat_team",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          },
+          {
+            "param": "breathing_apparatus_s",
+            "value": null,
+            "unit": "s",
+            "status": "gap",
+            "note": "No published working duration per set; catalogue value stays Assumed."
+          }
+        ],
+        "notes": [
+          "Vehicle existence: scdf_units_page lists '1 HazMat Mitigation Vehicle' and '1 HazMat Support Vehicle' at specialist stations."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_hazmat_control_vehicle",
+      "label": "HazMat Control Vehicle (HCV)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 3,
+      "default_count": 1,
+      "turnout_s": 120,
+      "observes_m": 60,
+      "asset_type": "hazmat_team",
+      "tasks": [
+        "command_post"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "cna_hcv_drv_2018",
+        "reaction_2016"
+      ],
+      "source_ref": "CNA (TODAY): SCDF unveils 2 new vehicles to boost response to chemical leaks, rescue missions; Singapore Civil Defence Force (SGFPC REaction): REaction 2016: Rescuers in Action",
+      "source_note": "Taken: crew 3 (Unverified). Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "can accommodate up to three HEART officers",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "reaction_2016",
+            "locator": "HazMat Response: HEART responds using the HazMat Control Vehicle (HCV)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "crew"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Used by HEART to identify the hazardous material, assess contamination and advise ground commanders.",
+        "role_source": {
+          "source_key": "reaction_2016",
+          "locator": "HazMat Response: HEART responds using the HazMat Control Vehicle (HCV)"
+        },
+        "catalogue_kind": "hazmat_unit",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 3,
+            "status": "unverified",
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "can accommodate up to three HEART officers"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 120,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "hazmat_team",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_mass_decon_vehicle",
+      "label": "Mass Decontamination Vehicle (MDV)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 1,
+      "turnout_s": 120,
+      "observes_m": 60,
+      "asset_type": "hazmat_team",
+      "tasks": [
+        "decon",
+        "transport"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "cna_sru_2022",
+        "scdf_ar_2022"
+      ],
+      "source_ref": "CNA: The heroes who help the heroes: SCDF's Special Response Unit does more than firefighting; Singapore Civil Defence Force: SCDF Annual Report FY2022/2023",
+      "source_note": "Taken: walking_casualties_carried 24 (Unverified), decon_walking_per_h 80 (Unverified), shower_cubicles 8 (Unverified). Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: transport up to 24 walking casualties",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: 80 to 120 walking casualties per hour",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: eight shower cubicles",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "MDV paragraph: decontamination for large numbers of casualties; troop and equipment carrier",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "decon_lying_per_h",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "decon_walking_per_h",
+          "shower_cubicles",
+          "walking_casualties_carried"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Bus-sized vehicle that decontaminates large numbers of casualties and also carries troops and equipment.",
+        "role_source": {
+          "source_key": "scdf_ar_2022",
+          "locator": "MDV paragraph: decontamination for large numbers of casualties; troop and equipment carrier"
+        },
+        "catalogue_kind": "hazmat_unit",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 120,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "hazmat_team",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.hazmat_unit"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "decon_lying_per_h",
+            "value": null,
+            "unit": "persons/h",
+            "status": "gap",
+            "note": "An 18-per-hour figure appears only on a news aggregator; not recorded."
+          },
+          {
+            "param": "shower_cubicles",
+            "value": 8,
+            "unit": "cubicles",
+            "status": "unverified",
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: eight shower cubicles"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_dart_rescue_vehicle",
+      "label": "DART Rescue Vehicle (DRV)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 8,
+      "default_count": 1,
+      "turnout_s": 90,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "rescue",
+        "shore"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "cna_hcv_drv_2018",
+        "scdf_dart_2026"
+      ],
+      "source_ref": "CNA (TODAY): SCDF unveils 2 new vehicles to boost response to chemical leaks, rescue missions; Singapore Civil Defence Force: What it takes to be a DART Specialist (Part 1/2)",
+      "source_note": "Taken: crew 8 (Unverified), mass_kg 9500 (Unverified). Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "upgraded DRV can accommodate up to eight DART officers",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "almost 10m in length and weighing 9.5 tonnes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_dart_2026",
+            "locator": "para 1: elite unit for USAR, water rescue, height rescue, prolonged firefighting",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crane_t",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "crew",
+          "mass_kg"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Carries DART specialists for urban search and rescue, height, water and prolonged operations.",
+        "role_source": {
+          "source_key": "scdf_dart_2026",
+          "locator": "para 1: elite unit for USAR, water rescue, height rescue, prolonged firefighting"
+        },
+        "catalogue_kind": "rescue_tender",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 8,
+            "status": "unverified",
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "upgraded DRV can accommodate up to eight DART officers"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 90,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.rescue_tender"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "mass_kg",
+            "value": 9500,
+            "unit": "kg",
+            "status": "unverified",
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "almost 10m in length and weighing 9.5 tonnes"
+          },
+          {
+            "param": "crane_t",
+            "value": null,
+            "unit": "t",
+            "status": "gap",
+            "note": "A 7.9 t crane figure appears on Wikipedia (citing TODAY); not located in a primary source."
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_emergency_ambulance",
+      "label": "SCDF Emergency Ambulance",
+      "country": "SG",
+      "archetype_key": "medical_triage",
+      "mode": "vehicle",
+      "crew": 3,
+      "default_count": 3,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "paramedic",
+      "tasks": [
+        "triage",
+        "transport"
+      ],
+      "starts_from": [
+        "ambulance_station",
+        "hospital"
+      ],
+      "source_keys": [
+        "parl_2015_ems",
+        "nas_ndp2017_d3",
+        "scdf_stats_2025"
+      ],
+      "source_ref": "Parliament of Singapore (text via sgparliament.com; confirm on sprs.parl.gov.sg): Deployment of Paramedics and Permissible Emergency Response Time (written answer, 17 Aug 2015); NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 201…",
+      "source_note": "Taken: crew 3, vehicle_class Class 3, mass_kg 3500, length_m 5.9, hospital_final_mile_saving_s 117. Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "parl_2015_ems",
+            "locator": "para 2: three-man crew comprising a paramedic and two EMTs",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, New Generation Ambulance, Vehicle Classification",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, New Generation Ambulance, Weight (with equipment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Dimensions 5.9m x 2.4m x 2.9m",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2025",
+            "locator": "para 9: average time savings of up to 1 minute and 57 seconds",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "parl_2015_ems",
+            "locator": "written answer, para 2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "default_count",
+          "observes_m",
+          "patients_lying",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Responds to 995 emergency medical calls, treats and conveys patients to hospital.",
+        "role_source": {
+          "source_key": "parl_2015_ems",
+          "locator": "written answer, para 2"
+        },
+        "catalogue_kind": "ambulance",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 3,
+            "status": "sourced",
+            "source_key": "parl_2015_ems",
+            "locator": "para 2: three-man crew comprising a paramedic and two EMTs"
+          },
+          {
+            "column": "default_count",
+            "value": 3,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "paramedic",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "vehicle_class",
+            "value": "Class 3",
+            "unit": null,
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, New Generation Ambulance, Vehicle Classification"
+          },
+          {
+            "param": "mass_kg",
+            "value": 3500,
+            "unit": "kg",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, New Generation Ambulance, Weight (with equipment)"
+          },
+          {
+            "param": "length_m",
+            "value": 5.9,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Dimensions 5.9m x 2.4m x 2.9m"
+          },
+          {
+            "param": "hospital_final_mile_saving_s",
+            "value": 117,
+            "unit": "s",
+            "status": "sourced",
+            "source_key": "scdf_stats_2025",
+            "locator": "para 9: average time savings of up to 1 minute and 57 seconds",
+            "note": "Traffic Priority System near TPS-enabled hospitals; an upper bound, not a mean speed."
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "SCDF ambulances may pass red lights and make U-turns on life-threatening calls since Dec 2017 (scdf_ar_2017, Road Traffic Act Exemption)."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_private_ambulance",
+      "label": "Private ambulance operating under SCDF",
+      "country": "SG",
+      "archetype_key": "medical_triage",
+      "mode": "vehicle",
+      "crew": 2,
+      "default_count": 3,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "paramedic",
+      "tasks": [
+        "triage",
+        "transport"
+      ],
+      "starts_from": [
+        "ambulance_station"
+      ],
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "station appliance lists: 'Private Ambulances'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Contracted ambulance in SCDF's emergency fleet, listed alongside SCDF ambulances at fire stations.",
+        "role_source": {
+          "source_key": "scdf_units_page",
+          "locator": "station appliance lists: 'Private Ambulances'"
+        },
+        "catalogue_kind": "ambulance",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 2,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 3,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "paramedic",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.ambulance"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "scdf_stats_2016 (para 5) records five private emergency ambulances added to the fleet in 2016."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_medical_support_vehicle",
+      "label": "Medical Support Vehicle (MSV)",
+      "country": "SG",
+      "archetype_key": "medical_triage",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 1,
+      "turnout_s": 120,
+      "observes_m": 50,
+      "asset_type": "triage_officer",
+      "tasks": [
+        "triage"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#2 Medical Support Vehicle (MSV)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "treatment_spaces",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Mass-casualty vehicle giving paramedics a clean space for on-site stabilisation and invasive treatment.",
+        "role_source": {
+          "source_key": "scdf_wps_2019",
+          "locator": "#2 Medical Support Vehicle (MSV)"
+        },
+        "catalogue_kind": "medical_team",
+        "proposed_kind": null,
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.medical_team (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 1,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.medical_team (section 5.10.1, D33)"
+          },
+          {
+            "column": "turnout_s",
+            "value": 120,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.medical_team (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 50,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.medical_team (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "triage_officer",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.medical_team"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "treatment_spaces",
+            "value": null,
+            "unit": "patients",
+            "status": "gap"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_large_monitor_vehicle",
+      "label": "Large Monitor Vehicle",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Jurong Island Fire Station: 1 Large Monitor Vehicle",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Carries large-flow monitors for refinery and petrochemical fires.",
+        "role_source": {
+          "source_key": "scdf_units_page",
+          "locator": "Jurong Island Fire Station: 1 Large Monitor Vehicle"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "industrial_fire_support",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "Role text paraphrases the station's coverage note (oil refineries, petrochemical industries); reviewer to confirm."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_scdf_pod_carrier",
+      "label": "Pod Carrier (with foam and hose pods)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Jurong Island and Banyan lists: Pod Carriers, Foam Pods",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "foam_per_pod_l",
+          "observes_m",
+          "road_speed_kmh",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Prime mover listed with foam pods at industrial fire stations; carries modular firefighting pods.",
+        "role_source": {
+          "source_key": "scdf_units_page",
+          "locator": "Jurong Island and Banyan lists: Pod Carriers, Foam Pods"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "industrial_fire_support",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "foam_per_pod_l",
+            "value": null,
+            "unit": "L",
+            "status": "gap"
+          },
+          {
+            "param": "road_speed_kmh",
+            "value": null,
+            "unit": "km/h",
+            "status": "gap",
+            "note": "No published typical road speed; WS9 road-speed classes apply, Assumed."
+          }
+        ],
+        "notes": [
+          "Role text is the agent's reading of an appliance list; reviewer to confirm."
+        ]
+      }
+    },
+    {
+      "kind_key": "sg_caas_aes_foam_tender",
+      "label": "Airport Emergency Service foam tender (Changi)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vehicle",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "changi_aes",
+        "caas_aip_wsss"
+      ],
+      "source_ref": "Changi Airport Group: Airport Safety & Emergency Services; Civil Aviation Authority of Singapore: AIP Singapore AD 2 WSSS (valid from 02 Oct 2025)",
+      "source_note": "Taken: response_target_s 120, response_limit_s 180, fire_control_s 60, icao_rffs_category 10. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: respond in 2 minutes, not exceeding 3 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: not exceeding 3 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: fires under control within a minute upon arrival",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "caas_aip_wsss",
+            "locator": "AD 2.6 item 1: CAT10 on all three runways",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "changi_aes",
+            "locator": "Airport Emergency Service; Safety Infrastructure",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "foam_concentrate_l",
+          "observes_m",
+          "pump_lpm",
+          "turnout_s",
+          "water_l"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Primary aircraft-emergency vehicle of the airport's own rescue and firefighting service.",
+        "role_source": {
+          "source_key": "changi_aes",
+          "locator": "Airport Emergency Service; Safety Infrastructure"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "airport_crash_tender",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "response_target_s",
+            "value": 120,
+            "unit": "s",
+            "status": "sourced",
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: respond in 2 minutes, not exceeding 3 minutes"
+          },
+          {
+            "param": "response_limit_s",
+            "value": 180,
+            "unit": "s",
+            "status": "sourced",
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: not exceeding 3 minutes"
+          },
+          {
+            "param": "fire_control_s",
+            "value": 60,
+            "unit": "s",
+            "status": "sourced",
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: fires under control within a minute upon arrival"
+          },
+          {
+            "param": "icao_rffs_category",
+            "value": 10,
+            "unit": "category",
+            "status": "sourced",
+            "source_key": "caas_aip_wsss",
+            "locator": "AD 2.6 item 1: CAT10 on all three runways"
+          }
+        ],
+        "notes": [
+          "Agency key sg_changi_aes is not in a register yet: the operator is Changi Airport Group, which spec 02 section 6.11.7 says is to verify."
+        ]
+      }
+    }
+  ]
+}

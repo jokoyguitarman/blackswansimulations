@@ -1,0 +1,645 @@
+{
+  "file": "release-agents.json",
+  "schema_version": 1,
+  "library": "threats",
+  "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+    "country": "SG",
+    "sources_file": "sources.json"
+  },
+  "review": {
+    "reviewer_name": null,
+    "reviewer_qualification": null,
+    "reviewed_on": null,
+    "row_decisions": {}
+  },
+  "review_flags": {
+    "town_gas": [
+      "Assumed: boiling_point_c, molecular_weight"
+    ],
+    "hydrogen": [
+      "Assumed: density_ratio"
+    ]
+  },
+  "rows": [
+    {
+      "agent_key": "propane",
+      "label": "Propane (LPG)",
+      "cas_number": "74-98-6",
+      "molecular_weight": 44.1,
+      "density_ratio": 1.55,
+      "boiling_point_c": -42.2,
+      "lfl_pct": 2.1,
+      "ufl_pct": 9.5,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 10000
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 6900
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 5500
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 5500
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 17000
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 17000
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 33000
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 33000
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "epa-aegl-propane",
+        "niosh-npg-propane"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Propane; US EPA AEGL Program: Propane",
+      "source_note": "Boiling point -44 °F = -42.2 °C. AEGL-2 and -3 lie above 50% and 100% of the LEL (EPA notes explosion caution).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-propane",
+            "locator": "Molecular Weight 44.1; Boiling Point -44°F; LEL 2.1%; UEL 9.5%; Relative Gas Density 1.55",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-propane",
+            "locator": "AEGL table (Final), 10 min to 8 hr",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "agent_key": "town_gas",
+      "label": "Town gas (Singapore piped supply)",
+      "cas_number": null,
+      "molecular_weight": 14.4,
+      "density_ratio": 0.5,
+      "boiling_point_c": null,
+      "lfl_pct": 3.0,
+      "ufl_pct": 55.0,
+      "tier_scheme": null,
+      "tiers": [],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook on Gas Supply (2021) Appendix B",
+      "source_note": "Typical composition 49.5% H2, 26.7% CH4, 13.2% CO2, 3.2% CO by volume; molecular weight 14.4 is computed from it. No AEGL for the mixture: tiers empty.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Appendix B: Gas properties (a) Specific Gravity 0.50 – 0.59; (f) Limits of flammability; Typical Town Gas Composition",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "boiling_point_c",
+          "molecular_weight"
+        ]
+      }
+    },
+    {
+      "agent_key": "chlorine",
+      "label": "Chlorine",
+      "cas_number": "7782-50-5",
+      "molecular_weight": 70.9,
+      "density_ratio": 2.47,
+      "boiling_point_c": -33.9,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.5
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 2.0
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 1.0
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 0.7
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 50
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 28
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 20
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 10
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 7.1
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "epa-aegl-chlorine",
+        "niosh-npg-chlorine"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Chlorine; NRC AEGL Volume 4 Table 1-1",
+      "source_note": "Density ratio 2.47 per NIOSH (spec example said 2.45).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-chlorine",
+            "locator": "Molecular Weight 70.9; Boiling Point -29°F; Relative Gas Density 2.47",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-chlorine",
+            "locator": "Table 1-1 Summary of AEGL Values for Chlorine",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "agent_key": "ammonia",
+      "label": "Ammonia (anhydrous)",
+      "cas_number": "7664-41-7",
+      "molecular_weight": 17.0,
+      "density_ratio": 0.6,
+      "boiling_point_c": -33.3,
+      "lfl_pct": 15,
+      "ufl_pct": 28,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 30
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 30
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 220
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 220
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 160
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 110
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 110
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 2700
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 1600
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 1100
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 550
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 390
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "epa-aegl-ammonia",
+        "niosh-npg-ammonia"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Ammonia; NRC AEGL Volume 6 Table 2-1",
+      "source_note": "Liquid releases form a dense, cold aerosol cloud before the gas becomes buoyant (SS 683-2 intro 0.2).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-ammonia",
+            "locator": "Molecular Weight 17.0; Boiling Point -28°F; LEL 15%; UEL 28%; Relative Gas Density 0.60",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-ammonia",
+            "locator": "Table 2-1 Summary of AEGL Values for Ammonia",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "agent_key": "hydrogen_fluoride",
+      "label": "Hydrogen fluoride (battery fire product)",
+      "cas_number": "7664-39-3",
+      "molecular_weight": 20.0,
+      "density_ratio": 0.69,
+      "boiling_point_c": 19.4,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 1.0
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 1.0
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 95
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 34
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 24
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 12
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 12
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 170
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 62
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 44
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 22
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 22
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": [
+        "epa-aegl-hydrogen-fluoride",
+        "niosh-npg-hydrogen-fluoride"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Hydrogen fluoride; US EPA AEGL Program: Hydrogen fluoride",
+      "source_note": "Boiling point 67 °F = 19.4 °C. Its use as the lithium-ion fire product is Assumed in the item kinds.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-hydrogen-fluoride",
+            "locator": "Molecular Weight 20.0; Boiling Point 67°F; Relative Gas Density 0.69",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-hydrogen-fluoride",
+            "locator": "AEGL table (Final)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "agent_key": "hydrogen",
+      "label": "Hydrogen",
+      "cas_number": "1333-74-0",
+      "molecular_weight": 2.0,
+      "density_ratio": 0.07,
+      "boiling_point_c": -252.8,
+      "lfl_pct": 4,
+      "ufl_pct": 75,
+      "tier_scheme": null,
+      "tiers": [],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "cameo-hydrogen"
+      ],
+      "source_ref": "CAMEO Chemicals: Hydrogen",
+      "source_note": "Density ratio computed as 2.016/28.96. Asphyxiant and fire hazard; no AEGL.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-hydrogen",
+            "locator": "Physical Properties: LEL 4%; UEL 75%; Boiling Point -423°F; Molecular Weight 2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "density_ratio"
+        ]
+      }
+    },
+    {
+      "agent_key": "carbon_monoxide",
+      "label": "Carbon monoxide (fire product)",
+      "cas_number": "630-08-0",
+      "molecular_weight": 28.0,
+      "density_ratio": 0.97,
+      "boiling_point_c": -191.7,
+      "lfl_pct": 12.5,
+      "ufl_pct": 74,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 420
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 150
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 83
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 33
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 27
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 1700
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 600
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 330
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 150
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 130
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": false,
+      "source_keys": [
+        "epa-aegl-carbon-monoxide",
+        "niosh-npg-carbon-monoxide"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Carbon monoxide; US EPA AEGL Program: Carbon monoxide",
+      "source_note": "Not referenced by a rule here; included because WS9 5.19 lists it and town gas carries about 3% CO.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-carbon-monoxide",
+            "locator": "Molecular Weight 28.0; Boiling Point -313°F; LEL 12.5%; UEL 74%; Relative Gas Density 0.97",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-carbon-monoxide",
+            "locator": "AEGL table (Final); AEGL-1 not recommended",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,1033 @@
+{
+  "file": "security-units.sg.json",
+  "schema_version": 1,
+  "library": "doctrines",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "unreviewed",
+  "seed_status": "PENDING",
+  "note": "SPF and SAF units in the register 'units' format of 02-teams-and-doctrines.md section 6.11.5 item 3 (name, archetypes, one-sentence public role, sources). Never strength, location, equipment, call signs or tactics.",
+  "rows": [
+    {
+      "key": "sg_spf_ert",
+      "name": "Emergency Response Teams (ERT)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response",
+        "police_security"
+      ],
+      "public_role": "Patrol iconic, high-footfall locations and transport nodes and respond first to armed or terror incidents.",
+      "aliases": [
+        {
+          "phrase": "ERT",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "sg101_terror",
+          "locator": "Safeguarding Singapore Against Terrorism, para 1"
+        },
+        {
+          "source_key": "spf_annual_2016",
+          "locator": "INCIDENT RESPONSE: ERTs serve as the first wave of responders"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sg101_terror",
+            "locator": "Safeguarding Singapore Against Terrorism, para 1",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "spf_annual_2016",
+            "locator": "INCIDENT RESPONSE: ERTs serve as the first wave of responders",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_grf",
+      "name": "Ground Response Force (GRF)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "police_security"
+      ],
+      "public_role": "Frontline police officers who, with ERTs, form the first line of response to attacks.",
+      "aliases": [
+        {
+          "phrase": "GRF",
+          "kind": "exact",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_ct_ex_2022",
+          "locator": "Phase 1: GRF officers and ERTs provided the first line of response"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_ct_ex_2022",
+            "locator": "Phase 1: GRF officers and ERTs provided the first line of response",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_rdt",
+      "name": "Rapid Deployment Troops (RDT)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response"
+      ],
+      "public_role": "Special Operations Command troops on tactical response motorcycles; second wave for public order and armed attacks.",
+      "aliases": [
+        {
+          "phrase": "RDT",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_soc_70_2023",
+          "locator": "section 4: RDT: Swift Response"
+        },
+        {
+          "source_key": "spf_annual_2016",
+          "locator": "INCIDENT RESPONSE: RDTs serve as the second wave"
+        },
+        {
+          "source_key": "nas_ndp2017_d3",
+          "locator": "p.4, Tactical Response Motorcycle"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_soc_70_2023",
+            "locator": "section 4: RDT: Swift Response",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "spf_annual_2016",
+            "locator": "INCIDENT RESPONSE: RDTs serve as the second wave",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.4, Tactical Response Motorcycle",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_irt",
+      "name": "In-Situ Reaction Teams (IRT)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "police_security",
+        "tactical_response"
+      ],
+      "public_role": "Deployed at pre-identified high-risk iconic areas with large crowds to deter, detect and respond to threats.",
+      "aliases": [
+        {
+          "phrase": "IRT",
+          "kind": "exact",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Protective Security Command, Roles/Functions item 4"
+        },
+        {
+          "source_key": "sg101_terror",
+          "locator": "Safeguarding Singapore Against Terrorism, para 1"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Protective Security Command, Roles/Functions item 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "sg101_terror",
+            "locator": "Safeguarding Singapore Against Terrorism, para 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_procom",
+      "name": "Protective Security Command (ProCom)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "police_security"
+      ],
+      "public_role": "Protects strategic events, locations and critical infrastructure in peacetime and national emergencies.",
+      "aliases": [
+        {
+          "phrase": "ProCom",
+          "kind": "organisation",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Protective Security Command, Roles/Functions items 1-3"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Protective Security Command, Roles/Functions items 1-3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_ptu",
+      "name": "Police Tactical Unit (PTU)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "police_security",
+        "tactical_response"
+      ],
+      "public_role": "Public order unit for civil disturbances and riots; also responds to terrorist incidents as Armed Strike Teams.",
+      "aliases": [
+        {
+          "phrase": "PTU",
+          "kind": "exact",
+          "archetype_key": "police_security"
+        },
+        {
+          "phrase": "Armed Strike Team",
+          "kind": "function",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Special Operations Command, Roles/Functions: PTU"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Special Operations Command, Roles/Functions: PTU",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_star",
+      "name": "Special Tactics and Rescue (STAR) Unit",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response"
+      ],
+      "public_role": "SPF's highest level of tactical armed response, including hostage rescue on land and at sea.",
+      "aliases": [
+        {
+          "phrase": "STAR",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Special Operations Command, Roles/Functions: STAR"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Special Operations Command, Roles/Functions: STAR",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_k9",
+      "name": "Police K-9 Unit",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "police_security"
+      ],
+      "public_role": "Police dog unit under Special Operations Command, including public order and search dog teams.",
+      "aliases": [
+        {
+          "phrase": "K-9",
+          "kind": "exact",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Special Operations Command: three main units"
+        },
+        {
+          "source_key": "spf_soc_70_2023",
+          "locator": "section 3: Public Order Dog Teams"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Special Operations Command: three main units",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "spf_soc_70_2023",
+            "locator": "section 3: Public Order Dog Teams",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_cnu",
+      "name": "Crisis Negotiation Unit (CNU)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response"
+      ],
+      "public_role": "Auxiliary unit of Special Operations Command for crisis negotiation.",
+      "aliases": [
+        {
+          "phrase": "CNU",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_our_people",
+          "locator": "Special Operations Command: auxiliary units"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_our_people",
+            "locator": "Special Operations Command: auxiliary units",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_pcg_erf",
+      "name": "Police Coast Guard Emergency Response Force (ERF)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response"
+      ],
+      "public_role": "Police Coast Guard's response to armed attacks at sea and on the offshore islands.",
+      "aliases": [
+        {
+          "phrase": "PCG ERF",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_annual_2016",
+          "locator": "INCIDENT RESPONSE: PCG Emergency Response Force (June 2017)"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_annual_2016",
+            "locator": "INCIDENT RESPONSE: PCG Emergency Response Force (June 2017)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_spf_gurkha_contingent",
+      "name": "Gurkha Contingent (GC)",
+      "local_name": null,
+      "agency_key": "sg_spf",
+      "archetype_keys": [
+        "tactical_response"
+      ],
+      "public_role": "Provides Armed Strike Teams alongside Special Operations Command as second-wave responders.",
+      "aliases": [
+        {
+          "phrase": "Gurkha Contingent",
+          "kind": "organisation",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_ct_ex_2022",
+          "locator": "Phase 1: ASTs of the SPF's SOC and GC"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_ct_ex_2022",
+            "locator": "Phase 1: ASTs of the SPF's SOC and GC",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_idtf",
+      "name": "Island Defence Task Force (IDTF)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "military_support"
+      ],
+      "public_role": "Coordinates military resources for SCDF in civil emergencies and supports SPF in terrorist threats.",
+      "aliases": [
+        {
+          "phrase": "IDTF",
+          "kind": "exact",
+          "archetype_key": "military_support"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_idtf_2023",
+          "locator": "IDTF interoperability, items c and d"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_idtf_2023",
+            "locator": "IDTF interoperability, items c and d",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_cbre_dg",
+      "name": "Chemical, Biological, Radiological and Explosives Defence Group (CBRE DG)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "cbrn_defence",
+        "bomb_disposal_eod"
+      ],
+      "public_role": "SAF group for counter-terrorist CBRE response: explosive ordnance disposal, chem-bio defence and casualty care.",
+      "aliases": [
+        {
+          "phrase": "CBRE DG",
+          "kind": "exact",
+          "archetype_key": "cbrn_defence"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_cbre_2003",
+          "locator": "The CBRE Defence Group"
+        },
+        {
+          "source_key": "spf_ct_ex_2022",
+          "locator": "Phase 2: SOTF with CBRE DG neutralised a suicide bomber"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_cbre_2003",
+            "locator": "The CBRE Defence Group",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "spf_ct_ex_2022",
+            "locator": "Phase 2: SOTF with CBRE DG neutralised a suicide bomber",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_36_sce",
+      "name": "36th Battalion, Singapore Combat Engineers (36 SCE)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "bomb_disposal_eod"
+      ],
+      "public_role": "The SAF's explosive ordnance disposal unit within the CBRE Defence Group.",
+      "aliases": [
+        {
+          "phrase": "36 SCE",
+          "kind": "exact",
+          "archetype_key": "bomb_disposal_eod"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_cbre_2003",
+          "locator": "The CBRE Defence Group: 36 SCE"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_cbre_2003",
+            "locator": "The CBRE Defence Group: 36 SCE",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_39_sce",
+      "name": "39th Battalion, Singapore Combat Engineers (39 SCE)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "cbrn_defence"
+      ],
+      "public_role": "Chem-bio defence unit that decontaminates incident sites and works with SCDF after a chemical attack.",
+      "aliases": [
+        {
+          "phrase": "39 SCE",
+          "kind": "exact",
+          "archetype_key": "cbrn_defence"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_cbre_2003",
+          "locator": "The CBRE Defence Group: 39 SCE"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_cbre_2003",
+            "locator": "The CBRE Defence Group: 39 SCE",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_mrf",
+      "name": "Medical Response Force (MRF)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "medical_triage",
+        "cbrn_defence"
+      ],
+      "public_role": "SAF Medical Corps force giving on-scene treatment to casualties of chemical and biological agents.",
+      "aliases": [
+        {
+          "phrase": "MRF",
+          "kind": "exact",
+          "archetype_key": "medical_triage"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_cbre_2003",
+          "locator": "The CBRE Defence Group: MRF"
+        },
+        {
+          "source_key": "mindef_idtf_2023",
+          "locator": "item d: MRF to support SPF"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_cbre_2003",
+            "locator": "The CBRE Defence Group: MRF",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "mindef_idtf_2023",
+            "locator": "item d: MRF to support SPF",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_adf",
+      "name": "Army Deployment Force (ADF)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "military_support"
+      ],
+      "public_role": "Army force assigned to IDTF to help SPF contain terrorist threats, including cordons.",
+      "aliases": [
+        {
+          "phrase": "ADF",
+          "kind": "exact",
+          "archetype_key": "military_support"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "mindef_idtf_2023",
+          "locator": "item d: Army Deployment Force (ADF)"
+        },
+        {
+          "source_key": "spf_ct_ex_2022",
+          "locator": "Phase 1: IDTF supported by ADF cordoned off the incident site"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mindef_idtf_2023",
+            "locator": "item d: Army Deployment Force (ADF)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "spf_ct_ex_2022",
+            "locator": "Phase 1: IDTF supported by ADF cordoned off the incident site",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    },
+    {
+      "key": "sg_saf_sotf",
+      "name": "Special Operations Task Force (SOTF)",
+      "local_name": null,
+      "agency_key": "sg_saf",
+      "archetype_keys": [
+        "military_support",
+        "tactical_response"
+      ],
+      "public_role": "SAF special operations force that supports SPF against active threats under the Homefront Crisis Management Framework.",
+      "aliases": [
+        {
+          "phrase": "SOTF",
+          "kind": "exact",
+          "archetype_key": "military_support"
+        }
+      ],
+      "sources": [
+        {
+          "source_key": "spf_ct_ex_2022",
+          "locator": "Phase 2: SPF supported by SAF's SOTF"
+        }
+      ],
+      "sensitivity": "restricted_generic",
+      "withheld_by_policy": [
+        "strength",
+        "crew",
+        "locations",
+        "equipment",
+        "vehicles",
+        "call_signs",
+        "tactics"
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "spf_ct_ex_2022",
+            "locator": "Phase 2: SPF supported by SAF's SOTF",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": [
+          "strength",
+          "crew",
+          "equipment"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "incident_command",
+  "title": "SCDF: Incident Command response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Civil Defence Force",
+  "agency_key": "sg_scdf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_scdf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Training Directory, Civil Defence Academy Singapore",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Singapore Civil Defence Force, introduction",
+        "quoted_phrase": "Under Singapore's HomeFront Crisis Management System, the SCDF was appointed as the Incident Manager"
+      },
+      {
+        "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CDA1986",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 4(2)(l)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Ministerial Statement on the impact of the Middle East situation on Singapore",
+        "publisher": "Ministry of Home Affairs",
+        "url": "https://www.mha.gov.sg/media-room/newsroom/ministerial-statement-on-the-impact-of-the-middle-east-situation-on-singapore/",
+        "published": "2026-04-07",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 1 to 7",
+        "quoted_phrase": null
+      },
+      {
+        "title": "National inter-agency response plan for mass casualty incidents",
+        "publisher": "Ministry of Health",
+        "url": "https://www.moh.gov.sg/newsroom/national-inter-agency-response-plan-for-mass-casualty-incidents/",
+        "published": "2018-01-10",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Oral Reply, para 1",
+        "quoted_phrase": null
+      },
+      {
+        "title": "SCDF Annual Report FY2015/2016",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/docs/default-source/media-room-(publications)/annual-reports/annual_report_fy2015_2016.pdf?sfvrsn=7b887da8_1",
+        "published": "2016",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Exercise Northstar 9",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window",
+      "escalation tiers"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_incmgr01"
+        ],
+        "source_index": 0,
+        "locator": "introduction"
+      },
+      {
+        "ids": [
+          "st_coord0002"
+        ],
+        "source_index": 1,
+        "locator": "s. 4(2)(l)"
+      },
+      {
+        "ids": [
+          "st_hceg00001",
+          "ho_mha00001"
+        ],
+        "source_index": 2,
+        "locator": "paras 2 to 4, 7"
+      },
+      {
+        "ids": [
+          "ho_mohcas02"
+        ],
+        "source_index": 3,
+        "locator": "para 1"
+      },
+      {
+        "ids": [
+          "mission"
+        ],
+        "source_index": 4,
+        "locator": "Exercise Northstar 9"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Act as Incident Manager under the Home Front Crisis Management System, responsible for the consequence management of major disasters and civil emergencies.",
+    "sequence": [
+      {
+        "id": "st_incmgr01",
+        "window": null,
+        "label": "Incident Manager",
+        "action": "Take charge as Incident Manager for the consequence management of the major disaster or civil emergency."
+      },
+      {
+        "id": "st_coord0002",
+        "window": null,
+        "label": "Coordinate services",
+        "action": "Ensure effective coordination between SCDF and the other emergency services."
+      },
+      {
+        "id": "st_hceg00001",
+        "window": null,
+        "label": "Whole of government",
+        "action": "Work within the national structure: the Homefront Crisis Executive Group coordinates across agencies and reports to the ministerial committee chaired by the Minister for Home Affairs."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_mohcas02",
+        "to_archetype": "hospital_ed",
+        "to_label": "MOH",
+        "when": "Casualties need management at the incident site and in public hospitals and polyclinics."
+      },
+      {
+        "id": "ho_mha00001",
+        "to_archetype": "ministry_liaison",
+        "to_label": "MHA",
+        "when": "The crisis needs whole-of-government coordination through the HCEG and HCMC."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "SCDF's tiered escalation (basic and enhanced task forces, Operations Civil Emergency with the Commissioner as overall Incident Manager) is described in an SCDF case study of one named incident; excluded under WS9 6.19. Reviewer to find a generic SCDF source.",
+    "history": []
+  }
+}

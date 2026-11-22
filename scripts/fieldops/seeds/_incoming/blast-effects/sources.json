@@ -1,0 +1,568 @@
+{
+  "file": "sources.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": "fieldops_knowledge_sources",
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": null,
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "rows": [
+    {
+      "source_key": "swisdak_1994",
+      "title": "Simplified Kingery Airblast Calculations (Minutes of the 26th DoD Explosives Safety Seminar)",
+      "publisher": "Naval Surface Warfare Center, Indian Head (M. M. Swisdak Jr.)",
+      "url": "https://apps.dtic.mil/sti/pdfs/ADA526744.pdf",
+      "published_on": "1994-08-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US government work, unclassified, DTIC ADA526744. Read from the web.archive.org copy because DTIC was under maintenance; tables are scanned images, read visually.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "kingery_bulmash_1984",
+      "title": "Airblast Parameters from TNT Spherical Air Burst and Hemispherical Surface Burst (ARBRL-TR-02555)",
+      "publisher": "US Army Ballistic Research Laboratory",
+      "url": "https://apps.dtic.mil/sti/citations/ADA145977",
+      "published_on": "1984-04-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US government work. Not read; cited through Swisdak (1994) and IATG 01.80.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "referenced",
+      "read_status": "cited_not_read"
+    },
+    {
+      "source_key": "iatg_0180_2021",
+      "title": "IATG 01.80 Formulae for ammunition management, third edition",
+      "publisher": "UNODA / UN SaferGuard",
+      "url": "https://data.unsaferguard.org/iatg/en/IATG-01.80-Formulae-ammunition-management-IATG-V.3.pdf",
+      "published_on": "2021-03-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "UN publication, freely downloadable; some tables flattened in text extraction.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "ufc_3_340_02",
+      "title": "UFC 3-340-02 Structures to Resist the Effects of Accidental Explosions",
+      "publisher": "US Department of Defense",
+      "url": "https://legacy.wbdg.org/FFC/DOD/UFC/ARCHIVES/ufc_3_340_02.pdf",
+      "published_on": "2008-12-05",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US government work, approved for public release. Text read from the WBDG archive copy (22 May 2005 draft header; Table 1-1 page carries the 5 Dec 2008 header). Change 2 (2014) is at legacy.wbdg.org/FFC/DOD/UFC/ufc_3_340_02_2008_c2.pdf.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "tno_green_book_1992",
+      "title": "Methods for the determination of possible damage to people and objects resulting from releases of hazardous materials (Green Book, CPR 16E), first edition",
+      "publisher": "TNO / Committee for the Prevention of Disasters (NL)",
+      "url": "https://publications.tno.nl/publication/34634118/X2BfNj/TNO-1992-greenbook.pdf",
+      "published_on": "1992-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Freely downloadable from the TNO repository (repository.tno.nl docId 1522). Scanned PDF read visually; page numbers are chapter pages.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "tno_yellow_book_2005",
+      "title": "Methods for the calculation of physical effects (Yellow Book, CPR 14E), third edition, second revised print",
+      "publisher": "TNO / Committee for the Prevention of Disasters (NL)",
+      "url": "https://publications.tno.nl/publication/34634119/QIKv78/TNO-2005-yellow.pdf",
+      "published_on": "2005-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Freely downloadable from the TNO repository.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "epa_rmp_oca_2009",
+      "title": "Risk Management Program Guidance for Offsite Consequence Analysis (EPA 550-B-99-009)",
+      "publisher": "US Environmental Protection Agency",
+      "url": "https://www.epa.gov/sites/default/files/2013-11/documents/oca-chps.pdf",
+      "published_on": "2009-03-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "epa_rmp_oca_appendices_1999",
+      "title": "Risk Management Program Guidance for Offsite Consequence Analysis, Appendices",
+      "publisher": "US Environmental Protection Agency",
+      "url": "https://www.epa.gov/sites/default/files/2017-05/documents/oca-apds.pdf",
+      "published_on": "1999-04-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "pierorazio_2004",
+      "title": "An Update to the Baker-Strehlow-Tang Vapor Cloud Explosion Prediction Methodology Flame Speed Table (AIChE 38th Loss Prevention Symposium)",
+      "publisher": "Baker Engineering and Risk Consultants (Pierorazio, Thomas, Baker, Ketchum)",
+      "url": "https://h2tools.org/sites/default/files/2024-04/AICHE_Update%20on%20BST%20VCE%20%282004%29.pdf",
+      "published_on": "2004-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Conference preprint hosted by h2tools.org (PNNL). Published as Process Safety Progress 24 (2005) 59-65, doi:10.1002/prs.10048.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "melani_2009_ichs",
+      "title": "Review of methods for estimating the overpressure and impulse resulting from a hydrogen explosion in a confined/obstructed volume (ICHS 2009)",
+      "publisher": "Melani, Sochet, Rocourt, Jallais",
+      "url": "https://h2tools.org/sites/default/files/ICHS_import/Review%20of%20Methods%20for%20Estimating%20the%20Overpressure%20and%20Impulse%20Resulting%20From%20a%20Hydrogen%20Explosion%20in%20a%20Confined-Obstructed%20Volume.pdf",
+      "published_on": "2009-09-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Conference paper hosted by h2tools.org. Its Table 3 swaps the reactivity and congestion labels of the Pierorazio table; use pierorazio_2004.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "lachance_2009_ichs",
+      "title": "Development of uniform harm criteria for use in quantitative risk analysis of the hydrogen infrastructure (ICHS 2009)",
+      "publisher": "LaChance (Sandia), Tchouvelev, Engebo",
+      "url": "https://conference.ing.unipi.it/ichs2009/images/stories/papers/165.pdf",
+      "published_on": "2009-09-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Conference paper, open copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "iogp_434_14_2023",
+      "title": "Risk Assessment Data Directory Report 434-14, Vulnerability of humans",
+      "publisher": "International Association of Oil & Gas Producers",
+      "url": "https://studylib.net/doc/27503594/434-14",
+      "published_on": "2023-07-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "IOGP report (free with registration at iogp.org); read via a studylib re-host. Confirm against the IOGP copy.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "iogp_434_15_2010",
+      "title": "Risk Assessment Data Directory Report 434-15, Vulnerability of plant/structure",
+      "publisher": "International Association of Oil & Gas Producers",
+      "url": "https://www.slideshare.net/slideshow/434-15/134288374",
+      "published_on": "2010-03-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "IOGP report read via a slideshare re-host; Table 2.8 reproduces Clancey (1972).",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "shin_2015_icps3",
+      "title": "Design charts and polynomials for air-blast parameters (ICPS3)",
+      "publisher": "Shin, Whittaker, Aref",
+      "url": "https://www.academia.edu/23635590/Design_charts_and_polynomials_for_air_blast_parameters",
+      "published_on": "2015-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Author-uploaded conference paper.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "goel_2012_dsj",
+      "title": "An Abridged Review of Blast Wave Parameters, Defence Science Journal 62(5) 300-306",
+      "publisher": "Goel, Matsagar, Gupta, Marburg",
+      "url": "https://www.publicationsdrdo.in/index.php/dsj/article/download/1149/1343/8638",
+      "published_on": "2012-09-14",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open-access journal article (DESIDOC).",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "dlubal_kinney_graham",
+      "title": "Maximum Peak Overpressure of Remote Explosion (Kinney & Graham), formula 000875",
+      "publisher": "Dlubal Software",
+      "url": "https://www.dlubal.com/en/support-and-learning/support/formulas/000875",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Vendor formula page; secondary.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "archi_civil_kg_tool",
+      "title": "Peak overpressure (Kinney-Graham) tool",
+      "publisher": "Archi-Civil",
+      "url": "https://archi-civil.com/tools/peak-overpressure",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Web tool page; used only for its stated cross-check values.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "jeon_2017_computation",
+      "title": "Modified Equation of Shock Wave Parameters, Computation 5(3) 41",
+      "publisher": "Jeon, Kim, Han",
+      "url": "https://www.mdpi.com/2079-3197/5/3/41",
+      "published_on": "2017-09-18",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open access (CC BY). Checked for free-air coefficients; only pressure given.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "cisa_standoff_card_2025",
+      "title": "DHS-DOJ Bomb Threat Stand-Off Card (as of Aug 2025)",
+      "publisher": "CISA Office for Bombing Prevention; FBI Counter-IED Unit",
+      "url": "https://www.cisa.gov/sites/default/files/2025-08/Bomb_Threat_Stand-Off%20Card_082025_508.pdf",
+      "published_on": "2025-08-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "nctc_ct_guide",
+      "title": "Counterterrorism Guide for Public Safety Personnel, bomb threat stand-off distances",
+      "publisher": "US National Counterterrorism Center",
+      "url": "https://www.dni.gov/nctc/index.html",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "roberts_2000_hse",
+      "title": "Thermal radiation from fireballs on failure of liquefied petroleum gas storage vessels (Hazards XV)",
+      "publisher": "Roberts, Gosse, Hawksworth (HSL / BG Technology)",
+      "url": "https://www.icheme.org/media/10224/xv-paper-09.pdf",
+      "published_on": "2000-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Crown copyright, open on IChemE site.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "dga_fireball_tool",
+      "title": "BLEVE Fireball Calculator (CCPS Method)",
+      "publisher": "DGA Consulting",
+      "url": "https://dgaconsulting.net/tools/fireball-calculator/",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Commercial screening tool page citing CCPS (1994); used only for the 0.75 D height.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "upb_bulletin_multi_energy",
+      "title": "Paper on the TNO Multi-Energy method (UPB Scientific Bulletin, Series D)",
+      "publisher": "Gheorghe Asachi Technical University of Iasi authors",
+      "url": "https://www.scientificbulletin.upb.ro/static/pdfs/rezcee_760885.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open-access journal; secondary for class peak pressures.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "usace_pdc_tr_13_01",
+      "title": "PDC TR-13-01 Blast Resistant Design of Windows",
+      "publisher": "US Army Corps of Engineers Protective Design Center (BakerRisk)",
+      "url": "https://www.nwo.usace.army.mil/Portals/23/docs/PDC/PDC_TR-13-01_Blast_Resistant_Design_of_Windows_BakerRisk_DistribA.pdf",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Distribution A: approved for public release.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "jrc_glazing_standards_2015",
+      "title": "A comparison of existing standards for testing blast resistant glazing and windows (JRC94930)",
+      "publisher": "European Commission Joint Research Centre (ERNCIP)",
+      "url": "https://erncip-project.jrc.ec.europa.eu/sites/default/files/ReqNo_JRC94930_A%20comparison%20of%20existing%20standards%20for%20testing%20blast%20resistant%20glazing%20and%20windows.pdf",
+      "published_on": "2015-01-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "EU publication, TLP WHITE.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "wu_lajss_ship_hulls",
+      "title": "Simplified Approach for Assessing the Explosive Residual Strength of Ship Hulls, Latin American Journal of Solids and Structures",
+      "publisher": "Wu, Yan, Sun",
+      "url": "https://www.scielo.br/j/lajss/a/bHZkJRZSmLDkXnFXxwgmZbF/?lang=en",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Open access (SciELO); cites TM5-1300 for the quasi-static pressure fit. Publication year to verify.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "li_2024_cjsr",
+      "title": "Fundamental problems in blast-induced damage and protection of naval vessels: a state-of-the-art review, Chinese Journal of Ship Research 19(3) 3-60",
+      "publisher": "Li, Du, Chen et al.",
+      "url": "https://www.sciopen.com/article_pdf/10.19693/j.issn.1673-3185.03930.pdf",
+      "published_on": "2024-06-25",
+      "accessed_on": "2026-11-22",
+      "language": "zh",
+      "terms_note": "Open access (in Chinese); used only for the TM5-1300 2.26 coefficient and 0-1 kg/m3 range.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "wikipedia_tnt_equivalent",
+      "title": "TNT equivalent (relative effectiveness factor table)",
+      "publisher": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/TNT_equivalent",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "CC BY-SA; tertiary. The page warns its RE table is not a precise source.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    },
+    {
+      "source_key": "fcento100_kingery_bulmash",
+      "title": "kingery-bulmash Python package (Swisdak 1994 coefficients and test tables)",
+      "publisher": "GitHub user fcento100",
+      "url": "https://github.com/fcento100/kingery-bulmash",
+      "published_on": "2024-09-24",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "MIT licence. Used only to cross-check transcription; values verified against the Swisdak scans.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": [
+        "physics",
+        "threats"
+      ],
+      "status": "active",
+      "read_status": "read"
+    }
+  ]
+}

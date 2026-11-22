@@ -1,0 +1,179 @@
+{
+  "file": "run.json",
+  "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+  "library": "building_hazards",
+  "country": "SG",
+  "run_kind": "agent",
+  "agent_model": "Cursor cloud agent (Claude), worker bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b",
+  "briefs": [
+    "building_type",
+    "item_kind",
+    "interaction_rule",
+    "release_agent"
+  ],
+  "brief_hash": null,
+  "brief_note": "scripts/fieldops/knowledge/briefs/ does not exist yet; the brief was the coordinator's assignment plus WS9 sections 5.15, 5.19, 6.19, 6.27.10, 8.5 and 9.8.",
+  "started_at": "2026-11-22T07:08:00Z",
+  "finished_at": "2026-11-22T07:30:00Z",
+  "review_status": "pending",
+  "counts": {
+    "building_types": 24,
+    "hazard_item_kinds": 35,
+    "building_items": 130,
+    "hazard_interactions": 32,
+    "release_agents": 7,
+    "sources_cited": 41,
+    "sources_not_accessed": 9,
+    "rows_refused": 0
+  },
+  "sources": [
+    "scdf-fire-code-2023",
+    "scdf-fire-code-2023-cl10-1",
+    "scdf-fire-code-2023-cl10-3",
+    "scdf-fire-code-2023-cl10-4",
+    "scdf-pfm-storage-licence",
+    "scdf-pfm-general-info",
+    "scdf-pfm-licence-documents",
+    "scdf-fsm-briefing-2023",
+    "scdf-stats-2025",
+    "nfec-amd-fire-safety",
+    "city-energy-gas-handbook-2021",
+    "sg-wsh-mhi-regs-2017",
+    "mom-aquatic-chem-circular-2025",
+    "ss-683-2-2022-preview",
+    "niosh-npg-propane",
+    "niosh-npg-chlorine",
+    "niosh-npg-ammonia",
+    "niosh-npg-gasoline",
+    "niosh-npg-acetylene",
+    "niosh-npg-hydrogen-fluoride",
+    "niosh-npg-carbon-monoxide",
+    "cameo-diesel-fuel-oil",
+    "cameo-oxygen",
+    "cameo-hydrogen",
+    "cameo-sodium-hypochlorite",
+    "cameo-reactivity-rg44-rg60",
+    "epa-aegl-chlorine",
+    "epa-aegl-ammonia",
+    "epa-aegl-hydrogen-fluoride",
+    "epa-aegl-propane",
+    "epa-aegl-carbon-monoxide",
+    "iec-60296-review-2021",
+    "nfpa-855",
+    "ul-9540a",
+    "nfpa-13",
+    "nfpa-30b",
+    "ccps-2010-vce-bleve",
+    "sfpe-handbook-2016",
+    "tno-yellow-book-cpr14e",
+    "bre-bd2552-2010",
+    "cpfprts"
+  ],
+  "uncovered": [
+    {
+      "subject": "likelihood_permille (all items)",
+      "checked": [
+        "scdf-fire-code-2023",
+        "scdf-stats-2025",
+        "city-energy-gas-handbook-2021"
+      ],
+      "why": "No public source states the share of buildings of a type holding an item; every likelihood is Assumed."
+    },
+    {
+      "subject": "storey_height_m, basement_storey_height_m (all types)",
+      "checked": [
+        "scdf-fire-code-2023"
+      ],
+      "why": "BCA codes not located in this run; WS9 5.19 planning values kept as Assumed."
+    },
+    {
+      "subject": "sprinklered_permille (all types)",
+      "checked": [
+        "scdf-fire-code-2023 Cl.6.4.1"
+      ],
+      "why": "The Code states triggers (24 m habitable height, compartment limits), not shares of the stock."
+    },
+    {
+      "subject": "rail_station sprinklers, smoke control, traction power",
+      "checked": [
+        "scdf-fire-code-2023 Cl.1.1.1"
+      ],
+      "why": "Stations follow the CPFPRTS, which was not accessed."
+    },
+    {
+      "subject": "oil_filled_transformer kVA ratings",
+      "checked": [
+        "scdf-fire-code-2023 Cl.3.2.5j"
+      ],
+      "why": "No public Singapore source for typical ratings by building type."
+    },
+    {
+      "subject": "bulk_liquid_oxygen vessel volume and pressure (hospital)",
+      "checked": [
+        "cameo-oxygen"
+      ],
+      "why": "No Singapore hospital source; HTM 02-01 analogue not accessed."
+    },
+    {
+      "subject": "cooking_oil_fryers flash point and volumes",
+      "checked": [
+        "scdf-fsm-briefing-2023"
+      ],
+      "why": "No allowed source gave a value."
+    },
+    {
+      "subject": "interaction thresholds, delays and probabilities",
+      "checked": [
+        "ccps-2010-vce-bleve",
+        "sfpe-handbook-2016",
+        "tno-yellow-book-cpr14e"
+      ],
+      "why": "Licensed references not accessed; WS9 5.19 planning values kept and new rules' values Assumed."
+    },
+    {
+      "subject": "place_of_worship and community_centre specific hazards",
+      "checked": [
+        "scdf-fire-code-2023 Table 1.4A"
+      ],
+      "why": "Only kitchens and sprinklers could be sourced."
+    },
+    {
+      "subject": "airport airside fuel systems",
+      "checked": [],
+      "why": "Out of building scope."
+    },
+    {
+      "subject": "building_tags format",
+      "checked": [
+        "docs/field-ops/04-site-picker.md 5.3"
+      ],
+      "why": "Spec does not fix whether building_tags hold raw building=* values or key=value pairs; left empty."
+    }
+  ],
+  "refused": [
+    {
+      "subject": "stage pyrotechnics and special-effects stores at concert venues",
+      "why": "Explosive category (WS9 9.8, D47): not seeded; a trainer uses WS6 devices under D22."
+    },
+    {
+      "subject": "ammunition store quantities or threat profile",
+      "why": "Migration 257 explosive-store constraint and WS9 9.8: category word only."
+    },
+    {
+      "subject": "process-plant inventories, layouts or named operators",
+      "why": "WS9 9.8 and 6.19: category only; no document about a named site was used."
+    },
+    {
+      "subject": "military camp holdings beyond category words",
+      "why": "WS9 9.8: public purpose-group listing only."
+    },
+    {
+      "subject": "IEC 60296:2020 full text",
+      "why": "Only an unlicensed mirror was found; the open-access review paper was cited instead."
+    },
+    {
+      "subject": "new overpressure thresholds",
+      "why": "No new blast-triggered rules were added beyond WS9 5.19's examples (D47: no harm optimisation)."
+    }
+  ]
+}

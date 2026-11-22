@@ -1,0 +1,1440 @@
+{
+  "file": "hazard-item-kinds.json",
+  "schema_version": 1,
+  "library": "building_hazards",
+  "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+    "country": "SG",
+    "sources_file": "sources.json"
+  },
+  "review": {
+    "reviewer_name": null,
+    "reviewer_qualification": null,
+    "reviewed_on": null,
+    "row_decisions": {}
+  },
+  "review_flags": {
+    "town_gas_service": [
+      "Assumed: threat_keys"
+    ],
+    "lpg_cylinder_bank": [
+      "Assumed: agent_key, threat_keys"
+    ],
+    "cooking_oil_fryers": [
+      "Assumed: category, flash_point_c, threat_keys"
+    ],
+    "kitchen_suppression_system": [
+      "Assumed: activation_c"
+    ],
+    "diesel_generator_day_tank": [
+      "Assumed: threat_keys"
+    ],
+    "diesel_bulk_tank": [
+      "Assumed: threat_keys"
+    ],
+    "oil_filled_transformer": [
+      "Assumed: threat_keys"
+    ],
+    "ups_battery_room": [
+      "Assumed: agent_key"
+    ],
+    "lead_acid_battery_room": [
+      "Assumed: threat_keys"
+    ],
+    "ev_traction_batteries": [
+      "Assumed: agent_key"
+    ],
+    "amd_lithium_batteries": [
+      "Assumed: agent_key"
+    ],
+    "vehicle_fuel_tanks": [
+      "Unverified: cites source(s) not accessed in this run: bre-bd2552-2010",
+      "Assumed: threat_keys"
+    ],
+    "diesel_vehicle_tanks": [
+      "Assumed: threat_keys"
+    ],
+    "aerosol_stock": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-30b",
+      "Assumed: category, contents_key, phase"
+    ],
+    "combustible_stock_racks": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-13"
+    ],
+    "flammable_liquid_store": [
+      "Assumed: threat_keys"
+    ],
+    "bulk_liquid_oxygen": [
+      "Assumed: stored_pressure_bar"
+    ],
+    "medical_gas_cylinders": [
+      "Assumed: threat_keys"
+    ],
+    "welding_gas_cylinders": [
+      "Assumed: stored_pressure_bar, threat_keys"
+    ],
+    "traction_power_equipment": [
+      "Unverified: cites source(s) not accessed in this run: cpfprts"
+    ],
+    "sprinkler_system": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-13",
+      "Assumed: activation_c"
+    ],
+    "gaseous_suppression_system": [
+      "Assumed: category"
+    ]
+  },
+  "rows": [
+    {
+      "kind_key": "town_gas_service",
+      "label": "Piped town gas service",
+      "category": "flammable_gas",
+      "phase": "gas",
+      "agent_key": "town_gas",
+      "contents_key": null,
+      "threat_keys": [
+        "jet_fire",
+        "flash_fire",
+        "vce_low_congestion"
+      ],
+      "stored_pressure_bar": 0.02,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook on Gas Supply (2021) Appendix B; introduction",
+      "source_note": "Low-pressure supply 10 to 20 mbar at the service isolation valve (0.02 bar stored here). Supplied to most homes and to commercial kitchens.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Appendix B, Range of low pressure supply",
+            "quoted_phrase": "Gas supply pressure: Between 10 mbars and 20 mbars"
+          },
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope",
+            "quoted_phrase": "Town gas is retailed island-wide to most residential households."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "lpg_cylinder_bank",
+      "label": "LPG cylinders or manifold bank",
+      "category": "flammable_gas",
+      "phase": "liquefied_gas",
+      "agent_key": "propane",
+      "contents_key": null,
+      "threat_keys": [
+        "jet_fire",
+        "flash_fire",
+        "vce_low_congestion",
+        "bleve_fireball"
+      ],
+      "stored_pressure_bar": 8.5,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "niosh-npg-propane",
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Propane; SCDF Fire Code 2023 Cl.10.1",
+      "source_note": "Stored pressure is propane's vapour pressure at 21 °C (8.4 atm = 8.5 bar). Singapore LPG's propane/butane split is not stated: agent propane is Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-propane",
+            "locator": "Vapor Pressure (70°F): 8.4 atm; Flash Point NA (Gas)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.1 to 10.1.4 (LPG cylinder installations)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "agent_key",
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "cooking_oil_fryers",
+      "label": "Deep fryers and cooking oil",
+      "category": "flammable_liquid",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1",
+        "scdf-fsm-briefing-2023"
+      ],
+      "source_ref": "SCDF FSM Briefing 2023 (kitchen exhaust duct fire safety); Fire Code 2023 Cl.10.1.3c",
+      "source_note": "Commercial kitchens with fryers carry kitchen-exhaust and suppression requirements. Cooking-oil flash point not found in an allowed source: left null.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fsm-briefing-2023",
+            "locator": "Item 2, Kitchen Exhaust Duct (KED) Fire Safety",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3c(1) kitchen fixed fire suppression system",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "category",
+          "flash_point_c",
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "kitchen_suppression_system",
+      "label": "Kitchen fixed fire suppression",
+      "category": "mitigation",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": "fire_growth",
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3c(1)",
+      "source_note": "Kitchen suppression is interlocked with the LPG supply. Activation temperature not stated in the source: left null.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3c(1) Safety provisions",
+            "quoted_phrase": "activation of the system shall automatically shut off the supply of LPG to the kitchen."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "activation_c"
+        ]
+      }
+    },
+    {
+      "kind_key": "gas_leak_detection_shutoff",
+      "label": "Gas leak detection with fail-safe shut-off",
+      "category": "mitigation",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": "gas",
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.5",
+      "source_note": "Required wherever LPG piping runs; the valve is fail-safe, so it closes on loss of power.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.5a and b Gas leak detection system",
+            "quoted_phrase": "A fail-safe central solenoid isolation valve interlocked with the gas leak detection system shall be installed"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "diesel_generator_day_tank",
+      "label": "Generator diesel day tank",
+      "category": "fuel_store",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j; SCDF General Information of P&FM Licences",
+      "source_note": "Diesel is Class III petroleum in Singapore (flash point above 60 and up to 93 °C); flash_point_c left null because the source gives a band, not a value.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) Areas of special high risk, explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          },
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a) Petroleum classes",
+            "quoted_phrase": "Class III: Flash point above 60°C but not more than 93°C"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "diesel_bulk_tank",
+      "label": "Bulk diesel storage tank",
+      "category": "fuel_store",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-pfm-licence-documents"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j; SCDF P&FM licence documents list",
+      "source_note": "Bulk tanks sit outdoors at ground level; tanks of 30 kL or more above ground trigger a QRA check. Class III band as for day tanks.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "Where possible, oil storage tanks should be installed in open air at ground level at least 6m from adjacent buildings"
+          },
+          {
+            "source_key": "scdf-pfm-licence-documents",
+            "locator": "QRA row, note (a)",
+            "quoted_phrase": "Storing LESS than 30kL per tank for diesel (above ground tank)"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "emergency_generator",
+      "label": "Emergency generator set",
+      "category": "utility",
+      "phase": "equipment",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.4.38, Table 6.4A",
+      "source_note": "Generator rooms are 2-hour compartments; the generator supplies the secondary power for life-safety systems.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.4.38 Emergency generator",
+            "quoted_phrase": "refers to emergency power-generating equipment that complies with the requirements stipulated in SS 535."
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room' (2 hr compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "oil_filled_transformer",
+      "label": "Oil-filled transformer",
+      "category": "electrical",
+      "phase": "equipment",
+      "agent_key": null,
+      "contents_key": "fuel_electrical",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": 135,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "iec-60296-review-2021",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2); IEC 60296 limits as restated in Journal of Energy (2021)",
+      "source_note": "135 °C is the IEC 60296 minimum flash point for mineral transformer oil; actual oils are at or above it. Location must be ground level against an external wall.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2) Areas of special high risk",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          },
+          {
+            "source_key": "iec-60296-review-2021",
+            "locator": "HSE property table: flash point (ISO 2719), transformer oil min. 135 °C",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "electrical_switch_room",
+      "label": "HV or LV switch room",
+      "category": "electrical",
+      "phase": "equipment",
+      "agent_key": null,
+      "contents_key": "fuel_electrical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Switch rooms are listed special-purpose rooms; contents treated as electrical plant and cabling.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "ups_battery_room",
+      "label": "Lithium-ion battery room (UPS or ESS)",
+      "category": "battery",
+      "phase": "equipment",
+      "agent_key": "hydrogen_fluoride",
+      "contents_key": "fuel_electrical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.3, Table 10.3.1",
+      "source_note": "ESS rules apply above 20 kWh and cap 600 kWh per compartment without SCDF approval. HF as the release agent is Assumed (UL 9540A / NFPA 855 not accessed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (threshold 20 kWh, maximum 600 kWh per compartment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Cl.10.3.1b Exception (1)(a)",
+            "quoted_phrase": "ESS units shall be subjected to the fire and explosion testing specified under UL 9540A."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "agent_key"
+        ]
+      }
+    },
+    {
+      "kind_key": "lead_acid_battery_room",
+      "label": "Lead-acid battery room",
+      "category": "battery",
+      "phase": "equipment",
+      "agent_key": "hydrogen",
+      "contents_key": "fuel_electrical",
+      "threat_keys": [
+        "flash_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1, Cl.7.1.15",
+      "source_note": "Battery-room ventilation and hydrogen detectors keep hydrogen at or below 1% by volume (its LFL is 4%).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (threshold 70 kWh, maximum 600 kWh)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.1.15c Ventilation system for rooms housing batteries",
+            "quoted_phrase": "does not exceed 1% of the total volume of the room"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "ev_traction_batteries",
+      "label": "Electric-vehicle traction batteries",
+      "category": "battery",
+      "phase": "equipment",
+      "agent_key": "hydrogen_fluoride",
+      "contents_key": "fuel_electrical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-4",
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF EMS, Fire and Enforcement Statistics 2025 para 27; Fire Code 2023 Cl.10.4.2",
+      "source_note": "EVs were 6.82% of vehicles at end 2025; 4 of 226 vehicle fires involved EVs. Charging bays need isolation switches within 15 m. HF agent Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27, Fires Involving Electric Vehicles",
+            "quoted_phrase": "vehicle population in Singapore as at end 2025 comprised 93.18% of internal combustion engine vehicles and 6.82% of EVs"
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-4",
+            "locator": "Cl.10.4.2a Emergency main isolation shut-off switches",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "agent_key"
+        ]
+      }
+    },
+    {
+      "kind_key": "amd_lithium_batteries",
+      "label": "Active mobility device batteries (PMD, PAB)",
+      "category": "battery",
+      "phase": "equipment",
+      "agent_key": "hydrogen_fluoride",
+      "contents_key": "fuel_electrical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "nfec-amd-fire-safety",
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025 para 19 and 28; NFEC AMD fire safety page",
+      "source_note": "Household lithium-ion devices; 49 AMD fires in 2025, 34 in homes. HF as the named toxic product is Assumed (sources say 'toxic gases').",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 19, fires of electrical origin",
+            "quoted_phrase": "34 of the 304 fires from electrical origin involved Active Mobility Devices (AMDs) in residential premises"
+          },
+          {
+            "source_key": "nfec-amd-fire-safety",
+            "locator": "Fire Safety Tips for PMDs and PABs",
+            "quoted_phrase": "the battery may explode and emit toxic gases, and the resulting fire could spread quickly"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "agent_key"
+        ]
+      }
+    },
+    {
+      "kind_key": "vehicle_fuel_tanks",
+      "label": "Parked cars' petrol tanks",
+      "category": "fuel_store",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": -42.8,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "bre-bd2552-2010",
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline; BRE BD 2552 (2010) named by WS9",
+      "source_note": "Flash point -45 °F converted to -42.8 °C. BRE car-park fire-spread data was not accessed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Flash Point -45°F; LEL 1.4%; UEL 7.6%",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "bre-bd2552-2010",
+            "locator": "Whole report (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "diesel_vehicle_tanks",
+      "label": "Diesel vehicle fuel tanks (buses, lorries, appliances)",
+      "category": "fuel_store",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "cameo-diesel-fuel-oil",
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences; CAMEO Chemicals: Fuel oil, diesel",
+      "source_note": "Singapore diesel is Class III (flash point above 60 and up to 93 °C); CAMEO's 125 °F (51.7 °C) is US No. 2 fuel and is not used.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a)",
+            "quoted_phrase": "For Class III petroleum, diesel is the only licensable product."
+          },
+          {
+            "source_key": "cameo-diesel-fuel-oil",
+            "locator": "Physical Properties: LEL 1.3%, UEL 6%",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "aerosol_stock",
+      "label": "Aerosol products in retail stock",
+      "category": "combustible_store",
+      "phase": "solid",
+      "agent_key": null,
+      "contents_key": "fuel_combustible",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "nfpa-30b"
+      ],
+      "source_ref": "NFPA 30B (named by WS9, not accessed)",
+      "source_note": "Kept from WS9 5.19; no accessed source. Reviewer to confirm or retire.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "nfpa-30b",
+            "locator": "Chapter on storage in mercantile occupancies (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "category",
+          "contents_key",
+          "phase"
+        ]
+      }
+    },
+    {
+      "kind_key": "combustible_stock_racks",
+      "label": "Racked combustible stock",
+      "category": "combustible_store",
+      "phase": "solid",
+      "agent_key": null,
+      "contents_key": "fuel_combustible",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "nfpa-13",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1 explanation; NFPA 13 (not accessed)",
+      "source_note": "High-bay racked storage is a listed sprinkler trigger. Commodity class detail not accessed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation (high bay storage warehouse)",
+            "quoted_phrase": "(c) High bay storage warehouse"
+          },
+          {
+            "source_key": "nfpa-13",
+            "locator": "Commodity classification chapter (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "flammable_liquid_store",
+      "label": "Flammable liquid store (Class I or II)",
+      "category": "flammable_liquid",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [
+        "pool_fire"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence exemption table; Fire Code 2023 Cl.1.1.8",
+      "source_note": "Class I flash point below 23 °C, Class II 23 to 60 °C (SCDF classes); flash_point_c left null because the kind spans both.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Exemption quantities, Any Other Classes of Petroleum, row 'For use in a factory' (I 400 L, II 1,000 L, III 1,500 L)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.8 Fire safety requirement for storage of flammable liquids",
+            "quoted_phrase": "The safe storage of flammable liquids shall comply with SS 532."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "pool_chlorination",
+      "label": "Pool disinfection chemicals (hypochlorite and acid)",
+      "category": "toxic_chemical",
+      "phase": "liquid",
+      "agent_key": "chlorine",
+      "contents_key": "fuel_chemical",
+      "threat_keys": [
+        "toxic_release_indoor"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "cameo-sodium-hypochlorite",
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06 aquatic facilities circular; CAMEO Chemicals: Sodium hypochlorite",
+      "source_note": "Pools hold hypochlorite and hydrochloric acid in a chemical store; mixing releases chlorine.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Storage of chemicals, item (2)",
+            "quoted_phrase": "Chlorine-containing chemicals are incompatible with acids and must be stored separately with adequate segregation and measures to prevent accidental mixing."
+          },
+          {
+            "source_key": "cameo-sodium-hypochlorite",
+            "locator": "Reactivity Profile",
+            "quoted_phrase": "When heated or on contact with acids, they produce highly toxic fumes of chlorine gas"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "bulk_liquid_oxygen",
+      "label": "Bulk liquid oxygen vessel",
+      "category": "oxidiser",
+      "phase": "liquefied_gas",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "cameo-oxygen",
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen; WSH (MHI) Regulations 2017 First Schedule item 22",
+      "source_note": "Boiling point -183 °C (ICSC/CAMEO). Vessel pressure not stated in an accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": "Materials that burn in air will burn more vigorously in oxygen."
+          },
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule Part 1, item 22 Oxygen (2,000 t threshold)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "stored_pressure_bar"
+        ]
+      }
+    },
+    {
+      "kind_key": "medical_gas_cylinders",
+      "label": "Compressed oxygen cylinders",
+      "category": "pressurised_gas",
+      "phase": "gas",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [
+        "vessel_burst"
+      ],
+      "stored_pressure_bar": 137.9,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "cameo-oxygen"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen",
+      "source_note": "2,000 psig converted to 137.9 bar as a minimum fill pressure.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": "As a non-liquid gas it is shipped at pressures of 2000 psig or above."
+          },
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": "Under prolonged exposure to fire or intense heat the containers may rupture violently and rocket."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "laboratory_chemicals",
+      "label": "Laboratory chemicals",
+      "category": "toxic_chemical",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_chemical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.2 (SS 641)",
+      "source_note": "Laboratories follow SS 641 (not accessed). Mixed inventory: no single agent.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.2 Fire safety requirements for laboratories handling hazardous chemicals",
+            "quoted_phrase": "Laboratories storing and using chemicals/ HazMat shall comply with"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "welding_gas_cylinders",
+      "label": "Welding gas cylinders (acetylene and oxygen)",
+      "category": "pressurised_gas",
+      "phase": "gas",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [
+        "jet_fire",
+        "vessel_burst"
+      ],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "niosh-npg-acetylene"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Acetylene",
+      "source_note": "Acetylene is not in the release-agent subset (NIOSH gives no UEL), so agent_key is null.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-acetylene",
+            "locator": "Physical Description; LEL 2.5%; Relative Gas Density 0.91",
+            "quoted_phrase": "Shipped under pressure dissolved in acetone."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "stored_pressure_bar",
+          "threat_keys"
+        ]
+      }
+    },
+    {
+      "kind_key": "ammonia_refrigeration",
+      "label": "Ammonia refrigeration plant",
+      "category": "toxic_chemical",
+      "phase": "liquefied_gas",
+      "agent_key": "ammonia",
+      "contents_key": null,
+      "threat_keys": [
+        "toxic_release_indoor",
+        "toxic_release_outdoor"
+      ],
+      "stored_pressure_bar": 8.6,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "niosh-npg-ammonia",
+        "ss-683-2-2022-preview"
+      ],
+      "source_ref": "SS 683-2:2022 introduction; NIOSH Pocket Guide: Ammonia",
+      "source_note": "Stored pressure is ammonia's vapour pressure at ambient (8.5 atm = 8.6 bar). Used in food cold stores.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ss-683-2-2022-preview",
+            "locator": "Introduction 0.1",
+            "quoted_phrase": "Ammonia, which is used as a refrigerant in the cold chain for food business, has toxic and flammable properties."
+          },
+          {
+            "source_key": "niosh-npg-ammonia",
+            "locator": "Vapor Pressure 8.5 atm; LEL 15%; UEL 28%",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "traction_power_equipment",
+      "label": "Rail traction power equipment",
+      "category": "electrical",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": "fuel_electrical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "cpfprts",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.1; CPFPRTS (not accessed)",
+      "source_note": "RTS includes on-line electrical substations. Voltages and equipment not stated in an accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.1 Rapid Transit System (RTS) (on-line electrical substations)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cpfprts",
+            "locator": "Whole code (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "sprinkler_system",
+      "label": "Automatic sprinkler system",
+      "category": "mitigation",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": "fire_growth",
+      "activation_c": 68,
+      "sensitivity": "public",
+      "source_keys": [
+        "nfpa-13",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4; NFPA 13 (not accessed)",
+      "source_note": "68 °C is the common ordinary-temperature bulb rating; planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nfpa-13",
+            "locator": "Sprinkler temperature ratings table (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "activation_c"
+        ]
+      }
+    },
+    {
+      "kind_key": "smoke_control_system",
+      "label": "Smoke control or purging system",
+      "category": "mitigation",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": "smoke",
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.4, Cl.5.2",
+      "source_note": "Engineered smoke control and car-park purging run on primary and secondary power.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.5.2 Primary and Secondary Power Supplies (clause title)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "gaseous_suppression_system",
+      "label": "Fixed gaseous fire suppression",
+      "category": "mitigation",
+      "phase": "system",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": "fire_growth",
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.5",
+      "source_note": "Typical in server and switch rooms; agent and activation not stated in an accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.5 Fixed Automatic Fire Extinguishing Systems (clause title)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "category"
+        ]
+      }
+    },
+    {
+      "kind_key": "pressurised_lpg_storage",
+      "label": "Pressurised liquefied gas storage (process plant)",
+      "category": "flammable_gas",
+      "phase": "liquefied_gas",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule item 18",
+      "source_note": "Category only (WS9 9.8). The regulation is cited only to show the category exists; no quantity is recorded.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule Part 1, item 18",
+            "quoted_phrase": "Liquefied flammable gases, Category 1 or 2 (including LPG)"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "toxic_intermediate_store",
+      "label": "Toxic process chemical store (process plant)",
+      "category": "toxic_chemical",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_chemical",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule",
+      "source_note": "Category only (WS9 9.8). No substance, quantity or layout is recorded.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule Parts 1 and 2 (named and categorised dangerous substances)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "flammable_liquid_tank",
+      "label": "Flammable liquid tankage (process plant)",
+      "category": "flammable_liquid",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule item 23; Fire Code 2023 Cl.1.1.6",
+      "source_note": "Category only (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule Part 1, item 23 Petroleum products and alternative fuels",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.6 (open plant processing, SS 634)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "vehicle_fuel_store",
+      "label": "Vehicle fuel store (military, generic)",
+      "category": "fuel_store",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences; Fire Code 2023 Table 1.4A",
+      "source_note": "Category only (WS9 9.8): public fuel classification and the public purpose-group listing; nothing about any camp.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a) petroleum classes (diesel Class III)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III (military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "vehicle_workshop_solvents",
+      "label": "Vehicle workshop solvents and lubricants (military, generic)",
+      "category": "flammable_liquid",
+      "phase": "liquid",
+      "agent_key": null,
+      "contents_key": "fuel_flammable_liquid",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence; Fire Code 2023 Table 1.4A",
+      "source_note": "Category only (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Petroleum classes and exemption quantities",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VI (vehicle repair/ servicing)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    },
+    {
+      "kind_key": "ammunition_store_generic",
+      "label": "Ammunition store (generic)",
+      "category": "explosive_store",
+      "phase": "solid",
+      "agent_key": null,
+      "contents_key": null,
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (category existence only)",
+      "source_note": "Category word only, no quantity and no threat profile (migration 257 constraint). Any explosion is a WS6 device under D22.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III (military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": []
+      }
+    }
+  ]
+}

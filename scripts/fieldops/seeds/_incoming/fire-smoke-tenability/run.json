@@ -1,0 +1,40 @@
+{
+  "file": "run.json",
+  "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+  "run_kind": "agent",
+  "agent_model": "Cursor cloud agent (Claude), worker bc-f053248e-fcdd-571e-8c24-5eefd7303c53",
+  "library": "fire_smoke_tenability",
+  "brief_key": "fire_smoke_tenability",
+  "brief_hash": null,
+  "brief_note": "scripts/fieldops/knowledge/briefs/ does not exist yet; the brief was the coordinator's assignment.",
+  "started_at": "2026-11-22T08:02:00Z",
+  "finished_at": "2026-11-22T08:40:00Z",
+  "review_status": "pending",
+  "counts": {
+    "rows_by_file": {
+      "smoke-movement.pending.json": 23,
+      "fire-growth-spread.pending.json": 19,
+      "tenability-response.pending.json": 16,
+      "outdoor-evacuation.pending.json": 10
+    },
+    "rows_drafted": 68,
+    "worked_examples": 16,
+    "sources_cited": 34,
+    "rows_refused": 0
+  },
+  "not_accessed": [
+    "NRC website (403 from this machine; NUREG-1805 read from GPO govinfo)",
+    "SFPE Handbook",
+    "NFPA 92 full text",
+    "CIBSE Guide E",
+    "PD 7974-6 full text",
+    "BRE BD 2552",
+    "Zukoski 1980"
+  ],
+  "checks": [
+    "every quote <= 25 words",
+    "every locator <= 120 chars",
+    "every cited source_key in sources.json",
+    "worked examples recomputed by gen script"
+  ]
+}

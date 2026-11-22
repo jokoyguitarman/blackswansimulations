@@ -1,0 +1,270 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "military_support",
+  "title": "SAF: Military Support response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Armed Forces",
+  "agency_key": "sg_saf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_saf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Singapore Armed Forces Act 1972 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/SAFA1972",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 201B, 201C(1), (9), (10), 201E, 201F, 201G",
+        "quoted_phrase": "take measures (including the use of force) reasonable and necessary in the circumstances"
+      },
+      {
+        "title": "Criminal Procedure Code 2010",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CPC2010",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 59 to 61",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Fact Sheet: Island Defence Task Force (IDTF)",
+        "publisher": "Ministry of Defence",
+        "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/08mar23_fs/",
+        "published": "2023-03-08",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras a to d",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Fact Sheet: Army Deployment Force for Homeland Security Operations and Contingencies",
+        "publisher": "Ministry of Defence",
+        "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2016jun30-news-releases-00031/",
+        "published": "2016-06-30",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 2 and 3",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "use_of_force.authorised_levels.less_lethal",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "st_order0002",
+          "nv_noorder1"
+        ],
+        "source_index": 0,
+        "locator": "ss. 201C(1), (4), 201E(1)"
+      },
+      {
+        "ids": [
+          "st_handpol01",
+          "ho_police02"
+        ],
+        "source_index": 0,
+        "locator": "s. 201G(1)"
+      },
+      {
+        "ids": [
+          "nv_lethal001"
+        ],
+        "source_index": 0,
+        "locator": "s. 201F(1)"
+      },
+      {
+        "ids": [
+          "mission",
+          "st_poi000001",
+          "st_scdfsupp1",
+          "st_spfsupp01",
+          "ho_scdf0001"
+        ],
+        "source_index": 2,
+        "locator": "paras a, c, d"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Support the Home Team when deployed in aid of the civilian authorities under the SAF Act: protect key installations, coordinate military resources for SCDF in civil emergencies and support SPF to contain terrorist threats.",
+    "sequence": [
+      {
+        "id": "st_order0002",
+        "window": null,
+        "label": "Lawful deployment",
+        "action": "Act only under a Ministerial deployment order for a relevant event, and only with the powers that order names."
+      },
+      {
+        "id": "st_poi000001",
+        "window": null,
+        "label": "Protect installations",
+        "action": "Protect SAF camps and bases and designated civilian key installations."
+      },
+      {
+        "id": "st_scdfsupp1",
+        "window": null,
+        "label": "Support SCDF",
+        "action": "In a civil emergency, coordinate military resources in support of SCDF's operations, for evacuation and first aid."
+      },
+      {
+        "id": "st_spfsupp01",
+        "window": null,
+        "label": "Support SPF",
+        "action": "In a terrorist threat, support SPF to contain the situation with the units assigned to the IDTF."
+      },
+      {
+        "id": "st_handpol01",
+        "window": null,
+        "label": "Hand over detainees",
+        "action": "Hand any person arrested or detained to a police officer as soon as practicable."
+      }
+    ],
+    "never": [
+      {
+        "id": "nv_lethal001",
+        "action": "Use force likely to cause death or grievous hurt beyond what SAF Act s. 201F allows",
+        "why": "Only to protect life or prevent serious injury, or protect infrastructure named in the order.",
+        "exception": null
+      },
+      {
+        "id": "nv_noorder1",
+        "action": "Exercise deployment powers without the Minister's authorisation or a lawful superior order",
+        "why": "SAF Act s. 201E(1).",
+        "exception": null
+      }
+    ],
+    "hand_offs": [
+      {
+        "id": "ho_police02",
+        "to_archetype": "police_security",
+        "to_label": "SPF",
+        "when": "A person is arrested or detained by a serviceman."
+      },
+      {
+        "id": "ho_scdf0001",
+        "to_archetype": "incident_command",
+        "to_label": "SCDF Incident Manager",
+        "when": "Military resources are committed to a civil emergency."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_saf201b0",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201B",
+        "power": "The Minister may authorise SAF deployment for air or sea operations in aid of civilian authorities, including rescuing a hijacked aircraft or vessel, with reasonable and necessary measures including force.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_saf201c0",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201C",
+        "power": "The Minister may order SAF deployment for a relevant event (including a terrorist attack or hostage-taking); servicemen may then exercise listed CPC and POSSPA police powers.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_saf201e0",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201E",
+        "power": "A serviceman acts only on the Minister's authorisation or a lawful superior order; the Minister authorises lethal measures only if reasonable and necessary.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_saf201f0",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201F",
+        "power": "Force likely to cause death or grievous hurt only if necessary to protect life or prevent serious injury, or to protect infrastructure named in the order.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_saf201g0",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201G",
+        "power": "Persons arrested or detained by a serviceman are handed to a police officer as soon as practicable.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_cpc59061",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "ss. 59 to 61",
+        "power": "An assembly that cannot otherwise be dispersed may be dispersed by military force at the request of the Minister, Commissioner or a Deputy Commissioner of Police.",
+        "jurisdiction": null
+      }
+    ],
+    "use_of_force": {
+      "framework": "military_rules_of_engagement",
+      "authorised_levels": [
+        "presence",
+        "verbal",
+        "physical_control",
+        "lethal"
+      ],
+      "conditions": [
+        {
+          "id": "uf_physcl02",
+          "level": "physical_control",
+          "when": "Exercise the arrest and search powers of CPC ss. 63 to 68 and 75 to 85 that s. 201C(9)(a) applies, under a deployment order in force.",
+          "authority_ids": [
+            "la_saf201c0"
+          ]
+        },
+        {
+          "id": "uf_lethal03",
+          "level": "lethal",
+          "when": "Necessary to protect the life of, or prevent serious injury to, another person, or to protect infrastructure specified in the deployment order.",
+          "authority_ids": [
+            "la_saf201f0",
+            "la_saf201e0"
+          ]
+        }
+      ],
+      "principles": [
+        "Measures must be reasonable and necessary in the circumstances (SAF Act ss. 201B, 201E).",
+        "No greater indignity than is reasonable and necessary (s. 201F(1)(c)).",
+        "The Minister must have regard to Singapore's international obligations (s. 201E(3))."
+      ],
+      "command_authority": "The Minister, satisfied lethal measures are reasonable and necessary (s. 201E(3)), or a lawful superior order (s. 201E(1)(b), (4)).",
+      "civil_support": "Deployed by Ministerial order under SAF Act s. 201C for a relevant event; exercises listed police powers and hands detainees to the police (s. 201G)."
+    }
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country",
+      "legal or military_service"
+    ],
+    "notes": "Rules of engagement are restricted; only the public SAF Act basis and published MINDEF factsheets are used. less_lethal omitted (an ADF factsheet names equipment, which is not recorded).",
+    "history": []
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "ministry_liaison",
+  "title": "MHA: Ministry Liaison response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Ministry of Home Affairs",
+  "agency_key": "sg_mha",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_mha",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Ministerial Statement on the impact of the Middle East situation on Singapore",
+        "publisher": "Ministry of Home Affairs",
+        "url": "https://www.mha.gov.sg/media-room/newsroom/ministerial-statement-on-the-impact-of-the-middle-east-situation-on-singapore/",
+        "published": "2026-04-07",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 1 to 7",
+        "quoted_phrase": "The HCEG coordinates across government agencies, to anticipate potential emergency scenarios, ensure the necessary contingency plans are prepared"
+      },
+      {
+        "title": "Public Order and Safety (Special Powers) Act 2018 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/POSSPA2018",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 8(1)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Infrastructure Protection Act 2017",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/IPA2017",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 58(1)",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_hceg00002"
+        ],
+        "source_index": 0,
+        "locator": "paras 2 to 7"
+      },
+      {
+        "ids": [
+          "st_activate1",
+          "ho_police03"
+        ],
+        "source_index": 1,
+        "locator": "s. 8(1)"
+      },
+      {
+        "ids": [
+          "st_ipaorder1"
+        ],
+        "source_index": 2,
+        "locator": "s. 58(1)"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Lead the whole-of-government response to a homefront crisis: the Minister for Home Affairs chairs the Homefront Crisis Ministerial Committee, and the Homefront Crisis Executive Group coordinates across agencies.",
+    "sequence": [
+      {
+        "id": "st_hceg00002",
+        "window": null,
+        "label": "Coordinate",
+        "action": "Through the HCEG, coordinate across government agencies, ensure contingency plans are ready, and respond to the impact of the crisis; the HCEG reports to the HCMC."
+      },
+      {
+        "id": "st_activate1",
+        "window": null,
+        "label": "Activation order",
+        "action": "Where a serious incident has occurred or is threatened and special powers are necessary, consider an activation order to the Commissioner of Police."
+      },
+      {
+        "id": "st_ipaorder1",
+        "window": null,
+        "label": "Premises orders",
+        "action": "Where there is an imminent risk of a terrorist act against premises, consider ordering the owner to close them, deploy security or implement security measures."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_police03",
+        "to_archetype": "police_security",
+        "to_label": "SPF",
+        "when": "An activation order is made and given to the Commissioner of Police."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_posspa08",
+        "instrument": "Public Order and Safety (Special Powers) Act 2018",
+        "provision": "s. 8",
+        "power": "The Minister may, by order in writing to the Commissioner, activate the Act's powers when a serious incident occurs or is threatened and the powers are needed.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_ipa00058",
+        "instrument": "Infrastructure Protection Act 2017",
+        "provision": "s. 58",
+        "power": "The Minister may order the owner of premises at imminent risk of a terrorist act to close them, deploy security personnel or implement security measures.",
+        "jurisdiction": null
+      }
+    ]
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "The HCMC source is a 2026 statement about a supply crisis; it states the standing structure. POSSPA s. 30 communications stop orders (who issues them) not read; a media_comms seed should cover them.",
+    "history": []
+  }
+}

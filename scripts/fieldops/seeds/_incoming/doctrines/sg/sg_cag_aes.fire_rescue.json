@@ -1,0 +1,338 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "fire_rescue",
+  "title": "Changi AES: Fire & Rescue response",
+  "applies_to": [
+    "aircraft_impact"
+  ],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Changi Airport Group Airport Emergency Service",
+  "agency_key": "sg_cag_aes",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_cag_aes",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Airport Safety & Security",
+        "publisher": "Changi Airport Group",
+        "url": "https://www.changiairport.com/en/corporate/about-us/business-expertise/airport-safety-and-security.html",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Airport Emergency Service; Airport Emergency Plan; Safety Infrastructure",
+        "quoted_phrase": "AES fire-fighting vehicles respond to the scene of an aircraft accident in 2 minutes, not exceeding 3 minutes"
+      },
+      {
+        "title": "Air Navigation (139 — Aerodromes) Regulations 2023 (G.N. No. S 10/2023)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/SL-Supp/S10-2023/Published/20230113?DocDate=20230113",
+        "published": "2023-01-13",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "regs. 35(2), 36(1) to (3), 46, 47",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Changi Airport Group invests in new sea rescue craft to enhance passenger safety",
+        "publisher": "Changi Airport Group (newsroom)",
+        "url": "https://www.mynewsdesk.com/sg/changiairport/pressreleases/changi-airport-group-invests-in-new-sea-rescue-craft-to-enhance-passenger-safety-3349195",
+        "published": "2024-10-17",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 1 and 5",
+        "quoted_phrase": null
+      },
+      {
+        "title": "AIP Singapore, AD 2 WSSS Singapore Changi Intl (valid from 02 Oct 2025)",
+        "publisher": "Civil Aviation Authority of Singapore",
+        "url": "https://aim-sg.caas.gov.sg/aim-content/uploads/aip/02-OCT-2025/AIP-2/2025-10-02-000000/html/eAIP/SG-AD-2-WSSS-en-GB.html",
+        "published": "2025-10-02",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "WSSS AD 2.6 Rescue and fire fighting services",
+        "quoted_phrase": "All Airport Emergency Service personnel are trained in rescue and fire-fighting as well as medical first-aid."
+      },
+      {
+        "title": "SPF | Our People",
+        "publisher": "Singapore Police Force",
+        "url": "https://www.police.gov.sg/who-we-are/our-people",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Airport Police Division: introduction; roles / functions",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Training Directory, Civil Defence Academy Singapore",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Singapore Civil Defence Force, introduction",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "hand_offs.*.when (trigger wording Assumed)",
+      "sequence.st_control01.window.to_min (3 + 1, derived)",
+      "sequence.st_rescue002.window",
+      "aerodrome-to-SCDF command transfer rule"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_arrive001",
+          "st_control01",
+          "st_rescue002",
+          "st_aep000001",
+          "st_searesc1",
+          "st_otherem01",
+          "ex_arrive001"
+        ],
+        "source_index": 0,
+        "locator": "all three sections"
+      },
+      {
+        "ids": [
+          "st_command03"
+        ],
+        "source_index": 1,
+        "locator": "reg. 46(1) to (4)"
+      },
+      {
+        "ids": [
+          "st_searesc1"
+        ],
+        "source_index": 1,
+        "locator": "reg. 35(2)(c), 36(1)(b)"
+      },
+      {
+        "ids": [
+          "st_aep000001"
+        ],
+        "source_index": 1,
+        "locator": "reg. 35(2)(a), (b)"
+      },
+      {
+        "ids": [
+          "st_aep000001",
+          "ho_scdfim03"
+        ],
+        "source_index": 2,
+        "locator": "para 5 (mutual aid partners include SCDF, SPF, Police Coast Guard, MOH, MHA, CAAS)"
+      },
+      {
+        "ids": [
+          "ho_apd00001"
+        ],
+        "source_index": 4,
+        "locator": "Airport Police Division"
+      },
+      {
+        "ids": [
+          "ho_scdfim03"
+        ],
+        "source_index": 5,
+        "locator": "introduction (SCDF is Incident Manager)"
+      },
+      {
+        "ids": [
+          "ho_eod00002"
+        ],
+        "source_index": -1,
+        "locator": "Unit register: sg_saf_36_sce"
+      },
+      {
+        "ids": [
+          "ho_mohcas03"
+        ],
+        "source_index": -1,
+        "locator": "Agency register: sg_moh (MOH oral reply, 10 Jan 2018)"
+      },
+      {
+        "ids": [
+          "standards.0"
+        ],
+        "source_index": 1,
+        "locator": "reg. 36(2)"
+      },
+      {
+        "ids": [
+          "standards.0"
+        ],
+        "source_index": 3,
+        "locator": "AD 2.6 item 1"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Protect and save lives, minimise property damage and return the Changi aerodrome quickly to normal safe operations: provide aircraft rescue and firefighting, manage the Airport Emergency Plan and take charge of rescue, firefighting and crash-site operations.",
+    "sequence": [
+      {
+        "id": "st_arrive001",
+        "window": {
+          "from_min": 0,
+          "to_min": 3
+        },
+        "label": "Arrive",
+        "action": "Respond to the scene of an aircraft accident at the aerodrome within 2 minutes, not exceeding 3 minutes."
+      },
+      {
+        "id": "st_control01",
+        "window": {
+          "from_min": 0,
+          "to_min": 4
+        },
+        "label": "Fire control",
+        "action": "Bring the aircraft fire under control within a minute of arrival."
+      },
+      {
+        "id": "st_rescue002",
+        "window": null,
+        "label": "Rescue",
+        "action": "Follow fire control swiftly with rescue, and evacuate casualties to nearby medical facilities."
+      },
+      {
+        "id": "st_aep000001",
+        "window": null,
+        "label": "Airport Emergency Plan",
+        "action": "Manage the Airport Emergency Plan, coordinating the mutual aid agencies within the airport and its immediate vicinity, and take charge of rescue, firefighting and other crash-site operations."
+      },
+      {
+        "id": "st_command03",
+        "window": null,
+        "label": "Command posts",
+        "action": "Direct the overall response from the crisis management operations centre, with a mobile command post moved to the site for local coordination."
+      },
+      {
+        "id": "st_searesc1",
+        "window": null,
+        "label": "Crash at sea",
+        "action": "For an aircraft incident in the waters around the airport, respond with the sea rescue capability and coordinate with specialist rescue services."
+      },
+      {
+        "id": "st_otherem01",
+        "window": null,
+        "label": "Other emergencies",
+        "action": "Respond to dangerous goods incidents, bomb warnings and chemical or biological threats within the airport."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_apd00001",
+        "to_archetype": "police_security",
+        "to_label": "SPF Airport Police Division",
+        "when": "Law and order and aviation security at the airport are involved, including an act of unlawful interference."
+      },
+      {
+        "id": "ho_eod00002",
+        "to_archetype": "bomb_disposal_eod",
+        "to_label": "SAF EOD (36 SCE)",
+        "when": "A bomb warning or suspected explosive device is confirmed."
+      },
+      {
+        "id": "ho_scdfim03",
+        "to_archetype": "incident_command",
+        "to_label": "SCDF Incident Manager",
+        "when": "The emergency becomes a major disaster or civil emergency, or extends beyond the airport and its vicinity."
+      },
+      {
+        "id": "ho_mohcas03",
+        "to_archetype": "hospital_ed",
+        "to_label": "MOH",
+        "when": "Casualties are evacuated to medical facilities."
+      }
+    ],
+    "good_looks_like": [
+      {
+        "id": "ex_arrive001",
+        "description": "First rescue and firefighting vehicles at the aircraft accident within 3 minutes",
+        "within_minutes": 3,
+        "weight": 60,
+        "tier": 1,
+        "detection": "decision_recorded"
+      },
+      {
+        "id": "ex_control01",
+        "description": "Aircraft fire reported under control within a minute of arrival",
+        "within_minutes": 4,
+        "weight": 40,
+        "tier": 2,
+        "detection": "decision_recorded"
+      }
+    ],
+    "standards": [
+      {
+        "domain": "Aerodrome rescue and firefighting requirements",
+        "source": "ANR-139 (S 10/2023); AIP Singapore AD 2 WSSS; CAG",
+        "key_points": [
+          "The aerodrome operator must provide rescue and firefighting services whose level of protection and response time comply with the Aviation Specifications.",
+          "Rescue and firefighting personnel must be trained, including live fire drills, and readily available to ride the vehicles.",
+          "The emergency plan must coordinate the response at the aerodrome or in its vicinity and be tested through emergency exercises.",
+          "Changi is Category 10 for rescue and firefighting on all three runways.",
+          "CAG states a response of 2 minutes, not exceeding 3, and fire control within a minute of arrival."
+        ],
+        "decision_thresholds": "Arrive within 3 minutes; fire under control within 1 minute of arrival."
+      }
+    ],
+    "workflow": {
+      "endgame": "Fire out, casualties evacuated to medical facilities, and the aerodrome returned to normal safe operations.",
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_anr13935",
+        "instrument": "Air Navigation (139 — Aerodromes) Regulations 2023",
+        "provision": "reg. 35",
+        "power": "The aerodrome operator must keep an emergency plan that coordinates the response at the aerodrome or in its vicinity, including specialist rescue services for water, and test it through exercises.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_anr13936",
+        "instrument": "Air Navigation (139 — Aerodromes) Regulations 2023",
+        "provision": "regs. 36 and 47",
+        "power": "The aerodrome operator must provide rescue and firefighting services at the required level of protection and response time, with trained personnel readily available.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_anr13946",
+        "instrument": "Air Navigation (139 — Aerodromes) Regulations 2023",
+        "provision": "reg. 46",
+        "power": "The aerodrome operator must provide a crisis management operations centre for overall direction and a mobile command post for local coordination at the site.",
+        "jurisdiction": null
+      }
+    ]
+  },
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "reviewed_at": null,
+    "reviewer_role": null,
+    "required_reviewer_roles": [
+      "country",
+      "aviation rescue and firefighting"
+    ],
+    "notes": "Site-specific doctrine, approved by the user on 22 Nov 2026 as an exception to WS9 6.19. Scope: aircraft accidents at Changi aerodrome and its vicinity. An aircraft_impact into a building away from the airport is SCDF's (sg_scdf.*). Time targets are CAG's own published targets. No public source states when command passes from AES to SCDF, or what SPF does at a crash site; those hand-off triggers are Assumed. Equipment and vessels named in the sources are not transcribed.",
+    "history": []
+  }
+}

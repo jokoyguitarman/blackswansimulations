@@ -1,0 +1,1219 @@
+{
+  "file": "movement-parameters.pending.json",
+  "schema_version": 1,
+  "library": "movement",
+  "target_table": "fieldops_movement_parameters",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "pending",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "movement_parameter",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "rows": [
+    {
+      "param_key": "free_walk_speed",
+      "label": "Unimpeded walking speed, corridor",
+      "applies_to": "walking",
+      "value": 1.19,
+      "unit": "m_s",
+      "plausible_low": 0.9,
+      "plausible_high": 1.5,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "nist_tn_1722"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59 (max unimpeded speed, corridor); NIST TN 1722 Table 1",
+      "source_note": "0.85 k for densities below 0.54 p/m2 with k 1.40; NIST TN 1722 tabulates 1.20 at 0.54 p/m2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Table of maximum unimpeded speeds, corridor/aisle/ramp/doorway",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nist_tn_1722",
+            "locator": "Table 1, constants for equation (8)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "density_k_corridor",
+      "label": "Speed constant k, corridor, aisle, ramp, doorway",
+      "applies_to": "walking",
+      "value": 1.4,
+      "unit": "m_s",
+      "plausible_low": 1.2,
+      "plausible_high": 1.5,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "nist_tn_1722"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Eq. 59.5 constants; NIST TN 1722 Table 1",
+      "source_note": "S = k - a k D, with k 1.40 m/s for level elements.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Eq. 59.5 and k-value table",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nist_tn_1722",
+            "locator": "Table 1, constants for equation (8)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "density_a",
+      "label": "Speed-density constant a",
+      "applies_to": "walking",
+      "value": 0.266,
+      "unit": "m2_p",
+      "plausible_low": 0.25,
+      "plausible_high": 0.28,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Eq. 59.5",
+      "source_note": "a = 0.266 m2/person in SI units.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Eq. 59.5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "density_free_limit",
+      "label": "Density below which speed is unimpeded",
+      "applies_to": "walking",
+      "value": 0.54,
+      "unit": "p_m2",
+      "plausible_low": 0.5,
+      "plausible_high": 0.6,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, text before Eq. 59.5",
+      "source_note": "Linear speed-density relation holds between 0.54 and 3.8 p/m2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "text preceding Eq. 59.5",
+            "quoted_phrase": "Between the population density limits of 0.05 and 0.35 persons/ft2 (0.54 and 3.8 persons/m2)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "density_stop",
+      "label": "Density at which movement stops",
+      "applies_to": "group",
+      "value": 3.8,
+      "unit": "p_m2",
+      "plausible_low": 3.5,
+      "plausible_high": 4.0,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, text before Eq. 59.5",
+      "source_note": "Upper limit of the linear relation; speed reaches zero near 1/a = 3.76 p/m2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "text preceding Eq. 59.5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "max_specific_flow",
+      "label": "Maximum specific flow, corridor, ramp, held-open door",
+      "applies_to": "exit",
+      "value": 1.3,
+      "unit": "p_s_m",
+      "plausible_low": 1.1,
+      "plausible_high": 1.4,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "impvis_hydraulic_tables"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, maximum specific flow table",
+      "source_note": "1.3 persons/s per metre of effective width; a non-held-open door about 50 persons/min per leaf (ImpVis note).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "maximum specific flow table",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "impvis_hydraulic_tables",
+            "locator": "tables 'Element Specific k-values', 'Max Specific flow rate', 'Element boundary layers'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "boundary_layer_door",
+      "label": "Boundary layer, door or archway",
+      "applies_to": "exit",
+      "value": 0.15,
+      "unit": "m",
+      "plausible_low": 0.1,
+      "plausible_high": 0.2,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Table 59.1",
+      "source_note": "15 cm each side.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Table 59.1 Boundary layer widths",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "boundary_layer_corridor",
+      "label": "Boundary layer, corridor or ramp wall",
+      "applies_to": "walking",
+      "value": 0.2,
+      "unit": "m",
+      "plausible_low": 0.2,
+      "plausible_high": 0.2,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Table 59.1",
+      "source_note": "20 cm each side. New key (not in WS9 5.19).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Table 59.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "boundary_layer_stair",
+      "label": "Boundary layer, stair wall or tread side",
+      "applies_to": "stairs",
+      "value": 0.15,
+      "unit": "m",
+      "plausible_low": 0.15,
+      "plausible_high": 0.15,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "nist_tn_1722"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Table 59.1; NIST TN 1722",
+      "source_note": "15 cm; handrails 9 cm. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Table 59.1",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nist_tn_1722",
+            "locator": "Table 1, constants for equation (8)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "boundary_layer_handrail",
+      "label": "Boundary layer, railing or handrail",
+      "applies_to": "stairs",
+      "value": 0.09,
+      "unit": "m",
+      "plausible_low": 0.09,
+      "plausible_high": 0.09,
+      "source_keys": [
+        "sfpe_hb5_ch59"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59, Table 59.1",
+      "source_note": "3.5 in (8.9 cm). ImpVis prints 98 cm, a typo. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "Table 59.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "stair_k",
+      "label": "Speed constant k, stair 7 in riser / 11 in tread",
+      "applies_to": "stairs",
+      "value": 1.08,
+      "unit": "m_s",
+      "plausible_low": 1.0,
+      "plausible_high": 1.23,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "nist_tn_1722"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59 k-value table; NIST TN 1722 Table 1",
+      "source_note": "k 1.00 (7.5/10), 1.08 (7/11), 1.16 (6.5/12), 1.23 (6.5/13); range spans the table. Singapore riser and tread not checked.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sfpe_hb5_ch59",
+            "locator": "k-value table, stairs",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nist_tn_1722",
+            "locator": "Table 1, constants for equation (8)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "Singapore riser/tread mapping"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "stair_max_specific_flow",
+      "label": "Maximum specific flow, stair 7/11",
+      "applies_to": "stairs",
+      "value": 1.01,
+      "unit": "p_s_m",
+      "plausible_low": 0.94,
+      "plausible_high": 1.16,
+      "source_keys": [
+        "sfpe_hb5_ch59",
+        "impvis_hydraulic_tables"
+      ],
+      "source_ref": "SFPE Handbook 5th ed. ch. 59 maximum specific flow table (via ImpVis)",
+      "source_note": "0.94 (7.5/10), 1.01 (7/11), 1.09 (6.5/12), 1.16 (6.5/13). New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "impvis_hydraulic_tables",
+            "locator": "tables 'Element Specific k-values', 'Max Specific flow rate', 'Element boundary layers'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "stair_speed_up_free",
+      "label": "Free horizontal speed upstairs (Weidmann)",
+      "applies_to": "stairs",
+      "value": 0.61,
+      "unit": "m_s",
+      "plausible_low": 0.61,
+      "plausible_high": 0.61,
+      "source_keys": [
+        "buchmueller_weidmann_2006"
+      ],
+      "source_ref": "Buchmüller and Weidmann (2006) Eq. 3",
+      "source_note": "Horizontal component, Kladek form with gamma 3.722 and jam 5.4 p/m2. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "Walking on stairs, Eq. 3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "stair_speed_down_free",
+      "label": "Free horizontal speed downstairs (Weidmann)",
+      "applies_to": "stairs",
+      "value": 0.694,
+      "unit": "m_s",
+      "plausible_low": 0.694,
+      "plausible_high": 0.694,
+      "source_keys": [
+        "buchmueller_weidmann_2006"
+      ],
+      "source_ref": "Buchmüller and Weidmann (2006) Eq. 4",
+      "source_note": "Horizontal component, gamma 3.802, jam 5.4 p/m2. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "Walking on stairs, Eq. 4",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "free_walk_speed_level_mean",
+      "label": "Mean free walking speed, level (Weidmann)",
+      "applies_to": "walking",
+      "value": 1.34,
+      "unit": "m_s",
+      "plausible_low": 0.97,
+      "plausible_high": 1.71,
+      "source_keys": [
+        "buchmueller_weidmann_2006"
+      ],
+      "source_ref": "Buchmüller and Weidmann (2006) section 2.3.1, Fig. 12",
+      "source_note": "Mean 1.34 m/s, SD 0.37; range is mean +/- 1 SD (derived). Pedestrian traffic, not emergency egress. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "section 2.3.1",
+            "quoted_phrase": "an estimated mean of 1.34 m/s and a standard deviation of 0.37 m/s"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible range (mean +/- 1 SD)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "density_jam_kladek",
+      "label": "Jam density, Kladek speed-density relation",
+      "applies_to": "group",
+      "value": 5.4,
+      "unit": "p_m2",
+      "plausible_low": 5.4,
+      "plausible_high": 5.4,
+      "source_keys": [
+        "buchmueller_weidmann_2006"
+      ],
+      "source_ref": "Buchmüller and Weidmann (2006) Eq. 1 and Eqs. 3-4",
+      "source_note": "v(D) = v0 [1 - exp(-1.913 (1/D - 1/5.4))]. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "Eq. 1 (Kladek formula)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "crowd_fluid_density",
+      "label": "Density at which a crowd becomes almost a fluid mass",
+      "applies_to": "group",
+      "value": 7.0,
+      "unit": "p_m2",
+      "plausible_low": 6.0,
+      "plausible_high": 9.0,
+      "source_keys": [
+        "fruin_1993_crowd"
+      ],
+      "source_ref": "Fruin (1993, rev. 2002), 'The view from the crowd'",
+      "source_note": "About 7 p/m2: individual control lost, shock waves through the crowd. Not the same as WS9's crush_density 5.0 (unconfirmed). New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "fruin_1993_crowd",
+            "locator": "'The view from the crowd'",
+            "quoted_phrase": "At occupancies of about 7 persons per square meter the crowd becomes almost a fluid mass."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "plausible_low, plausible_high"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "crawl_speed",
+      "label": "Crawling speed, hands and knees, normal",
+      "applies_to": "crawl",
+      "value": 0.71,
+      "unit": "m_s",
+      "plausible_low": 0.54,
+      "plausible_high": 0.93,
+      "source_keys": [
+        "muhdi_2006",
+        "kady_davis_2009",
+        "cao_2017_dissertation"
+      ],
+      "source_ref": "Muhdi et al. (2006) normal crawl 0.71 m/s; Kady and Davis (2009) 0.54-0.93 m/s; Nagai et al. (2006) 0.73 m/s; all via Cao (2017)",
+      "source_note": "DISCREPANCY: WS9 5.19 holds 0.4 m/s (range 0.2-0.7) citing Muhdi and Nagai, whose reported means are 0.71 and 0.73 m/s. Non-evacuation studies average about 0.55 m/s (Cao).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cao_2017_dissertation",
+            "locator": "section 2, crawling speed review; Table 2.4",
+            "quoted_phrase": "The average normal crawling speed was measured at 2.33 ft/s (0.71 m/s)"
+          },
+          {
+            "source_key": "muhdi_2006",
+            "locator": "via Cao (2017)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nagai_2006",
+            "locator": "via Cao (2017)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "kady_davis_2009",
+            "locator": "via Cao (2017)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "crawl_speed_max",
+      "label": "Crawling speed, hands and knees, maximum effort",
+      "applies_to": "crawl",
+      "value": 1.47,
+      "unit": "m_s",
+      "plausible_low": 1.47,
+      "plausible_high": 1.47,
+      "source_keys": [
+        "muhdi_2006",
+        "cao_2017_dissertation"
+      ],
+      "source_ref": "Muhdi et al. (2006) via Cao (2017)",
+      "source_note": "Average maximum crawl 1.47 m/s. New key.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cao_2017_dissertation",
+            "locator": "section 2",
+            "quoted_phrase": "average maximum crawling speed was measured at 4.82 ft/s (1.47 m/s)"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "visibility_k_lit",
+      "label": "Visibility constant, light-emitting sign",
+      "applies_to": "visibility",
+      "value": 8,
+      "unit": "ratio",
+      "plausible_low": 5,
+      "plausible_high": 10,
+      "source_keys": [
+        "jin_1978",
+        "pyfds_evac_docs"
+      ],
+      "source_ref": "Jin (1970-1978) via pyFDS-Evac visibility page; FDS User's Guide 22.10.5",
+      "source_note": "S = C/K with C 8; Jin's lit-sign range (5-10)/K.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "jin_1978",
+            "locator": "Jin 1978 p. 138; Jin 1971 Fig. 1 (via pyFDS-Evac)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "visibility_k_reflective",
+      "label": "Visibility constant, light-reflecting sign",
+      "applies_to": "visibility",
+      "value": 3,
+      "unit": "ratio",
+      "plausible_low": 2,
+      "plausible_high": 4,
+      "source_keys": [
+        "jin_1978",
+        "pyfds_evac_docs"
+      ],
+      "source_ref": "Jin (1970-1978) via pyFDS-Evac visibility page",
+      "source_note": "C 3; placard range (2-4)/K; walls and doors about 2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "jin_1978",
+            "locator": "Jin 1978 p. 138; Jin 1971 Fig. 2 (via pyFDS-Evac)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "smoke_mass_extinction",
+      "label": "Mass-specific extinction coefficient of soot",
+      "applies_to": "visibility",
+      "value": 8.7,
+      "unit": "m2_g",
+      "plausible_low": 7.6,
+      "plausible_high": 10,
+      "source_keys": [
+        "mulholland_croarkin_2000",
+        "iso_13571_2012"
+      ],
+      "source_ref": "Mulholland and Croarkin (2000); ISO 13571:2012 clause 9 Note 1 (generic 10 m2/g)",
+      "source_note": "8.7 m2/g, low end 8.7 - 1.1 (stated uncertainty, not re-read); ISO uses 10 m2/g for well-ventilated smoke.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "mulholland_croarkin_2000",
+            "locator": "abstract (not re-read)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "clause 9, Note 1",
+            "quoted_phrase": "a generic value of σ (corrected for white light) for well-ventilated fire smoke of 10 m2·g−1"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "plausible_low (uncertainty not re-read)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "tenable_radiant_kw_m2",
+      "label": "Radiant flux tenability limit for skin",
+      "applies_to": "heat",
+      "value": 2.5,
+      "unit": "kw_m2",
+      "plausible_low": 2.0,
+      "plausible_high": 3.0,
+      "source_keys": [
+        "iso_13571_2012"
+      ],
+      "source_ref": "ISO 13571:2012 clause 8.2",
+      "source_note": "About 2.5 kW/m2; above it time to 2nd-degree burn 6.9 q^-1.56 min (exposure-reference).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "8.2",
+            "quoted_phrase": "The tenability limit for exposure of skin to radiant heat is approximately 2,5 kW·m−2."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "smoke_dark_reference_speed",
+      "label": "Jin's walking speed in darkness (reference)",
+      "applies_to": "visibility",
+      "value": 0.3,
+      "unit": "m_s",
+      "plausible_low": 0.2,
+      "plausible_high": 0.5,
+      "source_keys": [
+        "jin_1978",
+        "pyfds_evac_docs"
+      ],
+      "source_ref": "Jin (1976/1978) via Purser (SFPE Handbook 6th ed. ch. 70) and pyFDS-Evac walking-speed page",
+      "source_note": "DISCREPANCY: WS9 5.19 'irritant_speed' 0.3 m/s cites Jin's irritant smoke, but 0.3 m/s is Jin's darkness reference line, not a measured irritant-smoke speed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "walking-speed page, synthesis and 'Jin: irritant and non-irritant smoke'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "plausible_low, plausible_high (restated from WS9 5.19)"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "smoke_speed_min",
+      "label": "Lower bound on walking speed in smoke (design rule)",
+      "applies_to": "visibility",
+      "value": 0.2,
+      "unit": "m_s",
+      "plausible_low": 0.2,
+      "plausible_high": 0.2,
+      "source_keys": [
+        "pyfds_evac_docs"
+      ],
+      "source_ref": "Fridolf et al., Eq. 7 design rule, as tabulated by pyFDS-Evac",
+      "source_note": "w = min(w_sf, max(0.2, w_sf - 0.34 (3 - x))), x visibility in m. Original paper's year and journal not confirmed (Unverified).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "walking-speed page, table row 'Fridolf et al., Eq. 7'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "original citation details"
+        ]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "los_walkway_a_min_area",
+      "label": "Fruin walkway LOS A, minimum area per person",
+      "applies_to": "walking",
+      "value": 3.25,
+      "unit": "m2_p",
+      "plausible_low": 3.25,
+      "plausible_high": 3.25,
+      "source_keys": [
+        "fruin_1971_hrr355",
+        "metrolinx_ds12"
+      ],
+      "source_ref": "Fruin (1971) LOS concept, metric table in Metrolinx DS-12 Table 1",
+      "source_note": "LOS A >= 3.25; B 2.32-3.25; C 1.39-2.32; D 0.93-1.39; E 0.46-0.93; F < 0.46 m2/p. New key; the other bounds below.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 1: Walkway Level of Service",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "fruin_1971_hrr355",
+            "locator": "Level of Service A",
+            "quoted_phrase": "35 sq ft per person or greater"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "los_walkway_e_min_area",
+      "label": "Fruin walkway LOS E/F boundary",
+      "applies_to": "walking",
+      "value": 0.46,
+      "unit": "m2_p",
+      "plausible_low": 0.46,
+      "plausible_high": 0.46,
+      "source_keys": [
+        "fruin_1971_hrr355",
+        "metrolinx_ds12"
+      ],
+      "source_ref": "Metrolinx DS-12 Table 1 (Fruin)",
+      "source_note": "Below 0.46 m2/p is LOS F (about 2.2 p/m2 and more).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "los_stair_a_min_area",
+      "label": "Fruin stairway LOS A, minimum area per person",
+      "applies_to": "stairs",
+      "value": 1.86,
+      "unit": "m2_p",
+      "plausible_low": 1.86,
+      "plausible_high": 1.86,
+      "source_keys": [
+        "metrolinx_ds12"
+      ],
+      "source_ref": "Metrolinx DS-12 Table 4 (Fruin)",
+      "source_note": "A >= 1.86; B 1.39-1.86; C 0.93-1.39; D 0.65-0.93; E 0.37-0.65; F < 0.37 m2/p.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 4: Stairway Level of Service",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "los_stair_e_min_area",
+      "label": "Fruin stairway LOS E/F boundary",
+      "applies_to": "stairs",
+      "value": 0.37,
+      "unit": "m2_p",
+      "plausible_low": 0.37,
+      "plausible_high": 0.37,
+      "source_keys": [
+        "metrolinx_ds12"
+      ],
+      "source_ref": "Metrolinx DS-12 Table 4 (Fruin)",
+      "source_note": "Below 0.37 m2/p is stairway LOS F.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 4",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "green_guide_level_flow",
+      "label": "Green Guide maximum egress rate, level",
+      "applies_to": "exit",
+      "value": 1.367,
+      "unit": "p_s_m",
+      "plausible_low": 1.367,
+      "plausible_high": 1.367,
+      "source_keys": [
+        "sgsa_green_guide_egress"
+      ],
+      "source_ref": "SGSA Egress (Green Guide 6th ed. ch. 10)",
+      "source_note": "82 persons per metre per minute, converted to per second (82/60).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sgsa_green_guide_egress",
+            "locator": "'Egress flow rate calculations'",
+            "quoted_phrase": "82 persons per metre width per minute on a level surface"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "param_key": "green_guide_stepped_flow",
+      "label": "Green Guide maximum egress rate, stepped",
+      "applies_to": "stairs",
+      "value": 1.1,
+      "unit": "p_s_m",
+      "plausible_low": 1.1,
+      "plausible_high": 1.1,
+      "source_keys": [
+        "sgsa_green_guide_egress"
+      ],
+      "source_ref": "SGSA Egress (Green Guide 6th ed. ch. 10)",
+      "source_note": "66 persons per metre per minute, converted (66/60).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sgsa_green_guide_egress",
+            "locator": "'Egress flow rate calculations'",
+            "quoted_phrase": "66 persons per metre width per minute on a stepped surface"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "crouch_speed_factor",
+      "sources_checked": [
+        "cao_2017_dissertation"
+      ],
+      "why": "No crouch/stoop ratio located; Cao lists stoop-walking 1.01 m/s (MacLellan 2012) without a matched walking baseline. WS9 value 0.6 stays Unverified."
+    },
+    {
+      "subject": "crouch_visibility_m, reroute_visibility_m, turn_back_permille",
+      "sources_checked": [],
+      "why": "BS PD 7974-6, Bryan and Wood not read in this run."
+    },
+    {
+      "subject": "smoke_speed_floor_factor",
+      "sources_checked": [
+        "pyfds_evac_docs"
+      ],
+      "why": "Sources give absolute regressions (exposure-reference), not WS9's factor form; a factor would be derived, so left to the reviewer."
+    },
+    {
+      "subject": "tenable_temp_head_c (60 C)",
+      "sources_checked": [
+        "iso_13571_2012"
+      ],
+      "why": "ISO gives time-to-incapacitation equations and a ~120 C convected limit, not a 60 C threshold; 60 C (PD 7974-6) not read. At 60 C, ISO Eq. 10 gives about 45 min."
+    },
+    {
+      "subject": "water_slow_depth_m, water_stop_depth_m",
+      "sources_checked": [],
+      "why": "Ishigaki et al. (2009) not read."
+    },
+    {
+      "subject": "breathing_height_standing, breathing_height_crawling",
+      "sources_checked": [
+        "nz_cvm2_2025"
+      ],
+      "why": "Not stated in ISO 13571 as read; C/VM2 measures tenability at 2.0 m (exposure-reference)."
+    },
+    {
+      "subject": "crush_density (5.0)",
+      "sources_checked": [
+        "fruin_1993_crowd"
+      ],
+      "why": "Fruin (as revised 2002) states ~7 p/m2 as fluid; Still (2014) not read."
+    },
+    {
+      "subject": "Fruin stair descent speeds; slope speed factors",
+      "sources_checked": [
+        "buchmueller_weidmann_2006"
+      ],
+      "why": "Weidmann gives a slope figure (Fig. 17) without tabulated values; Tobler's hiking function recorded as Unverified in exposure-reference."
+    }
+  ],
+  "refused": []
+}

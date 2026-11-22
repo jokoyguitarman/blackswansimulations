@@ -1,0 +1,26 @@
+{
+  "run_id": null,
+  "run_kind": "agent",
+  "agent_model": "claude-opus (Cursor cloud agent)",
+  "agent_id": "bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b",
+  "libraries": [
+    "spread",
+    "threats",
+    "movement"
+  ],
+  "started_at": "2026-11-22T07:08:00Z",
+  "finished_at": "2026-11-22T07:21:37Z",
+  "rows_drafted": 105,
+  "rows_by_file": {
+    "spread-materials.pending.json": 7,
+    "release-agents.pending.json": 12,
+    "threat-profiles.pending.json": 5,
+    "movement-parameters.pending.json": 31,
+    "incident-types.pending.json": 7,
+    "exposure-reference.pending.json": 43
+  },
+  "rows_refused": 3,
+  "sources_cited": 32,
+  "uncovered": 20,
+  "note": "No brief_hash: run was not made through scripts/fieldops/knowledge/researchAgent.ts (not built yet). importApproved must skip these files while review_status is pending."
+}
