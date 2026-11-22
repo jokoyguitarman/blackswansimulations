@@ -1,6 +1,6 @@
 # The living world (WS9)
 
-**Status:** v1.1, 22 Nov 2026. Not built. Written on 3 Nov 2026. **Added 22 Nov 2026:** revised for master D38 to D45 (10.8 items 41 to 45): the offline knowledge pipeline, the threat, agent and movement library, the building-hazard catalogue, the layered 3D world on the studs, evacuees who react to hazards, and the 3D state on the 2D map. Every new or changed passage is marked **Added 22 Nov 2026** or **Updated 22 Nov 2026**. Later on 22 Nov, D46 and D47 widened the incident types beyond bombing: section 6.27 specifies the event models, phase by phase.
+**Status:** v1.1, 22 Nov 2026. Not built. Written on 3 Nov 2026. **Added 22 Nov 2026:** revised for master D38 to D45 (10.8 items 41 to 45): the offline knowledge pipeline, the threat, agent and movement library, the building-hazard catalogue, the layered 3D world on the studs, evacuees who react to hazards, and the 3D state on the 2D map. Every new or changed passage is marked **Added 22 Nov 2026** or **Updated 22 Nov 2026**. Later on 22 Nov, D46 and D47 widened the incident types beyond bombing: section 6.27 specifies the event models, phase by phase. The owner's answers of the same day (D48 to D54) add sections 6.28 to 6.32 and 7.13: a business-as-usual population with per-person injuries, storeys designed one by one, individual evacuees indoors and in the street, slopes, combined events, and units with equipment under RTS controls.
 **Workstream:** WS9
 **Depends on:** [the master plan](00-master-plan.md); [01](01-prerequisites.md), [02](02-teams-and-doctrines.md) (added 22 Nov 2026, for the pipeline and the new archetypes), [04](04-site-picker.md), [05](05-layout-step.md), [06](06-compile-and-review.md), [07](07-device-and-physics.md) and [08](08-people-or-ai.md); softly [09](09-after-publish.md)
 **Flags:** `ENABLE_FIELDOPS_WORLD_SIM`
@@ -81,6 +81,13 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 | D45 | Decided | **Added 22 Nov 2026.** Studs as the index (W25), layers (W26), grid-index neighbours (W28), physically based steps (W29 to W32) and per-stud blasts (W33). |
 | D46 | Decided | **Added 22 Nov 2026.** Section 6.27: one event model per incident type on the layered world and the evacuee rules, with its threat profile, seeds, criteria AC9.85 to AC9.104 and tasks T9.34 to T9.42, in three phases. |
 | D47 | Decided | **Added 22 Nov 2026.** Section 6.27.10 and section 9.9: consequences only, generic classes and bands, the trainer places every event, nothing ranks targets, routes or timings. |
+| D48 | Decided | **Added 22 Nov 2026.** The armed-attacker types are locked: section 6.27.8's row is not built, `incidentTypesEnabled` refuses them, and a ramming driver is only a last-known position (AC9.122). |
+| D49 | Decided | **Added 22 Nov 2026.** Events combine into one storyline (W55, section 6.31). |
+| D50 | Decided | **Added 22 Nov 2026.** Each storey is its own plan from WS4 (W49, section 6.29). |
+| D51 | Decided | **Added 22 Nov 2026.** `populate` and per-person injuries (W50, W51, section 6.28). |
+| D52 | Decided | **Added 22 Nov 2026.** Individual evacuees, storey choice, lifts and flight in the street (W48, W52, W53, section 6.30). |
+| D53 | Decided | **Added 22 Nov 2026.** Slopes (W54, section 6.30.6). |
+| D54 | Decided | **Added 22 Nov 2026.** Unit kinds and equipment as seeded data, and RTS controls (W56, sections 6.32 and 7.13). |
 
 Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 250 to 256); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
 
@@ -95,7 +102,7 @@ Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS
 | W5 | The trainer draws one plan. The world replicates it on at most four floors (from -1 to 2) that her stairwells or devices name, with exits on floor 0 only. Crowd zones stand on floor 0; the unassigned remainder is spread evenly over the modelled floors. **Updated 22 Nov 2026:** replaced by W27 (up to 12 storeys from the building's levels). | WS4's walls, hazards and crowd zones carry no floor (`05-layout-step.md` section 5.4); stairwells name the floors they link. |
 | W6 | Each involved building is one compartment with an involvement fraction, smoke, a structural state, its occupants and WS4's generated exits. | D9. |
 | W7 | Outdoors there is no grid: each smoke or gas source has a wind-aligned plume shape, recomputed every 5 seconds. **Updated 22 Nov 2026:** the shape now carries concentrations from a plume model (W32). | The brief's "simple plume shapes outdoors"; an outdoor grid would multiply the cell count by ten. |
-| W8 | The crowd moves as groups of at most 50 people on flow fields towards usable exits, then towards a muster point. **Updated 22 Nov 2026:** groups take a posture and react to the layer at their breathing height (W34). | The brief's "crowds as zone flows"; 400 groups bound the cost whatever the headcount. |
+| W8 | The crowd moves as groups of at most 50 people on flow fields towards usable exits, then towards a muster point. **Updated 22 Nov 2026:** groups take a posture and react to the layer at their breathing height (W34). **Updated 22 Nov 2026 (D52):** people are individual agents up to the world's cap; groups remain only beyond it (W48). | The brief's "crowds as zone flows"; 400 groups bound the cost whatever the headcount. |
 | W9 | Engine state is integers (permille levels, whole seconds); randomness comes from named seeded streams; every snapshot carries a hash of the state. | Bit-identical replays for the After-Action Review and for tests. |
 | W10 | Worlds run in `node:worker_threads`, at most two threads hosting at most four worlds per process, with a 250 ms budget per one-second tick. | Master risk 19: the main thread runs every engine and Socket.IO (journey finding 4.14). |
 | W11 | One process runs a session's world, under a lease in the database with WS0's scope rule, and only where `env.runBackgroundEngines` is true. | Master 10.8 item 39 ("leased per session as WS0 leases jobs, so one process runs it"); a development server must never run a production world (`server/env.ts:107-117`). |
@@ -114,7 +121,7 @@ Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS
 | W24 | The spread library has a review record like WS6's. While the deployed dataset is unreviewed, production runs live worlds only for sessions whose trainer is an admin, and every world surface shows "Unreviewed model". | D31 says the parameters are reviewed during development; WS6 handles D22 the same way (`07-device-and-physics.md` section 2.1). |
 | W25 | **Added 22 Nov 2026.** The world's cells are the studs of `buildingStudService` inside the primary building, with their ids (`bldg-{index}-{floor}-{row}-{col}`). The world enumerates them by calling `generateStudsForPolygon` once per modelled storey at the grid's spacing and keeps the inside ones; the exterior studs stay for snapping and for outdoor exposure but are not stepped. | D45: one index for pins, placements, units and the world, so a world event lands on the stud a pin or a placement snaps to. W4's 3 m cells were already the stud spacing. |
 | W26 | **Added 22 Nov 2026.** Each stud has four layers on each storey: floor (0 to 0.6 m above the storey's floor), waist (0.6 to 1.2 m), head (1.2 to 2.0 m) and ceiling (2.0 m to the storey height). Smoke, gas and temperature are held per layer; fire, damage, suppression and shoring per stud. | Smoke layering, gas stratification and head-height checks need height. Four bands are the fewest that separate the crawling, crouching and standing breathing heights from the ceiling jet (section 6.24); a full 3D grid of 0.5 m cells would hold ten times the voxels for no gain at training fidelity. |
-| W27 | **Added 22 Nov 2026.** Storeys come from WS3's `levels` and `levels_underground`, each with the building type's storey height (section 5.15). At most 12 storeys are modelled: the incident storey, those nearest it, and every storey an open vertical link (stair, atrium, shaft, lift) joins to them. The trainer's one plan is replicated on each modelled storey, with her exits on the exit storey. | D43. Singapore malls run to about ten storeys with basements; 12 storeys bound the voxels (section 6.26). |
+| W27 | **Added 22 Nov 2026.** Storeys come from WS3's `levels` and `levels_underground`, each with the building type's storey height (section 5.15). At most 12 storeys are modelled: the incident storey, those nearest it, and every storey an open vertical link (stair, atrium, shaft, lift) joins to them. The trainer's one plan is replicated on each modelled storey, with her exits on the exit storey. **Updated 22 Nov 2026 (D50):** each storey now has its own plan (W49). | D43. Singapore malls run to about ten storeys with basements; 12 storeys bound the voxels (section 6.26). |
 | W28 | **Added 22 Nov 2026.** Neighbours come from the grid index: a stud's dense index is `storey × rows × cols + row × cols + col`, so its eight lateral neighbours and its vertical links are arithmetic, never a search. The compile-time simulation's pairwise neighbour cache is replaced by a spatial hash with the same predicate and the same order (section 6.5). | D45; the pairwise cache is the quadratic cost of journey finding 4.14. |
 | W29 | **Added 22 Nov 2026.** Fire grows per stud by the t-squared class of its contents up to the contents' heat release per unit area; a sprinkler caps it at the heat release reached when the ceiling layer of a sprinklered stud passes the activation temperature. | Design-fire practice (BS PD 7974-1:2019; SFPE Handbook). Singapore's fire code requires sprinklers in most public buildings, so ignoring them would overstate spread. |
 | W30 | **Added 22 Nov 2026.** Smoke enters the ceiling layer above a burning stud at the plume's mass flow, spreads through the ceiling layer, and fills downwards layer by layer when a layer is full, inside the region its walls and doors bound: a zone model's two-layer behaviour, resolved per stud. | The layer interface height per stud is what an evacuee's posture and the map's hatch need (D44, D43). |
@@ -135,6 +142,15 @@ Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS
 | W45 | **Added 22 Nov 2026.** An aircraft impact is evaluated once at its tick: an impact swath of collapsed and unsafe studs on the storeys the class spans, reduced fire resistance in the swath, a fuel fireball and pool fires on the impact storeys and down open shafts, closed stairs in the swath, and an outdoor debris cone; the layered engine then runs the fire, smoke and collapse. | D46: the impact itself is an event, not a process, and the building studies of the WTC and Pentagon describe it so. |
 | W46 | **Added 22 Nov 2026.** Groups that perceive a threat enter `fleeing`: no wait, a higher desired speed, the nearest exit away from the threat, and a higher density they will push into. Fleeing is what turns a ramming or an alarm into a crush. | Published crowd-disaster studies show crush follows from flight into a bottleneck. |
 | W47 | **Added 22 Nov 2026.** Phase 2 and phase 3 types reuse the same engine and add only their event kind; each is specified at the level of its model, data and criteria here, and gains its detailed steps when its phase starts (section 6.27.8). | Scope (master risk 30). |
+| W48 | **Added 22 Nov 2026.** Evacuees are individual agents, one per person, up to `WORLD_LIMITS.maxAgents` (12,000 per world); people beyond the cap move as W8's groups. Every agent follows the shared flow fields, so cost grows with people, not with people squared. | D52: the owner wants each person on the map; shared fields keep 12,000 agents inside the tick budget (AC9.118). |
+| W49 | **Added 22 Nov 2026.** The world reads one plan per storey from WS4's `storeys` and the vertical links from `vertical_links`; a storey the trainer did not design copies the nearest designed one below it, labelled Assumed. | D50. |
+| W50 | **Added 22 Nov 2026.** `populate(scene, setup, catalogue, seed)` plots the business-as-usual population deterministically: per region, by its use, the building type's occupant density and its occupancy at the incident's hour, scaled to Setup's headcount when one is given. The trainer's edits win and are kept. | D51; the same seed and scene always give the same people. |
+| W51 | **Added 22 Nov 2026.** Each person's injury from a blast or impact is computed at their own position: overpressure and impulse from the per-stud blast field, fragments only along a line of sight that no solid wall crosses, the thermal radius, an aircraft's swath, a vehicle's path. | D51: who stands where decides who dies and who is hurt. |
+| W52 | **Added 22 Nov 2026.** An agent chooses its exit and its direction on the stairs by a cost: travel time, the danger it perceives on the way, the entrance it knows and what the people near it do (herding). Danger below can send it up, to a refuge storey or a roof exit when the building has one; lifts serve until the alarm recalls them. | D52: "people from downstairs go up and choke the staircases"; the evacuation studies of high-rise buildings record the same mix. |
+| W53 | **Added 22 Nov 2026.** Outside, agents move on an outdoor stud grid of 6 m over the site's ring less the building footprints, at most 40,000 studs, away from the danger to a safe distance, an assembly point or the ring's edge, where they count as dispersed. Some stay to watch and some go back towards the building. | D52: the teams must meet the people in the street. |
+| W54 | **Added 22 Nov 2026.** Each stud has a gradient, from the ramps and slope areas the trainer draws (and from saved terrain once a source is approved); it changes walking speed, adds to crowd pressure downhill and raises the risk of falls. | D53. |
+| W55 | **Added 22 Nov 2026.** A scenario's events are evaluated in story order: each at its minute, or, when it is `triggered_by` an earlier event, when that event's named condition occurs (for example fire reaching a gas service). | D49. |
+| W56 | **Added 22 Nov 2026.** Unit kinds and their equipment are seeded rows (migration 254, amended) with capacities and consumables that tasks draw on; `UNIT_CATALOGUE` remains as the built-in fallback, labelled Assumed. | D54: real types and equipment from the pipeline, not constants. |
 
 ### 2.3 Assumptions
 
@@ -394,7 +410,7 @@ The test files are in section 11.1. Pure modules are tested without a database o
 
 **Added 22 Nov 2026: incident types beyond bombing (D46, D47)**
 
-85. **AC9.85** Given every key of `INCIDENT_TYPES_BY_PHASE`, then `fieldops_incident_types` seed rows exist for each with a phase, an event kind, at least one threat profile, at least two responder archetypes and a template file; `incidentTypesEnabled('phase1')` gives the seven phase 1 keys plus the four bombing types; an empty flag gives the four bombing types only. Test: `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`.
+85. **AC9.85** Given every key of `INCIDENT_TYPES_BY_PHASE`, then `fieldops_incident_types` seed rows exist for each with a phase, an event kind, at least one threat profile, at least two responder archetypes and a template file; `incidentTypesEnabled('phase1')` gives the seven phase 1 keys plus the four bombing types; an empty flag gives the four bombing types only. Test: `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`. **Updated 22 Nov 2026:** phase 1 now has eight keys, `utility_failure` included, and the three armed-attacker keys are refused whatever the flag says (D48).
 86. **AC9.86** Given an `IncidentEventSpec` of each phase 1 kind, then `incidentEventSchema` accepts the valid one and refuses: a vehicle path of 1 or 51 points or outside the site ring; an aircraft class or speed band not in the lists; a release class other than small, medium or large; and any field D47 rules out (an exact speed, a time of day for an attack, a route request). Test: `server/lib/fieldOps/incidentEvents.test.ts (new)`.
 87. **AC9.87** Given 2,000 people walking towards a 2 m exit from a 10 m wide open-air area, when the flow is unobstructed, then the exit passes at most the stored maximum flow and no stud passes the crush density; when a surge trigger draws them to a point at the narrow end, then studs before the bottleneck pass the crush density, compression doses accrue only on studs whose inflow demand exceeds outflow for longer than the stored onset time, and casualties appear at the stored dose thresholds in the stored shares. Test: `server/services/fieldOps/world/incidents/crowdCrush.test.ts (new)`, "bottleneck".
 88. **AC9.88** Given a false alarm at minute 5 in a full venue, then every group starts at once with no wait, fleeing groups accept densities up to the stored fleeing limit, and two opposite flows on the same narrow studs halve their capacity; opening a second exit within 30 s of the first compression stops new doses within 60 s. Test: `crowdCrush.test.ts`, "alarm, counterflow and relief".
@@ -408,12 +424,33 @@ The test files are in section 11.1. Pure modules are tested without a database o
 96. **AC9.96** Given the source of `server/services/fieldOps/world/incidents/` and the incident seeds, then no function takes or returns a target ranking, a route suggestion or an optimised time; no seed row or text names a real site, a real event, an operator, a flight or a weapon; speeds appear only as bands in trainer-facing text. Test: `server/services/fieldOps/world/staticChecks.test.ts (new)`, "no attack planning"; `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`, "seed hygiene".
 97. **AC9.97** Given a phase 2 structural-collapse zone, then the zone's studs collapse at its tick, the progressive rule of section 6.7.4 runs, voids hold trapped groups, and a rescue task frees them at the stored rescue rate. Test: `server/services/fieldOps/world/incidents/phase2.test.ts (new)`, "collapse".
 98. **AC9.98** Given a phase 2 rainfall event, then outdoor studs' water depth rises with intensity less drainage, people outdoors whose depth times velocity passes the stored stability limit are swept (casualties), and basements flood as section 6.23.7 says. Test: `phase2.test.ts`, "flash flood".
-99. **AC9.99** Given a phase 2 utility outage over a substation's area, then the power flag falls in every building within it, smoke control and lit signs stop, lifts hold their groups as trapped, and a rail station's arriving crowd grows by its stored rate. Test: `phase2.test.ts`, "utility cascade".
-100. **AC9.100** Given a phase 2 attacker route, then the abstract threat zone moves along it at a walking band, groups inside its perception distance flee or hide by the stored shares, hidden groups behind closed doors are not reached, harm inside the zone follows the stored abstract rate, and a tactical unit arriving ends it. Test: `phase2.test.ts`, "attacker".
+99. **AC9.99** Given a phase 2 utility outage over a substation's area, then the power flag falls in every building within it, smoke control and lit signs stop, lifts hold their groups as trapped, and a rail station's arriving crowd grows by its stored rate. Test: `phase2.test.ts`, "utility cascade". **Updated 22 Nov 2026:** phase 1 (D46 as updated).
+100. **AC9.100** Given a phase 2 attacker route, then the abstract threat zone moves along it at a walking band, groups inside its perception distance flee or hide by the stored shares, hidden groups behind closed doors are not reached, harm inside the zone follows the stored abstract rate, and a tactical unit arriving ends it. Test: `phase2.test.ts`, "attacker". **Updated 22 Nov 2026:** locked (D48); not built until the attacker's gameplay is specified.
 101. **AC9.101** Given a phase 2 rail event (a train stopped in a station with a fire in one car) and a road collision with a tanker, then the train's fire follows the stored rolling-stock heat release and the station's smoke extraction, passengers detrain to the platform, and the tanker's spill starts the rule's pool fire or release. Test: `phase2.test.ts`, "rail and road".
 102. **AC9.102** Given each phase 1 type compiled with `ENABLE_FIELDOPS_WORLD_SIM` off, then the scenario has pins from `initialEffectsFor` and deterioration facts from its threat profiles, and runs on today's scripted escalation. Test: `initialEffects.test.ts`, "no world".
 103. **AC9.103** Given the mockup's mall and a crowd zone of 3,000, then a vehicle ramming event leads to crush casualties at the exits only when the fleeing crowd meets a bottleneck, and the casualty rows carry `conditions.spawned_from` `world_crush` or `world_impact`. Test: `server/services/fieldOps/world/incidents/scenarios.test.ts (new)`.
 104. **AC9.104** Given the largest phase 1 world (an open-air venue of 30,000 people in 600 groups on 20,000 studs, a ramming vehicle and an alarm), then the tick budget of section 6.26 holds. Test: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)`, "crowd event".
+
+**Added 22 Nov 2026: population, storeys, individual evacuees, slopes, combined events, units and equipment (D48 to D54)**
+
+105. **AC9.105** Given a three-storey mall scene with designed regions and Setup's time 14:00 on a Saturday, when `populate` runs twice with one seed, then both give the same people; each region holds its area over the type's occupant density times the region use's factor times the type's occupancy at 14:00, within one person; with a Setup headcount of 2,000 the total is 2,000 and the shares between regions are kept; every person is frozen until T+0. Test: `server/services/fieldOps/world/population/populate.test.ts (new)`, "density and headcount".
+106. **AC9.106** Given the same scene, then no person stands inside a wall's 0.3 m band or outside the outline, people are at least 0.6 m apart, the profile shares (adult, child, elderly, mobility-impaired) and activity shares follow the stored rows, and a trainer's moved, added or deleted people survive a re-run of `populate` for other regions. Test: `populate.test.ts`, "placement and edits".
+107. **AC9.107** Given a device on G of a three-storey scene and 1,000 people, when `casualtiesForPopulation` runs, then each person's band follows WS6's thresholds at their 3D distance; a person behind a concrete wall within the fragment radius gets no fragment injury and one behind glass does; people on L1 get the slab rule of section 6.23.6; the free-field band edges match WS6's radii within one stud; the result is the same twice. Test: `server/services/fieldOps/world/population/casualties.test.ts (new)`, "blast".
+108. **AC9.108** Given an aircraft swath and a ramming path, then people inside the swath on the impact storeys take the swath's outcomes at its tick, and people on a vehicle's path are met at the minute the vehicle reaches them, not at T+0. Test: `casualties.test.ts`, "impact and path".
+109. **AC9.109** Given storeys G and L1 with different walls, L2 not designed, and a stair placed on G joining G to L2, then the world uses G's and L1's own walls, L2 copies L1 labelled Assumed, and the stair's studs are the same row and column on all three storeys. Test: `server/services/fieldOps/world/model/buildWorldModel.test.ts (new)`, "storey plans".
+110. **AC9.110** Given 500 agents in a region with two exits, one the entrance they came in by, then with no danger most take their entrance, a seeded share herds with their neighbours, and choices are re-evaluated every 10 s or when what an agent perceives changes. Test: `server/services/fieldOps/world/agents/routeChoice.test.ts (new)`.
+111. **AC9.111** Given a blast on G that blocks G's exits and fills one stair with smoke, then the upward share of G's agents climbs to the nearest storey with a roof exit or refuge storey, agents from L1 and L2 descending meet them on the clear stair at half capacity in each direction, landings queue at the stair's flow, and agents on a smoke-logged stair with no other route are trapped. Test: `server/services/fieldOps/world/agents/storeys.test.ts (new)`, "up and down".
+112. **AC9.112** Given lifts on a stair core, then before the alarm the stored lift-use share rides them at their capacity and trip time, at the alarm they return to the ground storey and carry no evacuee afterwards, and a fire unit may use a firefighting lift. Test: `storeys.test.ts`, "lifts".
+113. **AC9.113** Given a fire before any alarm, then agents who see smoke or flame within their visibility start, a smoke detector's ceiling threshold raises the alarm after its stored delay, and fleeing spreads to agents within 5 m at the stored contagion rate. Test: `server/services/fieldOps/world/agents/perception.test.ts (new)`.
+114. **AC9.114** Given 800 agents leaving a building, then they run on the outdoor grid away from the event to the safe distance, an assembly point or the ring's edge (dispersed); the stored bystander share stops between 50 and 100 m; the stored returning share walks back towards the entrances and is held at a cordon; agents on a road edge slow its traffic; walking wounded stop after the stored distance and become patient pins. Test: `server/services/fieldOps/world/agents/outdoors.test.ts (new)`.
+115. **AC9.115** Given a slope area of 10 per cent, then uphill and downhill walking speeds follow the stored slope relation, downhill crowd pressure grows by the stored factor, and above the stored density and gradient a fall starts a pile that traps the stored share (the sloping-alley validation case). Test: `server/services/fieldOps/world/incidents/crowdCrush.test.ts (new)`, "slopes".
+116. **AC9.116** Given a fire event at minute 0 and a gas-explosion event `triggered_by` it with the condition "fire reaches the gas service", then the explosion happens at the tick the fire reaches that stud and not before; given a ramming at minute 2 and a device at minute 6, both are evaluated in order; compile's `initialEffectsFor` and the world agree on every event's tick. Test: `server/services/fieldOps/world/incidents/storyline.test.ts (new)`.
+117. **AC9.117** Given a scene with more people than `WORLD_LIMITS.maxAgents`, then the first 12,000 by a seeded order are agents and the rest W8's groups, and totals are kept. Test: `server/services/fieldOps/world/agents/agents.test.ts (new)`, "cap".
+118. **AC9.118** Given 12,000 agents on eight storeys, 40,000 outdoor studs and the layered engine at its largest, then the mean tick stays under 50 ms and no tick passes 250 ms; a team delta carries only moved agents in its cover at six bytes each and stays under 64 KB, sending stud counts instead of agents when it would not. Test: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)`, "agents".
+119. **AC9.119** Given seeded unit-kind and equipment rows, then the unit plan uses them, a kind with no row falls back to `UNIT_CATALOGUE` labelled Assumed, and a unit's equipment list is its kind's. Test: `server/services/fieldOps/world/units/unitKinds.test.ts (new)`.
+120. **AC9.120** Given a pump appliance suppressing a fire, then water leaves its tank at the hose line's flow until a hydrant link is made within hose reach, suppression scales with the flow against the fire's area, breathing-apparatus air runs down per crew member and forces withdrawal at the stored reserve, an aerial platform reaches only storeys within its height, and a thermal camera doubles the crew's sight in smoke. Test: `server/services/fieldOps/world/units/equipment.test.ts (new)`.
+121. **AC9.121** Given the RTS controls, then a drag box selects the player's units on the active storey, Shift adds, Ctrl and a digit set a control group and the digit recalls it, a right click gives the contextual command, Shift queues orders, the minimap shows units, fog and alert pings, and every command is reachable by keyboard. Test: `frontend/tests/worldRtsControls.test.ts (new)`.
+122. **AC9.122** Given `ENABLE_FIELDOPS_INCIDENT_TYPES` listing `active_shooter`, then the type is not offered and a warning is logged; given a ramming vehicle that stops, then a `suspect_last_seen` pin appears at its position for the investigation team and nothing moves from it. Test: `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`, "locked types"; `ramming.test.ts`, "driver".
 
 ## 5. Data model
 
@@ -1191,6 +1228,55 @@ ALTER TABLE public.fieldops_world_units ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.fieldops_road_speed_classes FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.fieldops_road_graphs FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.fieldops_world_units FROM PUBLIC, anon, authenticated;
+
+-- Added 22 Nov 2026 (D54, W56): unit kinds and equipment as seeded, reviewed rows. Amended in place; 254 is not applied.
+CREATE TABLE IF NOT EXISTS public.fieldops_unit_kinds (
+  kind_key TEXT PRIMARY KEY CHECK (kind_key ~ '^[a-z][a-z0-9_]{1,47}$'),
+  label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
+  country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
+  archetype_key TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('vehicle', 'foot')),
+  crew SMALLINT NOT NULL CHECK (crew BETWEEN 1 AND 20),
+  default_count SMALLINT NOT NULL CHECK (default_count BETWEEN 0 AND 8),
+  turnout_s INTEGER NOT NULL CHECK (turnout_s BETWEEN 0 AND 3600),
+  observes_m SMALLINT NOT NULL CHECK (observes_m BETWEEN 10 AND 500),
+  asset_type TEXT NOT NULL CHECK (asset_type ~ '^[a-z][a-z0-9_]{1,47}$'),
+  tasks TEXT[] NOT NULL,
+  starts_from TEXT[] NOT NULL DEFAULT '{}',
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  row_version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.fieldops_equipment (
+  equipment_key TEXT PRIMARY KEY CHECK (equipment_key ~ '^[a-z][a-z0-9_]{1,47}$'),
+  label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
+  category TEXT NOT NULL CHECK (category IN ('water_tank', 'pump', 'hose', 'foam', 'breathing_apparatus', 'ladder', 'aerial_platform',
+    'stretcher', 'patient_capacity', 'decontamination', 'cutting', 'thermal_camera', 'gas_detector', 'lighting', 'barrier', 'shoring')),
+  capacity NUMERIC(12, 2) NOT NULL CHECK (capacity >= 0),
+  unit TEXT NOT NULL CHECK (unit IN ('l', 'l_min', 'm', 's', 'count', 'p_h', 'm2')),
+  consumable BOOLEAN NOT NULL DEFAULT false,
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  row_version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.fieldops_unit_equipment (
+  kind_key TEXT NOT NULL REFERENCES public.fieldops_unit_kinds(kind_key) ON UPDATE CASCADE,
+  equipment_key TEXT NOT NULL REFERENCES public.fieldops_equipment(equipment_key) ON UPDATE CASCADE,
+  quantity SMALLINT NOT NULL CHECK (quantity BETWEEN 1 AND 50),
+  PRIMARY KEY (kind_key, equipment_key)
+);
+ALTER TABLE public.fieldops_unit_kinds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fieldops_equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fieldops_unit_equipment ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.fieldops_unit_kinds FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.fieldops_equipment FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.fieldops_unit_equipment FROM PUBLIC, anon, authenticated;
 
 COMMIT;
 ```
@@ -2199,6 +2285,8 @@ CREATE TABLE IF NOT EXISTS public.fieldops_building_types (
   facade_class TEXT NOT NULL CHECK (facade_class IN ('curtain_wall_glass', 'masonry', 'concrete_panel', 'metal_cladding', 'open')),
   external_spread_permille INTEGER NOT NULL DEFAULT 0 CHECK (external_spread_permille BETWEEN 0 AND 1000),
   occupant_m2_per_person NUMERIC(6, 2) CHECK (occupant_m2_per_person IS NULL OR occupant_m2_per_person BETWEEN 0.3 AND 200),
+  -- Added 22 Nov 2026 (D51): permille of the design occupancy at each hour 0 to 23, weekday then weekend.
+  occupancy_by_hour SMALLINT[] NOT NULL DEFAULT '{}' CHECK (cardinality(occupancy_by_hour) IN (0, 48)),
   familiarity TEXT NOT NULL DEFAULT 'mixed' CHECK (familiarity IN ('familiar', 'mixed', 'unfamiliar')),
   sensitivity TEXT NOT NULL DEFAULT 'public' CHECK (sensitivity IN ('public', 'restricted_generic')),
   source_keys TEXT[] NOT NULL DEFAULT '{}',
@@ -4057,7 +4145,8 @@ D39, master 10.8 item 42. The only place a model with web access runs in the who
 scripts/fieldops/knowledge/ (new)
   researchAgent.ts     one run of the agent for one brief and a list of subjects; writes scripts/fieldops/seeds/_incoming/<run_id>/
   briefs/              one JSON brief per subject kind: doctrine_agency, use_of_force, building_type, item_kind,
-                       interaction_rule, release_agent, threat_profile, movement_parameter, device_material
+                       interaction_rule, release_agent, threat_profile, movement_parameter, device_material,
+                       doctrine_review, unit_kind, equipment (added 22 Nov 2026: D54, D55)
   reviewQueue.ts       lists pending files across libraries and writes review-pack.md beside each run
   diffSeeds.ts         compares an incoming run with the approved files; --apply-approved moves approved rows across
   importApproved.ts    imports approved rows through each library's seed path and writes the provenance rows of 259
@@ -4238,24 +4327,30 @@ D46 and D47, master 10.8 item 46. Every type below is one event kind evaluated b
 ```ts
 // shared/fieldOps/incidentEvents.ts (new). Owned by WS9. Types and constants only (master 10.7).
 export const INCIDENT_TYPES_BY_PHASE = {
-  1: ['stampede_crush', 'vehicle_ramming', 'aircraft_impact', 'building_fire', 'arson', 'gas_explosion', 'chemical_release'],
-  2: ['structural_collapse', 'rail_incident', 'road_collision', 'flash_flood', 'utility_failure', 'active_shooter', 'open_field_shooting', 'knife_attack'],
+  // Updated 22 Nov 2026 (D46 as updated, D48): priority order; utility_failure in phase 1; armed attackers locked.
+  1: ['building_fire', 'utility_failure', 'arson', 'stampede_crush', 'vehicle_ramming', 'aircraft_impact', 'gas_explosion', 'chemical_release'],
+  2: ['structural_collapse', 'rail_incident', 'road_collision', 'flash_flood'],
   3: ['gas_attack', 'biohazard', 'maritime_incident', 'earthquake'],
 } as const;
+export const LOCKED_INCIDENT_TYPES = ['active_shooter', 'open_field_shooting', 'knife_attack'] as const;   // D48
 export const VEHICLE_CLASSES = ['car', 'van', 'rigid_truck', 'articulated_truck'] as const;
 export const AIRCRAFT_CLASSES = ['light', 'helicopter', 'regional_jet', 'narrow_body', 'wide_body'] as const;
 export const SPEED_BANDS = ['low', 'medium', 'high'] as const;              // vehicles; aircraft use 'low' and 'high'
 export const RELEASE_CLASSES = ['small', 'medium', 'large'] as const;       // as the Emergency Response Guidebook sizes spills
 export const CROWD_TRIGGERS = ['surge', 'panic', 'bottleneck', 'false_alarm'] as const;
-export type IncidentEventSpec =
-  | { kind: 'device' }
+/** Added 22 Nov 2026 (D49): every event carries these, so events combine into one storyline. */
+export interface IncidentEventBase { id: string; at_min: number; triggered_by: { event_id: string; condition: 'occurs' | 'fire_reaches' | 'structure_fails' | 'power_lost' } | null; label: string }
+export type IncidentEventSpec = IncidentEventBase & (
+  | { kind: 'device'; device_id: string }
+  | { kind: 'utility_outage'; services: Array<'power' | 'water' | 'gas' | 'telecom'>; area: 'building' | 'site'; duration_min: number }
   | { kind: 'crowd_trigger'; triggers: Array<{ trigger: (typeof CROWD_TRIGGERS)[number]; at_min: number; point: [number, number] | null; exit_id: string | null }> }
   | { kind: 'vehicle_path'; vehicle_class: (typeof VEHICLE_CLASSES)[number]; speed_band: (typeof SPEED_BANDS)[number]; path: Array<[number, number]>; at_min: number }
   | { kind: 'aircraft_impact'; aircraft_class: (typeof AIRCRAFT_CLASSES)[number]; speed_band: 'low' | 'high';
       target: { building: 'primary' | 'open_ground' | string; point: [number, number]; storey: string | null; heading_deg: number }; at_min: number }
   | { kind: 'ignition'; points: Array<{ point: [number, number]; storey: string | null }>; accelerant: boolean; at_min: number }
   | { kind: 'gas_leak'; source: 'town_gas' | 'lpg'; leak_class: (typeof RELEASE_CLASSES)[number]; point: [number, number]; storey: string | null; at_min: number }
-  | { kind: 'release'; agent_key: string; release_class: (typeof RELEASE_CLASSES)[number]; point: [number, number]; exterior: boolean; at_min: number };
+  | { kind: 'release'; agent_key: string; release_class: (typeof RELEASE_CLASSES)[number]; point: [number, number]; exterior: boolean; at_min: number });
+export const EVENT_LIMITS = { maxEvents: 6 } as const;   // D49
 // Phase 2 kinds (collapse_zone, train_event, road_collision, rainfall, utility_outage, attacker_route) are added to the union when phase 2 starts (W47).
 export interface CompileEventEffects {
   event_kind: IncidentEventSpec['kind'];
@@ -4365,8 +4460,8 @@ Each reuses the engine and adds one event kind (W47); detailed steps are written
 | `rail_incident` | The rail network carries millions a day; underground stations and tunnels | A train stopped in a station or a tunnel section the trainer draws; rolling-stock fire by NFPA 130's design fires; station smoke extraction; detrainment flows (AC9.101) | `transport_operator`, `fire_rescue`, `medical_triage`, `police_security`, `evacuation_crowd`, `incident_command` | NFPA 130; LTA's published standards (to verify) |
 | `road_collision` | Expressway multi-vehicle and tanker incidents | Section 6.23.7's vehicle impact for each vehicle; a tanker's spill as a release or pool fire; WS9 traffic jams (AC9.101) | `police_security`, `fire_rescue`, `medical_triage`, `cbrn_defence`, `transport_operator` | Emergency Response Guidebook (2024); the threat rows of section 5.19 |
 | `flash_flood` | Intense tropical rainfall; the 2010 to 2011 flash floods in central Singapore | Rainfall intensity less drainage raises outdoor studs' depth; people whose depth times velocity passes the stability limit are swept; basements flood; utility rules (AC9.98) | `fire_rescue`, `police_security`, `utilities`, `evacuation_crowd`, `incident_command` | PUB's *Code of Practice on Surface Water Drainage*; Cox, Shand and Blacka (2010), *Appropriate safety criteria for people* (Australian Rainfall and Runoff, project 10) |
-| `utility_failure` | Power and rail disruptions with large crowds have been the subject of public inquiries | An outage over a substation's area: power flag down, smoke control and lit signs off, lifts trap groups, stations fill at a stored rate (AC9.99) | `utilities`, `transport_operator`, `fire_rescue`, `police_security`, `evacuation_crowd` | The public inquiry reports into rail disruptions; SP Group publications (to verify) |
-| `active_shooter`, `open_field_shooting`, `knife_attack` | National preparedness campaigns (SGSecure's "Run, Hide, Tell") train for them | An abstract threat zone moving along the trainer's waypoints at a walking band; groups flee or hide by stored shares; closed doors protect hidden groups; harm inside the zone at a stored abstract rate; a tactical unit's arrival ends it. No weapon, no tactic (AC9.100; section 6.27.10) | `police_security`, `tactical_response`, `medical_triage`, `evacuation_crowd`, `venue_operations`, `incident_command`, `media_comms` | Ministry of Home Affairs, SGSecure "Run, Hide, Tell"; public statistical studies of active-shooter incidents for duration bands only |
+| `utility_failure` (**moved to phase 1, 22 Nov 2026**; its event kind is `utility_outage` of section 6.27.1) | Power and rail disruptions with large crowds have been the subject of public inquiries | An outage over a substation's area: power flag down, smoke control and lit signs off, lifts trap groups, stations fill at a stored rate (AC9.99) | `utilities`, `transport_operator`, `fire_rescue`, `police_security`, `evacuation_crowd` | The public inquiry reports into rail disruptions; SP Group publications (to verify) |
+| `active_shooter`, `open_field_shooting`, `knife_attack` (**locked, D48**: not built until the attacker's gameplay is designed: moving, harming those he sees, hiding, taking a vehicle, entering a building to evade arrest) | National preparedness campaigns (SGSecure's "Run, Hide, Tell") train for them | An abstract threat zone moving along the trainer's waypoints at a walking band; groups flee or hide by stored shares; closed doors protect hidden groups; harm inside the zone at a stored abstract rate; a tactical unit's arrival ends it. No weapon, no tactic (AC9.100; section 6.27.10) | `police_security`, `tactical_response`, `medical_triage`, `evacuation_crowd`, `venue_operations`, `incident_command`, `media_comms` | Ministry of Home Affairs, SGSecure "Run, Hide, Tell"; public statistical studies of active-shooter incidents for duration bands only |
 
 #### 6.27.9 Phase 3 types, and what stays out
 
@@ -4385,6 +4480,92 @@ Each reuses the engine and adds one event kind (W47); detailed steps are written
 - **Protective measures.** Barriers, alarms and detection appear only as mitigations with public rating classes; nothing describes how to defeat them.
 - **Armed attackers and deliberate releases.** Abstract threat zones with no weapon or tactic; industrial chemicals' public data only, never warfare agents.
 - **Templates and seeds.** Generic names; no real event, site, operator, flight or person; each type's rows are reviewed by the W24 reviewer and, for the attack-like types, by a security reviewer before the type is turned on.
+
+
+### 6.28 The business-as-usual population and per-person injuries (added 22 Nov 2026)
+
+D51, master 10.8 item 47. Modules in `server/services/fieldOps/world/population/ (new)`.
+
+**`populate(scene, setup, catalogue, seed)`** (pure, W50):
+
+1. Regions: each storey's plan is cut into regions by its solid walls (doors join nothing here; each room is a region). A region's use is the one the trainer gave it in the layout step (`shop`, `corridor`, `atrium`, `office`, `food`, `toilet`, `plant`, `car_park`, `platform`, `concourse`, `seating`, `other`), else `other`.
+2. Count: area over the building type's `occupant_m2_per_person`, times the use's factor (stored in `fieldops_movement_parameters` as `use_factor_{use}`), times `occupancy_by_hour` at Setup's day type and hour. Crowd zones the trainer painted override the density inside them. With a Setup headcount, every region is scaled so the total equals it, keeping the shares.
+3. Placement: Poisson-disc sampling with a 0.6 m minimum spacing, 0.3 m clear of walls, from the stream `population` seeded by the scene; activities `walking`, `standing`, `seated`, `queueing`, `working` by the use's shares; walking people get a heading along the region's long axis.
+4. Profiles: `adult`, `child`, `elderly` and `mobility_impaired` by the stored shares (planning values from the Department of Statistics Singapore's *Population in Brief*, to verify), each with a speed factor (Boyce, Shields and Silcock (1999), *Fire Technology* 35, for people with impairments).
+5. Familiarity: each person's known exit is the region's nearest exit with probability `familiar_entrance_share`, else a seeded other one; companions: `companion_share` of people are joined in parties of two to four who wait for one another.
+6. Output: `Population { version: 1, count, seed, storeys[], positions (base64 of decimetre pairs), attributes (base64 of packed storey, profile, activity, party and known-exit index) }`, frozen until T+0. WS4 stores it and the trainer edits it (`05-layout-step.md` section 15.7).
+
+**`casualtiesForPopulation(population, events, index, libraries)`** (pure, W51), at T+0 and at each later event's tick:
+
+- **Blast** (a device or a catalogue burst): the person's 3D distance to the origin, the blast field's overpressure and impulse there (section 6.23.6, with its storey rule), banded by WS6's injury thresholds; within WS6's fragment band only when the segment from the origin to the person crosses no solid wall edge (glazing does not stop fragments); within the thermal radius a burn band. The person's outcome is the worst band, drawn within the band by WS6's casualty shares from the stream `injury`.
+- **Aircraft swath, collapse, ramming:** the swath's or collapsed stud's shares; a ramming person at the minute the vehicle meets them (section 6.27.3).
+- **Output.** Each person's outcome (`unhurt`, `minor`, `serious`, `fatal`, `trapped`), and patient pins by cluster: people of one outcome within 6 m become one pin with a headcount, at most WS5's 60 pins, the rest merged into the nearest pin of the same outcome.
+
+### 6.29 Storeys designed one by one (added 22 Nov 2026)
+
+D50, W49. `buildWorldModel` takes each storey's walls, regions, exits, hazards and wall points from WS4's `storeys`, and the vertical links (stairs, lifts, escalators, ramps) from `vertical_links`, each with the storeys it joins and its width or car capacity. A stair's studs are the same row and column on every storey it joins (W25), so smoke, fire and people pass through it as section 6.23 says. A storey the trainer did not design copies the nearest designed one below it, labelled Assumed (AC9.109). A storey may also be a refuge storey or have a roof exit, marked by the trainer.
+
+### 6.30 Individual evacuees, indoors and in the street (added 22 Nov 2026)
+
+D52, D53, W48, W52 to W54. Modules in `server/services/fieldOps/world/agents/ (new)`.
+
+#### 6.30.1 State
+
+Per agent, in typed arrays: storey, position in decimetres, mode (`frozen`, `pre_movement`, `moving`, `fleeing`, `sheltering`, `waiting`, `trapped`, `outside`, `safe`, `bystander`, `returning`, `dispersed`, `casualty`), posture (section 6.24), profile, party, known exit, chosen target, dose per agent. Every agent follows the shared flow fields of its storey (W48); local density is the agents per stud. Above `WORLD_LIMITS.maxAgents` the rest are W8's groups (AC9.117).
+
+#### 6.30.2 Starting and perceiving
+
+At T+0 casualties leave the population (section 6.28). Survivors start after their pre-movement time (section 6.7.6's waits, by activity), at once when they perceive danger: a blast or impact within hearing (everyone on its storey and the storeys joined to it), smoke or flame within their visibility, an alarm (the trainer's or a smoke detector's: ceiling smoke at a detector stud raises it after `detector_delay_s`), or people fleeing within 5 m (`flee_contagion` per second). Perceived danger turns `moving` into `fleeing` (W46).
+
+#### 6.30.3 Choosing a way out
+
+Every 10 s, or when what it perceives changes, an agent scores each exit and each stair direction it can reach: travel time on the flow field, times one plus the danger on the way (smoke at its breathing layer, heat, gas tiers, the blast's origin), less a bonus for its known exit; with probability `herding_share` (higher when fleeing) it takes instead the choice most of the agents within 5 m have (Helbing, Farkas and Vicsek (2000), *Nature* 407). When danger lies below on every downward route, `upward_share` of agents climb to the nearest refuge storey or roof exit; with none, they wait on the highest clear landing (AC9.110, AC9.111).
+
+#### 6.30.4 Stairs and lifts
+
+A stair passes the stored stair flow per metre of width; where people join from a storey and from above, they merge half and half (Galea and others (2008), the HEED high-rise evacuation studies); opposite flows halve each direction's capacity. Lifts carry `lift_use_share` of agents at their car capacity and trip time until the alarm, when they return to the ground storey and stop for evacuees; a firefighting lift serves fire units only (the SCDF Fire Code's lift provisions, to verify) (AC9.112).
+
+#### 6.30.5 In the street
+
+Agents leaving by an exit step onto the outdoor grid (W53) and run away from the nearest event origin they know of, at `flee_speed` slowing to walking beyond 50 m, until `outdoor_safe_distance_m`, the nearest assembly point placed by a team, or the ring's edge (`dispersed`). `bystander_share` stop between 50 and 100 m and watch; `returning_share` walk back towards the entrances to look for others, and a cordon holds them (Drury, Cocking and Reicher (2009), *British Journal of Social Psychology* 48, on helping and staying in emergencies). Walking wounded stop after `walking_wounded_distance_m` and become patient pins. Agents on a road edge add to its pedestrian count, slowing traffic (section 6.9.4). Teams see them through fog of war as any other entity (AC9.114).
+
+#### 6.30.6 Slopes
+
+A stud's gradient comes from the trainer's slope areas and ramps (`05-layout-step.md` section 15.7) and, once approved, a saved elevation source (question 45). Walking speed is multiplied by the slope relation normalised to the flat (Tobler (1993), *Three presentations on geographical analysis and modeling*, for walking; the SFPE Handbook's ramp speeds for crowds); crowd pressure downhill grows by `slope_pressure_factor` per unit of gradient; above `fall_density` and `fall_gradient`, a fall starts a pile on that stud that traps `pile_trapped_share` and stops the flow until rescued (AC9.115).
+
+#### 6.30.7 Parameters
+
+Seeded in `movement-parameters.json` beside section 5.19's rows, with plausible ranges, reviewed under W24.
+
+| Key | Value | Source |
+| --- | --- | --- |
+| `familiar_entrance_share` | 0.6 | Sime (1985), on movement towards the familiar (a journal paper on environment and behaviour, volume 17) |
+| `companion_share` | 0.3 | as above |
+| `herding_share`, fleeing | 0.4 | Helbing, Farkas and Vicsek (2000) |
+| `upward_share` | 0.15 | Galea and others (2008), HEED; planning |
+| `lift_use_share` | 0.1 | planning, to check in review |
+| `detector_delay_s` | 30 | SCDF Fire Code 2018, detection and alarm (to verify) |
+| `flee_contagion` | 0.2 per second | planning |
+| `outdoor_safe_distance_m` | 200 | planning |
+| `bystander_share`, `returning_share` | 0.1, 0.05 | Drury, Cocking and Reicher (2009) |
+| `walking_wounded_distance_m` | 150 | planning |
+| `slope_pressure_factor` | 10 per unit gradient | planning, validated on the sloping-alley case |
+| `fall_density`, `fall_gradient`, `pile_trapped_share` | 6 p/m², 0.08, 0.3 | Lee and Hughes (2005); Helbing, Johansson and Al-Abideen (2007); planning |
+| `use_factor_{use}` | per use, 0.2 (plant) to 2.0 (queue areas) | the building type's occupant loads, SCDF Fire Code 2018 |
+
+### 6.31 Combined events: one storyline (added 22 Nov 2026)
+
+D49, W55. `incident.events` holds one to six events (`EVENT_LIMITS.maxEvents`) in story order. Each has its own minute, or a `triggered_by` naming an earlier event and a condition: `occurs` (when that event happens, plus its own minute as a delay), `fire_reaches` (when that event's fire reaches this event's point), `structure_fails` (when a stud at this event's point collapses) or `power_lost` (when the power flag falls). `initialEffectsFor` evaluates the events whose time is fixed at compile in order and records the triggered ones as delayed hazards whose trigger is the condition; the world evaluates every event at its tick, so both agree (AC9.116). The storyline's narrative order is what WS5's generators receive (`06-compile-and-review.md` section 15.5).
+
+### 6.32 Units, equipment and the RTS layer (added 22 Nov 2026)
+
+D54, W56, master 10.8 item 49.
+
+- **Kinds and equipment.** `fieldops_unit_kinds`, `fieldops_equipment` and `fieldops_unit_equipment` (migration 254, amended) replace `UNIT_CATALOGUE` as the source of kinds, crews, counts, turnout, sight, tasks and equipment; the constant stays as the fallback, labelled Assumed (AC9.119). Rows are drafted by the pipeline's `unit_kind` and `equipment` briefs from the agencies' public fleet and equipment pages and public standards (for example NFPA 1901 for apparatus and EN 1846 for fire appliances), and reviewed under W24 by the fire-service and police reviewers.
+- **What equipment does.** A pump's flow and a hose line's length bound suppression: a crew suppresses at the flow it has against the fire's area (`critical_flow_l_min_m2`), drawing the tank until a hydrant link is made within hose reach; hydrants are assumed every 100 m along roads until a source is approved (question 48). Breathing-apparatus air runs down per crew member and forces withdrawal at its reserve. Ladders and aerial platforms reach storeys by their height, for rescue and attack from outside. Stretchers and patient capacity bound carrying and transport; decontamination equipment bounds the people per hour a decon point processes; thermal cameras double sight in smoke; gas detectors reveal gas tiers in fog; lighting cancels the night factor near the unit (AC9.120).
+- **Deployment.** On arrival a crew deploys equipment as placed assets: a hose line from the appliance to its target, a ladder at a facade stud, a decon point, a casualty collection point, a barrier line; each carries its equipment key and is shown on the map.
+- **Commands.** Every command of section 6.14 takes an optional queue position, so orders can be queued; rally points are a per-origin setting. AI agencies use the same commands (D34).
+
 
 ## 7. Client
 
@@ -4702,6 +4883,22 @@ Groups are drawn with a posture glyph (standing, crouching, crawling, sheltering
 | `world.knowledge.unavailable` | Layered physics is not available on this server yet. |
 
 **Accessibility.** Colour is never the only signal: hatches carry the interface, outlines the heat, dashes the gas, and `WorldStudProfile` says everything in words. The storey bar is a list of buttons reachable by keyboard; arrow keys move between storeys.
+
+### 7.13 RTS controls and evacuee dots (added 22 Nov 2026)
+
+D54, W39, master 10.8 item 49. Components in `frontend/src/components/FieldOps/World/ (new)`:
+
+| Control | Behaviour |
+| --- | --- |
+| Selection | Click selects a unit; a drag box selects the player's units on the active storey; Shift adds or removes; double-click selects every unit of that kind in view |
+| Control groups | Ctrl and a digit (1 to 9) set a group; the digit selects it; pressing it twice centres the map on it |
+| Commands | A right click gives the contextual command for the target (move, suppress a fire, rescue at a group, triage at a pin, cordon a road); the command card (`WorldCommandCard`) shows the selection's tasks with hotkeys; Shift queues orders, shown as a numbered path |
+| Minimap | `WorldMinimap`: the site ring, fog, units as dots in their agency colour, alert pings; a click moves the map |
+| Alerts | `WorldAlerts`: "Crew low on air", "Unit blocked", "Casualties at {exit}", "Fire on {storey}", "Crowd crush risk at {place}"; Space jumps to the latest |
+| Unit status | Portraits with crew, water, air and patient bars in `WorldUnitPanel` |
+| Storeys | Units on another storey show as badges at their vertical link; selecting one switches the storey |
+
+Evacuees are drawn as dots on the canvas layer of section 7.12, one per agent in view on the active storey and outdoors: moving, fleeing, waiting and trapped in distinct shapes and tones, and "injured" for every casualty (the true triage colour stays hidden from participants, section 9.2). Below zoom 17 they cluster into counts. Every control has a keyboard path (AC9.121). Test: `frontend/tests/worldRtsControls.test.ts (new)`.
 
 ## 8. AI and LLM contracts
 
@@ -5050,6 +5247,10 @@ server/services/fieldOps/world/render/layerEncoding.test.ts
 
 New files, appended to the `test` script in `package.json` in this order with the tasks that create them: `server/lib/fieldOps/incidentEvents.test.ts (new)` (AC9.86), `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)` (AC9.85, AC9.96 "seed hygiene"), `server/services/fieldOps/world/incidents/initialEffects.test.ts (new)` (AC9.95, AC9.102), `server/services/fieldOps/world/incidents/crowdCrush.test.ts (new)` (AC9.87, AC9.88), `server/services/fieldOps/world/incidents/ramming.test.ts (new)` (AC9.89), `server/services/fieldOps/world/incidents/aircraftImpact.test.ts (new)` (AC9.90, AC9.91), `server/services/fieldOps/world/incidents/fireEvents.test.ts (new)` (AC9.92), `server/services/fieldOps/world/incidents/gasExplosion.test.ts (new)` (AC9.93), `server/services/fieldOps/world/incidents/chemicalRelease.test.ts (new)` (AC9.94), `server/services/fieldOps/world/incidents/scenarios.test.ts (new)` (AC9.103), and in phase 2 `server/services/fieldOps/world/incidents/phase2.test.ts (new)` (AC9.97 to AC9.101). `staticChecks.test.ts` gains "no attack planning" and `worldBudget.test.ts` "crowd event" (AC9.96, AC9.104). Manual steps: **M16** a concert crowd and a false alarm at a narrow gate on staging; **M17** a ramming path through a pedestrian street with a rated barrier halfway; **M18** an aircraft class striking a tower's mid storeys, with smoke reaching the top through the open shafts.
 
+### 11.8 Tests of the 22 Nov answers (added 22 Nov 2026)
+
+New files, appended to the `test` script in `package.json` with their tasks: `server/services/fieldOps/world/population/populate.test.ts (new)` (AC9.105, AC9.106), `server/services/fieldOps/world/population/casualties.test.ts (new)` (AC9.107, AC9.108), `server/services/fieldOps/world/agents/routeChoice.test.ts (new)` (AC9.110), `server/services/fieldOps/world/agents/storeys.test.ts (new)` (AC9.111, AC9.112), `server/services/fieldOps/world/agents/perception.test.ts (new)` (AC9.113), `server/services/fieldOps/world/agents/outdoors.test.ts (new)` (AC9.114), `server/services/fieldOps/world/agents/agents.test.ts (new)` (AC9.117), `server/services/fieldOps/world/incidents/storyline.test.ts (new)` (AC9.116), `server/services/fieldOps/world/units/unitKinds.test.ts (new)` (AC9.119), `server/services/fieldOps/world/units/equipment.test.ts (new)` (AC9.120), `frontend/tests/worldRtsControls.test.ts (new)` (AC9.121). Cases added: `buildWorldModel.test.ts` "storey plans" (AC9.109), `crowdCrush.test.ts` "slopes" (AC9.115), `worldBudget.test.ts` "agents" (AC9.118), `incidentTypes.test.ts` "locked types" and `ramming.test.ts` "driver" (AC9.122). Manual steps: **M19** populate a three-storey mall, set off a device on G and watch G's survivors go up while L2 comes down; **M20** a building fire with a power failure at minute 4: lights and smoke control fail, lifts recall, people leave into the street and teams meet them; **M21** select, group and queue units with the keyboard only.
+
 ## 12. Tasks
 
 The tasks follow the slices of section 4.2 (master section 6, build-order item 7). Each slice ends with the flag still able to fall back to today's behaviour, and each task adds its test files to the `test` script of `package.json` as it creates them (section 11.5). A file is marked new where it is first created; later tasks extend it.
@@ -5304,6 +5505,19 @@ If slice 2 is not yet built when these tasks start, T9.8 and T9.9 are built dire
     - Done when: AC9.97 to AC9.101 pass. Commit: 14.
 42. **T9.42 Phase 3 types.** Section 6.27.9, after the owner confirms them; this spec is first extended. Commit: 15.
 
+**Added 22 Nov 2026: population, storeys, evacuees, combined events and the RTS layer (D48 to D54)**
+
+43. **T9.43 The population generator and per-person injuries.** Files: `server/services/fieldOps/world/population/populate.ts (new)`, `server/services/fieldOps/world/population/casualties.ts (new)` and their tests; the use factors and profile rows in `movement-parameters.json`; `occupancy_by_hour` in `building-types.json`. Done when AC9.105 to AC9.108 pass. Commit: 16.
+44. **T9.44 Storey plans in the world model.** Files: `server/services/fieldOps/world/model/buildWorldModel.ts (new)`, `server/services/fieldOps/world/engine/studIndex.ts (new)`. Done when AC9.109 passes. Commit: 16.
+45. **T9.45 Individual agents indoors.** Files: in `server/services/fieldOps/world/agents/ (new)`: `agents.ts`, `routeChoice.ts`, `perception.ts`, `storeys.ts` and their tests; `server/services/fieldOps/world/engine/state.ts (new)` and `step.ts` (extended). Done when AC9.110 to AC9.113 and AC9.117 pass. Commit: 17.
+46. **T9.46 Evacuees in the street.** Files: `server/services/fieldOps/world/agents/outdoors.ts (new)` and its test; the outdoor grid in `studIndex.ts`. Done when AC9.114 passes. Commit: 17.
+47. **T9.47 Slopes.** Files: `server/services/fieldOps/world/engine/movement.ts (new)`, `server/services/fieldOps/world/incidents/crowdCrush.ts (new)` and its test. Done when AC9.115 passes. Commit: 17.
+48. **T9.48 Combined events.** Files: `shared/fieldOps/incidentEvents.ts (new)`, `server/lib/fieldOps/incidentEventSchemas.ts (new)`, `server/services/fieldOps/world/incidents/storyline.ts (new)` and its test, `initialEffects.ts`. Done when AC9.116 passes. Commit: 16.
+49. **T9.49 Locked types and the ramming driver.** Files: `server/services/fieldOps/world/incidents/incidentTypes.ts (new)`, `server/services/fieldOps/world/incidents/ramming.ts (new)`. Done when AC9.122 passes. Commit: 16.
+50. **T9.50 Unit kinds and equipment.** Files: `migrations/254_fieldops_world_units.sql (new)` (amended); `unit-kinds.json` and `equipment.json` in the seed folder; `server/services/fieldOps/world/units/ (new)`: `unitKinds.ts`, `equipment.ts` and their tests; `actions.ts` (extended). Done when AC9.119 and AC9.120 pass. Commit: 18.
+51. **T9.51 RTS controls and evacuee dots.** Files: in `frontend/src/components/FieldOps/World/`: `WorldCommandCard.tsx`, `WorldMinimap.tsx`, `WorldAlerts.tsx`, `worldSelection.ts`, `WorldLayersCanvas.tsx` (extended); `frontend/tests/worldRtsControls.test.ts (new)`. Done when AC9.121 and M21 pass. Commit: 19.
+52. **T9.52 The agent budget.** Files: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)` (extended), `server/services/fieldOps/world/render/layerEncoding.ts (new)` (agent deltas), `scripts/fieldops-world-soak.ts (new)`. Done when AC9.118, M19 and M20 pass. Commit: 19.
+
 ## 13. Commit plan and backtracking
 
 Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run typecheck`, `npm run lint` and `npm --prefix frontend run build` pass, and its migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), with their rollback comments tried on a branch database. Only then is each migration applied once, in order, on the shared project, which serves development, preview and production alike (section 10.2). A commit that fails any of them is fixed or reverted before the next one starts. Backing a commit out never runs a rollback on the shared project: its tables are additive, and nothing reads them once the code is reverted or the flag is off (D23).
@@ -5335,6 +5549,15 @@ Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run t
 | 13. "WS9: phase 1 event models" | T9.36 to T9.40 | Crush, ramming, aircraft impact, fire, gas explosion and chemical release in the live world | AC9.87 to AC9.96, AC9.103, AC9.104; M16 to M18 | Remove a type's key from the flag; its sessions keep running on compiled pins |
 | 14. "WS9: phase 2 event models" | T9.41 | Phase 2 types | AC9.97 to AC9.101 | As commit 13 |
 | 15. "WS9: phase 3 event models" | T9.42 | Phase 3 types | their criteria, when written | As commit 13 |
+
+**Added 22 Nov 2026.** Commits for the owner's answers:
+
+| Commit | Tasks | Leaves working | Backtracking |
+| --- | --- | --- | --- |
+| 16. "WS9: population, storey plans and storylines" | T9.43, T9.44, T9.48, T9.49 | Populations, per-person injuries, storey plans, combined events, locked types | Revert; scenes keep their population column, unread, and WS6's crowd-zone casualties apply |
+| 17. "WS9: individual evacuees and slopes" | T9.45 to T9.47 | Agents indoors and in the street | Set `WORLD_LIMITS.maxAgents` to 0: every person moves as W8's groups |
+| 18. "WS9: unit kinds and equipment" | T9.50 | Seeded kinds and equipment | Empty tables: `UNIT_CATALOGUE` applies, labelled Assumed |
+| 19. "WS9: RTS controls and the agent budget" | T9.51, T9.52 | The RTS client and its budget | Revert the client files; the units panel of section 7.3 still dispatches |
 
 Backtracking within a commit: when a task shows that an earlier decision of this spec is wrong (a budget missed, a gate too wide, a seed value implausible in play), the builder stops, changes the decision in this document first (section 2.2 and the section that applies it), adjusts the criteria, and only then the code. The D31 review can change any seed value without a code change, through the admin routes.
 
@@ -5395,6 +5618,10 @@ Backtracking within a commit: when a task shows that an earlier decision of this
 | `server/lib/fieldOps/incidentEventSchemas.ts (new)` (**added 22 Nov 2026**) | Its zod schema | T9.34 |
 | `server/services/fieldOps/world/incidents/ (new)` (**added 22 Nov 2026**) | `incidentTypes.ts`, `initialEffects.ts`, `crowdCrush.ts`, `ramming.ts`, `aircraftImpact.ts`, `fireEvents.ts`, `gasExplosion.ts`, `chemicalRelease.ts`, `phase2.ts` and their tests | T9.34 to T9.41 |
 | `server/services/fieldOps/world/data/seed/incident-types.json (new)` (**added 22 Nov 2026**) | The incident type rows | T9.34 |
+| `server/services/fieldOps/world/population/ (new)` (**added 22 Nov 2026**) | `populate.ts`, `casualties.ts` and their tests | T9.43 |
+| `server/services/fieldOps/world/agents/ (new)` (**added 22 Nov 2026**) | `agents.ts`, `routeChoice.ts`, `perception.ts`, `storeys.ts`, `outdoors.ts` and their tests | T9.45, T9.46 |
+| `server/services/fieldOps/world/units/ (new)` (**added 22 Nov 2026**) | `unitKinds.ts`, `equipment.ts` and their tests | T9.50 |
+| RTS client files (**added 22 Nov 2026**) | `WorldCommandCard.tsx`, `WorldMinimap.tsx`, `WorldAlerts.tsx`, `worldSelection.ts` in `frontend/src/components/FieldOps/World/ (new)` | T9.51 |
 | `scenario_templates/scenario_types/ (new files)` (**added 22 Nov 2026**) | The eleven new templates of section 6.27.1; the eight existing ones are reused unchanged | T9.40, T9.41, T9.42 |
 | `server/services/fieldOps/world/__fixtures__/nfpa92LayerHeights.ts (new)` (**added 22 Nov 2026**) | AC9.63's reference values | T9.31 |
 | Engine files (**added 22 Nov 2026**) | `studIndex.ts`, `layers.ts`, `gasTransport.ts`, `outdoorPlume.ts`, `blastField.ts`, `threats.ts`, `movement.ts` in `server/services/fieldOps/world/engine/ (new)` | T9.30 to T9.32 |
@@ -5477,6 +5704,9 @@ WS1's `CountryMatch` and `countryMatch` (`shared/fieldOps/doctrineCountry.ts (ne
 | R9.15 | **Added 22 Nov 2026.** The layered engine misses the tick budget on the 1-CPU instance | Caps, active set, sub-step limit, coarsening, one world per process on the Standard plan, AC9.80 and the soak (section 6.26; master risk 27) |
 | R9.16 | **Added 22 Nov 2026.** Zone-style smoke per region misleads in very large open spaces such as atria, where a real layer is not uniform | Regions split at 2,000 studs by distance from the plume, with the far part filling later; AC9.63 bounds the error in a simple room; the W24 reviewer checks an atrium case; a field model stays out of scope |
 | R9.17 | **Added 22 Nov 2026.** Sources go stale or change | Review-due dates, the monthly stale list, diffs on re-run, snapshots in compiled scenarios (section 6.19; master risk 23) |
+| R9.22 | **Added 22 Nov 2026.** Individual agents on many storeys miss the tick budget | Shared flow fields, the agent cap with groups beyond it, AC9.118, the soak (master risk 33) |
+| R9.23 | **Added 22 Nov 2026.** The plotted population is mistaken for real occupancy data | "Typical occupancy, assumed" labels with the density source and hour; the trainer's headcount wins (master risk 34) |
+| R9.24 | **Added 22 Nov 2026.** Equipment values from public fleet pages are partial | Reviewed rows; the fallback constants labelled Assumed; ranges per value |
 | R9.19 | **Added 22 Nov 2026.** Attack-like event models inform real planning (master risk 29) | Section 6.27.10; AC9.96; a security reviewer per attack-like type; classes and bands only |
 | R9.20 | **Added 22 Nov 2026.** Crush and aircraft-impact results are uncertain (master risk 31) | Ranges per parameter; validation cases from public reports; "Unreviewed model" until reviewed; training-value labels |
 | R9.21 | **Added 22 Nov 2026.** Large crowds exceed the group and tick budgets | 600 groups for crowd events only, measured by AC9.104; larger crowds use larger groups |
@@ -5517,14 +5747,19 @@ WS9's own questions:
 33. **Is 10 per cent the right blast transmission through an intact slab?** **Assumed (D45):** yes until the W24 reviewer sets it.
 34. **How often do the agents re-run?** **Assumed (D39):** when a source's review-due date passes: 180 days for doctrine and use-of-force sources, 365 by default, 730 for published standards.
 35. **Are typical items placed silently or offered?** **Assumed (D42):** offered in the layout step; those the trainer neither placed nor removed are placed by the world, labelled Assumed.
-37. **Added 22 Nov 2026. Who is the security reviewer for attack-like types?** **Assumed (D47):** a person with counter-terrorism or protective-security background, separate from the W24 reviewer, signs each such type before it is turned on.
-38. **Should a deliberate aircraft impact be offered at all, or only accidental crashes?** **Assumed (D46):** both, sharing one model, with the template telling the story; the owner may restrict the deliberate template to admins.
-39. **May a trainer combine events (for example a ramming followed by a device)?** **Assumed (D46):** one event per scenario in phase 1, plus the bombing types' secondary devices; combinations later.
-40. **Does the crowd model need slopes?** **Assumed (D44):** no in phase 1; the reviewer checks the sloping-alley case.
-41. **Which phase 2 type comes first?** **Assumed (D46):** flash flood and utility failure, for local frequency, then rail, structural collapse, road collision and armed attacker.
-42. **Which incident types do the four bombing templates' doctrines cover?** **Assumed (D46):** doctrines list their incident types in `applies_to`; an empty list still means all types, so existing seeds cover new types until a reviewer narrows them.
 36. **What is Singapore's town gas?** **Assumed (D41):** a flammable gas lighter than air with no toxic tier until the review confirms its composition from the Energy Market Authority's or City Energy's published data.
-
+37. **Added 22 Nov 2026. Who is the security reviewer for attack-like types?** **Assumed (D47):** a person with counter-terrorism or protective-security background, separate from the W24 reviewer, signs each such type before it is turned on.
+38. **Should a deliberate aircraft impact be offered at all, or only accidental crashes?** **Assumed (D46):** both, sharing one model, with the template telling the story; the owner may restrict the deliberate template to admins. **Answered 22 Nov 2026:** both, on one model.
+39. **May a trainer combine events (for example a ramming followed by a device)?** **Answered 22 Nov 2026 (D49):** yes, up to six events in one storyline (section 6.31).
+40. **Does the crowd model need slopes?** **Answered 22 Nov 2026 (D53):** yes (section 6.30.6).
+41. **Which phase 2 type comes first?** **Answered 22 Nov 2026:** building fire with utility failure first, both now in phase 1; phase 2 is flash flood, rail, structural collapse and road collision.
+42. **Which incident types do the four bombing templates' doctrines cover?** **Assumed (D46):** doctrines list their incident types in `applies_to`; an empty list still means all types, so existing seeds cover new types until a reviewer narrows them.
+43. **Added 22 Nov 2026. Does a ramming driver count as an armed attacker?** **Assumed (D48):** no; ramming stays in phase 1 and its driver is a last-known position until the attacker's gameplay exists.
+44. **Added 22 Nov 2026. Is 12,000 agents per world enough?** **Assumed (D52):** yes for malls, stations and towers; concerts above it use groups beyond the cap.
+45. **Added 22 Nov 2026. Where do slopes come from?** **Assumed (D53):** the trainer's slope areas and ramps; a public elevation dataset for Singapore is to verify before it is used.
+46. **Added 22 Nov 2026. Should players see every evacuee, or only those in their cover?** **Assumed (D34, D52):** only those in their cover; the trainer sees all.
+47. **Added 22 Nov 2026. How far outside do evacuees run?** **Assumed (D52):** to 200 m, an assembly point, or the site ring's edge (at most 500 m), where they count as dispersed.
+48. **Added 22 Nov 2026. Do hydrants come from data?** **Assumed (D54):** none are in the saved data; one is assumed every 100 m along roads, labelled Assumed, until a public source is approved.
 ### 15.3 Requests WS9 makes of other specs
 
 | To | Request | Why |
@@ -5594,6 +5829,7 @@ WS9 is done when every line below holds on staging, and the production lines hol
 15. **Added 22 Nov 2026.** Migrations 257 to 259 applied as item 3 says; Singapore's catalogue, threat and movement seeds are reviewed and imported, and every Singapore building type is covered or has a recorded gap.
 16. **Added 22 Nov 2026.** No compile and no world calls a model or the network for a fact (AC9.77, AC9.80, AC9.83; WS5's AC5.41); the research agent exists only under `scripts/fieldops/knowledge/ (new)`.
 17. **Added 22 Nov 2026.** The layered world meets section 6.26's budgets in the soak on the production plan, or runs one world per process there.
+18. **Added 22 Nov 2026.** The W24 review covers the catalogue and threat libraries for their deployed dataset versions, or production runs layered worlds only for admins' sessions.
 19. **Added 22 Nov 2026.** For each incident type turned on in production: its criteria pass, its rows and template are reviewed (and, for an attack-like type, signed by the security reviewer), and `ENABLE_FIELDOPS_INCIDENT_TYPES` lists it.
 20. **Added 22 Nov 2026.** Phase 1's criteria AC9.85 to AC9.96, AC9.102 to AC9.104 and manual steps M16 to M18 pass on staging.
-18. **Added 22 Nov 2026.** The W24 review covers the catalogue and threat libraries for their deployed dataset versions, or production runs layered worlds only for admins' sessions.
+21. **Added 22 Nov 2026.** AC9.105 to AC9.122 pass with their tests, and M19 to M21 pass on staging; a populated three-storey scene runs within the budget of AC9.118.

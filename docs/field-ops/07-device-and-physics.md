@@ -2708,7 +2708,11 @@ Master D39, D41 and D45, 10.8 items 42 and 44; WS9's request in `11-living-world
 
 ### 15.6 Devices and the new incident types (added 22 Nov 2026)
 
-Master D46, 10.8 item 46. `DevicesCard` and the calculator serve the four bombing types only in this version; for every other type the devices lane is hidden and `devices` is empty (`03-setup-screen.md` AC2.38). Vehicles, aircraft, gas leaks and releases are not devices and never reach `calculateEffects`: their effects are WS9's (`11-living-world.md` section 6.27). A gas explosion's blast uses WS6's published curves through `pressureAt` (section 15.5), never the device library. Combining a device with another event is a later question (`11-living-world.md` section 15.2, question 39).
+Master D46, 10.8 item 46. `DevicesCard` and the calculator serve the four bombing types only in this version; for every other type the devices lane is hidden and `devices` is empty (`03-setup-screen.md` AC2.38). Vehicles, aircraft, gas leaks and releases are not devices and never reach `calculateEffects`: their effects are WS9's (`11-living-world.md` section 6.27). A gas explosion's blast uses WS6's published curves through `pressureAt` (section 15.5), never the device library. Combining a device with another event is a later question (`11-living-world.md` section 15.2, question 39). **Updated 22 Nov 2026 (D49):** answered: a device is one event of a storyline, in any scenario; the devices lane shows whenever one is.
+
+### 15.7 Casualties for a plotted population (added 22 Nov 2026)
+
+Master D51, 10.8 item 47. When a scene has a population, each person's outcome is WS9's `casualtiesForPopulation` (`11-living-world.md` section 6.28), which reads WS6's injury thresholds, the fragment band and the casualty shares within each band from the physics library, and the per-stud blast field from `blast_profile`. `allocateCrowd` and the crowd-zone casualty function stay for scenes without a population and for legacy scenes. WS6 adds `injuryShares(band)` to `shared/fieldOps/effects.ts (new)` so both paths draw the same shares; `server/services/fieldOps/physics/casualties.test.ts (new)` gains "shares match", proving the two paths agree for a uniform population.
 
 ## 16. Definition of done
 

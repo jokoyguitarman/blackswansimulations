@@ -1,6 +1,6 @@
 # Teams, archetypes and the doctrine library
 
-**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**. Later on 22 Nov, D46 added responders and seeds for the new incident types (section 6.11.7, AC1.63, T1.23).
+**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**. Later on 22 Nov, D46 added responders and seeds for the new incident types (section 6.11.7, AC1.63, T1.23), and D55 a review of the existing seeds and agent research for every type (section 6.11.8, AC1.64, T1.24).
 **Workstream:** WS1
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`
 **Flags:** `ENABLE_FIELDOPS_DOCTRINES`
@@ -283,6 +283,7 @@ The fuzzy lookup is `resolveTeamDoctrines` (`server/services/environmentalConsis
 | AC1.61 | **Added 22 Nov 2026.** "Draft it for me" with text, and with an uploaded document that states a power of arrest | the drafting call runs with a recording fake | its schema and its output hold no `use_of_force` or `legal_authorities`; the prompt asks for neither | `server/services/fieldOps/doctrine/doctrineDraft.test.ts (new)` |
 | AC1.62 | **Added 22 Nov 2026.** the drawer on a seeded doctrine with a use-of-force block, and on the trainer's own new doctrine | it renders | the seed shows "Use of force and legal authority" read-only with the authorities and levels; her own shows the editable section, collapsed, and saving a level not in the framework shows "That level is outside this framework." | `frontend/tests/doctrineDrawerState.test.ts (new)` |
 | AC1.63 | **Added 22 Nov 2026.** `DOCTRINE_INCIDENT_TYPES_ALL` and a doctrine whose `applies_to` names `stampede_crush` | the list is compared with master 10.1 and `rankDoctrines` runs for a `stampede_crush` card and a `bombing` card | the list holds every live key of every phase; the doctrine is offered for the crush card and not for the bombing card; a doctrine with an empty `applies_to` is offered for both | `server/lib/fieldOps/vocabulary.test.ts (new)`, `server/services/fieldOps/doctrine/resolve.test.ts (new)` |
+| AC1.64 | **Added 22 Nov 2026.** the six playbook seeds and the imported entries, each with a review record of section 6.11.8 | the seed register test runs | every seed has a 22 Nov review entry (kept, amended or retired) naming its reviewer, each amended seed is a new version, and every incident type of phase 1 has at least one Singapore seed per responder archetype or a recorded gap | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
 
 ## 5. Data model
 
@@ -3282,6 +3283,15 @@ Master D46. Each incident type lists its responding archetypes in WS9's `fieldop
 
 Seeds for these agencies and types are drafted by WS9's pipeline with the `doctrine_agency` brief and reviewed as section 6.11.3 says; a type whose agency has no seed records a coverage gap (section 6.11.6).
 
+#### 6.11.8 Reviewing the existing seeds and extending the library (added 22 Nov 2026)
+
+Master D55. Two passes, both through WS9's pipeline (`11-living-world.md` section 6.19) and this spec's review:
+
+1. **Review.** The six playbook seeds and every imported entry are read again against public Singapore sources by the research agent with the `doctrine_review` brief, which writes, per seed, the claims it could and could not source, the steps that differ from the agency's public material, and a proposed amendment. A reviewer keeps, amends (a new version) or retires each, and records it in the seed's `review.history`.
+2. **Extension.** The `doctrine_agency` and `use_of_force` briefs run for every responder archetype of every phase 1 incident type (section 6.11.7), building fire and utility failure first, then the rest in D46's order; gaps are recorded.
+
+Nothing is written to a database before the migrations exist and the review approves a file (master risk 35); the agent's output waits as pending files.
+
 ### 6.12 Logging
 
 Pino, snake-case events starting with `fieldops_` (master 10.5). Never the text of a doctrine, a description or a document; counts, ids, keys and durations only. **Added 3 Nov 2026:** nor the filename or the agency name of an uploaded document; a country code is not personal and may be logged.
@@ -4682,6 +4692,9 @@ Prerequisite: WS0's `server/lib/schemaFeatures.ts (new)`, `shared/fieldOps/jobs.
     - Goal: section 6.11.7.
     - Files: touched `shared/fieldOps/vocabulary.ts (new)`, `server/services/fieldOps/doctrine/resolve.ts (new)`, `scripts/fieldops/seeds/sea/SG/agencies.json (new)`, their tests.
     - Done when: AC1.63 passes; the Singapore register holds the agencies of section 6.11.7, reviewed or recorded as gaps. Commit 7.
+24. **T1.24 The doctrine review and extension (added 22 Nov 2026; D55).**
+    - Files: `scripts/fieldops/seeds/playbooks/ (new)` and `scripts/fieldops/seeds/sea/SG/ (new)` (amended seeds and new ones), `server/services/fieldOps/doctrine/seedRegister.ts (new)` (the `review.history` check) and its test; WS9's briefs `doctrine_review` and `doctrine_agency`.
+    - Done when: AC1.64 passes. Commit 7.
 
 ## 13. Commit plan and backtracking
 
