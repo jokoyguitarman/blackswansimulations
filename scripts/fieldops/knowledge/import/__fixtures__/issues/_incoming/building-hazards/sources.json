@@ -1,0 +1,51 @@
+{
+  "file": "sources.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "source_key": "nfpa-855",
+      "title": "NFPA 855, Standard for the Installation of Stationary Energy Storage Systems",
+      "publisher": "NFPA",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": ["building_hazards"],
+      "access_status": "not_accessed_unverified"
+    },
+    {
+      "source_key": "scdf-fire-code-2023-cl10-3",
+      "title": "Fire Code 2023, Clause 10.3 Energy Storage Systems (web clause page)",
+      "publisher": "Singapore Civil Defence Force",
+      "url": "https://www.scdf.gov.sg/fire-safety-services-listing/fire-code-2023/table-of-content/chapter-10-requirements-for-special-installations/clause-10.3-energy-storage-systems",
+      "published_on": null,
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Public Singapore Government publication, free to read; cited by clause with short quotes only.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["building_hazards"],
+      "access_status": "accessed"
+    },
+    {
+      "source_key": "nfpa-30b",
+      "title": "NFPA 30B, Code for the Manufacture and Storage of Aerosol Products",
+      "publisher": "NFPA",
+      "url": null,
+      "published_on": null,
+      "accessed_on": null,
+      "language": "en",
+      "terms_note": "Not accessed in this run: carried from WS9 section 5.19 as a named reference. Paid or licence-restricted standard; the reviewer must check the locator against a licensed copy before approval.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": null,
+      "libraries": ["building_hazards"],
+      "access_status": "not_accessed_unverified"
+    }
+  ]
+}

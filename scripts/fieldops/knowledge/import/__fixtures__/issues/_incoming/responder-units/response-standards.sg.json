@@ -1,0 +1,111 @@
+{
+  "file": "response-standards.sg.json",
+  "review_status": "unreviewed",
+  "seed_status": "PENDING",
+  "rows": [
+    {
+      "key": "sg_airport_rffs_response",
+      "label": "Airport rescue and firefighting response (Changi)",
+      "country": "SG",
+      "scope": "airport",
+      "values": [
+        {
+          "param": "respond_within_s",
+          "value": 120,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "changi_aes",
+          "locator": "Safety Infrastructure: 2 minutes"
+        },
+        {
+          "param": "respond_limit_s",
+          "value": 180,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "changi_aes",
+          "locator": "Safety Infrastructure: not exceeding 3 minutes"
+        },
+        {
+          "param": "turnout_s",
+          "value": 15,
+          "unit": "s",
+          "status": "unverified",
+          "source_key": "cna_aes_2020",
+          "locator": "THREE MINUTES TO SAVE LIVES: 15 seconds to get into vehicles"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: 2 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: not exceeding 3 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_aes_2020",
+            "locator": "THREE MINUTES TO SAVE LIVES: 15 seconds to get into vehicles",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": ["turnout_s"],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_fire_rescue_response",
+      "label": "Fire and rescue response target",
+      "country": "SG",
+      "scope": "fire_rescue",
+      "values": [
+        {
+          "param": "respond_within_s",
+          "value": 480,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 2: within 8 minutes"
+        },
+        {
+          "param": "target_share_pct",
+          "value": 90,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 2: 90% of the time"
+        }
+      ],
+      "review_notes": [
+        "'Respond' is not defined in the pledge (call receipt to arrival is Assumed)."
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 2: within 8 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 2: 90% of the time",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    }
+  ]
+}

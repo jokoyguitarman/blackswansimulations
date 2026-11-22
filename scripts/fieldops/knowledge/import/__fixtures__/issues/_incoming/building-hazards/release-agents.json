@@ -1,0 +1,117 @@
+{
+  "file": "release-agents.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "agent_key": "chlorine",
+      "label": "Chlorine",
+      "cas_number": "7782-50-5",
+      "molecular_weight": 70.9,
+      "density_ratio": 2.47,
+      "boiling_point_c": -33.9,
+      "lfl_pct": null,
+      "ufl_pct": null,
+      "tier_scheme": "aegl",
+      "tiers": [
+        {
+          "tier": 1,
+          "minutes": 10,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 30,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 60,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 240,
+          "ppm": 0.5
+        },
+        {
+          "tier": 1,
+          "minutes": 480,
+          "ppm": 0.5
+        },
+        {
+          "tier": 2,
+          "minutes": 10,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 30,
+          "ppm": 2.8
+        },
+        {
+          "tier": 2,
+          "minutes": 60,
+          "ppm": 2.0
+        },
+        {
+          "tier": 2,
+          "minutes": 240,
+          "ppm": 1.0
+        },
+        {
+          "tier": 2,
+          "minutes": 480,
+          "ppm": 0.7
+        },
+        {
+          "tier": 3,
+          "minutes": 10,
+          "ppm": 50
+        },
+        {
+          "tier": 3,
+          "minutes": 30,
+          "ppm": 28
+        },
+        {
+          "tier": 3,
+          "minutes": 60,
+          "ppm": 20
+        },
+        {
+          "tier": 3,
+          "minutes": 240,
+          "ppm": 10
+        },
+        {
+          "tier": 3,
+          "minutes": 480,
+          "ppm": 7.1
+        }
+      ],
+      "toxic_load_n": null,
+      "irritant": true,
+      "source_keys": ["epa-aegl-chlorine", "niosh-npg-chlorine"],
+      "source_ref": "NIOSH Pocket Guide: Chlorine; NRC AEGL Volume 4 Table 1-1",
+      "source_note": "Density ratio 2.47 per NIOSH (spec example said 2.45).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-chlorine",
+            "locator": "Molecular Weight 70.9; Boiling Point -29\u00b0F; Relative Gas Density 2.47",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "epa-aegl-chlorine",
+            "locator": "Table 1-1 Summary of AEGL Values for Chlorine",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      }
+    }
+  ]
+}

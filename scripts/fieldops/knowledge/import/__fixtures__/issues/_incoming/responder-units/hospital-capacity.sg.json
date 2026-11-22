@@ -1,0 +1,559 @@
+{
+  "file": "hospital-capacity.sg.json",
+  "review_status": "unreviewed",
+  "seed_status": "PENDING",
+  "rows": [
+    {
+      "key": "sg_hosp_wh",
+      "label": "Woodlands Hospital (Woodlands Health)",
+      "country": "SG",
+      "scope": "hospital",
+      "name": "Woodlands Hospital (Woodlands Health)",
+      "ownership": "public",
+      "cluster": "NHG Health",
+      "acute": true,
+      "emergency_department": true,
+      "location": [1.4246813, 103.794743],
+      "osm_id": null,
+      "specialties": [
+        {
+          "role": "neurosurgery",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "singhealth_institutions",
+          "locator": "National Neuroscience Institute paragraph",
+          "note": null
+        }
+      ],
+      "values": [
+        {
+          "param": "address",
+          "value": "17 Woodlands Drive 17, Singapore 737628",
+          "status": "sourced",
+          "source_key": "onemap_search",
+          "locator": "searchVal=737628",
+          "note": "Postal code 737628."
+        },
+        {
+          "param": "ed_status",
+          "value": "24h_ed",
+          "status": "sourced",
+          "note": "Derived from the capability values below."
+        },
+        {
+          "param": "location_point",
+          "value": "OneMap building point for 'WOODLANDS HOSPITAL'",
+          "status": "sourced",
+          "source_key": "onemap_search",
+          "locator": "searchVal=WOODLANDS HOSPITAL",
+          "note": "Building point, not the ED entrance."
+        },
+        {
+          "param": "ed_24h",
+          "value": true,
+          "status": "sourced",
+          "as_of": "since 2024-05-17",
+          "source_key": "wh_emergency_care",
+          "locator": "Emergency Care",
+          "quoted_phrase": "We provide 24-hour emergency care for all types of patient conditions, including trauma, surgery, and medical emergencies."
+        },
+        {
+          "param": "ed_trauma_lift",
+          "value": true,
+          "status": "sourced",
+          "source_key": "wh_ed_2024",
+          "locator": "para 2",
+          "quoted_phrase": "The Emergency Department is connected vertically via a trauma lift to other critical care functions"
+        },
+        {
+          "param": "neurosurgery",
+          "value": true,
+          "status": "sourced",
+          "source_key": "singhealth_institutions",
+          "locator": "National Neuroscience Institute paragraph",
+          "quoted_phrase": "NNI operates out of 7 hospitals in Singapore"
+        },
+        {
+          "param": "maternity_delivery",
+          "value": false,
+          "status": "sourced",
+          "source_key": "moh_pq_2023_og",
+          "locator": "Answer, para 3",
+          "quoted_phrase": "public inpatient OG and paediatric services are centralised in KK Women and Children's Hospital (KKH), National University Hospital (NUH) and the Singapore General Hospital (SGH)"
+        },
+        {
+          "param": "meets_moh_minimum_trauma_standards",
+          "value": null,
+          "status": "gap",
+          "note": "Opened 2024, after the 2016 statement."
+        },
+        {
+          "param": "trauma_centre_level",
+          "value": null,
+          "status": "gap",
+          "note": "Not located in a public source; to verify."
+        },
+        {
+          "param": "hyperbaric_oxygen",
+          "value": null,
+          "status": "gap",
+          "note": "Not located in a public source; to verify."
+        },
+        {
+          "param": "decontamination",
+          "value": null,
+          "status": "gap",
+          "note": "Not located in a public source; to verify."
+        },
+        {
+          "param": "toxicology_service",
+          "value": null,
+          "status": "gap",
+          "note": "Not located in a public source; to verify."
+        },
+        {
+          "param": "acute_and_community_beds_2024",
+          "value": 430,
+          "status": "sourced",
+          "unit": "beds",
+          "as_of": "2024-05",
+          "source_key": "wh_ed_2024",
+          "locator": "para 1",
+          "quoted_phrase": "WH will have 430 acute and community hospital beds by end May 2024.",
+          "note": "Acute and community beds combined; acute share to verify."
+        }
+      ],
+      "review_notes": [
+        "acute true: every row is an acute hospital (MOH acute hospitals list for public ones; private ones Assumed).",
+        "osm_id null: to match against WS3's saved facilities at import.",
+        "short_name WH; hospital_type acute_general; cluster source HealthHub (healthhub_clusters)."
+      ],
+      "seed_status": "PENDING",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "wh_emergency_care",
+            "locator": "Emergency Care",
+            "quoted_phrase": "We provide 24-hour emergency care for all types of patient conditions, including trauma, surgery, and medical emergencies."
+          },
+          {
+            "source_key": "wh_ed_2024",
+            "locator": "para 2",
+            "quoted_phrase": "The Emergency Department is connected vertically via a trauma lift to other critical care functions"
+          },
+          {
+            "source_key": "singhealth_institutions",
+            "locator": "National Neuroscience Institute paragraph",
+            "quoted_phrase": "NNI operates out of 7 hospitals in Singapore"
+          },
+          {
+            "source_key": "moh_pq_2023_og",
+            "locator": "Answer, para 3",
+            "quoted_phrase": "public inpatient OG and paediatric services are centralised in KK Women and Children's Hospital (KKH), National University Hospital (NUH) and the Singapore General Hospital (SGH)"
+          },
+          {
+            "source_key": "wh_ed_2024",
+            "locator": "para 1",
+            "quoted_phrase": "WH will have 430 acute and community hospital beds by end May 2024."
+          },
+          {
+            "source_key": "onemap_search",
+            "locator": "searchVal=WOODLANDS HOSPITAL",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "healthhub_clusters",
+            "locator": "cluster list: NHG Health",
+            "quoted_phrase": "Singapore's public healthcare system is organised into three clusters: SingHealth, National University Health System (NUHS) and NHG Health."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "decontamination",
+          "hyperbaric_oxygen",
+          "meets_moh_minimum_trauma_standards",
+          "osm_id",
+          "toxicology_service",
+          "trauma_centre_level"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_hosp_sgh",
+      "label": "Singapore General Hospital",
+      "country": "SG",
+      "scope": "hospital",
+      "name": "Singapore General Hospital",
+      "ownership": "public",
+      "cluster": "SingHealth",
+      "acute": true,
+      "emergency_department": true,
+      "location": [1.2796438, 103.835541],
+      "osm_id": null,
+      "specialties": [
+        {
+          "role": "burns_centre",
+          "level": "national_centre",
+          "status": "sourced",
+          "source_key": "sgh_burns",
+          "locator": "Burn Centre, para 1",
+          "note": "Admits adults over 15% TBSA, children over 10%, inhalation, electrical and chemical burns."
+        },
+        {
+          "role": "trauma_centre",
+          "level": null,
+          "status": "sourced",
+          "source_key": "sgh_trauma",
+          "locator": "Trauma Service, para 1",
+          "note": "Self-described Level 1. Self-described; no MOH level designation located."
+        },
+        {
+          "role": "hyperbaric",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "sgh_hdmc",
+          "locator": "Clinical Services",
+          "note": "Jointly run with the Navy Medical Service (navy_nms). Treats carbon monoxide poisoning and crush injury."
+        },
+        {
+          "role": "decontamination",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "sgh_ed",
+          "locator": "Emergency Medicine, para 3",
+          "note": null
+        },
+        {
+          "role": "toxicology",
+          "level": "national_centre",
+          "status": "unverified",
+          "source_key": "sma_dpic_2005",
+          "locator": "What is the DPIC?",
+          "note": "Drug and Poison Information Centre. 2005 article; current status and hotline to verify."
+        },
+        {
+          "role": "obstetric",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "sgh_maternity",
+          "locator": "SGH Maternity Unit",
+          "note": null
+        },
+        {
+          "role": "paediatric",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "moh_pq_2023_og",
+          "locator": "Answer, para 3",
+          "note": "MOH groups OG and paediatric services together; SGH paediatric scope to verify."
+        },
+        {
+          "role": "neurosurgery",
+          "level": "service",
+          "status": "sourced",
+          "source_key": "singhealth_institutions",
+          "locator": "National Neuroscience Institute paragraph",
+          "note": "National Neuroscience Institute service on the SGH campus."
+        }
+      ],
+      "values": [
+        {
+          "param": "address",
+          "value": "1 Hospital Crescent, Singapore 169608 (Outram Road)",
+          "status": "sourced",
+          "source_key": "onemap_search",
+          "locator": "searchVal=169608",
+          "note": "Postal code 169608."
+        },
+        {
+          "param": "ed_status",
+          "value": "24h_ed",
+          "status": "sourced",
+          "note": "Derived from the capability values below."
+        },
+        {
+          "param": "location_point",
+          "value": "OneMap building point for 'SINGAPORE GENERAL HOSPITAL'",
+          "status": "sourced",
+          "source_key": "onemap_search",
+          "locator": "searchVal=SINGAPORE GENERAL HOSPITAL",
+          "note": "Building point, not the ED entrance."
+        },
+        {
+          "param": "ed_24h",
+          "value": true,
+          "status": "sourced",
+          "source_key": "sgh_ed",
+          "locator": "Emergency Medicine, para 2",
+          "quoted_phrase": "A 24-hour one-stop Emergency Department for emergencies including resuscitations, critical emergencies and ambulant minor emergencies."
+        },
+        {
+          "param": "burns_centre",
+          "value": "national_tertiary",
+          "status": "sourced",
+          "source_key": "sgh_burns",
+          "locator": "Burn Centre, para 1",
+          "quoted_phrase": "The Burn Centre is the only specialised facility managing major burn injuries in Southeast Asia",
+          "note": "Admits adults over 15% TBSA, children over 10%, inhalation, electrical and chemical burns."
+        },
+        {
+          "param": "trauma_centre_level",
+          "value": "self_described_level_1",
+          "status": "sourced",
+          "source_key": "sgh_trauma",
+          "locator": "Trauma Service, para 1",
+          "quoted_phrase": "The Trauma Service also provides full support to the hospital's 'Level 1' Trauma Centre.",
+          "note": "Self-described; no MOH level designation located."
+        },
+        {
+          "param": "meets_moh_minimum_trauma_standards",
+          "value": true,
+          "status": "sourced",
+          "as_of": "2016",
+          "source_key": "moh_trauma_2016",
+          "locator": "para 5",
+          "quoted_phrase": "To date, all public hospitals in Singapore have met these Standards"
+        },
+        {
+          "param": "hyperbaric_oxygen",
+          "value": "24h_diving_emergencies",
+          "status": "sourced",
+          "source_key": "sgh_hdmc",
+          "locator": "Clinical Services",
+          "quoted_phrase": "24-hour service for Diving Emergencies",
+          "note": "Jointly run with the Navy Medical Service (navy_nms). Treats carbon monoxide poisoning and crush injury."
+        },
+        {
+          "param": "decontamination",
+          "value": "semi_automatic_decontamination_centre",
+          "status": "sourced",
+          "source_key": "sgh_ed",
+          "locator": "Emergency Medicine, para 3",
+          "quoted_phrase": "The department has the only semi-automatic decontamination centre in Singapore."
+        },
+        {
+          "param": "poison_information_centre",
+          "value": "DPIC co-located with Emergency Medicine",
+          "status": "unverified",
+          "source_key": "sma_dpic_2005",
+          "locator": "What is the DPIC?",
+          "quoted_phrase": "co-located with the Department of Emergency Medicine, SGH",
+          "note": "2005 article; current status and hotline to verify."
+        },
+        {
+          "param": "maternity_delivery",
+          "value": true,
+          "status": "sourced",
+          "source_key": "sgh_maternity",
+          "locator": "SGH Maternity Unit",
+          "quoted_phrase": "8 Delivery Suites"
+        },
+        {
+          "param": "inpatient_paediatrics",
+          "value": true,
+          "status": "sourced",
+          "source_key": "moh_pq_2023_og",
+          "locator": "Answer, para 3",
+          "quoted_phrase": "public inpatient OG and paediatric services are centralised in KK Women and Children's Hospital (KKH), National University Hospital (NUH) and the Singapore General Hospital (SGH)",
+          "note": "MOH groups OG and paediatric services together; SGH paediatric scope to verify."
+        },
+        {
+          "param": "paediatric_emergency_24h",
+          "value": null,
+          "status": "gap"
+        },
+        {
+          "param": "neurosurgery",
+          "value": true,
+          "status": "sourced",
+          "source_key": "singhealth_institutions",
+          "locator": "National Neuroscience Institute paragraph",
+          "quoted_phrase": "NNI operates out of 7 hospitals in Singapore",
+          "note": "National Neuroscience Institute service on the SGH campus."
+        },
+        {
+          "param": "toxicology_service",
+          "value": null,
+          "status": "gap",
+          "note": "Public hospitals offer 24/7 toxicology consultations (smj_tox_2026, network row); SGH-specific service to verify."
+        },
+        {
+          "param": "beds_2025",
+          "value": 1931,
+          "status": "sourced",
+          "unit": "beds",
+          "as_of": "2025-03-31",
+          "source_key": "sgh_who",
+          "locator": "Key Figures, year ended 31 Mar 2025",
+          "quoted_phrase": "Bed Distribution - 1,931"
+        },
+        {
+          "param": "ed_attendances_per_year",
+          "value": 113066,
+          "status": "sourced",
+          "unit": "attendances",
+          "as_of": "FY2024",
+          "source_key": "sgh_who",
+          "locator": "Key Figures",
+          "quoted_phrase": "A&E Attendances - 113,066"
+        },
+        {
+          "param": "ed_critical_care_beds",
+          "value": 6,
+          "status": "sourced",
+          "unit": "beds",
+          "source_key": "sgh_ed",
+          "locator": "Emergency Medicine, para 2",
+          "quoted_phrase": "managed in a six-bedded critical care area"
+        },
+        {
+          "param": "ed_observation_ward_beds",
+          "value": 24,
+          "status": "sourced",
+          "unit": "beds",
+          "source_key": "sgh_ed",
+          "locator": "Emergency Medicine, para 3",
+          "quoted_phrase": "a 24-bedded Emergency Observation Ward"
+        },
+        {
+          "param": "burns_icu_beds",
+          "value": 6,
+          "status": "sourced",
+          "unit": "beds",
+          "source_key": "sgh_burns",
+          "locator": "Facilities",
+          "quoted_phrase": "6 beds are devoted to critically-ill patients"
+        },
+        {
+          "param": "burns_high_dependency_beds",
+          "value": 10,
+          "status": "sourced",
+          "unit": "beds",
+          "source_key": "sgh_burns",
+          "locator": "Facilities",
+          "quoted_phrase": "10 beds are set aside for patients requiring intermediate care in a high-dependency area"
+        },
+        {
+          "param": "hyperbaric_chamber_patients",
+          "value": 14,
+          "status": "sourced",
+          "unit": "patients",
+          "as_of": "2009",
+          "source_key": "mindef_hdmc_2009",
+          "locator": "para 2",
+          "quoted_phrase": "able to treat up to 14 patients at the same time",
+          "note": "navy_nms says 'capable of treating over 20 patients at once'; reviewer to reconcile."
+        },
+        {
+          "param": "delivery_suites",
+          "value": 8,
+          "status": "sourced",
+          "unit": "rooms",
+          "source_key": "sgh_maternity",
+          "locator": "SGH Maternity Unit",
+          "quoted_phrase": "8 Delivery Suites"
+        }
+      ],
+      "review_notes": [
+        "acute true: every row is an acute hospital (MOH acute hospitals list for public ones; private ones Assumed).",
+        "osm_id null: to match against WS3's saved facilities at import.",
+        "short_name SGH; hospital_type acute_general_tertiary; cluster source HealthHub (healthhub_clusters)."
+      ],
+      "seed_status": "PENDING",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "sgh_ed",
+            "locator": "Emergency Medicine, para 2",
+            "quoted_phrase": "A 24-hour one-stop Emergency Department for emergencies including resuscitations, critical emergencies and ambulant minor emergencies."
+          },
+          {
+            "source_key": "sgh_burns",
+            "locator": "Burn Centre, para 1",
+            "quoted_phrase": "The Burn Centre is the only specialised facility managing major burn injuries in Southeast Asia"
+          },
+          {
+            "source_key": "sgh_trauma",
+            "locator": "Trauma Service, para 1",
+            "quoted_phrase": "The Trauma Service also provides full support to the hospital's 'Level 1' Trauma Centre."
+          },
+          {
+            "source_key": "moh_trauma_2016",
+            "locator": "para 5",
+            "quoted_phrase": "To date, all public hospitals in Singapore have met these Standards"
+          },
+          {
+            "source_key": "sgh_hdmc",
+            "locator": "Clinical Services",
+            "quoted_phrase": "24-hour service for Diving Emergencies"
+          },
+          {
+            "source_key": "sgh_ed",
+            "locator": "Emergency Medicine, para 3",
+            "quoted_phrase": "The department has the only semi-automatic decontamination centre in Singapore."
+          },
+          {
+            "source_key": "sma_dpic_2005",
+            "locator": "What is the DPIC?",
+            "quoted_phrase": "co-located with the Department of Emergency Medicine, SGH"
+          },
+          {
+            "source_key": "sgh_maternity",
+            "locator": "SGH Maternity Unit",
+            "quoted_phrase": "8 Delivery Suites"
+          },
+          {
+            "source_key": "moh_pq_2023_og",
+            "locator": "Answer, para 3",
+            "quoted_phrase": "public inpatient OG and paediatric services are centralised in KK Women and Children's Hospital (KKH), National University Hospital (NUH) and the Singapore General Hospital (SGH)"
+          },
+          {
+            "source_key": "singhealth_institutions",
+            "locator": "National Neuroscience Institute paragraph",
+            "quoted_phrase": "NNI operates out of 7 hospitals in Singapore"
+          },
+          {
+            "source_key": "sgh_who",
+            "locator": "Key Figures, year ended 31 Mar 2025",
+            "quoted_phrase": "Bed Distribution - 1,931"
+          },
+          {
+            "source_key": "sgh_who",
+            "locator": "Key Figures",
+            "quoted_phrase": "A&E Attendances - 113,066"
+          },
+          {
+            "source_key": "sgh_burns",
+            "locator": "Facilities",
+            "quoted_phrase": "6 beds are devoted to critically-ill patients"
+          },
+          {
+            "source_key": "mindef_hdmc_2009",
+            "locator": "para 2",
+            "quoted_phrase": "able to treat up to 14 patients at the same time"
+          },
+          {
+            "source_key": "onemap_search",
+            "locator": "searchVal=SINGAPORE GENERAL HOSPITAL",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "healthhub_clusters",
+            "locator": "cluster list: SingHealth",
+            "quoted_phrase": "Singapore's public healthcare system is organised into three clusters: SingHealth, National University Health System (NUHS) and NHG Health."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": ["osm_id", "paediatric_emergency_24h", "toxicology_service"],
+        "unverified_fields": ["poison_information_centre"],
+        "withheld_fields": []
+      }
+    }
+  ]
+}

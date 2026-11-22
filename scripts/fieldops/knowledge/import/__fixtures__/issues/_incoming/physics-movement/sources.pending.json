@@ -1,0 +1,21 @@
+{
+  "file": "sources.pending.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "source_key": "en_1991_1_2_2002",
+      "title": "EN 1991-1-2:2002 Eurocode 1, Actions on structures, Part 1-2: Actions on structures exposed to fire, Annex E",
+      "publisher": "CEN (summarised in EU JRC Eurocode workshop slides, Vassart 2012)",
+      "url": "https://eurocodes.jrc.ec.europa.eu/sites/default/files/2022-06/03a-VASSART-EC-FireDesign-WS.pdf",
+      "published_on": "2002-11-01",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "EN text is published law in the EU (Regulation 305/2011); JRC slides are public. Superseded by EN 1991-1-2:2024 (BS EN 2002 withdrawn by 30 Mar 2028); re-check table numbers.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["spread", "threats", "movement"],
+      "status": "active"
+    }
+  ]
+}

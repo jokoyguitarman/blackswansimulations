@@ -1,0 +1,194 @@
+{
+  "file": "blast-curves.pending.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "ref_key": "kb_surface_time_of_arrival_ms_per_kg13",
+      "topic": "airblast_curve",
+      "value": {
+        "geometry": "hemispherical_surface",
+        "explosive": "TNT",
+        "z_unit": "m/kg^(1/3)",
+        "form": "Y = exp(A + B*ln(Z) + C*ln(Z)^2 + D*ln(Z)^3 + E*ln(Z)^4 + F*ln(Z)^5 + G*ln(Z)^6)",
+        "segments": [
+          {
+            "z_min": 0.06,
+            "z_max": 1.5,
+            "A": -0.7604,
+            "B": 1.8058,
+            "C": 0.1257,
+            "D": -0.0437,
+            "E": -0.031,
+            "F": -0.00669,
+            "G": 0
+          },
+          {
+            "z_min": 1.5,
+            "z_max": 40.0,
+            "A": -0.7137,
+            "B": 1.5732,
+            "C": 0.5561,
+            "D": -0.4213,
+            "E": 0.1054,
+            "F": -0.00929,
+            "G": 0
+          }
+        ],
+        "scaling": "multiply Y by W^(1/3) (W in kg TNT) to get the physical value"
+      },
+      "unit": "ms per kg^(1/3)",
+      "note": "Sea-level, TNT hemispherical surface burst. Segment ends are inclusive on the low side; at a shared end both segments agree to within rounding. Do not extrapolate outside z_min..z_max. Kingery (1966) data scatter: two-thirds of points within +/-1.8 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Swisdak (1994) Table 1, Simplified Kingery airblast coefficients, metric rows, block 'Time of arrival, TOA (ms/kg^1/3)' (p. 8-10 of the DTIC PDF)",
+            "quoted_phrase": "FUNCTION = EXP (A+B*(LN(Z))+C*(LN(Z))^2+D*(LN(Z))^3+E*(LN(Z))^4+F*(LN(Z))^5+G*(LN(Z))^6)"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Current work, paragraph on simplification guidelines",
+            "quoted_phrase": "the simplified equations must predict the Kingery and Bulmash results with an average error of less than 1%"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Current work, limitations and restrictions",
+            "quoted_phrase": "The curve fits, as presented, should not be extrapolated beyond the ranges shown."
+          },
+          {
+            "source_key": "fcento100_kingery_bulmash",
+            "locator": "src/kingery_bulmash/kingery_bulmash.py and tests (transcription cross-check)",
+            "quoted_phrase": "Python implementation of the Simplified Kingery Airblast Formulas and Coefficients from"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Chart 2, Kingery 1966 fit error: +/-1.8 %",
+            "quoted_phrase": "In each case 2/3 of all the data points lie within the error bounds shown below"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "kb_surface_incident_pressure_kpa",
+      "topic": "airblast_curve",
+      "value": {
+        "geometry": "hemispherical_surface",
+        "explosive": "TNT",
+        "z_unit": "m/kg^(1/3)",
+        "form": "Y = exp(A + B*ln(Z) + C*ln(Z)^2 + D*ln(Z)^3 + E*ln(Z)^4 + F*ln(Z)^5 + G*ln(Z)^6)",
+        "segments": [
+          {
+            "z_min": 0.2,
+            "z_max": 2.9,
+            "A": 7.2106,
+            "B": -2.1069,
+            "C": -0.3229,
+            "D": 0.1117,
+            "E": 0.0685,
+            "F": 0,
+            "G": 0
+          },
+          {
+            "z_min": 2.9,
+            "z_max": 23.8,
+            "A": 7.5938,
+            "B": -3.0523,
+            "C": 0.40977,
+            "D": 0.0261,
+            "E": -0.01267,
+            "F": 0,
+            "G": 0
+          },
+          {
+            "z_min": 23.8,
+            "z_max": 198.5,
+            "A": 6.0536,
+            "B": -1.4066,
+            "C": 0,
+            "D": 0,
+            "E": 0,
+            "F": 0,
+            "G": 0
+          }
+        ],
+        "scaling": "Y is the physical value"
+      },
+      "unit": "kPa",
+      "note": "Sea-level, TNT hemispherical surface burst. Segment ends are inclusive on the low side; at a shared end both segments agree to within rounding. Do not extrapolate outside z_min..z_max. Kingery (1966) data scatter: two-thirds of points within +/-6.4 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Swisdak (1994) Table 1, Simplified Kingery airblast coefficients, metric rows, block 'Incident pressure, PI (kPa)' (p. 8-10 of the DTIC PDF)",
+            "quoted_phrase": "FUNCTION = EXP (A+B*(LN(Z))+C*(LN(Z))^2+D*(LN(Z))^3+E*(LN(Z))^4+F*(LN(Z))^5+G*(LN(Z))^6)"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Current work, paragraph on simplification guidelines",
+            "quoted_phrase": "the simplified equations must predict the Kingery and Bulmash results with an average error of less than 1%"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Current work, limitations and restrictions",
+            "quoted_phrase": "The curve fits, as presented, should not be extrapolated beyond the ranges shown."
+          },
+          {
+            "source_key": "fcento100_kingery_bulmash",
+            "locator": "src/kingery_bulmash/kingery_bulmash.py and tests (transcription cross-check)",
+            "quoted_phrase": "Python implementation of the Simplified Kingery Airblast Formulas and Coefficients from"
+          },
+          {
+            "source_key": "swisdak_1994",
+            "locator": "Chart 2, Kingery 1966 fit error: +/-6.4 %",
+            "quoted_phrase": "In each case 2/3 of all the data points lie within the error bounds shown below"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "ref_key": "clean_short_locator",
+      "topic": "fixture",
+      "value": 1,
+      "unit": "kPa",
+      "provenance": {
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "page 1"
+          }
+        ]
+      }
+    }
+  ],
+  "curves_spec_shape": {
+    "hemispherical_surface": {}
+  },
+  "lookup_tables": {
+    "hemispherical_surface": {}
+  },
+  "oracles": []
+}
