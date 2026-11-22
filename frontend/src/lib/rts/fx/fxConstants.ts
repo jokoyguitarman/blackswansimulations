@@ -18,6 +18,12 @@ export const FX = {
   EMBER_CAP_LOW: 120,
   FRONT_PULSE_HZ: 1.5,
   AUTO_DOWNGRADE_MS: 6,
+  /**
+   * Assumed. A frame interval above this (about 50 fps) also steps the quality
+   * down. The draw-time meter misses present-time work such as scaling and
+   * compositing, so a slow frame can hide behind a small draw sample.
+   */
+  FRAME_DOWNGRADE_MS: 20,
   FIXED_DT: 1 / 60,
   EFFECTS_DT: 0.1,
   MAX_STEPS_PER_FRAME: 240,
@@ -25,3 +31,8 @@ export const FX = {
 } as const;
 
 export type FxQuality = 'high' | 'low' | 'classic';
+
+/** True when either the draw meter or the frame interval is over its limit. */
+export function shouldAutoDowngrade(drawAvgMs: number, frameAvgMs: number): boolean {
+  return drawAvgMs > FX.AUTO_DOWNGRADE_MS || frameAvgMs > FX.FRAME_DOWNGRADE_MS;
+}

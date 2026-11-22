@@ -39,7 +39,7 @@ import {
   type ChargeSpec,
 } from '../lib/rts/blast/blastModel';
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
-import { FX, type FxQuality } from '../lib/rts/fx/fxConstants';
+import { FX, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
 import { createAccumulator, takeSteps } from '../lib/rts/fx/simClock';
 import { buildRasterLayout, type RasterLayout } from '../lib/rts/fx/hazardRaster';
 import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
@@ -768,6 +768,7 @@ export function DebugRTSSim() {
   const fxPrevQualityRef = useRef<FxQuality>('high');
   const fxSuppressRef = useRef(false);
   const fxTimesRef = useRef(new Float32Array(60));
+  const fxFrameTimesRef = useRef(new Float32Array(60));
   const fxTimePosRef = useRef(0);
   const fxTimeCountRef = useRef(0);
   const fxWarmupRef = useRef(30);
@@ -1924,14 +1925,20 @@ export function DebugRTSSim() {
               fxWarmupRef.current--;
             } else {
               const ring = fxTimesRef.current;
+              const frames = fxFrameTimesRef.current;
               const pos = fxTimePosRef.current;
               ring[pos] = sample;
+              frames[pos] = dt * 1000;
               fxTimePosRef.current = (pos + 1) % ring.length;
               if (fxTimeCountRef.current < ring.length) fxTimeCountRef.current++;
               if (fxTimeCountRef.current === ring.length && !fxSuppressRef.current) {
-                let sum = 0;
-                for (let i = 0; i < ring.length; i++) sum += ring[i];
-                if (sum / ring.length > FX.AUTO_DOWNGRADE_MS) {
+                let drawSum = 0;
+                let frameSum = 0;
+                for (let i = 0; i < ring.length; i++) {
+                  drawSum += ring[i];
+                  frameSum += frames[i];
+                }
+                if (shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length)) {
                   const current = fxQualityRef.current;
                   const next = current === 'high' ? 'low' : current === 'low' ? 'classic' : null;
                   if (next) {
@@ -1952,12 +1959,15 @@ export function DebugRTSSim() {
             }
           }
           if (fxDebugRef.current && showcaseOn) {
-            const stats = hazardFxRef.current?.last;
+            const classic = fxQualityRef.current === 'classic';
+            const stats = classic ? undefined : hazardFxRef.current?.last;
+            const fxMs = classic ? 0 : (stats?.ms ?? 0);
+            const embers = classic ? 0 : (stats?.embers ?? 0);
             const collisions = rasterLayoutRef.current?.collisions ?? 0;
             const label =
               collisions > 0
-                ? `fx ${(stats?.ms ?? 0).toFixed(2)} · embers ${stats?.embers ?? 0} · quality ${fxQualityRef.current} · collisions ${collisions}`
-                : `fx ${(stats?.ms ?? 0).toFixed(2)} · embers ${stats?.embers ?? 0} · quality ${fxQualityRef.current}`;
+                ? `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current} · collisions ${collisions}`
+                : `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current}`;
             ctx.save();
             ctx.font = '12px monospace';
             ctx.textAlign = 'right';

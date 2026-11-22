@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { headSmoke } from '../src/lib/evacuation/hazardSensing';
+import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
+import { isInsidePolygon } from '../src/lib/evacuation/geometry';
+import { HazardField, headSmoke } from '../src/lib/evacuation/hazardSensing';
+import { blastEffectsTriggerSec } from '../src/lib/evacuation/showcase';
+import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
+import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
+import { RTSEngine } from '../src/lib/rts/engine';
+import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { EmberPool } from '../src/lib/rts/fx/embers';
-import { FX } from '../src/lib/rts/fx/fxConstants';
+import { FX, shouldAutoDowngrade } from '../src/lib/rts/fx/fxConstants';
+import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
+import type { HazardZone } from '../src/lib/rts/types';
 import {
   buildRasterLayout,
   dilateEmpty,
@@ -33,6 +42,174 @@ function stateMap(
   const map = new Map<string, { smoke: number; fire: { state: string } }>();
   for (const id of layout.studIds) map.set(id, { smoke, fire: { state: fire } });
   return map;
+}
+
+function exitDef(partial: {
+  id: string;
+  center: Vec2;
+  edgeIndex: number;
+  status?: ExitDef['status'];
+}): ExitDef {
+  return {
+    id: partial.id,
+    center: partial.center,
+    width: 2,
+    edgeIndex: partial.edgeIndex,
+    description: partial.id,
+    status: partial.status ?? 'open',
+    photos: [],
+  };
+}
+
+/**
+ * The page loop: one batch of evacuation steps, the blast on its step, then
+ * the effects steps for that frame. The last frame is shortened so the run
+ * stops on `target` evacuation steps rather than the next clock boundary.
+ */
+function pageLoopUntil(frameMs: number, target: number) {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const exits: ExitDef[] = [
+    exitDef({ id: 'E1-west', center: { x: 0, y: 20 }, edgeIndex: 3 }),
+    exitDef({ id: 'E2-east', center: { x: 60, y: 12 }, edgeIndex: 1 }),
+    exitDef({ id: 'E3-north', center: { x: 30, y: 40 }, edgeIndex: 2, status: 'congested' }),
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+  ];
+  const evac = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 48,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: FX.FIXED_DT,
+    },
+    exits,
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: SHOWCASE.RNG_SEED },
+  );
+  const studs: { id: string; simPos: Vec2; spatialContext: 'inside_building' }[] = [];
+  for (let y = 1.5; y < 40; y += 3) {
+    for (let x = 1.5; x < 60; x += 3) {
+      const simPos = { x, y };
+      if (isInsidePolygon(x, y, verts)) {
+        studs.push({ id: `${x},${y}`, simPos, spatialContext: 'inside_building' });
+      }
+    }
+  }
+  const effects = new SpatialEffectsEngine({
+    ...DEFAULT_FIRE_PARAMS,
+    ambientSpread: true,
+    ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
+  });
+  effects.init(studs);
+  const blastSite = { x: 30, y: 20 };
+  const blastR = 12;
+  const affected = studs
+    .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= blastR)
+    .map((s) => s.id);
+  const t0 = blastEffectsTriggerSec(effects.timeScale);
+  effects.registerHazard(
+    'blast-direct',
+    [
+      {
+        triggerTimeSec: t0,
+        eventType: 'explode',
+        spreadType: 'fire',
+        spreadRadius: blastR,
+        spreadRate: 10,
+        description: 'Direct blast ignition',
+        severity: 'critical',
+        smokeGeneration: 'heavy',
+        affectedStuds: affected,
+      },
+    ],
+    {
+      initial: 'Pre-detonation',
+      triggered: 'Blast wave',
+      worsening: 'Fire spreading',
+      critical: 'Engulfed',
+    },
+  );
+  const blastZone: HazardZone = {
+    id: 'blast-direct',
+    pos: blastSite,
+    radius: blastR,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Blast',
+    description: '',
+    photos: [],
+  };
+  const field = new HazardField(
+    studs.map((s) => ({ id: s.id, simPos: s.simPos, indoor: true })),
+    3,
+  );
+  evac.setHazardField(field);
+  const rts = new RTSEngine();
+  rts.setBuildingVertices(verts);
+  rts.startDetonation();
+  const evacAcc = createAccumulator();
+  const effectsAcc = createAccumulator();
+  const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
+  let evacDone = 0;
+  let effectDone = 0;
+  let fired = false;
+  let spins = 0;
+  while (evacDone < target && spins++ < target + 5) {
+    const room = target - evacDone;
+    const need = room * FX.FIXED_DT - evacAcc.acc;
+    const speed = rts.state.clock.speed;
+    const dt = Math.min(frameMs / 1000, need > 0 ? need / speed : 0);
+    rts.tick(dt);
+    if (rts.state.clock.paused || rts.state.clock.phase === 'setup') continue;
+    field.setStates(effects.studStates);
+    evac.syncExits(exits);
+    evac.setZones([]);
+    let n = dt > 0 ? takeSteps(evacAcc, dt, speed, FX.FIXED_DT, FX.MAX_STEPS_PER_FRAME) : 0;
+    if (n > room) {
+      evacAcc.acc += (n - room) * FX.FIXED_DT;
+      n = room;
+    }
+    const cursorStart = evacDone;
+    let cursor = 0;
+    if (!fired && cursorStart + n >= blastStep) {
+      const pre = Math.max(0, Math.min(n, blastStep - cursorStart));
+      for (; cursor < pre; cursor++) evac.step();
+      fired = true;
+      evac.triggerBlast(blastSite, blastR);
+    }
+    for (; cursor < n; cursor++) evac.step();
+    evacDone += n;
+    const m =
+      dt > 0 ? takeSteps(effectsAcc, dt, speed, FX.EFFECTS_DT, FX.MAX_STEPS_PER_FRAME) : 0;
+    for (let i = 0; i < m; i++) effects.step(FX.EFFECTS_DT, [], [blastZone]);
+    effectDone += m;
+    if (n === 0 && m === 0) break;
+  }
+  const metrics = evac.getMetrics().showcase!;
+  const arrived = Object.values(metrics.arrived).reduce((a, b) => a + b, 0);
+  let smoke = 0;
+  for (const s of effects.studStates.values()) smoke += s.smoke;
+  const counters = {
+    evacuated: metrics.outside + arrived + metrics.leftMap,
+    crawling: metrics.crawling,
+    arrived,
+    down: `${metrics.down.lethal}/${metrics.down.serious}`,
+    reroutes: metrics.reroutes,
+    burning: effects.getStats().fire.burning,
+    smoke: Math.round((smoke / effects.studStates.size) * 1e4) / 1e4,
+  };
+  evac.destroy();
+  return { evacSteps: evacDone, effectSteps: effectDone, counters };
 }
 
 describe('hazard fx', () => {
@@ -253,6 +430,55 @@ describe('hazard fx', () => {
     assert.equal(taken, FX.MAX_STEPS_PER_FRAME);
     assert.ok(burst.dropped > 0);
     assert.ok(burst.acc < FX.FIXED_DT);
+  });
+
+  test('auto-downgrade also trips when the frame interval is slow', () => {
+    assert.equal(FX.FRAME_DOWNGRADE_MS, 20);
+    assert.equal(shouldAutoDowngrade(FX.AUTO_DOWNGRADE_MS + 0.1, 16), true);
+    assert.equal(shouldAutoDowngrade(3.7, FX.FRAME_DOWNGRADE_MS + 0.1), true);
+    assert.equal(shouldAutoDowngrade(FX.AUTO_DOWNGRADE_MS, FX.FRAME_DOWNGRADE_MS), false);
+    assert.equal(shouldAutoDowngrade(3.7, 19.6), false);
+  });
+
+  test('two frame sizes stop at exactly 180s of evacuation steps', () => {
+    const target = Math.round(180 / FX.FIXED_DT);
+    assert.equal(target, 10800);
+    for (const frameMs of [1000 / 60, 64]) {
+      const acc = createAccumulator();
+      let done = 0;
+      let integrated = 0;
+      let spins = 0;
+      while (done < target) {
+        const room = target - done;
+        const need = room * FX.FIXED_DT - acc.acc;
+        const dt = Math.min(frameMs / 1000, need > 0 ? need : 0);
+        let n = dt > 0 ? takeSteps(acc, dt, 1, FX.FIXED_DT, FX.MAX_STEPS_PER_FRAME) : 0;
+        if (n > room) {
+          acc.acc += (n - room) * FX.FIXED_DT;
+          n = room;
+        }
+        if (n === 0) break;
+        done += n;
+        integrated += dt;
+        if (++spins > target + 5) break;
+      }
+      assert.equal(done, target, `${frameMs} ms took ${done}`);
+      assert.ok(
+        Math.abs(integrated - 180) < FX.FIXED_DT,
+        `${frameMs} ms integrated ${integrated}`,
+      );
+    }
+  });
+
+  test('page loop at 16.7ms and 64ms matches when it stops at 10800 steps', () => {
+    const target = Math.round(180 / FX.FIXED_DT);
+    const run = (frameMs: number) => pageLoopUntil(frameMs, target);
+    const fine = run(1000 / 60);
+    const coarse = run(64);
+    assert.equal(fine.evacSteps, target);
+    assert.equal(coarse.evacSteps, target);
+    assert.equal(fine.effectSteps, coarse.effectSteps);
+    assert.deepEqual(coarse.counters, fine.counters);
   });
 
   test('noise is deterministic and tiles within one pixel', () => {
