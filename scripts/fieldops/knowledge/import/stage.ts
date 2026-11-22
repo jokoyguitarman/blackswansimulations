@@ -517,6 +517,7 @@ async function writeCoverage(
 ): Promise<void> {
   const runFor = (folder: string, library: string) =>
     runs.find((run) => run.folder === folder && run.library === library)?.id ?? null;
+  const planned: CoverageGap[] = [];
   for (const file of files) {
     const folder = folderOf(file.entry.path);
     const country = headerCountry(file.document);
@@ -537,15 +538,14 @@ async function writeCoverage(
         : Array.isArray(payload.checked)
           ? payload.checked.length
           : 0;
-      await gap(
-        client,
-        record.library,
+      planned.push({
+        library: record.library,
         country,
         subject,
         note,
-        checked,
-        runFor(folder, record.library),
-      );
+        sourcesChecked: checked,
+        runId: runFor(folder, record.library),
+      });
     }
   }
   const movement = files.find((file) =>
@@ -554,15 +554,14 @@ async function writeCoverage(
   if (movement) {
     const country = headerCountry(movement.document);
     for (const key of MISSING_MOVEMENT_KEYS) {
-      await gap(
-        client,
-        'movement',
+      planned.push({
+        library: 'movement',
         country,
-        key,
-        'missing movement parameter',
-        0,
-        runFor('physics-movement', 'movement'),
-      );
+        subject: key,
+        note: 'missing movement parameter',
+        sourcesChecked: 0,
+        runId: runFor('physics-movement', 'movement'),
+      });
     }
   }
   const threats = files.find((file) => file.entry.path.endsWith('threat-profiles.pending.json'));
@@ -571,43 +570,73 @@ async function writeCoverage(
     const country = headerCountry(threats.document);
     for (const key of DANGLING_THREAT_KEYS) {
       if (present.has(key)) continue;
-      await gap(
-        client,
-        'threats',
+      planned.push({
+        library: 'threats',
         country,
-        key,
-        'dangling threat key',
-        0,
-        runFor('physics-movement', 'threats'),
-      );
+        subject: key,
+        note: 'dangling threat key',
+        sourcesChecked: 0,
+        runId: runFor('physics-movement', 'threats'),
+      });
     }
   }
   const sources = files.find((file) => file.entry.path.endsWith('building-hazards/sources.json'));
   if (sources) {
     const country = headerCountry(sources.document) ?? 'SG';
     for (const key of UNACCESSED_SOURCES) {
-      await gap(
-        client,
-        'building_hazards',
+      planned.push({
+        library: 'building_hazards',
         country,
-        `source:${key}`,
-        'not accessed',
-        0,
-        runFor('building-hazards', 'building_hazards'),
-      );
+        subject: `source:${key}`,
+        note: 'not accessed',
+        sourcesChecked: 0,
+        runId: runFor('building-hazards', 'building_hazards'),
+      });
     }
   }
   if (files.some((file) => folderOf(file.entry.path) === 'doctrines')) {
+    planned.push({
+      library: 'doctrines',
+      country: 'SG',
+      subject: 'doctrine_force_ceilings',
+      note: 'use-of-force ceilings are not seeded',
+      sourcesChecked: 0,
+      runId: runFor('doctrines', 'doctrines'),
+    });
+  }
+  for (const item of dedupeCoverageGaps(planned)) {
     await gap(
       client,
-      'doctrines',
-      'SG',
-      'doctrine_force_ceilings',
-      'use-of-force ceilings are not seeded',
-      0,
-      runFor('doctrines', 'doctrines'),
+      item.library,
+      item.country,
+      item.subject,
+      item.note,
+      item.sourcesChecked,
+      item.runId,
     );
   }
+}
+
+export interface CoverageGap {
+  library: string;
+  country: string | null;
+  subject: string;
+  note: string;
+  sourcesChecked: number;
+  runId: string | null;
+}
+
+/** First subject wins. Research gaps are listed before the synthetic missing-key gaps. */
+export function dedupeCoverageGaps(gaps: CoverageGap[]): CoverageGap[] {
+  const seen = new Set<string>();
+  const kept: CoverageGap[] = [];
+  for (const item of gaps) {
+    const key = `${item.library}\0${item.country ?? '--'}\0${item.subject}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(item);
+  }
+  return kept;
 }
 
 async function gap(

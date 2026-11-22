@@ -205,6 +205,7 @@ describe('knowledge stage on a local database', () => {
         assert.equal(staged.rows[0]?.record_count, 1);
         assert.equal(staged.rows[0]?.sha256.length, 64);
 
+        const libraryHistory = await libraryHistoryCount(client);
         const second = await stage({
           dir,
           folders: ['blast-effects'],
@@ -216,6 +217,7 @@ describe('knowledge stage on a local database', () => {
         assert.equal(second.counts.inserted, 0);
         assert.equal(second.counts.unchanged, 1);
         assert.equal(await historyCount(client, MINI_FILE), history);
+        assert.equal(await libraryHistoryCount(client), libraryHistory);
 
         await assert.rejects(
           client.query(`DELETE FROM public.fieldops_knowledge_records WHERE file_path = $1`, [
@@ -309,9 +311,20 @@ describe('knowledge stage on a local database', () => {
           );
           assert.equal(gap.rowCount, 1, key);
         }
+        for (const key of ['crouch_speed_factor', 'smoke_speed_floor_factor']) {
+          const research = await client.query<{ note: string; sources_checked: number }>(
+            `SELECT note, sources_checked FROM public.fieldops_knowledge_coverage
+              WHERE library = 'movement' AND subject_key = $1 AND status = 'gap'`,
+            [key],
+          );
+          assert.equal(research.rowCount, 1, key);
+          assert.notEqual(research.rows[0]?.note, 'missing movement parameter', key);
+          assert.equal(research.rows[0]?.sources_checked, 1, key);
+        }
         const history = await client.query<{ rows: number }>(
           `SELECT count(*)::int AS rows FROM public.fieldops_knowledge_record_history`,
         );
+        const libraryHistory = await libraryHistoryCount(client);
         const second = await stage({
           dir,
           folders: [],
@@ -324,6 +337,7 @@ describe('knowledge stage on a local database', () => {
         );
         assert.equal(second.counts.changed, 0);
         assert.equal(historyAfter.rows[0]?.rows, history.rows[0]?.rows);
+        assert.equal(await libraryHistoryCount(client), libraryHistory);
       } finally {
         await client.end();
       }
@@ -340,6 +354,13 @@ async function counts(client: pg.Client): Promise<Record<string, number>> {
     UNION ALL SELECT 'history', count(*)::int FROM public.fieldops_knowledge_record_history
   `);
   return Object.fromEntries(result.rows.map((row) => [row.name, row.rows]));
+}
+
+async function libraryHistoryCount(client: pg.Client): Promise<number> {
+  const result = await client.query<{ rows: number }>(
+    `SELECT count(*)::int AS rows FROM public.fieldops_library_row_history`,
+  );
+  return result.rows[0]?.rows ?? 0;
 }
 
 async function historyCount(client: pg.Client, filePath: string): Promise<number> {
