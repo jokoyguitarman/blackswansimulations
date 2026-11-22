@@ -10,6 +10,7 @@ import { DANGLING_THREAT_KEYS, folderOf, MISSING_MOVEMENT_KEYS, REGISTRY } from 
 import { fileReleased } from './review.js';
 import { finishRun, startRun } from './runLog.js';
 import { SafetyError, type DbTarget } from './safety.js';
+import { seedRunFigures, type SeedRunFigures } from './seedRunCounts.js';
 import type { ClassifiedRecord, LoadedFile } from './types.js';
 import type pg from 'pg';
 
@@ -228,14 +229,11 @@ function seedRuns(files: LoadedFile[]): SeedRunRow[] {
     if (!research || !UUID_TEXT.test(research)) continue;
     const outputHash = sha256Hex(ordered.map((file) => file.sha256).join(''));
     const runFile = ordered.find((file) => file.entry.format === 'run_manifest_v0');
-    const libraries = [
-      ...new Set(ordered.flatMap((file) => file.records.map((record) => record.library))),
-    ];
+    const records = ordered.flatMap((file) => file.records);
+    const libraries = [...new Set(records.map((record) => record.library))];
     for (const library of libraries) {
-      const drafted = ordered
-        .flatMap((file) => file.records)
-        .filter((record) => record.library === library).length;
-      rows.push(runRow(folder, library, research, outputHash, runFile, ordered, drafted));
+      const figures = seedRunFigures(runFile?.document ?? {}, records, library, libraries);
+      rows.push(runRow(folder, library, research, outputHash, runFile, ordered, figures));
     }
   }
   return rows;
@@ -248,7 +246,7 @@ function runRow(
   outputHash: string,
   runFile: LoadedFile | undefined,
   folderFiles: LoadedFile[],
-  drafted: number,
+  figures: SeedRunFigures,
 ): SeedRunRow {
   const document = runFile?.document ?? {};
   const synthetic = folder === 'responder-units';
@@ -277,9 +275,9 @@ function runRow(
     briefKey: briefKeyOf(document),
     briefHash,
     outputHash,
-    rowsDrafted: numberOf(document.rows_drafted) ?? drafted,
-    rowsRefused: numberOf(document.rows_refused) ?? 0,
-    sourcesCited: numberOf(document.sources_cited) ?? 0,
+    rowsDrafted: figures.rowsDrafted,
+    rowsRefused: figures.rowsRefused,
+    sourcesCited: figures.sourcesCited,
     startedAt: started,
     finishedAt: synthetic ? started : timestampOf(document.finished_at),
     notes: cut(
@@ -691,10 +689,6 @@ function runKindOf(value: unknown): string {
 
 function stringOf(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
-
-function numberOf(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function timestampOf(value: unknown): string | null {
