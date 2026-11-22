@@ -2463,7 +2463,7 @@ export async function withDocumentPrivacyScope<T>(draftId: string, fn: () => Pro
 }
 ```
 
-  The privacy programme's plan carries the scope out of band with `runWithVault({ vaultId, sessionId })`, whose vault id is "a wizard draft id before the scenario exists" (`docs/privacy/04-implementation-phases.html:1084-1104`). When it ships, the body becomes `return runWithVault({ vaultId: draftId }, fn);`, `capabilities.document_aliasing` becomes true and the notice gains its aliasing sentence. Geography stays real under that plan (`docs/privacy/02-aliasing-solution.html:1050-1062`), which the site resolution needs.
+  The privacy programme's plan carries the scope out of band with `runWithVault({ vaultId, sessionId })`, whose vault id is "a wizard draft id before the scenario exists" (`04-implementation-phases.html`, lines 1084 to 1104; the privacy documents are kept outside this repository). When it ships, the body becomes `return runWithVault({ vaultId: draftId }, fn);`, `capabilities.document_aliasing` becomes true and the notice gains its aliasing sentence. Geography stays real under that plan (`02-aliasing-solution.html`, lines 1050 to 1062), which the site resolution needs.
 - **No redaction step** in version 1 (D19).
 
 ### 9.5 Safety stance

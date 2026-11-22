@@ -180,7 +180,7 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 ### 3.10 One process, one build
 
 - **Verified.** One Node process serves HTTP and sockets and, where `env.runBackgroundEngines` holds, runs every background engine (`server/index.ts:81-114`, `server/env.ts:107-117`). Shutdown stops the schedulers, closes the servers and exits after 10 seconds (`server/index.ts:331-356`).
-- **Verified.** Production runs `node dist/server/index.js` after `tsc --project tsconfig.json` (`package.json:14`, `package.json:17`); development runs `tsx watch server/index.ts` (`package.json:12`); tests run `node --import tsx --test` with an explicit list of files (`package.json:25`). The compiler writes `dist/` from the repository root (`tsconfig.json:3-4`). No server code uses `worker_threads` today.
+- **Verified.** Production runs `node dist/server/index.js` after `tsc --project tsconfig.json` (`package.json:14`, `package.json:17`); development runs `tsx watch server/index.ts` (`package.json:12`); tests run `node --import tsx --test` with an explicit list of files (`package.json:25`). The compiler writes the `dist` folder from the repository root (`tsconfig.json:3-4`). No server code uses `worker_threads` today.
 - **Verified.** A session's status is one of `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`server/routes/sessions.ts:56`). `start_time` is set once, on the first start (`server/routes/sessions.ts:1429-1431`); the start then clones the pins and loads the environmental state (`server/routes/sessions.ts:1477-1516`). Every engine computes elapsed time from `start_time`, so paused minutes count.
 
 ### 3.11 Where Design 7 and the code differ
@@ -3933,7 +3933,7 @@ Several of these are also touched by other workstreams (`server/env.ts` and `ser
 | `server/services/fieldOps/jobs/jobEngine.ts (new)` | WS0 | `WORKER_ID` and the job scope, reused for world leases (W11) |
 | `server/lib/schemaFeatures.ts (new)` | WS0 | The cached table detectors for 250 to 256 |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | WS0 | `requireFieldopsFlag` and `requireFieldopsTrainer` |
-| `server/lib/participantProjections.ts (new)` | WS0 | The projections WS9's fog filters run after |
+| `server/lib/participantProjections.ts` | WS0 | The projections WS9's fog filters run after |
 | `frontend/src/lib/fieldOps/fieldOpsHttp.ts (new)` | WS0 | `fieldOpsRequest` and `FieldOpsApiError` |
 | `shared/fieldOps/vocabulary.ts (new)` | WS1 | `ArchetypeKey` and `ARCHETYPE_KEYS` |
 | `shared/fieldOps/actionScope.ts (new)` | WS1 | `actionScopeFor`, for the tasks a unit may do |

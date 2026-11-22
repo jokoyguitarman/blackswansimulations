@@ -2711,7 +2711,7 @@ Each commit passes `npm test`, `npx tsc --noEmit` and the frontend build on its 
 | `server/lib/schemaFeatures.ts (new)` | WS0 | `createCachedDetector`, `isMissingColumnError`, `isMissingRelationError` |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | WS0 | `requireFieldopsV2` and `requireFieldopsTrainer` on every scene route |
 | `server/services/fieldOps/drafts/draftGuards.ts (new)` | WS0 | `assertDraftEditable` |
-| `server/lib/participantProjections.ts (new)` | WS0 | `projectSceneForParticipant` and `PARTICIPANT_SCENE_FIELDS`, which gain WS4's four columns (master 10.8 item 28) |
+| `server/lib/participantProjections.ts` | WS0 | `projectSceneForParticipant` and `PARTICIPANT_SCENE_FIELDS`, which gain WS4's four columns (master 10.8 item 28) |
 | `frontend/src/components/FieldOps/Site/siteMapLayers.tsx (new)` | WS3 | `SiteTiles`, `SiteRingLayer`, `SiteStreetsLayer`, `SiteFootprintsLayer` |
 | `frontend/src/components/FieldOps/Site/siteMapStyle.ts (new)` | WS3 | `SITE_MAP_STYLE` |
 | `frontend/src/components/FieldOps/Devices/useDeviceEffects.ts (new)` | WS6 | The rings and details for the inspector |

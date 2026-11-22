@@ -2917,7 +2917,7 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
 2. For each team key, validates the findings against the legacy shape and matches the key with `matchAgencyDeterministic` (aliases and names only, no model). Keys below 0.85 are counted as unmatched.
 3. Scores each entry with `scoreImportedEntry`: findings (up to 4) count 2 each; key points (up to 16) 0.5 each; 2 if any finding has thresholds; 1 for each source that names a standard with a year or an acronym (up to 3); 3 if a workflow exists; minus 5 if any string exceeds a cap.
 4. `pickBestPerArchetype` keeps the best entry per archetype (ties go to the most recent scenario) and the next two for the reviewer.
-5. Writes `tmp/fieldops-doctrine-import/<archetype>.json` seed files with `review.status: 'pending'` and a `report.json` with counts per archetype and the unmatched keys with their counts. `tmp/` is ignored by git (`.gitignore:35`) because the text comes from trainers' scenarios. It never writes to the database.
+5. Writes `tmp/fieldops-doctrine-import/<archetype>.json` seed files with `review.status: 'pending'` and a `report.json` with counts per archetype and the unmatched keys with their counts. The `tmp` folder is ignored by git (`.gitignore:35`) because the text comes from trainers' scenarios. It never writes to the database.
 6. **Added 3 Nov 2026.** Tags each entry with a country before step 3 (section 6.11.4): it also reads `center_lat` and `center_lng`, `pickBestPerArchetype` keeps the best entry per archetype and country, and the files of step 5 are named `<archetype>.<country>.json`, with `generic` for no country. `report.json` adds the counts per country and per `country_basis`.
 
 **Seed file** (`scripts/fieldops/seeds/<source>/<archetype>.json`), validated by `DoctrineSeedFileSchema`. A reviewed file looks like this:
@@ -2983,7 +2983,7 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
 
 1. A developer writes or generates the seed file and opens it for review with `review.status: 'pending'`.
 2. A reviewer with operational experience for that archetype (the D22 reviewer for bomb disposal) reads it against this checklist: response actions only; nothing about how a device is made, armed, hidden or placed; no restricted or classified procedure; no real person, place-specific secret or contact detail; plain British English; time targets realistic for an exercise; the never-do list safe; expected actions observable as decisions or messages.
-3. Imported files are de-identified: venue names, scenario titles and anything specific to a trainer's exercise are removed before the file moves from `tmp/` into `scripts/fieldops/seeds/imported/ (new)`.
+3. Imported files are de-identified: venue names, scenario titles and anything specific to a trainer's exercise are removed before the file moves from the `tmp` folder into `scripts/fieldops/seeds/imported/ (new)`.
 4. The reviewer sets `review.status: 'approved_for_import'`, their name and the date, and notes what they changed.
 5. The seeder inserts the file as Unverified.
 6. A platform admin opens it in the queue and verifies it, or retires it.
@@ -4217,7 +4217,7 @@ WS0's `requireFieldopsTrainer` enforces the first row on every route, after `req
 
 - Logs carry ids, counts and keys, never doctrine, description or document text (master 10.5).
 - `team_match_feedback` stores team names and a hash of the description, not the description.
-- The importer writes trainers' text only to the ignored `tmp/` folder and never to the database; a reviewer de-identifies a file before it is committed (section 6.11).
+- The importer writes trainers' text only to the ignored `tmp` folder and never to the database; a reviewer de-identifies a file before it is committed (section 6.11).
 - Author names are shown only to staff, because every route is staff-only.
 - Document text reaches the model only as the drafting call's context, cut at 6,000 characters, through the shared client, and in WS2's flows (D19).
 - **Added 3 Nov 2026.** An uploaded doctrine document reaches the model only as the document-mode drafting call's context, at most 20,000 characters, inside WS2's privacy seam (section 8.5). Section 9.7 covers its storage.
@@ -4265,7 +4265,7 @@ None. The D26 thresholds, the field caps, the quotas, the route limits and the m
 ### 10.3 Rollout
 
 1. **Development.** Apply migrations 221 to 225. Run the seeder in dry-run, then with `--apply` for the reviewed playbook seeds. Verify them in `/admin/doctrines`. The flag is on by default.
-2. **Importer.** Run `scripts/fieldops/import-scenario-doctrines.ts (new)` against the shared database (read-only), review the output in `tmp/`, de-identify, commit the approved files, and seed them.
+2. **Importer.** Run `scripts/fieldops/import-scenario-doctrines.ts (new)` against the shared database (read-only), review the output in the `tmp` folder, de-identify, commit the approved files, and seed them.
 3. **Staging session checklist.** Build a draft on WS2's page with six agencies, including one the library has no doctrine for; create its doctrine with "Draft it for me" and save it to the library; log in as a second trainer and see it as Unverified; verify it as an admin; compile (WS5) and confirm `scenario_teams.function_key`, `required_roles`, `charter`, `expected_actions` and `scoring_rubric`; run a session and confirm the decision evaluator's prompt shows the delimited doctrine (debug log) and that the Insider block has no measures.
 4. **Production.** Deploy T1.9's runtime accessor before `ENABLE_FIELDOPS_V2` is turned on, because library-mode scenarios read their doctrines only through it (06's definition of done, item 7). Then set `ENABLE_FIELDOPS_DOCTRINES=true` together with WS2's page flag, and restart, since flags are read at boot. Seed and verify the eight existing archetypes' doctrines first so the first trainers see Verified doctrines.
 5. **Everyone.** Once the admin queue has been worked for two weeks within the five-day target.
