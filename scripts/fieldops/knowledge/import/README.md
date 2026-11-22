@@ -30,7 +30,7 @@ Other commands: `review` (one record, or `--bulk`) and `manifest --write`.
 | `KNOWLEDGE_TARGET`    | `local` or `shared`. Required for `--apply`.                                                                                   |
 | `KNOWLEDGE_SEEDS_DIR` | Default seed directory when `--dir` is omitted. Defaults to `scripts/fieldops/seeds`.                                          |
 
-`--apply` with `KNOWLEDGE_TARGET=shared` also needs `--confirm-project <ref>`, and `<ref>` must occur in `KNOWLEDGE_DB_URL`. The same flag is required for a shared dry-run. Do not run `supabase db reset`, `supabase db push`, or `DROP` against the shared project.
+`--apply` with `KNOWLEDGE_TARGET=shared` also needs `--confirm-project <ref>`. `<ref>` must equal the project ref in the database host (`db.<ref>.supabase.co`) or the pooler user (`postgres.<ref>`). A substring of the URL does not match. The same flag is required for a shared dry-run. Do not run `supabase db reset`, `supabase db push`, or `DROP` against the shared project.
 
 The URL is never printed. Errors replace it with `[redacted]`.
 
@@ -40,7 +40,7 @@ The URL is never printed. Errors replace it with `[redacted]`.
 
 `promote` writes approved and amended rows whose blocker count is 0. It does not read the seed files; it reads the staging table. Sources that were not accessed are not written. Doctrines are written only with `--allow-unscreened-doctrines`, because the repo has no doctrine save screen; without the flag they are skipped and counted as `save_screen_unavailable`. A `use_of_force` block is omitted unless the stored review has a legal, police_service or military_service approval. A second promote of unchanged rows writes nothing.
 
-`verify` runs after promote. With an admin `user_profiles` row it verifies each promoted library doctrine (`fieldops_verify_doctrine_version`), writes one approved physics review (`fo-physics-1.0.0`) and three approved spread reviews (`fo-spread-1.0.0`, `fo-catalogue-1.0.0`, `fo-threats-1.0.0`) in the name Jokoy Tabbada, and marks the explosive and injury rows of that dataset `reviewed`. `--verifier-email` resolves the profile only when `auth.users` exists. `--verifier-user-id` uses the id directly. If the profile is missing or is not `role = 'admin'`, doctrine verification is skipped with `verifier_not_admin` and the physics and spread reviews are still written with `recorded_by` null.
+`verify` runs after promote. With an admin `user_profiles` row it verifies each promoted library doctrine (`fieldops_verify_doctrine_version`), writes one approved physics review (`fo-physics-1.0.0`) and three approved spread reviews (`fo-spread-1.0.0`, `fo-catalogue-1.0.0`, `fo-threats-1.0.0`) in the name Jokoy Tabbada, and marks the explosive and injury rows of that dataset `reviewed`. `--verifier-email` resolves the profile only when `auth.users` exists. `--verifier-user-id` uses the id directly. If the email or id matches no `user_profiles` row, verify exits 1 and writes nothing. If the profile exists and its role is not `admin`, the command prints `verifier_not_admin`, skips doctrine verification, and still writes the physics and spread reviews with `reviewer_user_id` and `recorded_by` null.
 
 ## Re-verify after a library change
 
@@ -76,7 +76,15 @@ do
 done
 ```
 
-For the shared project, set `KNOWLEDGE_DB_URL` to that database and `KNOWLEDGE_TARGET=shared`, and add `--confirm-project <ref>` to every `--apply` (and to the dry-runs). `<ref>` is the project ref and must appear in the URL. Never `supabase db reset`, `supabase db push`, or `DROP` there.
+PRs 1, 3, 4 and 5 must be merged first: the knowledge migrations, the approved seeds, staging, and promotion. PR 2 (the importer core) is already contained in staging and promotion.
+
+For the shared project, set `KNOWLEDGE_DB_URL` to that database and `KNOWLEDGE_TARGET=shared`, and add `--confirm-project <ref>` to every `--apply` (and to the dry-runs). `<ref>` must equal the project ref in the host (`db.<ref>.supabase.co`) or the pooler user (`postgres.<ref>`). Before applying, check what is already there:
+
+```bash
+psql "$KNOWLEDGE_DB_URL" -c "select to_regclass('public.fieldops_seed_runs'), to_regclass('public.doctrines');"
+```
+
+Never `supabase db reset`, `supabase db push`, or `DROP` there.
 
 Then, from the repo root, after the seed files are on the branch (`scripts/fieldops/seeds`):
 
@@ -91,6 +99,6 @@ npm run knowledge -- verify --verifier-email <owner email>
 npm run knowledge -- verify --apply --verifier-email <owner email>
 ```
 
-`validate` on the owner-approved files reports 1,097 records and zero blockers. The verifier's `user_profiles.role` must be `admin` for doctrine verification. Without that, expect `verifier_not_admin`: doctrines stay unverified, and the physics and spread reviews are still written.
+`validate` on the owner-approved files reports 1,097 records and zero blockers. The verifier's `user_profiles.role` must be `admin` for doctrine verification. A profile that is not an admin prints `verifier_not_admin`: doctrines stay unverified, and the physics and spread reviews are still written with `recorded_by` null. An unknown email or id exits 1 and writes nothing.
 
 On the shared project the same eight commands are the whole run. Paste each command's counts and issue codes back if a record of the shared run is needed. This agent did not have those credentials, so that run was not done.
