@@ -26,4 +26,21 @@ describe('datasetVersionOf', () => {
     const empty = datasetVersionOf('physics', {});
     assert.equal(datasetVersionOf('physics', { fieldops_device_presets: [] }), empty);
   });
+
+  it('sorts row keys by UTF-16 code unit', () => {
+    const rows = {
+      fieldops_explosive_materials: [
+        { material_key: 'a', tnt_eq_pressure: 1 },
+        { material_key: 'A', tnt_eq_pressure: 1 },
+      ],
+    };
+    const forward = datasetVersionOf('physics', rows);
+    const reverse = datasetVersionOf('physics', {
+      fieldops_explosive_materials: [...rows.fieldops_explosive_materials].reverse(),
+    });
+    assert.equal(forward, reverse);
+    // 'A' then 'a'. en-US localeCompare puts 'a' first and hashes to 6fa0ebbfbf0a188b.
+    assert.equal(forward, 'c7625fc6e8ab91fd');
+    assert.notEqual(forward, '6fa0ebbfbf0a188b');
+  });
 });

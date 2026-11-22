@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { KNOWLEDGE_CHECKS, VALID_ROWS, failedChecks, violatingRow } from './knowledgeSchemas.js';
+import { KNOWLEDGE_CHECKS, VALID_ROWS, failedChecks, violatingRow } from './knowledgeChecks.js';
 
 describe('knowledge promotion schemas', () => {
   it('accepts one valid row per typed table and rejects one value per CHECK', () => {

@@ -60,6 +60,16 @@ const SPREAD_CHECKLISTS: Record<string, Record<string, string>> = {
   },
 };
 
+/** An admin is stored on the review. Anyone else is recorded as null (AC-K17). */
+export function verifierRecording(
+  verifier: { id: string; role: string } | null,
+  label: string,
+): { recordedBy: string | null; notAdmin: boolean } {
+  if (!verifier) throw new Error(`verifier ${label} matches no user_profiles row`);
+  if (verifier.role !== 'admin') return { recordedBy: null, notAdmin: true };
+  return { recordedBy: verifier.id, notAdmin: false };
+}
+
 const LIBRARY_OF: Record<string, DatasetLibrary> = {
   'fo-spread-1.0.0': 'spread',
   'fo-catalogue-1.0.0': 'catalogue',
@@ -113,6 +123,7 @@ export async function verifyKnowledge(options: VerifyOptions): Promise<{
       issues,
     );
     console.log(`verify ${options.apply ? 'apply' : 'dry-run'}: ${JSON.stringify(counts)}`);
+    if (issues.verifier_not_admin) console.log('verifier_not_admin');
     return { counts, issues, runId };
   } catch (error) {
     await finishRun(
@@ -134,12 +145,12 @@ async function writeVerification(
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = { doctrines: 0, physics: 0, spread: 0, reviewed: 0 };
   const verifier = await findVerifier(client, options);
-  if (!verifier || verifier.role !== 'admin') {
-    issues.verifier_not_admin = 1;
-  } else {
-    counts.doctrines = await verifyDoctrines(client, verifier.id);
-  }
-  const recordedBy = verifier?.id ?? null;
+  const label = options.verifierEmail ?? options.verifierUserId ?? 'unknown';
+  const recording = verifierRecording(verifier, label);
+  if (recording.notAdmin) issues.verifier_not_admin = 1;
+  else if (recording.recordedBy)
+    counts.doctrines = await verifyDoctrines(client, recording.recordedBy);
+  const recordedBy = recording.recordedBy;
   if (await insertPhysics(client, recordedBy)) counts.physics = 1;
   counts.reviewed = await markPhysicsReviewed(client);
   for (const model of Object.keys(SPREAD_CHECKLISTS)) {

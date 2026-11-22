@@ -5,11 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
 import { describe, it } from 'node:test';
-import {
-  KNOWLEDGE_CHECKS,
-  VALID_ROWS,
-  violatingRow,
-} from '../../../../server/lib/fieldOps/knowledgeSchemas.js';
+import { KNOWLEDGE_CHECKS, VALID_ROWS, violatingRow } from './knowledgeChecks.js';
 import { buildManifest, writeManifest } from './manifest.js';
 import { promote } from './promote/index.js';
 import { stage } from './stage.js';
