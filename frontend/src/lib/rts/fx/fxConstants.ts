@@ -32,7 +32,24 @@ export const FX = {
 
 export type FxQuality = 'high' | 'low' | 'classic';
 
-/** True when either the draw meter or the frame interval is over its limit. */
-export function shouldAutoDowngrade(drawAvgMs: number, frameAvgMs: number): boolean {
-  return drawAvgMs > FX.AUTO_DOWNGRADE_MS || frameAvgMs > FX.FRAME_DOWNGRADE_MS;
+/**
+ * Draw time over 6 ms always steps the quality down.
+ * A slow frame steps it down only when the overlay was actually drawing
+ * smoke, fire, or embers (`effectsActive`). An idle field is not the cause.
+ */
+export function shouldAutoDowngrade(
+  drawAvgMs: number,
+  frameAvgMs: number,
+  effectsActive = false,
+): boolean {
+  if (drawAvgMs > FX.AUTO_DOWNGRADE_MS) return true;
+  return effectsActive && frameAvgMs > FX.FRAME_DOWNGRADE_MS;
+}
+
+/**
+ * Quality at the start of an automatic High → Low → Classic run.
+ * A second step keeps the first quality, so Undo restores both.
+ */
+export function noteDowngradeFrom(remembered: FxQuality | null, current: FxQuality): FxQuality {
+  return remembered ?? current;
 }

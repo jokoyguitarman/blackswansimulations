@@ -27,6 +27,8 @@ export interface HazardFxContext {
 export interface HazardFxStats {
   ms: number;
   embers: number;
+  /** Smoke, fire, or embers were on screen. An idle field is false. */
+  covering: boolean;
 }
 
 /** Longest side of the offscreen smoke blend. It is scaled up onto the map. */
@@ -90,7 +92,7 @@ function canvasY(rc: RenderContext, y: number): number {
  */
 export class HazardFxRenderer {
   readonly pool: EmberPool;
-  readonly last: HazardFxStats = { ms: 0, embers: 0 };
+  readonly last: HazardFxStats = { ms: 0, embers: 0, covering: false };
   private readonly rng: () => number;
   private readonly smokeCanvas: HTMLCanvasElement;
   private readonly fireCanvas: HTMLCanvasElement;
@@ -147,17 +149,20 @@ export class HazardFxRenderer {
     if (this.disposed || fx.quality === 'classic') {
       this.last.ms = 0;
       this.last.embers = 0;
+      this.last.covering = false;
       return this.last;
     }
     const layout = fx.layout;
     const states = fx.states;
     this.advanceEmbers(fx, layout, states);
+    const cover = { smoke: 0, fire: 0 };
     if (layout && states && layout.cols > 0 && layout.rows > 0) {
       this.bind(layout);
-      this.writeRasters(layout, states);
+      this.writeRasters(layout, states, cover);
       this.paintGround(ctx, rc, fx, layout);
       this.drew = true;
     }
+    this.last.covering = cover.smoke > 0 || cover.fire > 0 || this.pool.aliveCount > 0;
     this.pendingMs = performance.now() - t0;
     this.last.ms = this.pendingMs;
     this.last.embers = fx.reducedMotion ? 0 : this.pool.aliveCount;
@@ -249,6 +254,7 @@ export class HazardFxRenderer {
   private writeRasters(
     layout: RasterLayout,
     states: ReadonlyMap<string, { smoke: number; fire: { state: string } }>,
+    cover: { smoke: number; fire: number },
   ): void {
     clearDirty(this.dirtySmoke);
     clearDirty(this.dirtyFire);
@@ -258,9 +264,10 @@ export class HazardFxRenderer {
       this.smokeImage.data,
       headSmoke,
       this.dirtySmoke,
+      cover,
     );
     dilateEmpty(this.smokeImage.data, layout.cols, layout.rows, layout.occupied);
-    const fireChanged = writeFireRGBA(layout, states, this.fireImage.data, this.dirtyFire);
+    const fireChanged = writeFireRGBA(layout, states, this.fireImage.data, this.dirtyFire, cover);
     this.upload(this.smokeCanvas, this.smokeImage, this.dirtySmoke, smokeChanged, layout.cols, layout.rows, 1);
     this.upload(this.fireCanvas, this.fireImage, this.dirtyFire, fireChanged, layout.cols, layout.rows, 0);
   }

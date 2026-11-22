@@ -132,6 +132,7 @@ export function writeSmokeRGBA(
   out: Uint8ClampedArray,
   headSmoke: (d: number) => number,
   dirty?: DirtyBox,
+  cover?: { smoke: number },
 ): number {
   let changed = 0;
   const cols = layout.cols;
@@ -153,6 +154,7 @@ export function writeSmokeRGBA(
       g = smokeRgb(h, 1);
       b = smokeRgb(h, 2);
     }
+    if (a > 0 && cover) cover.smoke++;
     const o = p * 4;
     if (out[o] !== r || out[o + 1] !== g || out[o + 2] !== b || out[o + 3] !== a) {
       out[o] = r;
@@ -171,6 +173,7 @@ export function writeFireRGBA(
   states: ReadonlyMap<string, { fire: { state: string } }>,
   out: Uint8ClampedArray,
   dirty?: DirtyBox,
+  cover?: { fire: number },
 ): number {
   let changed = 0;
   const cols = layout.cols;
@@ -199,6 +202,7 @@ export function writeFireRGBA(
       b = 60;
       a = 128;
     }
+    if (a > 0 && cover) cover.fire++;
     const o = p * 4;
     if (out[o] !== r || out[o + 1] !== g || out[o + 2] !== b || out[o + 3] !== a) {
       out[o] = r;

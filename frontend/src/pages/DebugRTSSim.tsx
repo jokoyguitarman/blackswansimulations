@@ -39,7 +39,7 @@ import {
   type ChargeSpec,
 } from '../lib/rts/blast/blastModel';
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
-import { FX, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
+import { FX, noteDowngradeFrom, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
 import { createAccumulator, takeSteps } from '../lib/rts/fx/simClock';
 import { buildRasterLayout, type RasterLayout } from '../lib/rts/fx/hazardRaster';
 import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
@@ -765,10 +765,12 @@ export function DebugRTSSim() {
   const fxQualityRef = useRef(fxQuality);
   fxQualityRef.current = fxQuality;
   const [fxDowngraded, setFxDowngraded] = useState(false);
-  const fxPrevQualityRef = useRef<FxQuality>('high');
+  /** Quality before the current automatic run. A second step does not replace it. */
+  const fxDowngradeFromRef = useRef<FxQuality | null>(null);
   const fxSuppressRef = useRef(false);
   const fxTimesRef = useRef(new Float32Array(60));
   const fxFrameTimesRef = useRef(new Float32Array(60));
+  const fxActiveRef = useRef(new Uint8Array(60));
   const fxTimePosRef = useRef(0);
   const fxTimeCountRef = useRef(0);
   const fxWarmupRef = useRef(30);
@@ -1926,23 +1928,28 @@ export function DebugRTSSim() {
             } else {
               const ring = fxTimesRef.current;
               const frames = fxFrameTimesRef.current;
+              const active = fxActiveRef.current;
               const pos = fxTimePosRef.current;
               ring[pos] = sample;
               frames[pos] = dt * 1000;
+              active[pos] = hazardFxRef.current.last.covering ? 1 : 0;
               fxTimePosRef.current = (pos + 1) % ring.length;
               if (fxTimeCountRef.current < ring.length) fxTimeCountRef.current++;
               if (fxTimeCountRef.current === ring.length && !fxSuppressRef.current) {
                 let drawSum = 0;
                 let frameSum = 0;
+                let activeFrames = 0;
                 for (let i = 0; i < ring.length; i++) {
                   drawSum += ring[i];
                   frameSum += frames[i];
+                  activeFrames += active[i];
                 }
-                if (shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length)) {
+                const effectsActive = activeFrames * 2 >= ring.length;
+                if (shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length, effectsActive)) {
                   const current = fxQualityRef.current;
                   const next = current === 'high' ? 'low' : current === 'low' ? 'classic' : null;
                   if (next) {
-                    fxPrevQualityRef.current = current;
+                    fxDowngradeFromRef.current = noteDowngradeFrom(fxDowngradeFromRef.current, current);
                     fxQualityRef.current = next;
                     setFxQuality(next);
                     setFxDowngraded(true);
@@ -4942,6 +4949,7 @@ export function DebugRTSSim() {
                         const next = e.target.value as FxQuality;
                         setFxQuality(next);
                         setFxDowngraded(false);
+                        fxDowngradeFromRef.current = null;
                         fxTimeCountRef.current = 0;
                         fxWarmupRef.current = 30;
                         try {
@@ -4964,7 +4972,8 @@ export function DebugRTSSim() {
                         type="button"
                         className="underline"
                         onClick={() => {
-                          const prev = fxPrevQualityRef.current;
+                          const prev = fxDowngradeFromRef.current ?? fxQualityRef.current;
+                          fxDowngradeFromRef.current = null;
                           fxSuppressRef.current = true;
                           setFxQuality(prev);
                           setFxDowngraded(false);

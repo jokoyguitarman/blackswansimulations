@@ -9,7 +9,7 @@ import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
 import { RTSEngine } from '../src/lib/rts/engine';
 import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { EmberPool } from '../src/lib/rts/fx/embers';
-import { FX, shouldAutoDowngrade } from '../src/lib/rts/fx/fxConstants';
+import { FX, noteDowngradeFrom, shouldAutoDowngrade } from '../src/lib/rts/fx/fxConstants';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import type { HazardZone } from '../src/lib/rts/types';
 import {
@@ -435,9 +435,14 @@ describe('hazard fx', () => {
   test('auto-downgrade also trips when the frame interval is slow', () => {
     assert.equal(FX.FRAME_DOWNGRADE_MS, 20);
     assert.equal(shouldAutoDowngrade(FX.AUTO_DOWNGRADE_MS + 0.1, 16), true);
-    assert.equal(shouldAutoDowngrade(3.7, FX.FRAME_DOWNGRADE_MS + 0.1), true);
-    assert.equal(shouldAutoDowngrade(FX.AUTO_DOWNGRADE_MS, FX.FRAME_DOWNGRADE_MS), false);
-    assert.equal(shouldAutoDowngrade(3.7, 19.6), false);
+    assert.equal(shouldAutoDowngrade(3.7, FX.FRAME_DOWNGRADE_MS + 0.1, true), true);
+    assert.equal(shouldAutoDowngrade(3.7, 30, false), false);
+    assert.equal(shouldAutoDowngrade(FX.AUTO_DOWNGRADE_MS, FX.FRAME_DOWNGRADE_MS, true), false);
+    assert.equal(shouldAutoDowngrade(3.7, 19.6, true), false);
+    let remembered: 'high' | 'low' | 'classic' | null = null;
+    remembered = noteDowngradeFrom(remembered, 'high');
+    remembered = noteDowngradeFrom(remembered, 'low');
+    assert.equal(remembered, 'high');
   });
 
   test('two frame sizes stop at exactly 180s of evacuation steps', () => {
