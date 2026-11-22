@@ -1617,6 +1617,12 @@ export function DebugRTSSim() {
       if (phase !== 'rts') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Escape' && rtsRef.current.state.interactionMode.type === 'place_stairwell') {
+        e.preventDefault();
+        rtsRef.current.setInteractionMode({ type: 'select' });
+        rerender();
+        return;
+      }
       if (e.key !== 'PageUp' && e.key !== 'PageDown') return;
       e.preventDefault();
       const ids = sortLevels(levelsRef.current.map((l) => l.id));
@@ -1628,7 +1634,7 @@ export function DebugRTSSim() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [phase]);
+  }, [phase, rerender]);
 
   // ── Canvas toSim helper ───────────────────────────────────────────────
   const toSim = useCallback((cx: number, cy: number): Vec2 => {
@@ -5601,17 +5607,37 @@ export function DebugRTSSim() {
                   >
                     🛗 Place lift
                   </button>
-                  {stairwells.find((sw) => sw.id === selectedStairId) && (
-                    <StairEditor
-                      stair={stairwells.find((sw) => sw.id === selectedStairId)!}
-                      levels={levels}
-                      onChange={(next) =>
-                        setStairwells((prev) =>
-                          prev.map((sw) => (sw.id === next.id ? normaliseStairwell(next, levels) : sw)),
-                        )
-                      }
-                    />
-                  )}
+                  {stairwells.length > 0 && (() => {
+                    const editing =
+                      stairwells.find((sw) => sw.id === selectedStairId) ?? stairwells[0];
+                    return (
+                      <>
+                        <label className="block text-xs text-slate-400">
+                          Edit stair
+                          <select
+                            value={editing.id}
+                            onChange={(e) => setSelectedStairId(e.target.value)}
+                            className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded mt-0.5"
+                          >
+                            {stairwells.map((sw) => (
+                              <option key={sw.id} value={sw.id}>
+                                {sw.label || sw.id}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <StairEditor
+                          stair={editing}
+                          levels={levels}
+                          onChange={(next) =>
+                            setStairwells((prev) =>
+                              prev.map((sw) => (sw.id === next.id ? normaliseStairwell(next, levels) : sw)),
+                            )
+                          }
+                        />
+                      </>
+                    );
+                  })()}
                   <div className="text-xs text-green-700">
                     Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Stairs:{' '}
                     {stairwells.length}
