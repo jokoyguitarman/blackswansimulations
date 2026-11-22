@@ -78,6 +78,25 @@ import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
+/** Effects-only ignition marker. Kept off the renderer: it has no trainer-facing zone. */
+function blastIgnitionZone(pos: Vec2, radius: number): HazardZone {
+  return {
+    id: 'blast-direct',
+    pos,
+    radius,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Blast',
+    description: 'Direct blast ignition',
+    photos: [],
+  };
+}
+
+function hazardsForEffects(zones: HazardZone[], blast: HazardZone | null): HazardZone[] {
+  const rest = zones.filter((z) => z.id !== 'blast-direct');
+  return blast ? [...rest, blast] : rest;
+}
+
 function readShowcaseSettings(params: URLSearchParams): {
   showcase: boolean;
   afterExit: 'zone' | 'disperse' | 'mixed';
@@ -1439,6 +1458,7 @@ export function DebugRTSSim() {
   interiorWallsRef.current = interiorWalls;
   const hazardZonesRef = useRef(hazardZones);
   hazardZonesRef.current = hazardZones;
+  const blastDirectZoneRef = useRef<HazardZone | null>(null);
   const stairwellsRef = useRef(stairwells);
   stairwellsRef.current = stairwells;
   const blastSiteRef = useRef(blastSite);
@@ -1531,7 +1551,11 @@ export function DebugRTSSim() {
       const effectsEng = effectsEngineRef.current;
       if (effectsEng && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
         const effectDt = dt * rts.state.clock.speed;
-        effectsEng.step(effectDt, interiorWallsRef.current, hazardZonesRef.current);
+        effectsEng.step(
+          effectDt,
+          interiorWallsRef.current,
+          hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current),
+        );
         effectStatesRef.current = new Map(effectsEng.studStates);
 
         // Casualty deterioration based on spatial effects
@@ -2718,6 +2742,7 @@ export function DebugRTSSim() {
 
   const initEffectsEngine = useCallback(() => {
     const studs = simStudsRef.current;
+    blastDirectZoneRef.current = null;
     if (studs.length === 0 || !blastSite) return;
 
     if (showcaseRef.current) {
@@ -2772,10 +2797,7 @@ export function DebugRTSSim() {
           critical: 'Engulfed',
         },
       );
-      hazardZonesRef.current = [
-        ...hazardZonesRef.current.filter((h) => h.id !== 'blast-direct'),
-        { id: 'blast-direct', pos: blastSite, radius } as HazardZone,
-      ];
+      blastDirectZoneRef.current = blastIgnitionZone(blastSite, radius);
       hazardFieldRef.current = new HazardField(
         studs.map((s) => ({
           id: s.id,
@@ -2845,15 +2867,7 @@ export function DebugRTSSim() {
         },
       );
 
-      const blastHazard = {
-        id: 'blast-direct',
-        pos: blastSite,
-        radius: blastRadius,
-      } as HazardZone;
-      hazardZonesRef.current = [
-        ...hazardZonesRef.current.filter((h) => h.id !== 'blast-direct'),
-        blastHazard,
-      ];
+      blastDirectZoneRef.current = blastIgnitionZone(blastSite, blastRadius);
     }
 
     effectsEngineRef.current = engine;
@@ -4612,9 +4626,25 @@ export function DebugRTSSim() {
                     </select>
                   </label>
                   <div className="space-y-1">
-                    {gameState.equipment
-                      .filter((e) => e.def.kind === 'assembly_point' && e.active)
-                      .map((e) => {
+                    {(() => {
+                      const zones = gameState.equipment.filter(
+                        (e) => e.def.kind === 'assembly_point' && e.active,
+                      );
+                      const minD = assemblyMinDistanceM(aboveGroundHeightM(selectedGrid?.floors));
+                      const unsafe = (e: (typeof zones)[number]) => {
+                        const tooClose =
+                          projectedVerts.length >= 3 &&
+                          distanceToOutline(e.pos.x, e.pos.y, projectedVerts) < minD;
+                        const inGlass =
+                          !!blastSite &&
+                          Math.hypot(e.pos.x - blastSite.x, e.pos.y - blastSite.y) <=
+                            SHOWCASE.ZONE_UNSAFE_FACTOR * blastRadius;
+                        return tooClose || inGlass;
+                      };
+                      const allUnsafe = zones.length > 0 && zones.every(unsafe);
+                      return (
+                        <>
+                    {zones.map((e) => {
                         const minD = assemblyMinDistanceM(aboveGroundHeightM(selectedGrid?.floors));
                         const notes: string[] = [];
                         if (
@@ -4656,6 +4686,12 @@ export function DebugRTSSim() {
                           </div>
                         );
                       })}
+                    {allUnsafe && (
+                      <div className="text-amber-400">
+                        All assembly zones are unsafe; people will use the one farthest from the
+                        blast.
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -4669,6 +4705,9 @@ export function DebugRTSSim() {
                     >
                       + Add zone
                     </button>
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="space-y-1">
                     {exits.map((ex, i) => (
@@ -4713,9 +4752,13 @@ export function DebugRTSSim() {
                 ) : (
                   Object.entries(showcaseHud.metrics.arrived).map(([id, n]) => (
                     <div key={id}>
-                      Arrived {id}: {n}
+                      Arrived{' '}
+                      {gameState.equipment.find((eq) => eq.id === id)?.def.label ?? id}: {n}
                     </div>
                   ))
+                )}
+                {showcaseHud.metrics.unsafeZoneNote && (
+                  <div className="text-amber-400">{showcaseHud.metrics.unsafeZoneNote}</div>
                 )}
                 <div>Left map {showcaseHud.metrics.leftMap}</div>
                 <div>
@@ -5303,7 +5346,16 @@ export function DebugRTSSim() {
                             );
                           }
 
-                          preview.runPreview(effectPreviewTime, interiorWalls, hazardZones);
+                          preview.runPreview(
+                            effectPreviewTime,
+                            interiorWalls,
+                            hazardsForEffects(
+                              hazardZones,
+                              !hasEvents && blastSite
+                                ? blastIgnitionZone(blastSite, blastRadius)
+                                : null,
+                            ),
+                          );
                           effectsEngineRef.current = preview;
                           setEffectStates(new Map(preview.studStates));
                         }}

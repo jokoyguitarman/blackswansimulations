@@ -14,12 +14,14 @@ import {
   assemblyMinDistanceM,
   chooseExit,
   distanceToOutline,
+  exitRouteHazardous,
   extinctionK,
   mulberry32,
   nextIndoorWaypoint,
   nextPosture,
   outdoorSpeed,
   samplePremovementS,
+  routeAroundOutline,
   smokeAheadAction,
   walkingSpeed,
   type ExitChoice,
@@ -28,7 +30,6 @@ import {
 } from './hazardSensing';
 import { SHOWCASE } from './showcaseConstants';
 import { blastInjuryBand } from './showcase';
-import { computePathThroughExits } from '../rts/pathfinding';
 
 export type { Posture } from './hazardSensing';
 
@@ -64,6 +65,8 @@ export interface ShowcaseMetrics {
   down: { lethal: number; serious: number };
   minorInjured: number;
   reroutes: number;
+  /** Set when every zone was unsafe and people were sent to the farthest one. */
+  unsafeZoneNote?: string | null;
 }
 
 export interface EvacMetrics {
@@ -94,8 +97,10 @@ interface PedLabel {
   wanderUntil?: number;
   spawn?: Vec2;
   smokeRollDone?: boolean;
-  /** Lookahead already acted on this episode of fire or untenable smoke ahead. */
-  lookaheadLatch?: boolean;
+  /** Exit the lookahead already acted on. Cleared when that heading is clear again. */
+  latchedExitId?: string | null;
+  /** Exits the lookahead left because of fire or untenable smoke, until that route clears. */
+  avoidExitIds?: string[];
   sheltering?: boolean;
   forcedCrawl?: boolean;
   shelterTarget?: Vec2 | null;
@@ -141,6 +146,7 @@ export class PolygonEvacuationEngine {
   private blast: { site: Vec2; radius: number } | null = null;
   private turnedBackCount = 0;
   private rerouteCount = 0;
+  private unsafeZoneNote: string | null = null;
   private leftMapCount = 0;
   private arrivedCounts = new Map<string, number>();
   private buildingHeightM: number = SHOWCASE.BUILDING_STOREY_HEIGHT_M;
@@ -335,7 +341,8 @@ export class PolygonEvacuationEngine {
             wanderUntil: 0,
             spawn: { x, y },
             smokeRollDone: false,
-            lookaheadLatch: false,
+            latchedExitId: null,
+            avoidExitIds: [],
             sheltering: false,
             forcedCrawl: false,
             shelterTarget: null,
@@ -711,14 +718,19 @@ export class PolygonEvacuationEngine {
     }
 
     const ahead = (burningAhead || ka > SHOWCASE.REROUTE_EXTINCTION) && !!ped.targetExitId;
-    if (!ahead) ped.lookaheadLatch = false;
-    if (ahead && !ped.lookaheadLatch && ped.targetExitId) {
-      ped.lookaheadLatch = true;
+    if (!ahead && ped.latchedExitId === ped.targetExitId) ped.latchedExitId = null;
+    if (ahead && ped.latchedExitId !== ped.targetExitId && ped.targetExitId) {
+      const fromId = ped.targetExitId;
+      ped.latchedExitId = fromId;
+      const exitOpts = {
+        excludeId: fromId,
+        avoidIds: ped.avoidExitIds,
+        walls: this.interiorWalls,
+      };
       if (burningAhead) {
-        const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
-          excludeId: ped.targetExitId,
-        });
+        const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), exitOpts);
         this.assignChoice(ped, pos, alt, true);
+        if (ped.targetExitId !== fromId) this.noteAvoid(ped, fromId);
       } else {
         let turned = false;
         if (!ped.smokeRollDone) {
@@ -728,33 +740,33 @@ export class PolygonEvacuationEngine {
             this.turnedBackCount++;
             this.rerouteCount++;
             const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
+              ...exitOpts,
               ignoreHysteresis: true,
-              excludeId: ped.targetExitId,
             });
             this.assignChoice(ped, pos, alt, false);
+            if (ped.targetExitId !== fromId) this.noteAvoid(ped, fromId);
           }
         }
         if (!turned) {
-          const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
-            excludeId: ped.targetExitId,
-          });
+          const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), exitOpts);
           const altCost = alt && !alt.forced ? alt.cost : null;
           if (smokeAheadAction(ka, ped.exitCost ?? Infinity, altCost) === 'switch' && alt) {
             this.assignChoice(ped, pos, alt, true);
-          } else if (!alt) {
-            this.assignChoice(ped, pos, null, true);
+            if (ped.targetExitId !== fromId) this.noteAvoid(ped, fromId);
           }
         }
       }
     }
 
     if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
+      this.pruneAvoid(ped, pos);
       const choice = chooseExit(
         pos,
         this.exits,
         this.config.vertices,
         field,
         ped.targetExitId ? this.currentChoice(ped) : null,
+        { avoidIds: ped.avoidExitIds, walls: this.interiorWalls },
       );
       ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
       this.assignChoice(ped, pos, choice, true);
@@ -775,12 +787,30 @@ export class PolygonEvacuationEngine {
     this.steer(body, target, speed, field);
   }
 
+  private noteAvoid(ped: PedLabel, exitId: string) {
+    if (!exitId) return;
+    if (!ped.avoidExitIds) ped.avoidExitIds = [];
+    if (!ped.avoidExitIds.includes(exitId)) ped.avoidExitIds.push(exitId);
+  }
+
+  private pruneAvoid(ped: PedLabel, pos: Vec2) {
+    if (!ped.avoidExitIds?.length) return;
+    const field = this.field();
+    ped.avoidExitIds = ped.avoidExitIds.filter((id) => {
+      const exit = this.exits.find((e) => e.id === id);
+      if (!exit) return false;
+      return exitRouteHazardous(pos, exit, this.config.vertices, field, this.interiorWalls);
+    });
+  }
+
   private currentChoice(ped: PedLabel): { id: string; cost: number } {
     return { id: ped.targetExitId, cost: ped.exitCost ?? Infinity };
   }
 
   private pickInitialExit(pos: Vec2): ExitChoice | null {
-    return chooseExit(pos, this.exits, this.config.vertices, this.field(), null);
+    return chooseExit(pos, this.exits, this.config.vertices, this.field(), null, {
+      walls: this.interiorWalls,
+    });
   }
 
   private assignChoice(ped: PedLabel, pos: Vec2, choice: ExitChoice | null, count: boolean) {
@@ -879,6 +909,7 @@ export class PolygonEvacuationEngine {
   private planOutdoor(ped: PedLabel, exit: ExitDef, pos: Vec2) {
     ped.state = 'outside';
     ped.evacuated = true;
+    ped.posture = 'stand';
     ped.exitUsed = { x: exit.center.x, y: exit.center.y };
     const mode = this.showcase?.afterExit ?? 'zone';
     const rollDisperse = mode === 'mixed' && this.rng!() < SHOWCASE.DISPERSE_SHARE;
@@ -889,7 +920,7 @@ export class PolygonEvacuationEngine {
       ped.zoneId = null;
       const blast = this.blast?.site ?? pos;
       const target = this.disperseTarget(blast, exit.center);
-      ped.waypoints = computePathThroughExits(pos, target, this.config.vertices, this.exits);
+      ped.waypoints = routeAroundOutline(pos, target, this.config.vertices);
       ped.lastDir = { x: target.x - pos.x, y: target.y - pos.y };
       return;
     }
@@ -914,13 +945,15 @@ export class PolygonEvacuationEngine {
           pick = z;
         }
       }
+      this.unsafeZoneNote =
+        'All assembly zones are unsafe; using the one farthest from the blast.';
     }
     ped.disperse = false;
     ped.zoneId = pick.id;
     const ang = this.rng!() * Math.PI * 2;
     const rad = Math.sqrt(this.rng!()) * 0.8 * pick.radius;
     const target = { x: pick.pos.x + Math.cos(ang) * rad, y: pick.pos.y + Math.sin(ang) * rad };
-    ped.waypoints = computePathThroughExits(pos, target, this.config.vertices, this.exits);
+    ped.waypoints = routeAroundOutline(pos, target, this.config.vertices);
     ped.lastDir = { x: target.x - pos.x, y: target.y - pos.y };
   }
 
@@ -1124,8 +1157,8 @@ export class PolygonEvacuationEngine {
       else if (s.state === 'reacting') reacting++;
       else if (s.state === 'evacuating') evacuating++;
       else if (s.state === 'outside') outside++;
-      if (s.posture === 'crouch') crouching++;
-      if (s.posture === 'crawl') crawling++;
+      if (s.state === 'evacuating' && s.posture === 'crouch') crouching++;
+      if (s.state === 'evacuating' && s.posture === 'crawl') crawling++;
       if (s.injury === 'minor') minorInjured++;
       if (s.state === 'down' && s.injury === 'lethal') lethal++;
       if (s.state === 'down' && s.injury === 'serious') serious++;
@@ -1145,6 +1178,7 @@ export class PolygonEvacuationEngine {
       down: { lethal, serious },
       minorInjured,
       reroutes: this.rerouteCount,
+      unsafeZoneNote: this.unsafeZoneNote,
     };
   }
 

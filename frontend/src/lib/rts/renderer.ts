@@ -598,7 +598,10 @@ function drawShowcaseZones(
     ctx.setLineDash([]);
     ctx.fillStyle = colors[zone.kind];
     ctx.font = '11px monospace';
+    ctx.save();
+    ctx.textAlign = 'left';
     ctx.fillText(`${zone.label} · ${counts[zone.id] ?? 0}`, p.cx + 4, p.cy - r - 4);
+    ctx.restore();
   }
 }
 
@@ -629,12 +632,18 @@ function drawShowcaseInjuryRings(
     ctx.setLineDash([]);
     ctx.fillStyle = band.stroke;
     ctx.font = '11px monospace';
+    ctx.save();
+    ctx.textAlign = 'left';
     ctx.fillText(band.label, p.cx + 4, p.cy - r + 12);
+    ctx.restore();
   }
   if (outer > 0) {
+    ctx.save();
     ctx.fillStyle = '#fde68a';
     ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
     ctx.fillText('Injury rings scaled from the slider radius; walls not modelled', p.cx + 6, p.cy - outer - 6);
+    ctx.restore();
   }
 }
 
@@ -654,9 +663,12 @@ function drawAssemblyRing(ctx: CanvasRenderingContext2D, verts: Vec2[], distM: n
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.save();
   ctx.fillStyle = '#86efac';
   ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
   ctx.fillText(`Assembly distance ≥ ${distM} m`, first.cx, first.cy - 6);
+  ctx.restore();
 }
 
 function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
@@ -734,19 +746,19 @@ function drawExplosionFx(
 function drawShowcaseLegend(ctx: CanvasRenderingContext2D, h: number) {
   ctx.save();
   ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const line1 =
+    'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable';
+  const line2 =
+    'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre';
+  const pad = 8;
+  const boxW = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + pad * 2;
   ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-  ctx.fillRect(8, h - 46, 760, 36);
+  ctx.fillRect(8, h - 46, boxW, 36);
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillText(
-    'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable',
-    14,
-    h - 30,
-  );
-  ctx.fillText(
-    'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre',
-    14,
-    h - 16,
-  );
+  ctx.fillText(line1, 8 + pad, h - 30);
+  ctx.fillText(line2, 8 + pad, h - 16);
   ctx.restore();
 }
 
@@ -1216,10 +1228,11 @@ function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc:
 
 // ── Hazard zones ────────────────────────────────────────────────────────
 function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: RenderContext) {
+  const def = HAZARD_DEFS[hz.hazardType];
+  if (!def) return;
   const p = toCanvas(hz.pos.x, hz.pos.y, rc);
   const r = mToCanvas(hz.radius, rc);
   const drawR = Math.max(r, 10);
-  const def = HAZARD_DEFS[hz.hazardType];
 
   const alpha = hz.severity === 'high' ? '40' : hz.severity === 'medium' ? '25' : '15';
   ctx.beginPath();

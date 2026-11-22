@@ -18,6 +18,7 @@ import {
   mulberry32,
   nextIndoorWaypoint,
   nextPosture,
+  routeAroundOutline,
   outdoorSpeed,
   radiantAvoidRadiusM,
   samplePremovementS,
@@ -35,7 +36,11 @@ import {
   shiftEvents,
 } from '../src/lib/evacuation/showcase';
 import { FireSimulation } from '../src/lib/rts/fireSimulation';
-import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
+import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
+import { isInsidePolygon } from '../src/lib/evacuation/geometry';
+import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
+import type { ExitDef, PolygonSimConfig, ShowcaseZone, Vec2 } from '../src/lib/evacuation/types';
+import Matter from 'matter-js';
 
 const FOLDER_ASSUMED: Partial<Record<ShowcaseKey, string>> = {
   D_TO_K_POINTS: 'knowledge-seeds/fire-smoke-tenability/',
@@ -395,4 +400,186 @@ describe('evacuation showcase', () => {
     assert.equal(spread.states.get('b')?.state, 'burning');
     assert.equal(spread.states.get('c')?.state, 'none');
   });
+
+  test('blocked exit is abandoned on the same re-check', () => {
+    const pos = { x: 0, y: 0 };
+    const blocked = exit({ id: 'a', center: { x: 40, y: 0 }, edgeIndex: 1, status: 'blocked' });
+    const other = exit({ id: 'b', center: { x: 200, y: 0 }, edgeIndex: 1 });
+    const picked = chooseExit(pos, [blocked, other], BIG, field([]), { id: 'a', cost: 10 });
+    assert.equal(picked?.id, 'b');
+  });
+
+  test('outdoor route does not cross the outline', () => {
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 60, y: 0 },
+      { x: 60, y: 40 },
+      { x: 0, y: 40 },
+    ];
+    assert.deepEqual(routeAroundOutline({ x: 30, y: 50 }, { x: 10, y: 55 }, verts), [{ x: 10, y: 55 }]);
+    const around = routeAroundOutline({ x: 30, y: 42 }, { x: 30, y: -8 }, verts);
+    assert.ok(around.length > 1);
+    const legs = [{ x: 30, y: 42 }, ...around];
+    for (let i = 0; i < legs.length - 1; i++) {
+      for (let s = 1; s < 24; s++) {
+        const t = s / 24;
+        const p = {
+          x: legs[i].x + (legs[i + 1].x - legs[i].x) * t,
+          y: legs[i].y + (legs[i + 1].y - legs[i].y) * t,
+        };
+        assert.equal(isInsidePolygon(p.x, p.y, verts), false);
+      }
+    }
+  });
+
+  test('blast ignition uses the blast zone, not the origin', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([
+      { id: 'origin', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
+      { id: 'site', simPos: { x: 50, y: 30 }, spatialContext: 'inside_building' },
+    ]);
+    engine.registerHazard(
+      'blast-direct',
+      [
+        {
+          triggerTimeSec: 0,
+          eventType: 'explode',
+          spreadType: 'fire',
+          spreadRadius: 5,
+          spreadRate: 10,
+          description: 'Direct blast ignition',
+          severity: 'critical',
+        },
+      ],
+      { initial: '', triggered: '', worsening: '', critical: '' },
+    );
+    engine.step(0.01, [], [
+      {
+        id: 'blast-direct',
+        pos: { x: 50, y: 30 },
+        radius: 5,
+        hazardType: 'ignitable',
+        severity: 'critical',
+        label: 'Blast',
+        description: '',
+        photos: [],
+      },
+    ]);
+    assert.equal(engine.studStates.get('site')?.fire.state, 'burning');
+    assert.equal(engine.studStates.get('origin')?.fire.state, 'none');
+  });
+});
+
+function showcaseEngine(
+  count: number,
+  zones: ShowcaseZone[] = [],
+  walls: Array<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    hasDoor: boolean;
+    doorWidth: number;
+    doorPosition: number;
+  }> = [],
+) {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const config: PolygonSimConfig = {
+    vertices: verts,
+    pedestrianCount: count,
+    pedestrianRadius: 0.25,
+    desiredSpeed: 1.4,
+    panicFactor: 0,
+    dt: 1 / 60,
+  };
+  const exits: ExitDef[] = [
+    exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+    exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 }),
+  ];
+  return new PolygonEvacuationEngine(config, exits, walls, [], {
+    afterExit: 'zone',
+    zones,
+    seed: 1,
+  });
+}
+
+test('lookahead switch survives the next re-check', () => {
+  const eng = showcaseEngine(1, [], [
+    {
+      startX: 4,
+      startY: 0,
+      endX: 4,
+      endY: 20,
+      hasDoor: true,
+      doorWidth: 2,
+      doorPosition: 0.9,
+    },
+  ]);
+  const hazard = field([{ id: 'door', simPos: { x: 4, y: 18 }, indoor: true }], {
+    door: { smoke: 0, fire: 'burning' },
+  });
+  eng.setHazardField(hazard);
+  const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  assert.ok(body);
+  Matter.Body.setPosition(body, { x: 10, y: 10 });
+  Matter.Body.setVelocity(body, { x: 0, y: 0 });
+  const ped = (body as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  ped.state = 'evacuating';
+  ped.targetExitId = 'west';
+  ped.exitCost = 12;
+  ped.nextCheckAt = 0;
+  ped.posture = 'stand';
+  eng.step();
+  assert.equal(ped.targetExitId, 'east');
+});
+
+test('posture resets outside and crawling counts only evacuating people', () => {
+  const eng = showcaseEngine(2);
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  assert.equal(bodies.length, 2);
+  const outside = (bodies[0] as Matter.Body & { __ped: { state: string; posture: string } }).__ped;
+  outside.state = 'evacuating';
+  outside.posture = 'crawl';
+  Matter.Body.setPosition(bodies[0], { x: -0.4, y: 10 });
+  const inside = (bodies[1] as Matter.Body & {
+    __ped: { state: string; posture: string; forcedCrawl: boolean };
+  }).__ped;
+  inside.state = 'evacuating';
+  inside.posture = 'crawl';
+  inside.forcedCrawl = true;
+  Matter.Body.setPosition(bodies[1], { x: 20, y: 10 });
+  eng.step();
+  const snaps = eng.getSnapshots();
+  const left = snaps.find((s) => s.state === 'outside');
+  assert.equal(left?.posture, 'stand');
+  assert.equal(eng.getMetrics().showcase?.crawling, 1);
+});
+
+test('all-unsafe zones record a note and use the farthest', () => {
+  const zones: ShowcaseZone[] = [
+    { id: 'near', pos: { x: 12, y: 10 }, radius: 3, label: 'Near', kind: 'assembly' },
+    { id: 'far', pos: { x: 70, y: 10 }, radius: 3, label: 'Far', kind: 'assembly' },
+  ];
+  const eng = showcaseEngine(1, zones);
+  (eng as unknown as { blast: { site: Vec2; radius: number } }).blast = {
+    site: { x: 20, y: 10 },
+    radius: 30,
+  };
+  const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  const ped = (body as Matter.Body & { __ped: { state: string; zoneId: string | null } }).__ped;
+  ped.state = 'evacuating';
+  Matter.Body.setPosition(body, { x: -0.4, y: 10 });
+  eng.step();
+  assert.equal(ped.zoneId, 'far');
+  assert.match(
+    eng.getMetrics().showcase?.unsafeZoneNote ?? '',
+    /farthest from the blast/,
+  );
 });

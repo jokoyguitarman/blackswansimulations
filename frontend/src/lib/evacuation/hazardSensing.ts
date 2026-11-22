@@ -293,16 +293,53 @@ function sampleSegment(a: Vec2, b: Vec2, step: number): Vec2[] {
   return pts;
 }
 
-export function exitCost(pos: Vec2, exit: ExitDef, verts: Vec2[], field: HazardField): number {
+function routeLegs(pos: Vec2, approach: Vec2, walls?: WallLike[]): Array<[Vec2, Vec2]> {
+  const via = walls && walls.length > 0 ? nextIndoorWaypoint(pos, approach, walls) : approach;
+  const legs: Array<[Vec2, Vec2]> = [];
+  if (via.x !== pos.x || via.y !== pos.y) legs.push([pos, via]);
+  if (via.x !== approach.x || via.y !== approach.y) legs.push([via, approach]);
+  if (legs.length === 0) legs.push([pos, approach]);
+  return legs;
+}
+
+export function exitCost(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+  field: HazardField,
+  walls?: WallLike[],
+): number {
   if (!isExitUsable(exit, verts, field)) return Infinity;
   const approach = exitApproachInside(exit, verts);
   let extra = exit.status === 'congested' ? SHOWCASE.CONGESTED_PENALTY_M : 0;
-  for (const p of sampleSegment(pos, approach, SHOWCASE.SAMPLE_STEP_M)) {
-    const s = field.sample(p.x, p.y);
-    if (s.fire === 'burning') return Infinity;
-    extra += extinctionK(s.smoke) * SHOWCASE.SMOKE_COST_M_PER_K;
+  for (const [a, b] of routeLegs(pos, approach, walls)) {
+    for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
+      const s = field.sample(p.x, p.y);
+      if (s.fire === 'burning') return Infinity;
+      extra += extinctionK(s.smoke) * SHOWCASE.SMOKE_COST_M_PER_K;
+    }
   }
   return Math.hypot(exit.center.x - pos.x, exit.center.y - pos.y) + extra;
+}
+
+/** True while fire or untenable smoke still lies on the walked route to this exit. */
+export function exitRouteHazardous(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+  field: HazardField,
+  walls?: WallLike[],
+): boolean {
+  if (!isExitUsable(exit, verts, field)) return true;
+  const approach = exitApproachInside(exit, verts);
+  for (const [a, b] of routeLegs(pos, approach, walls)) {
+    for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
+      const s = field.sample(p.x, p.y);
+      if (s.fire === 'burning') return true;
+      if (extinctionK(s.smoke) > SHOWCASE.REROUTE_EXTINCTION) return true;
+    }
+  }
+  return false;
 }
 
 export interface ExitChoice {
@@ -321,11 +358,17 @@ export function chooseExit(
   verts: Vec2[],
   field: HazardField,
   current: { id: string; cost: number } | null,
-  options?: { ignoreHysteresis?: boolean; excludeId?: string },
+  options?: {
+    ignoreHysteresis?: boolean;
+    excludeId?: string;
+    avoidIds?: string[];
+    walls?: WallLike[];
+  },
 ): ExitChoice | null {
-  const pool = exits.filter((e) => e.id !== options?.excludeId);
+  const avoided = new Set(options?.avoidIds ?? []);
+  const pool = exits.filter((e) => e.id !== options?.excludeId && !avoided.has(e.id));
   const ranked = pool
-    .map((e) => ({ id: e.id, cost: exitCost(pos, e, verts, field) }))
+    .map((e) => ({ id: e.id, cost: exitCost(pos, e, verts, field, options?.walls) }))
     .sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id));
   const best = ranked.find((r) => r.cost < Infinity);
 
@@ -347,6 +390,7 @@ export function chooseExit(
   const stay =
     current != null &&
     current.id !== options?.excludeId &&
+    !avoided.has(current.id) &&
     !options?.ignoreHysteresis &&
     pool.some((e) => e.id === current.id);
   if (stay && current) {
@@ -355,9 +399,10 @@ export function chooseExit(
       pool.find((e) => e.id === current.id) as ExitDef,
       verts,
       field,
+      options?.walls,
     );
-    const basis = now < Infinity ? now : current.cost;
-    if (basis < Infinity && !(best.cost < basis * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
+    // A blocked or burning exit is abandoned on this check, not one check later.
+    if (now < Infinity && !(best.cost < now * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
       return { id: current.id, cost: now, forced: false };
     }
   }
@@ -461,6 +506,119 @@ export function distanceToOutline(x: number, y: number, verts: Vec2[]): number {
     if (d < best) best = d;
   }
   return best;
+}
+
+const OUTDOOR_CLEARANCE_M = 3;
+
+function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
+  const n = verts.length;
+  if (n < 3) return verts.map((v) => ({ ...v }));
+  const normals: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (isInsidePolygon((a.x + b.x) / 2 + nx, (a.y + b.y) / 2 + ny, verts)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    normals.push({ x: nx, y: ny });
+  }
+  const out: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const n0 = normals[(i + n - 1) % n];
+    const n1 = normals[i];
+    let bx = n0.x + n1.x;
+    let by = n0.y + n1.y;
+    const bl = Math.hypot(bx, by);
+    if (bl < 1e-6) {
+      bx = n1.x;
+      by = n1.y;
+    } else {
+      bx /= bl;
+      by /= bl;
+    }
+    const denom = bx * n1.x + by * n1.y;
+    const scale = Math.abs(denom) > 0.25 ? dist / denom : dist;
+    out.push({ x: verts[i].x + bx * scale, y: verts[i].y + by * scale });
+  }
+  return out;
+}
+
+function segmentCrossesOutline(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
+  for (let i = 0; i < verts.length; i++) {
+    if (segmentsHitT(a, b, verts[i], verts[(i + 1) % verts.length]) != null) return true;
+  }
+  return false;
+}
+
+function walkRing(ring: Vec2[], from: number, to: number, dir: 1 | -1): Vec2[] {
+  const n = ring.length;
+  const out: Vec2[] = [ring[from]];
+  let i = from;
+  while (i !== to && out.length <= n) {
+    i = (i + dir + n) % n;
+    out.push(ring[i]);
+  }
+  return out;
+}
+
+function pathLength(pts: Vec2[]): number {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) {
+    len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  }
+  return len;
+}
+
+/**
+ * Outdoor route that stays off the building. A clear straight line is used as-is.
+ * Otherwise the path follows an outline offset by about 3 m, the shorter way.
+ */
+export function routeAroundOutline(from: Vec2, target: Vec2, verts: Vec2[]): Vec2[] {
+  if (verts.length < 3) return [target];
+  if (!segmentCrossesOutline(from, target, verts)) return [{ ...target }];
+  let fallback: Vec2[] = [{ ...target }];
+  for (const clearance of [OUTDOOR_CLEARANCE_M, 6, 9]) {
+    const ring = offsetOutline(verts, clearance);
+    if (ring.length < 3) continue;
+    let iFrom = 0;
+    let iTo = 0;
+    let fromD = Infinity;
+    let toD = Infinity;
+    for (let i = 0; i < ring.length; i++) {
+      const df = Math.hypot(ring[i].x - from.x, ring[i].y - from.y);
+      const dt = Math.hypot(ring[i].x - target.x, ring[i].y - target.y);
+      if (df < fromD) {
+        fromD = df;
+        iFrom = i;
+      }
+      if (dt < toD) {
+        toD = dt;
+        iTo = i;
+      }
+    }
+    const options = [walkRing(ring, iFrom, iTo, 1), walkRing(ring, iFrom, iTo, -1)].sort(
+      (a, b) => pathLength(a) - pathLength(b),
+    );
+    for (const path of options) {
+      const legs = [from, ...path, target];
+      let clear = true;
+      for (let i = 0; i < legs.length - 1; i++) {
+        if (segmentCrossesOutline(legs[i], legs[i + 1], verts)) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) return [...path, { ...target }];
+    }
+    fallback = [...options[0], { ...target }];
+  }
+  return fallback;
 }
 
 export function mulberry32(seed: number): () => number {
