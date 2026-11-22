@@ -294,7 +294,7 @@ The latest migration at the baseline was `217_agreement_signed_copy_draft.sql`. 
 | `ArchetypeKey` (**added 22 Nov 2026**, D40) | `tactical_response`, `military_support`, `cbrn_defence` |
 | `ForceLevel` (**added 22 Nov 2026**, WS1) | `presence`, `verbal`, `physical_control`, `less_lethal`, `lethal` |
 | `StudLayer` (**added 22 Nov 2026**, WS9) | `floor`, `waist`, `head`, `ceiling` |
-| `KnowledgeLibrary` (**added 22 Nov 2026**, WS9) | `doctrines`, `devices`, `spread`, `threats`, `building_hazards`, `movement` |
+| `KnowledgeLibrary` (**added 22 Nov 2026**, WS9) | `doctrines`, `devices`, `spread`, `threats`, `building_hazards`, `movement`, `units` |
 | `CoverageStatus` (**added 22 Nov 2026**, WS9) | `covered`, `assumed`, `gap` |
 | `OperationMode` | `people`, `ai` |
 | `ValueOrigin` (an input value) | `yours`, `library`, `assumed` |

@@ -386,7 +386,7 @@ The test files are in section 11.1. Pure modules are tested without a database o
 61. **AC9.61** Given a building with 8 storeys above ground and 2 below, a catalogue storey height of 5.0 m and an incident on L2, then the world models B2 to L7 with four layers each; given 20 storeys, it models the 12 nearest the incident storey plus none beyond; given more than 32,000 stud columns times storeys at 3 m, it uses 4 m, then 5 m, then fails with `WORLD_TOO_LARGE`. Test: `studIndex.test.ts`, "storeys and caps"; `buildWorldModel.test.ts`, "grid size".
 62. **AC9.62** Given a stud of `contents_retail` (growth `fast`, the seeded heat release per unit area), when it burns with no sprinkler, then its heat release at 120 s equals the t-squared value for the fast class within 1 per cent and never exceeds the per-unit-area cap times the stud's area; given a sprinklered stud, then its heat release stops rising at the tick its ceiling layer passes the activation temperature and stays there until suppressed. Test: `server/services/fieldOps/world/engine/layers.test.ts (new)`, "fire growth".
 63. **AC9.63** Given a closed 30 by 30 m room on a 4 m storey with a medium t-squared fire, when the engine runs, then the ceiling layer fills first, the head layer receives smoke only after the ceiling and the upper part of the head band are full, and the time at which the interface reaches 2.0 m is within 25 per cent of the NFPA 92 layer-height correlation for t-squared fires recorded in the fixture. Test: `layers.test.ts`, "layer descent".
-64. **AC9.64** Given a closed room and a release at 1 m of an agent with density ratio 2.45 (chlorine-like), then after 120 ticks the floor layer's concentration is at least three times the head layer's; with ratio 0.59 (ammonia-like), the ceiling's is at least three times the floor's; with 0.97, the layers are within 20 per cent of each other. Test: `server/services/fieldOps/world/engine/gasTransport.test.ts (new)`, "stratification".
+64. **AC9.64** Given a closed room and a release at 1 m of an agent with density ratio 2.47 (chlorine-like), then after 120 ticks the floor layer's concentration is at least three times the head layer's; with ratio 0.59 (ammonia-like), the ceiling's is at least three times the floor's; with 0.97, the layers are within 20 per cent of each other. Test: `server/services/fieldOps/world/engine/gasTransport.test.ts (new)`, "stratification".
 65. **AC9.65** Given a closed box with no source, decay or opening, when gas moves for 600 ticks, then its total mass is conserved within 0.5 per cent, no layer goes negative, and every sub-step keeps the diffusion number at most 0.25. Test: `gasTransport.test.ts`, "conservation".
 66. **AC9.66** Given two storeys joined by an open stair, then smoke from a fire on the lower storey reaches the upper storey's ceiling layer at the stair before it reaches any upper stud more than 9 m from it; given a closed stair door, then only the door's leakage passes; given a stud burning for longer than its frame's slab fire resistance, then the stud above ignites; given broken glazing at a burning facade stud for 300 s, then the facade stud above ignites with the catalogue's external-spread probability, drawn from the seeded stream. Test: `layers.test.ts`, "vertical spread".
 67. **AC9.67** Given a blast profile fixture and studs at known 3D distances, when `blastField` runs, then each stud's peak overpressure and impulse equal the log-log interpolation of the profile within 1 per cent and are zero beyond its last range; a stud on another storey gets 10 per cent unless an open vertical link lies within 6 m of it; glazed wall edges fail where the overpressure passes the glazing threshold; and the function's input type holds no device field. Test: `server/services/fieldOps/world/engine/blastField.test.ts (new)`.
@@ -514,6 +514,9 @@ CREATE TABLE IF NOT EXISTS public.fieldops_spread_materials (
   heat_of_combustion_mj_kg NUMERIC(5, 2) CHECK (heat_of_combustion_mj_kg IS NULL OR heat_of_combustion_mj_kg BETWEEN 5 AND 50),
   soot_yield NUMERIC(5, 4) CHECK (soot_yield IS NULL OR soot_yield BETWEEN 0 AND 0.3),
   co_yield NUMERIC(5, 4) CHECK (co_yield IS NULL OR co_yield BETWEEN 0 AND 0.3),
+  -- Added 22 Nov 2026 (research gap): yields after flashover, when the fire is ventilation-controlled. Null: use the values above.
+  soot_yield_post_fo NUMERIC(5, 4) CHECK (soot_yield_post_fo IS NULL OR soot_yield_post_fo BETWEEN 0 AND 0.5),
+  co_yield_post_fo NUMERIC(5, 4) CHECK (co_yield_post_fo IS NULL OR co_yield_post_fo BETWEEN 0 AND 0.5),
   burn_through_s INTEGER CHECK (burn_through_s IS NULL OR burn_through_s BETWEEN 10 AND 86400),
   smoke_leak NUMERIC(5, 4) NOT NULL DEFAULT 0 CHECK (smoke_leak BETWEEN 0 AND 1),
   gas_leak NUMERIC(5, 4) NOT NULL DEFAULT 0 CHECK (gas_leak BETWEEN 0 AND 1),
@@ -586,6 +589,9 @@ CREATE TABLE IF NOT EXISTS public.fieldops_spread_exposure (
   agent TEXT PRIMARY KEY CHECK (agent IN ('smoke', 'toxic_gas', 'irritant_gas', 'heat', 'heat_stress', 'collapse', 'compression', 'impact')),
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
   incapacitation_bands JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(incapacitation_bands) = 'array'),
+  -- Added 22 Nov 2026 (research gap): the agent's ISO 13571 model constants (for example the CO, heat and radiant terms),
+  -- validated per agent by exposureConstantsSchema; empty means the bands above alone.
+  model_constants JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(model_constants) = 'object'),
   light_at NUMERIC(6, 3) NOT NULL CHECK (light_at > 0),
   serious_at NUMERIC(6, 3) NOT NULL,
   fatal_at NUMERIC(6, 3) NOT NULL,
@@ -1235,7 +1241,8 @@ CREATE TABLE IF NOT EXISTS public.fieldops_unit_kinds (
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
   country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
   archetype_key TEXT NOT NULL,
-  mode TEXT NOT NULL CHECK (mode IN ('vehicle', 'foot')),
+  -- Updated 22 Nov 2026 (research gap): 'vessel' for marine units; stored, but fielded only when a water model exists (phase 3).
+  mode TEXT NOT NULL CHECK (mode IN ('vehicle', 'foot', 'vessel')),
   crew SMALLINT NOT NULL CHECK (crew BETWEEN 1 AND 20),
   default_count SMALLINT NOT NULL CHECK (default_count BETWEEN 0 AND 8),
   turnout_s INTEGER NOT NULL CHECK (turnout_s BETWEEN 0 AND 3600),
@@ -2312,6 +2319,9 @@ CREATE TABLE IF NOT EXISTS public.fieldops_hazard_item_kinds (
   flash_point_c NUMERIC(6, 1) CHECK (flash_point_c IS NULL OR flash_point_c BETWEEN -200 AND 400),
   mitigates TEXT CHECK (mitigates IS NULL OR mitigates IN ('fire_growth', 'smoke', 'gas', 'power')),
   activation_c NUMERIC(5, 1) CHECK (activation_c IS NULL OR activation_c BETWEEN 40 AND 300),
+  -- Added 22 Nov 2026 (research gap): response time index, (m·s)^0.5. With it, activation follows the standard
+  -- heat-detector response model in the ceiling jet; without it, the plain temperature threshold above.
+  rti NUMERIC(6, 1) CHECK (rti IS NULL OR rti BETWEEN 10 AND 500),
   sensitivity TEXT NOT NULL DEFAULT 'public' CHECK (sensitivity IN ('public', 'restricted_generic')),
   source_keys TEXT[] NOT NULL DEFAULT '{}',
   source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
@@ -2489,7 +2499,8 @@ CREATE TABLE IF NOT EXISTS public.fieldops_movement_parameters (
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 120),
   applies_to TEXT NOT NULL CHECK (applies_to IN ('walking', 'stairs', 'crouch', 'crawl', 'visibility', 'heat', 'gas', 'water', 'exit', 'group')),
   value NUMERIC(12, 4) NOT NULL,
-  unit TEXT NOT NULL CHECK (unit IN ('m_s', 'p_m2', 'm2_p', 'p_s_m', 'm', 'c', 'kw_m2', 'per_m', 'm2_g', 'ratio', 's', 'permille')),
+  -- Updated 22 Nov 2026 (research gap): ppm and per cent for gas limits.
+  unit TEXT NOT NULL CHECK (unit IN ('m_s', 'p_m2', 'm2_p', 'p_s_m', 'm', 'c', 'kw_m2', 'per_m', 'm2_g', 'ratio', 's', 'permille', 'ppm', 'pct')),
   plausible_low NUMERIC(12, 4) NOT NULL,
   plausible_high NUMERIC(12, 4) NOT NULL,
   source_keys TEXT[] NOT NULL DEFAULT '{}',
@@ -2580,7 +2591,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.fieldops_seed_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units')),
   run_kind TEXT NOT NULL CHECK (run_kind IN ('agent', 'person', 'import')),
   agent_model TEXT CHECK (agent_model IS NULL OR char_length(agent_model) BETWEEN 2 AND 120),
   brief_key TEXT CHECK (brief_key IS NULL OR brief_key ~ '^[a-z][a-z0-9_]{1,63}$'),
@@ -2619,7 +2630,7 @@ CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_sources (
 
 CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_coverage (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units')),
   country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
   subject_key TEXT NOT NULL CHECK (char_length(subject_key) BETWEEN 1 AND 120),
   status TEXT NOT NULL CHECK (status IN ('covered', 'assumed', 'gap')),
@@ -2674,7 +2685,7 @@ Two new files under `shared/` (master 10.7: no package imports, no enums), and o
 
 ```ts
 // shared/fieldOps/knowledge.ts (new). Owned by WS9. Types and constants only.
-export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement'] as const;
+export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units'] as const; // 'units' added 22 Nov 2026: unit kinds and equipment
 export type KnowledgeLibrary = (typeof KNOWLEDGE_LIBRARIES)[number];
 export const COVERAGE_STATUSES = ['covered', 'assumed', 'gap'] as const;
 export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
@@ -2770,6 +2781,8 @@ export const VISIBILITY_CLASSES = ['clear', 'light', 'moderate', 'dense'] as con
 export const HEAT_CLASSES = ['ambient', 'warm', 'untenable', 'burning'] as const;   // under 40 °C, 40 to 60, over 60, in flame
 export const GAS_TIERS = ['none', 'tier1', 'tier2', 'tier3'] as const;
 export const LAYER_VIEWS = ['head', 'floor', 'ceiling', 'worst'] as const;
+/** Added 22 Nov 2026: share of heat release that is convective (C/VM2's radiative fraction 0.35); reviewer to confirm. */
+export const CONVECTIVE_FRACTION = 0.65;
 export type LayerView = (typeof LAYER_VIEWS)[number];
 export interface StudLayerCell {
   fire: 0 | 1 | 2 | 3 | 4;             // section 6.7.2's states
@@ -2792,7 +2805,7 @@ export declare function colourClassFor(cell: StudLayerCell, view: LayerView): st
 
 | Contents key | Heat release per m² | Heat of combustion | Soot yield | CO yield |
 | --- | --- | --- | --- | --- |
-| `contents_retail` | 550 kW | 20 MJ/kg | 0.08 | 0.04 |
+| `contents_retail` | 250 kW (**corrected 22 Nov 2026** from 550; BS EN 1991-1-2 Annex E, Table E.5, shopping centre, fast growth. **Reviewer to confirm (research of 22 Nov 2026):** the PD 7974-1 retail value, which was not checked) | 20 MJ/kg | 0.08 | 0.04 |
 | `contents_office` | 250 kW | 17 MJ/kg | 0.03 | 0.04 |
 | `contents_transit` | 250 kW | 20 MJ/kg | 0.05 | 0.04 |
 | `contents_car_park` | 400 kW | 30 MJ/kg | 0.10 | 0.05 |
@@ -2893,9 +2906,9 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 
 | Key | Agent | Molecular weight | Density ratio | Flammable range | Tier 1, 2, 3 (60 min) | Irritant | Sources |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `chlorine` | Chlorine | 70.9 | 2.45 | none | 0.5, 2.0, 20 | yes | US EPA AEGL; NOAA CAMEO Chemicals |
+| `chlorine` | Chlorine | 70.9 | 2.47 (**corrected 22 Nov 2026**, NIOSH) | none | 0.5, 2.0, 20 | yes | US EPA AEGL; NOAA CAMEO Chemicals |
 | `ammonia` | Ammonia | 17.0 | 0.59 | 15 to 28 per cent | 30, 160, 1,100 | yes | as above |
-| `propane` | Propane (LPG) | 44.1 | 1.52 | 2.1 to 9.5 per cent | 5,500, 17,000, 33,000 | no | as above |
+| `propane` | Propane (LPG) | 44.1 | 1.55 (**corrected 22 Nov 2026**, NIOSH) | 2.1 to 9.5 per cent | 5,500, 17,000, 33,000 | no | as above |
 | `town_gas` | Town gas (composition to verify) | to verify | below 1 | to verify | none (asphyxiant and fire) | no | Energy Market Authority; City Energy safety data |
 | `methane` | Natural gas | 16.0 | 0.55 | 5 to 15 per cent | none (asphyxiant) | no | NOAA CAMEO Chemicals |
 | `carbon_monoxide` | Carbon monoxide (fire product) | 28.0 | 0.97 | 12.5 to 74 per cent | none, 83, 330 | no | US EPA AEGL; ISO 13571:2012 |
@@ -2928,12 +2941,12 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `density_a` | walking | 0.266 m²/p | 0.25 to 0.28 | as above |
 | `density_free_limit` | walking | 0.54 p/m² | 0.5 to 0.6 | as above |
 | `density_stop` | group | 3.8 p/m² | 3.5 to 4.0 | as above |
-| `crush_density` | group | 5.0 p/m² | 4.5 to 6.0 | Fruin (1971); Still, *Introduction to Crowd Science* (2014) |
+| `crush_density` | group | 5.0 p/m² | 4.5 to 7.5 (**widened 22 Nov 2026**) | Fruin (1971); Still, *Introduction to Crowd Science* (2014). **Reviewer to confirm (research of 22 Nov 2026):** the public revised Fruin paper states about 7 p/m² as the critical condition; 5.0 is unconfirmed |
 | `max_specific_flow` | exit | 1.3 p/s/m | 1.1 to 1.4 | SFPE Handbook, hydraulic model |
 | `boundary_layer_door` | exit | 0.15 m | 0.1 to 0.2 | as above, effective width |
 | `stair_k` | stairs | 1.08 m/s | 1.0 to 1.23 | as above, stair constants by riser and tread; Singapore's riser and tread from the Fire Code 2018 |
 | `crouch_speed_factor` | crouch | 0.6 | 0.4 to 0.8 | Nagai, Fukamachi and Nagatani (2006), *Physica A* 367 |
-| `crawl_speed` | crawl | 0.4 m/s | 0.2 to 0.7 | Muhdi, Davis and Blackburn (2006); Nagai and others (2006) |
+| `crawl_speed` | crawl | 0.71 m/s (**corrected 22 Nov 2026** from 0.4, which contradicted its own sources) | 0.54 to 0.93 | Muhdi, Davis and Blackburn (2006) and Nagai and others (2006), means of 0.71 and 0.73 m/s; Kady and Davis, 0.54 to 0.93 m/s |
 | `visibility_k_lit` | visibility | 8 | 5 to 10 | Jin (1978); SFPE Handbook, visibility in smoke |
 | `visibility_k_reflective` | visibility | 3 | 2 to 4 | as above |
 | `smoke_mass_extinction` | visibility | 8.7 m²/g | 7.6 to 10 | Mulholland and Croarkin (2000), *Fire and Materials* 24 |
@@ -2941,13 +2954,15 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `reroute_visibility_m` | visibility | 3 m | 2 to 5 | Bryan (1977, 1983); Wood (1972): occupants moving through smoke |
 | `turn_back_permille` | visibility | 300 | 100 to 500 | as above |
 | `smoke_speed_floor_factor` | visibility | 0.5 at an extinction coefficient of 1.0 per metre, 1.0 at 0.1 | 0.3 to 0.7 | Jin (1978); Fridolf, Nilsson and Frantzich (2013), *Fire Technology* 49 |
-| `irritant_speed` | visibility | 0.3 m/s | 0.2 to 0.5 | Jin (1978), irritant smoke |
+| `smoke_dark_reference_speed` (**renamed 22 Nov 2026** from `irritant_speed`) | visibility | 0.3 m/s | 0.2 to 0.5 | Jin (1978): walking speed in darkness, not a speed measured in irritant smoke. **Reviewer to confirm (research of 22 Nov 2026):** whether it may stand as the floor in irritant smoke until a source for the irritant relation is found |
 | `tenable_temp_head_c` | heat | 60 °C | 50 to 80 | ISO 13571:2012; BS PD 7974-6:2019 |
 | `tenable_radiant_kw_m2` | heat | 2.5 kW/m² | 2.0 to 3.0 | as above |
 | `water_slow_depth_m` | water | 0.3 m, speed factor 0.5 | 0.2 to 0.5 | Ishigaki and others (2009), evacuation through floodwater |
 | `water_stop_depth_m` | water | 0.7 m | 0.5 to 1.0 | as above |
 | `breathing_height_standing` | gas | 1.6 m | 1.4 to 1.7 | ISO 13571:2012 (tenability at breathing height) |
 | `breathing_height_crawling` | gas | 0.3 m | 0.2 to 0.5 | as above |
+
+**Corrections from the research of 22 Nov 2026.** The physics and movement research (pending seed files for review) found values above that contradict their own sources and a few gaps in the schema. Corrected: `crawl_speed` (0.71 m/s), the retail heat release per unit area (250 kW/m², Eurocode), the convective fraction (0.65), and the chlorine and propane density ratios (2.47, 1.55). Renamed: `irritant_speed` to `smoke_dark_reference_speed`, which is what Jin measured. Marked for the reviewer, with the evidence: `crush_density`, `compression_fatal_s` and the `compression` and `impact` exposure rows. Schema added: post-flashover yields (250), ISO 13571 model constants (250), sprinkler RTI (257), `ppm` and `pct` units (258), vessel mode and a `units` library (254, 259).
 
 ### 5.20 Before 257 to 259 are applied (added 22 Nov 2026)
 
@@ -4246,7 +4261,7 @@ D43 and D45, master 10.8 item 44. These rules replace sections 6.7.2 to 6.7.6 wh
 
 #### 6.23.2 Fire
 
-Each burning stud's heat release is `min(α t², hrrpua × A)`, with `t` the seconds since it ignited, `A` the stud's area, `hrrpua` its contents' heat release per unit area, and `α` its growth class's coefficient: 0.00293 (slow), 0.01172 (medium), 0.0469 (fast) and 0.1876 kW/s² (ultra-fast), the t-squared classes of BS PD 7974-1:2019. 70 per cent of it is convective. A sprinklered stud's heat release stops rising at the tick its ceiling layer passes the sprinkler's activation temperature (W29). Spread keeps section 6.7.2's ignition timing and wall rules and adds three paths:
+Each burning stud's heat release is `min(α t², hrrpua × A)`, with `t` the seconds since it ignited, `A` the stud's area, `hrrpua` its contents' heat release per unit area, and `α` its growth class's coefficient: 0.00293 (slow), 0.01172 (medium), 0.0469 (fast) and 0.1876 kW/s² (ultra-fast), the t-squared classes of BS PD 7974-1:2019. 65 per cent of it is convective (**corrected 22 Nov 2026** from 70: New Zealand's verification method C/VM2 uses a radiative fraction of 0.35; the value is `CONVECTIVE_FRACTION` in `shared/fieldOps/worldLayers.ts (new)`, reviewer to confirm). A sprinklered stud's heat release stops rising at the tick its ceiling layer passes the sprinkler's activation temperature (W29). Spread keeps section 6.7.2's ignition timing and wall rules and adds three paths:
 
 - **Radiation.** A combustible stud receiving 12.5 kW/m² or more from a pool fire, a fireball or a hot layer ignites after 30 seconds (piloted ignition of common furnishings, SFPE Handbook; planning value).
 - **Flashover.** When a smoke region's ceiling layer passes 600 °C, every combustible stud of the region ignites (the classic upper-layer criterion, SFPE Handbook).
@@ -4288,7 +4303,7 @@ Section 6.7.1's order stands with these changes: step 3 runs `blastField` for ea
 D44. Every number below is a row of `fieldops_movement_parameters` (section 5.19), read once per world; the rules are pure functions in `server/services/fieldOps/world/engine/movement.ts (new)`.
 
 - **Posture.** `postureFor` reads the layers at the group's stud and its next two route studs. A group stands while its head layer's visibility is at least `crouch_visibility_m` and its temperature tenable; it crouches when the head layer fails and the waist layer holds; it crawls when the waist layer also fails and the floor layer holds. When a heavier-than-air agent is above its second tier in the floor layer, the group never crawls: it stands or crouches and reroutes away from the release, and, when every route to an exit crosses the release's second-tier contour at its breathing layer, it climbs to the nearest stud of a higher storey outside the first-tier contour and waits there (`sheltering`). When every layer fails, it reroutes, or is trapped when no route exists (AC9.69).
-- **Speed.** Standing, `v = k (1 − a D)` with `k` `density_k_corridor` and `a` `density_a` for densities `D` from `density_free_limit` up, `free_walk_speed` below it, and zero at `density_stop` or more; on a stair `k` is `stair_k`. Crouching multiplies by `crouch_speed_factor`; crawling is `crawl_speed`, whatever the density. Smoke at the breathing layer multiplies by the visibility factor, from 1.0 at an extinction coefficient of 0.1 per metre down to `smoke_speed_floor_factor` at 1.0, and irritant smoke over 0.5 per metre caps it at `irritant_speed`. Floodwater at `water_slow_depth_m` multiplies by its factor, and at `water_stop_depth_m` the stud is impassable. Hot weather keeps section 6.7.6's factor (AC9.70 to AC9.72).
+- **Speed.** Standing, `v = k (1 − a D)` with `k` `density_k_corridor` and `a` `density_a` for densities `D` from `density_free_limit` up, `free_walk_speed` below it, and zero at `density_stop` or more; on a stair `k` is `stair_k`. Crouching multiplies by `crouch_speed_factor`; crawling is `crawl_speed`, whatever the density. Smoke at the breathing layer multiplies by the visibility factor, from 1.0 at an extinction coefficient of 0.1 per metre down to `smoke_speed_floor_factor` at 1.0, and irritant smoke over 0.5 per metre caps it at `smoke_dark_reference_speed` (Jin's walking speed in darkness, used as a stand-in floor until a measured irritant-smoke relation is sourced; reviewer to confirm). Floodwater at `water_slow_depth_m` multiplies by its factor, and at `water_stop_depth_m` the stud is impassable. Hot weather keeps section 6.7.6's factor (AC9.70 to AC9.72).
 - **Exits.** An exit passes at most `max_specific_flow` people a second per metre of its width less `boundary_layer_door` on each side; queues and congestion follow section 6.7.6.
 - **Route costs.** The flow field's cost of a step is its length over the speed a standing group would have there, times 3 on a stair, times 10 where the head layer is above `tenable_temp_head_c` or the floor receives more than `tenable_radiant_kw_m2`, and infinite where water passes `water_stop_depth_m` or the stud is burning or collapsed. Fields are recomputed when a cost class changes, at most every 10 ticks.
 - **Rerouting and turning back.** When the visibility at the group's breathing layer on its next three route studs falls under `reroute_visibility_m` and another route costs less than 1.5 times its own, the group switches; otherwise it continues at its posture. The first time it meets such smoke, `turn_back_permille` of its people, drawn from the stream `crowd_turn`, split off as a new group that turns back, while the world holds fewer than 400 groups (AC9.71).
@@ -4380,10 +4395,10 @@ export interface CompileEventEffects {
 
 | Key | Value | Plausible range | Source |
 | --- | --- | --- | --- |
-| `crush_density` | 5.0 p/m² | 4.5 to 6.0 | Fruin (1993), *The causes and prevention of crowd disasters*; Still (2014) |
-| `flee_density_limit` | 7.0 p/m² | 6 to 9 | Helbing, Johansson and Al-Abideen (2007), *Physical Review E* 75 |
+| `crush_density` | 5.0 p/m² | 4.5 to 7.5 | Fruin (1993); Still (2014). **Reviewer to confirm (research of 22 Nov 2026):** the public revised Fruin paper states about 7 p/m²; 5.0 is unconfirmed. If the reviewer raises it, `flee_density_limit` must stay above it |
+| `flee_density_limit` | 7.0 p/m², always above `crush_density` | 6 to 9 | Helbing, Johansson and Al-Abideen (2007), *Physical Review E* 75 |
 | `crush_onset_s` | 30 s | 10 to 60 | Lee and Hughes (2005), *Journal of Transportation Engineering* 131 |
-| `compression_fatal_s` | 300 s of sustained crush | 240 to 360 | Fruin (1993): compressive asphyxia within about four to six minutes |
+| `compression_fatal_s` | 300 s of sustained crush | 120 to 600 (**widened 22 Nov 2026**) | Assumed: a modelling value. **Reviewer to confirm (research of 22 Nov 2026):** the public revised Fruin paper gives no time to asphyxia, and no public dose bands were found for the `compression` and `impact` exposure rows; both are the reviewer's modelling decision |
 | `flee_speed` | 2.5 m/s | 1.8 to 3.5 | Helbing and others (2000), *Nature* 407 |
 | `perception_m` | 30 m | 10 to 60 | planning value, checked in review |
 | `counterflow_factor` | 0.5 | 0.3 to 0.8 | Green Guide, *Guide to Safety at Sports Grounds*, 6th edition (2018); HSE, *Managing crowds safely* (HSG154) |
@@ -4561,6 +4576,7 @@ D49, W55. `incident.events` holds one to six events (`EVENT_LIMITS.maxEvents`) i
 
 D54, W56, master 10.8 item 49.
 
+- **Vessels (added 22 Nov 2026).** Kinds of mode `vessel` (marine fire and rescue craft) are stored and reviewed like the others, but the unit plan skips them until `maritime_incident` brings a water model (phase 3).
 - **Kinds and equipment.** `fieldops_unit_kinds`, `fieldops_equipment` and `fieldops_unit_equipment` (migration 254, amended) replace `UNIT_CATALOGUE` as the source of kinds, crews, counts, turnout, sight, tasks and equipment; the constant stays as the fallback, labelled Assumed (AC9.119). Rows are drafted by the pipeline's `unit_kind` and `equipment` briefs from the agencies' public fleet and equipment pages and public standards (for example NFPA 1901 for apparatus and EN 1846 for fire appliances), and reviewed under W24 by the fire-service and police reviewers.
 - **What equipment does.** A pump's flow and a hose line's length bound suppression: a crew suppresses at the flow it has against the fire's area (`critical_flow_l_min_m2`), drawing the tank until a hydrant link is made within hose reach; hydrants are assumed every 100 m along roads until a source is approved (question 48). Breathing-apparatus air runs down per crew member and forces withdrawal at its reserve. Ladders and aerial platforms reach storeys by their height, for rescue and attack from outside. Stretchers and patient capacity bound carrying and transport; decontamination equipment bounds the people per hour a decon point processes; thermal cameras double sight in smoke; gas detectors reveal gas tiers in fog; lighting cancels the night factor near the unit (AC9.120).
 - **Deployment.** On arrival a crew deploys equipment as placed assets: a hose line from the appliance to its target, a ladder at a facade stud, a decon point, a casualty collection point, a barrier line; each carries its equipment key and is shown on the map.
