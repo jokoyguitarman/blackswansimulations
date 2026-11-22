@@ -10,7 +10,8 @@
       "library": "spread",
       "records": {
         "table_row": 29
-      }
+      },
+      "note": "Pre-approval bytes; this file was not kept in the intake commit."
     },
     {
       "path": "_incoming/responder-units/unit-kinds.json",
