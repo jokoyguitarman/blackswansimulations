@@ -18,6 +18,7 @@ import {
   mulberry32,
   nextIndoorWaypoint,
   nextPosture,
+  distanceToOutline,
   routeAroundOutline,
   outdoorSpeed,
   radiantAvoidRadiusM,
@@ -419,13 +420,30 @@ describe('evacuation showcase', () => {
     assert.deepEqual(routeAroundOutline({ x: 30, y: 50 }, { x: 10, y: 55 }, verts), [{ x: 10, y: 55 }]);
     const around = routeAroundOutline({ x: 30, y: 42 }, { x: 30, y: -8 }, verts);
     assert.ok(around.length > 1);
-    const legs = [{ x: 30, y: 42 }, ...around];
+    const door = routeAroundOutline({ x: 30, y: 40.2 }, { x: 95, y: 20 }, verts);
+    assert.ok(Math.abs(door[0].x - 30) < 0.2, `depart x ${door[0].x}`);
+    assert.ok(door[0].y > 42 && door[0].y < 43.2, `depart y ${door[0].y}`);
+    assert.ok(door.every((p) => p.x > -1), 'east zone must not detour via the west corner');
+    const graze = routeAroundOutline({ x: 30, y: 40.3 }, { x: 90, y: 40.3 }, verts);
+    assert.ok(graze[0].y > 42, 'a path along the wall leaves straight out first');
+    const legs = [graze[0], ...graze.slice(1)];
     for (let i = 0; i < legs.length - 1; i++) {
-      for (let s = 1; s < 24; s++) {
-        const t = s / 24;
+      for (let s = 0; s <= 8; s++) {
+        const t = s / 8;
         const p = {
           x: legs[i].x + (legs[i + 1].x - legs[i].x) * t,
           y: legs[i].y + (legs[i + 1].y - legs[i].y) * t,
+        };
+        assert.ok(distanceToOutline(p.x, p.y, verts) >= 0.65);
+      }
+    }
+    const aroundLegs = [{ x: 30, y: 42 }, ...around];
+    for (let i = 0; i < aroundLegs.length - 1; i++) {
+      for (let s = 1; s < 24; s++) {
+        const t = s / 24;
+        const p = {
+          x: aroundLegs[i].x + (aroundLegs[i + 1].x - aroundLegs[i].x) * t,
+          y: aroundLegs[i].y + (aroundLegs[i + 1].y - aroundLegs[i].y) * t,
         };
         assert.equal(isInsidePolygon(p.x, p.y, verts), false);
       }
@@ -538,6 +556,171 @@ test('lookahead switch survives the next re-check', () => {
   ped.posture = 'stand';
   eng.step();
   assert.equal(ped.targetExitId, 'east');
+  for (let i = 0; i < 120; i++) eng.step();
+  assert.equal(ped.targetExitId, 'east');
+  eng.destroy();
+});
+
+test('fire beyond the door sticks for 2s and off-route velocity does not flip', () => {
+  const walls = [
+    {
+      startX: 6,
+      startY: 0,
+      endX: 6,
+      endY: 20,
+      hasDoor: true,
+      doorWidth: 2,
+      doorPosition: 0.5,
+    },
+  ];
+  const burning = showcaseEngine(1, [], walls);
+  burning.setHazardField(
+    field([{ id: 'past', simPos: { x: 3, y: 10 }, indoor: true }], {
+      past: { smoke: 0, fire: 'burning' },
+    }),
+  );
+  const body = (burning as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  Matter.Body.setPosition(body, { x: 14, y: 10 });
+  Matter.Body.setVelocity(body, { x: -1, y: 1 });
+  const ped = (body as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  ped.state = 'evacuating';
+  ped.targetExitId = 'west';
+  ped.exitCost = 20;
+  ped.nextCheckAt = 0;
+  ped.posture = 'stand';
+  burning.step();
+  assert.equal(ped.targetExitId, 'east');
+  for (let i = 0; i < 120; i++) burning.step();
+  assert.equal(ped.targetExitId, 'east');
+  burning.destroy();
+
+  const off = showcaseEngine(1, [], walls);
+  off.setHazardField(
+    field([{ id: 'side', simPos: { x: 6, y: 18 }, indoor: true }], {
+      side: { smoke: 0, fire: 'burning' },
+    }),
+  );
+  const offBody = (off as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  Matter.Body.setPosition(offBody, { x: 14, y: 10 });
+  Matter.Body.setVelocity(offBody, { x: -0.8, y: 0.8 });
+  const offPed = (offBody as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  offPed.state = 'evacuating';
+  offPed.targetExitId = 'west';
+  offPed.exitCost = 14;
+  offPed.nextCheckAt = 1e9;
+  offPed.posture = 'stand';
+  for (let i = 0; i < 20; i++) off.step();
+  assert.equal(offPed.targetExitId, 'west');
+  off.destroy();
+});
+
+test('people beside a door line up with the opening instead of the wall', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 1,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 2 })],
+    [],
+    [],
+    { afterExit: 'disperse', zones: [], seed: 1 },
+  );
+  const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  Matter.Body.setPosition(body, { x: 37, y: 16 });
+  Matter.Body.setVelocity(body, { x: 0, y: 0 });
+  const ped = (body as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  ped.state = 'evacuating';
+  ped.targetExitId = 'east';
+  ped.exitCost = 8;
+  ped.nextCheckAt = 1e9;
+  ped.posture = 'stand';
+  for (let i = 0; i < 180; i++) eng.step();
+  assert.ok(body.position.y < 15.5, `headed for the opening, y=${body.position.y.toFixed(2)}`);
+  assert.ok(body.position.x < 38.5, `stayed off the wall, x=${body.position.x.toFixed(2)}`);
+  eng.destroy();
+});
+
+test('people who turned back do not return to that exit', () => {
+  const walls = [
+    {
+      startX: 6,
+      startY: 0,
+      endX: 6,
+      endY: 20,
+      hasDoor: true,
+      doorWidth: 2,
+      doorPosition: 0.5,
+    },
+  ];
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const exits: ExitDef[] = [
+    exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+    exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 }),
+  ];
+  const smoke = field([{ id: 's', simPos: { x: 3, y: 10 }, indoor: true }], {
+    s: { smoke: 1, fire: 'none' },
+  });
+  let found = false;
+  for (let seed = 1; seed <= 40 && !found; seed++) {
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: 1,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      exits,
+      walls,
+      [],
+      { afterExit: 'zone', zones: [], seed },
+    );
+    eng.setHazardField(smoke);
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    Matter.Body.setPosition(body, { x: 14, y: 10 });
+    const ped = (body as Matter.Body & {
+      __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+    }).__ped;
+    ped.state = 'evacuating';
+    ped.targetExitId = 'west';
+    ped.exitCost = 30;
+    ped.nextCheckAt = 1e9;
+    ped.posture = 'stand';
+    const before = eng.getMetrics().showcase?.turnedBack ?? 0;
+    eng.step();
+    const turned = (eng.getMetrics().showcase?.turnedBack ?? 0) > before;
+    if (turned && ped.targetExitId === 'east') {
+      smoke.setStates(new Map([['s', { smoke: 0, fire: { state: 'none' } }]]));
+      ped.nextCheckAt = 0;
+      for (let i = 0; i < 300; i++) eng.step();
+      assert.equal(ped.targetExitId, 'east');
+      found = true;
+    }
+    eng.destroy();
+  }
+  assert.equal(found, true);
 });
 
 test('posture resets outside and crawling counts only evacuating people', () => {

@@ -322,6 +322,31 @@ export function exitCost(
   return Math.hypot(exit.center.x - pos.x, exit.center.y - pos.y) + extra;
 }
 
+/**
+ * Fire and the worst extinction on the walked route (person, then door, then
+ * the inside approach). Blocked and service exits are not a look-ahead signal.
+ */
+export function walkedRouteHazard(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+  field: HazardField,
+  walls?: WallLike[],
+): { burning: boolean; maxK: number } {
+  if (exit.exitType === 'service' || exit.status === 'blocked') return { burning: false, maxK: 0 };
+  const approach = exitApproachInside(exit, verts);
+  let burning = false;
+  let maxK = 0;
+  for (const [a, b] of routeLegs(pos, approach, walls)) {
+    for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
+      const s = field.sample(p.x, p.y);
+      if (s.fire === 'burning') burning = true;
+      maxK = Math.max(maxK, extinctionK(s.smoke));
+    }
+  }
+  return { burning, maxK };
+}
+
 /** True while fire or untenable smoke still lies on the walked route to this exit. */
 export function exitRouteHazardous(
   pos: Vec2,
@@ -331,15 +356,8 @@ export function exitRouteHazardous(
   walls?: WallLike[],
 ): boolean {
   if (!isExitUsable(exit, verts, field)) return true;
-  const approach = exitApproachInside(exit, verts);
-  for (const [a, b] of routeLegs(pos, approach, walls)) {
-    for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
-      const s = field.sample(p.x, p.y);
-      if (s.fire === 'burning') return true;
-      if (extinctionK(s.smoke) > SHOWCASE.REROUTE_EXTINCTION) return true;
-    }
-  }
-  return false;
+  const hazard = walkedRouteHazard(pos, exit, verts, field, walls);
+  return hazard.burning || hazard.maxK > SHOWCASE.REROUTE_EXTINCTION;
 }
 
 export interface ExitChoice {
@@ -509,6 +527,11 @@ export function distanceToOutline(x: number, y: number, verts: Vec2[]): number {
 }
 
 const OUTDOOR_CLEARANCE_M = 3;
+/** Wall half-thickness (0.4 m) plus a body radius (0.25 m). */
+const OUTDOOR_BODY_CLEARANCE_M = 0.65;
+/** First step outside a door, straight out, before any corner. */
+const OUTDOOR_DEPART_M = 2.5;
+const OUTDOOR_DOOR_M = 1.5;
 
 function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
   const n = verts.length;
@@ -575,48 +598,115 @@ function pathLength(pts: Vec2[]): number {
   return len;
 }
 
+function outwardFrame(p: Vec2, verts: Vec2[]): { foot: Vec2; out: Vec2 } {
+  let best = Infinity;
+  let foot = p;
+  let out = { x: 0, y: 1 };
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % verts.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len);
+    t = Math.max(0, Math.min(1, t));
+    const fx = a.x + dx * t;
+    const fy = a.y + dy * t;
+    const d = Math.hypot(p.x - fx, p.y - fy);
+    if (d < best) {
+      best = d;
+      foot = { x: fx, y: fy };
+      let nx = -dy / len;
+      let ny = dx / len;
+      if (isInsidePolygon(fx + nx, fy + ny, verts)) {
+        nx = -nx;
+        ny = -ny;
+      }
+      out = { x: nx, y: ny };
+    }
+  }
+  return { foot, out };
+}
+
+/** A leg stays outside the building and at least ~0.65 m off the outline. */
+function legClearsBuilding(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
+  if (segmentCrossesOutline(a, b, verts)) return false;
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const n = Math.max(1, Math.ceil(len / 0.5));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    if (distanceToOutline(x, y, verts) < OUTDOOR_BODY_CLEARANCE_M) return false;
+  }
+  return true;
+}
+
+function sampleRing(ring: Vec2[], step: number): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(1, Math.round(len / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  return out;
+}
+
 /**
- * Outdoor route that stays off the building. A clear straight line is used as-is.
- * Otherwise the path follows an outline offset by about 3 m, the shorter way.
+ * Outdoor route that stays off the building. Someone who has just come through
+ * a door is sent straight out first. Ring points are chosen because they can
+ * see the departure and the target, not because they are the nearest corner.
  */
 export function routeAroundOutline(from: Vec2, target: Vec2, verts: Vec2[]): Vec2[] {
   if (verts.length < 3) return [target];
-  if (!segmentCrossesOutline(from, target, verts)) return [{ ...target }];
-  let fallback: Vec2[] = [{ ...target }];
+  const atDoor = distanceToOutline(from.x, from.y, verts) <= OUTDOOR_DOOR_M;
+  const frame = atDoor ? outwardFrame(from, verts) : null;
+  const depart = frame
+    ? {
+        x: frame.foot.x + frame.out.x * OUTDOOR_DEPART_M,
+        y: frame.foot.y + frame.out.y * OUTDOOR_DEPART_M,
+      }
+    : from;
+  const origin = atDoor ? depart : from;
+  if (legClearsBuilding(origin, target, verts)) {
+    return atDoor ? [depart, { ...target }] : [{ ...target }];
+  }
+  let fallback: Vec2[] = atDoor ? [depart, { ...target }] : [{ ...target }];
   for (const clearance of [OUTDOOR_CLEARANCE_M, 6, 9]) {
     const ring = offsetOutline(verts, clearance);
     if (ring.length < 3) continue;
-    let iFrom = 0;
-    let iTo = 0;
-    let fromD = Infinity;
-    let toD = Infinity;
-    for (let i = 0; i < ring.length; i++) {
-      const df = Math.hypot(ring[i].x - from.x, ring[i].y - from.y);
-      const dt = Math.hypot(ring[i].x - target.x, ring[i].y - target.y);
-      if (df < fromD) {
-        fromD = df;
-        iFrom = i;
-      }
-      if (dt < toD) {
-        toD = dt;
-        iTo = i;
-      }
+    const samples = sampleRing(ring, 4);
+    const fromIdx: number[] = [];
+    const toIdx: number[] = [];
+    for (let i = 0; i < samples.length; i++) {
+      if (legClearsBuilding(origin, samples[i], verts)) fromIdx.push(i);
+      if (legClearsBuilding(samples[i], target, verts)) toIdx.push(i);
     }
-    const options = [walkRing(ring, iFrom, iTo, 1), walkRing(ring, iFrom, iTo, -1)].sort(
-      (a, b) => pathLength(a) - pathLength(b),
-    );
-    for (const path of options) {
-      const legs = [from, ...path, target];
-      let clear = true;
-      for (let i = 0; i < legs.length - 1; i++) {
-        if (segmentCrossesOutline(legs[i], legs[i + 1], verts)) {
-          clear = false;
-          break;
+    let best: Vec2[] | null = null;
+    let bestLen = Infinity;
+    for (const i of fromIdx) {
+      for (const j of toIdx) {
+        for (const dir of [1, -1] as const) {
+          const along = walkRing(samples, i, j, dir);
+          const len = pathLength([origin, ...along, target]);
+          if (len < bestLen) {
+            bestLen = len;
+            best = along;
+          }
         }
       }
-      if (clear) return [...path, { ...target }];
     }
-    fallback = [...options[0], { ...target }];
+    if (best) {
+      const path = [...best, { ...target }];
+      if (atDoor) path.unshift(depart);
+      return path;
+    }
+    fallback = atDoor ? [depart, { ...target }] : [{ ...target }];
   }
   return fallback;
 }

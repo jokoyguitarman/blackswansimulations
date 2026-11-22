@@ -14,6 +14,7 @@ import {
   assemblyMinDistanceM,
   chooseExit,
   distanceToOutline,
+  exitApproachInside,
   exitRouteHazardous,
   extinctionK,
   mulberry32,
@@ -22,6 +23,7 @@ import {
   outdoorSpeed,
   samplePremovementS,
   routeAroundOutline,
+  walkedRouteHazard,
   smokeAheadAction,
   walkingSpeed,
   type ExitChoice,
@@ -101,6 +103,8 @@ interface PedLabel {
   latchedExitId?: string | null;
   /** Exits the lookahead left because of fire or untenable smoke, until that route clears. */
   avoidExitIds?: string[];
+  /** Exits left by the turn-back roll. These stay avoided for the rest of the run. */
+  turnedAwayIds?: string[];
   sheltering?: boolean;
   forcedCrawl?: boolean;
   shelterTarget?: Vec2 | null;
@@ -343,6 +347,7 @@ export class PolygonEvacuationEngine {
             smokeRollDone: false,
             latchedExitId: null,
             avoidExitIds: [],
+            turnedAwayIds: [],
             sheltering: false,
             forcedCrawl: false,
             shelterTarget: null,
@@ -697,24 +702,12 @@ export class PolygonEvacuationEngine {
       : exit
         ? nextIndoorWaypoint(pos, exit.center, this.interiorWalls)
         : pos;
-    const vx = body.velocity.x;
-    const vy = body.velocity.y;
-    let dx = provisional.x - pos.x;
-    let dy = provisional.y - pos.y;
-    if (Math.hypot(vx, vy) > 1e-4) {
-      dx = vx;
-      dy = vy;
-    }
-    const dlen = Math.hypot(dx, dy) || 1;
-    const ux = dx / dlen;
-    const uy = dy / dlen;
-
     let ka = 0;
     let burningAhead = false;
-    for (const m of SHOWCASE.LOOKAHEAD_SAMPLES_M) {
-      const s = field.sample(pos.x + ux * m, pos.y + uy * m);
-      ka = Math.max(ka, extinctionK(s.smoke));
-      if (s.fire === 'burning') burningAhead = true;
+    if (exit) {
+      const hazard = walkedRouteHazard(pos, exit, this.config.vertices, field, this.interiorWalls);
+      ka = hazard.maxK;
+      burningAhead = hazard.burning;
     }
 
     const ahead = (burningAhead || ka > SHOWCASE.REROUTE_EXTINCTION) && !!ped.targetExitId;
@@ -744,7 +737,7 @@ export class PolygonEvacuationEngine {
               ignoreHysteresis: true,
             });
             this.assignChoice(ped, pos, alt, false);
-            if (ped.targetExitId !== fromId) this.noteAvoid(ped, fromId);
+            this.noteAvoid(ped, fromId, true);
           }
         }
         if (!turned) {
@@ -782,21 +775,53 @@ export class PolygonEvacuationEngine {
       ped.sheltering && ped.shelterTarget
         ? nextIndoorWaypoint(pos, ped.shelterTarget, this.interiorWalls)
         : liveExit
-          ? nextIndoorWaypoint(pos, liveExit.center, this.interiorWalls)
+          ? this.exitSteerTarget(pos, liveExit)
           : provisional;
     this.steer(body, target, speed, field);
   }
 
-  private noteAvoid(ped: PedLabel, exitId: string) {
+  /**
+   * Someone already in the door opening walks straight through it. Everyone
+   * else lines up on the inside approach first, so they don't slide along the
+   * wall and catch on the ends of the gap.
+   */
+  private exitSteerTarget(pos: Vec2, exit: ExitDef): Vec2 {
+    const verts = this.config.vertices;
+    const approach = exitApproachInside(exit, verts);
+    const a = verts[exit.edgeIndex];
+    const b = verts[(exit.edgeIndex + 1) % verts.length];
+    if (a && b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const along = ((pos.x - exit.center.x) * dx + (pos.y - exit.center.y) * dy) / len;
+      if (Math.abs(along) <= exit.width / 2) {
+        const direct = nextIndoorWaypoint(pos, exit.center, this.interiorWalls);
+        if (Math.hypot(direct.x - exit.center.x, direct.y - exit.center.y) < 0.05) {
+          const ox = exit.center.x - approach.x;
+          const oy = exit.center.y - approach.y;
+          const ol = Math.hypot(ox, oy) || 1;
+          return { x: exit.center.x + (ox / ol) * 1.5, y: exit.center.y + (oy / ol) * 1.5 };
+        }
+      }
+    }
+    return nextIndoorWaypoint(pos, approach, this.interiorWalls);
+  }
+
+  private noteAvoid(ped: PedLabel, exitId: string, sticky = false) {
     if (!exitId) return;
     if (!ped.avoidExitIds) ped.avoidExitIds = [];
     if (!ped.avoidExitIds.includes(exitId)) ped.avoidExitIds.push(exitId);
+    if (!sticky) return;
+    if (!ped.turnedAwayIds) ped.turnedAwayIds = [];
+    if (!ped.turnedAwayIds.includes(exitId)) ped.turnedAwayIds.push(exitId);
   }
 
   private pruneAvoid(ped: PedLabel, pos: Vec2) {
     if (!ped.avoidExitIds?.length) return;
     const field = this.field();
     ped.avoidExitIds = ped.avoidExitIds.filter((id) => {
+      if (ped.turnedAwayIds?.includes(id)) return true;
       const exit = this.exits.find((e) => e.id === id);
       if (!exit) return false;
       return exitRouteHazardous(pos, exit, this.config.vertices, field, this.interiorWalls);
