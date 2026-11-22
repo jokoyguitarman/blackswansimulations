@@ -31,6 +31,15 @@ import { projectPolygon, nearestEdge, edgeLength } from '../lib/evacuation/geome
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
+import { BLAST_DATASET } from '../lib/rts/blast/blastDataset';
+import {
+  clampCharge,
+  computeBlastRings,
+  defaultCharge,
+  type BlastRings,
+  type ChargeSpec,
+} from '../lib/rts/blast/blastModel';
+import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
 import {
   UNIT_CATALOG,
   EQUIPMENT_CATALOG,
@@ -114,6 +123,57 @@ function readShowcaseSettings(params: URLSearchParams): {
       : 'zone';
   const showcase = params.has('showcase') ? params.get('showcase') === '1' : Boolean(stored.showcase);
   return { showcase, afterExit };
+}
+
+function roundTenth(metres: number): number {
+  return Math.round(metres * 10) / 10;
+}
+
+function chargeTooltip(spec: ChargeSpec, notes: string[]): string {
+  const preset = BLAST_DATASET.presets.find((p) => p.key === spec.presetKey);
+  const lines = BLAST_DATASET.criteria.map((row) => {
+    const metric = row.metric === 'incident' ? 'Ps' : 'Ps+q';
+    return `${row.key}: ${row.thresholdKpa.value} kPa, ${metric}, ${row.thresholdKpa.ref}`;
+  });
+  if (preset) {
+    lines.push(
+      `TNT pressure factor ${preset.tntEqPressure.value} (${preset.tntEqPressure.confidence}), ${preset.tntEqPressure.ref}`,
+    );
+    lines.push(
+      `TNT impulse factor ${preset.tntEqImpulse.value} (${preset.tntEqImpulse.confidence}), ${preset.tntEqImpulse.ref}`,
+    );
+  }
+  if (notes.length > 0) lines.push(notes.join('; '));
+  return lines.join('\n');
+}
+
+function showcaseInjuryRings(
+  pos: Vec2,
+  manual: boolean,
+  radius: number,
+  rings: BlastRings,
+  faint: boolean,
+) {
+  if (manual) {
+    return {
+      pos,
+      lethalM: roundTenth(radius * SHOWCASE.LETHAL_RING_FRACTION),
+      seriousM: roundTenth(radius * SHOWCASE.SERIOUS_RING_FRACTION),
+      minorM: roundTenth(radius * SHOWCASE.MINOR_RING_FRACTION),
+      glassInjuryM: null,
+      glassBreakageM: null,
+      faint,
+    };
+  }
+  return {
+    pos,
+    lethalM: roundTenth(rings.lethalM),
+    seriousM: roundTenth(rings.seriousM),
+    minorM: roundTenth(rings.minorM),
+    glassInjuryM: roundTenth(rings.glassInjuryM),
+    glassBreakageM: roundTenth(rings.glassBreakageM),
+    faint,
+  };
 }
 
 function aboveGroundHeightM(floors: string[] | undefined): number {
@@ -577,6 +637,7 @@ export function DebugRTSSim() {
 
   // ── Blast site ─────────────────────────────────────────────────────────
   const [blastSite, setBlastSite] = useState<Vec2 | null>(null);
+  const blastRecordRef = useRef<Record<string, unknown> | null>(null);
 
   // ── Trainer GPS tracking ──────────────────────────────────────────────
   const [gpsEnabled, setGpsEnabled] = useState(false);
@@ -655,6 +716,21 @@ export function DebugRTSSim() {
   const showcasePrefs = useMemo(() => readShowcaseSettings(searchParams), [searchParams]);
   const [showcase, setShowcase] = useState(showcasePrefs.showcase);
   const [afterExit, setAfterExit] = useState<'zone' | 'disperse' | 'mixed'>(showcasePrefs.afterExit);
+  const [charge, setCharge] = useState<ChargeSpec>(defaultCharge());
+  const [manualRadius, setManualRadius] = useState(() => !showcase);
+  const [chargeNote, setChargeNote] = useState<string | null>(null);
+  const rings = useMemo(() => computeBlastRings(charge), [charge]);
+  const chargeRef = useRef(charge);
+  chargeRef.current = charge;
+  const ringsRef = useRef(rings);
+  ringsRef.current = rings;
+  const manualRadiusRef = useRef(manualRadius);
+  manualRadiusRef.current = manualRadius;
+  useEffect(() => {
+    if (manualRadius) return;
+    const next = roundTenth(rings.minorM);
+    setBlastRadius((prev) => (prev === next ? prev : next));
+  }, [manualRadius, rings.minorM]);
   const [zoneKinds, setZoneKinds] = useState<Record<string, ZoneKind>>({});
   const blastFiredRef = useRef(false);
   const explosionStartRef = useRef<number | null>(null);
@@ -1088,6 +1164,10 @@ export function DebugRTSSim() {
       cLat /= polygon.length;
       cLng /= polygon.length;
 
+      const nextBlast = blastSite
+        ? writeStoredBlast(blastRecordRef.current, blastSite, charge, manualRadius, blastRadius)
+        : null;
+      if (nextBlast) blastRecordRef.current = nextBlast;
       const payload = {
         name: selectedGrid.buildingName || 'Untitled Scene',
         buildingPolygon: polygon,
@@ -1098,7 +1178,7 @@ export function DebugRTSSim() {
         interiorWalls,
         hazardZones,
         stairwells,
-        blastSite,
+        blastSite: nextBlast,
         casualtyPins,
         plantedItems,
         wallInspectionPoints: wallPoints,
@@ -1123,6 +1203,9 @@ export function DebugRTSSim() {
     hazardZones,
     stairwells,
     blastSite,
+    charge,
+    manualRadius,
+    blastRadius,
     casualtyPins,
     plantedItems,
     wallPoints,
@@ -1261,7 +1344,34 @@ export function DebugRTSSim() {
       setInteriorWalls(sc.interior_walls as InteriorWall[]);
       setHazardZones(sc.hazard_zones as HazardZone[]);
       setStairwells(sc.stairwells as Stairwell[]);
-      setBlastSite(sc.blast_site);
+      const storedBlast = readStoredBlast(sc.blast_site);
+      if (storedBlast) {
+        blastRecordRef.current = storedBlast.record;
+        setBlastSite(storedBlast.pos);
+        const savedCharge = storedBlast.charge;
+        if (savedCharge) {
+          const restored = clampCharge({
+            presetKey: typeof savedCharge.presetKey === 'string' ? savedCharge.presetKey : 'unknown',
+            amountKg: Number(savedCharge.amountKg),
+            burst: savedCharge.burst === 'free_air' ? 'free_air' : 'surface',
+            heightM: Number(savedCharge.heightM),
+          });
+          setCharge(restored.spec);
+          setChargeNote(restored.notes[0] ?? null);
+          setManualRadius(storedBlast.manualRadius);
+          if (storedBlast.manualRadius) {
+            setBlastRadius(storedBlast.radiusM ?? 20);
+          }
+        } else {
+          setCharge(defaultCharge());
+          setChargeNote(null);
+          setManualRadius(true);
+          setBlastRadius(storedBlast.radiusM ?? 20);
+        }
+      } else {
+        blastRecordRef.current = null;
+        setBlastSite(null);
+      }
       // Backward compatibility: convert old casualty_clusters to individual pins
       const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
         | CasualtyPin[]
@@ -1506,7 +1616,20 @@ export function DebugRTSSim() {
       ) {
         blastFiredRef.current = true;
         const site = blastSiteRef.current;
-        if (site) evacEngRef.current?.triggerBlast(site, blastRadiusRef.current);
+        if (site) {
+          const manual = manualRadiusRef.current;
+          const spec = chargeRef.current;
+          evacEngRef.current?.triggerBlast(
+            site,
+            manual
+              ? blastRadiusRef.current
+              : {
+                  mode: 'pressure',
+                  spec,
+                  heightM: spec.burst === 'free_air' ? spec.heightM : 0,
+                },
+          );
+        }
         explosionStartRef.current = performance.now();
         setBanner({
           until: performance.now() + SHOWCASE.BANNER_S * 1000,
@@ -1666,8 +1789,16 @@ export function DebugRTSSim() {
                     };
                   })(),
                   injuryRings:
-                    blastFiredRef.current && blastSiteRef.current
-                      ? { pos: blastSiteRef.current, radiusM: blastRadiusRef.current }
+                    showcaseOn &&
+                    blastSiteRef.current &&
+                    (rts.state.clock.phase === 'setup' || blastFiredRef.current)
+                      ? showcaseInjuryRings(
+                          blastSiteRef.current,
+                          manualRadiusRef.current,
+                          blastRadiusRef.current,
+                          ringsRef.current,
+                          rts.state.clock.phase === 'setup' && !blastFiredRef.current,
+                        )
                       : null,
                   zones: rts.state.equipment
                     .filter((e) => e.def.kind === 'assembly_point' && e.active)
@@ -2736,6 +2867,7 @@ export function DebugRTSSim() {
   const clockDisplay = rts.formatClock();
   const phaseLabel =
     showcase && !blastFiredRef.current ? 'PRE-INCIDENT — QUIET PERIOD' : rts.phaseLabel();
+  const chargePreset = BLAST_DATASET.presets.find((p) => p.key === charge.presetKey);
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
   const parsedRadius = parseInt(radius, 10) || 500;
@@ -2746,7 +2878,10 @@ export function DebugRTSSim() {
     if (studs.length === 0 || !blastSite) return;
 
     if (showcaseRef.current) {
-      const radius = blastRadiusRef.current;
+      const manual = manualRadiusRef.current;
+      const liveRings = ringsRef.current;
+      const spreadRadius = manual ? blastRadiusRef.current : liveRings.ignitionM;
+      const affectRadius = manual ? blastRadiusRef.current : liveRings.minorM;
       const engine = new SpatialEffectsEngine({
         ...(fireParams ?? DEFAULT_FIRE_PARAMS),
         ambientSpread: true,
@@ -2773,7 +2908,7 @@ export function DebugRTSSim() {
         }
       }
       const affectedStuds = studs
-        .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= radius)
+        .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= affectRadius)
         .map((s) => s.id);
       engine.registerHazard(
         'blast-direct',
@@ -2782,7 +2917,7 @@ export function DebugRTSSim() {
             triggerTimeSec: t0,
             eventType: 'explode',
             spreadType: 'fire',
-            spreadRadius: radius,
+            spreadRadius,
             spreadRate: 10,
             description: 'Direct blast ignition',
             severity: 'critical',
@@ -2797,7 +2932,7 @@ export function DebugRTSSim() {
           critical: 'Engulfed',
         },
       );
-      blastDirectZoneRef.current = blastIgnitionZone(blastSite, radius);
+      blastDirectZoneRef.current = blastIgnitionZone(blastSite, spreadRadius);
       hazardFieldRef.current = new HazardField(
         studs.map((s) => ({
           id: s.id,
@@ -5111,18 +5246,135 @@ export function DebugRTSSim() {
                     <div className="text-xs text-green-500 uppercase tracking-wider">
                       Blast & Zones
                     </div>
-                    <div>
-                      <label className="block text-xs text-green-600 mb-1">
-                        Blast Radius: {blastRadius}m
+                    <div className="space-y-1.5">
+                      <div className="text-xs text-green-400 uppercase tracking-wider">Charge</div>
+                      <label className="block text-xs text-green-600">
+                        Explosive
+                        <select
+                          value={charge.presetKey}
+                          onChange={(e) => setCharge((prev) => ({ ...prev, presetKey: e.target.value }))}
+                          className="mt-0.5 w-full bg-gray-800 border border-green-900 text-green-300 text-xs rounded px-1 py-1"
+                        >
+                          {BLAST_DATASET.presets.map((preset) => (
+                            <option key={preset.key} value={preset.key}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
                       </label>
+                      <label className="block text-xs text-green-600">
+                        Amount
+                        <span className="mt-0.5 flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0.1}
+                            max={2000}
+                            step={0.1}
+                            value={Number.isFinite(charge.amountKg) ? charge.amountKg : ''}
+                            onChange={(e) => {
+                              const amountKg = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              setCharge((prev) => ({ ...prev, amountKg }));
+                            }}
+                            onBlur={() => {
+                              const result = clampCharge(charge);
+                              setCharge(result.spec);
+                              setChargeNote(result.notes[0] ?? null);
+                            }}
+                            className="w-full bg-gray-800 border border-green-900 text-green-200 text-xs rounded px-1 py-1"
+                          />
+                          <span>kg</span>
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-green-500">
+                        <input
+                          type="radio"
+                          name="charge-burst"
+                          checked={charge.burst === 'surface'}
+                          onChange={() => setCharge((prev) => ({ ...prev, burst: 'surface' }))}
+                        />
+                        Surface (on or near the ground)
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-green-500">
+                        <input
+                          type="radio"
+                          name="charge-burst"
+                          checked={charge.burst === 'free_air'}
+                          onChange={() => setCharge((prev) => ({ ...prev, burst: 'free_air' }))}
+                        />
+                        Free air (raised)
+                      </label>
+                      <label className="block text-xs text-green-600">
+                        Height
+                        <span className="mt-0.5 flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0.5}
+                            max={30}
+                            step={0.1}
+                            disabled={charge.burst !== 'free_air'}
+                            value={Number.isFinite(charge.heightM) ? charge.heightM : ''}
+                            onChange={(e) => {
+                              const heightM = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              setCharge((prev) => ({ ...prev, heightM }));
+                            }}
+                            onBlur={() => {
+                              const result = clampCharge(charge);
+                              setCharge(result.spec);
+                              setChargeNote(result.notes[0] ?? null);
+                            }}
+                            className="w-full bg-gray-800 border border-green-900 text-green-200 text-xs rounded px-1 py-1 disabled:opacity-40"
+                          />
+                          <span>m</span>
+                        </span>
+                      </label>
+                      {chargeNote && <div className="text-xs text-amber-500">{chargeNote}</div>}
+                      <div
+                        className="text-xs text-green-300 leading-relaxed"
+                        title={chargeTooltip(charge, rings.notes)}
+                      >
+                        {manualRadius ? (
+                          <div>Manual radius (not calculated)</div>
+                        ) : (
+                          <>
+                            <div>
+                              ≈ {rings.tntKg.toFixed(1)} kg TNT-equivalent (pressure) ·{' '}
+                              {charge.burst === 'surface' ? 'surface burst' : 'free-air burst'}
+                            </div>
+                            <div>
+                              Lethal ≤ {rings.lethalM.toFixed(1)} m · Serious ≤ {rings.seriousM.toFixed(1)} m ·
+                              Minor ≤ {rings.minorM.toFixed(1)} m
+                            </div>
+                            <div>
+                              Glass injury ≤ {rings.glassInjuryM.toFixed(1)} m · Glass breakage ≤{' '}
+                              {rings.glassBreakageM.toFixed(1)} m
+                            </div>
+                            {chargePreset?.tntEqPressure.confidence === 'low' && (
+                              <div>Low-confidence TNT factor for {chargePreset.label}</div>
+                            )}
+                            <div>
+                              Calculated from Kingery–Bulmash curves and UFC thresholds (pending review) · walls
+                              not modelled
+                            </div>
+                          </>
+                        )}
+                        <label className="mt-1 flex items-center gap-2 text-amber-500 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={manualRadius}
+                            onChange={(e) => setManualRadius(e.target.checked)}
+                          />
+                          Manual override
+                        </label>
+                      </div>
                       <input
                         type="range"
                         min={5}
                         max={100}
                         step={1}
                         value={blastRadius}
+                        disabled={!manualRadius}
                         onChange={(e) => setBlastRadius(Number(e.target.value))}
-                        className="w-full"
+                        className="w-full disabled:opacity-40"
                       />
                     </div>
                     <label className="flex items-center gap-2 text-xs text-amber-500 cursor-pointer">
@@ -5323,6 +5575,7 @@ export function DebugRTSSim() {
                           const hasEvents = enrichResult?.hazardAnalysis?.some(
                             (ha) => ha.events && ha.events.length > 0,
                           );
+                          const ignitionR = manualRadius ? blastRadius : rings.ignitionM;
                           if (!hasEvents) {
                             preview.registerHazard(
                               'blast-direct',
@@ -5331,7 +5584,7 @@ export function DebugRTSSim() {
                                   triggerTimeSec: 0,
                                   eventType: 'explode',
                                   spreadType: 'fire',
-                                  spreadRadius: blastRadius,
+                                  spreadRadius: ignitionR,
                                   spreadRate: 10,
                                   description: 'Direct blast ignition',
                                   severity: 'critical',
@@ -5352,7 +5605,7 @@ export function DebugRTSSim() {
                             hazardsForEffects(
                               hazardZones,
                               !hasEvents && blastSite
-                                ? blastIgnitionZone(blastSite, blastRadius)
+                                ? blastIgnitionZone(blastSite, ignitionR)
                                 : null,
                             ),
                           );

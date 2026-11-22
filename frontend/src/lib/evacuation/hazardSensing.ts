@@ -1,6 +1,7 @@
 import type { ExitDef, Vec2 } from './types';
 import { isInsidePolygon } from './geometry';
 import { SHOWCASE } from './showcaseConstants';
+import { BLAST_CONSTANTS } from '../rts/blast/blastModel';
 
 export type HeadSmokeClass = 'clear' | 'light' | 'thick' | 'untenable';
 export type FireCell = 'none' | 'heating' | 'burning' | 'burnt_out';
@@ -950,8 +951,7 @@ function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
 
 function segmentCrossesOutline(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
   for (let i = 0; i < verts.length; i++) {
-    if (segmentsHitT(a, b, verts[i], verts[(i + 1) % verts.length]) != null) return true;
-  }
+    if (segmentsHitT(a, b, verts[i], verts[(i + 1) % verts.length]) != null) return true;  }
   return false;
 }
 
@@ -1085,6 +1085,64 @@ export function routeAroundOutline(from: Vec2, target: Vec2, verts: Vec2[]): Vec
     fallback = atDoor ? [depart, { ...target }] : [{ ...target }];
   }
   return fallback;
+}
+function segmentsCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): { t: number; u: number } | null {
+  const d1x = p2.x - p1.x;
+  const d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x;
+  const d2y = p4.y - p3.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (t > 1e-4 && t <= 1 + 1e-6 && u >= -1e-6 && u <= 1 + 1e-6) return { t, u };
+  return null;
+}
+
+/** True when a solid wall or outline edge sits just behind the person, on the side away from the charge. */
+export function isNearWallBehind(
+  p: Vec2,
+  site: Vec2,
+  walls: WallLike[],
+  verts: Vec2[],
+  exits?: Array<Pick<ExitDef, 'center' | 'width' | 'edgeIndex'>>,
+): boolean {
+  const dx = p.x - site.x;
+  const dy = p.y - site.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return false;
+  const reach = BLAST_CONSTANTS.NEAR_WALL_M;
+  const end = { x: p.x + (dx / len) * reach, y: p.y + (dy / len) * reach };
+  for (const wall of walls) {
+    for (const [a, b] of solidParts(wall)) {
+      if (segmentsCross(p, end, a, b)) return true;
+    }
+  }
+  const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const a = verts[i]!;
+    const b = verts[(i + 1) % n]!;
+    const hit = segmentsCross(p, end, a, b);
+    if (!hit) continue;
+    const edgeDx = b.x - a.x;
+    const edgeDy = b.y - a.y;
+    const edgeLen = Math.hypot(edgeDx, edgeDy);
+    if (edgeLen < 1e-6) continue;
+    let gap = false;
+    for (const exit of exits ?? []) {
+      if (exit.edgeIndex !== i || exit.width <= 0) continue;
+      const along = ((exit.center.x - a.x) * edgeDx + (exit.center.y - a.y) * edgeDy) / (edgeLen * edgeLen);
+      const half = exit.width / (2 * edgeLen);
+      const t0 = Math.max(0, along - half);
+      const t1 = Math.min(1, along + half);
+      if (hit.u >= t0 - 1e-6 && hit.u <= t1 + 1e-6) {
+        gap = true;
+        break;
+      }
+    }
+    if (!gap) return true;
+  }
+  return false;
 }
 
 export function mulberry32(seed: number): () => number {
