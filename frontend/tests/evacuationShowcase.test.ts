@@ -18,6 +18,8 @@ import {
   mulberry32,
   nextIndoorWaypoint,
   nextPosture,
+  separateFromWalls,
+  WALL_FACE_CLEAR_M,
   distanceToOutline,
   routeAroundOutline,
   outdoorSpeed,
@@ -37,6 +39,7 @@ import {
   shiftEvents,
 } from '../src/lib/evacuation/showcase';
 import { FireSimulation } from '../src/lib/rts/fireSimulation';
+import { RTSEngine } from '../src/lib/rts/engine';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import { isInsidePolygon } from '../src/lib/evacuation/geometry';
 import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
@@ -849,6 +852,19 @@ test('a turn-back expires so the nearer clear exit can be used again', () => {
   assert.equal(found, true);
 });
 
+test('a point on a wall face is moved out to the body clearance', () => {
+  const walls = [
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+  ];
+  const moved = separateFromWalls({ x: 40.4, y: 14.3 }, walls, WALL_FACE_CLEAR_M);
+  assert.ok(Math.abs(moved.x - 40) >= WALL_FACE_CLEAR_M - 1e-6, `still on the face at x ${moved.x}`);
+  const doorY = 6 + 0.4 * 34;
+  const inGap = separateFromWalls({ x: 40, y: doorY }, walls, WALL_FACE_CLEAR_M);
+  assert.ok(Math.abs(inGap.x - 40) < 0.05, `door opening was pushed to x ${inGap.x}`);
+  const nearJamb = separateFromWalls({ x: 39.5, y: doorY - 0.34 }, walls, WALL_FACE_CLEAR_M);
+  assert.ok(Math.abs(nearJamb.x - 39.5) < 0.05, `doorway beside the jamb was pushed to x ${nearJamb.x}`);
+});
+
 test('no hazards: at least 90% of people who can leave are out within 120s', () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
@@ -881,35 +897,65 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
     [],
     { afterExit: 'disperse', zones: [], seed: SHOWCASE.RNG_SEED },
   );
+  const rts = new RTSEngine();
+  rts.setBuildingVertices(verts);
+  rts.startDetonation();
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
   const sealed = (spawn: { x: number; y: number }) => spawn.x >= 46 && spawn.y <= 8;
-  let eligible = 0;
-  for (const body of bodies) {
-    const ped = (body as Matter.Body & {
-      __ped: {
-        state: string;
-        posture: string;
-        nextCheckAt: number;
-        spawn: { x: number; y: number };
-      };
-    }).__ped;
-    if (!sealed(ped.spawn)) eligible++;
-    ped.state = 'evacuating';
-    ped.posture = 'stand';
-    ped.nextCheckAt = 0;
+  const startEv = new Map<number, number>();
+  const outAt = new Map<number, number>();
+  let fired = false;
+  let down = 0;
+  const dt = 1 / 60;
+  const horizon = SHOWCASE.BLAST_AT_GAME_S + SHOWCASE.PREMOVE_MAX_S + 120;
+  while (rts.state.clock.elapsed < horizon) {
+    rts.tick(dt);
+    if (!fired && isBlastDue(rts.state.clock.elapsed, fired)) {
+      fired = true;
+      eng.triggerBlast({ x: -30, y: -30 }, 1);
+    }
+    if (!rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+      eng.syncExits(exits);
+      eng.setZones([]);
+      const steps = Math.max(1, Math.round(rts.state.clock.speed));
+      for (let i = 0; i < steps; i++) eng.step();
+    }
+    const t = rts.state.clock.elapsed;
+    let pending = 0;
+    for (const body of bodies) {
+      const ped = (body as Matter.Body & {
+        __ped: { pedId: number; state: string; spawn: { x: number; y: number } };
+      }).__ped;
+      if (ped.state === 'down') down++;
+      if (sealed(ped.spawn)) continue;
+      if (ped.state === 'evacuating' && !startEv.has(ped.pedId)) startEv.set(ped.pedId, t);
+      if (
+        (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') &&
+        !outAt.has(ped.pedId)
+      ) {
+        outAt.set(ped.pedId, t);
+      }
+      if (!outAt.has(ped.pedId) && ped.state !== 'down') pending++;
+    }
+    if (fired && pending === 0) break;
   }
-  for (let i = 0; i < 120 * 60; i++) eng.step();
-  let out = 0;
+  let eligible = 0;
+  let within = 0;
   for (const body of bodies) {
     const ped = (body as Matter.Body & {
-      __ped: { state: string; spawn: { x: number; y: number } };
+      __ped: { pedId: number; state: string; spawn: { x: number; y: number } };
     }).__ped;
-    if (sealed(ped.spawn)) continue;
-    if (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') out++;
+    if (sealed(ped.spawn) || ped.state === 'down') continue;
+    eligible++;
+    const t0 = startEv.get(ped.pedId);
+    const t1 = outAt.get(ped.pedId);
+    if (t0 != null && t1 != null && t1 - t0 <= 120) within++;
   }
   eng.destroy();
+  assert.equal(fired, true);
+  assert.equal(down, 0);
   assert.ok(
-    eligible > 0 && out >= 0.9 * eligible,
-    `out ${out} of ${eligible} who were not sealed in`,
+    eligible > 0 && within >= 0.9 * eligible,
+    `out within 120s of starting ${within} of ${eligible} who were not sealed in`,
   );
 });

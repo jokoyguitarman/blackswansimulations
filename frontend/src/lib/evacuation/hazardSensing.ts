@@ -489,6 +489,13 @@ function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
 }
 
 const BODY_RADIUS_M = 0.25;
+/** Half of the 0.8 m wall slab. */
+const SLAB_HALF_M = 0.4;
+/**
+ * A body is clear of a 0.8 m wall once its centre is this far from the
+ * wall line: half the slab (0.4) plus the body radius (0.25).
+ */
+export const WALL_FACE_CLEAR_M = 0.65;
 /** Just clear of a 0.8 m wall (half thickness 0.4 plus a body radius). */
 const GAP_CLEAR_M = 0.7;
 /** Switch from lining up to walking through once this close to the opening. */
@@ -546,6 +553,8 @@ function wallFrame(wall: WallLike): { ux: number; uy: number; len: number } {
 }
 
 function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLike | null {
+  const travel = Math.hypot(target.x - pos.x, target.y - pos.y);
+  const samples = Math.max(1, Math.ceil(travel / 0.5));
   let bestT = Infinity;
   let best: WallLike | null = null;
   for (const wall of walls) {
@@ -553,6 +562,22 @@ function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLi
     for (const [a, b] of solidParts(wall)) {
       const t = segmentsHitT(pos, target, a, b);
       if (t != null && t < hitT) hitT = t;
+    }
+    if (!(hitT < Infinity)) {
+      for (let i = 1; i <= samples; i++) {
+        const t = i / samples;
+        const p = {
+          x: pos.x + (target.x - pos.x) * t,
+          y: pos.y + (target.y - pos.y) * t,
+        };
+        for (const [a, b] of solidParts(wall)) {
+          if (projectOnto(p, a.x, a.y, b.x, b.y).dist < WALL_FACE_CLEAR_M) {
+            hitT = t;
+            break;
+          }
+        }
+        if (hitT < Infinity) break;
+      }
     }
     if (hitT < bestT) {
       bestT = hitT;
@@ -562,12 +587,12 @@ function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLi
   return best;
 }
 
-function usableGap(wall: WallLike): { ax: number; ay: number; bx: number; by: number } | null {
+function gapSpan(wall: WallLike, inset: number): { ax: number; ay: number; bx: number; by: number } | null {
   if (!wall.hasDoor) return null;
   const { ux, uy, len } = wallFrame(wall);
   const centre = wall.doorPosition * len;
-  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
-  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  const lo = Math.max(inset, centre - wall.doorWidth / 2 + inset);
+  const hi = Math.min(len - inset, centre + wall.doorWidth / 2 - inset);
   const a = lo <= hi ? lo : centre;
   const b = lo <= hi ? hi : centre;
   return {
@@ -576,6 +601,10 @@ function usableGap(wall: WallLike): { ax: number; ay: number; bx: number; by: nu
     bx: wall.startX + ux * b,
     by: wall.startY + uy * b,
   };
+}
+
+function usableGap(wall: WallLike): { ax: number; ay: number; bx: number; by: number } | null {
+  return gapSpan(wall, BODY_RADIUS_M);
 }
 
 /** Project onto a segment. The normal points from the segment toward `pos`. */
@@ -631,7 +660,9 @@ function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2): Vec2 {
   const along = Math.sign((best.x - midX) * ux + (best.y - midY) * uy) || 1;
   let nx = -uy;
   let ny = ux;
-  if ((target.x - best.x) * nx + (target.y - best.y) * ny < 0) {
+  // The person's own side. A waypoint on the target's side cuts the corner
+  // and leaves the body pinned on the slab.
+  if ((pos.x - best.x) * nx + (pos.y - best.y) * ny < 0) {
     nx = -nx;
     ny = -ny;
   }
@@ -650,29 +681,107 @@ function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2): Vec2 {
  */
 export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[]): Vec2 {
   const wall = nearestBlockingWall(pos, target, walls);
-  if (!wall) return target;
-  if (!wall.hasDoor) return aroundSolid(pos, wall, target);
-  const gap = usableGap(wall);
-  if (!gap) return target;
-  const proj = projectOnto(pos, gap.ax, gap.ay, gap.bx, gap.by);
-  if (!proj.clamped && proj.dist < GAP_MOUTH_M) {
-    return { x: proj.slot.x - proj.nx * GAP_THROUGH_M, y: proj.slot.y - proj.ny * GAP_THROUGH_M };
+  let aim = target;
+  if (wall) {
+    if (!wall.hasDoor) {
+      aim = aroundSolid(pos, wall, target);
+    } else {
+      const gap = usableGap(wall);
+      const opening = gapSpan(wall, 0);
+      if (gap && opening) {
+        const mouth = projectOnto(pos, opening.ax, opening.ay, opening.bx, opening.by);
+        const mid = { x: (gap.ax + gap.bx) / 2, y: (gap.ay + gap.by) / 2 };
+        const { ux, uy } = wallFrame(wall);
+        let nx = -uy;
+        let ny = ux;
+        if ((pos.x - mid.x) * nx + (pos.y - mid.y) * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        const along = (pos.x - mid.x) * ux + (pos.y - mid.y) * uy;
+        // Line up with the centre before crossing. A target on the jamb
+        // pins the body against the slab.
+        const crossing = !mouth.clamped && mouth.dist < GAP_MOUTH_M && Math.abs(along) <= 0.35;
+        aim = crossing
+          ? { x: mid.x - nx * GAP_THROUGH_M, y: mid.y - ny * GAP_THROUGH_M }
+          : { x: mid.x + nx * GAP_CLEAR_M, y: mid.y + ny * GAP_CLEAR_M };
+      }
+    }
   }
-  return { x: proj.slot.x + proj.nx * GAP_CLEAR_M, y: proj.slot.y + proj.ny * GAP_CLEAR_M };
+  return separateFromWalls(aim, walls, WALL_FACE_CLEAR_M);
 }
 
 /**
- * Where to place someone who has stopped in a door mouth, on the side their
- * target is on. Null when they are not in the opening or the target is on
- * their side of the wall.
+ * Where a body centre has to move so it no longer overlaps the slab.
+ * Alongside the wall that is `clear` from the line. Past a jamb it is only
+ * the real overlap with the end of the slab: a circle of `clear` around the
+ * jamb would fill the doorway and pin everyone there.
  */
-export function doorSqueeze(pos: Vec2, wall: WallLike, target: Vec2): Vec2 | null {
+function clearOfSlab(pos: Vec2, a: Vec2, b: Vec2, clear: number): Vec2 | null {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  const along = (pos.x - a.x) * ux + (pos.y - a.y) * uy;
+  const proj = projectOnto(pos, a.x, a.y, b.x, b.y);
+  if (along >= 0 && along <= len) {
+    if (proj.dist >= clear || proj.dist < 1e-4) return null;
+    return { x: proj.slot.x + proj.nx * clear, y: proj.slot.y + proj.ny * clear };
+  }
+  const end = along < 0 ? a : b;
+  const nx = -uy;
+  const ny = ux;
+  const side = Math.sign((pos.x - end.x) * nx + (pos.y - end.y) * ny) || 1;
+  const perp = Math.abs((pos.x - end.x) * nx + (pos.y - end.y) * ny);
+  const past = along < 0 ? -along : along - len;
+  const rect = {
+    x: end.x + nx * side * Math.min(perp, SLAB_HALF_M),
+    y: end.y + ny * side * Math.min(perp, SLAB_HALF_M),
+  };
+  const ox = pos.x - rect.x;
+  const oy = pos.y - rect.y;
+  const od = Math.hypot(ox, oy);
+  if (od >= BODY_RADIUS_M || od < 1e-4) return null;
+  if (past < 1e-4 && perp < 1e-4) return null;
+  const need = BODY_RADIUS_M - od;
+  return { x: pos.x + (ox / od) * need, y: pos.y + (oy / od) * need };
+}
+
+/**
+ * Move a point out of every solid wall slab. Door openings are left alone.
+ * `clear` is the distance from the wall line; 0.65 m is just out of contact.
+ */
+export function separateFromWalls(pos: Vec2, walls: WallLike[], clear = WALL_FACE_CLEAR_M): Vec2 {
+  let x = pos.x;
+  let y = pos.y;
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (const wall of walls) {
+      for (const [a, b] of solidParts(wall)) {
+        const next = clearOfSlab({ x, y }, a, b, clear);
+        if (!next) continue;
+        x = next.x;
+        y = next.y;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return { x, y };
+}
+
+/** How far `pos` is from a door opening, and how far through it toward `target`. */
+export function mouthProgress(
+  pos: Vec2,
+  wall: WallLike,
+  target: Vec2,
+): { dist: number; through: number } | null {
   if (!wall.hasDoor) return null;
   const gap = usableGap(wall);
   if (!gap) return null;
   const proj = projectOnto(pos, gap.ax, gap.ay, gap.bx, gap.by);
-  const near = proj.clamped ? proj.dist < 1.05 : proj.dist < 0.95;
-  if (!near) return null;
   const { ux, uy } = wallFrame(wall);
   let nx = -uy;
   let ny = ux;
@@ -680,9 +789,10 @@ export function doorSqueeze(pos: Vec2, wall: WallLike, target: Vec2): Vec2 | nul
     nx = -nx;
     ny = -ny;
   }
-  const personSide = (pos.x - proj.slot.x) * nx + (pos.y - proj.slot.y) * ny;
-  if (personSide > 0.45) return null;
-  return { x: proj.slot.x + nx * 1.15, y: proj.slot.y + ny * 1.15 };
+  return {
+    dist: proj.dist,
+    through: (pos.x - proj.slot.x) * nx + (pos.y - proj.slot.y) * ny,
+  };
 }
 
 /** The person's slot on an exit opening: nearest point, inset by a body radius. */
@@ -708,6 +818,14 @@ export function exitGapSlot(pos: Vec2, exit: ExitDef, verts: Vec2[]): {
     exit.center.x + ux * half,
     exit.center.y + uy * half,
   );
+  const fullHalf = exit.width / 2;
+  const full = projectOnto(
+    pos,
+    exit.center.x - ux * fullHalf,
+    exit.center.y - uy * fullHalf,
+    exit.center.x + ux * fullHalf,
+    exit.center.y + uy * fullHalf,
+  );
   // projectOnto's normal points at pos. Inward is from the exit toward the inside approach.
   const approach = exitApproachInside(exit, verts);
   const ix = approach.x - exit.center.x;
@@ -715,7 +833,7 @@ export function exitGapSlot(pos: Vec2, exit: ExitDef, verts: Vec2[]): {
   const il = Math.hypot(ix, iy) || 1;
   const inward = { x: ix / il, y: iy / il };
   const planeDist = (pos.x - gap.slot.x) * inward.x + (pos.y - gap.slot.y) * inward.y;
-  return { slot: gap.slot, inward, clamped: gap.clamped, planeDist };
+  return { slot: gap.slot, inward, clamped: full.clamped, planeDist };
 }
 
 export function distanceToOutline(x: number, y: number, verts: Vec2[]): number {

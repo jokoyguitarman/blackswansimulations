@@ -15,8 +15,10 @@ import {
   chooseExit,
   distanceToOutline,
   exitApproachInside,
-  doorSqueeze,
   exitGapSlot,
+  mouthProgress,
+  separateFromWalls,
+  WALL_FACE_CLEAR_M,
   exitRouteHazardous,
   extinctionK,
   mulberry32,
@@ -150,6 +152,7 @@ export class PolygonEvacuationEngine {
   private rng: (() => number) | null = null;
   private hazardField: HazardField | null = null;
   private interiorWalls: InteriorWallDef[] = [];
+  private restMask = new WeakMap<Matter.Body, number>();
   private zones: ShowcaseZone[] = [];
   private blast: { site: Vec2; radius: number } | null = null;
   private turnedBackCount = 0;
@@ -638,8 +641,7 @@ export class PolygonEvacuationEngine {
 
     Matter.Engine.update(this.engine, dt * 1000);
     this.unstickFromWalls();
-    this.releaseExitJams();
-    this.releaseDoorJams();
+    this.slipThroughOpenings();
 
     const { vertices } = this.config;
     for (const body of this.pedestrians) {
@@ -789,104 +791,112 @@ export class PolygonEvacuationEngine {
   }
 
   /**
-   * A crowd pressed into a narrow opening locks solid. Move the person
-   * nearest the outside of each exit just past the line, once the jam has
-   * actually stopped them, so the opening can drain.
+   * People pressed into a narrow opening stop against each other. While they
+   * are in that mouth they don't collide with other people, so they can walk
+   * through at their own speed. Collisions return once they are clear.
    */
-  private releaseExitJams() {
-    const best = new Map<string, { body: Matter.Body; gap: NonNullable<ReturnType<typeof exitGapSlot>> }>();
+  private slipThroughOpenings() {
+    const slipping = new Set<Matter.Body>();
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state !== 'evacuating' || !ped.targetExitId) continue;
-      const speed = Math.hypot(body.velocity.x, body.velocity.y) / this.config.dt;
-      if (speed > 0.45) continue;
-      const pos = this.posOf(body);
       const exit = this.exits.find((e) => e.id === ped.targetExitId);
       if (!exit) continue;
-      const gap = exitGapSlot(pos, exit, this.config.vertices);
-      if (!gap || gap.planeDist > 0.95 || gap.planeDist < -0.2) continue;
-      if (gap.clamped) {
-        const lx = pos.x - gap.slot.x - gap.inward.x * gap.planeDist;
-        const ly = pos.y - gap.slot.y - gap.inward.y * gap.planeDist;
-        if (Math.hypot(lx, ly) > 0.45) continue;
-      }
-      const prev = best.get(exit.id);
-      if (!prev || gap.planeDist < prev.gap.planeDist) best.set(exit.id, { body, gap });
-    }
-    for (const { body, gap } of best.values()) {
-      Matter.Body.setPosition(body, {
-        x: gap.slot.x - gap.inward.x * 0.35,
-        y: gap.slot.y - gap.inward.y * 0.35,
-      });
-      Matter.Body.setVelocity(body, { x: 0, y: 0 });
-    }
-  }
-
-  /** Bodies left overlapping a wall cannot slide. Ease them clear of the solid parts. */
-  private unstickFromWalls() {
-    for (const body of this.pedestrians) {
-      const ped = this.pedOf(body);
-      if (ped.state !== 'evacuating') continue;
-      const speed = Math.hypot(body.velocity.x, body.velocity.y) / this.config.dt;
-      if (speed > 0.2) continue;
-      let pos = this.posOf(body);
+      const pos = this.posOf(body);
+      let inMouth = false;
       for (const wall of this.interiorWalls) {
-        const dx = wall.endX - wall.startX;
-        const dy = wall.endY - wall.startY;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const along = (pos.x - wall.startX) * ux + (pos.y - wall.startY) * uy;
-        if (along < -0.2 || along > len + 0.2) continue;
-        if (wall.hasDoor) {
-          const centre = wall.doorPosition * len;
-          const half = wall.doorWidth / 2;
-          if (along > centre - half - 0.15 && along < centre + half + 0.15) continue;
+        if (!wall.hasDoor) continue;
+        const mouth = mouthProgress(pos, wall, exit.center);
+        if (mouth && mouth.dist <= 1.05 && mouth.through < 0.55 && mouth.through > -1.05) {
+          inMouth = true;
+          break;
         }
-        const t = Math.max(0, Math.min(len, along));
-        const cx = wall.startX + ux * t;
-        const cy = wall.startY + uy * t;
-        const ox = pos.x - cx;
-        const oy = pos.y - cy;
-        const d = Math.hypot(ox, oy);
-        if (d > 0.55 || d < 1e-4) continue;
-        const nx = ox / d;
-        const ny = oy / d;
-        pos = { x: pos.x + nx * (0.7 - d), y: pos.y + ny * (0.7 - d) };
-        Matter.Body.setPosition(body, pos);
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
       }
+      if (!inMouth && exit.exitType !== 'service') {
+        const gap = exitGapSlot(pos, exit, this.config.vertices);
+        if (gap && !gap.clamped && gap.planeDist <= 1.05 && gap.planeDist >= -0.15) inMouth = true;
+      }
+      if (inMouth) slipping.add(body);
     }
-  }
-
-  /** Same release for an interior door: the stopped person nearest the gap steps through. */
-  private releaseDoorJams() {
-    for (const wall of this.interiorWalls) {
-      if (!wall.hasDoor) continue;
-      let pick: { body: Matter.Body; at: Vec2; dist: number } | null = null;
-      for (const body of this.pedestrians) {
-        const ped = this.pedOf(body);
-        if (ped.state !== 'evacuating' || !ped.targetExitId) continue;
-        const speed = Math.hypot(body.velocity.x, body.velocity.y) / this.config.dt;
-        if (speed > 0.45) continue;
-        const pos = this.posOf(body);
-        const exit = this.exits.find((e) => e.id === ped.targetExitId);
-        if (!exit) continue;
-        const at = doorSqueeze(pos, wall, exit.center);
-        if (!at) continue;
-        const dist = Math.hypot(pos.x - at.x, pos.y - at.y);
-        if (!pick || dist < pick.dist) pick = { body, at, dist };
-      }
-      if (!pick) continue;
-      Matter.Body.setPosition(pick.body, pick.at);
-      Matter.Body.setVelocity(pick.body, { x: 0, y: 0 });
+    for (const body of this.pedestrians) {
+      const saved = this.restMask.get(body);
+      const rest = saved ?? body.collisionFilter.mask ?? 0;
+      if (saved == null) this.restMask.set(body, rest);
+      const category = body.collisionFilter.category ?? 0;
+      body.collisionFilter.mask = slipping.has(body) ? rest & ~category : rest;
     }
   }
 
   /**
-   * Line up on the nearest point of the opening, on this side of the wall,
-   * and walk through once in the mouth. Interior doors on the way use the
-   * same slot, so people don't all steer at one centre.
+   * A body overlapping a wall slab sticks to the face. Push it out by the
+   * overlap: 0.65 m from the wall line alongside a face, and only the real
+   * overlap with a jamb. Door and exit openings are not solid.
+   */
+  private unstickFromWalls() {
+    const walls = this.separationWalls();
+    const clear = WALL_FACE_CLEAR_M + 0.05;
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'down' || ped.state === 'left_map') continue;
+      const pos = this.posOf(body);
+      const next = separateFromWalls(pos, walls, clear);
+      if (Math.hypot(next.x - pos.x, next.y - pos.y) < 1e-3) continue;
+      Matter.Body.setPosition(body, next);
+      const nx = next.x - pos.x;
+      const ny = next.y - pos.y;
+      const len = Math.hypot(nx, ny) || 1;
+      const vn = (body.velocity.x * nx + body.velocity.y * ny) / len;
+      if (vn < 0) {
+        Matter.Body.setVelocity(body, {
+          x: body.velocity.x - (vn * nx) / len,
+          y: body.velocity.y - (vn * ny) / len,
+        });
+      }
+    }
+  }
+
+  /** Interior partitions plus the building shell, with exit gaps left open. */
+  private separationWalls(): InteriorWallDef[] {
+    const verts = this.config.vertices;
+    const shell: InteriorWallDef[] = [];
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const ux = (b.x - a.x) / len;
+      const uy = (b.y - a.y) / len;
+      const gaps = this.exits
+        .filter((e) => e.edgeIndex === i && e.exitType !== 'service')
+        .map((e) => {
+          const t = (e.center.x - a.x) * ux + (e.center.y - a.y) * uy;
+          return { lo: t - e.width / 2, hi: t + e.width / 2 };
+        })
+        .sort((p, q) => p.lo - q.lo);
+      let cursor = 0;
+      const push = (lo: number, hi: number) => {
+        if (hi - lo < 0.05) return;
+        shell.push({
+          startX: a.x + ux * lo,
+          startY: a.y + uy * lo,
+          endX: a.x + ux * hi,
+          endY: a.y + uy * hi,
+          hasDoor: false,
+          doorWidth: 0,
+          doorPosition: 0.5,
+        });
+      };
+      for (const gap of gaps) {
+        push(cursor, Math.max(cursor, gap.lo));
+        cursor = Math.max(cursor, gap.hi);
+      }
+      push(cursor, len);
+    }
+    return [...this.interiorWalls, ...shell];
+  }
+
+  /**
+   * Line up with the middle of the opening, on this side of the wall, then
+   * walk through. A target on the jamb leaves the body pinned on the slab.
    */
   private exitSteerTarget(pos: Vec2, exit: ExitDef): Vec2 {
     const verts = this.config.vertices;
@@ -894,16 +904,23 @@ export class PolygonEvacuationEngine {
     if (!gap) {
       return steerToTarget(pos, exitApproachInside(exit, verts), this.interiorWalls);
     }
-    const goal =
-      !gap.clamped && gap.planeDist < 1.05 && gap.planeDist > -0.4
-        ? {
-            x: gap.slot.x - gap.inward.x * 1.5,
-            y: gap.slot.y - gap.inward.y * 1.5,
-          }
-        : {
-            x: gap.slot.x + gap.inward.x * 0.7,
-            y: gap.slot.y + gap.inward.y * 0.7,
-          };
+    const edge = verts[exit.edgeIndex];
+    const edgeB = verts[(exit.edgeIndex + 1) % verts.length];
+    const edgeLen = Math.hypot(edgeB.x - edge.x, edgeB.y - edge.y) || 1;
+    const along =
+      ((pos.x - exit.center.x) * (edgeB.x - edge.x) + (pos.y - exit.center.y) * (edgeB.y - edge.y)) /
+      edgeLen;
+    const through =
+      !gap.clamped && gap.planeDist < 1.05 && gap.planeDist > -0.4 && Math.abs(along) <= 0.35;
+    const goal = through
+      ? {
+          x: exit.center.x - gap.inward.x * 1.5,
+          y: exit.center.y - gap.inward.y * 1.5,
+        }
+      : {
+          x: exit.center.x + gap.inward.x * 0.7,
+          y: exit.center.y + gap.inward.y * 0.7,
+        };
     return steerToTarget(pos, goal, this.interiorWalls);
   }
 
