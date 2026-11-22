@@ -127,7 +127,7 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     };
   }
 
-  if (event.type === 'sim_email.received') {
+  if (event.type === 'sim_email.received' || event.type === 'sim_email.sent') {
     const email = (event.data?.email || {}) as Record<string, unknown>;
     const fromName = String(email.from_name || 'Unknown');
     const subject = String(email.subject || 'New email');
@@ -266,10 +266,30 @@ function DeviceShellInner() {
   // WebSocket listener for live notifications
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['notification.created', 'sim_email.received', 'messenger.received'],
+    eventTypes: [
+      'notification.created',
+      'sim_email.received',
+      'sim_email.sent',
+      'messenger.received',
+    ],
     onEvent: useCallback(
       (event: WSEvent) => {
         if (!sessionId) return;
+
+        if (event.type === 'sim_email.received' || event.type === 'sim_email.sent') {
+          const email = (event.data?.email || {}) as Record<string, unknown>;
+          const recipients = email.recipient_user_ids as string[] | null | undefined;
+          if (user?.id && email.sent_by_player_id === user.id) return;
+          if (
+            event.type === 'sim_email.sent' &&
+            !(recipients && user?.id && recipients.includes(user.id))
+          ) {
+            return;
+          }
+          if (recipients && recipients.length > 0 && user?.id && !recipients.includes(user.id)) {
+            return;
+          }
+        }
 
         // For notification.created: only show if it's meant for THIS user
         if (event.type === 'notification.created') {

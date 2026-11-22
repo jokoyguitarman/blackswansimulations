@@ -32,6 +32,7 @@ import {
   resolveAddressesToPlayers,
 } from '../services/playerDirectoryService.js';
 import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSharingService.js';
+import { normalizeRecipients } from '../../shared/emailRecipients.js';
 
 const router = Router();
 
@@ -1143,7 +1144,18 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
           return recipients.includes(user.id);
         });
 
-    res.json({ data: filtered });
+    let selfAddresses: string[] = [];
+    if (!isTrainerOrAdmin) {
+      try {
+        const directory = await getSessionPlayerDirectory(sessionId);
+        const me = directory.find((d) => d.user_id === user.id);
+        if (me) selfAddresses = [me.address, me.legacy_address];
+      } catch (directoryErr) {
+        logger.warn({ err: directoryErr, sessionId }, 'email list: player directory failed');
+        selfAddresses = [];
+      }
+    }
+    res.json({ data: filtered, self_addresses: selfAddresses });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /social/emails/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
@@ -1190,7 +1202,7 @@ const sendEmailSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
     to_addresses: z.array(z.string()).min(1),
-    cc_addresses: z.array(z.string()).optional(),
+    cc_addresses: z.array(z.string()).max(25).optional(),
     subject: z.string().min(1).max(500),
     body_text: z.string().min(1),
     replied_to_id: z.string().uuid().optional(),
@@ -1232,14 +1244,23 @@ router.post(
       // inbox (and only theirs).
       const directory = await getSessionPlayerDirectory(session_id);
       const selfEntry = directory.find((d) => d.user_id === user.id);
-      const playerRecipients = resolveAddressesToPlayers(
-        [...to_addresses, ...(cc_addresses || [])],
-        directory,
-      ).filter((p) => p.user_id !== user.id);
-
       const fromAddress =
         selfEntry?.address ||
         `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@crisisresponse.sim`;
+      const selfAddresses = selfEntry
+        ? [selfEntry.address, selfEntry.legacy_address]
+        : [fromAddress];
+      const { to: toList, cc: ccList } = normalizeRecipients(
+        to_addresses,
+        cc_addresses || [],
+        selfAddresses,
+      );
+      if (toList.length === 0) {
+        return res.status(400).json({ error: 'No recipients other than yourself' });
+      }
+      const playerRecipients = resolveAddressesToPlayers([...toList, ...ccList], directory).filter(
+        (p) => p.user_id !== user.id,
+      );
 
       const { data: email, error } = await supabaseAdmin
         .from('sim_emails')
@@ -1248,8 +1269,8 @@ router.post(
           direction: 'outbound',
           from_address: fromAddress,
           from_name: displayNameOf(user),
-          to_addresses,
-          cc_addresses: cc_addresses || [],
+          to_addresses: toList,
+          cc_addresses: ccList,
           subject,
           body_html: `<p>${body_text.replace(/\n/g, '</p><p>')}</p>`,
           body_text,
@@ -1375,8 +1396,8 @@ router.post(
           sessionId: session_id,
           emailId: email.id,
           userId: user.id,
-          toAddresses: to_addresses,
-          ccAddresses: cc_addresses || [],
+          toAddresses: toList,
+          ccAddresses: ccList,
           subject,
           bodyText: body_text,
           threadId: resolvedThreadId,
@@ -1388,10 +1409,9 @@ router.post(
       // Trigger NPC reply if the email is to an NPC (non-blocking). Skipped
       // when the primary recipient is a session player — player-to-player mail
       // must never spawn an invented NPC respondent.
-      const primaryRecipientIsPlayer = resolveAddressesToPlayers(
-        [to_addresses[0] || ''],
-        directory,
-      ).some((p) => p.user_id !== user.id);
+      const primaryRecipientIsPlayer = resolveAddressesToPlayers([toList[0] || ''], directory).some(
+        (p) => p.user_id !== user.id,
+      );
       if (!primaryRecipientIsPlayer) {
         void (async () => {
           try {
@@ -1400,7 +1420,12 @@ router.post(
             setTimeout(() => {
               void triggerNPCEmailReply(session_id, {
                 id: email.id,
-                to_addresses,
+                to_addresses: toList,
+                cc_addresses: ccList,
+                player_recipients: playerRecipients.map((p) => ({
+                  user_id: p.user_id,
+                  address: p.address,
+                })),
                 subject,
                 body_text,
                 from_name: displayNameOf(user),
@@ -2720,9 +2745,7 @@ router.get(
       // 6. Evaluate each inject's conditions individually
       const results = condInjects.map((inj) => {
         const condAppear = inj.conditions_to_appear as
-          | { all: string[] }
-          | { threshold: number; conditions: string[] }
-          | null;
+          { all: string[] } | { threshold: number; conditions: string[] } | null;
 
         let keys: string[] = [];
         let mode: 'all' | 'threshold' = 'all';
@@ -2969,6 +2992,16 @@ router.post(
         return res.status(500).json({ error: 'Failed to assign page' });
       }
 
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'session.page_assignments_updated',
+          data: { session_id: sessionId },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (broadcastErr) {
+        logger.warn({ err: broadcastErr, sessionId }, 'Failed to broadcast page assignment');
+      }
+
       res.status(201).json({ data: assignment });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /social/pages/session/:sessionId/assign');
@@ -3015,6 +3048,16 @@ router.delete(
 
       if (error) {
         return res.status(500).json({ error: 'Failed to remove page assignment' });
+      }
+
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'session.page_assignments_updated',
+          data: { session_id: sessionId },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (broadcastErr) {
+        logger.warn({ err: broadcastErr, sessionId }, 'Failed to broadcast page assignment');
       }
 
       res.json({ success: true });

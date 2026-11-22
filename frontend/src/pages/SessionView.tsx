@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { PAGES_UNASSIGNED } from '@shared/sessionPageCoverage';
 import { ChatInterface } from '../components/Chat/ChatInterface';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
 import { AIInjectSystem } from '../components/Injects/AIInjectSystem';
@@ -1340,6 +1341,7 @@ export const SessionView = () => {
       await api.sessions.update(id, { status: 'in_progress' });
       await loadSession();
     } catch (error) {
+      if (error instanceof ApiError && error.code === PAGES_UNASSIGNED) throw error;
       console.error('Failed to start session:', error);
       alert('Failed to start session');
     }

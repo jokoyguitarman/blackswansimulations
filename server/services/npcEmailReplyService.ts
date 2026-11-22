@@ -32,8 +32,34 @@ interface PlayerEmail {
   from_address: string;
   replied_to_id: string | null;
   thread_id: string | null;
-  /** Author of the player email; the NPC reply is addressed to them only. */
+  /** Author of the player email. */
   sender_user_id?: string | null;
+  cc_addresses?: string[];
+  /** Other session players the player email was delivered to (To + Cc, sender excluded). */
+  player_recipients?: Array<{ user_id: string; address: string }>;
+}
+
+/** Who an NPC reply to `playerEmail` is delivered to: the author plus every other session
+ *  player the author addressed (To or Cc), so CC'd players see the answer. */
+function replyDelivery(playerEmail: PlayerEmail): {
+  cc_addresses: string[];
+  recipient_user_ids?: string[];
+} {
+  const others = (playerEmail.player_recipients ?? []).filter(
+    (p) => p.user_id !== playerEmail.sender_user_id,
+  );
+  const ids = [
+    ...(playerEmail.sender_user_id ? [playerEmail.sender_user_id] : []),
+    ...others.map((p) => p.user_id),
+  ];
+  const uniqueIds = Array.from(new Set(ids));
+  const ccAddrs = Array.from(
+    new Map(others.map((p) => [p.address.toLowerCase(), p.address])).values(),
+  );
+  return {
+    cc_addresses: ccAddrs,
+    ...(uniqueIds.length > 0 ? { recipient_user_ids: uniqueIds } : {}),
+  };
 }
 
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
@@ -231,9 +257,7 @@ function scheduleStakeholderEmailReply(args: {
           thread_id: replyThreadId,
           inject_id: null,
           sent_by_player_id: null,
-          ...(playerEmail.sender_user_id
-            ? { recipient_user_ids: [playerEmail.sender_user_id] }
-            : {}),
+          ...replyDelivery(playerEmail),
         })
         .select()
         .single();
@@ -639,7 +663,7 @@ Return ONLY valid JSON:
         },
         {
           role: 'user',
-          content: `Player email from ${playerEmail.from_name} (${playerEmail.from_address}):\nTo: ${toAddress}\nSubject: ${playerEmail.subject}\n\n${playerEmail.body_text}`,
+          content: `Player email from ${playerEmail.from_name} (${playerEmail.from_address}):\nTo: ${toAddress}${(playerEmail.cc_addresses ?? []).length > 0 ? `\nCc: ${(playerEmail.cc_addresses ?? []).join(', ')}` : ''}\nSubject: ${playerEmail.subject}\n\n${playerEmail.body_text}`,
         },
       ],
     });
@@ -687,11 +711,9 @@ Return ONLY valid JSON:
             thread_id: replyThreadId,
             inject_id: null,
             sent_by_player_id: null,
-            // Private correspondence: the reply lands only in the author's
-            // inbox instead of the whole session (legacy NULL behaviour).
-            ...(playerEmail.sender_user_id
-              ? { recipient_user_ids: [playerEmail.sender_user_id] }
-              : {}),
+            // Author plus every other player on the original To/Cc, so a CC
+            // stays on the thread when the NPC answers.
+            ...replyDelivery(playerEmail),
           })
           .select()
           .single();
