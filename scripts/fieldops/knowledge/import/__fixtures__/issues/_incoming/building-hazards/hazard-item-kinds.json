@@ -1,0 +1,36 @@
+{
+  "file": "hazard-item-kinds.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "kind_key": "aerosol_stock",
+      "label": "Aerosol products in retail stock",
+      "category": "combustible_store",
+      "phase": "solid",
+      "agent_key": null,
+      "contents_key": "fuel_combustible",
+      "threat_keys": [],
+      "stored_pressure_bar": null,
+      "flash_point_c": null,
+      "mitigates": null,
+      "activation_c": null,
+      "sensitivity": "public",
+      "source_keys": ["nfpa-30b"],
+      "source_ref": "NFPA 30B (named by WS9, not accessed)",
+      "source_note": "Kept from WS9 5.19; no accessed source. Reviewer to confirm or retire.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "nfpa-30b",
+            "locator": "Chapter on storage in mercantile occupancies (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": ["category", "contents_key", "phase"]
+      }
+    }
+  ]
+}

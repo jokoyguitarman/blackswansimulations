@@ -1,0 +1,71 @@
+{
+  "file": "hazard-interactions.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "rule_key": "pool_chemical_mix",
+      "kind_key": "pool_chlorination",
+      "trigger": "structural_state",
+      "threshold": 2,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "chlorine",
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 200,
+      "requires_ignition_source": false,
+      "event_text": "Pool chemicals mix and give off chlorine gas.",
+      "source_keys": ["cameo-reactivity-rg44-rg60", "mom-aquatic-chem-circular-2025"],
+      "source_ref": "MOM/OSHD/2025-06; CAMEO reactivity RG44-RG60",
+      "source_note": "Threshold 2 stands for 'damaged' (mapping Assumed). Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Storage of chemicals (2)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cameo-reactivity-rg44-rg60",
+            "locator": "Hazard Predictions; Potential Gas Byproducts: Chlorine",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": ["delay_high_s", "delay_low_s", "probability_permille", "threshold"]
+      }
+    },
+    {
+      "rule_key": "lpg_bank_blast_rupture",
+      "kind_key": "lpg_cylinder_bank",
+      "trigger": "overpressure_kpa",
+      "threshold": 20,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "propane",
+      "delay_low_s": 0,
+      "delay_high_s": 5,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "LPG cylinders are damaged and release gas.",
+      "source_keys": ["ccps-2010-vce-bleve"],
+      "source_ref": "CCPS (2010), named by WS9 5.19",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ccps-2010-vce-bleve",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": ["delay_high_s", "delay_low_s", "probability_permille", "threshold"]
+      }
+    }
+  ]
+}
