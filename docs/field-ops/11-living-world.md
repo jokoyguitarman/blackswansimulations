@@ -2281,6 +2281,9 @@ CREATE TABLE IF NOT EXISTS public.fieldops_building_types (
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
   country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
   place_classes TEXT[] NOT NULL DEFAULT '{}',
+  -- Added 22 Nov 2026: each entry is either a bare value, meaning the OSM tag building=<value>, or a key=value pair
+  -- for another OSM tag ('amenity=food_court'); lower case, matching ^[a-z0-9_:]+(=[a-z0-9_:;]+)?$, checked by
+  -- buildingTypeRowSchema. Version 1 matches bare values only, because WS3 keeps only the raw building tag.
   building_tags TEXT[] NOT NULL DEFAULT '{}',
   priority SMALLINT NOT NULL DEFAULT 100 CHECK (priority BETWEEN 1 AND 1000),
   storey_height_m NUMERIC(4, 2) NOT NULL CHECK (storey_height_m BETWEEN 2.4 AND 12),
@@ -2369,6 +2372,13 @@ CREATE TABLE IF NOT EXISTS public.fieldops_hazard_interactions (
   kind_key TEXT NOT NULL REFERENCES public.fieldops_hazard_item_kinds(kind_key) ON UPDATE CASCADE,
   trigger TEXT NOT NULL CHECK (trigger IN ('overpressure_kpa', 'impulse_kpa_ms', 'fire_exposure_s', 'ceiling_temp_c',
     'radiant_kw_m2', 'structural_state', 'vehicle_impact_kj', 'flood_depth_m', 'power_loss', 'gas_in_flammable_range')),
+  -- Added 22 Nov 2026: the threshold's scale by trigger. A rule fires when the measured value reaches the threshold.
+  --   overpressure_kpa kPa; impulse_kpa_ms kPa·ms; fire_exposure_s seconds; ceiling_temp_c °C; radiant_kw_m2 kW/m²;
+  --   vehicle_impact_kj kJ; flood_depth_m metres;
+  --   structural_state the state's ordinal: 1 damaged, 2 unsafe, 3 collapsed (sound is 0), as section 6.7.4 names them;
+  --   gas_in_flammable_range a fraction of the agent's lower flammable limit, the rule firing at or above it and below the
+  --     upper limit: 1.0 means inside the range, 0.25 means at 25 per cent of the lower limit (a detector alarm level);
+  --   power_loss 1 (power lost).
   threshold NUMERIC(10, 3) NOT NULL,
   effect TEXT NOT NULL CHECK (effect IN ('rupture_release', 'ignite', 'pool_fire', 'jet_fire', 'flash_fire', 'vapour_cloud_ignition',
     'vessel_burst', 'fireball', 'toxic_combustion_products', 'electrical_arc', 'thermal_runaway', 'oxygen_enrichment',
@@ -2825,30 +2835,32 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 
 | Key | Label | Maps from | Storey (above, below) | Contents, frame | Sprinklered | Facade | Occupant density | Sensitivity |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `shopping_mall` | Shopping mall | `mall`, `retail` | 5.0, 4.0 m | retail, reinforced concrete | 950 | curtain wall | 3 m² a person | public |
+| `shopping_mall` | Shopping mall | `mall`, `retail` | 5.0, 4.0 m | retail, reinforced concrete | 950 | curtain wall | 5 m² a person (**corrected**, was 3) | public |
 | `office_building` | Office building | `office`, `government` | 4.0, 3.5 m | office, reinforced concrete | 900 | curtain wall | 10 m² | public |
 | `hotel` | Hotel | `hotel` | 3.5, 3.5 m | hotel, reinforced concrete | 950 | concrete panel | 15 m² | public |
-| `public_housing_block` | Public housing block (HDB) | `apartments` (priority 10) | 2.8, 2.8 m | residential, reinforced concrete | 50 | concrete panel | 25 m² | public |
+| `public_housing_block` | Public housing block (HDB) | `apartments` (priority 10) | 2.8, 2.8 m | residential, reinforced concrete | 50 | concrete panel | 15 m² (**corrected**, was 25) | public |
 | `condominium` | Private condominium | `apartments` (priority 20) | 3.0, 3.0 m | residential, reinforced concrete | 300 | concrete panel | 25 m² | public |
 | `house` | House | `house` | 3.0, 3.0 m | residential, masonry | 0 | masonry | 30 m² | public |
 | `hospital` | Hospital | `hospital`, `clinic` | 4.5, 4.0 m | generic, reinforced concrete | 1,000 | concrete panel | 10 m² | public |
-| `school` | School or university | `school`, `university` | 3.5, 3.5 m | office, reinforced concrete | 300 | masonry | 2 m² | public |
-| `rail_station` | MRT or rail station | `transit_station` | 5.0, 6.0 m | transit, reinforced concrete | 1,000 | open | 0.5 m² at peak | public |
+| `school` | School or university | `school`, `university` | 3.5, 3.5 m | office, reinforced concrete | 300 | masonry | 1.5 m² (**corrected**, was 2) | public |
+| `rail_station` | MRT or rail station | `transit_station` | 5.0, 6.0 m | transit, reinforced concrete | 1,000 | open | 1.5 m² (**corrected**, was 0.5 at peak) | public |
 | `bus_interchange` | Bus interchange | trainer's choice | 6.0, 4.0 m | transit, reinforced concrete | 500 | open | 1 m² | public |
 | `airport_terminal` | Airport terminal | `airport` | 8.0, 5.0 m | transit, steel | 1,000 | curtain wall | 5 m² | public |
 | `car_park_building` | Multi-storey car park | `car_park` | 3.0, 3.0 m | car park, reinforced concrete | 300 | open | 30 m² | public |
 | `food_centre` | Hawker centre or food court | trainer's choice | 5.0, 4.0 m | generic, reinforced concrete | 0 | open | 1.5 m² | public |
-| `stadium_venue` | Stadium or event venue | `stadium` | 6.0, 4.0 m | generic, steel | 500 | open | 0.5 m² at events | public |
+| `stadium_venue` | Stadium or event venue | `stadium` | 6.0, 4.0 m | generic, steel | 500 | open | 1.5 m² (**corrected**, was 0.5 at events) | public |
 | `place_of_worship` | Place of worship | `place_of_worship` | 6.0, 4.0 m | generic, reinforced concrete | 200 | masonry | 1 m² | public |
 | `community_centre` | Community centre | `community_centre` | 4.0, 3.5 m | office, reinforced concrete | 300 | masonry | 3 m² | public |
 | `warehouse_logistics` | Warehouse or logistics centre | `warehouse` | 10.0, 4.0 m | industrial, steel | 800 | metal cladding | 30 m² | public |
 | `light_industry` | Factory, light industry | `industrial` | 6.0, 4.0 m | industrial, steel | 600 | metal cladding | 15 m² | public |
 | `chemical_process_plant` | Chemical or petrochemical process plant (generic) | trainer's choice | 8.0, 4.0 m | industrial, steel | 500 | open | 50 m² | restricted_generic |
-| `data_centre` | Data centre | trainer's choice | 5.0, 4.0 m | electrical, reinforced concrete | 1,000 | concrete panel | 50 m² | public |
+| `data_centre` | Data centre | trainer's choice | 5.0, 4.0 m | electrical, reinforced concrete | 1,000 | concrete panel | 30 m² (**corrected**, was 50) | public |
 | `electrical_substation` | Electrical substation building | trainer's choice | 6.0, 4.0 m | electrical, reinforced concrete | 0 | masonry | 200 m² | public |
 | `military_camp` | Military camp or base (generic) | trainer's choice only | 4.0, 3.5 m | generic, reinforced concrete | 300 | masonry | 20 m² | restricted_generic |
 | `police_or_fire_station` | Police or fire station | `police`, `fire_station` | 4.0, 3.5 m | office, reinforced concrete | 500 | masonry | 15 m² | public |
 | `generic_building` | Building, type not known | anything else | 4.0, 3.5 m | generic, frame not known | 500 | masonry | 10 m² | public |
+
+**Occupant densities, corrected 22 Nov 2026.** The column above now holds the design occupant load factors of SCDF Fire Code 2018 Table 1.4B where the research found them: shop 5, apartment 15, classroom 1.5, station 1.5, grandstand 1.5 and server room 30 m² a person. These are design factors, not peak crowds; `occupancy_by_hour` and the trainer's density paint (quiet to packed) give the peaks, and the reviewer confirms the remaining rows. **Reviewer to confirm:** `clinic` maps to `hospital` above, but Table 1.4A puts outpatient clinics and polyclinics in purpose group V (shop).
 
 **Typical items (examples of `building-items.json`).** Quantities are bands with planning ranges; likelihood is the share of buildings of the type that hold the item.
 
@@ -2856,8 +2868,9 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | --- | --- | --- | --- | --- | --- | --- |
 | `shopping_mall` | `town_gas_service` (piped town gas) | kitchen | medium, a service main | 900 | yes | Energy Market Authority on the town gas network; SCDF Fire Code 2018 |
 | `shopping_mall` | `cooking_oil_fryers` | kitchen | medium, 20 to 200 l | 900 | yes | SCDF Fire Code 2018, kitchen exhaust and suppression |
-| `shopping_mall` | `diesel_generator_day_tank` | plant_room | medium, 500 to 2,000 l | 800 | yes | SCDF, Fire Safety (Petroleum and Flammable Materials) Regulations |
-| `shopping_mall` | `oil_filled_transformer` | basement | large, 1,000 to 2,500 kVA | 600 | yes | utility substation guidance |
+| `shopping_mall` | `diesel_generator_day_tank` | plant_room | medium, 500 to 700 l (**corrected 22 Nov 2026** from 2,000: SCDF Fire Code 2018 Cl. 3.2.5j caps diesel in a generator room at 700 l) | 800 | yes | SCDF Fire Code 2018 Cl. 3.2.5j; Fire Safety (Petroleum and Flammable Materials) Regulations |
+| `shopping_mall` | `diesel_bulk_tank` (**added 22 Nov 2026**: larger stocks kept outside the generator room) | external_yard | category only | 300 | no | Fire Safety (Petroleum and Flammable Materials) Regulations; quantities and likelihood for the reviewer to confirm |
+| `shopping_mall` | `oil_filled_transformer` | ground (**corrected 22 Nov 2026** from basement: SCDF Fire Code 2018 Cl. 3.2.5j(2) puts it at ground level against an external wall) | large, 1,000 to 2,500 kVA (no source found for the rating; reviewer to confirm) | 600 | yes | SCDF Fire Code 2018 Cl. 3.2.5j(2) |
 | `shopping_mall` | `aerosol_stock` | retail_floor | medium, 100 to 1,000 count | 700 | yes | NFPA 30B, aerosol storage |
 | `shopping_mall` | `sprinkler_system` | any | system | 950 | yes | SCDF Fire Code 2018 |
 | `shopping_mall` | `smoke_control_system` | any | system | 700 | yes | SCDF Fire Code 2018, smoke control |
@@ -2868,7 +2881,7 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `rail_station` | `traction_power_equipment` | plant_room | system | 1,000 | yes | LTA engineering standards (to verify) |
 | `car_park_building` | `vehicle_fuel_tanks` | car_park, per storey | large, 20 to 400 count | 1,000 | yes | BRE BD 2552 (2010) |
 | `car_park_building` | `ev_traction_batteries` | car_park, per storey | small, 1 to 40 count | 400 | yes | UL 9540A test method; NFPA 855 |
-| `data_centre` | `ups_battery_room` (lithium-ion) | plant_room | large, 500 to 5,000 kWh | 800 | yes | NFPA 855; UL 9540A |
+| `data_centre` | `ups_battery_room` (lithium-ion) | plant_room | large, 20 to 600 kWh per fire compartment (**corrected 22 Nov 2026** from 500 to 5,000: SCDF Fire Code 2018 Table 10.3.1 sets a 20 kWh threshold and 600 kWh per compartment without SCDF's prior approval; `per_storey` true) | 800 | yes | SCDF Fire Code 2018 Table 10.3.1; NFPA 855; UL 9540A |
 | `warehouse_logistics` | `combustible_stock_racks` | store | large | 1,000 | yes | NFPA 13, storage commodity classes |
 | `light_industry` | `flammable_liquid_store` | store | medium, 200 to 5,000 l | 600 | yes | SCDF petroleum and flammable materials regulations |
 | `electrical_substation` | `oil_filled_transformer` | ground | large, 2,500 to 60,000 kVA | 1,000 | yes | utility guidance |
@@ -2962,7 +2975,7 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `breathing_height_standing` | gas | 1.6 m | 1.4 to 1.7 | ISO 13571:2012 (tenability at breathing height) |
 | `breathing_height_crawling` | gas | 0.3 m | 0.2 to 0.5 | as above |
 
-**Corrections from the research of 22 Nov 2026.** The physics and movement research (pending seed files for review) found values above that contradict their own sources and a few gaps in the schema. Corrected: `crawl_speed` (0.71 m/s), the retail heat release per unit area (250 kW/m², Eurocode), the convective fraction (0.65), and the chlorine and propane density ratios (2.47, 1.55). Renamed: `irritant_speed` to `smoke_dark_reference_speed`, which is what Jin measured. Marked for the reviewer, with the evidence: `crush_density`, `compression_fatal_s` and the `compression` and `impact` exposure rows. Schema added: post-flashover yields (250), ISO 13571 model constants (250), sprinkler RTI (257), `ppm` and `pct` units (258), vessel mode and a `units` library (254, 259).
+**Corrections from the research of 22 Nov 2026.** The physics and movement research (pending seed files for review) found values above that contradict their own sources and a few gaps in the schema. Corrected: `crawl_speed` (0.71 m/s), the retail heat release per unit area (250 kW/m², Eurocode), the convective fraction (0.65), and the chlorine and propane density ratios (2.47, 1.55). Renamed: `irritant_speed` to `smoke_dark_reference_speed`, which is what Jin measured. Marked for the reviewer, with the evidence: `crush_density`, `compression_fatal_s` and the `compression` and `impact` exposure rows. Schema added: post-flashover yields (250), ISO 13571 model constants (250), sprinkler RTI (257), `ppm` and `pct` units (258), vessel mode and a `units` library (254, 259). The building-hazard research then corrected, from the Singapore Fire Code: the mall transformer's location (ground, not basement), the generator-room diesel (at most 700 l, with larger stocks a separate `diesel_bulk_tank`), the lithium-ion UPS (20 to 600 kWh per compartment) and the occupant densities (Table 1.4B design factors); and the formats of `building_tags` and of the `structural_state` and `gas_in_flammable_range` thresholds are now defined in migration 257.
 
 ### 5.20 Before 257 to 259 are applied (added 22 Nov 2026)
 
@@ -4233,7 +4246,7 @@ None of them reads a clock, the network or a model; AC9.77 runs them with a reco
 3. The location rule places it, `origin: 'assumed'`: `basement` on the lowest basement storey, at the studs nearest the footprint's centroid; `plant_room` the same, else the ground storey; `kitchen` on the ground storey, within 9 m of the outline and away from exits, one per 2,000 m² of footprint, at most six; `roof` on the top modelled storey; `loading_bay` on the ground storey at the outline nearest a `service` road, else the nearest road; `car_park` and `retail_floor` spread over every modelled storey when `per_storey`; `store` and `laboratory` on the ground or a basement storey; `external_yard` on the exterior stud within 20 m of the outline nearest a road; `any` building-wide, for systems. `tank_farm` and `process_area` items are never placed automatically.
 4. Its quantity is the middle of its band (the geometric middle for a band wider than ten to one), labelled Assumed; its layer is the floor for liquids and cylinders, the ceiling for mains and pipes, and the waist for equipment.
 
-**Interaction rules.** Each tick, for items in the active set, `evaluateTriggers` reads the item's stud and layer: the overpressure and impulse from the last blast field, the seconds its stud has burned or stayed heating, the ceiling temperature, the radiant flux from pool fires and fireballs, the structural state, a vehicle impact's energy, the flood depth, the world's power flag, and whether a release agent is between its flammable limits at the item's layer. A rule that needs an ignition source also needs a burning stud within 3 m or an arcing item. A triggered rule draws once from the stream `interactions` against its probability and, when it fires, once more for its delay; each rule fires at most once per item, as an event carrying the rule's key.
+**Interaction rules.** Each tick, for items in the active set, `evaluateTriggers` reads the item's stud and layer: the overpressure and impulse from the last blast field, the seconds its stud has burned or stayed heating, the ceiling temperature, the radiant flux from pool fires and fireballs, the structural state, a vehicle impact's energy, the flood depth, the world's power flag, and whether a release agent is between its flammable limits at the item's layer. A rule that needs an ignition source also needs a burning stud within 3 m or an arcing item. Thresholds use the scales migration 257 states (structural state 1 damaged, 2 unsafe, 3 collapsed; a flammable range as a fraction of the lower limit, 1.0 meaning inside it); the research seeds that used 2 for damaged are mapped down by one at review. A triggered rule draws once from the stream `interactions` against its probability and, when it fires, once more for its delay; each rule fires at most once per item, as an event carrying the rule's key.
 
 | Effect | What `applyEffect` does |
 | --- | --- |
