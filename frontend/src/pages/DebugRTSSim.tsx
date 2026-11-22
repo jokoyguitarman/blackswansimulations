@@ -26,7 +26,16 @@ import {
   shiftEvents,
 } from '../lib/evacuation/showcase';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
-import { projectPolygon, nearestEdge, edgeLength } from '../lib/evacuation/geometry';
+import { projectPolygon, nearestEdge, edgeLength, isInsidePolygon } from '../lib/evacuation/geometry';
+import { LEVEL } from '../lib/evacuation/levelConstants';
+import {
+  defaultLevels,
+  effectiveLevelPlan,
+  levelOf,
+  linkLevels,
+  normaliseStairwell,
+  sortLevels,
+} from '../lib/rts/levels';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
@@ -56,6 +65,7 @@ import {
   type HazardZone,
   type HazardType,
   type Stairwell,
+  type LevelDef,
   HAZARD_DEFS,
 } from '../lib/rts/types';
 import {
@@ -91,7 +101,7 @@ import 'leaflet/dist/leaflet.css';
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 /** Effects-only ignition marker. Kept off the renderer: it has no trainer-facing zone. */
-function blastIgnitionZone(pos: Vec2, radius: number): HazardZone {
+function blastIgnitionZone(pos: Vec2, radius: number, level?: string): HazardZone {
   return {
     id: 'blast-direct',
     pos,
@@ -101,6 +111,24 @@ function blastIgnitionZone(pos: Vec2, radius: number): HazardZone {
     label: 'Blast',
     description: 'Direct blast ignition',
     photos: [],
+    ...(level ? { level } : {}),
+  };
+}
+
+function storeyId(floor: string | undefined): string {
+  if (!floor || floor === 'Ground') return 'G';
+  return floor;
+}
+
+function makeLevel(id: string, people = 0): LevelDef {
+  const basement = id.startsWith('B');
+  return {
+    id,
+    name: id === 'G' ? 'Ground' : basement ? `Basement ${id.slice(1)}` : `Level ${id.slice(1)}`,
+    index: id === 'G' ? 0 : basement ? -Number(id.slice(1)) : Number(id.slice(1)),
+    heightM: basement ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M : LEVEL.DEFAULT_STOREY_HEIGHT_M,
+    designed: true,
+    pedestrianCount: people,
   };
 }
 
@@ -662,6 +690,12 @@ export function DebugRTSSim() {
   const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
   const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
+  const [levels, setLevels] = useState<LevelDef[]>([makeLevel('G', 120)]);
+  const [activeLevel, setActiveLevel] = useState('G');
+  const [blastLevel, setBlastLevel] = useState('G');
+  const [selectedStairId, setSelectedStairId] = useState<string | null>(null);
+  const [copyTargets, setCopyTargets] = useState<string[]>([]);
+  const placeLinkKindRef = useRef<'stair' | 'lift'>('stair');
   // wallDrawStart state removed — now tracked in InteractionMode
 
   // ── Hazard detail card ────────────────────────────────────────────────
@@ -844,7 +878,6 @@ export function DebugRTSSim() {
     const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
 
     return selectedGrid.studs
-      .filter((s) => s.floor === 'G')
       .map((s) => ({
         ...s,
         simPos: {
@@ -895,7 +928,8 @@ export function DebugRTSSim() {
   floorsRef.current = selectedGrid?.floors ?? ['G'];
 
   const snapToStud = useCallback((simPos: Vec2): { pos: Vec2; stud: SimStud | null } => {
-    const studs = simStudsRef.current;
+    const active = activeLevelRef.current;
+    const studs = simStudsRef.current.filter((s) => storeyId(s.floor) === active);
     if (studs.length === 0) return { pos: simPos, stud: null };
 
     let best: SimStud | null = null;
@@ -1172,6 +1206,13 @@ export function DebugRTSSim() {
 
       // Set building vertices for pathfinding
       const grid = fetchResult?.grids[gridIdx];
+      const nextLevels = defaultLevels(grid?.floors ?? ['G']).map((l) =>
+        l.id === 'G' ? { ...l, pedestrianCount } : l,
+      );
+      setLevels(nextLevels);
+      setActiveLevel('G');
+      setBlastLevel('G');
+      setSelectedStairId(null);
       if (grid && grid.polygon.length >= 3) {
         const verts = projectPolygon(grid.polygon);
         rtsRef.current.setBuildingVertices(verts);
@@ -1181,7 +1222,7 @@ export function DebugRTSSim() {
         setWallPoints([]);
       }
     },
-    [fetchResult],
+    [fetchResult, pedestrianCount],
   );
 
   const backToMap = useCallback(() => {
@@ -1226,7 +1267,8 @@ export function DebugRTSSim() {
         interiorWalls,
         hazardZones,
         stairwells,
-        blastSite: nextBlast,
+        blastSite: nextBlast ? { ...nextBlast, level: blastLevel } : null,
+        levels,
         casualtyPins,
         plantedItems,
         wallInspectionPoints: wallPoints,
@@ -1254,6 +1296,8 @@ export function DebugRTSSim() {
     charge,
     manualRadius,
     blastRadius,
+    blastLevel,
+    levels,
     casualtyPins,
     plantedItems,
     wallPoints,
@@ -1396,6 +1440,7 @@ export function DebugRTSSim() {
       if (storedBlast) {
         blastRecordRef.current = storedBlast.record;
         setBlastSite(storedBlast.pos);
+        setBlastLevel(typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G');
         const savedCharge = storedBlast.charge;
         if (savedCharge) {
           const restored = clampCharge({
@@ -1419,7 +1464,12 @@ export function DebugRTSSim() {
       } else {
         blastRecordRef.current = null;
         setBlastSite(null);
+        setBlastLevel('G');
       }
+      const savedLevels = Array.isArray(sc.levels) ? (sc.levels as LevelDef[]) : [];
+      setLevels(savedLevels.length > 0 ? savedLevels : defaultLevels(['G']));
+      setActiveLevel('G');
+      setSelectedStairId(null);
       // Backward compatibility: convert old casualty_clusters to individual pins
       const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
         | CasualtyPin[]
@@ -1524,7 +1574,27 @@ export function DebugRTSSim() {
       hasDoor: w.hasDoor,
       doorWidth: w.doorWidth,
       doorPosition: w.doorPosition,
+      level: w.level,
     }));
+    const multi = levels.length > 1;
+    const exitsByLevel: Record<string, ExitDef[]> = {};
+    const wallsByLevel: Record<string, typeof iwDefs> = {};
+    if (multi) {
+      for (const lv of levels) {
+        const plan = effectiveLevelPlan(lv.id, levels, { walls: interiorWalls, exits });
+        exitsByLevel[lv.id] = plan.exits;
+        wallsByLevel[lv.id] = plan.walls.map((w) => ({
+          startX: w.start.x,
+          startY: w.start.y,
+          endX: w.end.x,
+          endY: w.end.y,
+          hasDoor: w.hasDoor,
+          doorWidth: w.doorWidth,
+          doorPosition: w.doorPosition,
+          level: lv.id,
+        }));
+      }
+    }
 
     const obstacles = showcase
       ? casualtyPins.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 1.5 }))
@@ -1555,7 +1625,23 @@ export function DebugRTSSim() {
             buildingHeightM: aboveGroundHeightM(selectedGrid?.floors),
           }
         : undefined,
+      multi
+        ? {
+            ids: levels.map((l) => l.id),
+            exitsByLevel,
+            wallsByLevel,
+            stairs: stairwells.map((sw) => normaliseStairwell(sw, levels)),
+            counts: Object.fromEntries(
+              levels.map((l) => [
+                l.id,
+                l.pedestrianCount > 0 ? l.pedestrianCount : l.id === 'G' ? pedestrianCount : 0,
+              ]),
+            ),
+            heights: Object.fromEntries(levels.map((l) => [l.id, l.heightM])),
+          }
+        : undefined,
     );
+    if (multi) evacEngRef.current.setBlastLevel(blastLevel);
     if (showcase) evacEngRef.current.setInteriorWalls(iwDefs);
     rtsRef.current.setBuildingVertices(projectedVerts);
     rtsRef.current.setExits(exits);
@@ -1567,6 +1653,9 @@ export function DebugRTSSim() {
     interiorWalls,
     hazardZones,
     casualtyPins,
+    levels,
+    stairwells,
+    blastLevel,
     showcase,
     afterExit,
     zoneKinds,
@@ -1577,6 +1666,24 @@ export function DebugRTSSim() {
   useEffect(() => {
     rtsRef.current.setExits(exits);
   }, [exits]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (phase !== 'rts') return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key !== 'PageUp' && e.key !== 'PageDown') return;
+      e.preventDefault();
+      const ids = sortLevels(levelsRef.current.map((l) => l.id));
+      setActiveLevel((cur) => {
+        const i = Math.max(0, ids.indexOf(cur));
+        const next = e.key === 'PageUp' ? ids[Math.min(ids.length - 1, i + 1)] : ids[Math.max(0, i - 1)];
+        return next ?? cur;
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase]);
 
   // ── Canvas toSim helper ───────────────────────────────────────────────
   const toSim = useCallback((cx: number, cy: number): Vec2 => {
@@ -1619,6 +1726,12 @@ export function DebugRTSSim() {
   const blastDirectZoneRef = useRef<HazardZone | null>(null);
   const stairwellsRef = useRef(stairwells);
   stairwellsRef.current = stairwells;
+  const levelsRef = useRef(levels);
+  levelsRef.current = levels;
+  const activeLevelRef = useRef(activeLevel);
+  activeLevelRef.current = activeLevel;
+  const blastLevelRef = useRef(blastLevel);
+  blastLevelRef.current = blastLevel;
   const blastSiteRef = useRef(blastSite);
   blastSiteRef.current = blastSite;
   const hoverSimPosRef = useRef<Vec2 | null>(null);
@@ -1854,7 +1967,9 @@ export function DebugRTSSim() {
             stairwellsRef.current,
             showcaseOn && rts.state.clock.phase !== 'setup' && !blastFiredRef.current
               ? null
-              : blastSiteRef.current,
+              : levelsRef.current.length > 1 && blastLevelRef.current !== activeLevelRef.current
+                ? null
+                : blastSiteRef.current,
             showGameZonesRef.current ? gameZonesRef.current : undefined,
             (() => {
               const mode = rtsRef.current.state.interactionMode;
@@ -1869,7 +1984,12 @@ export function DebugRTSSim() {
             gpsSimPosRef.current
               ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
               : null,
-            showStudGridRef.current ? simStudsRef.current : null,
+            showStudGridRef.current
+              ? simStudsRef.current.filter(
+                  (s) =>
+                    levelsRef.current.length <= 1 || storeyId(s.floor) === activeLevelRef.current,
+                )
+              : null,
             effectStatesRef.current,
             showcaseOn ? blastRadiusRef.current : undefined,
             showcaseOn ? false : true,
@@ -1877,7 +1997,10 @@ export function DebugRTSSim() {
             null,
             showcaseOn
               ? {
-                  hazardStuds: simStudsRef.current,
+                  hazardStuds: simStudsRef.current.filter(
+                    (s) =>
+                      levelsRef.current.length <= 1 || storeyId(s.floor) === activeLevelRef.current,
+                  ),
                   effectStates: effectsEngineRef.current?.studStates ?? null,
                   cellM: 3,
                   explosion: (() => {
@@ -1918,6 +2041,14 @@ export function DebugRTSSim() {
                       ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
                       : null,
                   hazardFx: hazardFxSlotRef.current,
+                }
+              : null,
+            levelsRef.current.length > 1
+              ? {
+                  active: activeLevelRef.current,
+                  levels: sortLevels(levelsRef.current.map((l) => l.id)),
+                  ghostAlpha: LEVEL.GHOST_ALPHA,
+                  showGhostPeople: true,
                 }
               : null,
           );
@@ -2170,6 +2301,40 @@ export function DebugRTSSim() {
   const elementDragRef = useRef<{ type: string; id: string } | null>(null);
   const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
 
+  const placeVerticalLink = useCallback((pos: Vec2, stud: SimStud | null) => {
+    const lv = levelsRef.current;
+    if (stairwellsRef.current.length >= 40) return;
+    if (
+      projectedVertsRef.current.length >= 3 &&
+      !isInsidePolygon(pos.x, pos.y, projectedVertsRef.current)
+    ) {
+      return;
+    }
+    const sorted = sortLevels(lv.map((l) => l.id));
+    const from = activeLevelRef.current;
+    const idx = sorted.indexOf(from);
+    if (idx < 0) return;
+    const to = sorted[idx + 1] ?? sorted[idx - 1];
+    if (!to || to === from) return;
+    const kind = placeLinkKindRef.current;
+    setStairwells((prev) => {
+      const draft: Stairwell = {
+        id: `sw-${Date.now()}`,
+        pos,
+        connectsFloors: [0, 1],
+        blocked: false,
+        label: `${kind === 'lift' ? 'Lift' : 'Stair'} ${prev.length + 1}`,
+        kind,
+        widthM: LEVEL.DEFAULT_STAIR_WIDTH_M,
+        levels: { from, to },
+        studId: stud?.id,
+        insideBuilding: stud ? stud.spatialContext === 'inside_building' : undefined,
+        spatialContext: stud?.spatialContext ?? undefined,
+      };
+      return [...prev, normaliseStairwell(draft, lv)];
+    });
+  }, []);
+
   // Hit-test draggable elements in setup mode
   const findDraggableAt = useCallback((sim: Vec2): { type: string; id: string } | null => {
     const state = rtsRef.current.state;
@@ -2183,16 +2348,21 @@ export function DebugRTSSim() {
 
     // Other elements only draggable in trainer setup mode
     if (state.clock.phase !== 'setup') return null;
+    const here = (level?: string) => (level ?? 'G') === activeLevelRef.current;
     const bs = blastSiteRef.current;
-    if (bs && Math.hypot(sim.x - bs.x, sim.y - bs.y) < 4) return { type: 'blastSite', id: 'blast' };
+    if (bs && here(blastLevelRef.current) && Math.hypot(sim.x - bs.x, sim.y - bs.y) < 4)
+      return { type: 'blastSite', id: 'blast' };
     for (const c of casualtyPinsRef.current) {
+      if (!here(c.level)) continue;
       if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
     }
     for (const hz of hazardZonesRef.current) {
+      if (!here(hz.level)) continue;
       if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8))
         return { type: 'hazard', id: hz.id };
     }
     for (const sw of stairwellsRef.current) {
+      if (!linkLevels(sw, levelsRef.current).includes(activeLevelRef.current)) continue;
       if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
         return { type: 'stairwell', id: sw.id };
     }
@@ -2366,6 +2536,10 @@ export function DebugRTSSim() {
         dragStartRef.current = null;
         isDraggingRef.current = false;
 
+        if (clickedElement.type === 'stairwell') {
+          setSelectedStairId(clickedElement.id);
+          return;
+        }
         if (clickedElement.type === 'hazard') {
           const hz = hazardZonesRef.current.find((h) => h.id === clickedElement.id);
           if (hz) {
@@ -2390,7 +2564,9 @@ export function DebugRTSSim() {
         } else {
           // Check casualty clusters
           const hitCas = casualtyPinsRef.current.find(
-            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
+            (c) =>
+              (c.level ?? 'G') === activeLevelRef.current &&
+              Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
             handleCasualtyPinClick(hitCas);
@@ -2402,7 +2578,9 @@ export function DebugRTSSim() {
 
           // Check hazard pins (click to inspect)
           const hitHz = hazardZonesRef.current.find(
-            (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
+            (hz) =>
+              (hz.level ?? 'G') === activeLevelRef.current &&
+              Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
           );
           if (hitHz) {
             setActiveHazard(hitHz);
@@ -2414,7 +2592,9 @@ export function DebugRTSSim() {
 
           // Check exits (click to inspect)
           const hitExit = exitsRef.current.find(
-            (ex) => Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < Math.max(ex.width, 4),
+            (ex) =>
+              (ex.level ?? 'G') === activeLevelRef.current &&
+              Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < Math.max(ex.width, 4),
           );
           if (hitExit) {
             setActiveExit(hitExit);
@@ -2426,12 +2606,26 @@ export function DebugRTSSim() {
 
           // Check interior walls (click to inspect)
           const hitWall = interiorWallsRef.current.find((w) => {
+            if ((w.level ?? 'G') !== activeLevelRef.current) return false;
             const mx = (w.start.x + w.end.x) / 2;
             const my = (w.start.y + w.end.y) / 2;
             return Math.hypot(mx - sim.x, my - sim.y) < 5;
           });
           if (hitWall) {
             setActiveWall(hitWall);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
+          const hitStair = stairwellsRef.current.find(
+            (sw) =>
+              linkLevels(sw, levelsRef.current).includes(activeLevelRef.current) &&
+              Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5,
+          );
+          if (hitStair) {
+            setSelectedStairId(hitStair.id);
             rts.state.selection.selectionBox = null;
             dragStartRef.current = null;
             isDraggingRef.current = false;
@@ -2497,6 +2691,7 @@ export function DebugRTSSim() {
             description: '',
             status: 'unknown' as const,
             photos: [],
+            level: activeLevelRef.current,
           },
         ]);
         return;
@@ -2522,6 +2717,7 @@ export function DebugRTSSim() {
               studId: snapped.stud?.id,
               insideBuilding: snapped.stud?.spatialContext === 'inside_building',
               spatialContext: snapped.stud?.spatialContext ?? undefined,
+              level: activeLevelRef.current,
             },
           ]);
           rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -2534,6 +2730,7 @@ export function DebugRTSSim() {
         let bestDist = 8;
         for (let i = 0; i < interiorWalls.length; i++) {
           const w = interiorWalls[i];
+          if ((w.level ?? 'G') !== activeLevelRef.current) continue;
           const mx = (w.start.x + w.end.x) / 2;
           const my = (w.start.y + w.end.y) / 2;
           const d = Math.hypot(sim.x - mx, sim.y - my);
@@ -2567,6 +2764,7 @@ export function DebugRTSSim() {
             studId: snapped.stud?.id,
             insideBuilding: snapped.stud?.spatialContext === 'inside_building',
             spatialContext: snapped.stud?.spatialContext ?? undefined,
+            level: activeLevelRef.current,
           },
         ]);
         return;
@@ -2574,24 +2772,13 @@ export function DebugRTSSim() {
 
       if (mode.type === 'place_stairwell') {
         const snapped = snapToStud(sim);
-        setStairwells((prev) => [
-          ...prev,
-          {
-            id: `sw-${Date.now()}`,
-            pos: snapped.pos,
-            connectsFloors: [0, 1],
-            blocked: false,
-            label: `Stair ${prev.length + 1}`,
-            studId: snapped.stud?.id,
-            insideBuilding: snapped.stud?.spatialContext === 'inside_building',
-            spatialContext: snapped.stud?.spatialContext ?? undefined,
-          },
-        ]);
+        placeVerticalLink(snapped.pos, snapped.stud);
         return;
       }
 
       if (mode.type === 'place_blast_site') {
         const snapped = snapToStud(sim);
+        setBlastLevel(activeLevelRef.current);
         setBlastSite(snapped.pos);
         rts.setInteractionMode({ type: 'select' });
         return;
@@ -2863,13 +3050,17 @@ export function DebugRTSSim() {
       } else if (elapsed < 300) {
         if (mode.type === 'select') {
           const hitCas = casualtyPinsRef.current.find(
-            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
+            (c) =>
+              (c.level ?? 'G') === activeLevelRef.current &&
+              Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
             handleCasualtyPinClick(hitCas);
           } else {
             const hitHz2 = hazardZonesRef.current.find(
-              (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
+              (hz) =>
+                (hz.level ?? 'G') === activeLevelRef.current &&
+                Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
             );
             if (hitHz2) {
               setActiveHazard(hitHz2);
@@ -2915,6 +3106,7 @@ export function DebugRTSSim() {
                 description: '',
                 status: 'unknown' as const,
                 photos: [],
+                level: activeLevelRef.current,
               },
             ]);
           }
@@ -2938,6 +3130,7 @@ export function DebugRTSSim() {
                 studId: snapped.stud?.id,
                 insideBuilding: snapped.stud?.spatialContext === 'inside_building',
                 spatialContext: snapped.stud?.spatialContext ?? undefined,
+                level: activeLevelRef.current,
               },
             ]);
             rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -2947,6 +3140,7 @@ export function DebugRTSSim() {
           let bestDist = 8;
           for (let i = 0; i < interiorWalls.length; i++) {
             const w = interiorWalls[i];
+            if ((w.level ?? 'G') !== activeLevelRef.current) continue;
             const d = Math.hypot(
               sim.x - (w.start.x + w.end.x) / 2,
               sim.y - (w.start.y + w.end.y) / 2,
@@ -2977,25 +3171,15 @@ export function DebugRTSSim() {
               studId: snapped.stud?.id,
               insideBuilding: snapped.stud?.spatialContext === 'inside_building',
               spatialContext: snapped.stud?.spatialContext ?? undefined,
+              level: activeLevelRef.current,
             },
           ]);
         } else if (mode.type === 'place_stairwell') {
           const snapped = snapToStud(sim);
-          setStairwells((prev) => [
-            ...prev,
-            {
-              id: `sw-${Date.now()}`,
-              pos: snapped.pos,
-              connectsFloors: [0, 1],
-              blocked: false,
-              label: `Stair ${prev.length + 1}`,
-              studId: snapped.stud?.id,
-              insideBuilding: snapped.stud?.spatialContext === 'inside_building',
-              spatialContext: snapped.stud?.spatialContext ?? undefined,
-            },
-          ]);
+          placeVerticalLink(snapped.pos, snapped.stud);
         } else if (mode.type === 'place_blast_site') {
           const snapped = snapToStud(sim);
+          setBlastLevel(activeLevelRef.current);
           setBlastSite(snapped.pos);
           rts.setInteractionMode({ type: 'select' });
         }
@@ -3052,6 +3236,51 @@ export function DebugRTSSim() {
     const studs = simStudsRef.current;
     blastDirectZoneRef.current = null;
     if (studs.length === 0 || !blastSite) return;
+    const multi = levelsRef.current.length > 1;
+    const bLevel = blastLevelRef.current;
+    const asFireStuds = studs.map((s) => ({
+      id: s.id,
+      simPos: s.simPos,
+      spatialContext: s.spatialContext,
+      level: storeyId(s.floor),
+    }));
+    const attachShafts = (engine: SpatialEffectsEngine) => {
+      const heightByLevel = Object.fromEntries(levelsRef.current.map((l) => [l.id, l.heightM]));
+      engine.setVerticalLinks(
+        stairwellsRef.current.map((sw) => {
+          const norm = normaliseStairwell(sw, levelsRef.current);
+          return {
+            id: norm.id,
+            pos: norm.pos,
+            levels: linkLevels(norm, levelsRef.current),
+            kind: norm.kind ?? 'stair',
+            blocked: norm.blocked,
+            widthM: norm.widthM,
+            heightByLevel,
+          };
+        }),
+      );
+    };
+    const publishFields = () => {
+      const evac = evacEngRef.current;
+      if (!evac) return;
+      if (!multi) return;
+      const grouped = new Map<string, Array<{ id: string; simPos: Vec2; indoor: boolean }>>();
+      for (const s of asFireStuds) {
+        const list = grouped.get(s.level) ?? [];
+        list.push({
+          id: s.id,
+          simPos: s.simPos,
+          indoor: s.spatialContext === 'inside_building',
+        });
+        grouped.set(s.level, list);
+      }
+      const fields = new Map<string, HazardField>();
+      for (const [id, list] of grouped) fields.set(id, new HazardField(list, 3));
+      evac.setHazardFields(fields);
+      evac.setBlastLevel(bLevel);
+      evac.setHazardField(fields.get('G') ?? new HazardField([], 3));
+    };
 
     if (showcaseRef.current) {
       const manual = manualRadiusRef.current;
@@ -3063,9 +3292,8 @@ export function DebugRTSSim() {
         ambientSpread: true,
         ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
       });
-      engine.init(
-        studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
-      );
+      engine.init(asFireStuds);
+      attachShafts(engine);
       const t0 = blastEffectsTriggerSec(engine.timeScale);
       if (enrichResult?.hazardAnalysis) {
         for (const ha of enrichResult.hazardAnalysis) {
@@ -3083,8 +3311,12 @@ export function DebugRTSSim() {
           }
         }
       }
-      const affectedStuds = studs
-        .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= affectRadius)
+      const affectedStuds = asFireStuds
+        .filter(
+          (s) =>
+            (!multi || s.level === bLevel) &&
+            Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= affectRadius,
+        )
         .map((s) => s.id);
       engine.registerHazard(
         'blast-direct',
@@ -3108,7 +3340,7 @@ export function DebugRTSSim() {
           critical: 'Engulfed',
         },
       );
-      blastDirectZoneRef.current = blastIgnitionZone(blastSite, spreadRadius);
+      blastDirectZoneRef.current = blastIgnitionZone(blastSite, spreadRadius, multi ? bLevel : undefined);
       hazardFieldRef.current = new HazardField(
         studs.map((s) => ({
           id: s.id,
@@ -3118,6 +3350,7 @@ export function DebugRTSSim() {
         3,
       );
       evacEngRef.current?.setHazardField(hazardFieldRef.current);
+      publishFields();
       effectsEngineRef.current = engine;
       setEffectStates(new Map(engine.studStates));
       setHazardRuntimeStates(
@@ -3132,9 +3365,8 @@ export function DebugRTSSim() {
     }
 
     const engine = new SpatialEffectsEngine(fireParams ?? undefined);
-    engine.init(
-      studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
-    );
+    engine.init(asFireStuds);
+    attachShafts(engine);
 
     if (enrichResult?.hazardAnalysis) {
       for (const ha of enrichResult.hazardAnalysis) {
@@ -3178,8 +3410,13 @@ export function DebugRTSSim() {
         },
       );
 
-      blastDirectZoneRef.current = blastIgnitionZone(blastSite, blastRadius);
+      blastDirectZoneRef.current = blastIgnitionZone(
+        blastSite,
+        blastRadius,
+        multi ? bLevel : undefined,
+      );
     }
+    publishFields();
 
     effectsEngineRef.current = engine;
     setEffectStates(new Map(engine.studStates));
@@ -3740,6 +3977,42 @@ export function DebugRTSSim() {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+              />
+              <LevelSwitcher
+                levels={levels}
+                activeLevel={activeLevel}
+                interiorWalls={interiorWalls}
+                exits={exits}
+                hazardZones={hazardZones}
+                casualtyPins={casualtyPins}
+                stairwells={stairwells}
+                pedestrians={pedestrians}
+                studs={allSimStuds}
+                effectStates={effectStates}
+                copyTargets={copyTargets}
+                onActive={setActiveLevel}
+                onLevels={setLevels}
+                onCopyTargets={setCopyTargets}
+                onCopy={(from, targets) => {
+                  if (targets.length === 0) return;
+                  setInteriorWalls((prev) => [
+                    ...prev,
+                    ...targets.flatMap((to) =>
+                      prev
+                        .filter((w) => levelOf(w) === from)
+                        .map((w) => ({ ...w, id: `${w.id}-${to}-${Date.now()}`, level: to })),
+                    ),
+                  ]);
+                  setExits((prev) => [
+                    ...prev,
+                    ...targets.flatMap((to) =>
+                      prev
+                        .filter((e) => levelOf(e) === from)
+                        .map((e) => ({ ...e, id: `${e.id}-${to}-${Date.now()}`, level: to })),
+                    ),
+                  ]);
+                }}
+                pedestrianCount={pedestrianCount}
               />
               {banner && performance.now() < banner.until && (
                 <div
@@ -5216,6 +5489,7 @@ export function DebugRTSSim() {
                             pin.insideBuilding = snapped.stud.spatialContext === 'inside_building';
                             pin.spatialContext = snapped.stud.spatialContext ?? undefined;
                           }
+                          pin.level = activeLevelRef.current;
                           setCasualtyPins((prev) => [...prev, pin]);
                           rerender();
                         };
@@ -5349,21 +5623,50 @@ export function DebugRTSSim() {
                   </div>
                   <button
                     onClick={() => {
+                      const placing =
+                        gameState.interactionMode.type === 'place_stairwell' &&
+                        placeLinkKindRef.current === 'stair';
+                      placeLinkKindRef.current = 'stair';
                       rts.setInteractionMode(
-                        gameState.interactionMode.type === 'place_stairwell'
-                          ? { type: 'select' }
-                          : { type: 'place_stairwell' },
+                        placing ? { type: 'select' } : { type: 'place_stairwell' },
                       );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
-                      gameState.interactionMode.type === 'place_stairwell'
+                      gameState.interactionMode.type === 'place_stairwell' &&
+                      placeLinkKindRef.current === 'stair'
                         ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
                         : 'border-gray-700 text-gray-300 hover:border-gray-500'
                     }`}
                   >
-                    🪜 Place Stairwell (click inside building)
+                    🪜 Place stair
                   </button>
+                  <button
+                    onClick={() => {
+                      placeLinkKindRef.current = 'lift';
+                      rts.setInteractionMode({ type: 'place_stairwell' });
+                      rerender();
+                    }}
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_stairwell' &&
+                      placeLinkKindRef.current === 'lift'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
+                  >
+                    🛗 Place lift
+                  </button>
+                  {stairwells.find((sw) => sw.id === selectedStairId) && (
+                    <StairEditor
+                      stair={stairwells.find((sw) => sw.id === selectedStairId)!}
+                      levels={levels}
+                      onChange={(next) =>
+                        setStairwells((prev) =>
+                          prev.map((sw) => (sw.id === next.id ? normaliseStairwell(next, levels) : sw)),
+                        )
+                      }
+                    />
+                  )}
                   <div className="text-xs text-green-700">
                     Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Stairs:{' '}
                     {stairwells.length}
@@ -5738,8 +6041,19 @@ export function DebugRTSSim() {
                     type="number"
                     min={1}
                     step={10}
-                    value={pedestrianCount}
-                    onChange={(e) => setPedestrianCount(Math.max(1, Number(e.target.value) || 1))}
+                    value={
+                      levels.length > 1
+                        ? (levels.find((l) => l.id === activeLevel)?.pedestrianCount ??
+                          pedestrianCount)
+                        : pedestrianCount
+                    }
+                    onChange={(e) => {
+                      const n = Math.max(0, Number(e.target.value) || 0);
+                      setPedestrianCount(Math.max(1, n));
+                      setLevels((prev) =>
+                        prev.map((l) => (l.id === activeLevel ? { ...l, pedestrianCount: n } : l)),
+                      );
+                    }}
                     className="w-full bg-gray-800 border border-green-800 text-green-300 px-2 py-1 text-xs rounded"
                   />
                   <span className="text-xs text-green-700 mt-0.5 block">
@@ -6187,4 +6501,297 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `T+${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function StairEditor({
+  stair,
+  levels,
+  onChange,
+}: {
+  stair: Stairwell;
+  levels: LevelDef[];
+  onChange: (next: Stairwell) => void;
+}) {
+  const from = stair.levels?.from ?? 'G';
+  const to = stair.levels?.to ?? 'G';
+  const setEnds = (nextFrom: string, nextTo: string) => {
+    if (nextFrom === nextTo) return;
+    if (!levels.some((l) => l.id === nextFrom) || !levels.some((l) => l.id === nextTo)) return;
+    onChange({ ...stair, levels: { from: nextFrom, to: nextTo } });
+  };
+  return (
+    <div className="border border-blue-900 rounded p-2 space-y-1 text-xs">
+      <div className="text-blue-300">{stair.kind === 'lift' ? 'Lift' : 'Stair'}</div>
+      <label className="block text-slate-400">
+        Label
+        <input
+          value={stair.label}
+          onChange={(e) => onChange({ ...stair, label: e.target.value })}
+          className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
+        />
+      </label>
+      <label className="block text-slate-400">
+        From
+        <select
+          value={from}
+          onChange={(e) => setEnds(e.target.value, to)}
+          className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
+        >
+          {levels.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-slate-400">
+        To
+        <select
+          value={to}
+          onChange={(e) => setEnds(from, e.target.value)}
+          className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
+        >
+          {levels.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-slate-400">
+        Width (m)
+        <input
+          type="number"
+          min={0.6}
+          step={0.1}
+          value={stair.widthM ?? LEVEL.DEFAULT_STAIR_WIDTH_M}
+          onChange={(e) => onChange({ ...stair, widthM: Number(e.target.value) || LEVEL.DEFAULT_STAIR_WIDTH_M })}
+          className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-slate-300">
+        <input
+          type="checkbox"
+          checked={stair.blocked}
+          onChange={(e) => onChange({ ...stair, blocked: e.target.checked })}
+        />
+        Blocked
+      </label>
+    </div>
+  );
+}
+
+function LevelSwitcher({
+  levels,
+  activeLevel,
+  interiorWalls,
+  exits,
+  hazardZones,
+  casualtyPins,
+  stairwells,
+  pedestrians,
+  studs,
+  effectStates,
+  copyTargets,
+  onActive,
+  onLevels,
+  onCopyTargets,
+  onCopy,
+  pedestrianCount,
+}: {
+  levels: LevelDef[];
+  activeLevel: string;
+  interiorWalls: InteriorWall[];
+  exits: ExitDef[];
+  hazardZones: HazardZone[];
+  casualtyPins: CasualtyPin[];
+  stairwells: Stairwell[];
+  pedestrians: PedSnapshot[];
+  studs: Array<{ id: string; floor: string }>;
+  effectStates: Map<string, StudEffectState> | null;
+  copyTargets: string[];
+  onActive: (id: string) => void;
+  onLevels: (next: LevelDef[] | ((prev: LevelDef[]) => LevelDef[])) => void;
+  onCopyTargets: (ids: string[]) => void;
+  onCopy: (from: string, targets: string[]) => void;
+  pedestrianCount: number;
+}) {
+  const ordered = [...levels].sort((a, b) => b.index - a.index);
+  const active = levels.find((l) => l.id === activeLevel) ?? levels[0];
+  const addStorey = (dir: 'up' | 'down') => {
+    onLevels((prev) => {
+      if (prev.length >= LEVEL.MAX_LEVELS) return prev;
+      const nums = prev
+        .filter((l) => l.id.startsWith(dir === 'up' ? 'L' : 'B'))
+        .map((l) => Number(l.id.slice(1)));
+      const id = `${dir === 'up' ? 'L' : 'B'}${nums.length ? Math.max(...nums) + 1 : 1}`;
+      const seeded = prev.map((l) =>
+        l.id === 'G' && l.pedestrianCount === 0 ? { ...l, pedestrianCount } : l,
+      );
+      return [...seeded, makeLevel(id)].sort((a, b) => a.index - b.index);
+    });
+  };
+  const removable = (lv: LevelDef) => {
+    if (lv.id === 'G' || lv.designed) return false;
+    if (lv.pedestrianCount > 0) return false;
+    if (interiorWalls.some((w) => levelOf(w) === lv.id)) return false;
+    if (exits.some((e) => levelOf(e) === lv.id)) return false;
+    if (hazardZones.some((h) => levelOf(h) === lv.id)) return false;
+    if (casualtyPins.some((c) => levelOf(c) === lv.id)) return false;
+    if (stairwells.some((sw) => linkLevels(sw, levels).includes(lv.id))) return false;
+    return true;
+  };
+  return (
+    <div
+      className="absolute top-2 left-2 bg-black/85 border border-slate-600 rounded p-1.5 text-xs text-slate-200 space-y-1 overflow-auto"
+      style={{ zIndex: 1100, pointerEvents: 'auto', maxHeight: '75%' }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      {ordered.map((lv) => {
+        const plan = effectiveLevelPlan(lv.id, levels, { walls: interiorWalls, exits });
+        const title = lv.designed
+          ? lv.name
+          : plan.assumedFrom
+            ? `Assumed: copy of ${plan.assumedFrom}`
+            : 'Undesigned';
+        const floorStuds = studs.filter((s) => storeyId(s.floor) === lv.id);
+        let burning = 0;
+        let smoke = 0;
+        for (const s of floorStuds) {
+          const st = effectStates?.get(s.id);
+          if (!st) continue;
+          if (st.fire.state === 'burning') burning += 1;
+          smoke += st.smoke;
+        }
+        const mean = floorStuds.length > 0 ? smoke / floorStuds.length : 0;
+        const remaining = pedestrians.filter(
+          (p) =>
+            (p.level ?? 'G') === lv.id &&
+            (p.state === 'idle' || p.state === 'reacting' || p.state === 'evacuating' || (!p.state && !p.evacuated)),
+        ).length;
+        return (
+          <button
+            key={lv.id}
+            type="button"
+            onClick={() => onActive(lv.id)}
+            className={`block w-full text-left px-1.5 py-1 rounded border ${
+              lv.id === activeLevel ? 'border-amber-400 text-amber-200' : 'border-slate-700'
+            }`}
+          >
+            <span className="flex items-center gap-1">
+              {burning > 0 && <span className="inline-block w-2 h-2 rounded-full bg-red-500" />}
+              {title}
+            </span>
+            <span className="block text-[10px] text-slate-400">
+              {remaining} in · {burning} burn · smoke {mean.toFixed(2)}
+            </span>
+          </button>
+        );
+      })}
+      <button type="button" className="w-full text-left px-1 py-0.5 border border-slate-700 rounded" onClick={() => addStorey('up')}>
+        + Level above
+      </button>
+      <button type="button" className="w-full text-left px-1 py-0.5 border border-slate-700 rounded" onClick={() => addStorey('down')}>
+        + Basement
+      </button>
+      <button
+        type="button"
+        className="w-full text-left px-1 py-0.5 border border-slate-700 rounded disabled:opacity-40"
+        disabled={!active || !removable(active)}
+        onClick={() => {
+          if (!active || !removable(active)) return;
+          onLevels((prev) => prev.filter((l) => l.id !== active.id));
+          onActive('G');
+        }}
+      >
+        Remove level
+      </button>
+      {active && (
+        <div className="space-y-1 border-t border-slate-700 pt-1">
+          <label className="block text-slate-400">
+            Name
+            <input
+              value={active.name}
+              onChange={(e) =>
+                onLevels((prev) => prev.map((l) => (l.id === active.id ? { ...l, name: e.target.value } : l)))
+              }
+              className="w-full bg-gray-800 border border-slate-700 px-1 py-0.5 rounded"
+            />
+          </label>
+          <label className="block text-slate-400">
+            Height (m)
+            <input
+              type="number"
+              min={2}
+              step={0.1}
+              value={active.heightM}
+              onChange={(e) =>
+                onLevels((prev) =>
+                  prev.map((l) =>
+                    l.id === active.id ? { ...l, heightM: Number(e.target.value) || l.heightM } : l,
+                  ),
+                )
+              }
+              className="w-full bg-gray-800 border border-slate-700 px-1 py-0.5 rounded"
+            />
+          </label>
+          <label className="block text-slate-400">
+            People
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={active.pedestrianCount}
+              onChange={(e) =>
+                onLevels((prev) =>
+                  prev.map((l) =>
+                    l.id === active.id ? { ...l, pedestrianCount: Math.max(0, Number(e.target.value) || 0) } : l,
+                  ),
+                )
+              }
+              className="w-full bg-gray-800 border border-slate-700 px-1 py-0.5 rounded"
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={active.designed}
+              onChange={(e) =>
+                onLevels((prev) =>
+                  prev.map((l) => (l.id === active.id ? { ...l, designed: e.target.checked } : l)),
+                )
+              }
+            />
+            Designed
+          </label>
+          <div className="text-slate-400">Copy this level to…</div>
+          {levels
+            .filter((l) => l.id !== active.id)
+            .map((l) => (
+              <label key={l.id} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={copyTargets.includes(l.id)}
+                  onChange={(e) =>
+                    onCopyTargets(
+                      e.target.checked ? [...copyTargets, l.id] : copyTargets.filter((id) => id !== l.id),
+                    )
+                  }
+                />
+                {l.id}
+              </label>
+            ))}
+          <button
+            type="button"
+            className="w-full text-left px-1 py-0.5 border border-slate-700 rounded"
+            onClick={() => onCopy(active.id, copyTargets)}
+          >
+            Copy
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

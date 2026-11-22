@@ -171,9 +171,10 @@ export class FireSimulation {
     }
   }
 
-  igniteRadius(center: Vec2, radius: number) {
+  igniteRadius(center: Vec2, radius: number, level?: string) {
     const ids: string[] = [];
     for (const [id, stud] of this.studIndex) {
+      if (level && (stud.level ?? 'G') !== level) continue;
       const d = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
       if (d <= radius) {
         ids.push(id);

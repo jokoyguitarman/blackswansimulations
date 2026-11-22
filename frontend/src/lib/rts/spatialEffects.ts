@@ -230,7 +230,7 @@ export class SpatialEffectsEngine {
           hs.activeEffectIds.push(effectId);
 
           if (event.spreadType === 'fire') {
-            this.fireSim.igniteRadius(origin, event.spreadRadius);
+            this.fireSim.igniteRadius(origin, event.spreadRadius, hazard?.level);
           }
         }
       }

@@ -10,8 +10,10 @@ import type {
   CasualtyPin,
   InteriorWall,
   HazardZone,
+  LevelDef,
   Stairwell,
 } from './types';
+import { levelIndex, linkLevels, sortLevels } from './levels';
 import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { isInsidePolygon, polygonBounds } from '../evacuation/geometry';
@@ -46,6 +48,14 @@ export interface ShowcaseRenderFx {
   assemblyRingM?: number | null;
   /** Animated overlay. Classic, or a missing renderer, keeps the square field. */
   hazardFx?: { renderer: HazardFxRenderer; ctx: HazardFxContext } | null;
+}
+
+/** Trailing view filter. Absent keeps today's single-storey drawing. */
+export interface LevelView {
+  active: string;
+  levels: string[];
+  ghostAlpha: number;
+  showGhostPeople: boolean;
 }
 
 function toCanvas(mx: number, my: number, rc: RenderContext) {
@@ -134,6 +144,7 @@ export function renderRTS(
   showOperatingZones?: boolean,
   highlightedStudIds?: Set<string> | null,
   showcaseFx?: ShowcaseRenderFx | null,
+  levelView?: LevelView | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
@@ -174,6 +185,49 @@ export function renderRTS(
 
   const hazardAnimated =
     !!showcaseFx?.hazardFx && showcaseFx.hazardFx.ctx.quality !== 'classic';
+  const viewActive = levelView?.active;
+  const onActive = (level?: string) => !levelView || (level ?? 'G') === viewActive;
+  const stairLevels = levelView
+    ? levelView.levels.map(
+        (id): LevelDef => ({
+          id,
+          name: id,
+          index: levelIndex(id),
+          heightM: 4,
+          designed: true,
+          pedestrianCount: 0,
+        }),
+      )
+    : [];
+  const stairHere = (sw: Stairwell) =>
+    !levelView || linkLevels(sw, stairLevels).includes(viewActive ?? '');
+  const wallsToDraw = levelView ? interiorWalls?.filter((w) => onActive(w.level)) : interiorWalls;
+  const exitsToDraw = levelView ? exits.filter((e) => onActive(e.level)) : exits;
+  const hazardsToDraw = levelView ? hazardZones?.filter((hz) => onActive(hz.level)) : hazardZones;
+  const stairsToDraw = levelView ? stairwells?.filter(stairHere) : stairwells;
+  const pinsToDraw = levelView ? casualtyPinsParam?.filter((pin) => onActive(pin.level)) : casualtyPinsParam;
+
+  if (levelView) {
+    const ordered = sortLevels(levelView.levels);
+    const idx = ordered.indexOf(levelView.active);
+    const ghosts = [ordered[idx - 1], ordered[idx + 1]].filter((id): id is string => Boolean(id));
+    ctx.save();
+    ctx.globalAlpha = levelView.ghostAlpha;
+    for (const gid of ghosts) {
+      for (const wall of interiorWalls ?? []) {
+        if ((wall.level ?? 'G') !== gid) continue;
+        drawInteriorWall(ctx, wall, rc, true);
+      }
+      drawExits(
+        ctx,
+        exits.filter((e) => (e.level ?? 'G') === gid),
+        buildingVerts,
+        rc,
+        true,
+      );
+    }
+    ctx.restore();
+  }
 
   if (showcaseFx) {
     if (hazardAnimated && showcaseFx.hazardFx) {
@@ -188,17 +242,20 @@ export function renderRTS(
     if (showcaseFx.zones.length > 0) drawShowcaseZones(ctx, showcaseFx.zones, showcaseFx.zoneCounts, rc);
   }
 
-  if (interiorWalls && interiorWalls.length > 0) {
-    for (const wall of interiorWalls) drawInteriorWall(ctx, wall, rc);
+  if (wallsToDraw && wallsToDraw.length > 0) {
+    for (const wall of wallsToDraw) drawInteriorWall(ctx, wall, rc);
   }
-  if (hazardZones && hazardZones.length > 0) {
-    for (const hz of hazardZones) drawHazardZone(ctx, hz, rc);
+  if (hazardsToDraw && hazardsToDraw.length > 0) {
+    for (const hz of hazardsToDraw) drawHazardZone(ctx, hz, rc);
   }
-  if (stairwells && stairwells.length > 0) {
-    for (const sw of stairwells) drawStairwell(ctx, sw, rc);
+  if (stairsToDraw && stairsToDraw.length > 0) {
+    for (const sw of stairsToDraw) {
+      const badge = sw.levels ? `${sw.levels.from}→${sw.levels.to}` : undefined;
+      drawStairwell(ctx, sw, rc, badge);
+    }
   }
 
-  drawExits(ctx, exits, buildingVerts, rc);
+  drawExits(ctx, exitsToDraw, buildingVerts, rc);
 
   if (wallPoints && wallPoints.length > 0) {
     drawWallInspectionPoints(
@@ -225,8 +282,8 @@ export function renderRTS(
     }
   }
 
-  if (casualtyPinsParam && casualtyPinsParam.length > 0) {
-    for (const pin of casualtyPinsParam) {
+  if (pinsToDraw && pinsToDraw.length > 0) {
+    for (const pin of pinsToDraw) {
       drawCasualtyPin(ctx, pin, rc, activeCasualtyPinId === pin.id);
     }
   }
@@ -234,6 +291,14 @@ export function renderRTS(
   for (const ped of pedestrians) {
     if (ped.state === 'left_map') continue;
     if (ped.evacuated && ped.state !== 'outside' && ped.state !== 'arrived') continue;
+    if (levelView) {
+      const here =
+        (ped.level ?? 'G') === levelView.active ||
+        (ped.inStair != null && (stairsToDraw ?? []).some((sw) => sw.id === ped.inStair?.stairId));
+      if (here) drawPedestrian(ctx, ped, rc);
+      else if (levelView.showGhostPeople) drawGhostPerson(ctx, ped, rc, levelView.ghostAlpha);
+      continue;
+    }
     drawPedestrian(ctx, ped, rc);
   }
 
@@ -439,6 +504,7 @@ function drawExits(
   exits: ExitDef[],
   verts: Vec2[],
   rc: RenderContext,
+  ghost = false,
 ) {
   for (const ex of exits) {
     const edgeA = verts[ex.edgeIndex];
@@ -456,7 +522,7 @@ function drawExits(
     const p2 = toCanvas(ex.center.x + nx * halfW, ex.center.y + ny * halfW, rc);
 
     const isService = ex.exitType === 'service';
-    const exitColor = isService ? '#f97316' : '#22d3ee';
+    const exitColor = ghost ? '#64748b' : isService ? '#f97316' : '#22d3ee';
 
     ctx.beginPath();
     ctx.moveTo(p1.cx, p1.cy);
@@ -561,6 +627,24 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
     ctx.fillStyle = '#ffffff';
     ctx.fill();
   }
+  if (ped.inStair) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ped.inStair.progress);
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function drawGhostPerson(
+  ctx: CanvasRenderingContext2D,
+  ped: PedSnapshot,
+  rc: RenderContext,
+  alpha: number,
+) {
+  const p = toCanvas(ped.x, ped.y, rc);
+  ctx.fillStyle = `rgba(100, 116, 139, ${alpha})`;
+  ctx.fillRect(p.cx, p.cy, 1, 1);
 }
 
 function drawHazardField(
@@ -1225,7 +1309,12 @@ function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderConte
 }
 
 // ── Interior walls ──────────────────────────────────────────────────────
-function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc: RenderContext) {
+function drawInteriorWall(
+  ctx: CanvasRenderingContext2D,
+  wall: InteriorWall,
+  rc: RenderContext,
+  ghost = false,
+) {
   const s = toCanvas(wall.start.x, wall.start.y, rc);
   const e = toCanvas(wall.end.x, wall.end.y, rc);
 
@@ -1241,7 +1330,7 @@ function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc:
     const doorStart = doorCenter - doorPx / 2;
     const doorEnd = doorCenter + doorPx / 2;
 
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = ghost ? '#64748b' : '#94a3b8';
     ctx.lineWidth = 3;
 
     ctx.beginPath();
@@ -1255,7 +1344,7 @@ function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc:
     ctx.stroke();
 
     // Door gap indicator
-    ctx.strokeStyle = '#22d3ee';
+    ctx.strokeStyle = ghost ? '#64748b' : '#22d3ee';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -1267,7 +1356,7 @@ function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc:
     ctx.beginPath();
     ctx.moveTo(s.cx, s.cy);
     ctx.lineTo(e.cx, e.cy);
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = ghost ? '#64748b' : '#94a3b8';
     ctx.lineWidth = 3;
     ctx.stroke();
   }
@@ -1298,7 +1387,12 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
 }
 
 // ── Stairwells ──────────────────────────────────────────────────────────
-function drawStairwell(ctx: CanvasRenderingContext2D, sw: Stairwell, rc: RenderContext) {
+function drawStairwell(
+  ctx: CanvasRenderingContext2D,
+  sw: Stairwell,
+  rc: RenderContext,
+  badge?: string,
+) {
   const p = toCanvas(sw.pos.x, sw.pos.y, rc);
   const r = 10;
 
@@ -1330,6 +1424,14 @@ function drawStairwell(ctx: CanvasRenderingContext2D, sw: Stairwell, rc: RenderC
   ctx.font = 'bold 7px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(sw.label || 'STAIRS', p.cx, p.cy + r + 8);
+  if (badge) {
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText(badge, p.cx + r + 4, p.cy + 3);
+    ctx.restore();
+  }
 
   if (sw.blocked) {
     ctx.strokeStyle = '#ef4444';
