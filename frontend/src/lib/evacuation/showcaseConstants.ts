@@ -41,6 +41,8 @@ export const SHOWCASE = {
   CROUCH_SPEED_FACTOR: 0.6,
   POSTURE_RELEASE: 0.8,
   TURN_BACK_PERMILLE: 300,
+  /** How long a turn-back keeps that exit off the list. The roll itself is one-time. */
+  TURN_BACK_HOLD_S: 30,
   FIRE_AVOID_RADIUS_M: 5.0,
   HEAT_AVOID_RADIUS_M: 2,
   SAMPLE_STEP_M: 1.5,
@@ -168,6 +170,7 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
     status: 'seed_pending',
     ref: 'knowledge-seeds/fire-smoke-tenability/tenability-response.pending.json#bryan_wood_smoke_movement',
   },
+  TURN_BACK_HOLD_S: { status: 'assumed', ref: 'assumed: numerical' },
   FIRE_AVOID_RADIUS_M: {
     status: 'seed_pending',
     ref: 'knowledge-seeds/fire-smoke-tenability/fire-growth-spread.pending.json#point_source_radiation',

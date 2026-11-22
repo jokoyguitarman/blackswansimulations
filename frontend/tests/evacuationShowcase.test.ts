@@ -316,6 +316,12 @@ describe('evacuation showcase', () => {
     const forced = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, bothBurn, null);
     assert.equal(forced?.forced, true);
     assert.equal(forced?.id, 'near');
+    const forcedDespiteAvoid = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, bothBurn, null, {
+      avoidIds: ['near'],
+      excludeId: 'near',
+    });
+    assert.equal(forcedDespiteAvoid?.forced, true);
+    assert.equal(forcedDespiteAvoid?.id, 'near');
     const blockedA = { ...smoky, status: 'blocked' as const };
     const blockedB = { ...clear, status: 'blocked' as const };
     assert.equal(chooseExit({ x: 0, y: 20 }, [blockedA, blockedB], box, field([]), null), null);
@@ -336,6 +342,13 @@ describe('evacuation showcase', () => {
     close(door.y, 10, 1e-9);
     const direct = nextIndoorWaypoint({ x: 5, y: 2 }, { x: 25, y: 2 }, []);
     assert.deepEqual(direct, { x: 25, y: 2 });
+    const lo = nextIndoorWaypoint({ x: 5, y: 2 }, { x: 25, y: 2 }, [wall], 0);
+    const hi = nextIndoorWaypoint({ x: 5, y: 2 }, { x: 25, y: 2 }, [wall], 1);
+    close(lo.x, 15, 1e-9);
+    close(hi.x, 15, 1e-9);
+    close(lo.y, 9.25, 1e-6);
+    close(hi.y, 10.75, 1e-6);
+    assert.ok(hi.y - lo.y > 1);
   });
 
   test('9 injury bands', () => {
@@ -764,5 +777,139 @@ test('all-unsafe zones record a note and use the farthest', () => {
   assert.match(
     eng.getMetrics().showcase?.unsafeZoneNote ?? '',
     /farthest from the blast/,
+  );
+});
+
+test('a turn-back expires so the nearer clear exit can be used again', () => {
+  const walls = [
+    {
+      startX: 6,
+      startY: 0,
+      endX: 6,
+      endY: 20,
+      hasDoor: true,
+      doorWidth: 2,
+      doorPosition: 0.5,
+    },
+  ];
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const exits: ExitDef[] = [
+    exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+    exit({ id: 'east', center: { x: 200, y: 10 }, edgeIndex: 1, width: 4 }),
+  ];
+  const smoke = field([{ id: 's', simPos: { x: 3, y: 10 }, indoor: true }], {
+    s: { smoke: 1, fire: 'none' },
+  });
+  let found = false;
+  for (let seed = 1; seed <= 40 && !found; seed++) {
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: 1,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      exits,
+      walls,
+      [],
+      { afterExit: 'disperse', zones: [], seed },
+    );
+    eng.setHazardField(smoke);
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    Matter.Body.setPosition(body, { x: 14, y: 10 });
+    const ped = (body as Matter.Body & {
+      __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+    }).__ped;
+    ped.state = 'evacuating';
+    ped.targetExitId = 'west';
+    ped.exitCost = 30;
+    ped.nextCheckAt = 1e9;
+    ped.posture = 'stand';
+    const before = eng.getMetrics().showcase?.turnedBack ?? 0;
+    eng.step();
+    const turned = (eng.getMetrics().showcase?.turnedBack ?? 0) > before;
+    if (turned && ped.targetExitId === 'east') {
+      smoke.setStates(new Map([['s', { smoke: 0, fire: { state: 'none' } }]]));
+      ped.nextCheckAt = 0;
+      for (let i = 0; i < 5 * 60; i++) eng.step();
+      assert.equal(ped.targetExitId, 'east');
+      for (let i = 0; i < 26 * 60; i++) eng.step();
+      assert.equal(ped.targetExitId, 'west');
+      found = true;
+    }
+    eng.destroy();
+  }
+  assert.equal(found, true);
+});
+
+test('no hazards: at least 90% of people who can leave are out within 120s', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const exits: ExitDef[] = [
+    exit({ id: 'E1-west', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 }),
+    exit({ id: 'E2-east', center: { x: 60, y: 12 }, edgeIndex: 1, width: 2 }),
+    exit({ id: 'E3-north', center: { x: 30, y: 40 }, edgeIndex: 2, width: 2, status: 'congested' }),
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+    { startX: 46, startY: 0, endX: 46, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 46, startY: 8, endX: 60, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 120,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    exits,
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: SHOWCASE.RNG_SEED },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const sealed = (spawn: { x: number; y: number }) => spawn.x >= 46 && spawn.y <= 8;
+  let eligible = 0;
+  for (const body of bodies) {
+    const ped = (body as Matter.Body & {
+      __ped: {
+        state: string;
+        posture: string;
+        nextCheckAt: number;
+        spawn: { x: number; y: number };
+      };
+    }).__ped;
+    if (!sealed(ped.spawn)) eligible++;
+    ped.state = 'evacuating';
+    ped.posture = 'stand';
+    ped.nextCheckAt = 0;
+  }
+  for (let i = 0; i < 120 * 60; i++) eng.step();
+  let out = 0;
+  for (const body of bodies) {
+    const ped = (body as Matter.Body & {
+      __ped: { state: string; spawn: { x: number; y: number } };
+    }).__ped;
+    if (sealed(ped.spawn)) continue;
+    if (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') out++;
+  }
+  eng.destroy();
+  assert.ok(
+    eligible > 0 && out >= 0.9 * eligible,
+    `out ${out} of ${eligible} who were not sealed in`,
   );
 });

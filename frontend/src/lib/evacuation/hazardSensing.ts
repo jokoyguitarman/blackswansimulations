@@ -391,12 +391,15 @@ export function chooseExit(
   const best = ranked.find((r) => r.cost < Infinity);
 
   if (!best) {
+    // §2.6: every exit costs Infinity, so crawl to the nearest non-blocked exit.
+    // Avoid lists and the exclude id do not apply here — a sticky turn-back must
+    // not force someone past a nearer door onto a farther one.
     let nearest: ExitDef | null = null;
     let nearestD = Infinity;
-    for (const e of pool) {
+    for (const e of exits) {
       if (e.exitType === 'service' || e.status === 'blocked') continue;
       const d = Math.hypot(e.center.x - pos.x, e.center.y - pos.y);
-      if (d < nearestD) {
+      if (d < nearestD || (d === nearestD && nearest && e.id < nearest.id)) {
         nearestD = d;
         nearest = e;
       }
@@ -485,7 +488,32 @@ function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
   return parts;
 }
 
-export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[]): Vec2 {
+const BODY_RADIUS_M = 0.25;
+/** Just clear of a 0.8 m wall (half thickness 0.4 plus a body radius). */
+const GAP_CLEAR_M = 0.7;
+/** Switch from lining up to walking through once this close to the opening. */
+const GAP_MOUTH_M = 1.05;
+const GAP_THROUGH_M = 1.5;
+
+/** A point on the door gap, inset by a body radius so the target stays in the opening. */
+export function pointOnDoorGap(wall: WallLike, lane: number): Vec2 {
+  const dx = wall.endX - wall.startX;
+  const dy = wall.endY - wall.startY;
+  const len = Math.hypot(dx, dy) || 1;
+  const centre = wall.doorPosition * len;
+  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
+  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  const t = Math.min(1, Math.max(0, lane));
+  const at = lo <= hi ? lo + (hi - lo) * t : centre;
+  return { x: wall.startX + (dx / len) * at, y: wall.startY + (dy / len) * at };
+}
+
+/**
+ * Next point toward `target`. When the segment crosses a door wall, the point
+ * is on that door's gap. `lane` in [0, 1] spreads people across the opening;
+ * omit it to keep the door centre.
+ */
+export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], lane?: number): Vec2 {
   let bestT = Infinity;
   let best: WallLike | null = null;
   for (const wall of walls) {
@@ -501,10 +529,193 @@ export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[]): 
     }
   }
   if (!best) return target;
+  if (lane == null) {
+    return {
+      x: best.startX + (best.endX - best.startX) * best.doorPosition,
+      y: best.startY + (best.endY - best.startY) * best.doorPosition,
+    };
+  }
+  return pointOnDoorGap(best, lane);
+}
+
+function wallFrame(wall: WallLike): { ux: number; uy: number; len: number } {
+  const dx = wall.endX - wall.startX;
+  const dy = wall.endY - wall.startY;
+  const len = Math.hypot(dx, dy) || 1;
+  return { ux: dx / len, uy: dy / len, len };
+}
+
+function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLike | null {
+  let bestT = Infinity;
+  let best: WallLike | null = null;
+  for (const wall of walls) {
+    let hitT = Infinity;
+    for (const [a, b] of solidParts(wall)) {
+      const t = segmentsHitT(pos, target, a, b);
+      if (t != null && t < hitT) hitT = t;
+    }
+    if (hitT < bestT) {
+      bestT = hitT;
+      best = wall;
+    }
+  }
+  return best;
+}
+
+function usableGap(wall: WallLike): { ax: number; ay: number; bx: number; by: number } | null {
+  if (!wall.hasDoor) return null;
+  const { ux, uy, len } = wallFrame(wall);
+  const centre = wall.doorPosition * len;
+  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
+  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  const a = lo <= hi ? lo : centre;
+  const b = lo <= hi ? hi : centre;
   return {
-    x: best.startX + (best.endX - best.startX) * best.doorPosition,
-    y: best.startY + (best.endY - best.startY) * best.doorPosition,
+    ax: wall.startX + ux * a,
+    ay: wall.startY + uy * a,
+    bx: wall.startX + ux * b,
+    by: wall.startY + uy * b,
   };
+}
+
+/** Project onto a segment. The normal points from the segment toward `pos`. */
+function projectOnto(pos: Vec2, ax: number, ay: number, bx: number, by: number): {
+  slot: Vec2;
+  clamped: boolean;
+  dist: number;
+  nx: number;
+  ny: number;
+} {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) {
+    const vx = pos.x - ax;
+    const vy = pos.y - ay;
+    const d = Math.hypot(vx, vy) || 1;
+    return { slot: { x: ax, y: ay }, clamped: true, dist: Math.hypot(vx, vy), nx: vx / d, ny: vy / d };
+  }
+  const ux = dx / len;
+  const uy = dy / len;
+  const raw = (pos.x - ax) * ux + (pos.y - ay) * uy;
+  const t = Math.max(0, Math.min(len, raw));
+  const slot = { x: ax + ux * t, y: ay + uy * t };
+  let nx = -uy;
+  let ny = ux;
+  if ((pos.x - slot.x) * nx + (pos.y - slot.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const dist = Math.hypot(pos.x - slot.x, pos.y - slot.y);
+  return { slot, clamped: raw < 0 || raw > len, dist, nx, ny };
+}
+
+function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2): Vec2 {
+  const ends = [
+    { x: wall.startX, y: wall.startY },
+    { x: wall.endX, y: wall.endY },
+  ];
+  let best = ends[0];
+  let bestLen = Infinity;
+  for (const end of ends) {
+    const len =
+      Math.hypot(end.x - pos.x, end.y - pos.y) + Math.hypot(target.x - end.x, target.y - end.y);
+    if (len < bestLen) {
+      bestLen = len;
+      best = end;
+    }
+  }
+  const { ux, uy } = wallFrame(wall);
+  const midX = (wall.startX + wall.endX) / 2;
+  const midY = (wall.startY + wall.endY) / 2;
+  const along = Math.sign((best.x - midX) * ux + (best.y - midY) * uy) || 1;
+  let nx = -uy;
+  let ny = ux;
+  if ((target.x - best.x) * nx + (target.y - best.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const clear = GAP_CLEAR_M + 0.2;
+  return {
+    x: best.x + ux * along * clear + nx * clear,
+    y: best.y + uy * along * clear + ny * clear,
+  };
+}
+
+/**
+ * A point on the way to `target`. Door gaps are crossed at the person's own
+ * slot (the nearest point on the opening, inset by a body radius) rather than
+ * the centre, so a crowd doesn't arch on one point. Solid walls are walked
+ * around at the nearer end.
+ */
+export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[]): Vec2 {
+  const wall = nearestBlockingWall(pos, target, walls);
+  if (!wall) return target;
+  if (!wall.hasDoor) return aroundSolid(pos, wall, target);
+  const gap = usableGap(wall);
+  if (!gap) return target;
+  const proj = projectOnto(pos, gap.ax, gap.ay, gap.bx, gap.by);
+  if (!proj.clamped && proj.dist < GAP_MOUTH_M) {
+    return { x: proj.slot.x - proj.nx * GAP_THROUGH_M, y: proj.slot.y - proj.ny * GAP_THROUGH_M };
+  }
+  return { x: proj.slot.x + proj.nx * GAP_CLEAR_M, y: proj.slot.y + proj.ny * GAP_CLEAR_M };
+}
+
+/**
+ * Where to place someone who has stopped in a door mouth, on the side their
+ * target is on. Null when they are not in the opening or the target is on
+ * their side of the wall.
+ */
+export function doorSqueeze(pos: Vec2, wall: WallLike, target: Vec2): Vec2 | null {
+  if (!wall.hasDoor) return null;
+  const gap = usableGap(wall);
+  if (!gap) return null;
+  const proj = projectOnto(pos, gap.ax, gap.ay, gap.bx, gap.by);
+  const near = proj.clamped ? proj.dist < 1.05 : proj.dist < 0.95;
+  if (!near) return null;
+  const { ux, uy } = wallFrame(wall);
+  let nx = -uy;
+  let ny = ux;
+  if ((target.x - proj.slot.x) * nx + (target.y - proj.slot.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const personSide = (pos.x - proj.slot.x) * nx + (pos.y - proj.slot.y) * ny;
+  if (personSide > 0.45) return null;
+  return { x: proj.slot.x + nx * 1.15, y: proj.slot.y + ny * 1.15 };
+}
+
+/** The person's slot on an exit opening: nearest point, inset by a body radius. */
+export function exitGapSlot(pos: Vec2, exit: ExitDef, verts: Vec2[]): {
+  slot: Vec2;
+  inward: Vec2;
+  clamped: boolean;
+  planeDist: number;
+} | null {
+  const a = verts[exit.edgeIndex];
+  const b = verts[(exit.edgeIndex + 1) % verts.length];
+  if (!a || !b) return null;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const half = Math.max(0, exit.width / 2 - BODY_RADIUS_M);
+  const gap = projectOnto(
+    pos,
+    exit.center.x - ux * half,
+    exit.center.y - uy * half,
+    exit.center.x + ux * half,
+    exit.center.y + uy * half,
+  );
+  // projectOnto's normal points at pos. Inward is from the exit toward the inside approach.
+  const approach = exitApproachInside(exit, verts);
+  const ix = approach.x - exit.center.x;
+  const iy = approach.y - exit.center.y;
+  const il = Math.hypot(ix, iy) || 1;
+  const inward = { x: ix / il, y: iy / il };
+  const planeDist = (pos.x - gap.slot.x) * inward.x + (pos.y - gap.slot.y) * inward.y;
+  return { slot: gap.slot, inward, clamped: gap.clamped, planeDist };
 }
 
 export function distanceToOutline(x: number, y: number, verts: Vec2[]): number {
