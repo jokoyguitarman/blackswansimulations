@@ -499,7 +499,14 @@ export const WALL_FACE_CLEAR_M = 0.65;
 /** Just clear of a 0.8 m wall (half thickness 0.4 plus a body radius). */
 const GAP_CLEAR_M = 0.7;
 /** Switch from lining up to walking through once this close to the opening. */
-const GAP_MOUTH_M = 1.05;
+export const MOUTH_APPROACH_M = 1.05;
+const GAP_MOUTH_M = MOUTH_APPROACH_M;
+
+/** Seeded door or exit flow: specific flow times width less the boundary layer each side. */
+export function openingFlowPerS(widthM: number): number {
+  const effective = Math.max(0, widthM - 2 * SHOWCASE.BOUNDARY_LAYER_DOOR_M);
+  return SHOWCASE.MAX_SPECIFIC_FLOW * effective;
+}
 const GAP_THROUGH_M = 1.5;
 
 /** A point on the door gap, inset by a body radius so the target stays in the opening. */
@@ -674,13 +681,32 @@ function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2): Vec2 {
 }
 
 /**
- * A point on the way to `target`. Door gaps are crossed at the person's own
- * slot (the nearest point on the opening, inset by a body radius) rather than
- * the centre, so a crowd doesn't arch on one point. Solid walls are walked
- * around at the nearer end.
+ * A point on the way to `target`. People in front of a door each keep their
+ * own slot across the opening, so a crowd does not stack on the centre.
+ * `hold` keeps them on the near side (the release cap has not let them through).
+ * Solid walls are walked around at the nearer end.
  */
-export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[]): Vec2 {
-  const wall = nearestBlockingWall(pos, target, walls);
+function doorInApproach(pos: Vec2, target: Vec2, walls: WallLike[]): WallLike | null {
+  let best: WallLike | null = null;
+  let bestDist = Infinity;
+  for (const wall of walls) {
+    if (!wall.hasDoor) continue;
+    const mouth = mouthProgress(pos, wall, target);
+    if (!mouth || mouth.through > 0.25 || mouth.dist > GAP_MOUTH_M) continue;
+    if (mouth.dist < bestDist) {
+      bestDist = mouth.dist;
+      best = wall;
+    }
+  }
+  return best;
+}
+
+export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[], hold = false): Vec2 {
+  let wall = nearestBlockingWall(pos, target, walls);
+  if (hold) {
+    const approach = doorInApproach(pos, target, walls);
+    if (approach) wall = approach;
+  }
   let aim = target;
   if (wall) {
     if (!wall.hasDoor) {
@@ -694,21 +720,42 @@ export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[]): Vec2 
         const { ux, uy } = wallFrame(wall);
         let nx = -uy;
         let ny = ux;
-        if ((pos.x - mid.x) * nx + (pos.y - mid.y) * ny < 0) {
+        const along = (pos.x - mid.x) * ux + (pos.y - mid.y) * uy;
+        const usableHalf = Math.hypot(gap.bx - gap.ax, gap.by - gap.ay) / 2;
+        const lane = Math.max(-usableHalf, Math.min(usableHalf, along));
+        const slot = { x: mid.x + ux * lane, y: mid.y + uy * lane };
+        // Lineup normal points at the approach side (away from the target).
+        // Using the body's side instead reverses the aim on the wall line, and
+        // the crowd steps back and forth across the opening without crossing.
+        const toward = (target.x - mid.x) * nx + (target.y - mid.y) * ny;
+        if (toward > 0) {
           nx = -nx;
           ny = -ny;
         }
-        const along = (pos.x - mid.x) * ux + (pos.y - mid.y) * uy;
-        // Line up with the centre before crossing. A target on the jamb
-        // pins the body against the slab.
-        const crossing = !mouth.clamped && mouth.dist < GAP_MOUTH_M && Math.abs(along) <= 0.35;
+        const inFront = Math.abs(along) <= usableHalf + 0.05;
+        const crossing = !hold && inFront && !mouth.clamped && mouth.dist < GAP_MOUTH_M;
         aim = crossing
-          ? { x: mid.x - nx * GAP_THROUGH_M, y: mid.y - ny * GAP_THROUGH_M }
-          : { x: mid.x + nx * GAP_CLEAR_M, y: mid.y + ny * GAP_CLEAR_M };
+          ? { x: slot.x - nx * GAP_THROUGH_M, y: slot.y - ny * GAP_THROUGH_M }
+          : { x: slot.x + nx * GAP_CLEAR_M, y: slot.y + ny * GAP_CLEAR_M };
       }
     }
   }
   return separateFromWalls(aim, walls, WALL_FACE_CLEAR_M);
+}
+
+/** The door this person is about to enter, when they are already in its approach. */
+export function committedDoor(
+  pos: Vec2,
+  target: Vec2,
+  walls: WallLike[],
+): { index: number; dist: number; through: number; width: number } | null {
+  const wall = doorInApproach(pos, target, walls);
+  if (!wall) return null;
+  const mouth = mouthProgress(pos, wall, target);
+  if (!mouth) return null;
+  const index = walls.indexOf(wall);
+  if (index < 0) return null;
+  return { index, dist: mouth.dist, through: mouth.through, width: wall.doorWidth };
 }
 
 /**

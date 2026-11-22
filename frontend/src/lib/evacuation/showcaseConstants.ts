@@ -68,6 +68,10 @@ export const SHOWCASE = {
   LEAVE_OVERSHOOT_M: 10,
   AMBIENT_HEAT_S: 30,
   RNG_SEED: 1337,
+  /** Persons per second per metre of effective width. Seed pending. */
+  MAX_SPECIFIC_FLOW: 1.3,
+  /** Boundary layer each side of a door or exit, metres. Seed pending. */
+  BOUNDARY_LAYER_DOOR_M: 0.15,
 } as const;
 
 export type ShowcaseKey = keyof typeof SHOWCASE;
@@ -244,4 +248,12 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
     ref: 'assumed: gap (knowledge-seeds/fire-smoke-tenability/fire-growth-spread.pending.json#flame_spread_rates)',
   },
   RNG_SEED: { status: 'assumed', ref: 'assumed: replayability' },
+  MAX_SPECIFIC_FLOW: {
+    status: 'seed_pending',
+    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#max_specific_flow',
+  },
+  BOUNDARY_LAYER_DOOR_M: {
+    status: 'seed_pending',
+    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#boundary_layer_door',
+  },
 };

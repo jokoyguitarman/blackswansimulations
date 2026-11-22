@@ -15,8 +15,11 @@ import {
   chooseExit,
   distanceToOutline,
   exitApproachInside,
+  committedDoor,
   exitGapSlot,
   mouthProgress,
+  MOUTH_APPROACH_M,
+  openingFlowPerS,
   separateFromWalls,
   WALL_FACE_CLEAR_M,
   exitRouteHazardous,
@@ -153,6 +156,11 @@ export class PolygonEvacuationEngine {
   private hazardField: HazardField | null = null;
   private interiorWalls: InteriorWallDef[] = [];
   private restMask = new WeakMap<Matter.Body, number>();
+  /** People in a mouth approach who have not been released yet. */
+  private mouthWait = new Set<number>();
+  /** People the flow cap has released into the opening. */
+  private mouthGrant = new Set<number>();
+  private flowAcc = new Map<string, number>();
   private zones: ShowcaseZone[] = [];
   private blast: { site: Vec2; radius: number } | null = null;
   private turnedBackCount = 0;
@@ -595,6 +603,7 @@ export class PolygonEvacuationEngine {
 
   private stepShowcase() {
     const dt = this.config.dt;
+    this.refreshMouthGrants();
     const outside: Array<{ id: number; x: number; y: number }> = [];
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
@@ -781,19 +790,81 @@ export class PolygonEvacuationEngine {
     }
 
     const liveExit = this.exits.find((e) => e.id === ped.targetExitId);
+    const held = this.mouthWait.has(ped.pedId) && !this.mouthGrant.has(ped.pedId);
     const target =
       ped.sheltering && ped.shelterTarget
         ? steerToTarget(pos, ped.shelterTarget, this.interiorWalls)
         : liveExit
-          ? this.exitSteerTarget(pos, liveExit)
+          ? this.exitSteerTarget(pos, liveExit, held)
           : provisional;
-    this.steer(body, target, speed, field);
+    // A forced crawl has no safe exit, so it keeps moving. A released person
+    // finishes the opening: repulsion may slide them sideways, not back out.
+    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
+    this.steer(body, target, speed, field, keepForward);
   }
 
   /**
-   * People pressed into a narrow opening stop against each other. While they
-   * are in that mouth they don't collide with other people, so they can walk
-   * through at their own speed. Collisions return once they are clear.
+   * Release people into a door or exit at the seeded specific flow. Everyone
+   * else in the approach waits on their own slot. Credits are not saved up,
+   * so a pause cannot dump a crowd through at once.
+   */
+  private refreshMouthGrants() {
+    const groups = new Map<string, { flow: number; waiters: Array<{ id: number; dist: number }> }>();
+    const waiting = new Set<number>();
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state !== 'evacuating' || !ped.targetExitId) continue;
+      const exit = this.exits.find((e) => e.id === ped.targetExitId);
+      if (!exit) continue;
+      const mouth = this.classifyWait(this.posOf(body), exit);
+      if (!mouth) continue;
+      waiting.add(ped.pedId);
+      const group = groups.get(mouth.key) ?? { flow: mouth.flow, waiters: [] };
+      group.waiters.push({ id: ped.pedId, dist: mouth.dist });
+      groups.set(mouth.key, group);
+    }
+    this.mouthWait = waiting;
+    for (const id of this.mouthGrant) {
+      if (!waiting.has(id)) this.mouthGrant.delete(id);
+    }
+    for (const key of [...this.flowAcc.keys()]) {
+      if (!groups.has(key)) this.flowAcc.delete(key);
+    }
+    const dt = this.config.dt;
+    for (const [key, group] of groups) {
+      let acc = this.flowAcc.get(key) ?? 1;
+      acc = Math.min(2, acc + group.flow * dt);
+      group.waiters.sort((a, b) => a.dist - b.dist || a.id - b.id);
+      for (const waiter of group.waiters) {
+        if (this.mouthGrant.has(waiter.id)) continue;
+        if (acc < 1) break;
+        acc -= 1;
+        this.mouthGrant.add(waiter.id);
+      }
+      this.flowAcc.set(key, acc);
+    }
+  }
+
+  /** Door approach first, otherwise the exit opening, when the person is in it. */
+  private classifyWait(pos: Vec2, exit: ExitDef): { key: string; flow: number; dist: number } | null {
+    const door = committedDoor(pos, exitApproachInside(exit, this.config.vertices), this.interiorWalls);
+    if (door) {
+      return { key: `d${door.index}`, flow: openingFlowPerS(door.width), dist: door.dist };
+    }
+    if (exit.exitType === 'service') return null;
+    const gap = exitGapSlot(pos, exit, this.config.vertices);
+    if (!gap || gap.clamped) return null;
+    // The radiant shell (a burning stud pushes out to 5 m) sits outside the
+    // mouth. Queue there, or the crowd never reaches the opening to be counted.
+    if (gap.planeDist > SHOWCASE.FIRE_AVOID_RADIUS_M || gap.planeDist < 0) return null;
+    return { key: `e:${exit.id}`, flow: openingFlowPerS(exit.width), dist: gap.planeDist };
+  }
+
+  /**
+   * A released person, or someone already past the opening, does not collide
+   * with other people while they finish the crossing. Everyone still waiting
+   * keeps colliding. The overlap on the way through is a visual artefact of
+   * that slip; the release cap is what limits the flow.
    */
   private slipThroughOpenings() {
     const slipping = new Set<Matter.Body>();
@@ -814,9 +885,29 @@ export class PolygonEvacuationEngine {
       }
       if (!inMouth && exit.exitType !== 'service') {
         const gap = exitGapSlot(pos, exit, this.config.vertices);
-        if (gap && !gap.clamped && gap.planeDist <= 1.05 && gap.planeDist >= -0.15) inMouth = true;
+        if (
+          gap &&
+          !gap.clamped &&
+          gap.planeDist <= SHOWCASE.FIRE_AVOID_RADIUS_M &&
+          gap.planeDist >= -0.15
+        ) {
+          inMouth = true;
+        }
       }
-      if (inMouth) slipping.add(body);
+      // Only a released person, or someone already past the line, overlaps.
+      // The queue behind the opening keeps colliding.
+      const released = this.mouthGrant.has(ped.pedId);
+      let pastLine = false;
+      if (inMouth && !released) {
+        for (const wall of this.interiorWalls) {
+          if (!wall.hasDoor) continue;
+          const mouth = mouthProgress(pos, wall, exit.center);
+          if (mouth && mouth.through > 0) pastLine = true;
+        }
+        const gap = exitGapSlot(pos, exit, this.config.vertices);
+        if (gap && gap.planeDist < 0.15) pastLine = true;
+      }
+      if (inMouth && (released || pastLine)) slipping.add(body);
     }
     for (const body of this.pedestrians) {
       const saved = this.restMask.get(body);
@@ -895,33 +986,41 @@ export class PolygonEvacuationEngine {
   }
 
   /**
-   * Line up with the middle of the opening, on this side of the wall, then
-   * walk through. A target on the jamb leaves the body pinned on the slab.
+   * Line up on this side of the opening, on the person's own slot, then walk
+   * through. `hold` keeps them on the near side until the flow cap releases them.
+   * A target on the jamb leaves the body pinned on the slab.
    */
-  private exitSteerTarget(pos: Vec2, exit: ExitDef): Vec2 {
+  private exitSteerTarget(pos: Vec2, exit: ExitDef, hold = false): Vec2 {
     const verts = this.config.vertices;
     const gap = exitGapSlot(pos, exit, verts);
     if (!gap) {
-      return steerToTarget(pos, exitApproachInside(exit, verts), this.interiorWalls);
+      return steerToTarget(pos, exitApproachInside(exit, verts), this.interiorWalls, hold);
     }
     const edge = verts[exit.edgeIndex];
     const edgeB = verts[(exit.edgeIndex + 1) % verts.length];
     const edgeLen = Math.hypot(edgeB.x - edge.x, edgeB.y - edge.y) || 1;
-    const along =
-      ((pos.x - exit.center.x) * (edgeB.x - edge.x) + (pos.y - exit.center.y) * (edgeB.y - edge.y)) /
-      edgeLen;
+    const ux = (edgeB.x - edge.x) / edgeLen;
+    const uy = (edgeB.y - edge.y) / edgeLen;
+    const along = (pos.x - exit.center.x) * ux + (pos.y - exit.center.y) * uy;
+    const half = Math.max(0, exit.width / 2 - 0.25);
+    const lane = Math.max(-half, Math.min(half, along));
+    const slot = { x: exit.center.x + ux * lane, y: exit.center.y + uy * lane };
     const through =
-      !gap.clamped && gap.planeDist < 1.05 && gap.planeDist > -0.4 && Math.abs(along) <= 0.35;
+      !hold &&
+      !gap.clamped &&
+      Math.abs(along) <= half + 0.05 &&
+      gap.planeDist < MOUTH_APPROACH_M &&
+      gap.planeDist > -0.4;
+    // A person the cap has not released keeps their distance. Pulling the
+    // whole queue onto the 0.7 m line stacks them on the radiant shell.
+    const waitDist = Math.max(0.7, gap.planeDist);
     const goal = through
-      ? {
-          x: exit.center.x - gap.inward.x * 1.5,
-          y: exit.center.y - gap.inward.y * 1.5,
-        }
+      ? { x: slot.x - gap.inward.x * 1.5, y: slot.y - gap.inward.y * 1.5 }
       : {
-          x: exit.center.x + gap.inward.x * 0.7,
-          y: exit.center.y + gap.inward.y * 0.7,
+          x: slot.x + gap.inward.x * (hold ? waitDist : 0.7),
+          y: slot.y + gap.inward.y * (hold ? waitDist : 0.7),
         };
-    return steerToTarget(pos, goal, this.interiorWalls);
+    return steerToTarget(pos, goal, this.interiorWalls, hold);
   }
 
   private noteAvoid(ped: PedLabel, exitId: string, sticky = false) {
@@ -1206,7 +1305,13 @@ export class PolygonEvacuationEngine {
     return n / Math.PI;
   }
 
-  private steer(body: Matter.Body, target: Vec2, targetSpeed: number, fireField: HazardField | null) {
+  private steer(
+    body: Matter.Body,
+    target: Vec2,
+    targetSpeed: number,
+    fireField: HazardField | null,
+    keepForward = false,
+  ) {
     const dt = this.config.dt;
     const dx = target.x - body.position.x;
     const dy = target.y - body.position.y;
@@ -1229,7 +1334,9 @@ export class PolygonEvacuationEngine {
         repY += (ody / oDist) * strength;
       }
     }
-    if (fireField) {
+    // A forced crawl, or a person the cap has released, is committed to the
+    // opening. The radiant push is exactly what held that crowd on the shell.
+    if (fireField && !keepForward) {
       for (const f of fireField.firesNear(body.position.x, body.position.y, SHOWCASE.FIRE_AVOID_RADIUS_M)) {
         const r = f.state === 'burning' ? SHOWCASE.FIRE_AVOID_RADIUS_M : SHOWCASE.HEAT_AVOID_RADIUS_M;
         const odx = body.position.x - f.pos.x;
@@ -1241,8 +1348,16 @@ export class PolygonEvacuationEngine {
           repY += (ody / oDist) * strength;
         }
       }
+    } else if (keepForward) {
+      const back = repX * nx + repY * ny;
+      if (back < 0) {
+        repX -= nx * back;
+        repY -= ny * back;
+      }
     }
-    const blend = Math.min(1, dt / 0.4);
+    // The 0.4 s blend never catches the air drag, so a crawler held on a
+    // shell creeps. A released crossing takes the step it was given.
+    const blend = keepForward ? 1 : Math.min(1, dt / 0.4);
     let newVx = body.velocity.x + (nx * targetSpeed * dt + repX - body.velocity.x) * blend;
     let newVy = body.velocity.y + (ny * targetSpeed * dt + repY - body.velocity.y) * blend;
     const currentSpeed = Math.hypot(newVx, newVy);

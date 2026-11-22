@@ -18,7 +18,9 @@ import {
   mulberry32,
   nextIndoorWaypoint,
   nextPosture,
+  openingFlowPerS,
   separateFromWalls,
+  steerToTarget,
   WALL_FACE_CLEAR_M,
   distanceToOutline,
   routeAroundOutline,
@@ -38,7 +40,8 @@ import {
   isBlastDue,
   shiftEvents,
 } from '../src/lib/evacuation/showcase';
-import { FireSimulation } from '../src/lib/rts/fireSimulation';
+import { DEFAULT_FIRE_PARAMS, FireSimulation } from '../src/lib/rts/fireSimulation';
+import type { HazardZone, InteriorWall } from '../src/lib/rts/types';
 import { RTSEngine } from '../src/lib/rts/engine';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import { isInsidePolygon } from '../src/lib/evacuation/geometry';
@@ -865,6 +868,28 @@ test('a point on a wall face is moved out to the body clearance', () => {
   assert.ok(Math.abs(nearJamb.x - 39.5) < 0.05, `doorway beside the jamb was pushed to x ${nearJamb.x}`);
 });
 
+test('a door crowd takes a slot each, and the flow cap is the seeded specific flow', () => {
+  const wall = {
+    startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4,
+  };
+  const centre = steerToTarget({ x: 40.8, y: 19.6 }, { x: 30, y: 40 }, [wall]);
+  const offset = steerToTarget({ x: 40.8, y: 20.05 }, { x: 30, y: 40 }, [wall]);
+  const held = steerToTarget({ x: 40.8, y: 19.6 }, { x: 30, y: 40 }, [wall], true);
+  const heldOffset = steerToTarget({ x: 40.8, y: 20.05 }, { x: 30, y: 40 }, [wall], true);
+  assert.ok(centre.x < 40, `centre should cross, x ${centre.x}`);
+  assert.ok(offset.x < 40, `offset slot should cross, x ${offset.x}`);
+  assert.ok(Math.abs(offset.y - centre.y) > 0.15, `slots collapsed to y ${centre.y} and ${offset.y}`);
+  assert.ok(held.x > 40.2 && held.x < 42, `held person left the queue, x ${held.x}`);
+  assert.ok(Math.abs(held.y - heldOffset.y) > 0.15, `held slots collapsed`);
+  const onLine = steerToTarget({ x: 40, y: 19.6 }, { x: 30, y: 40 }, [wall]);
+  const justPast = steerToTarget({ x: 39.7, y: 19.6 }, { x: 30, y: 40 }, [wall]);
+  assert.ok(onLine.x < 40, `on the door line the aim reversed, x ${onLine.x}`);
+  assert.ok(justPast.x < 39.7, `just past the door the aim reversed, x ${justPast.x}`);
+  close(openingFlowPerS(1.6), 1.3 * (1.6 - 0.3));
+  close(openingFlowPerS(2), 1.3 * (2 - 0.3));
+  assert.equal(openingFlowPerS(0.2), 0);
+});
+
 test('no hazards: at least 90% of people who can leave are out within 120s', () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
@@ -957,5 +982,173 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
   assert.ok(
     eligible > 0 && within >= 0.9 * eligible,
     `out within 120s of starting ${within} of ${eligible} who were not sealed in`,
+  );
+});
+
+test('east exit blocked at T+2:00: at least 80% of people who can leave are out by T+5:00', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const exits: ExitDef[] = [
+    exit({ id: 'E1-west', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 }),
+    exit({ id: 'E2-east', center: { x: 60, y: 12 }, edgeIndex: 1, width: 2 }),
+    exit({ id: 'E3-north', center: { x: 30, y: 40 }, edgeIndex: 2, width: 2, status: 'congested' }),
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+    { startX: 46, startY: 0, endX: 46, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 46, startY: 8, endX: 60, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const effectWalls: InteriorWall[] = walls.map((w, i) => ({
+    id: `w${i}`,
+    start: { x: w.startX, y: w.startY },
+    end: { x: w.endX, y: w.endY },
+    hasDoor: w.hasDoor,
+    doorWidth: w.doorWidth,
+    doorPosition: w.doorPosition,
+    description: `w${i}`,
+    material: i >= 2 ? 'concrete' : 'drywall',
+    photos: [],
+  }));
+  const studs: { id: string; simPos: Vec2; spatialContext: 'inside_building' | 'open_air' }[] = [];
+  for (let x = -15; x <= 75; x += 3) {
+    for (let y = -15; y <= 55; y += 3) {
+      const inside = isInsidePolygon(x + 0.5, y + 0.5, verts);
+      studs.push({
+        id: `s_${x}_${y}`,
+        simPos: { x: x + 0.5, y: y + 0.5 },
+        spatialContext: inside ? 'inside_building' : 'open_air',
+      });
+    }
+  }
+  const blastSite = { x: 10, y: 20 };
+  const blastR = 15;
+  const rts = new RTSEngine();
+  rts.setBuildingVertices(verts);
+  const zoneKinds: Record<string, 'assembly' | 'convening'> = {};
+  for (const z of [
+    { pos: { x: -30, y: -10 }, kind: 'assembly' as const },
+    { pos: { x: 95, y: 20 }, kind: 'convening' as const },
+  ]) {
+    zoneKinds[rts.placeEquipment('assembly_point', z.pos, 'system').id] = z.kind;
+  }
+  const currentZones = (): ShowcaseZone[] =>
+    rts.state.equipment
+      .filter((e) => e.def.kind === 'assembly_point' && e.active)
+      .map((e) => ({
+        id: e.id,
+        pos: e.pos,
+        radius: e.def.radius,
+        label: e.def.label,
+        kind: zoneKinds[e.id] ?? 'assembly',
+      }));
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 120,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    exits,
+    walls,
+    [],
+    {
+      afterExit: 'zone',
+      zones: currentZones(),
+      seed: SHOWCASE.RNG_SEED,
+      buildingHeightM: SHOWCASE.BUILDING_STOREY_HEIGHT_M,
+    },
+  );
+  rts.startDetonation();
+  const effects = new SpatialEffectsEngine({
+    ...DEFAULT_FIRE_PARAMS,
+    ambientSpread: true,
+    ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
+  });
+  effects.init(studs);
+  const affected = studs
+    .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= blastR)
+    .map((s) => s.id);
+  effects.registerHazard(
+    'blast-direct',
+    [
+      {
+        triggerTimeSec: blastEffectsTriggerSec(effects.timeScale),
+        eventType: 'explode',
+        spreadType: 'fire',
+        spreadRadius: blastR,
+        spreadRate: 10,
+        description: 'Direct blast ignition',
+        severity: 'critical',
+        smokeGeneration: 'heavy',
+        affectedStuds: affected,
+      },
+    ],
+    { initial: 'a', triggered: 'b', worsening: 'c', critical: 'd' },
+  );
+  const hazardZones: HazardZone[] = [
+    {
+      id: 'blast-direct',
+      pos: blastSite,
+      radius: blastR,
+      hazardType: 'ignitable',
+      severity: 'high',
+      label: 'Blast',
+      description: 'Direct blast ignition',
+      photos: [],
+    },
+  ];
+  const field = new HazardField(
+    studs.map((s) => ({ id: s.id, simPos: s.simPos, indoor: s.spatialContext === 'inside_building' })),
+    3,
+  );
+  eng.setHazardField(field);
+  let fired = false;
+  let blocked = false;
+  const dt = 1 / 60;
+  while (rts.state.clock.elapsed < 300) {
+    rts.tick(dt);
+    const t = rts.state.clock.elapsed;
+    if (!fired && isBlastDue(t, fired)) {
+      fired = true;
+      eng.triggerBlast(blastSite, blastR);
+    }
+    if (!blocked && t >= 120) {
+      exits.find((e) => e.id === 'E2-east')!.status = 'blocked';
+      blocked = true;
+    }
+    if (!rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+      field.setStates(effects.studStates);
+      eng.syncExits(exits);
+      eng.setZones(currentZones());
+      const steps = Math.max(1, Math.round(rts.state.clock.speed));
+      for (let i = 0; i < steps; i++) eng.step();
+      effects.step(dt * rts.state.clock.speed, effectWalls, hazardZones);
+    }
+  }
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const sealed = (spawn: { x: number; y: number }) => spawn.x >= 46 && spawn.y <= 8;
+  let eligible = 0;
+  let out = 0;
+  for (const body of bodies) {
+    const ped = (body as Matter.Body & {
+      __ped: { state: string; spawn: { x: number; y: number } };
+    }).__ped;
+    if (sealed(ped.spawn) || ped.state === 'down') continue;
+    eligible++;
+    if (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') out++;
+  }
+  eng.destroy();
+  assert.equal(fired, true);
+  assert.equal(blocked, true);
+  assert.ok(
+    eligible > 0 && out >= 0.8 * eligible,
+    `out by T+5:00 ${out} of ${eligible} who were not sealed in`,
   );
 });
