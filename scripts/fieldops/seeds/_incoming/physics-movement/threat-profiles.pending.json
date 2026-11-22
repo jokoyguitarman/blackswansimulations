@@ -5,7 +5,7 @@
   "target_table": "fieldops_threat_profiles",
   "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": null,
@@ -30,8 +30,8 @@
         "sy_c_b": 0.0004,
         "sy_c_c": -0.5,
         "sz_c_a": 0.2,
-        "sz_c_b": 0.0,
-        "sz_c_c": 0.0,
+        "sz_c_b": 0,
+        "sz_c_c": 0,
         "sy_d_a": 0.16,
         "sy_d_b": 0.0004,
         "sy_d_c": -0.5,
@@ -86,11 +86,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -112,7 +113,7 @@
         "max_l_over_d": 3,
         "nfpa68_2023_low_pred_limit_barg": 0.5,
         "glass_failure_psig": 0.15,
-        "house_partial_demolition_psig": 1.0
+        "house_partial_demolition_psig": 1
       },
       "environment": [],
       "source_keys": [
@@ -150,11 +151,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -163,7 +165,7 @@
       "category": "crowd_crush",
       "model": "crowd_pressure",
       "parameters": {
-        "fluid_mass_density_p_m2": 7.0,
+        "fluid_mass_density_p_m2": 7,
         "observed_crowd_force_n_min": 4500,
         "pile_3m_chest_force_n_low": 3600,
         "pile_3m_chest_force_n_high": 4000,
@@ -220,11 +222,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -271,11 +274,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -338,11 +342,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -373,5 +378,28 @@
       "why": "Not read in this run; WS9 6.27.3 values stay Unverified."
     }
   ],
-  "refused": []
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_3358655151d2": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_12a1740085a7": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_8f71d1240df9": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_be8160949cf7": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

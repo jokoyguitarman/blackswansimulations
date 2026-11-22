@@ -179,14 +179,21 @@
     ]
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country"
     ],
-    "notes": "Steps restate CDA s. 4 functions in order; the order is Assumed. The fire-ground powers provision (entry, cordon at a fire) was not located in the Fire Safety Act or the Civil Defence Act parts read; recorded as a gap. FSA s. 29 and s. 30 headings (abate fire hazard, close premises in an emergency) seen but not read.",
-    "history": []
+    "notes": "Steps restate CDA s. 4 functions in order; the order is Assumed. The fire-ground powers provision (entry, cordon at a fire) was not located in the Fire Safety Act or the Civil Defence Act parts read; recorded as a gap. FSA s. 29 and s. 30 headings (abate fire hazard, close premises in an emergency) seen but not read. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

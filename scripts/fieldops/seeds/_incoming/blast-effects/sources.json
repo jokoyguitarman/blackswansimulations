@@ -5,7 +5,7 @@
   "target_table": "fieldops_knowledge_sources",
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -564,5 +564,128 @@
       "status": "active",
       "read_status": "read"
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "swisdak_1994": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "kingery_bulmash_1984": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "iatg_0180_2021": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "ufc_3_340_02": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "tno_green_book_1992": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "tno_yellow_book_2005": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "epa_rmp_oca_2009": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "epa_rmp_oca_appendices_1999": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "pierorazio_2004": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "melani_2009_ichs": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lachance_2009_ichs": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "iogp_434_14_2023": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "iogp_434_15_2010": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shin_2015_icps3": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "goel_2012_dsj": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "dlubal_kinney_graham": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "archi_civil_kg_tool": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "jeon_2017_computation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "cisa_standoff_card_2025": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "nctc_ct_guide": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "roberts_2000_hse": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "dga_fireball_tool": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "upb_bulletin_multi_energy": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "usace_pdc_tr_13_01": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "jrc_glazing_standards_2015": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "wu_lajss_ship_hulls": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "li_2024_cjsr": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "wikipedia_tnt_equivalent": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "fcento100_kingery_bulmash": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

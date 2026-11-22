@@ -4,7 +4,7 @@
   "library": "building_hazards",
   "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
   "provenance": {
     "drafted_by": "agent",
@@ -13,10 +13,531 @@
     "sources_file": "sources.json"
   },
   "review": {
-    "reviewer_name": null,
-    "reviewer_qualification": null,
-    "reviewed_on": null,
-    "row_decisions": {}
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "shopping_mall/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/kitchen_suppression_system/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/aerosol_stock/retail_floor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/kitchen_suppression_system/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/town_gas_service/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/lpg_cylinder_bank/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/town_gas_service/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/lpg_cylinder_bank/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/lpg_cylinder_bank/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/vehicle_fuel_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/bulk_liquid_oxygen/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/medical_gas_cylinders/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/laboratory_chemicals/laboratory": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/diesel_bulk_tank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/laboratory_chemicals/laboratory": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/traction_power_equipment/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/diesel_vehicle_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/ev_traction_batteries/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/gas_leak_detection_shutoff/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/combustible_stock_racks/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/ammonia_refrigeration/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/lead_acid_battery_room/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/diesel_vehicle_tanks/loading_bay": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/flammable_liquid_store/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/welding_gas_cylinders/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/ammonia_refrigeration/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/combustible_stock_racks/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/pressurised_lpg_storage/tank_farm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/toxic_intermediate_store/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/flammable_liquid_tank/tank_farm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/diesel_bulk_tank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/gaseous_suppression_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/electrical_switch_room/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/lead_acid_battery_room/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/vehicle_fuel_store/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/vehicle_workshop_solvents/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/ammunition_store_generic/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/diesel_vehicle_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
   },
   "review_flags": {
     "shopping_mall/town_gas_service/kitchen": [

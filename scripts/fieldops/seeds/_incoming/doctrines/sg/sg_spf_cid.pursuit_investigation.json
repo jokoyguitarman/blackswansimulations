@@ -82,14 +82,21 @@
     "scoring_rubric": ""
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country"
     ],
-    "notes": "Thin by design: investigation procedure is internal. Evidence hand-over from SAF EOD is recorded on the EOD seed.",
-    "history": []
+    "notes": "Thin by design: investigation procedure is internal. Evidence hand-over from SAF EOD is recorded on the EOD seed. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

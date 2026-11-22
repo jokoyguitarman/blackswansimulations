@@ -6,8 +6,8 @@
   "country": "SG",
   "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
   "prepared_on": "2026-11-22",
-  "review_status": "unreviewed",
-  "seed_status": "PENDING",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
   "note": "Published response-time targets, achieved shares and system size. No turnout time is published for any SCDF appliance.",
   "rows": [
     {
@@ -234,7 +234,7 @@
       "key": "sg_airport_rffs_response",
       "label": "Airport rescue and firefighting response (Changi)",
       "country": "SG",
-      "scope": "airport",
+      "scope": "sg_cag_aes",
       "values": [
         {
           "param": "respond_within_s",
@@ -287,7 +287,11 @@
           "turnout_s"
         ],
         "withheld_fields": []
-      }
+      },
+      "incident_types": [
+        "aircraft_impact"
+      ],
+      "site_bound": true
     },
     {
       "key": "sg_ems_system_context",
@@ -451,5 +455,40 @@
         "withheld_fields": []
       }
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_995_answer": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_fire_rescue_response": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_ambulance_response": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_ambulance_response_achieved": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_airport_rffs_response": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A4)."
+      },
+      "sg_ems_system_context": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_life_threatening_response_achieved": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

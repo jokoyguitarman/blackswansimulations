@@ -6,8 +6,8 @@
   "country": "SG",
   "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
   "prepared_on": "2026-11-22",
-  "review_status": "unreviewed",
-  "seed_status": "PENDING",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
   "note": "Equipment found in public sources that fieldops_equipment cannot hold (no category, or no stated capacity). Evidence only; nothing to import.",
   "rows": [
     {
@@ -148,5 +148,36 @@
         }
       ]
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_red_rhino_robot": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_pumper_firefighting_machine": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_aed": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hcv_uav": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hazmat_utility_buggy": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_red_sailfish_monitors": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

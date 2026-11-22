@@ -6,8 +6,8 @@
   "country": "SG",
   "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
   "prepared_on": "2026-11-22",
-  "review_status": "unreviewed",
-  "seed_status": "PENDING",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
   "note": "Rows with scope 'hospital' are named hospitals (fieldops_hospitals plus fieldops_hospital_specialties); every other scope is a capacity aggregate. Real hospitals are named, as D56 allows. A specialty the sources do not state is absent; stated negatives and gaps stay in values.",
   "rows": [
     {
@@ -3232,5 +3232,108 @@
         "withheld_fields": []
       }
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_public_acute_beds_national": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_public_acute_beds_by_region_2025": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_all_acute_beds_national": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_public_hospital_ed_network": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hospital_ed_surge_capacity": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_sgh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_cgh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_skh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_kkh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_nuh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_ntfgh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_ah": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_ttsh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_ktph": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_wh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_raffles": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_meh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_menh": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_gleneagles": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hosp_parkway_east": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_public_hospital_toxicology": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_inpatient_og_paeds_centralised": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_trauma_minimum_standards": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_neurosurgery_nni_sites": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

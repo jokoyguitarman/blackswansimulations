@@ -5,7 +5,7 @@
   "target_table": null,
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -41,15 +41,15 @@
         "incident_impulse_kpa_ms": 252.5,
         "reflected_impulse_kpa_ms": 654.6,
         "p_eardrum_rupture": 0.846,
-        "p_lung_death_standing_75kg": 0.0,
+        "p_lung_death_standing_75kg": 0,
         "p_lung_death_against_wall_75kg": 3.95e-12,
-        "p_head_impact_death": 0.0,
+        "p_head_impact_death": 0,
         "p_whole_body_impact_death": 1.33e-15,
         "p_hse_lethality_iogp": 0.863,
         "ufc_table_1_1_band_on_standing_effective": "lung damage threshold exceeded",
-        "p_window_broken_post_1975": 1.0,
-        "p_window_broken_pre_1975": 1.0,
-        "p_swiss_window_medium_broken": 1.0,
+        "p_window_broken_post_1975": 1,
+        "p_window_broken_pre_1975": 1,
+        "p_swiss_window_medium_broken": 1,
         "p_house_minor_damage": 0.86,
         "p_house_major_damage": 0.369,
         "p_house_collapse": 0.0679,
@@ -57,6 +57,14 @@
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -78,15 +86,15 @@
         "incident_impulse_kpa_ms": 136.7,
         "reflected_impulse_kpa_ms": 293.9,
         "p_eardrum_rupture": 0.129,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
         "p_hse_lethality_iogp": 0.201,
         "ufc_table_1_1_band_on_standing_effective": "eardrum rupture threshold exceeded",
-        "p_window_broken_post_1975": 1.0,
-        "p_window_broken_pre_1975": 1.0,
-        "p_swiss_window_medium_broken": 1.0,
+        "p_window_broken_post_1975": 1,
+        "p_window_broken_pre_1975": 1,
+        "p_swiss_window_medium_broken": 1,
         "p_house_minor_damage": 0.611,
         "p_house_major_damage": 0.0344,
         "p_house_collapse": 0.00128,
@@ -94,6 +102,14 @@
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -115,22 +131,30 @@
         "incident_impulse_kpa_ms": 71.77,
         "reflected_impulse_kpa_ms": 138.3,
         "p_eardrum_rupture": 0.00256,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
         "p_hse_lethality_iogp": 0.00969,
         "ufc_table_1_1_band_on_standing_effective": "below eardrum threshold",
         "p_window_broken_post_1975": 0.999,
-        "p_window_broken_pre_1975": 1.0,
+        "p_window_broken_pre_1975": 1,
         "p_swiss_window_medium_broken": 0.968,
         "p_house_minor_damage": 0.289,
         "p_house_major_damage": 0.000367,
-        "p_house_collapse": 1.93e-06,
+        "p_house_collapse": 0.00000193,
         "gb_damage_zone": "D minor damage"
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -151,23 +175,31 @@
         "duration_ms": 13.32,
         "incident_impulse_kpa_ms": 29.59,
         "reflected_impulse_kpa_ms": 52.88,
-        "p_eardrum_rupture": 2.08e-06,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
-        "p_hse_lethality_iogp": 3.76e-05,
+        "p_eardrum_rupture": 0.00000208,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
+        "p_hse_lethality_iogp": 0.0000376,
         "ufc_table_1_1_band_on_standing_effective": "below eardrum threshold",
         "p_window_broken_post_1975": 0.498,
         "p_window_broken_pre_1975": 0.866,
         "p_swiss_window_medium_broken": 0.225,
         "p_house_minor_damage": 0.0439,
-        "p_house_major_damage": 1.7e-08,
+        "p_house_major_damage": 1.7e-8,
         "p_house_collapse": 4.51e-12,
         "gb_damage_zone": "D minor damage"
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -189,15 +221,15 @@
         "incident_impulse_kpa_ms": 172.6,
         "reflected_impulse_kpa_ms": 426.5,
         "p_eardrum_rupture": 0.643,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
         "p_hse_lethality_iogp": 0.694,
         "ufc_table_1_1_band_on_standing_effective": "eardrum rupture threshold exceeded",
-        "p_window_broken_post_1975": 1.0,
-        "p_window_broken_pre_1975": 1.0,
-        "p_swiss_window_medium_broken": 1.0,
+        "p_window_broken_post_1975": 1,
+        "p_window_broken_pre_1975": 1,
+        "p_swiss_window_medium_broken": 1,
         "p_house_minor_damage": 0.721,
         "p_house_major_damage": 0.105,
         "p_house_collapse": 0.00742,
@@ -205,6 +237,14 @@
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -226,22 +266,30 @@
         "incident_impulse_kpa_ms": 94.01,
         "reflected_impulse_kpa_ms": 194.5,
         "p_eardrum_rupture": 0.0497,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
         "p_hse_lethality_iogp": 0.0964,
         "ufc_table_1_1_band_on_standing_effective": "eardrum rupture threshold exceeded",
-        "p_window_broken_post_1975": 1.0,
-        "p_window_broken_pre_1975": 1.0,
+        "p_window_broken_post_1975": 1,
+        "p_window_broken_pre_1975": 1,
         "p_swiss_window_medium_broken": 0.997,
         "p_house_minor_damage": 0.419,
         "p_house_major_damage": 0.00323,
-        "p_house_collapse": 3.95e-05,
+        "p_house_collapse": 0.0000395,
         "gb_damage_zone": "B heavy damage"
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -263,22 +311,30 @@
         "incident_impulse_kpa_ms": 48.94,
         "reflected_impulse_kpa_ms": 92.4,
         "p_eardrum_rupture": 0.000672,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
         "p_hse_lethality_iogp": 0.00343,
         "ufc_table_1_1_band_on_standing_effective": "below eardrum threshold",
         "p_window_broken_post_1975": 0.99,
         "p_window_broken_pre_1975": 0.999,
         "p_swiss_window_medium_broken": 0.847,
         "p_house_minor_damage": 0.146,
-        "p_house_major_damage": 8.44e-06,
-        "p_house_collapse": 1.27e-08,
+        "p_house_major_damage": 0.00000844,
+        "p_house_collapse": 1.27e-8,
         "gb_damage_zone": "D minor damage"
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -299,12 +355,12 @@
         "duration_ms": 11.51,
         "incident_impulse_kpa_ms": 20.04,
         "reflected_impulse_kpa_ms": 35.41,
-        "p_eardrum_rupture": 2.76e-07,
-        "p_lung_death_standing_75kg": 0.0,
-        "p_lung_death_against_wall_75kg": 0.0,
-        "p_head_impact_death": 0.0,
-        "p_whole_body_impact_death": 0.0,
-        "p_hse_lethality_iogp": 7.7e-06,
+        "p_eardrum_rupture": 2.76e-7,
+        "p_lung_death_standing_75kg": 0,
+        "p_lung_death_against_wall_75kg": 0,
+        "p_head_impact_death": 0,
+        "p_whole_body_impact_death": 0,
+        "p_hse_lethality_iogp": 0.0000077,
         "ufc_table_1_1_band_on_standing_effective": "below eardrum threshold",
         "p_window_broken_post_1975": 0.25,
         "p_window_broken_pre_1975": 0.708,
@@ -316,6 +372,14 @@
       },
       "tolerance": {
         "relative": 0.01
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -324,12 +388,12 @@
     "radii": {
       "hemispherical_surface": {
         "lethal_onset": {
-          "threshold_kpa": 690.0,
+          "threshold_kpa": 690,
           "metric": "standing effective (Ps+q)",
           "radius_m": 3.836
         },
         "serious_injury_onset": {
-          "threshold_kpa": 207.0,
+          "threshold_kpa": 207,
           "metric": "standing effective (Ps+q)",
           "radius_m": 5.809
         },
@@ -344,7 +408,7 @@
           "radius_m": 39.07
         },
         "glass_breakage": {
-          "threshold_kpa": 2.0,
+          "threshold_kpa": 2,
           "metric": "incident Ps",
           "radius_m": 97.36
         },
@@ -354,24 +418,24 @@
           "radius_m": 65.41
         },
         "structural_moderate": {
-          "threshold_kpa": 17.0,
+          "threshold_kpa": 17,
           "metric": "incident Ps",
           "radius_m": 19.58
         },
         "structural_severe": {
-          "threshold_kpa": 35.0,
+          "threshold_kpa": 35,
           "metric": "incident Ps",
           "radius_m": 12.2
         }
       },
       "spherical_free_air": {
         "lethal_onset": {
-          "threshold_kpa": 690.0,
+          "threshold_kpa": 690,
           "metric": "standing effective (Ps+q)",
           "radius_m": 3.153
         },
         "serious_injury_onset": {
-          "threshold_kpa": 207.0,
+          "threshold_kpa": 207,
           "metric": "standing effective (Ps+q)",
           "radius_m": 4.775
         },
@@ -386,7 +450,7 @@
           "radius_m": 32.12
         },
         "glass_breakage": {
-          "threshold_kpa": 2.0,
+          "threshold_kpa": 2,
           "metric": "incident Ps",
           "radius_m": 80.04
         },
@@ -396,12 +460,12 @@
           "radius_m": 53.77
         },
         "structural_moderate": {
-          "threshold_kpa": 17.0,
+          "threshold_kpa": 17,
           "metric": "incident Ps",
           "radius_m": 16.1
         },
         "structural_severe": {
-          "threshold_kpa": 35.0,
+          "threshold_kpa": 35,
           "metric": "incident Ps",
           "radius_m": 10.03
         }
@@ -409,6 +473,14 @@
     },
     "tolerance": {
       "relative": 0.01
+    },
+    "review": {
+      "state": "reviewed",
+      "decision": "approved",
+      "reviewer_name": "Jokoy Tabbada",
+      "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+      "decided_on": "2026-11-22",
+      "notes": "Owner approval of 22 Nov 2026."
     }
   },
   "ac6_9_cube_root_check": {
@@ -424,7 +496,7 @@
         "k": 2,
         "radius_10kg_m": 39.07,
         "radius_scaled_m": 78.14,
-        "ratio": 2.0
+        "ratio": 2
       },
       {
         "k": 3,
@@ -433,7 +505,15 @@
         "ratio": 2.9997
       }
     ],
-    "expect": "ratio equals k within 0.5 %"
+    "expect": "ratio equals k within 0.5 %",
+    "review": {
+      "state": "reviewed",
+      "decision": "approved",
+      "reviewer_name": "Jokoy Tabbada",
+      "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+      "decided_on": "2026-11-22",
+      "notes": "Owner approval of 22 Nov 2026."
+    }
   },
   "other_oracles": [
     {
@@ -458,7 +538,7 @@
         "incident_impulse_kpa_ms": 593.1,
         "dynamic_kpa": 6.209,
         "reflected_kpa": 100.9,
-        "reflected_impulse_kpa_ms": 1256.0,
+        "reflected_impulse_kpa_ms": 1256,
         "duration_ms": 37.93,
         "arrival_ms": 82.42,
         "shock_velocity_m_s": 397.6
@@ -479,6 +559,14 @@
         "confidence": "high",
         "assumed_fields": [],
         "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -511,13 +599,21 @@
         "confidence": "high",
         "assumed_fields": [],
         "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "case_id": "yellow_book_me_class10",
       "input": {
-        "E_J": 221000000000.0,
-        "pa_Pa": 100000.0,
+        "E_J": 221000000000,
+        "pa_Pa": 100000,
         "class": 10,
         "Ps_kpa": 10
       },
@@ -528,8 +624,8 @@
         "tp_ms": 146
       },
       "computed": {
-        "r_m": 391.0,
-        "tp_ms": 146.0
+        "r_m": 391,
+        "tp_ms": 146
       },
       "tolerance": {
         "relative": 0.02
@@ -547,6 +643,14 @@
         "confidence": "high",
         "assumed_fields": [],
         "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -568,21 +672,21 @@
         ],
         "duration_s": [
           2.9,
-          4.0,
+          4,
           4.9,
           5.4
         ]
       },
       "computed": {
         "diameter_m": [
-          38.0,
-          52.0,
-          63.0,
-          69.0
+          38,
+          52,
+          63,
+          69
         ],
         "duration_s": [
           2.9,
-          4.0,
+          4,
           4.9,
           5.4
         ]
@@ -603,6 +707,14 @@
         "confidence": "high",
         "assumed_fields": [],
         "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -614,7 +726,7 @@
           0.19,
           0.35,
           0.7,
-          1.0,
+          1,
           1.4
         ]
       },
@@ -626,7 +738,7 @@
           0.218,
           0.68,
           1.24,
-          2.0
+          2
         ]
       },
       "computed": {
@@ -657,7 +769,15 @@
         "assumed_fields": [],
         "to_verify": []
       },
-      "note": "Formula matches the paired values within 3 % for Mf >= 0.35 and within 15 % below."
+      "note": "Formula matches the paired values within 3 % for Mf >= 0.35 and within 15 % below.",
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
     },
     {
       "case_id": "window_probit_medians",
@@ -665,12 +785,12 @@
         "probit": 5
       },
       "expected": {
-        "post_1975_kpa": 5.0,
-        "pre_1975_kpa": 3.0
+        "post_1975_kpa": 5,
+        "pre_1975_kpa": 3
       },
       "computed": {
         "post_1975_kpa": 5.06,
-        "pre_1975_kpa": 3.0
+        "pre_1975_kpa": 3
       },
       "tolerance": {
         "relative": 0.03
@@ -688,6 +808,14 @@
         "confidence": "high",
         "assumed_fields": [],
         "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -736,7 +864,7 @@
       },
       {
         "class_key": "small_delivery_truck",
-        "w_kg_assumed_tnt": 1814.0,
+        "w_kg_assumed_tnt": 1814,
         "mandatory_m": 195.1,
         "minor_radius_m_eardrum_ps_q": 74.05,
         "lethal_radius_m_ps_q": 21.72,
@@ -744,7 +872,7 @@
       },
       {
         "class_key": "container_water_truck",
-        "w_kg_assumed_tnt": 4536.0,
+        "w_kg_assumed_tnt": 4536,
         "mandatory_m": 262.1,
         "minor_radius_m_eardrum_ps_q": 100.5,
         "lethal_radius_m_ps_q": 29.47,
@@ -752,11 +880,11 @@
       },
       {
         "class_key": "semi_trailer",
-        "w_kg_assumed_tnt": 27220.0,
+        "w_kg_assumed_tnt": 27220,
         "mandatory_m": 478.5,
         "minor_radius_m_eardrum_ps_q": 182.6,
         "lethal_radius_m_ps_q": 53.56,
-        "glass_breakage_radius_m": 1359.0
+        "glass_breakage_radius_m": 1359
       }
     ],
     "provenance": {
@@ -774,6 +902,14 @@
         "capacity treated as TNT-equivalent"
       ],
       "to_verify": []
+    },
+    "review": {
+      "state": "reviewed",
+      "decision": "approved",
+      "reviewer_name": "Jokoy Tabbada",
+      "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+      "decided_on": "2026-11-22",
+      "notes": "Owner approval of 22 Nov 2026."
     }
   },
   "uncovered": [],

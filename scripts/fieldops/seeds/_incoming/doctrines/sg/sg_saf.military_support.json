@@ -256,15 +256,22 @@
     }
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country",
       "legal or military_service"
     ],
-    "notes": "Rules of engagement are restricted; only the public SAF Act basis and published MINDEF factsheets are used. less_lethal omitted (an ADF factsheet names equipment, which is not recorded).",
-    "history": []
+    "notes": "Rules of engagement are restricted; only the public SAF Act basis and published MINDEF factsheets are used. less_lethal omitted (an ADF factsheet names equipment, which is not recorded). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles; use-of-force block withheld pending a legal, police_service or military_service reviewer (AC1.59).",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

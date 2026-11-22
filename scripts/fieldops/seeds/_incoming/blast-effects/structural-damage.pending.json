@@ -5,7 +5,7 @@
   "target_table": null,
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -69,7 +69,7 @@
           "damage": "Corrugated panels and wood panel fastenings fail"
         },
         {
-          "kpa": 9.0,
+          "kpa": 9,
           "damage": "Steel frame of clad building slightly distorted"
         },
         {
@@ -153,11 +153,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -207,11 +208,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -255,11 +257,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -294,11 +297,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -331,11 +335,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -381,11 +386,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -393,8 +399,8 @@
       "topic": "glass",
       "value": [
         {
-          "breakage": 1.0,
-          "minor_injury": 1.0,
+          "breakage": 1,
+          "minor_injury": 1,
           "major_injury": 0.1,
           "lethality": 0.01
         },
@@ -408,7 +414,7 @@
           "breakage": 0.01,
           "minor_injury": 0.001,
           "major_injury": 0.0001,
-          "lethality": 1e-05
+          "lethality": 0.00001
         }
       ],
       "unit": "probability",
@@ -428,11 +434,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -459,11 +466,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -476,8 +484,8 @@
           "A": 3.8,
           "B": 5.6,
           "Cb": 9.6,
-          "Ca": 28.0,
-          "D": 56.0
+          "Ca": 28,
+          "D": 56
         },
         "K_gilbert_lees_scilly": {
           "A": 4.8,
@@ -516,11 +524,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -531,8 +540,8 @@
           "category": "Aa",
           "damage": "totally demolished",
           "p_killed": 0.96,
-          "p_killed_or_serious": 1.0,
-          "p_any_injury": 1.0
+          "p_killed_or_serious": 1,
+          "p_any_injury": 1
         },
         {
           "category": "Ab",
@@ -565,16 +574,16 @@
         {
           "category": "Ca",
           "damage": "uninhabitable, quick repair",
-          "p_killed": 0.0,
+          "p_killed": 0,
           "p_killed_or_serious": 0.002,
           "p_any_injury": 0.006
         },
         {
           "category": "D",
           "damage": "habitable",
-          "p_killed": 0.0,
-          "p_killed_or_serious": 0.0,
-          "p_any_injury": 0.0
+          "p_killed": 0,
+          "p_killed_or_serious": 0,
+          "p_any_injury": 0
         }
       ],
       "unit": "probability",
@@ -596,11 +605,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -632,11 +642,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -660,11 +671,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -677,5 +689,16 @@
       "why": "TP-14 not read; IATG only points to it."
     }
   ],
-  "refused": []
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_a50401527dc9": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

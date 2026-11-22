@@ -5,7 +5,7 @@
   "target_table": null,
   "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": null,
@@ -34,11 +34,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -61,11 +62,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -88,11 +90,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -115,11 +118,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -142,11 +146,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -174,11 +179,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -206,11 +212,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -238,11 +245,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -270,11 +278,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -302,11 +311,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -334,11 +344,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -366,11 +377,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -393,11 +405,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -420,11 +433,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -447,11 +461,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -474,11 +489,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -501,11 +517,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -528,17 +545,18 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "ref_key": "cvm2_tenability_height",
       "topic": "smoke",
-      "value": 2.0,
+      "value": 2,
       "unit": "m",
       "note": "Tenability (FED CO, FED thermal, visibility) assessed at 2.0 m above floor.",
       "provenance": {
@@ -555,11 +573,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -582,11 +601,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -609,11 +629,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -636,11 +657,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -663,11 +685,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -690,11 +713,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -717,11 +741,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -744,11 +769,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -771,11 +797,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -798,11 +825,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -827,11 +855,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -854,11 +883,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -881,11 +911,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -913,11 +944,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -945,11 +977,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -972,11 +1005,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -999,11 +1033,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1026,11 +1061,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1053,11 +1089,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1080,11 +1117,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1107,11 +1145,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1136,11 +1175,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1163,11 +1203,12 @@
         "assumed_fields": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1192,11 +1233,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1221,11 +1263,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],

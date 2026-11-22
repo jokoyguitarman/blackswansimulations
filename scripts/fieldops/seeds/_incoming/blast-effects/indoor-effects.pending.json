@@ -5,7 +5,7 @@
   "target_table": null,
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -46,11 +46,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -66,7 +67,7 @@
         ],
         "incident_bar": [
           50,
-          5.0,
+          5,
           0.5,
           0.05
         ],
@@ -115,7 +116,7 @@
           ],
           "80": [
             50,
-            6.0,
+            6,
             0.66,
             0.098
           ],
@@ -146,17 +147,18 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "ref_key": "openings_fail_early",
       "topic": "indoor",
-      "value": 1.0,
+      "value": 1,
       "unit": "ms after shock arrival",
       "note": "Ordinary windows and doors fail about 1 ms after the shock arrives, so treat them as open vents for blast propagation (no attenuation) unless blast-rated. The interior shock starts weaker than outside, then grows by reflections.",
       "provenance": {
@@ -186,11 +188,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -216,11 +219,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -249,11 +253,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -284,17 +289,18 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "ref_key": "pes_building_no_reduction",
       "topic": "indoor",
-      "value": 1.0,
+      "value": 1,
       "unit": "charge-weight factor",
       "note": "For a detonation inside a hollow clay tile or pre-engineered metal building, assume no blast reduction outside (weight factor 1). Factors for other building types are in DDESB TP-14 Table A-5 (not read).",
       "provenance": {
@@ -314,11 +320,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -337,28 +344,28 @@
           "key": "no_hazard",
           "hazard_level": "None",
           "description": "Cracks, retained by frame; dust or tiny fragments on sill/floor.",
-          "fragment_reach_m": 0.0
+          "fragment_reach_m": 0
         },
         {
           "gsa_condition": "3a",
           "key": "very_low",
           "hazard_level": "Very low",
           "description": "Fragments land on floor no further than 1 m from the window.",
-          "fragment_reach_m": 1.0
+          "fragment_reach_m": 1
         },
         {
           "gsa_condition": "3b",
           "key": "low",
           "hazard_level": "Low",
           "description": "Fragments land on floor no further than 3 m from the window.",
-          "fragment_reach_m": 3.0
+          "fragment_reach_m": 3
         },
         {
           "gsa_condition": "4",
           "key": "medium",
           "hazard_level": "Medium",
           "description": "Fragments hit a witness panel 3 m away no higher than 0.6 m above floor.",
-          "fragment_reach_m": 3.0
+          "fragment_reach_m": 3
         },
         {
           "gsa_condition": "5",
@@ -397,11 +404,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -424,5 +432,20 @@
       "why": "Not found at a simplified published level. Sourced rules: ordinary doors and windows fail within about 1 ms and act as openings; concrete or masonry walls that survive block the shock (WS9 wall model); DDESB TP-14 Table A-5 (not read) gives building attenuation as charge-weight factors."
     }
   ],
-  "refused": []
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_757cede4c86b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_831952e5adbe": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

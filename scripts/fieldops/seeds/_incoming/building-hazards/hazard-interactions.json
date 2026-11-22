@@ -4,7 +4,7 @@
   "library": "building_hazards",
   "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
   "provenance": {
     "drafted_by": "agent",
@@ -13,10 +13,139 @@
     "sources_file": "sources.json"
   },
   "review": {
-    "reviewer_name": null,
-    "reviewer_qualification": null,
-    "reviewed_on": null,
-    "row_decisions": {}
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "lpg_bank_blast_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lpg_cloud_ignition": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lpg_bank_fire_bleve": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_blast_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_collapse_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "fryer_oil_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "transformer_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "transformer_blast": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "diesel_tank_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sprinkler_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sprinkler_blast_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "smoke_control_power_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "oxygen_fire_enrichment": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "li_ion_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "pool_chemical_mix": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A2)."
+      },
+      "traction_power_flood": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_cloud_ignition": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "ev_battery_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "amd_battery_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "vehicle_fuel_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "diesel_vehicle_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "flammable_store_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lead_acid_hydrogen_flash": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "ammonia_plant_rupture": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A2)."
+      },
+      "oxygen_cylinder_fire_burst": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lab_chemicals_toxic_smoke": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "pool_chemical_flood": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "switch_room_flood_power": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generator_flood_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "gas_shutoff_on_power_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "kitchen_suppression_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "gaseous_suppression_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
   },
   "review_flags": {
     "lpg_bank_blast_rupture": [
@@ -704,7 +833,7 @@
       "rule_key": "pool_chemical_mix",
       "kind_key": "pool_chlorination",
       "trigger": "structural_state",
-      "threshold": 2,
+      "threshold": 1,
       "effect": "rupture_release",
       "threat_key": null,
       "agent_key": "chlorine",
@@ -1053,7 +1182,7 @@
       "rule_key": "ammonia_plant_rupture",
       "kind_key": "ammonia_refrigeration",
       "trigger": "structural_state",
-      "threshold": 2,
+      "threshold": 1,
       "effect": "rupture_release",
       "threat_key": null,
       "agent_key": "ammonia",

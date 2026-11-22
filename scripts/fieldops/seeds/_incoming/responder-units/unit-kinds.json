@@ -6,8 +6,8 @@
   "country": "SG",
   "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
   "prepared_on": "2026-11-22",
-  "review_status": "unreviewed",
-  "seed_status": "PENDING",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
   "note": "fieldops_unit_kinds rows (T9.50). Rows hold the columns of migration 254 (amended, 11-living-world.md) without status, row_version or updated_at, plus 'provenance' (SeedProvenance, section 5.18) and '_review' (evidence for the reviewer; the importer drops it). NOT NULL columns the sources do not state are filled from UNIT_CATALOGUE and listed in assumed_fields.",
   "rows": [
     {
@@ -2774,5 +2774,100 @@
         ]
       }
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_scdf_pump_ladder": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_electric_pump_ladder": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_6g": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_5g": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_bike": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl34": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl60": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_al56": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hla90": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rescue_tender": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_frost": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hazmat_mitigation_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hazmat_control_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_mass_decon_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_dart_rescue_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_emergency_ambulance": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_private_ambulance": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_medical_support_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_large_monitor_vehicle": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pod_carrier": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_caas_aes_foam_tender": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

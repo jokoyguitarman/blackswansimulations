@@ -5,7 +5,7 @@
   "target_table": "fieldops_release_agents",
   "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": null,
@@ -17,7 +17,7 @@
       "agent_key": "ammonia",
       "label": "Ammonia",
       "cas_number": "7664-41-7",
-      "molecular_weight": 17.0,
+      "molecular_weight": 17,
       "density_ratio": 0.6,
       "boiling_point_c": -33.3,
       "lfl_pct": 15,
@@ -129,11 +129,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -185,12 +186,12 @@
         {
           "tier": 2,
           "minutes": 60,
-          "ppm": 2.0
+          "ppm": 2
         },
         {
           "tier": 2,
           "minutes": 240,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 2,
@@ -258,11 +259,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -381,11 +383,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -504,18 +507,19 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "agent_key": "carbon_monoxide",
       "label": "Carbon monoxide (fire product)",
       "cas_number": "630-08-0",
-      "molecular_weight": 28.0,
+      "molecular_weight": 28,
       "density_ratio": 0.97,
       "boiling_point_c": -191.7,
       "lfl_pct": 12.5,
@@ -602,11 +606,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -615,7 +620,7 @@
       "cas_number": "7647-01-0",
       "molecular_weight": 36.5,
       "density_ratio": 1.27,
-      "boiling_point_c": -85.0,
+      "boiling_point_c": -85,
       "lfl_pct": null,
       "ufl_pct": null,
       "tier_scheme": "aegl",
@@ -725,18 +730,19 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "agent_key": "hydrogen_fluoride",
       "label": "Hydrogen fluoride (battery fires)",
       "cas_number": "7664-39-3",
-      "molecular_weight": 20.0,
+      "molecular_weight": 20,
       "density_ratio": 0.69,
       "boiling_point_c": 19.4,
       "lfl_pct": null,
@@ -746,27 +752,27 @@
         {
           "tier": 1,
           "minutes": 10,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 1,
           "minutes": 30,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 1,
           "minutes": 60,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 1,
           "minutes": 240,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 1,
           "minutes": 480,
-          "ppm": 1.0
+          "ppm": 1
         },
         {
           "tier": 2,
@@ -848,11 +854,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -974,11 +981,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -987,7 +995,7 @@
       "cas_number": "7446-09-5",
       "molecular_weight": 64.1,
       "density_ratio": 2.26,
-      "boiling_point_c": -10.0,
+      "boiling_point_c": -10,
       "lfl_pct": null,
       "ufl_pct": null,
       "tier_scheme": "aegl",
@@ -1097,18 +1105,19 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "agent_key": "nitrogen_dioxide",
       "label": "Nitrogen dioxide (fire product)",
       "cas_number": "10102-44-0",
-      "molecular_weight": 46.0,
+      "molecular_weight": 46,
       "density_ratio": 2.62,
       "boiling_point_c": 21.1,
       "lfl_pct": null,
@@ -1221,11 +1230,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -1345,21 +1355,22 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
       "agent_key": "formaldehyde",
       "label": "Formaldehyde (fire product)",
       "cas_number": "50-00-0",
-      "molecular_weight": 30.0,
+      "molecular_weight": 30,
       "density_ratio": 1.04,
       "boiling_point_c": -21.1,
-      "lfl_pct": 7.0,
+      "lfl_pct": 7,
       "ufl_pct": 73,
       "tier_scheme": "aegl",
       "tiers": [
@@ -1468,11 +1479,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -1525,5 +1537,44 @@
       "subject": "any chemical warfare agent",
       "why": "Never drafted (WS9 6.27.10)."
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_568d2fc39212": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_e55ddb199ad8": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_e7f90b031036": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_e602dc5b8ac5": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_ddf74783a656": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_9bb3777e5215": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_6bb3f651690f": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_4ab2f200f587": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

@@ -181,15 +181,22 @@
     "scoring_rubric": ""
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country",
       "D22"
     ],
-    "notes": "D22 review required. Kept to the 6.11 level; equipment named in the sources is not transcribed. The step source is a 2003 MINDEF article (archived copy) and may be outdated. Cordon, communications discipline and all clear are required by 6.11 but no generic official source was located (the 2023 sources that state the cordon describe one named site, excluded under WS9 6.19): left as gaps, never written.",
-    "history": []
+    "notes": "D22 review required. Kept to the 6.11 level; equipment named in the sources is not transcribed. The step source is a 2003 MINDEF article (archived copy) and may be outdated. Cordon, communications discipline and all clear are required by 6.11 but no generic official source was located (the 2023 sources that state the cordon describe one named site, excluded under WS9 6.19): left as gaps, never written. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

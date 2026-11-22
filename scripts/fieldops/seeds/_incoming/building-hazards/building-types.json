@@ -4,7 +4,7 @@
   "library": "building_hazards",
   "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
   "provenance": {
     "drafted_by": "agent",
@@ -13,10 +13,107 @@
     "sources_file": "sources.json"
   },
   "review": {
-    "reviewer_name": null,
-    "reviewer_qualification": null,
-    "reviewed_on": null,
-    "row_decisions": {}
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "shopping_mall": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
   },
   "review_flags": {
     "shopping_mall": [
@@ -104,8 +201,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 5.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_retail",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 950,
@@ -169,7 +266,7 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 4.0,
+      "storey_height_m": 4,
       "basement_storey_height_m": 3.5,
       "contents_key": "contents_office",
       "frame_key": "frame_reinforced_concrete",
@@ -350,8 +447,8 @@
       ],
       "building_tags": [],
       "priority": 20,
-      "storey_height_m": 3.0,
-      "basement_storey_height_m": 3.0,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
       "contents_key": "contents_residential",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 300,
@@ -409,8 +506,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 3.0,
-      "basement_storey_height_m": 3.0,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
       "contents_key": "contents_residential",
       "frame_key": "frame_masonry",
       "sprinklered_permille": 0,
@@ -466,7 +563,7 @@
       "building_tags": [],
       "priority": 100,
       "storey_height_m": 4.5,
-      "basement_storey_height_m": 4.0,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_generic",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 1000,
@@ -584,8 +681,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 5.0,
-      "basement_storey_height_m": 6.0,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 6,
       "contents_key": "contents_transit",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 1000,
@@ -647,8 +744,8 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 6.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_transit",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 500,
@@ -701,8 +798,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 8.0,
-      "basement_storey_height_m": 5.0,
+      "storey_height_m": 8,
+      "basement_storey_height_m": 5,
       "contents_key": "contents_transit",
       "frame_key": "frame_steel",
       "sprinklered_permille": 1000,
@@ -765,8 +862,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 3.0,
-      "basement_storey_height_m": 3.0,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
       "contents_key": "contents_car_park",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 300,
@@ -822,8 +919,8 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 5.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_generic",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 0,
@@ -882,8 +979,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 6.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_generic",
       "frame_key": "frame_steel",
       "sprinklered_permille": 500,
@@ -936,8 +1033,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 6.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_generic",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 200,
@@ -990,7 +1087,7 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 4.0,
+      "storey_height_m": 4,
       "basement_storey_height_m": 3.5,
       "contents_key": "contents_office",
       "frame_key": "frame_reinforced_concrete",
@@ -1040,8 +1137,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 10.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 10,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_industrial",
       "frame_key": "frame_steel",
       "sprinklered_permille": 800,
@@ -1099,8 +1196,8 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 6.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_industrial",
       "frame_key": "frame_steel",
       "sprinklered_permille": 600,
@@ -1156,8 +1253,8 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 8.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 8,
+      "basement_storey_height_m": 4,
       "contents_key": "contents_industrial",
       "frame_key": "frame_steel",
       "sprinklered_permille": 500,
@@ -1215,8 +1312,8 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 5.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
       "contents_key": "fuel_electrical",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 1000,
@@ -1267,8 +1364,8 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 6.0,
-      "basement_storey_height_m": 4.0,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
       "contents_key": "fuel_electrical",
       "frame_key": "frame_reinforced_concrete",
       "sprinklered_permille": 0,
@@ -1320,7 +1417,7 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 4.0,
+      "storey_height_m": 4,
       "basement_storey_height_m": 3.5,
       "contents_key": "contents_generic",
       "frame_key": "frame_reinforced_concrete",
@@ -1371,7 +1468,7 @@
       ],
       "building_tags": [],
       "priority": 100,
-      "storey_height_m": 4.0,
+      "storey_height_m": 4,
       "basement_storey_height_m": 3.5,
       "contents_key": "contents_office",
       "frame_key": "frame_reinforced_concrete",
@@ -1423,7 +1520,7 @@
       "place_classes": [],
       "building_tags": [],
       "priority": 1000,
-      "storey_height_m": 4.0,
+      "storey_height_m": 4,
       "basement_storey_height_m": 3.5,
       "contents_key": "contents_generic",
       "frame_key": "frame_unknown",

@@ -5,7 +5,7 @@
   "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
   "drafted_by": "agent",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "subject": "The six generic playbook seeds of 02 section 6.11, read against public Singapore sources (D55). Source text: server/services/demoAIAgentService.ts:4800-5102 at commit 8948df1. Line references in 02 section 6.11 were checked and match.",
   "note": "Each record gives: claims the agent could source, claims it could not, steps that differ from Singapore agencies' public material, errors or outdated content, and a proposed amendment. 'proposed_action' is advice; the reviewer keeps, amends (new version) or retires, and writes review.history.",
   "reviews": [
@@ -13,10 +13,26 @@
       "seed": "playbooks/evacuation_crowd.json",
       "source_lines": "server/services/demoAIAgentService.ts:4803-4832 and 4924-4965",
       "claims_sourced": [
-        { "claim": "Keep crowds out of risky areas with cordons and signage", "source": "MHA oral reply on crowd surges, 28 Nov 2022", "locator": "Answer, para 4" },
-        { "claim": "Keep emergency lanes and close areas before they overcrowd", "source": "MHA oral reply on crowd surges, 28 Nov 2022", "locator": "Answer, para 5" },
-        { "claim": "Give clear exit instructions by loudhailer or PA", "source": "MHA oral reply on crowd surges, 28 Nov 2022", "locator": "Answer, para 9" },
-        { "claim": "Separate walking wounded and pass anyone needing treatment to the medics", "source": "Civil Defence Act 1986", "locator": "s. 4(2)(b) (first aid is SCDF's function)" }
+        {
+          "claim": "Keep crowds out of risky areas with cordons and signage",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 4"
+        },
+        {
+          "claim": "Keep emergency lanes and close areas before they overcrowd",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 5"
+        },
+        {
+          "claim": "Give clear exit instructions by loudhailer or PA",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 9"
+        },
+        {
+          "claim": "Separate walking wounded and pass anyone needing treatment to the medics",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(b) (first aid is SCDF's function)"
+        }
       ],
       "claims_unsourced": [
         "Exit flow rate of about 60 people per minute through a standard door (no source; belongs in WS9's movement library, not a doctrine)",
@@ -41,9 +57,21 @@
       "seed": "playbooks/fire_rescue.json",
       "source_lines": "server/services/demoAIAgentService.ts:4834-4871 (and the example in 02 section 6.11)",
       "claims_sourced": [
-        { "claim": "Rescue casualties and remove them to safety", "source": "Civil Defence Act 1986", "locator": "s. 4(2)(a), (b)" },
-        { "claim": "Extinguish and prevent the spread of fire", "source": "Civil Defence Act 1986", "locator": "s. 4(2)(f), (i)" },
-        { "claim": "Mitigate hazardous materials incidents, including decontamination", "source": "Civil Defence Act 1986; SCDF Training Directory", "locator": "s. 4(2)(j); Hazmat Specialist Course" }
+        {
+          "claim": "Rescue casualties and remove them to safety",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(a), (b)"
+        },
+        {
+          "claim": "Extinguish and prevent the spread of fire",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(f), (i)"
+        },
+        {
+          "claim": "Mitigate hazardous materials incidents, including decontamination",
+          "source": "Civil Defence Act 1986; SCDF Training Directory",
+          "locator": "s. 4(2)(j); Hazmat Specialist Course"
+        }
       ],
       "claims_unsourced": [
         "Decontamination corridor within 10 minutes; first casualties handed over within 15 minutes (time targets with no source)",
@@ -68,9 +96,21 @@
       "seed": "playbooks/medical_triage.json",
       "source_lines": "server/services/demoAIAgentService.ts:4873-4921",
       "claims_sourced": [
-        { "claim": "Hand over to hospitals; hospitals may divert ambulances in a spike", "source": "MOH, Ambulance Diversion", "locator": "para 2" },
-        { "claim": "MOH coordinates casualty management at the site and in public hospitals", "source": "MOH oral reply, 10 Jan 2018", "locator": "para 1" },
-        { "claim": "Public tells responders the injury and when a tie was applied", "source": "SCDF IFAS Plus leaflet", "locator": "PRESS TIE TELL" }
+        {
+          "claim": "Hand over to hospitals; hospitals may divert ambulances in a spike",
+          "source": "MOH, Ambulance Diversion",
+          "locator": "para 2"
+        },
+        {
+          "claim": "MOH coordinates casualty management at the site and in public hospitals",
+          "source": "MOH oral reply, 10 Jan 2018",
+          "locator": "para 1"
+        },
+        {
+          "claim": "Public tells responders the injury and when a tie was applied",
+          "source": "SCDF IFAS Plus leaflet",
+          "locator": "PRESS TIE TELL"
+        }
       ],
       "claims_unsourced": [
         "START algorithm values (RR over 30, capillary refill over 2 s) as Singapore practice",
@@ -96,8 +136,16 @@
       "seed": "playbooks/media_comms.json",
       "source_lines": "server/services/demoAIAgentService.ts:4967-5001",
       "claims_sourced": [
-        { "claim": "Alert the public and keep them informed during an incident", "source": "MHA oral reply on crowd surges, 28 Nov 2022; Civil Defence Act 1986", "locator": "Answer, para 10; s. 4(2)(e)" },
-        { "claim": "Do not spread rumours", "source": "SGSecure advisory posters (Keep Calm and Don't Spread Rumours)", "locator": "poster list" }
+        {
+          "claim": "Alert the public and keep them informed during an incident",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022; Civil Defence Act 1986",
+          "locator": "Answer, para 10; s. 4(2)(e)"
+        },
+        {
+          "claim": "Do not spread rumours",
+          "source": "SGSecure advisory posters (Keep Calm and Don't Spread Rumours)",
+          "locator": "poster list"
+        }
       ],
       "claims_unsourced": [
         "Statement-quality rules ('NEVER omit numbers', update every 30 minutes)",
@@ -118,8 +166,16 @@
       "seed": "playbooks/pursuit_investigation.json",
       "source_lines": "server/services/demoAIAgentService.ts:5003-5029",
       "claims_sourced": [
-        { "claim": "Investigate bomb and explosive-related offences", "source": "SPF Our People, Criminal Investigation Department", "locator": "Major Crime Division" },
-        { "claim": "Evidence from a device is collected and sent for forensic investigation", "source": "MINDEF Cyberpioneer, April 2003 (archived)", "locator": "36 SCE, step (3)" }
+        {
+          "claim": "Investigate bomb and explosive-related offences",
+          "source": "SPF Our People, Criminal Investigation Department",
+          "locator": "Major Crime Division"
+        },
+        {
+          "claim": "Evidence from a device is collected and sent for forensic investigation",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, step (3)"
+        }
       ],
       "claims_unsourced": [
         "Witness interview area in the cold zone",
@@ -140,9 +196,21 @@
       "seed": "playbooks/bomb_disposal_eod.json",
       "source_lines": "server/services/demoAIAgentService.ts:5031-5088",
       "claims_sourced": [
-        { "claim": "EOD commander consults the Incident Manager and assesses before acting", "source": "MINDEF Cyberpioneer, April 2003 (archived)", "locator": "36 SCE, step (1)" },
-        { "claim": "Render safe remotely; confirm, check for further devices, collect evidence", "source": "MINDEF Cyberpioneer, April 2003 (archived)", "locator": "36 SCE, steps (2) and (3)" },
-        { "claim": "Sweeps at key national events", "source": "Singapore Army, Singapore Combat Engineers", "locator": "EOD Engineers" }
+        {
+          "claim": "EOD commander consults the Incident Manager and assesses before acting",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, step (1)"
+        },
+        {
+          "claim": "Render safe remotely; confirm, check for further devices, collect evidence",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, steps (2) and (3)"
+        },
+        {
+          "claim": "Sweeps at key national events",
+          "source": "Singapore Army, Singapore Combat Engineers",
+          "locator": "EOD Engineers"
+        }
       ],
       "claims_unsourced": [
         "Staging area 150 m or more from the incident (standoffs belong to WS6's device library)",
@@ -160,5 +228,36 @@
       "proposed_action": "amend",
       "confidence": "medium"
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "playbooks/evacuation_crowd": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/fire_rescue": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/medical_triage": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/media_comms": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/pursuit_investigation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/bomb_disposal_eod": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

@@ -22,5 +22,17 @@
   "rows_refused": 3,
   "sources_cited": 32,
   "uncovered": 20,
-  "note": "No brief_hash: run was not made through scripts/fieldops/knowledge/researchAgent.ts (not built yet). importApproved must skip these files while review_status is pending."
+  "note": "No brief_hash: run was not made through scripts/fieldops/knowledge/researchAgent.ts (not built yet). importApproved must skip these files while review_status is pending.",
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "2e29e439-b48c-5ad4-ae98-484474e9326c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  },
+  "review_status": "reviewed"
 }

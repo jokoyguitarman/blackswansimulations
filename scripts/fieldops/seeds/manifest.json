@@ -1,0 +1,662 @@
+{
+  "format": "fieldops_seed_manifest_v1",
+  "generated_on": "2026-11-22",
+  "files": [
+    {
+      "path": "planning/spread-materials.planning.json",
+      "sha256": "6d4042d36fc17ce7c1218dc2bcbd700a3622b9d90499ed68404815a4336f1cda",
+      "bytes": 43802,
+      "format": "planning_rows_v0",
+      "library": "spread",
+      "records": {
+        "table_row": 29
+      }
+    },
+    {
+      "path": "_incoming/responder-units/unit-kinds.json",
+      "sha256": "16baa2c851eef5026f7f0346aecb8e20c8abebcaa1b870e482d1d98f04df648a",
+      "bytes": 93456,
+      "format": "table_rows_v0",
+      "library": "units",
+      "records": {
+        "table_row": 22
+      }
+    },
+    {
+      "path": "_incoming/responder-units/unit-kinds-vessels.json",
+      "sha256": "413311cbb6b6d32f6939d4ff11d6b06aae8029c06e12c1effd9aa66cb83116a2",
+      "bytes": 22334,
+      "format": "table_rows_v0",
+      "library": "units",
+      "records": {
+        "table_row": 5
+      }
+    },
+    {
+      "path": "_incoming/responder-units/equipment.json",
+      "sha256": "776d0c9f5132302a296cb8001de2f5dbf1d3377ec7e3b7a0d4e4d41020e78f95",
+      "bytes": 39642,
+      "format": "table_rows_v0",
+      "library": "units",
+      "records": {
+        "table_row": 33
+      }
+    },
+    {
+      "path": "_incoming/responder-units/unit-equipment.json",
+      "sha256": "3878ee3ff4e278520f4033408de3495ec237d3f7deb98ef481042daf627bf228",
+      "bytes": 10483,
+      "format": "table_rows_v0",
+      "library": "units",
+      "records": {
+        "table_row": 34
+      }
+    },
+    {
+      "path": "_incoming/responder-units/equipment-not-representable.json",
+      "sha256": "bd4e7fcd3be5665f328f709d051395c75454a3e4cd1030779dca91cf34f54145",
+      "bytes": 6343,
+      "format": "responder_rows_v0",
+      "library": "units",
+      "records": {
+        "not_representable": 6
+      }
+    },
+    {
+      "path": "_incoming/responder-units/security-units.sg.json",
+      "sha256": "173d704032b77f51e66bc9f7cff1886e723bd0e233b1c7e27e3b1452a24ba2e2",
+      "bytes": 29894,
+      "format": "responder_rows_v0",
+      "library": "doctrines",
+      "records": {
+        "register_unit": 18
+      }
+    },
+    {
+      "path": "_incoming/responder-units/response-standards.sg.json",
+      "sha256": "0a8c83f278259fc0ec2d1483880627aa6b0f1ef8815f37989c13b34cda5679a2",
+      "bytes": 15014,
+      "format": "responder_rows_v0",
+      "library": "units",
+      "records": {
+        "table_row": 7
+      }
+    },
+    {
+      "path": "_incoming/responder-units/hospital-capacity.sg.json",
+      "sha256": "2798a49f36cc42ea470f2b3627d77a6933e4f517dac6001da3469929a1470106",
+      "bytes": 120207,
+      "format": "responder_rows_v0",
+      "library": "hospitals",
+      "records": {
+        "table_row": 24
+      }
+    },
+    {
+      "path": "_incoming/responder-units/sources.sg.json",
+      "sha256": "bc06ca5be3c37e6d3f595c6cc89e8544350dc9ff1ee8e97a9ed7d21acd7e123a",
+      "bytes": 58434,
+      "format": "sources_v0",
+      "library": "units",
+      "records": {
+        "source": 87
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/spread-materials.pending.json",
+      "sha256": "519cb9c441d9d2560e36a22b5818df63be3f2693ace2e1b9cdc6167c356ae562",
+      "bytes": 15300,
+      "format": "table_rows_v0",
+      "library": "spread",
+      "records": {
+        "table_row": 7,
+        "uncovered": 3
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/release-agents.pending.json",
+      "sha256": "888fb36b84f6582f347491c17e61913dbf532013a7c9a7527b542cf28a8d0ebe",
+      "bytes": 39110,
+      "format": "table_rows_v0",
+      "library": "threats",
+      "records": {
+        "table_row": 12,
+        "uncovered": 5,
+        "refused": 3
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/threat-profiles.pending.json",
+      "sha256": "975da4a1055679fe68048375a05af8307c799264b611232f05f2f60623be502d",
+      "bytes": 16292,
+      "format": "table_rows_v0",
+      "library": "threats",
+      "records": {
+        "table_row": 5,
+        "uncovered": 4
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/movement-parameters.pending.json",
+      "sha256": "aabaeb5688f6766d4d6faa0da6db7369e77adc076ee1ec4b823cee123890c3a0",
+      "bytes": 43161,
+      "format": "table_rows_v0",
+      "library": "movement",
+      "records": {
+        "table_row": 31,
+        "uncovered": 8
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/incident-types.pending.json",
+      "sha256": "bd21038d436de062c2274a33dfe770cbde826f40d3fb6bff16837251cf2ce459",
+      "bytes": 13846,
+      "format": "table_rows_v0",
+      "library": "threats",
+      "records": {
+        "table_row": 7
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/exposure-reference.pending.json",
+      "sha256": "0f554f74deb04af53c2e66b6d849b5bfd73a4788752a5f53bd1919f426ad64d6",
+      "bytes": 40992,
+      "format": "reference_rows_v0",
+      "library": "spread",
+      "records": {
+        "reference": 41,
+        "gap": 2
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/sources.pending.json",
+      "sha256": "df6e1accc97ecb49aee5d121bcece8e4cd43ab27db452c1c3da463ccec6c65b1",
+      "bytes": 27836,
+      "format": "sources_v0",
+      "library": "threats",
+      "records": {
+        "source": 32
+      }
+    },
+    {
+      "path": "_incoming/physics-movement/run.json",
+      "sha256": "ae748490d23fb2098ba2d9378328f38d9bc237750545336e7ca65c952b3bc015",
+      "bytes": 1241,
+      "format": "run_manifest_v0",
+      "library": "threats",
+      "records": {
+        "run": 1
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/building-types.json",
+      "sha256": "185d7ebee9e9533cf9f8cde5a0327db130a1d201a75e750456e8cbd0c8b97a11",
+      "bytes": 57874,
+      "format": "table_rows_v0",
+      "library": "building_hazards",
+      "records": {
+        "table_row": 24
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/hazard-item-kinds.json",
+      "sha256": "cb14d33aee0d8118178e1e72a2ded36f456b865702b37e0f2ac4b65dd0b61a91",
+      "bytes": 53262,
+      "format": "table_rows_v0",
+      "library": "building_hazards",
+      "records": {
+        "table_row": 35
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/building-items.json",
+      "sha256": "55957ee739d687e848b9e8b743a3a79d1e16308f80cbd74d8e1fa0e07f9944e2",
+      "bytes": 164897,
+      "format": "table_rows_v0",
+      "library": "building_hazards",
+      "records": {
+        "table_row": 130
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/hazard-interactions.json",
+      "sha256": "e2831bd4b620695d9978daf6d55e25832db5532412cf923efaa50a85b798698a",
+      "bytes": 49708,
+      "format": "table_rows_v0",
+      "library": "building_hazards",
+      "records": {
+        "table_row": 32
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/release-agents.json",
+      "sha256": "4695464df85ca0ad624a901f95a72367e1c06fe7c90dd12573e0f66988a4dc35",
+      "bytes": 16686,
+      "format": "table_rows_v0",
+      "library": "threats",
+      "records": {
+        "table_row": 7
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/sources.json",
+      "sha256": "3fd8ee4d287f7add96479f398a3146117793e62aeb4a949936c830d7d8bb9f6c",
+      "bytes": 33558,
+      "format": "sources_v0",
+      "library": "building_hazards",
+      "records": {
+        "source": 41
+      }
+    },
+    {
+      "path": "_incoming/building-hazards/run.json",
+      "sha256": "2b23858aa754e3c1631e8c97a34f71d1565b648f841f00594ab8328c73e854ef",
+      "bytes": 7974,
+      "format": "run_manifest_v0",
+      "library": "building_hazards",
+      "records": {
+        "run": 1,
+        "uncovered": 11,
+        "refused": 6
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/agencies.json",
+      "sha256": "18842148fb0bf63ea315fbe63b4b34bd37ee449206b205ba6c070d242c89eec7",
+      "bytes": 63697,
+      "format": "agency_register_v1",
+      "library": "doctrines",
+      "records": {
+        "register_agency": 14,
+        "register_unit": 22
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_caas.transport_operator.json",
+      "sha256": "cc9a2accdf99a44a4f7cff6b9185dd498000c8b73db6dc00801627b457cf4c28",
+      "bytes": 5624,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_cag_aes.fire_rescue.json",
+      "sha256": "c0db40b29396942b457d43dd3720d13d317302242d857e6b78096ea2fc7f42e7",
+      "bytes": 13707,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_lta.transport_operator.json",
+      "sha256": "12ad0ec090cc349974fabc39f03c746b9600fe5be652f0b14a7c836080e54111",
+      "bytes": 4715,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_mha.ministry_liaison.json",
+      "sha256": "153734e7935f9a7e40842e55d960505287bcc1180095f6370dffdaeffa19b040",
+      "bytes": 6059,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_moh.hospital_ed.json",
+      "sha256": "17b51e31cd60a1a6f0eba3cdb74857129af5d04f469e6e3d584340ba323d7f97",
+      "bytes": 5078,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_nea.utilities.json",
+      "sha256": "168c1f048bb542b4ea48f0031507130efcf17efae3a298ed1185775b0c23c04b",
+      "bytes": 4141,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_pub.utilities.json",
+      "sha256": "274d838f84ae50714b9281dfd3f3813a2ee3aaf004b19d6b0161661f7f570d1d",
+      "bytes": 4195,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_saf.bomb_disposal_eod.json",
+      "sha256": "c09257b0713b5f234e2f17c947b73f4ed55995a6ef8769e4e9baad6cdb55fff4",
+      "bytes": 7422,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_saf.cbrn_defence.json",
+      "sha256": "ea49d5294b9c8db4cac775510b51fca9ba563b11ffaf5ae26242e7469ff250b7",
+      "bytes": 5200,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_saf.military_support.json",
+      "sha256": "bba2b9a59ddb75308f45cc29f21f0ac4f1c205ead6ecb4a102f1b95c0c0d940f",
+      "bytes": 10795,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_scdf.fire_rescue.json",
+      "sha256": "b595a1030cca9165ddd5108196d64261d27363c050a59489663b273882021672",
+      "bytes": 7136,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_scdf.incident_command.json",
+      "sha256": "f55c73f22c848c0a0e95af81753fed7757675a00145f218b9ddd2ac28139f5c0",
+      "bytes": 6907,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_scdf.medical_triage.json",
+      "sha256": "8fa81a016779b1efb2603f6435d14638a44813ccbcb7960ffef2e27c151e3499",
+      "bytes": 5051,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_spf.evacuation_crowd.json",
+      "sha256": "51027012626c66b1580b021be078a527263ef7313dfbd58af6dde0d990c8acb2",
+      "bytes": 6784,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_spf.police_security.json",
+      "sha256": "fce4e06e488a2b95e24772ac637c4aa0efa28f9b3912654c9d73004b578638dc",
+      "bytes": 15360,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_spf_cid.pursuit_investigation.json",
+      "sha256": "d7384500b5cf889dd9bfee2b876e9b5e60896e7a93030ffa46f0e2542abf8f64",
+      "bytes": 3378,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/sg/sg_spf_soc.tactical_response.json",
+      "sha256": "93c93756b30bcd401ae08bf2cdfff62ce37ea4a46784f7dbc2add96ca1652c70",
+      "bytes": 8340,
+      "format": "doctrine_seed_v1",
+      "library": "doctrines",
+      "records": {
+        "doctrine_seed": 1
+      }
+    },
+    {
+      "path": "_incoming/doctrines/playbook-review.pending.json",
+      "sha256": "5349276dd2f6869c48f4d716949e678c423b7c9706b804d246fb19ab10276bfa",
+      "bytes": 16015,
+      "format": "doctrine_review_v0",
+      "library": "doctrines",
+      "records": {
+        "doctrine_review": 6
+      }
+    },
+    {
+      "path": "_incoming/doctrines/run.json",
+      "sha256": "2499e32126fbc0a266068d9570fc9aa853eba560b2f753b22ad7f01147ff28b1",
+      "bytes": 5680,
+      "format": "run_manifest_v0",
+      "library": "doctrines",
+      "records": {
+        "run": 1
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/explosive-materials.pending.json",
+      "sha256": "6d9572ee20ef4b87644225c1b44e9ae10ac70b4306cfd106ab36b4779ce1e8f0",
+      "bytes": 26274,
+      "format": "table_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "table_row": 13,
+        "reference": 1,
+        "uncovered": 2,
+        "refused": 2
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/injury-thresholds.pending.json",
+      "sha256": "392c8b55286c518cbf3854fce43b7e12085e626b119915c4c8e6b959584e41a7",
+      "bytes": 17081,
+      "format": "table_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "table_row": 9
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/blast-curves.pending.json",
+      "sha256": "3c3642721911ddb0cec85ae0c1891beb4e7b4f0116d8797025ebec9f68c84507",
+      "bytes": 117011,
+      "format": "blast_curves_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 16,
+        "curve_table": 4,
+        "oracle": 31,
+        "uncovered": 2
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/human-vulnerability.pending.json",
+      "sha256": "7ea27affe2217cdd0edb3fd95d26b2a5250b850e4086bb0127f5bb63f03d97a4",
+      "bytes": 25643,
+      "format": "reference_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 15,
+        "uncovered": 2
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/structural-damage.pending.json",
+      "sha256": "cb7f90f00200ed1c610cf0135f040457b5b13a99c36c08fd0ac8cdd4d03a5f88",
+      "bytes": 24347,
+      "format": "reference_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 12,
+        "uncovered": 1
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/vapour-cloud-and-fireball.pending.json",
+      "sha256": "67948deed00486d4c65509105391d3999f697827b4209ab8e0d0fe1704d06345",
+      "bytes": 23786,
+      "format": "reference_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 12,
+        "uncovered": 2
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/fragments-and-safety-distances.pending.json",
+      "sha256": "8ed20b1930e24a307fc3db514a61756d3b77c8939e20644749e2a6984dc9f827",
+      "bytes": 21634,
+      "format": "reference_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 11,
+        "uncovered": 1,
+        "refused": 1
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/indoor-effects.pending.json",
+      "sha256": "b63090113ce6a5f6f4a91f6d147a9bff910a9539d76de367dd9a4c6c9f430ef3",
+      "bytes": 16747,
+      "format": "reference_rows_v0",
+      "library": "blast_effects",
+      "records": {
+        "reference": 8,
+        "uncovered": 2
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/worked-examples.pending.json",
+      "sha256": "99beff0874c9e7bc805f9e5d7adaecbcebdf49f758e1925a16f8531c364d1524",
+      "bytes": 29075,
+      "format": "worked_examples_v0",
+      "library": "blast_effects",
+      "records": {
+        "worked_example": 17
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/sources.json",
+      "sha256": "0633e0d35224b8ecd2412c47d2d13953a4f75350020f6348664fd4b95986b3c7",
+      "bytes": 25458,
+      "format": "sources_v0",
+      "library": "blast_effects",
+      "records": {
+        "source": 29
+      }
+    },
+    {
+      "path": "_incoming/blast-effects/run.json",
+      "sha256": "b4565d0da86fcda5c91224dfdf14a87bace513beb7075620218dcef09c8cb6e0",
+      "bytes": 1617,
+      "format": "run_manifest_v0",
+      "library": "blast_effects",
+      "records": {
+        "run": 1
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/smoke-movement.pending.json",
+      "sha256": "def02ab7f22d967ac8f469f5d0dcbde458e34c7a8b5455e098505cface8b9603",
+      "bytes": 35571,
+      "format": "reference_rows_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "reference": 23,
+        "uncovered": 3
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/fire-growth-spread.pending.json",
+      "sha256": "09f0c3c43e8c12becce613b73bd95860e349d2f328bf012d409e4a39dae82fe5",
+      "bytes": 31394,
+      "format": "reference_rows_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "reference": 19,
+        "uncovered": 3
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/tenability-response.pending.json",
+      "sha256": "2a107030c7a578dad6744e595808d5bbfc53d0923e71e081bb09656eb38529e9",
+      "bytes": 27301,
+      "format": "reference_rows_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "reference": 15,
+        "gap": 1,
+        "uncovered": 3
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/outdoor-evacuation.pending.json",
+      "sha256": "4a74fe211afc92b08da3f12593048e3a76158ca680d6b9a23a17d0b47cca9618",
+      "bytes": 19006,
+      "format": "reference_rows_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "reference": 10,
+        "uncovered": 2
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/worked-examples.pending.json",
+      "sha256": "2a4c9c581af334fd7ad6ea6a239a643b3b2590c2625ca8456e44212a1b6be9ea",
+      "bytes": 10727,
+      "format": "worked_examples_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "worked_example": 16
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/sources.json",
+      "sha256": "57b1414d8651ae5d8bdd19e012f4a5cc03c72a15df2b82f7efa684ca5fb9ac2b",
+      "bytes": 27018,
+      "format": "sources_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "source": 34
+      }
+    },
+    {
+      "path": "_incoming/fire-smoke-tenability/run.json",
+      "sha256": "b206b20f138411a6f393fe92eae92a0f73284f636885c6c885ee6d05e028b8c2",
+      "bytes": 1632,
+      "format": "run_manifest_v0",
+      "library": "fire_smoke_tenability",
+      "records": {
+        "run": 1
+      }
+    }
+  ]
+}

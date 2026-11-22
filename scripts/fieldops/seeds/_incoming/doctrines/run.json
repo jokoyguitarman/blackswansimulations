@@ -16,7 +16,7 @@
   "finished_at": "2026-11-22T08:10:00Z",
   "amended_at": "2026-11-22T08:10:00Z",
   "amendment": "Site-specific Changi AES and CAAS seeds added after user approval",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "counts": {
     "agencies": 14,
     "units": 22,
@@ -69,5 +69,16 @@
     "https://www.scdf.gov.sg/home/about-scdf",
     "https://www.scdf.gov.sg/home/about-scdf/media-room/our-stories/storyarticledetail/what-it-takes-to-be-a-dart-specialist-(part-1-2)",
     "https://www.sg101.gov.sg/defence-and-security/current-threats/terrorism-and-self-radicalisation/"
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "ff05c013-b19a-4637-9e2d-3a120a489e9f": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

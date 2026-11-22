@@ -13,7 +13,7 @@
   ],
   "started_at": "2026-11-22T08:02:00Z",
   "finished_at": "2026-11-22T09:40:00Z",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "rows_drafted": 107,
   "rows_by_file": {
     "blast-curves.pending.json": 16,
@@ -35,5 +35,16 @@
     "every_row_has_source_locator_quote": true,
     "unused_listed_sources": []
   },
-  "note": "No brief_hash: not run through scripts/fieldops/knowledge/researchAgent.ts (not built). importApproved must skip these files while review_status is pending."
+  "note": "No brief_hash: not run through scripts/fieldops/knowledge/researchAgent.ts (not built). importApproved must skip these files while review_status is pending.",
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "73b1c15c-d486-4372-8f01-2a191f7c57b5": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

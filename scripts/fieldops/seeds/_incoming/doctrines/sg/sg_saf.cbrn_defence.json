@@ -131,15 +131,22 @@
     "scoring_rubric": ""
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country",
       "military_service"
     ],
-    "notes": "Decontamination role from a 2003 factsheet; to verify against current MINDEF material. Agents and procedures not recorded (WS9 6.27.10: industrial chemicals only, never warfare agents).",
-    "history": []
+    "notes": "Decontamination role from a 2003 factsheet; to verify against current MINDEF material. Agents and procedures not recorded (WS9 6.27.10: industrial chemicals only, never warfare agents). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

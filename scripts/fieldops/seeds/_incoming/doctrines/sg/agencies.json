@@ -1547,11 +1547,18 @@
     ]
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
-    "notes": "Drafted by the research agent. Every name and alias to verify against the agency's publications (6.11.1). Rows with verify \"to verify\" need a decision.",
-    "history": []
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "notes": "Drafted by the research agent. Every name and alias to verify against the agency's publications (6.11.1). Rows with verify \"to verify\" need a decision. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

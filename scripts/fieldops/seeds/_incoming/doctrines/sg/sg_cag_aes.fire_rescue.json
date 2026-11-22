@@ -324,15 +324,22 @@
     ]
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country",
       "aviation rescue and firefighting"
     ],
-    "notes": "Site-specific doctrine, approved by the user on 22 Nov 2026 as an exception to WS9 6.19. Scope: aircraft accidents at Changi aerodrome and its vicinity. An aircraft_impact into a building away from the airport is SCDF's (sg_scdf.*). Time targets are CAG's own published targets. No public source states when command passes from AES to SCDF, or what SPF does at a crash site; those hand-off triggers are Assumed. Equipment and vessels named in the sources are not transcribed.",
-    "history": []
+    "notes": "Site-specific doctrine, approved by the user on 22 Nov 2026 as an exception to WS9 6.19. Scope: aircraft accidents at Changi aerodrome and its vicinity. An aircraft_impact into a building away from the airport is SCDF's (sg_scdf.*). Time targets are CAG's own published targets. No public source states when command passes from AES to SCDF, or what SPF does at a crash site; those hand-off triggers are Assumed. Equipment and vessels named in the sources are not transcribed. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }

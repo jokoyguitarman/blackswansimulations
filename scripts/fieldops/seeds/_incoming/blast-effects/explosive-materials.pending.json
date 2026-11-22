@@ -5,7 +5,7 @@
   "target_table": "fieldops_explosive_materials",
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -49,11 +49,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -63,8 +64,8 @@
         "tnt",
         "trinitrotoluene"
       ],
-      "tnt_eq_pressure": 1.0,
-      "tnt_eq_impulse": 1.0,
+      "tnt_eq_pressure": 1,
+      "tnt_eq_impulse": 1,
       "gurney_velocity_m_s": null,
       "is_unknown_default": false,
       "sort_order": 20,
@@ -86,11 +87,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -137,11 +139,93 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). split per 07 §5.7"
+      }
+    },
+    {
+      "material_key": "rdx",
+      "label": "RDX",
+      "aliases": [
+        "rdx"
+      ],
+      "tnt_eq_pressure": 1.14,
+      "tnt_eq_impulse": 1.09,
+      "is_unknown_default": false,
+      "sort_order": 30,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), Composition C4 row; RDX row 1.14/1.09",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'Composition C4'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'RDX'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      }
+    },
+    {
+      "material_key": "c4",
+      "label": "C-4",
+      "aliases": [
+        "c-4",
+        "c4",
+        "composition c-4",
+        "plastic explosive"
+      ],
+      "tnt_eq_pressure": 1.37,
+      "tnt_eq_impulse": 1.19,
+      "is_unknown_default": false,
+      "sort_order": 31,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), Composition C4 row; RDX row 1.14/1.09",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'Composition C4'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'RDX'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
       }
     },
     {
@@ -187,12 +271,100 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). split per 07 §5.7"
       }
+    },
+    {
+      "material_key": "petn",
+      "label": "PETN",
+      "aliases": [
+        "petn",
+        "pentrite"
+      ],
+      "tnt_eq_pressure": 1.27,
+      "tnt_eq_impulse": 1.11,
+      "is_unknown_default": false,
+      "sort_order": 40,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), PETN row; Semtex not listed",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'PETN'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, Semtex 1A row (RE 1.35)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "a published blast TNT-equivalence for Semtex"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      }
+    },
+    {
+      "material_key": "semtex",
+      "label": "Semtex",
+      "aliases": [
+        "semtex"
+      ],
+      "tnt_eq_pressure": 1.27,
+      "tnt_eq_impulse": 1.11,
+      "is_unknown_default": false,
+      "sort_order": 41,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), PETN row; Semtex not listed",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'PETN'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, Semtex 1A row (RE 1.35)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_pressure",
+          "tnt_eq_impulse"
+        ],
+        "to_verify": [
+          "a published blast TNT-equivalence for Semtex"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      },
+      "note": "Semtex takes PETN's factors (07 §5.7)."
     },
     {
       "material_key": "tatp",
@@ -227,11 +399,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -267,11 +440,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -308,11 +482,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). no published factor, 07 §5.7"
       }
     },
     {
@@ -352,11 +527,12 @@
         ]
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -366,8 +542,8 @@
         "unknown",
         "other"
       ],
-      "tnt_eq_pressure": 1.0,
-      "tnt_eq_impulse": 1.0,
+      "tnt_eq_pressure": 1,
+      "tnt_eq_impulse": 1,
       "gurney_velocity_m_s": null,
       "is_unknown_default": true,
       "sort_order": 1000,
@@ -389,11 +565,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -445,7 +622,7 @@
         {
           "material": "TNT",
           "heat_of_detonation_ft_lb_per_lb_e6": 1.97,
-          "ratio_to_tnt": 1.0
+          "ratio_to_tnt": 1
         },
         {
           "material": "NQ",
@@ -480,11 +657,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],
@@ -516,5 +694,28 @@
       "subject": "compositions in labels",
       "why": "Labels carry names only (spec 07 5.7); no proportions are recorded."
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_2dae900e2236": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_d6a875a86101": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_ba170465694c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_93c4dafb0f4b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

@@ -5,7 +5,7 @@
   "target_table": "fieldops_injury_thresholds",
   "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
   "prepared_on": "2026-11-22",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "provenance": {
     "drafted_by": "agent",
     "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
@@ -18,8 +18,8 @@
       "threshold_key": "lethal_onset",
       "effect_class": "injury",
       "band": "lethal",
-      "metric": "peak_overpressure_kpa",
-      "value": 690.0,
+      "metric": "effective_overpressure_kpa",
+      "value": 690,
       "applies_to": "all",
       "label": "Lethality threshold, primary blast (lung)",
       "source_ref": "UFC 3-340-02 1-11.1 Table 1-1: lethality threshold 100-120 psi maximum effective pressure, 3-5 ms",
@@ -63,19 +63,20 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
       }
     },
     {
       "threshold_key": "serious_injury_onset",
       "effect_class": "injury",
       "band": "serious",
-      "metric": "peak_overpressure_kpa",
-      "value": 207.0,
+      "metric": "effective_overpressure_kpa",
+      "value": 207,
       "applies_to": "all",
       "label": "Lung damage threshold, primary blast",
       "source_ref": "UFC 3-340-02 1-11.1 Table 1-1: lung damage threshold 30-40 psi maximum effective pressure",
@@ -115,18 +116,19 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
       }
     },
     {
       "threshold_key": "minor_injury_onset",
       "effect_class": "injury",
       "band": "minor",
-      "metric": "peak_overpressure_kpa",
+      "metric": "effective_overpressure_kpa",
       "value": 34.5,
       "applies_to": "all",
       "label": "Eardrum rupture threshold",
@@ -162,11 +164,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
       }
     },
     {
@@ -181,7 +184,7 @@
       "note": null,
       "alternatives": [
         {
-          "value_kpa": 5.0,
+          "value_kpa": 5,
           "basis": "Green Book ch. 2, 6: about 50 % of modern window panes broken at 5 kPa"
         }
       ],
@@ -207,11 +210,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -219,14 +223,14 @@
       "effect_class": "damage",
       "band": "structural",
       "metric": "peak_overpressure_kpa",
-      "value": 2.0,
+      "value": 2,
       "applies_to": "all",
       "label": "Window breakage onset (modern glazing)",
       "source_ref": "TNO Green Book (1992) ch. 2, 6: lowest limit 2 kPa, average 5 kPa for panes in recent buildings",
       "note": null,
       "alternatives": [
         {
-          "value_kpa": 1.0,
+          "value_kpa": 1,
           "basis": "Green Book: lowest limit 1 kPa for older panes"
         },
         {
@@ -234,7 +238,7 @@
           "basis": "Clancey (1972) via IOGP 434-15: typical pressure for glass breakage"
         },
         {
-          "value_kpa": 5.0,
+          "value_kpa": 5,
           "basis": "Green Book: 50 % of modern panes broken"
         }
       ],
@@ -258,11 +262,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -301,11 +306,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -313,7 +319,7 @@
       "effect_class": "damage",
       "band": "structural",
       "metric": "peak_overpressure_kpa",
-      "value": 17.0,
+      "value": 17,
       "applies_to": "all",
       "label": "Moderate damage to buildings (zone C)",
       "source_ref": "TNO Green Book (1992) ch. 2, 7.1 Table 4, zone C moderate damage >17 kPa",
@@ -344,11 +350,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -356,14 +363,14 @@
       "effect_class": "damage",
       "band": "structural",
       "metric": "peak_overpressure_kpa",
-      "value": 35.0,
+      "value": 35,
       "applies_to": "all",
       "label": "Heavy damage to buildings (zone B)",
       "source_ref": "TNO Green Book (1992) ch. 2, 7.1 Table 4, zone B heavy damage >35 kPa",
       "note": null,
       "alternatives": [
         {
-          "value_kpa": 83.0,
+          "value_kpa": 83,
           "basis": "Green Book zone A total destruction"
         },
         {
@@ -391,11 +398,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     },
     {
@@ -403,7 +411,7 @@
       "effect_class": "fragment",
       "band": "fragment",
       "metric": "kinetic_energy_j",
-      "value": 79.0,
+      "value": 79,
       "applies_to": "all",
       "label": "Hazardous fragment (79 J)",
       "source_ref": "TNO Green Book (1992) ch. 3, 4.2; IATG 01.80 5.5.5 (NATO criterion 79 J)",
@@ -434,11 +442,12 @@
         "to_verify": []
       },
       "review": {
-        "state": "pending",
-        "decision": null,
-        "reviewer_name": null,
-        "reviewer_qualification": null,
-        "decided_on": null
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
       }
     }
   ],

@@ -15,7 +15,7 @@
   "brief_note": "scripts/fieldops/knowledge/briefs/ does not exist yet; the brief was the coordinator's assignment plus WS9 sections 5.15, 5.19, 6.19, 6.27.10, 8.5 and 9.8.",
   "started_at": "2026-11-22T07:08:00Z",
   "finished_at": "2026-11-22T07:30:00Z",
-  "review_status": "pending",
+  "review_status": "reviewed",
   "counts": {
     "building_types": 24,
     "hazard_item_kinds": 35,
@@ -175,5 +175,84 @@
       "subject": "new overpressure thresholds",
       "why": "No new blast-triggered rules were added beyond WS9 5.19's examples (D47: no harm optimisation)."
     }
-  ]
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "8b6a903f-4b01-52ef-acfb-e95876934d23": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_82956b3d2018": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_667e9b99d578": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_8ac781b20559": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_ebbdbac92bf8": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_79430ff1af8c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_9f35d5b91f6c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_8bc0e0f84e4e": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_7df542f8ea64": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_8f8033d73d98": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_f688277564be": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_e6612e4285f4": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_c0a976514606": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_bed9d419f6b2": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_825b93c48171": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_860cf9a5633f": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_64e6d488164b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_eea26e06efb6": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
 }

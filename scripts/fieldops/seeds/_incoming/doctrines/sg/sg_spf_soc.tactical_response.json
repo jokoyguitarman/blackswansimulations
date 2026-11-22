@@ -202,15 +202,22 @@
     }
   },
   "review": {
-    "status": "pending",
-    "reviewer": null,
-    "reviewed_at": null,
-    "reviewer_role": null,
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
     "required_reviewer_roles": [
       "country",
       "legal or police_service"
     ],
-    "notes": "Deliberately thin: unit tactics are never recorded. The hand-off back to SPF is Assumed. Use-of-force block is the SPF block (same law applies).",
-    "history": []
+    "notes": "Deliberately thin: unit tactics are never recorded. The hand-off back to SPF is Assumed. Use-of-force block is the SPF block (same law applies). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles; use-of-force block withheld pending a legal, police_service or military_service reviewer (AC1.59).",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
   }
 }
