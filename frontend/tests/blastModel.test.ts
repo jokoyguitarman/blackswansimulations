@@ -313,7 +313,7 @@ describe('blast model', () => {
       x: 12,
       y: 34,
       radius: 40,
-      weaponType: 'ied',
+      weaponType: 'legacy-a',
       gameZones: [{ id: 'zone-a', name: 'Lobby' }],
       locationDescription: 'Main lobby, north entrance',
     };
@@ -326,7 +326,7 @@ describe('blast model', () => {
     const saved = writeStoredBlast(loaded.record, loaded.pos, defaultCharge(), true, loaded.radiusM ?? 20);
     assert.equal(saved.radius, 40);
     assert.equal(saved.manualRadiusM, 40);
-    assert.equal(saved.weaponType, 'ied');
+    assert.equal(saved.weaponType, 'legacy-a');
     assert.equal(saved.locationDescription, 'Main lobby, north entrance');
     assert.deepEqual(saved.gameZones, sceneEditor.gameZones);
     assert.equal(saved.x, 12);
@@ -336,7 +336,7 @@ describe('blast model', () => {
       x: 1,
       y: 2,
       radius: 18,
-      weaponType: 'vbied',
+      weaponType: 'legacy-b',
       gameZones: ['approach'],
       locationDescription: 'Service road',
       charge: { presetKey: 'tnt', amountKg: 10, burst: 'surface', heightM: 1.5 },
@@ -355,7 +355,7 @@ describe('blast model', () => {
     assert.equal(rewritten.radius, 13.1);
     assert.equal(rewritten.manualRadiusM, 13.1);
     assert.equal(rewritten.manualRadius, false);
-    assert.equal(rewritten.weaponType, 'vbied');
+    assert.equal(rewritten.weaponType, 'legacy-b');
     assert.deepEqual(rewritten.gameZones, ['approach']);
     assert.equal(rewritten.locationDescription, 'Service road');
   });
