@@ -1,6 +1,6 @@
 # Device specifics and physics (WS6)
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45; section 15.6 scopes devices under D46; section 15.8 brings the charge picker into the main game (D61) and names the blast-effects library (D62); section 15.9 applies that library's pending seeds and its corrections to this spec.
 **Workstream:** WS6
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
@@ -70,6 +70,9 @@ All **Proposed**.
 | DC7 | The setup preview needs no position: its illustrative casualty figure spreads the headcount evenly over the primary building's footprint area around the device. When the site is not yet set it shows radii only. | The mockup shows a figure in setup (`docs/design/warroom/field-ops-setup.html:596`), but the calculator never chooses a position. |
 | DC8 | Casualties for devices that go off at T+0 are computed jointly (each sample point takes the most severe band of any of those devices); every other device gets a separate "if it goes off" figure that is not added to the initial count. | A person has one outcome; a later device meets a crowd that has already moved, which is the runtime's business. |
 | DC9 | Free-text device fields (`summary`, `other_label`, `location_note`, `responder_note`, override reasons) pass `moderateDeviceText` on the client and the server, are never parsed for meaning, and are never sent to a model, with one exception: the category reader receives `summary` and `other_label` to read a container or size. | The brief's safety stance item 3 and master 10.8 item 17. |
+| DC11 | **Added 22 Nov 2026 (D62 research).** The spherical free-air curve is the hemispherical surface curve evaluated for the TNT-equivalent mass divided by 1.8 (`free_air_from_surface_factor`). The Kingery-Bulmash free-air pressure polynomial and the Kinney-Graham relation are kept only as cross-check oracles. | No transcribable free-air source gives impulse, arrival time and duration directly; the derivation agrees with the free-air polynomial within 1 to 4 per cent. Jeon (2017) prints the polynomial's C0 as 2.661; the consistent value is 2.611, which the oracle uses. |
+| DC12 | **Added 22 Nov 2026 (D62 research).** The fragment band comes from published public-safety distances (the stand-off card, S9, interpolated by TNT-equivalent mass), with the 79 J hazardous-fragment criterion and the hazardous density of one per 56 m² defining what the band means, and the Green Book fragment probits used only where the engine already knows a fragment's speed (glass and debris from WS9's building model). No fragment speed, casing mass, presented area or drag coefficient is stored or computed. | A model that predicts fragment range from how a device is built is device-construction data; the research refused to transcribe it, and section 9.1 forbids it. |
+| DC13 | **Added 22 Nov 2026 (D62 research).** The lethal, serious and minor injury thresholds are compared with the maximum effective pressure: incident plus dynamic pressure (Ps + q) for a person in the open, reflected pressure (Pr) for a person within about a body length of a wall facing the blast. Glass and structural thresholds stay on incident pressure. | UFC 3-340-02 Table 1-1 defines the injury criteria on effective pressure; comparing them with incident pressure made the lethal and serious radii 17 to 31 per cent too small. |
 | DC10 | The calculator is reached through one stateless route; compile recomputes server-side from the stored draft and scene rather than trusting client results. | The client's numbers are previews; the scenario's numbers are the server's. |
 
 ### 2.3 Where the journey or the mockup differs from the binding sources
@@ -197,6 +200,11 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 - **AC6.28** Given the mockup's two-device setup, when a trainer fills the card, then tabs, groups, fields, chips, the effects panel, the assumed panel and the Unreviewed pill appear as in section 7, and the band bar matches `bandBarSegments` (`frontend/tests/fieldOpsDevices.test.ts (new)`, "band bar and tab subtitles"; manual step A6.1).
 - **AC6.29** Given a compiled scenario whose index holds rows for two devices, when `recordEffectIndex` runs twice with the same snapshot, then the rows are the same after each call and both calls return the same `written`; when it then runs with a newer snapshot that has one device, then only that device's row remains and it points at the newer snapshot (`server/services/fieldOps/physics/compileEffects.test.ts (new)`, "replaces the scenario's index").
 - **AC6.30** Given `DevicesCard` with `mode="published"` and the published bands of each device, when the trainer changes a charge mass or sets a radius by hand, then `onChange` receives the devices with that change (an override inside `effect_overrides`), no request goes to WS2's setup route or to `assume` with `read_words`, the last device cannot be removed, and the effects panel shows the published radii beside the preview (`frontend/tests/fieldOpsDevices.test.ts (new)`, "published mode"; manual step A6.9).
+- **AC6.31** **Added 22 Nov 2026.** Given an explosive type, 10 kg, and the same amount as a free-air burst at 1.5 m and 10 m, then `calculateEffects` gives the surface radii from the hemispherical curve, and the free-air ground radii as the square root of the 3D radius squared less the height squared (zero when the height exceeds it); the debug sandbox's `blastModel` gives the same radii within 0.1 m on the shared fixture (`server/services/fieldOps/physics/calculator.test.ts (new)`, "burst height"; parity case "sandbox parity").
+- **AC6.32** **Added 22 Nov 2026 (D62 research).** Given 10 kg of TNT as a surface burst in the open with the blast-effects seed data, then the central radii are lethal 3.8 m, serious 5.8 m and minor 13.1 m (effective pressure, Ps + q), and glass injury 39 m and glass breakage 97 m (incident pressure), each within 2 per cent; and the blast profile at 5, 10, 20 and 50 m matches the seed's worked example for incident pressure, impulse and arrival time within 2 per cent (`server/services/fieldOps/physics/calculator.test.ts (new)`, "seed worked example").
+- **AC6.33** Given a charge whose TNT-equivalent mass exceeds 125 kg, then the blast profile's first range is the curve's `z_min` times the cube root of the mass, never a scaled distance below `z_min`, every row carries `arrival_ms`, and arrival time increases with range (`server/services/fieldOps/physics/calculator.test.ts (new)`, "profile start clamp").
+- **AC6.34** Given a device with added fragments, then its fragment range equals the stand-off distance interpolated at its TNT-equivalent mass, widened only by the shielding multiplier; given two devices that differ only in casing or fragment mass, then the fragment ranges are equal; and no data file, library row or schema holds a Gurney velocity, a casing mass, a presented area or a drag coefficient (`server/services/fieldOps/physics/calculator.test.ts (new)`, "fragment band from public distances"; `server/lib/fieldOps/physicsDataSchemas.test.ts (new)`, "no construction fields").
+- **AC6.35** Given the seed materials, then RDX, C-4, PETN and Semtex are separate rows, smokeless powder is absent (no published factor), and TATP, black powder and dynamite carry confidence `low`, which adds the note `low_confidence_factor` to any estimate that uses them (`server/services/fieldOps/physics/library.test.ts (new)`, "seed materials").
 
 ## 5. Data model
 
@@ -468,8 +476,7 @@ export interface ResolvedDevice {
     tnt_factor_impulse: Sourced<number>;
   }>;                                                // at least one
   fragments: Array<{ kind: Sourced<FragmentKind>; mass_kg: Sourced<number> }>;
-  casing: Sourced<CasingKey>;
-  casing_mass_kg: Sourced<number>;
+  casing: Sourced<CasingKey>;                        // a category only; no casing mass enters a calculation (DC12)
   other_hazards: Array<{ kind: Sourced<OtherHazardKind>; quantity: Sourced<HazardQuantity> }>;
   environment: {
     confinement: Sourced<Confinement>;
@@ -492,7 +499,7 @@ export interface InputEcho {
 }
 export type EffectNoteCode =
   | 'clamped_charge_mass' | 'clamped_radius' | 'outside_curve_range' | 'chemical_not_calculated'
-  | 'no_fragment_hazard' | 'no_thermal_source' | 'facade_not_set';
+  | 'no_fragment_hazard' | 'no_thermal_source' | 'facade_not_set' | 'low_confidence_factor'; // the last added 22 Nov 2026
 export interface EffectNote { code: EffectNoteCode; message: string }
 
 export interface BandResult {
@@ -504,9 +511,10 @@ export interface BandResult {
   calculated: RadiusBand | null;  // the calculated radius when overridden, else null
 }
 export interface RingResult { radius: RadiusBand; source: EffectSource; calculated: RadiusBand | null }
-export interface FragmentResult extends RingResult { basis: 'casing_and_added' | 'container_only' }
+export interface FragmentResult extends RingResult { basis: 'standoff_distances' }   // updated 22 Nov 2026 (DC12)
 export interface ThermalResult extends RingResult { contributors: Array<'charge' | 'fuel' | 'gas'> }
 export interface StructuralResult { key: StructuralKey; label: string; radius: RadiusBand }
+export interface BlastProfileRow { range_m: number; overpressure_kpa: number; impulse_kpa_ms: number; arrival_ms: number }
 export interface PhysicsReviewState { state: 'reviewed' | 'unreviewed'; review_id: string | null; reviewed_at: string | null }
 
 export interface EffectEstimate {
@@ -522,6 +530,7 @@ export interface EffectEstimate {
   fragments: FragmentResult | null;
   thermal: ThermalResult | null;
   structural: StructuralResult[];
+  blast_profile: BlastProfileRow[] | null;   // added 22 Nov 2026 (sections 15.5 and 15.9); null in legacy_bands mode
   facade: { standoff_m: number; band: StructuralKey | 'below_glass_breakage' } | null;
   inputs: InputEcho[];            // calculation inputs only; story fields are never echoed
   assumed_inputs: string[];       // keys of inputs whose origin is assumed
@@ -628,19 +637,21 @@ export function polygonAreaM2(polygon: Array<[number, number]>): number;        
 
 ### 5.5 Published sources the data comes from
 
-**Proposed.** The relationships are named here and their numbers live in the data files; this document reproduces no coefficient, factor or threshold value. Each data file lists the sources it was transcribed from, with a locator (chapter, figure, table or page) that the D22 reviewer checks.
+**Proposed.** The relationships are named here and their numbers live in the data files; this document reproduces no coefficient or factor table. **Updated 22 Nov 2026 (D62 research).** It names a criterion's value only where a rule depends on it (the 79 J hazardous-fragment criterion, the curve's lower bound of Z = 0.2, the free-air factor of 1.8), and its acceptance criteria quote the seed's worked-example radii as test outputs. Each data file lists the sources it was transcribed from, with a locator (chapter, figure, table or page) that the D22 reviewer checks.
 
 | Id | Source | Used for |
 | --- | --- | --- |
 | S1 | UFC 3-340-02, *Structures to Resist the Effects of Accidental Explosions*, US Department of Defense (2008, change 2 of 2014), chapter 2 | Hopkinson-Cranz cube-root scaling; Kingery-Bulmash-type positive-phase curves for spherical free-air and hemispherical surface bursts; the TNT-equivalence table (pressure and impulse); the primary-fragment chapter |
 | S2 | TM 5-1300, the 1990 predecessor of S1 | Cross-check of the same curves |
 | S3 | Kingery and Bulmash, *Airblast Parameters from TNT Spherical Air Burst and Hemispherical Surface Burst*, ARBRL-TR-02555 (1984); Swisdak, *Simplified Kingery Airblast Calculations* (1994) | The curve points, or their published polynomial fits |
-| S4 | Gurney, *The Initial Velocities of Fragments from Bombs, Shells and Grenades*, BRL report 405 (1943), as tabulated in published explosives-engineering references | Gurney-type initial fragment speed and per-material Gurney velocities |
+| S4 | Retired 22 Nov 2026 (DC12). Was Gurney (1943), BRL report 405 | Nothing: fragment speeds from device construction are not modelled |
 | S5 | DoD Manual 6055.09-M and its successor DESR 6055.09 (2019), explosives safety standards | The hazardous-fragment energy criterion and fragment-distance cross-checks |
 | S6 | Bowen, Fletcher and Richmond, *Estimate of Man's Tolerance to the Direct Effects of Air Blast* (1968); TNO *Green Book*, CPR 16E (1992) | Lethal, lung and eardrum injury criteria; structural damage criteria |
 | S7 | Baker and others, *Explosion Hazards and Evaluation* (1983) | Structural and glass damage criteria |
 | S8 | CCPS, *Guidelines for Vapor Cloud Explosion, Pressure Vessel Burst, BLEVE and Flash Fire Hazards*, second edition (2010) | Fireball correlations for fuel and flammable gas, and the charge fireball relation it reviews |
-| S9 | The public bomb-threat stand-off chart issued in the United States by NCTC with DHS and the FBI | Typical charge masses per device class (presets), container capacities, and sanity oracles |
+| S9 | The public bomb-threat stand-off chart issued in the United States by NCTC with DHS and the FBI | Typical charge masses per device class (presets), container capacities, sanity oracles and, since 22 Nov 2026, the fragment band (DC12) |
+| S10 | **Added 22 Nov 2026.** UN *International Ammunition Technical Guideline* 01.80 (2021), quoting AASTP-1 | TNT-equivalence factors for pressure and impulse; the 79 J criterion and the hazardous density of one fragment per 56 m²; range-safety distances as a cross-check |
+| S11 | **Added 22 Nov 2026.** UFC 3-340-02 Table 1-1, and the TNO *Green Book* probits (CPR 16E, 1992) | Injury criteria on maximum effective pressure (DC13); lung, eardrum, impact, window and fragment probits for WS9's per-person outcomes |
 
 ### 5.6 Model data files
 
@@ -653,32 +664,39 @@ interface DataFileHeader {
   file_version: number;                  // bumped on any change
   transcribed_by: string;
   transcribed_at: string;                // ISO date
-  sources: Array<{ id: 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8' | 'S9'; locator: string }>;
+  sources: Array<{ id: 'S1' | 'S2' | 'S3' | 'S5' | 'S6' | 'S7' | 'S8' | 'S9' | 'S10' | 'S11'; locator: string }>;
 }
 
-// blast-curves.json: incident peak overpressure against scaled distance, per burst geometry.
+// blast-curves.json. Updated 22 Nov 2026 (D62 research): every positive-phase parameter, not only pressure.
 interface BlastCurvesFile extends DataFileHeader {
   curves: Record<'hemispherical_surface' | 'spherical_free_air', {
-    points: Array<{ z: number; p_kpa: number }>;   // z in m per kg^(1/3) of TNT; 20 to 200 points;
-                                                   // z strictly increasing, p strictly decreasing
-    z_min: number;                                 // validity range of the curve
+    points: Array<{
+      z: number;                                   // m per kg^(1/3) of TNT; strictly increasing
+      p_kpa: number;                               // incident peak overpressure; strictly decreasing
+      i_kpa_ms: number;                            // incident positive-phase impulse, per kg^(1/3)
+      ta_ms: number;                               // arrival time, per kg^(1/3); strictly increasing
+      td_ms: number;                               // positive-phase duration, per kg^(1/3)
+      pr_kpa: number;                              // normally reflected pressure
+      ir_kpa_ms: number;                           // reflected impulse, per kg^(1/3)
+    }>;                                            // 20 to 400 points
+    z_min: number;                                 // validity range: 0.2 for the surface fit (Swisdak)
     z_max: number;
+    derived_from: 'hemispherical_surface' | null;  // free air: the surface curve at W / free_air_factor (DC11)
     relative_uncertainty: number;                  // 0 to 0.5, widens the radius band
   }>;
+  free_air_factor: number;                         // 1.8 (DC11)
+  ambient_kpa: number;                             // 101.325; dynamic pressure q = 2.5 Ps^2 / (7 p0 + Ps)
 }
 
-// fragments.json: parameters of the Gurney-type speed and the drag-decay range.
+// fragments.json. Updated 22 Nov 2026 (DC12): a band from public distances; no construction parameters.
 interface FragmentsFile extends DataFileHeader {
-  default_gurney_velocity_m_s: number;             // when a material has no published value
-  geometry_by_casing: Record<CasingKey, 'cylinder' | 'sphere' | 'flat' | 'none'>;
-  casing_mass_kg: Record<CasingKey, Record<SizeClass, number>>;   // typical, for a casing that differs from the preset's
-  kinds: Record<'metal_hardware' | 'metal_pins' | 'metal_spheres' | 'glass' | 'casing_fragments' | 'other', {
-    item_mass_g: number;                           // typical single fragment, for a document count
-    presented_area_cm2: number;
-    drag_coefficient: number;
-  }>;
-  air_density_kg_m3: number;
-  velocity_relative_uncertainty: number;
+  standoff_points: Array<{ capacity_kg: number; mandatory_m: number; preferred_m: number }>;  // S9, capacity increasing
+  hazardous_energy_j: number;                      // 79 (S10), shown with the band
+  hazardous_density_per_m2: number;                // one per 56 m² (S10), at the band's central radius
+  person_area_m2: number;                          // 0.56 (S10), for WS9's hit probability 1 - exp(-q A)
+  fragmenting_kinds: FragmentKind[];               // kinds that create the band; 'none' never does
+  fragmenting_casings: CasingKey[];                // casings that create the band on their own
+  relative_uncertainty: number;
   shielding_multiplier: Record<Shielding, { low: number; central: number; high: number }>; // none is 1, 1, 1; heavier is smaller
 }
 
@@ -692,7 +710,8 @@ interface ThermalFile extends DataFileHeader {
 
 // environment.json: modelling assumptions reviewed under D22.
 interface EnvironmentFile extends DataFileHeader {
-  confinement_multiplier: Record<Confinement, { low: number; central: number; high: number }>; // open is 1, 1, 1;
+  confinement_multiplier: Record<Confinement, { low: number; central: number; high: number }>; // open is 1, 1, 1; seeds 22 Nov 2026:
+                                                   // enclosed 1.55, 1.6, 1.75 and street_canyon 1.3, both Assumed (section 15.9);
                                                    // street_canyon at least open; enclosed at least street_canyon
   glazed_confinements: Confinement[];              // where the glass_injury threshold applies
   venue_defaults: Record<VenueClass, { confinement: Confinement; elevation: Elevation; shielding: Shielding }>;
@@ -727,13 +746,13 @@ interface OraclesFile extends DataFileHeader {
 }
 ```
 
-**Validation rules the schemas enforce beyond types.** `model_version` equals the code constant; curve points strictly monotone with at least 20 points and `z_min < z_max`; every multiplier band satisfies low at most central at most high; confinement central multipliers are ordered open, street canyon, enclosed; shielding multipliers are ordered none, partial, heavy; every casualty-mix row sums to 1 within 1e-9 and the cumulative severe shares (killed; killed plus serious; killed plus serious plus light) never increase from lethal to outside; every oracle tolerance is positive.
+**Validation rules the schemas enforce beyond types.** `model_version` equals the code constant; curve points strictly monotone (z and arrival time increasing, incident and reflected pressure decreasing) with at least 20 points and `z_min < z_max`, and `z_min` at least 0.2 for the surface curve; stand-off points increasing in capacity and distance; no key named for a Gurney velocity, casing mass, presented area or drag coefficient in any file (AC6.34); every multiplier band satisfies low at most central at most high; confinement central multipliers are ordered open, street canyon, enclosed; shielding multipliers are ordered none, partial, heavy; every casualty-mix row sums to 1 within 1e-9 and the cumulative severe shares (killed; killed plus serious; killed plus serious plus light) never increase from lethal to outside; every oracle tolerance is positive.
 
 ### 5.7 Seed files and library rows
 
 **Proposed.** `server/services/fieldOps/physics/data/seed/materials.json (new)`, `server/services/fieldOps/physics/data/seed/thresholds.json (new)` and `server/services/fieldOps/physics/data/seed/presets.json (new)` share the data-file header and hold `rows` whose fields are exactly the columns of migrations 239, 240 and 238 without `id`, `status`, `review_state`, `version`, the actor columns and timestamps.
 
-- **Materials.** One row per material the mockup's charge select offers (`docs/design/warroom/field-ops-setup.html:550`), plus one row with `is_unknown_default` true. The label is the material's common name only; the composition in brackets on the mockup's first option is not carried. Factors and Gurney velocities come from S1 and S4. Until the reviewer chooses otherwise, the unknown row uses the reference material itself (TNT), whose factor is 1 by definition.
+- **Materials.** One row per material the mockup's charge select offers (`docs/design/warroom/field-ops-setup.html:550`), plus one row with `is_unknown_default` true. The label is the material's common name only; the composition in brackets on the mockup's first option is not carried. Factors come from S1 and S10. Until the reviewer chooses otherwise, the unknown row uses the reference material itself (TNT), whose factor is 1 by definition. **Updated 22 Nov 2026 (D62 research).** The mockup's joined options "RDX / C-4" and "PETN / Semtex" are split into four rows, because their materials have different factors; Semtex has no published factor and takes PETN's, labelled Assumed with confidence `low`. Smokeless powder has no published factor, so it has no row until a source gives one (a document's "smokeless powder" is then listed as `no_alias_match`). TATP, black powder and dynamite come only from a tertiary demolition table and carry confidence `low`. No Gurney velocity is stored (DC12).
 - **Thresholds.** Exactly the nine keys of migration 240, from S5, S6 and S7.
 - **Presets.** At least one row per device type for size `medium`, role `any` and venue `any`, plus `small` and `large`; masses and capacities from S9.
 
@@ -776,7 +795,6 @@ CREATE TABLE IF NOT EXISTS fieldops_device_presets (
   casing TEXT NOT NULL CHECK (casing IN (
     'none_soft', 'steel_pipe', 'pressure_vessel', 'metal_box', 'plastic', 'vehicle_body'
   )),
-  casing_mass_kg NUMERIC(10, 3) NOT NULL DEFAULT 0 CHECK (casing_mass_kg >= 0 AND casing_mass_kg <= 5000),
   elevation TEXT NOT NULL DEFAULT 'surface' CHECK (elevation IN ('surface', 'elevated')),
   fuel_litres NUMERIC(10, 1) NOT NULL DEFAULT 0 CHECK (fuel_litres >= 0 AND fuel_litres <= 40000),
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 3 AND 120),
@@ -831,8 +849,9 @@ CREATE TABLE IF NOT EXISTS fieldops_explosive_materials (
   aliases TEXT[] NOT NULL DEFAULT '{}'::text[] CHECK (cardinality(aliases) <= 20),
   tnt_eq_pressure NUMERIC(5, 3) NOT NULL CHECK (tnt_eq_pressure >= 0.1 AND tnt_eq_pressure <= 2.5),
   tnt_eq_impulse NUMERIC(5, 3) NOT NULL CHECK (tnt_eq_impulse >= 0.1 AND tnt_eq_impulse <= 2.5),
-  gurney_velocity_m_s NUMERIC(7, 1)
-    CHECK (gurney_velocity_m_s IS NULL OR (gurney_velocity_m_s > 0 AND gurney_velocity_m_s <= 5000)),
+  -- high, medium or low: low adds the note low_confidence_factor to estimates (amended 22 Nov 2026,
+  -- before the migration is applied; the Gurney velocity column was removed, DC12)
+  confidence TEXT NOT NULL DEFAULT 'medium' CHECK (confidence IN ('high', 'medium', 'low')),
   is_unknown_default BOOLEAN NOT NULL DEFAULT false,
   sort_order INTEGER NOT NULL DEFAULT 100 CHECK (sort_order BETWEEN 0 AND 10000),
   source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 500),
@@ -899,7 +918,8 @@ CREATE TABLE IF NOT EXISTS fieldops_injury_thresholds (
   )),
   effect_class TEXT NOT NULL CHECK (effect_class IN ('injury', 'damage', 'fragment')),
   band TEXT NOT NULL CHECK (band IN ('lethal', 'serious', 'minor', 'structural', 'fragment')),
-  metric TEXT NOT NULL CHECK (metric IN ('peak_overpressure_kpa', 'kinetic_energy_j')),
+  -- effective_overpressure_kpa: the maximum of Ps, Ps + q and Pr for the person's position (DC13; amended 22 Nov 2026)
+  metric TEXT NOT NULL CHECK (metric IN ('effective_overpressure_kpa', 'peak_overpressure_kpa', 'kinetic_energy_j')),
   value NUMERIC(12, 4) NOT NULL CHECK (value > 0 AND value < 100000),
   applies_to TEXT NOT NULL DEFAULT 'all' CHECK (applies_to IN ('all', 'glazed_only')),
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 3 AND 120),
@@ -912,7 +932,9 @@ CREATE TABLE IF NOT EXISTS fieldops_injury_thresholds (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT ck_fieldops_injury_thresholds_shape CHECK (
-    (effect_class = 'injury' AND band IN ('lethal', 'serious', 'minor') AND metric = 'peak_overpressure_kpa')
+    (effect_class = 'injury' AND threshold_key IN ('lethal_onset', 'serious_injury_onset', 'minor_injury_onset')
+      AND metric = 'effective_overpressure_kpa')
+    OR (effect_class = 'injury' AND threshold_key = 'glass_injury' AND metric = 'peak_overpressure_kpa')
     OR (effect_class = 'damage' AND band = 'structural' AND metric = 'peak_overpressure_kpa')
     OR (effect_class = 'fragment' AND band = 'fragment' AND metric = 'kinetic_energy_j')
   ),
@@ -1107,7 +1129,7 @@ import type { PhysicsReviewState } from '../../../../shared/fieldOps/effects.js'
 
 export interface MaterialRow {
   material_key: string; label: string; aliases: string[]; tnt_eq_pressure: number; tnt_eq_impulse: number;
-  gurney_velocity_m_s: number | null; is_unknown_default: boolean; sort_order: number; source_ref: string;
+  confidence: 'high' | 'medium' | 'low'; is_unknown_default: boolean; sort_order: number; source_ref: string;
   review_state: 'reviewed' | 'unreviewed'; version: number;
 }
 export type ThresholdKey =
@@ -1115,14 +1137,15 @@ export type ThresholdKey =
   | 'structural_light' | 'structural_moderate' | 'structural_severe' | 'fragment_hazard';
 export interface ThresholdRow {
   threshold_key: ThresholdKey; effect_class: 'injury' | 'damage' | 'fragment';
-  band: 'lethal' | 'serious' | 'minor' | 'structural' | 'fragment'; metric: 'peak_overpressure_kpa' | 'kinetic_energy_j';
+  band: 'lethal' | 'serious' | 'minor' | 'structural' | 'fragment';
+  metric: 'effective_overpressure_kpa' | 'peak_overpressure_kpa' | 'kinetic_energy_j';
   value: number; applies_to: 'all' | 'glazed_only'; label: string; source_ref: string;
   review_state: 'reviewed' | 'unreviewed'; version: number;
 }
 export interface PresetRow {
   preset_key: string; device_type: string; role: 'main' | 'secondary' | 'any'; size_class: 'small' | 'medium' | 'large';
   venue_class: string; container: string; charge_material_key: string; charge_mass_kg: number; fragment_kind: string;
-  fragment_mass_kg: number; casing: string; casing_mass_kg: number; elevation: 'surface' | 'elevated';
+  fragment_mass_kg: number; casing: string; elevation: 'surface' | 'elevated';
   fuel_litres: number; label: string; source_ref: string; review_state: 'reviewed' | 'unreviewed'; version: number;
 }
 export interface PhysicsLibrary {
@@ -1233,8 +1256,8 @@ export function assumedSummary(resolved: ResolvedDevice): string;   // the libra
 **Filling rules.**
 
 - **Charges.** No rows: one row with the preset's material and mass. Rows present: a blank material takes the preset's material; a blank mass takes the preset's mass divided by the number of rows.
-- **Fragments.** No rows: the preset's kind and mass, or none when the preset says `none`. A row with a count and no mass takes count times the kind's typical item mass from `fragments.json` (`assumed`, `default`). A row with neither takes the preset's fragment mass divided by the number of rows.
-- **Casing.** The stored casing or the preset's. Its mass is the preset's when the casing equals the preset's casing, otherwise the typical mass for that casing and size from `fragments.json` (always `assumed`; the form never asks for it).
+- **Fragments.** No rows: the preset's kind and mass, or none when the preset says `none`. A row with neither a mass nor a count takes the preset's fragment mass divided by the number of rows. Fragment masses serve the plausibility check and the story only; they never change a range (DC12).
+- **Casing.** The stored casing or the preset's, as a category; no casing mass is resolved (DC12).
 - **Other hazards.** No rows: one fuel row when the preset has fuel (vehicles), otherwise none ("Assumed: none" in the form). A row with a kind and no quantity takes the preset's fuel, one typical cylinder of gas, or, for a chemical, no calculated quantity (note `chemical_not_calculated`).
 - **Material unknown to the library** (only possible in an old draft): the unknown-default row, `assumed`, `default`.
 
@@ -1260,11 +1283,11 @@ export function calculateEffects(device: ResolvedDevice, ctx: CalculatorContext)
 **Pipeline.**
 
 1. **Effective mass.** For every charge, mass times its pressure factor, summed, is the pressure-equivalent mass; the same with impulse factors gives the impulse-equivalent mass. The low and high masses use, per charge, the smaller and the larger of its two factors. (Published TNT-equivalence tables, S1.)
-2. **Burst geometry.** Elevation `surface` uses the hemispherical surface-burst curve; `elevated` uses the spherical free-air curve (S1, S3).
-3. **Threshold radii.** For each active overpressure threshold that applies (a `glazed_only` threshold only where the confinement is in `glazed_confinements`), the scaled distance at which the curve falls to the threshold pressure is found by bisection on the logarithm of scaled distance, 60 iterations, over a monotone piecewise-cubic interpolation of the curve points in log-log space. The radius is that scaled distance times the cube root of the effective mass (Hopkinson-Cranz scaling), times the confinement multiplier of `environment.json`. Low and high radii use the low and high masses and multipliers, widened by the curve's relative uncertainty.
+2. **Burst geometry.** Elevation `surface` uses the hemispherical surface-burst curve; `elevated` uses the spherical free-air curve (S1, S3), which is the surface curve at the mass divided by `free_air_factor` (DC11).
+3. **Threshold radii.** For each active overpressure threshold that applies (a `glazed_only` threshold only where the confinement is in `glazed_confinements`), the scaled distance at which the threshold's metric falls to the threshold pressure is found by bisection on the logarithm of scaled distance, 60 iterations, over a monotone piecewise-cubic interpolation of the curve points in log-log space. The radius is that scaled distance times the cube root of the effective mass (Hopkinson-Cranz scaling), times the confinement multiplier of `environment.json`. Low and high radii use the low and high masses and multipliers, widened by the curve's relative uncertainty. **Updated 22 Nov 2026 (D62 research).** The metric is the effective pressure Ps + q for the three injury thresholds (DC13) and the incident pressure for glass and structural thresholds; both fall monotonically with scaled distance, so the bisection and P3 hold unchanged.
 4. **Bands.** Each injury band (lethal, serious, minor) is the largest radius among its thresholds; serious is then raised to at least lethal and minor to at least serious, separately for low, central and high. Structural radii are reported per damage threshold.
 5. **Facade.** When `standoff_m` is set, the overpressure at that distance gives the most severe structural threshold reached, or `below_glass_breakage`.
-6. **Fragments.** When there are added fragments or a fragmenting casing, a Gurney-type initial speed is computed from the charge and the fragmenting mass for the casing's geometry class (S4), then an exponential drag decay with the kind's mass, presented area and drag coefficient gives the distance at which a fragment's kinetic energy falls to the `fragment_hazard` threshold (S5, S1 primary-fragment chapter). The shielding multiplier then applies. No fragments and a soft casing give `null` and the note `no_fragment_hazard`.
+6. **Fragments.** **Updated 22 Nov 2026 (D62 research).** When there are added fragments of a kind in `fragmenting_kinds`, or a casing in `fragmenting_casings`, the central range is the stand-off card's mandatory distance interpolated in log-log at the impulse-equivalent mass (S9), clamped to the card's range with the note `outside_curve_range`; low and high use the low and high masses widened by the file's relative uncertainty, and the high range never exceeds the card's preferred distance. It marks where hazardous fragments (at least the 79 J of `fragment_hazard`) are taken to fall to one per 56 m² (S10). The shielding multiplier then applies (DC12). No fragments and a soft casing give `null` and the note `no_fragment_hazard`.
 7. **Thermal.** The charge fireball from the effective mass, and fireballs from fuel and flammable gas quantities (S8); the reach is the largest, with its contributors. Chemicals add the note `chemical_not_calculated`.
 8. **Overrides.** Each overridden ring takes the trainer's value as its low, central and high, with source `manual_override`, and keeps the calculated band in `calculated`.
 9. **Echo and labels.** Charge, fragment and hazard rows are first put in canonical order (by material key or kind, then by mass), so row order never matters (P8). `inputs` lists every calculation input with its display text, origin and basis; `assumed_inputs` lists the keys whose origin is `assumed`; `notes` lists every clamp and every "not calculated"; `review` is the library's review state; `input_hash` is the first 32 hex characters of the SHA-256 of the canonical JSON of `{ model_version, dataset_version, input: toCalculationInput(device), overrides }`.
@@ -1278,7 +1301,7 @@ export function calculateEffects(device: ResolvedDevice, ctx: CalculatorContext)
 | TNT-equivalence factor | ratio | 0.1 to 2.5 | Clamp, note `clamped_charge_mass` |
 | Effective TNT-equivalent mass | kg | 0.01 to 75,000 | Clamp, note `clamped_charge_mass` |
 | Scaled distance | m per kg^(1/3) | the curve's `z_min` to `z_max` | Clamp to the boundary, note `outside_curve_range` |
-| Fragment mass, casing mass | kg | 0.001 to 5,000 | Clamp |
+| Fragment mass | kg | 0.001 to 5,000 | Clamp |
 | Fuel | l | 0.1 to 40,000 | Clamp |
 | Flammable gas | kg | 0.1 to 20,000 | Clamp |
 | Standoff | m | 0 to 500 | Clamp |
@@ -1304,6 +1327,7 @@ export function calculateEffects(device: ResolvedDevice, ctx: CalculatorContext)
 
 - **O1 Curve reproduction.** For each `curve_pressure` point transcribed from S1 or S3, `pressureAt(geometry, z)` is within the point's tolerance, which records the accuracy the source states and is at most 15 per cent.
 - **O2 Scaled radius.** For each `scaled_radius` point (a threshold pressure and the scaled distance read from the published curve), `scaledDistanceFor` is within tolerance.
+- **O4 Worked example (added 22 Nov 2026).** The seed's 10 kg surface-burst case: threshold radii and the blast profile's pressure, impulse and arrival time (AC6.32), and the free-air polynomial and Kinney-Graham points as cross-checks of DC11.
 - **O3 Stand-off chart sanity.** For each device class of S9 at its stated capacity, the calculated open-air minor radius is no larger than the chart's outdoor evacuation distance and the lethal radius no larger than its building evacuation distance (one-sided, with the recorded tolerance).
 
 **Sampling WS4's crowd zones.** WS4's `CrowdZoneInput` gives each zone as a polygon in sim space (metres from the primary building's vertex mean, the frame of `latLngToSim`), with its `count`, `setting` and `building_key` (`05-layout-step.md` section 5.4). `sampleZones(crowd, devices)` turns each into `ZoneSamples`:
@@ -1458,7 +1482,7 @@ const materialFields = z
     aliases: z.array(z.string().min(2).max(40).regex(/^[a-z0-9][a-z0-9 -]*$/)).max(20),
     tnt_eq_pressure: z.number().min(0.1).max(2.5),
     tnt_eq_impulse: z.number().min(0.1).max(2.5),
-    gurney_velocity_m_s: z.number().positive().max(5000).nullable(),
+    confidence: z.enum(['high', 'medium', 'low']),
     is_unknown_default: z.boolean(),
     sort_order: z.number().int().min(0).max(10000),
     source_ref: sourceRef,
@@ -1482,7 +1506,6 @@ const presetFields = z
     fragment_kind: z.enum(['metal_hardware', 'metal_pins', 'metal_spheres', 'glass', 'casing_fragments', 'none', 'other']),
     fragment_mass_kg: z.number().min(0).max(5000),
     casing: z.enum(['none_soft', 'steel_pipe', 'pressure_vessel', 'metal_box', 'plastic', 'vehicle_body']),
-    casing_mass_kg: z.number().min(0).max(5000),
     elevation: z.enum(['surface', 'elevated']),
     fuel_litres: z.number().min(0).max(40000),
     label: z.string().min(3).max(120),
@@ -2036,6 +2059,7 @@ For the UI spec sheet. Each is required by safety, the data model or the design 
 7. **Tab subtitle.** "secondary · hidden" becomes the device's timing, for example "secondary · not scheduled" (data model: there is no field for how a device is hidden).
 8. **Added controls.** A Size select (journey Design 4 keeps the size shortcut), the Unreviewed model pill (D22), Remove device, Add fragments, the More effects details, the From your document line and the model and data footer.
 9. **Casualty figure.** Keeps "illustrative" and adds the low-to-high range as a title (data model).
+10. **Charge options (added 22 Nov 2026).** "RDX / C-4" and "PETN / Semtex" become four options (RDX, C-4, PETN, Semtex); smokeless powder is not offered until it has a published factor; a low-confidence factor shows "Low-confidence factor" beside the TNT equivalent (data model, section 5.7).
 
 ### 7.9 Hooks, client calls and view helpers
 
@@ -2346,10 +2370,10 @@ The D22 gate has two halves.
 | --- | --- |
 | `scope_no_search` | The calculator only reports effects of inputs and positions the trainer chose; nothing searches for or optimises a position, a time or a quantity |
 | `blast_curves` | The curve points reproduce S1 and S3 within the recorded tolerances (O1, O2) |
-| `tnt_equivalence` | Every material's pressure and impulse factors match S1 |
-| `injury_thresholds` | The lethal, serious and minor criteria and their band assignment match S6 and suit training |
+| `tnt_equivalence` | Every material's pressure and impulse factors match S1 or S10; the low-confidence rows (TATP, black powder, dynamite, Semtex) are replaced with a better source or accepted as labelled |
+| `injury_thresholds` | The lethal, serious and minor criteria and their band assignment match S6 and S11, are compared with effective pressure (DC13), and suit training |
 | `damage_thresholds` | The glass and structural criteria match S6 and S7 |
-| `fragment_model` | The Gurney-type speeds, drag parameters and hazardous-fragment criterion match S4, S5 and S1, and ranges are plausible against S9 (O3) |
+| `fragment_model` | The fragment band follows S9's distances and S10's criterion (DC12), and nothing models fragments from device construction |
 | `thermal_model` | The fireball relations and their use for fuel and gas match S8 |
 | `environment_assumptions` | Confinement, shielding and venue defaults are reasonable modelling assumptions and are shown as Assumed |
 | `casualty_mix` | Outcome shares per band and the rounding rule are reasonable for training |
@@ -2414,12 +2438,12 @@ All server and shared tests use `node:test` through `tsx`. Tests of `shared/` mo
 | `server/lib/fieldOps/deviceModeration.test.ts (new)` | Mode `device` means called with a field, mode `response` called with the text alone (master 10.8 item 24). Accepted in both modes: "A timer display is visible through the open zip."; "The bag is too heavy to lift and smells of fuel."; "Responders find a sealed metal box under the bench."; "Two people were seen near the escalator at 14:05."; "Step 1: establish a cordon. Step 2: evacuate the atrium."; "Step 4: do not cut anything attached to the device." Refused in mode `device`, written with neutral nouns only: "Step 1: combine component A with component B inside the container." (S1 with S3); "You will need to attach component A to component B." (S2 with S3); "1) fill the container 2) close it" (S1 with S3); "Take the box and connect the two parts." (S2 with S3). Refused in both modes: "Measure 2 kg of substance A and 3 kg of substance B, then mix them in the container." (S4 with S3); "Use a 3:1 ratio of A to B." (ratio). The mode difference: "Step 3: attach the disruptor to the device." is refused in `device` and accepted in `response`. Also: a link; a directional override character; NFKC of full-width digits; each field's cap and the 4,000 default at the boundary; a `maxLength` above 4,000 still caps at 4,000, and a `maxLength` beside a field is ignored; no `reason` contains the input |
 | `server/lib/fieldOps/deviceHints.test.ts (new)` | "copies stated amounts only"; "never converts or guesses"; "timing"; longest alias wins and ties go to the first key; no type alias gives the incident type's default as `assumed`, `default`; container from `container_text` before `summary`; a refused summary is dropped and listed; charge in g is divided by 1,000; out-of-range mass listed; fifth charge listed as `over_row_limit`; fragment count kept; hazard units per kind; initiation primary, back-up, third listed; only the first position copied; timing items listed; fields the mapper never writes stay null; `devicesFromHints` puts the main hint first, caps at 6 and keeps ids unique; mapping twice with the same id gives equal output |
 | `server/lib/fieldOps/effects.test.ts (new)` | "preview rings": largest first, central radii, override source, null rings left out, `unreviewed` follows the review state; `bandForDistance` at each boundary; `physicsReviewSummary` counts for calculated, mixed, assumed, manual and null estimates; `polygonAreaM2` of a 100 m square at 1.3 degrees north within 0.5 per cent of 10,000 m² |
-| `server/lib/fieldOps/physicsDataSchemas.test.ts (new)` | Every shipped data and seed file validates and carries `PHYSICS_MODEL_VERSION`; refused: curve points out of order, fewer than 20 points, a multiplier band with low above central, confinement multipliers out of order, a casualty-mix row not summing to 1, a mix that gets more severe going outwards |
-| `server/services/fieldOps/physics/calculator.test.ts (new)` | P1 to P10 and P12 with a seeded generator (mulberry32, seed 42) over 500 devices on the synthetic fixture; "P3 cube-root scaling" at k of 0.5, 2 and 3; "O1 oracles" on the real data (O1, O2, O3); the export lists of `calculator.ts`, `casualties.ts` and `resolveDevice.ts` equal the documented ones (P10); `input_hash` changes when any calculation input changes and not when a story field changes |
+| `server/lib/fieldOps/physicsDataSchemas.test.ts (new)` | Every shipped data and seed file validates and carries `PHYSICS_MODEL_VERSION`; refused: curve points out of order, fewer than 20 points, a multiplier band with low above central, confinement multipliers out of order, a casualty-mix row not summing to 1, a mix that gets more severe going outwards; "no construction fields" (AC6.34) |
+| `server/services/fieldOps/physics/calculator.test.ts (new)` | P1 to P10 and P12 with a seeded generator (mulberry32, seed 42) over 500 devices on the synthetic fixture; "P3 cube-root scaling" at k of 0.5, 2 and 3; "O1 oracles" on the real data (O1 to O4); "seed worked example" (AC6.32); "profile start clamp" (AC6.33); "fragment band from public distances" (AC6.34); injury bands use Ps + q and glass bands Ps; the export lists of `calculator.ts`, `casualties.ts` and `resolveDevice.ts` equal the documented ones (P10); `input_hash` changes when any calculation input changes and not when a story field changes |
 | `server/services/fieldOps/physics/casualties.test.ts (new)` | "sums to the headcount" over 300 random zone sets; `largestRemainder` ties in the documented order; "monotone in distance" on expected shares; "joint T+0 and separate potential"; the thermal floor; the shielding multiplier moves people outwards; `headcount_mismatch` and `device_not_in_zones`; the preview's 64 samples have weights of 1/64, increasing distances, all inside the disc; P11 by permuting samples; `casualtyBandsToTriage` sums to the bands |
-| `server/services/fieldOps/physics/resolveDevice.test.ts (new)` | "blank device"; every row of the precedence table of section 6.4; each of the six preset lookup steps, by removing the more specific rows from the fixture; the charge split, fragment count, casing mass and vehicle fuel rules; main and secondary timing defaults; environment from the device over the layout over the venue; factors from the trainer over the library; an unknown material; `assumedSummary` names no place and no time and holds no number other than the mass |
+| `server/services/fieldOps/physics/resolveDevice.test.ts (new)` | "blank device"; every row of the precedence table of section 6.4; each of the six preset lookup steps, by removing the more specific rows from the fixture; the charge split, fragment rows and vehicle fuel rules; main and secondary timing defaults; environment from the device over the layout over the venue; factors from the trainer over the library; an unknown material; `assumedSummary` names no place and no time and holds no number other than the mass |
 | `server/services/fieldOps/physics/categoryReader.test.ts (new)` | The guard-rail cases of section 8.3 |
-| `server/services/fieldOps/physics/library.test.ts (new)` | "seed fallback"; "review state follows versions" (approved, then revoked; approved for another dataset); `datasetVersionOf` ignores row order, key order, ids and timestamps; `mergeLibrarySources` per table; `checkLibraryIntegrity` names each problem |
+| `server/services/fieldOps/physics/library.test.ts (new)` | "seed fallback"; "review state follows versions" (approved, then revoked; approved for another dataset); "seed materials" (AC6.35); `datasetVersionOf` ignores row order, key order, ids and timestamps; `mergeLibrarySources` per table; `checkLibraryIntegrity` names each problem |
 | `server/services/fieldOps/physics/compileEffects.test.ts (new)` | `buildCompileEffects` with fake WS4 functions passes WS5's `compileEffectsSchema` (imported from WS5's module, or a copy of section 5.5's shape until it lands); planted and unplanted devices; `toWs5Confinement` for all three values; "overrides"; no headcount gives a null `casualty_plan`; `facts_placed` is the sorted union of `fact_ids`; every `prompt_summary` has at most 200 characters and no marker; `labels` at most four; "tables missing" (the fake database throws a missing-relation error, so `recordEffectIndex` skips); a `legacy_bands` snapshot gives `not_calculated`; "replaces the scenario's index" (AC6.29); "the casualty plan carries counts only" (`casualty_plan` holds zone ids, people and per-band triage counts and no per-person field, so WS5's casualty rows gain no `conditions` key); "never writes scenarios" (the fake records every table touched); "no device specifics in logs" (a capturing logger searched for marker values put in every text and number field); `toStudBlastBands` bands are contiguous |
 | `server/services/fieldOps/physics/physicsMode.test.ts (new)` | The truth table of section 10.1; "D22 gate": production with `true` and no review gives `admin`, with a review gives `true`; development is never downgraded |
 | `frontend/tests/fieldOpsDevices.test.ts (new)` | "band bar and tab subtitles": the mockup's 7, 20, 65 and 85 m give 8.2, 15.3, 52.9 and 23.5 per cent; `legendItems` text "Lethal ≤ 7 m"; `effectSourceLabel` keys; `provenanceLabel` for every row of section 7.5; `casualtyLine`; `plausibilityLine`; `assumedInputsLine`; `formatMetres`; `issuesForField`; "assumed copy": `device.assumed.body` contains no place and no time; "published mode": `cardModeRules` for both modes, and `publishedComparisonLine` is null without published bands or when every central radius is within 0.5 m, otherwise the `effects.published` text |
@@ -2574,6 +2598,16 @@ Ordered; each names its commit (section 13). WS1's `shared/fieldOps/vocabulary.t
     - Done when: the "published mode" case passes, and manual step A6.9 passes once WS8's editor mounts the card.
     - Tests: `frontend/tests/fieldOpsDevices.test.ts (new)`; manual A6.9. Commit: CM6.
 
+22. **T6.22 Burst height and sandbox parity (added 22 Nov 2026; D61, D62).**
+    - Files: `shared/fieldOps/device.ts (new)` (`environment.elevation_height_m`), `server/lib/fieldOps/deviceSchemas.ts (new)`, `server/services/fieldOps/physics/calculator.ts (new)` and its test.
+    - Done when: AC6.31 passes, and the blast-effects research rows are imported through the pipeline once reviewed.
+23. **T6.23 Blast-effects seeds (added 22 Nov 2026; D62 research).**
+    - Goal: section 15.9.
+    - Files: `server/services/fieldOps/physics/data/blast-curves.json (new)`, `server/services/fieldOps/physics/data/fragments.json (new)`, `server/services/fieldOps/physics/data/environment.json (new)`, `server/services/fieldOps/physics/data/oracles.json (new)`, `server/services/fieldOps/physics/data/seed/materials.json (new)`, `server/services/fieldOps/physics/data/seed/thresholds.json (new)`, `server/lib/fieldOps/physicsDataSchemas.ts (new)`, `server/services/fieldOps/physics/calculator.ts (new)`, `server/services/fieldOps/physics/blastCurves.ts (new)`, `server/services/fieldOps/physics/fragments.ts (new)` and their tests.
+    - Steps: transcribe the seeds into the data files once the D22 reviewer approves them; effective pressure for injury thresholds; the fragment band; the profile's `arrival_ms` and start clamp; the split materials.
+    - Done when: AC6.32 to AC6.35 pass.
+    - Tests: `server/services/fieldOps/physics/calculator.test.ts (new)`, `server/services/fieldOps/physics/library.test.ts (new)`, `server/lib/fieldOps/physicsDataSchemas.test.ts (new)`. Commit: CM2.
+
 ## 13. Commit plan and backtracking
 
 Every commit passes `npm test` (with its new test files added to the script), `npx tsc --noEmit`, and `npm --prefix frontend run build` (which type-checks `shared/`). Nothing reaches a user before CM4, and nothing reaches a trainer in production before the flag and the gate allow it.
@@ -2661,6 +2695,8 @@ WS2 renders `DevicesCard` in its own `IncidentLane`; WS4 renders `EffectsPanel` 
 - **Q5** Chemical "other hazard" entries are recorded but not calculated. Is that acceptable until chemical incident types are built (D11)?
 - **Q6** Should the 16 `research_cases` rows be shown to the reviewer as a cross-check, as journey Design 4 suggests? This spec does not use them.
 - **Q7** Is "not scheduled" the right default timing for a blank secondary device, rather than "when handled"?
+- **Q8** (**added 22 Nov 2026**) Should smokeless powder stay off the list until a published airblast factor is found, or be offered with a reviewer-set Assumed factor?
+- **Q9** (**added 22 Nov 2026**) Should the reviewer read DDESB TP-14 for wall and door attenuation, or is "openings fail, surviving walls block" enough for training?
 
 ### 15.3 Requests made of WS6
 
@@ -2696,11 +2732,57 @@ Only the requests still open. Settled and dropped: X6.1 and X6.2 (master risk 15
 | --- | --- | --- |
 | `10-ui-spec-sheet.md` | X6.12: record the nine differences of section 7.8 and the class names of section 7.11; the device copy of `fo-notice` is scoped under `.fo-devices` so it cannot collide with WS1's drawer notice; the effects header uses `target`; add the published-mode keys `effects.published` and `setup.devices.remove.keepOne` of section 7.7. | D28. |
 
+### 15.5 The blast profile and offline seeding (added 22 Nov 2026)
+
+Master D39, D41 and D45, 10.8 items 42 and 44; WS9's request in `11-living-world.md` section 15.3.
+
+- **Blast profile.** `EffectEstimate` gains `blast_profile: Array<{ range_m: number; overpressure_kpa: number; impulse_kpa_ms: number; arrival_ms: number }> | null` (`arrival_ms` **added 22 Nov 2026**, for the shock-front animation and evacuees' reaction times): 16 ranges spaced evenly in logarithm from the larger of 1 m and the curve's `z_min` times the cube root of the TNT-equivalent mass (so Z never falls below 0.2 for charges over 125 kg, AC6.33) to one and a half times the minor band's radius (at most 500 m), with the incident peak overpressure and positive-phase impulse `calculateEffects` already computes at each through `pressureAt` and the device's burst geometry. It is null in `legacy_bands` mode. It is part of the estimate, so it lives where the estimate lives (WS5's physics snapshot) and follows the same answer-key rules (section 9): never sent to a participant. WS9 interpolates it per stud and never reads a device input (`11-living-world.md` section 6.23.6).
+- **Pure curves for catalogue items.** `pressureAt` and `scaledDistanceFor` (`server/services/fieldOps/physics/blastCurves.ts (new)`) stay pure and importable, so WS9 evaluates a catalogue item's vessel burst or vapour-cloud ignition with WS6's reviewed curves.
+- **Seeding.** WS6's library seed files (explosive materials, injury thresholds, presets) may be drafted by WS9's offline research agent with the brief `device_material`, under this spec's source list (section 5.5) and safety stance; the D22 reviewer reviews every row before import. The brief forbids, as section 9.1 does, anything about how a device is made, armed, hidden or placed.
+- **Chemical other hazards.** Unchanged for devices: a device's chemical "other hazard" stays recorded and "not calculated in this release" (question Q5). Chemicals stored in buildings are WS9's catalogue's, released by its interaction rules (D41).
+- **Tests.** `server/services/fieldOps/physics/calculator.test.ts (new)` gains "blast profile": 16 ranges, monotone decreasing overpressure, equal to `pressureAt` at each range, null in legacy mode.
+
+### 15.6 Devices and the new incident types (added 22 Nov 2026)
+
+Master D46, 10.8 item 46. `DevicesCard` and the calculator serve the four bombing types only in this version; for every other type the devices lane is hidden and `devices` is empty (`03-setup-screen.md` AC2.38). Vehicles, aircraft, gas leaks and releases are not devices and never reach `calculateEffects`: their effects are WS9's (`11-living-world.md` section 6.27). A gas explosion's blast uses WS6's published curves through `pressureAt` (section 15.5), never the device library. Combining a device with another event is a later question (`11-living-world.md` section 15.2, question 39). **Updated 22 Nov 2026 (D49):** answered: a device is one event of a storyline, in any scenario; the devices lane shows whenever one is.
+
+### 15.7 Casualties for a plotted population (added 22 Nov 2026)
+
+Master D51, 10.8 item 47. When a scene has a population, each person's outcome is WS9's `casualtiesForPopulation` (`11-living-world.md` section 6.28), which reads WS6's injury thresholds, the fragment band and the casualty shares within each band from the physics library, and the per-stud blast field from `blast_profile`. `allocateCrowd` and the crowd-zone casualty function stay for scenes without a population and for legacy scenes. WS6 adds `injuryShares(band)` to `shared/fieldOps/effects.ts (new)` so both paths draw the same shares; `server/services/fieldOps/physics/casualties.test.ts (new)` gains "shares match", proving the two paths agree for a uniform population.
+
+### 15.8 The charge picker in the main game, and the blast-effects library (added 22 Nov 2026)
+
+Master D61 and D62, 10.8 item 53.
+
+- **The picker** is WS4's `ChargeQuickForm` (`05-layout-step.md` section 15.8) and the existing `DeviceForm` in Setup: explosive type, amount, burst and height. `DeviceSpec.environment` gains `elevation_height_m: Sourced<number> | null` (0.5 to 30 m, used only when `elevation` is `elevated`); for an elevated burst the ground radius of each band is the square root of the 3D radius squared less the height squared. The rings in Setup, the layout step and the trainer's live map all come from `toEffectRingSet` (section 5.3).
+- **The debug sandbox** (`spec-rts-charge-picker.md` in the Project store) is a client-side subset of this calculator with an Assumed fallback dataset; once this calculator exists, the sandbox reads the same blast curves, materials and thresholds, so both give the same radii (AC6.31).
+- **The blast-effects library** (`blast_effects`, D62) is the research that fills `blast-curves.json`, the explosive materials (239) and the injury and glass thresholds (240), imported through WS9's pipeline and reviewed under D22. **Updated 22 Nov 2026 (D62 research).** Its pending seeds have landed (section 15.9) and replace the planning values; they stay "Unreviewed model" until the D22 review.
+- **Ring math, one definition.** The picker's rings, `toEffectRingSet` and the sandbox all use the same pipeline: injury rings where Ps + q falls to the injury thresholds, glass rings where incident pressure falls to `glass_injury` and `glass_breakage`, free air as the surface curve at the mass divided by 1.8 evaluated at the 3D distance, then the ground radius. The sandbox (`spec-rts-charge-picker.md`, revision 2) already follows these rules on the seed data: Ps + q for the injury rings, Z clamped to at least 0.2, and two glass rings at 2 and 6.9 kPa on incident pressure; AC6.31's parity test runs on the seed data.
+
+### 15.9 The blast-effects seeds and their corrections (added 22 Nov 2026)
+
+Master D62. The research's pending seed files (the Project store's knowledge-seeds folder blast-effects, run of 22 Nov 2026) give every value of `blast-curves.json`, the materials (239) and the thresholds (240); they are imported only after the D22 review (`importApproved` skips pending files). The worker's corrections are applied here:
+
+1. **Curves beyond pressure.** `blast-curves.json` stores incident impulse, arrival time, duration, reflected pressure and reflected impulse beside pressure (section 5.6), because `blast_profile` and the Green Book lung, impact and house probits need impulse. `blast_profile` gains `arrival_ms` (section 15.5).
+2. **Effective pressure.** Injury thresholds compare with Ps + q in the open and Pr near a facing wall (DC13; migration 240's `effective_overpressure_kpa`). For long-duration blasts (vapour clouds and vessel bursts, which are WS9's catalogue items, never devices), UFC 3-340-02 puts lung thresholds at about one third of the short-duration values; WS9 applies that factor to catalogue blasts (`11-living-world.md` section 6.23.6).
+3. **Fragments from public distances.** The Gurney, casing-mass and drag model is removed (DC12): no Gurney column in 239, no casing mass in 238 or in `ResolvedDevice`, and `fragments.json` holds the stand-off distances, the 79 J criterion, the hazardous density and the shielding multipliers.
+4. **Profile start clamp.** The profile starts at the larger of 1 m and `z_min` times the cube root of the mass (AC6.33); a person or stud nearer than the first range takes the first range's values with the note `outside_curve_range`.
+5. **Split materials.** RDX, C-4, PETN and Semtex are separate rows (section 5.7, AC6.35).
+6. **Free-air polynomial.** Jeon (2017) prints the Kingery-Bulmash free-air C0 as 2.661; the consistent value is 2.611 (DC11).
+
+**Known gaps, and how the spec handles them.**
+
+- **Smokeless powder** has no published factor; it has no row and is not offered (section 5.7). Reviewer question 15.2 Q8.
+- **TATP, black powder and dynamite** come only from a tertiary demolition table: imported with confidence `low` and the note `low_confidence_factor`, and listed in the `tnt_equivalence` checklist item for a better source.
+- **Wall and door attenuation** has no published simplified factor (DDESB TP-14 was not read). Doors and windows fail within about a millisecond, so they count as openings; a wall that survives (WS9's wall model) blocks the direct shock; the storey rule of `11-living-world.md` section 6.23.6 stays Assumed. Reviewer question 15.2 Q9.
+- **Confinement multipliers** have no published values: `environment.json` takes the research's Assumed suggestion (open 1.0, street canyon 1.3, enclosed 1.6 with a range of 1.55 to 1.75, the ratio of the reflected-curve radius to the incident-curve radius). Because injury rings now use Ps + q, the reviewer confirms whether the enclosed value should be re-derived against Ps + q (`environment_assumptions`). In a closed room WS9 also applies the quasi-static pressure as a floor on the late pressure.
+- **Free-air impulse, arrival time and duration** are derived from the surface curve (DC11), with confidence medium.
+
 ## 16. Definition of done
 
 WS6 is done when master section 11 holds and, in particular:
 
-1. AC6.1 to AC6.30 pass, each through the test it names, and manual steps A6.1 to A6.9 are recorded.
+1. AC6.1 to AC6.35 pass, each through the test it names, and manual steps A6.1 to A6.9 are recorded.
 2. `npm test` passes with all fourteen new test files in the `package.json` script; `npx tsc --noEmit` is clean for the server and `shared/`; `npm --prefix frontend run build` passes.
 3. `node scripts/verify-field-ops-specs.mjs` passes for this document, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
 4. Migrations 238 to 242 apply on a scratch database (a Supabase branch or a local Postgres, never the shared project), twice without error, and the code was shown to work before they were applied (AC6.23).

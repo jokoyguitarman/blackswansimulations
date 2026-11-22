@@ -1,6 +1,6 @@
 # People or AI: AI-operated agencies, the lobby and the end of engine auto-play
 
-**Status:** v1.1, 25 Oct 2026, reconciled with the other specs and master 10.8 items 20 to 30. Not built.
+**Status:** v1.1, 25 Oct 2026, reconciled with the other specs and master 10.8 items 20 to 30. Not built. **Added 22 Nov 2026:** section 15.5 answers master D40 and D43 for AI agencies.
 **Workstream:** WS7
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the compile and review spec](06-compile-and-review.md), [the device and physics spec](07-device-and-physics.md) (text moderation), [the after-publish spec](09-after-publish.md) (the start claim)
 **Flags:** `ENABLE_FIELDOPS_AI_TEAMS` (new, this spec); existing `ENABLE_TEAMMATE_BOTS` is not required
@@ -1408,7 +1408,7 @@ AI agencies play on the same map payloads as players. The actor is a participant
 | Team decisions | `GET /api/decisions/session/:sessionId` | `id`, `title`, `description` (300 characters), `status`, `proposed_by`, `response_to_incident_id` |
 | Chat | `GET /api/channels/session/:sessionId`, then the latest 20 messages of the team, All Teams and Command channels | `id`, `sender_id`, `sender.full_name`, `sender.role`, `content` (400 characters), `created_at` |
 
-**The exit gate.** A player's map shows hazards, casualties and crowds only once every entry and exit pin that a team of the session may claim is claimed (section 3.7). Perception applies the same rule with WS0's `exitGateState` (`shared/fieldOps/exitGate.ts (new)`) over the perceived entry and exit pins, which fills `exit_gate`:
+**The exit gate.** A player's map shows hazards, casualties and crowds only once every entry and exit pin that a team of the session may claim is claimed (section 3.7). Perception applies the same rule with WS0's `exitGateState` (`shared/fieldOps/exitGate.ts`) over the perceived entry and exit pins, which fills `exit_gate`:
 
 - While the gate is closed, `casualties` and `hazards` are empty. The brain sees what a player sees under "Plan Your Pathways": the pins and who holds them.
 - While it is closed, any agency may claim an open gate pin that its team may claim, as any player can on `MapView`, whatever its `claim_kinds` (section 6.10, priority 18).
@@ -1426,7 +1426,7 @@ AI agencies play on the same map payloads as players. The actor is a participant
 
 `FORBIDDEN_KEYS`, which `findForbiddenKeys` looks for at any depth, are:
 
-- every key of WS0's `CASUALTY_ANSWER_KEYS` (`server/lib/participantProjections.ts (new)`): `triage_color`, `triage_category`, `treatment_requirements`, `transport_prerequisites`, `contraindications`, `ideal_response_sequence`, `required_ppe`, `required_equipment`, `expected_time_to_treat_minutes`, `recommended_transport`, `deterioration_timeline`, imported rather than copied so the two lists cannot drift;
+- every key of WS0's `CASUALTY_ANSWER_KEYS` (`server/lib/participantProjections.ts`): `triage_color`, `triage_category`, `treatment_requirements`, `transport_prerequisites`, `contraindications`, `ideal_response_sequence`, `required_ppe`, `required_equipment`, `expected_time_to_treat_minutes`, `recommended_transport`, `deterioration_timeline`, imported rather than copied so the two lists cannot drift;
 - WS6's device and effect keys: `devices`, `device_pool`, `planted_items`, `charges`, `fragments`, `casing`, `initiation`, `effect_overrides`, `effects`, `lethal_m`, `serious_m`, `minor_m`, `fragments_m`, `thermal_m`, `location_note`, `responder_note`, `fact_ids`;
 - the platform's hidden fields: `zones`, `properties`, `conditions`, `hidden_devices`, `sweep_device_pool`, `current_state`, `is_live`, `detonation_deadline`, `blast_radius_m`, `placement_score`, `environmental_consistency`, `image_sequence`, `resolution_requirements`, `spawn_condition`.
 
@@ -2558,8 +2558,8 @@ Order: commits 1 to 6 in sequence. Commit 6 depends only on commit 1 and can mov
 | File | Owner | What WS7 uses |
 | --- | --- | --- |
 | `server/lib/schemaFeatures.ts (new)` | WS0 | `createCachedDetector`, `isMissingColumnError`, `isMissingRelationError`, `isMissingFunctionError` |
-| `server/lib/participantProjections.ts (new)` | WS0 | `CASUALTY_ANSWER_KEYS` |
-| `shared/fieldOps/exitGate.ts (new)` | WS0 | `exitGateState` |
+| `server/lib/participantProjections.ts` | WS0 | `CASUALTY_ANSWER_KEYS` |
+| `shared/fieldOps/exitGate.ts` | WS0 | `exitGateState` |
 | `shared/fieldOps/vocabulary.ts (new)` | WS1 | `ArchetypeKey`, `DoctrineStatus`, `OperationMode` |
 | `shared/fieldOps/agency.ts (new)` | WS1 | `SEAT_KEY_PATTERN` |
 | `shared/fieldOps/actionScope.ts (new)` | WS1 | `actionScopeFor`, `ArchetypeActionScope`, `ClaimKind` |
@@ -2639,6 +2639,15 @@ Only requests still open after the master's rulings and the other specs' answers
 | To | Request | Why |
 | --- | --- | --- |
 | UI spec sheet (`10-ui-spec-sheet.md`) | Record that the copy of the lobby panel, the seat cards, the console, the decision log and the after-action chip (sections 7.4 to 7.7) is authoritative, because the mockup does not draw them. | D28 |
+
+### 15.5 Use of force and the layered world for AI agencies (added 22 Nov 2026)
+
+Master D40 and D43, 10.8 items 44 and 45; WS1's and WS9's requests.
+
+- **Use of force.** The doctrine plan's `never_do` now holds the force levels the agency's doctrine states as not authorised (never the levels it leaves unstated, **updated 22 Nov 2026**) (`02-teams-and-doctrines.md` section 5.4.1). The planner adds them to the agency's forbidden list as it adds every never-do item, and the action guard refuses a decision whose text the planner's classifier marks as ordering one of them, with the reason "Not authorised for this agency's units."
+- **Archetypes.** The three armed archetypes act through WS9's units and the talk-only scope; they gain no action kind in this version (`02-teams-and-doctrines.md` Choice 23).
+- **Perception.** An AI agency's view of the layered world carries each stud's storey and its head-layer classes as a person's does (`11-living-world.md` section 6.25); its dispatch targets name a storey. It reads the same fog.
+- **Tests.** `server/services/fieldOps/bots/planner.test.ts (new)` gains "force levels in never_do"; it is already in the `test` script.
 
 ## 16. Definition of done
 

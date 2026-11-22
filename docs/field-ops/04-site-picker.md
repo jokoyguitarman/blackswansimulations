@@ -1,6 +1,6 @@
 # WS3: Site picker on the saved map data
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.6 adds the building-type and storey controls master D42 and D43 need.
 **Workstream:** WS3
 **Depends on:** [the master plan](00-master-plan.md#10-shared-contracts) and [the prerequisites spec](01-prerequisites.md#6-server) (WS0: `env.enableFieldopsV2`, `requireFieldopsV2`, the schema-feature helpers, `VALIDATION_FAILED`); for named types only, `02-teams-and-doctrines.md` (the vocabulary) and `03-setup-screen.md` (the readiness rule and lane-props contracts)
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
@@ -2451,6 +2451,15 @@ SELECT round(center_lat::numeric, 2) AS lat_cell,
 | --- | --- | --- |
 | WS4, `05-layout-step.md` | Leave `frontend/src/components/SceneEditor/BuildingDrawHandler.tsx` and `frontend/src/components/SceneEditor/buildingAutoTrace.ts` in place when the edit phase is extracted, and list them as not touched; if a later clean-up retires the legacy map phase, they move with the picker | The picker imports both (section 7.6; risk 11) |
 | UI sheet, `10-ui-spec-sheet.md` | Add copy keys for the section 7.7 strings the deck still lacks: the dropdown's loading, empty, error and names-only rows, the unavailable panel, the draw and trace strip, and "Loading the saved map data" in the HUD | One copy deck (D28) |
+
+### 15.6 Building type and storeys for the knowledge libraries (added 22 Nov 2026)
+
+Master D42 and D43, 10.8 items 43 and 44; WS9's request in `11-living-world.md` section 15.3.
+
+- **Contract.** `BuildingRef` gains two optional fields, written only by the site lane and checked by the server: `building_type: string | null`, a key of WS9's catalogue (`fieldops_building_types`), and `storeys: { above: number; below: number } | null`, whole numbers from 1 to 120 and 0 to 10. Absent or null means "as detected". The save route refuses an unknown key with 422 `CATALOGUE_TYPE_UNKNOWN` while the catalogue is loaded, and accepts any slug while it is not.
+- **Control.** Under the primary building's card in `SiteLane`, and in each row of `InvolvedBuildingsList`, a "Building type" select lists the catalogue's types from `GET /api/field-ops/spread-library/catalogue/types` with "Detected: {label}" first, the value of WS9's `buildingTypeFor` from the footprint's `place_class` and raw tag. Restricted types (military camp, process plant) are listed under "Category only" and are never detected automatically. Two number fields, "Storeys above ground" and "Storeys below ground", start from the saved `levels` and, when the saved data has none, from the type's defaults, shown as "Assumed".
+- **What WS3 keeps.** `loadSiteArea` keeps returning `levels`, `height_m`, `place_class` and the raw building tag for each footprint, which WS9 reads at the world build and WS5 at the dossier.
+- **Tests.** `server/lib/fieldOps/siteSchemas.test.ts (new)` gains "building type and storeys": an unknown key with a loaded catalogue is refused, storeys out of range are refused, and absent fields read as null; added to the `test` script with its file.
 
 ## 16. Definition of done
 

@@ -1,6 +1,6 @@
 # Lay out the scene: the layout step opens with the site (WS4)
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43; section 15.6 adds event placement for D46 and D47; section 15.7 adds storeys designed one by one, slopes and the business-as-usual population for D50, D51 and D53 (AC4.31 to AC4.36, T4.21 to T4.23); section 15.8 brings the debug sandbox's charge picker and multi-level editor into this step for D61 (AC4.37, AC4.38, T4.24).
 **Workstream:** WS4
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
@@ -278,6 +278,14 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 28. **AC4.28** Given a live session of a compiled v2 scenario, when a participant opens the map, then `FieldOpsSceneOverlay` draws the interior walls, stairwells, involved footprints, crowd zones (behind a toggle) and photo pins from the participant projection, and draws nothing for a legacy scene. Test: `frontend/tests/sceneOverlayModel.test.ts (new)` for the pure `sceneOverlayModel`; manual M14.
 29. **AC4.29** Given a published scenario whose v2 scene has two live photos and one the trainer deleted, and a draft that WS2's `createSeededDraft` made for the scenario's creator, when WS8 calls `copySceneForSeededDraft` for that draft and scenario, then a new row exists with `draft_id` the seeded draft, `scenario_id` null, `source_scene_id` the published row, `created_by` the caller, `layout_rev = 1` and the published row's `authored`, `crowd_zones`, `site_snapshot` and `site_fingerprint`; it has two photo rows with the published rows' `storage_path` and `copied_from` set, and no storage object is added; the draft's `rts_scene_id` is the new row, whose revision 1 has reason `created`; and the published row and its photo rows are unchanged. A second call answers the same row and writes nothing; a draft another trainer owns answers `DRAFT_NOT_FOUND`, a caller who is not an admin and created neither the scenario nor its scene answers `SCENARIO_SCENE_NOT_FOUND`, and a draft that already has another scene answers `SCENE_EXISTS`, each writing nothing. Once the published scene is deleted, the photo sweep keeps the objects the copy still uses. Test: `server/services/fieldOps/layout/compileHandoff.test.ts (new)`, case "copy for a seeded draft"; `server/services/fieldOps/layout/scenePhotos.test.ts (new)`, case "the folder sweep keeps objects a copy uses".
 30. **AC4.30** **Added 3 Nov 2026.** Given a v2 scene with one hazard whose `material` is `fuel_flammable_liquid` and one without the key, when it is saved and read back, then the first keeps its key, the second has none, and the legacy `hazard_zones` carry no `material`. Given a key outside WS9's list, the save answers 400 `VALIDATION_FAILED` at `authored.hazards.N.material`; given a malformed key, it answers the same at that path from the schema. Test: `layoutSchemas.test.ts`, case "hazard material".
+31. **AC4.31** **Added 22 Nov 2026.** Given a primary building with WS3's storeys B1 to L2, when the trainer opens the layout step, then the storey switcher lists B1, G, L1 and L2 with G active; walls, exits, hazards and wall points drawn on L1 are saved under L1 and absent from G; "Copy this storey" copies G's walls and exits onto L1 and asks before replacing anything. Proved by `frontend/tests/layoutStoreys.test.ts (new)`, case "per-storey plans".
+32. **AC4.32** Given a stair placed on G joining G to L2, then it appears at the same position on G, L1 and L2; moving it on L1 moves it on all three; shortening its range to G and L1 removes it from L2 only; a lift and an escalator behave the same, and a ramp joins two storeys or a storey and the street. Proved by `layoutStoreys.test.ts`, case "mirrored vertical links".
+33. **AC4.33** Given a saved scene, then `layoutSchemas` refuses a vertical link joining a storey that does not exist, a storey with more than `LAYOUT_LIMITS.maxWallsPerStorey` walls, more than 12 storeys and a slope area with a gradient over 0.3; a v2 scene saved before 22 Nov (one plan) loads as the plan of the exit storey. Proved by `server/lib/fieldOps/layoutSchemas.test.ts (new)`, case "storeys, links and slopes".
+34. **AC4.34** Given the mapped blueprint, when the trainer presses "Add population", then WS9's `populate` runs with the scene's seed and Setup's time and headcount, the people appear frozen as dots on every storey with the count per storey shown, and the readiness note "Typical occupancy, assumed (source: {type}, {hour})" appears. Proved by `frontend/tests/layoutPopulation.test.ts (new)`, case "populate".
+35. **AC4.35** Given a population, then the trainer can drag a person, delete a selection, add people by clicking, paint a region's density (quiet, normal, busy, packed) and re-run "Add population" for chosen regions only; her edits survive a re-run elsewhere; changing a wall that cuts a region asks whether to re-populate it. Proved by `layoutPopulation.test.ts`, case "edits".
+36. **AC4.36** Given a population of 12,000, then it is saved in `rts_scene_configs.population` under 1 MB, the participant projection never includes it (master 10.8 item 12), and a scene without a population compiles as before with crowd zones. Proved by `server/services/fieldOps/layout/sceneStore.test.ts (new)`, case "population column".
+37. **AC4.37** **Added 22 Nov 2026.** Given a planted device with an explosive type, 10 kg and a surface burst, when the trainer selects it, then `SceneInspector` shows the TNT equivalent and the lethal, serious, minor and glass radii from WS6's calculator, the map draws the four rings around it, changing the burst to free air at 3 m changes them to WS6's ground radii, and no control asks for a desired radius. Proved by `frontend/tests/layoutPlacement.test.ts (new)`, case "charge rings".
+38. **AC4.38** Given three designed levels, then the level switcher shows one level at a time with the others ghosted at 25 per cent, walls, doors and exits drawn on one level stay on it, a stair or lift placed on one appears on every level it joins at the same point, and the population tool and hazard panel act on the active level only. Proved by `frontend/tests/layoutStoreys.test.ts (new)`, case "level switcher".
 
 ## 5. Data model
 
@@ -431,13 +439,17 @@ COMMENT ON TABLE rts_scene_revisions IS
 --   DELETE FROM storage.buckets WHERE id = 'fieldops-scene-photos';
 --   DROP TABLE IF EXISTS rts_scene_photos;
 --   ALTER TABLE rts_scene_configs
---     DROP COLUMN IF EXISTS crowd_headcount, DROP COLUMN IF EXISTS crowd_zones;
+--     DROP COLUMN IF EXISTS population, DROP COLUMN IF EXISTS crowd_headcount, DROP COLUMN IF EXISTS crowd_zones;
 
 ALTER TABLE rts_scene_configs
   ADD COLUMN IF NOT EXISTS crowd_zones JSONB NOT NULL DEFAULT '[]'::jsonb
     CHECK (jsonb_typeof(crowd_zones) = 'array'),
   ADD COLUMN IF NOT EXISTS crowd_headcount INTEGER
-    CHECK (crowd_headcount IS NULL OR crowd_headcount BETWEEN 0 AND 1000000);
+    CHECK (crowd_headcount IS NULL OR crowd_headcount BETWEEN 0 AND 1000000),
+  -- Added 22 Nov 2026 (D51): the business-as-usual population WS9's populate plots and the trainer edits.
+  -- Amended in place; 234 is not applied. Answer-key adjacent: never in the participant projection.
+  ADD COLUMN IF NOT EXISTS population JSONB
+    CHECK (population IS NULL OR (jsonb_typeof(population) = 'object' AND octet_length(population::text) <= 1048576));
 
 COMMENT ON COLUMN rts_scene_configs.crowd_zones IS
   'CrowdZone[] painted in the field-ops layout step. No device data; safe for the runtime canvas.';
@@ -697,6 +709,10 @@ export interface CrowdZone {
 export interface SceneConfigV2Authored {
   schema_version: typeof SCENE_SCHEMA_VERSION;
   primary: { exits: SceneExit[]; interior_walls: SceneWall[]; stairwells: SceneStairwell[] };
+  // Added 22 Nov 2026 (D50, D53; section 15.7). When present, storeys replace primary's single plan.
+  storeys?: SceneStoreyPlan[];
+  vertical_links?: SceneVerticalLink[];
+  slope_areas?: SceneSlopeArea[];
   hazards: SceneHazard[];
   involved: FootprintBuildingLayout[];
   devices: PlacedDevice[];
@@ -2596,6 +2612,22 @@ Tasks are in build order. WS0's helpers, WS3's site contract and WS2's step regi
     - Done when: AC4.30 passes, and a scene saved before the field existed loads and saves unchanged.
     - Tests: `layoutSchemas.test.ts`, case "hazard material". Commit: whichever commit of section 13 touching these files has not landed yet, or its own after commit 6.
 
+21. **T4.21 Storeys and mirrored vertical links (added 22 Nov 2026; D50).**
+    - Files: `shared/fieldOps/layout.ts (new)`, `server/lib/fieldOps/layoutSchemas.ts (new)` and its test, `frontend/src/components/SceneEditor/SceneEditor.tsx` (touched, the storey switcher), `frontend/tests/layoutStoreys.test.ts (new)`, `package.json` (touched).
+    - Steps: section 15.7's contract, the switcher, copy, and the vertical-link tool; the upgrade of pre-22 Nov scenes.
+    - Done when: AC4.31 to AC4.33 pass. Commit: with the layout commits of section 13.
+22. **T4.22 Slopes and room uses (added 22 Nov 2026; D53, D51).**
+    - Files: as T4.21, plus the region computation in `shared/fieldOps/sceneGeometry.ts (new)`.
+    - Done when: the slope and region cases of AC4.33 pass.
+23. **T4.23 The population tool (added 22 Nov 2026; D51).**
+    - Files: `migrations/234_rts_scene_crowd_and_photos.sql (new)` (amended), `server/services/fieldOps/layout/sceneStore.ts (new)` and its test, `frontend/src/components/FieldOps/Layout/PopulationTool.tsx (new)`, `frontend/tests/layoutPopulation.test.ts (new)`, `package.json` (touched).
+    - Steps: the button, the frozen dots on a canvas layer, the edit tools, the density paint, the column, the projection rule.
+    - Done when: AC4.34 to AC4.36 pass.
+
+24. **T4.24 The charge picker and the level switcher in the layout step (added 22 Nov 2026; D61).**
+    - Files: `frontend/src/components/FieldOps/Layout/ChargeQuickForm.tsx (new)` (WS6's form fields in the inspector), `frontend/src/components/SceneEditor/SceneEditor.tsx` (touched, the rings and the ghosted levels), `frontend/tests/layoutPlacement.test.ts (new)`, `frontend/tests/layoutStoreys.test.ts (new)`.
+    - Done when: AC4.37 and AC4.38 pass.
+
 ## 13. Commit plan and backtracking
 
 | Commit | Tasks | What it contains | Safe to ship alone because | Backtracking |
@@ -2711,7 +2743,7 @@ Each commit passes `npm test`, `npx tsc --noEmit` and the frontend build on its 
 | `server/lib/schemaFeatures.ts (new)` | WS0 | `createCachedDetector`, `isMissingColumnError`, `isMissingRelationError` |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | WS0 | `requireFieldopsV2` and `requireFieldopsTrainer` on every scene route |
 | `server/services/fieldOps/drafts/draftGuards.ts (new)` | WS0 | `assertDraftEditable` |
-| `server/lib/participantProjections.ts (new)` | WS0 | `projectSceneForParticipant` and `PARTICIPANT_SCENE_FIELDS`, which gain WS4's four columns (master 10.8 item 28) |
+| `server/lib/participantProjections.ts` | WS0 | `projectSceneForParticipant` and `PARTICIPANT_SCENE_FIELDS`, which gain WS4's four columns (master 10.8 item 28) |
 | `frontend/src/components/FieldOps/Site/siteMapLayers.tsx (new)` | WS3 | `SiteTiles`, `SiteRingLayer`, `SiteStreetsLayer`, `SiteFootprintsLayer` |
 | `frontend/src/components/FieldOps/Site/siteMapStyle.ts (new)` | WS3 | `SITE_MAP_STYLE` |
 | `frontend/src/components/FieldOps/Devices/useDeviceEffects.ts (new)` | WS6 | The rings and details for the inspector |
@@ -2794,6 +2826,78 @@ The first draft's requests R4.1 to R4.8 and R4.10 to R4.12 are settled: R4.1 by 
 | To | Request | Why |
 | --- | --- | --- |
 | `00-master-plan.md` (owner) | R4.9: approve closing the read policy and the public bucket of `migrations/163_rts_scene_configs.sql` with the statements of section 9.2, under a migration number after 249, soon and on its own; keep `ENABLE_FIELDOPS_V2` off in production until it is applied. **Updated 8 Nov 2026:** migration 218 applied a narrower select policy in production; the other statements are still requested | Master risk 14: the anon key alone read every scene row until migration 218; not additive, so the owner decides |
+
+### 15.5 Typical items and storeys (added 22 Nov 2026)
+
+Master D42 and D43, 10.8 items 43 and 44; WS9's request in `11-living-world.md` section 15.3.
+
+- **Contract.** `SceneHazard` gains `typical_kind?: string | null`, a key of WS9's `fieldops_hazard_item_kinds` when the hazard was placed from a typical item, and `storey?: string | null`, a storey label (`B1`, `G`, `L2`), null meaning the exit storey. `CrowdZone` gains the same `storey`. `SceneConfigV2Authored` gains `removed_typical?: string[]`, the item kinds the trainer removed, at most 40. Walls stay one plan, replicated on every storey (WS9's W27). **Updated 22 Nov 2026 (D50):** each storey now has its own plan (section 15.7).
+- **Panel.** The hazard panel of `SceneToolsPanel` gains a group "Typical for a {type}", listing WS9's `suggestionsFor(buildingType)`: each item's label, location in words and quantity band, with "Place" and "Not in this building". "Place" puts a hazard of the item's hazard type with `typical_kind` set at the point she clicks; "Not in this building" adds the kind to `removed_typical`. Category-only items are listed under "Category only", without a quantity, and are never placed for her. A note says: "Items you do not place or remove are placed by the live world where such buildings usually keep them, marked Assumed."
+- **Storey.** The hazard and crowd-zone inspectors gain a "Storey" select listing the storeys of the primary building from WS9's `storeysFor`, defaulting to the exit storey.
+- **Tests.** `frontend/tests/layoutReadiness.test.ts (new)` gains "typical items": placing and removing update the scene as above; the server's layout schema test gains the three fields with their caps. Both are in the `test` script with their files.
+
+### 15.6 Placing the incident event (added 22 Nov 2026)
+
+Master D46 and D47, 10.8 item 46; WS9's request in `11-living-world.md` section 15.3.
+
+- **Contract.** **Updated 22 Nov 2026 (D49):** `event_geometry` is keyed by event id, one entry per event of `incident.events`. `SceneConfigV2Authored` gains `event_geometry`, the geometry the event kind needs, which WS2's `incident.event` reads at compile: crowd trigger points and the exits they name; a vehicle path of 2 to 50 points; an aircraft impact point, storey and heading; ignition points with storeys; a leak or release point with its storey; and, in phase 2, a collapse zone polygon, a train position, collision points, a rainfall area, an outage area or attacker waypoints.
+- **Tools.** An "Event" group in `SceneToolsPanel` shows only the tool of the scenario's kind: "Draw the vehicle's path", "Place the impact point", "Place a trigger", "Place the ignition point", "Place the leak", "Place the release". Class and band fields live on Setup's incident lane; the layout step never offers an exact speed, a route suggestion or a target suggestion (D47).
+- **Barriers.** Rated barriers and bollards are placed with the existing hazard panel as WS9's mitigation items, each with its rating class.
+- **Readiness.** `getLayoutReadiness` gains "The event is not placed yet" for a kind whose geometry is missing; it blocks compile.
+- **Tests.** `server/lib/fieldOps/layoutSchemas.test.ts (new)` gains "event geometry" (caps, the path inside the site ring, the storey a known one) and `frontend/tests/layoutReadiness.test.ts (new)` gains "event placed".
+
+### 15.7 Storeys, slopes and the population (added 22 Nov 2026)
+
+Master D50, D51 and D53, 10.8 item 47; WS9's sections 6.28 to 6.30.
+
+**Contract** (`shared/fieldOps/layout.ts (new)`):
+
+```ts
+// Added 22 Nov 2026 (D50, D51, D53).
+export const REGION_USES = ['shop', 'corridor', 'atrium', 'office', 'food', 'toilet', 'plant', 'car_park',
+  'platform', 'concourse', 'seating', 'other'] as const;
+export interface SceneStoreyPlan {
+  storey: string;                          // 'B2' to 'L60', as WS3's levels give them
+  designed: boolean;                       // false: the world copies the nearest designed storey below, labelled Assumed
+  exits: SceneExit[];                      // exits to the outside on this storey; usually G only
+  interior_walls: SceneWall[];
+  regions: Array<{ id: string; label: string; use: (typeof REGION_USES)[number]; seed_point: [number, number] }>; // a room is found from its seed point
+  hazards: SceneHazard[];                  // this storey's
+  refuge: boolean;                         // a refuge storey
+  roof_exit: boolean;
+}
+export interface SceneVerticalLink {
+  id: string;
+  kind: 'stair' | 'lift' | 'firefighting_lift' | 'escalator' | 'ramp';
+  position: [number, number];              // sim metres; the same on every storey it joins
+  width_m: number | null;                  // stairs, escalators, ramps: 0.8 to 4, default 1.2 (the multi-level editor sandbox's DEFAULT_STAIR_WIDTH_M)
+  car_capacity: number | null;             // lifts: 4 to 30
+  storeys: { from: string; to: string };   // inclusive
+  blocked: boolean;
+}
+export interface SceneSlopeArea { id: string; polygon: Array<[number, number]>; gradient: number; downhill_deg: number; storey: string | null } // gradient 0 to 0.3; null storey: outdoors
+```
+
+`LAYOUT_LIMITS` gains `maxStoreys: 12`, `maxWallsPerStorey: 300`, `maxVerticalLinks: 40`, `maxSlopeAreas: 20` and `maxPopulation: 12000`. `primary.stairwells` of a scene saved before 22 Nov becomes vertical links of kind `stair`, and its single plan becomes the exit storey's plan (AC4.33).
+
+**The storey switcher.** `SceneCanvas` gains a storey list beside the map (the storeys from WS3's levels and the trainer's storey counts, `04-site-picker.md` section 15.6). Every drawing tool acts on the active storey; the other storeys show faintly beneath it. "Copy this storey" copies walls, regions and exits to chosen storeys. Vertical links are placed once with a "Joins storeys" range and drawn on every storey in that range at the same position; moving, resizing or blocking one changes it everywhere (AC4.31, AC4.32). Lifts carry a car capacity; firefighting lifts are marked.
+
+**Slopes.** A "Slope" tool draws a polygon with a gradient (per cent) and a downhill arrow, on a storey (a ramped floor) or outdoors (a sloping street or path). WS9 reads them for movement and crowd pressure (`11-living-world.md` section 6.30.6).
+
+**Regions.** A "Room use" tool sets a region's label and use by clicking inside it; regions are the spaces walls enclose, recomputed on save.
+
+**Add population.** Available once the outline, the exits and at least one storey's walls are mapped. It calls WS9's `populate` (`11-living-world.md` section 6.28) with the scene's seed, Setup's day, hour and headcount, and the building type's densities, and shows the people as frozen dots on every storey with a count per storey and in total. The trainer may drag people, select and delete them, add people by clicking, paint a region's density (quiet 0.5, normal 1, busy 1.5, packed 2.5 times the type's density) and re-populate chosen regions; her edits are kept. Painted crowd zones act as density overrides inside them. The population is stored in `rts_scene_configs.population` (migration 234, amended) and is never in the participant projection (AC4.34 to AC4.36).
+
+**Readiness.** "Add the population, or the exercise uses the crowd zones" is a warning, not a blocker; "Storey {label} is not designed and copies {label}" is a note.
+
+**Tasks.** T4.21 (storeys and vertical links), T4.22 (slopes and regions), T4.23 (the population tool and column).
+
+### 15.8 The charge picker and the multi-level editor in the main game (added 22 Nov 2026)
+
+Master D61, 10.8 item 53. The debug sandbox has these features on `/debug/rts-sim` (the Project store's `spec-rts-charge-picker.md` and `spec-rts-multilevel-editor.md`); the main game takes them as follows, with one calculation and one data source shared with the sandbox.
+
+- **Charge picker.** Selecting a planted device opens `ChargeQuickForm` in `SceneInspector`: explosive type (the explosive materials of WS6's library), amount in kilograms (0.1 to 2,000), burst (surface, or free air with a height of 0.5 to 30 m). It writes the device's `DeviceSpec` fields (`charge[0].material_key`, `charge[0].mass_kg`, `environment.elevation` and `environment.elevation_height_m`, `07-device-and-physics.md` section 15.8) and shows the TNT equivalent and the four radii from `calculateEffects`. The old manual radius stays as WS6's manual override. Consequences only (D47): no field for a device's make-up, and no function from a wanted radius to an amount.
+- **Multi-level editor.** Section 15.7's storeys, presented as the sandbox presents them: a level switcher, per-level walls, doors and exits, stairs and lifts placed once and linking levels, one level drawn at a time with the others ghosted. The sandbox's `LevelDef` corresponds to `SceneStoreyPlan` without regions, and its `Stairwell` (`kind`, `widthM`, `levels`) to `SceneVerticalLink` (`width_m`, `storeys`); an old stair's `connectsFloors` maps to storeys by index, as the sandbox maps it. Stair movement uses the parameters of `11-living-world.md` section 6.30.7, which the sandbox's constants mirror; shaft and stair smoke follow the stack-driven flow of `11-living-world.md` section 6.23.3 in both, with qualitative parity between the sandbox and the main game.
 
 ## 16. Definition of done
 

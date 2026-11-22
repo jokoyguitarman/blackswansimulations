@@ -1,6 +1,6 @@
 # Setup screen: document, footprint radar, blueprint, five lanes and readiness (WS2)
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** master D46 and D47 widen the incident types in phases (section 15.5, AC2.36 to AC2.38, T2.23). The owner's answers of the same day: events combine (D49) and the armed-attacker types stay locked (D48). Section 15.6 adds the venue's own team and the client organisation for D58; section 15.7 adds the quiet period for D60.
 **Workstream:** WS2
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `02-teams-and-doctrines.md`, `04-site-picker.md`; softly `07-device-and-physics.md` and `08-people-or-ai.md`
 **Flags:** `ENABLE_FIELDOPS_V2` with `VITE_ENABLE_FIELDOPS_V2`, and `ENABLE_FIELDOPS_BLUEPRINT`
@@ -28,7 +28,7 @@
 
 - The site picker, its search and its map (WS3), the device form, the calculator and the effects panel (WS6), the agency card, archetype matching and doctrines (WS1), People or AI (WS7), the layout step (WS4), compile, Review and publish (WS5). This spec fixes where they mount and what they receive.
 - Converting legacy field-ops drafts into `setup_v2`, and deleting the legacy wizard (D25). Legacy drafts keep resuming in the legacy wizard.
-- Building any incident type other than the four live bombing types (D11). Other types are named and stop.
+- Building any incident type other than the four live bombing types (D11). Other types are named and stop. **Updated 22 Nov 2026:** D46 adds the types of the phases `ENABLE_FIELDOPS_INCIDENT_TYPES` enables (section 15.5); only the others are named and stop.
 - A redaction step, storing the original file, OCR for scanned PDFs, and more than one document per draft (section 7.12 explains the mockup's "Add another document").
 - Any change to the corporate wizard's behaviour, its upload route or the global JSON body limit.
 
@@ -53,6 +53,8 @@ They are in sections 5.2, 6.1, 6.5, 6.6, 7.7 and 8.5, AC2.32 to AC2.34 and task 
 | D3 | Decided | The readiness rule for a missing doctrine is a blocker with gate `compile`, so Lay out the scene stays available (section 7.9). |
 | D10 | Decided | The headcount is `incident.people_present` on Setup; where people stand is WS4's crowd zones. |
 | D11 | Decided | The radar classifies against all ten known types. A not-live type is named, marked "soon", and nothing else is proposed (rule A1, section 8.5); readiness blocks the layout step until a live type is chosen. |
+| D46 | Decided | **Added 22 Nov 2026.** The incident lane offers the four bombing types plus the types the flag enables, grouped; the radar classifies against every key of master 10.1; a type the flag does not enable is named and marked "soon" as before; the lane stores the type's `incident.event` (section 15.5). |
+| D47 | Decided | **Added 22 Nov 2026.** The lane and the radar take classes and bands only: the radar never proposes a target, a path, an impact point or a time for an attack-like type; those are drawn by the trainer in the layout step. |
 | D15 | Assumed (D15) | Caps of 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices and 5 involved buildings are the constants in `SETUP_LIMITS` (section 5.3), whose values come from WS0's `SETUP_V2_ENVELOPE_LIMITS` (master 10.8 item 23), enforced by the zod schemas, the pure validator and the radar guard-rails. |
 | D19 | Assumed (D19) | A plain notice at the drop zone, a 10 MB and 50,000-character cap, no redaction. Every document-bearing model call goes through the shared chat client inside one privacy seam, `withDocumentPrivacyScope`, which delegates to the privacy programme's vault context when it ships (section 9.4). |
 | D20 | Assumed (D20) | `PressureBody.kind` takes the corporate five plus `media`. |
@@ -253,6 +255,10 @@ stateDiagram-v2
 33. **AC2.33** **Added 3 Nov 2026.** Given a stored draft whose cards have no `country` key, when it is loaded, saved or handed to compile, then each card reads `country: null` and nothing is refused. Given a card with `country` 'sg' or 'XX', when it is saved, then the route answers 400 `VALIDATION_FAILED` with a detail at `agencies.N.country`. Test: `setupSchemas.test.ts`, "card country".
 34. **AC2.34** **Added 3 Nov 2026.** Given a file the reader refuses (random bytes named `.pdf`, a reader that times out, a PDF with no text layer), when `extractDocumentText` or `normaliseDocumentText` runs, then it throws `DocumentRefusedError` with the code and status of section 6.5 and a message equal to the code, and the draft route answers with section 6.5's wording. Tests: `extractText.test.ts` and `normaliseText.test.ts`, "refusal error".
 35. **AC2.35** **Added 3 Nov 2026.** Given the weather select, when the trainer picks "Afternoon thunderstorm", then the save writes `options.weather` "Afternoon thunderstorm" and `options.weather_setting` equal to WS9's preset `sg_afternoon_thunderstorm` with `origin` 'preset'. Picking the document's own value writes the label with `weather_setting` null, and "Not set" clears both. A draft saved before the field existed reads `weather_setting: null` and saves unchanged, and a setting with `wind_speed_ms` 31 answers 400 `VALIDATION_FAILED` at `options.weather_setting.wind_speed_ms`. With no weather in the document, the radar's gap chip reads "Weather · not set". Tests: `setupSchemas.test.ts`, "weather setting"; `fieldOpsSetupLogic.test.ts`, "weather select"; `radarGuardRails.test.ts`, "the gap list".
+36. **AC2.36** **Added 22 Nov 2026.** Given `ENABLE_FIELDOPS_INCIDENT_TYPES` empty, `phase1` and `stampede_crush,aircraft_impact`, when the page capabilities are read, then the lane offers the four bombing types; those plus the seven phase 1 types; and those plus the two named types; each group heading follows `fieldops_incident_types.type_group`. Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "incident types by flag", and `frontend/tests/setupValidation.test.ts`, case "incident lane groups".
+37. **AC2.37** **Added 22 Nov 2026.** Given a document about a concert crush and the flag at `phase1`, when the radar runs, then it proposes `stampede_crush` with its evidence, proposes the type's default `incident.event` with no trigger point (the trainer places it), and proposes no device; with the flag empty, it names the type and marks it "soon" as rule A1 says. Proved by `server/services/fieldOps/radar/radarCore.test.ts (new)`, case "incident types beyond bombing".
+38. **AC2.38** **Added 22 Nov 2026.** Given a saved draft of each phase 1 type, then `incident.event` validates with WS9's `incidentEventSchema`, its kind matches the type's `event_kind`, the devices lane is hidden and `devices` is empty for every type but the bombing types, and readiness blocks the layout step until the type's event has the geometry its kind needs (marked "Place it in Lay out the scene"). Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "incident event". **Updated 22 Nov 2026 (D49):** read `incident.events` for `incident.event`; a ramming at minute 2 and a device at minute 6 save as one storyline, a seventh event is refused, a `triggered_by` naming a later event is refused, and the devices lane shows whenever an event is a device.
+39. **AC2.39** **Added 22 Nov 2026.** Given Setup's options, when the trainer sets "Quiet period before the incident" to 0, 60 and 600 s, then `setup_v2.options.quiet_period_s` saves each, 601 and -1 are refused, a draft saved before the field existed reads 60, and the storyline list shows "Incident at T+{mm:ss}" after the quiet period. Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "quiet period".
 
 ## 5. Data model
 
@@ -2463,7 +2469,7 @@ export async function withDocumentPrivacyScope<T>(draftId: string, fn: () => Pro
 }
 ```
 
-  The privacy programme's plan carries the scope out of band with `runWithVault({ vaultId, sessionId })`, whose vault id is "a wizard draft id before the scenario exists" (`docs/privacy/04-implementation-phases.html:1084-1104`). When it ships, the body becomes `return runWithVault({ vaultId: draftId }, fn);`, `capabilities.document_aliasing` becomes true and the notice gains its aliasing sentence. Geography stays real under that plan (`docs/privacy/02-aliasing-solution.html:1050-1062`), which the site resolution needs.
+  The privacy programme's plan carries the scope out of band with `runWithVault({ vaultId, sessionId })`, whose vault id is "a wizard draft id before the scenario exists" (`04-implementation-phases.html`, lines 1084 to 1104; the privacy documents are kept outside this repository). When it ships, the body becomes `return runWithVault({ vaultId: draftId }, fn);`, `capabilities.document_aliasing` becomes true and the notice gains its aliasing sentence. Geography stays real under that plan (`02-aliasing-solution.html`, lines 1050 to 1062), which the site resolution needs.
 - **No redaction step** in version 1 (D19).
 
 ### 9.5 Safety stance
@@ -2742,6 +2748,16 @@ In order. Each task names its commit (section 13). "Tests" means written, passin
     - Done when: AC2.35 passes, and a draft saved before the field existed loads and saves unchanged.
     - Tests: the AC2.35 cases listed after the table of section 11.1. Commit: as T2.21 (section 13).
 
+23. **T2.23 Incident types beyond bombing (added 22 Nov 2026; master D46, D47, 10.8 item 46).**
+    - Goal: section 15.5.
+    - Files: `shared/fieldOps/setup.ts (new)` (`incident.event`), `server/lib/fieldOps/setupSchemas.ts (new)` and its test, the radar's prompt and core under `server/services/fieldOps/radar/ (new)`, the incident lane component and `frontend/tests/setupValidation.test.ts`.
+    - Steps: read `ENABLE_FIELDOPS_INCIDENT_TYPES` once at boot into `env.enableFieldopsIncidentTypes`; expose the enabled keys in the page capabilities; group the tiles; store the event; hide the devices lane outside the bombing types; extend the radar's closed list.
+    - Done when: AC2.36 to AC2.38 pass. Commit: with T2.21 (section 13).
+
+24. **T2.24 The quiet period (added 22 Nov 2026; D60).**
+    - Files: `shared/fieldOps/setup.ts (new)`, `server/lib/fieldOps/setupSchemas.ts (new)` and its test, the options block of the setup page.
+    - Done when: AC2.39 passes. Commit: with T2.21 (section 13).
+
 ## 13. Commit plan and backtracking
 
 Six commits, each green on `npm test`, `npx tsc --noEmit` and the frontend build, each safe to deploy with the flags off.
@@ -2910,6 +2926,31 @@ Only the requests still open after the master plan's rulings; the rest of WS2's 
 | To | Request | Why |
 | --- | --- | --- |
 | UI spec sheet (R15) | Record the differences of section 7.12 and WS2's answers to the sheet: no Union button, "Does:" on media cards, `media: 'megaphone'` added to `PRESSURE_ICON`, the `fo-switch` border, and `LaneHead` with `LaneShell` | D28 and the sheet's questions to WS2 |
+
+### 15.5 Incident types beyond bombing (added 22 Nov 2026)
+
+Master D46 and D47, 10.8 item 46; WS9's request in `11-living-world.md` section 15.3.
+
+- **The flag.** `ENABLE_FIELDOPS_INCIDENT_TYPES` (master section 8), read once at boot. The page capabilities gain `incident_types: IncidentTypeKey[]`, the keys setup offers.
+- **The lane.** `IncidentLane` shows tiles grouped by `type_group` (Explosives; Crowd and vehicle; Fire and explosion; Hazardous materials; Structural and transport; Natural hazards; Armed attack; Utilities), each tile with its label and a `WrIcon` glyph, never an emoji. Types not enabled stay visible under "Coming soon", disabled, as today's stopped types are.
+- **Updated 22 Nov 2026 (D49, D48).** The lane holds `incident.events`, one to six events in story order, each with its minute or its `triggered_by` an earlier event; "Add an event" appends one, of any enabled kind, a device included, and the list reads as the storyline. The armed-attacker tiles stay under "Coming soon" whatever the flag says. Utility failure is a phase 1 tile.
+- **The event.** `incident.event: IncidentEventSpec | null` (WS9's `shared/fieldOps/incidentEvents.ts (new)`), validated with WS9's schema at save. For a bombing type it is `{ kind: 'device' }` and the devices lane is shown; for any other type the lane shows the event's class and band fields (vehicle class and speed band, aircraft class and speed band, release class, leak source and class), and the geometry is drawn in Lay out the scene (`05-layout-step.md` section 15.6).
+- **The radar.** Its closed list holds every key of master 10.1; for an enabled type it proposes the type and the event's class fields only when the document states them, and never a place, a path or a time (D47).
+- **Readiness.** "Place the {event} in Lay out the scene" until the event's geometry exists; it blocks compile, not the layout step.
+- **Copy.** Tile labels come from `fieldops_incident_types.label`; the briefing note of each type appears under its tile when chosen.
+
+### 15.6 The venue's own team and the client organisation (added 22 Nov 2026)
+
+Master D58, 10.8 item 51.
+
+- **Client organisation.** `setup_v2.client_organisation_id: string | null`, one of the trainer's `client_organisations` (`migrations/193_payment_portal.sql:22-31`), chosen at the top of Setup ("Exercise for: {client}" or "No client"). The save route checks it belongs to the trainer. It scopes custom doctrines (`02-teams-and-doctrines.md` section 6.14.1).
+- **Entry point.** The agency lane shows "Add the venue's own team" after the radar's cards. It adds a card with `custom: true` and opens WS1's drawer on its "Venue's own doctrine" tab (`02-teams-and-doctrines.md` section 7.13). When the radar reads the venue's own security or safety team in the document, it proposes this card, without a doctrine.
+- **Readiness.** A custom card whose doctrine is pending review blocks compile with "Review the venue team's doctrine"; it never blocks the layout step.
+- **Tests.** `server/lib/fieldOps/setupSchemas.test.ts (new)` gains "client organisation": another trainer's client is refused, null is allowed.
+
+### 15.7 The quiet period (added 22 Nov 2026)
+
+Master D60, 10.8 item 52. `setup_v2.options.quiet_period_s: number` (whole seconds, 0 to 600, default 60), set under the storyline as "Quiet period before the incident", with the help line "Ordinary activity before the first event. Injects marked pre-incident can play during it." Inject authoring in WS8's editor and in Review marks an inject `pre_incident` with its own minute inside the quiet period.
 
 ## 16. Definition of done
 
