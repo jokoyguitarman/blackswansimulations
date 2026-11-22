@@ -17,9 +17,11 @@ export function resolveDbTarget(options: { apply: boolean; confirmProject?: stri
     throw new SafetyError('--apply requires KNOWLEDGE_TARGET=local or KNOWLEDGE_TARGET=shared');
   }
   if (requested === 'shared') {
-    const ref = options.confirmProject;
-    if (!ref || !url.includes(ref)) {
-      throw new SafetyError('shared target requires --confirm-project matching the database URL');
+    const ref = options.confirmProject ?? '';
+    if (!confirmProjectMatches(url, ref)) {
+      throw new SafetyError(
+        'shared target requires --confirm-project equal to the project ref in the database host (db.<ref>.supabase.co) or the pooler user (postgres.<ref>)',
+      );
     }
     return { url, target: 'shared' };
   }
@@ -27,6 +29,26 @@ export function resolveDbTarget(options: { apply: boolean; confirmProject?: stri
     throw new SafetyError('KNOWLEDGE_DB_URL is not a local database');
   }
   return { url, target: 'local' };
+}
+
+/** True when `ref` is the project ref in `db.<ref>.supabase.co` or the user `postgres.<ref>`. */
+export function confirmProjectMatches(url: string, ref: string): boolean {
+  if (!ref || /\s/.test(ref)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const wanted = ref.toLowerCase();
+  if (parsed.hostname.toLowerCase() === `db.${wanted}.supabase.co`) return true;
+  let user = parsed.username;
+  try {
+    user = decodeURIComponent(parsed.username);
+  } catch {
+    user = parsed.username;
+  }
+  return user.toLowerCase() === `postgres.${wanted}`;
 }
 
 export function redact(message: string): string {
