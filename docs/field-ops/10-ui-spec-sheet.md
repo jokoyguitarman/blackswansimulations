@@ -2788,6 +2788,9 @@ None of these is in the approved mockup, so each is a D28 difference that follow
 | The storey switcher, "Copy this storey", vertical links, slope and room-use tools | WS4 | `SceneCanvas`, `SceneToolsPanel` | `05-layout-step.md` section 15.7 |
 | "Add population", frozen dots and density paint | WS4 | `PopulationTool` | `05-layout-step.md` section 15.7 |
 | RTS controls: command card, minimap, alerts, control groups; evacuee dots | WS9 | `WorldCommandCard`, `WorldMinimap`, `WorldAlerts` | `11-living-world.md` section 7.13 |
+| "Exercise for: {client}", "Add the venue's own team" | WS2 | `SetupHero`, `AgencyLane` | `03-setup-screen.md` section 15.6 |
+| The venue doctrine upload and side-by-side review, "Custom · {client}" pill | WS1 | `DoctrineDrawer`, `DoctrinePill` | `02-teams-and-doctrines.md` section 7.13 |
+| Precedence notices and response-standard rows in Review | WS5 | `ReviewPage` | `06-compile-and-review.md` section 15.6 |
 
 ## 15. Visual QA checklist
 

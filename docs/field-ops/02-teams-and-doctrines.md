@@ -1,6 +1,6 @@
 # Teams, archetypes and the doctrine library
 
-**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**. Later on 22 Nov, D46 added responders and seeds for the new incident types (section 6.11.7, AC1.63, T1.23), and D55 a review of the existing seeds and agent research for every type (section 6.11.8, AC1.64, T1.24).
+**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**. Later on 22 Nov, D46 added responders and seeds for the new incident types (section 6.11.7, AC1.63, T1.23), and D55 a review of the existing seeds and agent research for every type (section 6.11.8, AC1.64, T1.24). D57 to D59 then allowed site-specific responder doctrines and added custom establishment doctrines, private to one client organisation and merged under statutory precedence (sections 6.11.9 and 6.14, AC1.66 to AC1.74, T1.25 to T1.27).
 **Workstream:** WS1
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`
 **Flags:** `ENABLE_FIELDOPS_DOCTRINES`
@@ -67,6 +67,9 @@
 | D38 | Decided | **Added 22 Nov 2026.** Nothing is researched while a scenario is created. Doctrines come from the library only; a country or archetype with no doctrine shows "No doctrine for {country} yet" and records a coverage gap (section 6.11.6), never a model call. The drafting call remains the trainer's own "Draft it for me", from her text or document, labelled AI-drafted and Unverified. |
 | D39 | Decided | **Added 22 Nov 2026.** Seeds are drafted by WS9's offline research agent (`11-living-world.md` section 6.19) in this spec's formats, with `provenance.drafted_by: 'agent'`, the run id and a located source per claim, and reviewed by a person as section 6.11.3 says before the seeder imports them Unverified (Choice 24). |
 | D40 | Decided | **Added 22 Nov 2026.** Doctrine content gains optional `legal_authorities` and `use_of_force` blocks (section 5.4.2; Choice 22); three archetypes are added for armed and military units (Choice 23); agency registers list units (Choice 25). Singapore is seeded first; other countries follow where public sources allow (Choice 26). |
+| D57 | Decided | **Added 22 Nov 2026.** A responder that exists only at one site, such as Changi Airport's emergency service, may be seeded from its own official publications about that site (section 6.11.9). |
+| D58 | Decided | **Added 22 Nov 2026.** A venue's own security or safety team: the trainer uploads its doctrine, procedures or response standards; they are extracted at setup into this spec's schema, labelled custom, private to one client organisation, reviewed by the trainer, and merged with the preset doctrines at compile (section 6.14). |
+| D59 | Decided | **Added 22 Nov 2026.** Precedence: statutory powers and legal authorities come only from the preset library; a custom team's use of force is capped by the legal ceiling for its establishment type; a custom team never takes a statutory function of a preset agency (section 6.14.4). |
 
 ### 2.2 Choices made in this spec
 
@@ -98,6 +101,9 @@
 | Choice 24 | **Added 22 Nov 2026.** An agent-drafted seed keeps Choice 20's rule: the agent drafts, a person verifies each claim against its source. A use-of-force block needs a reviewer whose recorded role is legal or police or military service. | D39; the risk of a wrong or restricted rule of engagement is higher than of a wrong response step (master risk 24). |
 | Choice 25 | **Added 22 Nov 2026.** Units are entries of an agency in the register (`units`), each with its name, its own-language name, its archetypes, a public role in one sentence, aliases and sources. A unit's aliases become alias rows naming the unit as the agency, so matching needs no new table. | D40's "military units"; the alias table already carries an agency per row (Choice 21). |
 | Choice 26 | **Added 22 Nov 2026.** Beyond ASEAN, `GLOBAL_SEED_COUNTRIES` lists further countries in the owner's order (default: GB, AU, NZ, US, chosen for their full public doctrine material); a country is seeded only when its register passes review. | D40's "other countries where possible"; question 18. |
+| Choice 27 | **Added 22 Nov 2026.** A custom doctrine is a doctrine row with `visibility: 'organisation'`, `source: 'custom'` and the owning trainer and client organisation; it reuses versions, snapshots and the runtime accessor, and never enters the library, the admin queue or the seeding pipeline. | One schema for preset and custom content (D58), with the tenancy that already exists (`client_organisations`, `migrations/193_payment_portal.sql:22-31`). |
+| Choice 28 | **Added 22 Nov 2026.** Legal ceilings are preset rows (`doctrine_force_ceilings`, migration 222) per country and establishment type, seeded and reviewed like the registers; with none found, a custom team may use presence and verbal force only, labelled "to verify". | D59: a venue team cannot grant itself police powers, and the ceiling must come from law, not from the venue's document. |
+| Choice 29 | **Added 22 Nov 2026.** A custom team may take only `venue_operations`, `evacuation_crowd`, `medical_triage` (first aid) or `fire_rescue` (a company emergency response team); an auxiliary police force is a preset agency whose powers come from its register entry, and its custom document adds only its own procedures. | D59. |
 
 ### 2.3 Assumptions
 
@@ -285,6 +291,15 @@ The fuzzy lookup is `resolveTeamDoctrines` (`server/services/environmentalConsis
 | AC1.63 | **Added 22 Nov 2026.** `DOCTRINE_INCIDENT_TYPES_ALL` and a doctrine whose `applies_to` names `stampede_crush` | the list is compared with master 10.1 and `rankDoctrines` runs for a `stampede_crush` card and a `bombing` card | the list holds every live key of every phase; the doctrine is offered for the crush card and not for the bombing card; a doctrine with an empty `applies_to` is offered for both | `server/lib/fieldOps/vocabulary.test.ts (new)`, `server/services/fieldOps/doctrine/resolve.test.ts (new)` |
 | AC1.64 | **Added 22 Nov 2026.** the six playbook seeds and the imported entries, each with a review record of section 6.11.8 | the seed register test runs | every seed has a 22 Nov review entry (kept, amended or retired) naming its reviewer, each amended seed is a new version, and every incident type of phase 1 has at least one Singapore seed per responder archetype or a recorded gap | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
 | AC1.65 | **Added 22 Nov 2026.** the agent-drafted Singapore files and the playbook review of 22 Nov, and the same files with one unknown key added | `checkSeedFolder` runs | the files with the D39 fields (`locator`, `quoted_phrase`, `drafted_by`, `run_id`, `confidence`, `assumed_fields`, `claims`, `verify`, `reviewer_role`, `required_reviewer_roles`, `history`) validate; a quote of 26 words, an agent file with no run id, a source with no locator in an agent file, and the unknown key are each refused; the person-drafted example seed of section 6.11 still validates | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
+| AC1.66 | **Added 22 Nov 2026.** the doctrine research's `sg_cag_aes.fire_rescue.json` and the Singapore register as written on 22 Nov (its `claims` lists, free-text `required_reviewer_roles`, register provenance with `extracted_by`) | `checkSeedFolder` and WS9's `validateAgentRows` run | both validate, the airport's name in the doctrine passing because `sg_cag_aes` is in `SITE_BOUND_RESPONDERS`; the same text in a building-hazard row, or in a doctrine of an agency not in the list, is still refused by the named-site rule | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
+| AC1.67 | **Added 22 Nov 2026.** trainer A with clients X and Y, a custom doctrine for X, and trainer B | the library list, the countries route, `rankDoctrines` for a draft of A for Y, and for B, run | the custom doctrine appears in none of them; it is offered first only in A's drafts for X; an admin's routes return no content for it | `server/services/fieldOps/doctrine/access.test.ts (new)` |
+| AC1.68 | **Added 22 Nov 2026.** a venue procedures document with steps, roles, a three-minute response standard, 12 security officers and no use-of-force statement | the extraction job runs with a recording fake model | the pending version holds the steps, roles, the standard and the resources with locators; use of force is null and listed "not stated in the venue's document"; the call ran in Setup's job and never during a session | `server/services/fieldOps/doctrine/customExtract.test.ts (new)` |
+| AC1.69 | **Added 22 Nov 2026.** a pending custom version | it is used on a card before review | it is refused; after the trainer approves each section, it is usable and its review note names her and the date | `server/services/fieldOps/doctrine/customExtract.test.ts (new)` |
+| AC1.70 | **Added 22 Nov 2026.** a private-security custom doctrine authorising `physical_control` and `less_lethal` and citing the Police Force Act, with a ceiling row of presence, verbal and physical control | `mergeCustomDoctrine` runs | `less_lethal` moves to `not_authorised_levels` with the cap note; the Police Force Act authority is dropped; two Review items are raised | `server/services/fieldOps/doctrine/customMerge.test.ts (new)` |
+| AC1.71 | **Added 22 Nov 2026.** custom steps "cordon off the public road" and "detain the suspect" | the merge runs | both become "Assist Singapore Police Force with …" steps with hand-offs to `police_security`, and one Review item each | `server/services/fieldOps/doctrine/customMerge.test.ts (new)` |
+| AC1.72 | **Added 22 Nov 2026.** a preset fire doctrine and a custom document that says the venue team leads fire-fighting | the merge runs | the preset fire doctrine is unchanged; the venue step becomes support; the venue team's own evacuation steps replace the generic venue doctrine's | `server/services/fieldOps/doctrine/customMerge.test.ts (new)` |
+| AC1.73 | **Added 22 Nov 2026.** no ceiling row for the country | the merge runs | only presence and verbal remain, labelled "to verify" | `server/services/fieldOps/doctrine/customMerge.test.ts (new)` |
+| AC1.74 | **Added 22 Nov 2026.** a custom team with 12 officers and two radios in `resources` | the card and WS9's unit plan are built | the card is `venue_operations` with `custom: true` and the extracted roster; WS9 plans `venue_staff` units for 12 people starting on site; no row is written to WS9's shared tables | `server/services/fieldOps/doctrine/customMerge.test.ts (new)`, `server/services/fieldOps/world/units/unitKinds.test.ts (new)` |
 
 ## 5. Data model
 
@@ -1249,8 +1264,13 @@ CREATE TABLE IF NOT EXISTS public.doctrines (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   archetype_key           TEXT NOT NULL REFERENCES public.team_archetypes(key),
   title                   TEXT NOT NULL CHECK (char_length(title) BETWEEN 3 AND 120),
-  source                  TEXT NOT NULL CHECK (source IN ('seeded', 'trainer', 'ai_drafted', 'imported')),
-  visibility              TEXT NOT NULL DEFAULT 'library' CHECK (visibility IN ('library', 'private')),
+  -- Updated 22 Nov 2026 (D58, Choice 27): 'custom' and 'organisation' for establishment doctrines.
+  source                  TEXT NOT NULL CHECK (source IN ('seeded', 'trainer', 'ai_drafted', 'imported', 'custom')),
+  visibility              TEXT NOT NULL DEFAULT 'library' CHECK (visibility IN ('library', 'private', 'organisation')),
+  client_organisation_id  UUID REFERENCES public.client_organisations(id) ON DELETE CASCADE,
+  establishment_type      TEXT CHECK (establishment_type IS NULL OR establishment_type IN
+                            ('private_security', 'auxiliary_police', 'establishment_ert', 'venue_operations')),
+  venue_scope             JSONB CHECK (venue_scope IS NULL OR jsonb_typeof(venue_scope) = 'object'),
   owner_id                UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
   scope_draft_id          UUID REFERENCES public.warroom_wizard_drafts(id) ON DELETE SET NULL,
   parent_doctrine_id      UUID REFERENCES public.doctrines(id) ON DELETE SET NULL,
@@ -1268,8 +1288,17 @@ CREATE TABLE IF NOT EXISTS public.doctrines (
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT doctrines_applies_to_known CHECK (applies_to <@ ARRAY[
     'bombing', 'car_bomb', 'suicide_bombing', 'bombing_mall', 'open_field_shooting',
-    'knife_attack', 'gas_attack', 'poisoning', 'kidnapping', 'hijacking'
+    'knife_attack', 'gas_attack', 'poisoning', 'kidnapping', 'hijacking',
+    -- Updated 22 Nov 2026 (D46, D48): every key of INCIDENT_TYPE_KEYS.
+    'building_fire', 'utility_failure', 'arson', 'stampede_crush', 'vehicle_ramming', 'aircraft_impact', 'gas_explosion',
+    'chemical_release', 'structural_collapse', 'rail_incident', 'road_collision', 'flash_flood', 'biohazard',
+    'maritime_incident', 'earthquake', 'active_shooter'
   ]::text[]),
+  -- Added 22 Nov 2026 (Choice 27): an organisation doctrine is custom, owned and scoped to one client organisation.
+  CONSTRAINT doctrines_organisation_scope CHECK (
+    (visibility = 'organisation') = (source = 'custom')
+    AND (visibility <> 'organisation' OR (owner_id IS NOT NULL AND establishment_type IS NOT NULL))
+  ),
   CONSTRAINT doctrines_parent_version_needs_parent CHECK (parent_doctrine_id IS NULL OR parent_version IS NOT NULL),
   CONSTRAINT doctrines_verified_not_after_latest CHECK (
     latest_verified_version IS NULL OR latest_verified_version <= latest_version
@@ -1516,6 +1545,25 @@ COMMENT ON COLUMN public.doctrines.country IS
   'ISO 3166-1 alpha-2 in upper case of the country the doctrine is grouped under; null for a generic doctrine.';
 COMMENT ON TABLE public.doctrine_source_documents IS
   'Sanitised text of an uploaded doctrine document, never the file; read by its uploader and admins only; kept at most 30 days.';
+
+-- Added 22 Nov 2026 (D58, D59, Choice 28): custom documents stay with their client organisation; legal ceilings are preset.
+ALTER TABLE public.doctrine_source_documents
+  ADD COLUMN IF NOT EXISTS client_organisation_id UUID REFERENCES public.client_organisations(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS custom BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS public.doctrine_force_ceilings (
+  country            TEXT NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
+  establishment_type TEXT NOT NULL CHECK (establishment_type IN ('private_security', 'auxiliary_police', 'establishment_ert', 'venue_operations')),
+  ceiling_levels     TEXT[] NOT NULL,
+  legal_authorities  JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(legal_authorities) = 'array'),
+  reserved_functions TEXT[] NOT NULL DEFAULT '{}',
+  source_note        TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 300),
+  review_status      TEXT NOT NULL DEFAULT 'unverified' CHECK (review_status IN ('unverified', 'verified')),
+  PRIMARY KEY (country, establishment_type)
+);
+ALTER TABLE public.doctrine_force_ceilings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.doctrine_force_ceilings FROM PUBLIC, anon, authenticated;
+COMMENT ON TABLE public.doctrine_force_ceilings IS
+  'Preset legal ceiling on the use of force of a custom team per country and establishment type (D59). Seeded from public law, reviewed.';
 
 COMMIT;
 ```
@@ -2236,7 +2284,7 @@ export const SeedSourceSchema = z
   .strict();
 
 /** Added 22 Nov 2026 (D39, D55): reviewer roles, provenance of a drafting run, and the review history. */
-export const REVIEWER_ROLES = ['doctrine', 'language', 'legal', 'police_service', 'military_service', 'fire_service', 'medical', 'eod'] as const;
+export const REVIEWER_ROLES = ['doctrine', 'country', 'language', 'legal', 'police_service', 'military_service', 'fire_service', 'aviation_rescue', 'medical', 'eod'] as const; // the role of the person who signed
 const draftingFields = {
   drafted_by: z.enum(['person', 'agent']).default('person'),
   run_id: uuid.nullable().default(null), // fieldops_seed_runs.id; required when drafted_by is 'agent'
@@ -2259,7 +2307,7 @@ const reviewFields = {
   reviewed_at: isoDate.nullable(),
   notes: z.string().max(2000),
   reviewer_role: z.enum(REVIEWER_ROLES).nullable().default(null),
-  required_reviewer_roles: z.array(z.enum(REVIEWER_ROLES)).max(4).default([]),
+  required_reviewer_roles: z.array(text(2, 60)).max(6).default([]), // free text as the drafter wrote it ('country', 'legal or police_service', 'D22'); the signer's own role is reviewer_role
   history: z.array(ReviewHistoryEntrySchema).max(50).default([]),
 };
 
@@ -2286,9 +2334,18 @@ export const DoctrineSeedFileSchema = z
         country_basis: z.enum(['scenario_centre', 'team_key_alias', 'none']).nullable().default(null),
         // Added 22 Nov 2026 (D39): who drafted it, and which source and locator supports each step, never-do and hand-off id.
         ...draftingFields,
+        // Aligned 22 Nov 2026 with the doctrine research files: each claim lists the content ids it supports
+        // ('mission', 'use_of_force', 'standards.0', or an st_, nv_, ho_, ex_, uf_ or la_ id).
         claims: z
-          .record(z.string().regex(/^(st|nv|ho)_[a-z0-9]{3,24}$/), z.object({ source_index: z.number().int().min(-1).max(5), locator: text(1, 120) }).strict())
-          .default({}), // source_index -1 means the register entry
+          .array(
+            z.object({
+              ids: z.array(z.string().regex(/^(mission|use_of_force|legal_authorities|standards\.\d+|(st|nv|ho|ex|uf|la)_[a-z0-9]{3,24})$/)).min(1).max(40),
+              source_index: z.number().int().min(-1).max(5), // -1 means the register entry
+              locator: text(1, 120),
+            }).strict(),
+          )
+          .max(60)
+          .default([]),
       })
       .strict(),
     content: DoctrineContentSchema,
@@ -2322,6 +2379,7 @@ export const AGENCY_TYPES = [
   'police', 'investigation', 'bomb_disposal', 'fire_rescue', 'civil_defence', 'search_rescue', 'ems',
   'volunteer_rescue', 'health', 'disaster_management', 'transport', 'ministry', 'other',
   'tactical_police', 'military', 'cbrn', // added 22 Nov 2026 (D40)
+  'auxiliary_police', // added 22 Nov 2026 (D59, Choice 29): a preset agency; its powers come from its register entry
 ] as const;
 
 /** Added 3 Nov 2026. scripts/fieldops/seeds/sea/<CC>/agencies.json: one country's agencies and aliases. */
@@ -2354,6 +2412,8 @@ export const AgencyRegisterFileSchema = z
             drafted_by: z.enum(['person', 'agent']).default('person'),
             verify: z.enum(['located', 'to verify']).default('to verify'),
             verify_note: z.string().max(300).nullable().default(null),
+            // Added 22 Nov 2026 (D57): optional; the responder exists only at the site named here.
+            site_bound: z.object({ site_label: text(2, 120) }).strict().nullable().default(null),
             // Added 22 Nov 2026 (D40, Choice 25): units of the agency, as organisations with a public role.
             units: z
               .array(
@@ -2381,7 +2441,10 @@ export const AgencyRegisterFileSchema = z
       .max(40)
       .refine((list) => new Set(list.map((a) => a.key)).size === list.length, { message: 'agency keys repeat' }),
     // Added 22 Nov 2026 (D39): the register's own drafting run.
-    provenance: z.object(draftingFields).strict().default({ drafted_by: 'person', run_id: null, confidence: null, assumed_fields: [] }),
+    provenance: z
+      .object({ ...draftingFields, extracted_by: text(2, 160).nullable().default(null), extracted_at: isoDate.nullable().default(null) })
+      .strict()
+      .default({ drafted_by: 'person', run_id: null, confidence: null, assumed_fields: [], extracted_by: null, extracted_at: null }),
     review: z.object(reviewFields).strict(),
   })
   .strict()
@@ -3372,7 +3435,7 @@ Master D46. Each incident type lists its responding archetypes in WS9's `fieldop
 | --- | --- |
 | `stampede_crush` | SPF and its event-policing units; SCDF; venue operators' security; the Ministry of Health's hospitals |
 | `vehicle_ramming` | SPF (including its tactical units); SCDF; LTA for road closures |
-| `aircraft_impact` | The Civil Aviation Authority of Singapore; the airport emergency service at Changi Airport (its operator to verify); SCDF; SPF; the Republic of Singapore Air Force under `military_support` for a deliberate act |
+| `aircraft_impact` | The Civil Aviation Authority of Singapore; Changi Airport Emergency Services, seeded from its operator's own publications under D57 (section 6.11.9); SCDF; SPF; the Republic of Singapore Air Force under `military_support` for a deliberate act |
 | `building_fire`, `arson` | SCDF; the Housing and Development Board and town councils for public housing; SPF for arson |
 | `gas_explosion` | SCDF; the Energy Market Authority and the town gas operator under `utilities` |
 | `chemical_release` | SCDF's hazardous-materials units; the National Environment Agency; the Ministry of Manpower |
@@ -3388,6 +3451,10 @@ Master D55. Two passes, both through WS9's pipeline (`11-living-world.md` sectio
 2. **Extension.** The `doctrine_agency` and `use_of_force` briefs run for every responder archetype of every phase 1 incident type (section 6.11.7), building fire and utility failure first, then the rest in D46's order; gaps are recorded.
 
 Nothing is written to a database before the migrations exist and the review approves a file (master risk 35); the agent's output waits as pending files.
+
+#### 6.11.9 Site-specific responder doctrines (added 22 Nov 2026)
+
+D57 answers open question 26. The exception is granted per responder: `SITE_BOUND_RESPONDERS` in `server/lib/fieldOps/knowledgePipeline.ts (new)` lists the register keys allowed it, starting with `sg_cag_aes` (Changi Airport Emergency Services, whose seed is `scripts/fieldops/seeds/sea/SG/sg_cag_aes.fire_rescue.json (new)`); a register entry may also carry `site_bound: { site_label }` for the record. A responder that exists only at one site (an airport's emergency service, a port's fire service, an operator's own emergency team named in law) may be seeded from that responder's or its operator's own official publications about its own site. The register records it with `site_bound: true` and the site's public name; its doctrine and response standards may state the site-specific targets those publications give (for example Changi Airport Emergency Services' published response times). The rule of WS9's pipeline still holds for everything else: no document about a named site is used for a hazard inventory, a building's security arrangements or any vulnerability (`11-living-world.md` section 6.19). Changi Airport Emergency Services is the first such responder; its draft from the doctrine research waits for review.
 
 ### 6.12 Logging
 
@@ -3486,6 +3553,46 @@ Khmer, Lao and Burmese markings are added by those countries' reviewers before t
 - `DELETE` by the uploader or an admin deletes the row, writes `document_removed` and logs `fieldops_doctrine_document_removed`. The drawer calls it from "Remove document", and when the trainer discards a doctrine she drafted from a document (section 7.5.3).
 - **Expiry.** At the start of each upload and each admin-queue read, at most once a minute in each process, the store deletes up to 500 rows whose `expires_at` has passed and logs `fieldops_doctrine_documents_purged` with the count. Every read also filters on `expires_at`, so an expired row is never served before it is purged. Deleting the draft or the uploader's account deletes the row too (migration 222).
 - **What survives the text.** The version's `source_document_sha256`, `ai_drafted` and source note, and the events. `DoctrineVersionView.source_document` finds a live document by the version's author and that hash, so it is null once the text is gone, and `drafted_from_document` stays true.
+
+### 6.14 Custom establishment doctrines (added 22 Nov 2026)
+
+D58 and D59. When the exercise venue has its own security or safety team (a mall's security, a plant's company emergency response team, an auxiliary police contingent posted there), the trainer uploads that team's doctrine, procedures or response standards. They become a custom doctrine for that team.
+
+#### 6.14.1 Storage and scope
+
+- **Rows.** A custom doctrine is a `doctrines` row with `source: 'custom'`, `visibility: 'organisation'`, the owning trainer as `owner_id`, the client organisation as `client_organisation_id` (null when the trainer runs the exercise for no client), the `establishment_type`, and `venue_scope` (`{ label, osm_id, centre }`). Its content is ordinary `DoctrineContent` plus two optional blocks used only by custom doctrines: `response_standards` (`[{ metric, value, unit, incident_types, locator }]`) and `resources` (`[{ label, category, quantity, capacity, unit, locator }]`, with WS9's equipment categories).
+- **Who sees it.** Only its owner, and only in drafts whose `setup_v2.client_organisation_id` equals the doctrine's (03 section 15.6). It is never listed in the library, never in the admin queue, never counted in the countries route, never read by the seeding pipeline, and never offered to another trainer or another client. Platform admins see counts only; no route returns its content to them.
+- **Documents.** The uploaded text is a `doctrine_source_documents` row with `custom: true` and the client organisation; unlike D30's documents it is kept until the trainer deletes it or the client organisation is deleted (the foreign key cascades), because a client reuses its procedures across exercises. The file itself is never stored (Choice 19).
+- **Snapshots.** Compile snapshots a custom doctrine like any other (WS5's `scenario_doctrine_snapshots`), so a published exercise keeps the version it was built with.
+
+#### 6.14.2 Extraction
+
+- **When.** At setup only, as a job of WS0's engine (`fieldops_custom_doctrine_extract`), never during a session and never at compile.
+- **Input.** One to five PDF, DOCX or TXT files per team, each within WS2's reader limits, read by `extractDocumentText`; the protective-marking check of section 6.13 still refuses government markings; a commercial "confidential" marking is allowed, because the document is the client's own and stays private.
+- **Call.** The drafting call's document mode (section 8.5), with a custom schema that adds the use-of-force block, `response_standards`, `resources` and the roster's roles. The prompt asks for a locator (page or heading) for every value. A value with no locator, or not stated, is null and listed in `assumed_fields` as "not stated in the venue's document" (D39). Text from the document is data, never an instruction (section 8.3).
+- **Output.** A pending custom doctrine version with `claims` and its document locators, never usable until reviewed.
+
+#### 6.14.3 Review by a person
+
+The trainer reviews each section beside the document text it came from: steps, never-do items, hand-offs, roles, resources, response standards and use of force. Each section is approved, edited or removed; "not stated" fields stay visibly so. The precedence notices of section 6.14.4 appear before approval. Only an approved version is usable. The review is recorded in the version's `review_note` with the trainer's name and date; no platform admin verifies custom doctrines (Choice 27).
+
+#### 6.14.4 Precedence when compile merges custom and preset doctrines
+
+`mergeCustomDoctrine(custom, presets, ceiling)` in `server/services/fieldOps/doctrine/customMerge.ts (new)`, pure, runs in WS1's `resolveDoctrineForCompile`:
+
+1. **Statutory powers come from the preset library only.** A custom `legal_authorities` entry is kept only when it names an instrument in the ceiling row for its country and establishment type; any other is dropped, with a Review item.
+2. **Use of force is capped by law.** The effective authorised levels are the custom levels within the ceiling (`doctrine_force_ceilings`); a level above it moves to `not_authorised_levels` with the note "The venue team cannot authorise itself {level}; the law allows {ceiling}" and a Review item. With no ceiling row, only presence and verbal remain, labelled "to verify". An auxiliary police force's levels come from its preset register entry, whatever its document says.
+3. **Statutory functions stay with preset agencies.** A custom step that claims a function in the ceiling row's `reserved_functions` (for example arrest, a public-road cordon, fire-fighting command, rendering a device safe, investigation) becomes a support step ("Assist {agency} with …") and a hand-off to that agency, with a Review item the trainer confirms.
+4. **Inside the venue's own remit, custom wins.** For the venue team, its own steps, roles, resources, response standards and hand-offs replace the generic preset doctrine of its archetype: its staff, premises, public address, exits, access control on private property, first aid and CCTV.
+5. **Preset agencies are never changed.** A custom document cannot edit, weaken or extend a preset agency's doctrine; its hand-offs to preset agencies are added to the venue team only.
+6. **Response standards.** The venue team's own standards apply to the venue team; preset agencies keep the preset standards of WS9's library.
+7. **Conflicts.** Each rule above that fires adds a Review item `custom_precedence:{team}:{rule}`; none blocks publishing once the trainer acknowledges it, except an unacknowledged use-of-force cap.
+
+#### 6.14.5 Custom teams as units and roles
+
+- **The card.** A custom team is an `AgencyCard` with an archetype allowed by Choice 29, `agency_label` the establishment's name, `custom: true`, its roster from the extracted roles (for example Security Supervisor, Fire Safety Manager), and its custom doctrine.
+- **Units.** WS9 fields it as `venue_staff` units (`establishment_ert` teams as the fallback `fire_engine` kind on foot, labelled Assumed), starting on site, in the counts its `resources` state, else the catalogue's defaults labelled Assumed; its equipment comes from `resources`, scoped to this scenario and never written to WS9's shared tables.
+- **Zones.** Warm and cold, plus hot for a company emergency response team whose document and ceiling allow it.
 
 ## 7. Client
 
@@ -3997,6 +4104,14 @@ For the UI spec sheet's list:
 15. **Added 3 Nov 2026.** The upload panel (section 7.5.3): the drop zone, the notice "Only the text of your document is kept, never the file…", the document chip, and the drafted banner. The mockup has no upload anywhere in the agency lane or the drawer. Data model (D30) and privacy (D19).
 16. **Added 3 Nov 2026.** A seventh card state, `no_doctrine_for_country`, which the mockup does not draw, and the pill's country after the version ("v2 · Singapore"). The mockup's pills show no country (`docs/design/warroom/field-ops-setup.html:773`). Data model (D29).
 
+### 7.13 The venue's own team (added 22 Nov 2026)
+
+- **Entry.** WS2's agency lane offers "Add the venue's own team" beside the radar's cards (`03-setup-screen.md` section 15.6). It opens the drawer on a new tab, "Venue's own doctrine".
+- **Upload.** The trainer chooses the establishment type (private security, auxiliary police, company emergency response team, venue operations), confirms the client organisation, and drops one to five files. A notice says: "These documents stay with {client}. Only you can see them, and they are never shared with another client or added to the library."
+- **Progress.** The job's stages show in the drawer; extraction never blocks the rest of Setup.
+- **Review.** A side-by-side view: each extracted section beside the document text it came from, "Not stated" chips, and red "Capped by law" or "Belongs to {agency}" notices from section 6.14.4. Approve, edit or remove per section; "Approve all" is offered only when no notice is unacknowledged.
+- **The pill.** A saved custom doctrine shows "Custom · {client}" on the card. In later drafts for the same client it is offered first for that venue.
+
 ## 8. AI and LLM contracts
 
 Both calls go through `chatJson` (`server/services/ai/chatClient.ts:421-441`) with a strict JSON schema, which the client falls back from to plain JSON mode on providers that lack it (`server/services/ai/chatClient.ts:35-66`). Both modules take the chat function as a parameter, so their tests run with a fake (Choice 15). Neither call is ever asked for a position, a time of an attack, a quantity, a material or a method (master 10.8 item 17).
@@ -4491,6 +4606,13 @@ WS0's `requireFieldopsTrainer` enforces the first row on every route, after `req
 - **Military units.** Names, public roles and public legal bases only (section 6.11.5, item 3).
 - **Trainer-written blocks.** A trainer may write a block for her own doctrine; it is saved Unverified like any doctrine (D2), and the admin queue shows that the version has one.
 
+### 9.9 Custom establishment documents (added 22 Nov 2026)
+
+- **Isolation.** Every route that reads a custom doctrine or document checks that the caller is its owner and, for a draft, that the draft's client organisation matches (section 6.14.1); a mismatch answers 404, so another client cannot learn that it exists.
+- **Prompts.** Custom text reaches models only inside the delimited doctrine block, after the save-time screen, as data (sections 8.3 and 9.3).
+- **Powers.** Section 6.14.4 is enforced in code before any snapshot is written, so no custom document can give a venue team powers the law does not.
+- **Logging.** No document text, filename, client name or venue name in logs; counts and ids only.
+
 ## 10. Flags, rollout and observability
 
 ### 10.1 The flag
@@ -4645,6 +4767,10 @@ Add the twenty-one test files of section 11.1 to the `test` script in `package.j
 
 One new file, `server/lib/fieldOps/doctrineUseOfForce.test.ts (new)` (AC1.55, and `unauthorisedLevels` for each framework), added to the `test` script in `package.json` after the four of section 11.6. Cases added to existing files: `vocabulary.test.ts` and `archetypes.test.ts` (AC1.54; the catalogue has 16 entries, the three new ones with a null `legacy_name`); `agencySchemas.test.ts` (AC1.57); `snapshot.test.ts` and `plan.test.ts` (AC1.56); `seedRegister.test.ts` (AC1.58, AC1.59, the seeder half of AC1.60); `resolve.test.ts` (the run-time half of AC1.60); `doctrineDraft.test.ts` (AC1.61); `frontend/tests/doctrineDrawerState.test.ts (new)` (AC1.62).
 
+### 11.8 Tests for D57 to D59 (added 22 Nov 2026)
+
+New files, added to the `test` script in `package.json`: `server/services/fieldOps/doctrine/customExtract.test.ts (new)` (AC1.68, AC1.69) and `server/services/fieldOps/doctrine/customMerge.test.ts (new)` (AC1.70 to AC1.74). Cases added to `seedRegister.test.ts` (AC1.66) and `access.test.ts` (AC1.67).
+
 ## 12. Tasks
 
 Prerequisite: WS0's `server/lib/schemaFeatures.ts (new)`, `shared/fieldOps/jobs.ts (new)`, `VALIDATION_FAILED`, `requireFieldopsTrainer` in `server/lib/fieldOps/requireFieldopsFlag.ts (new)` (for T1.7) and `frontend/src/lib/fieldOps/fieldOpsHttp.ts (new)` (for T1.12) exist (master build order step 1). Every task ends with `npm test` and `npx tsc --noEmit` clean for server, shared and frontend.
@@ -4793,6 +4919,16 @@ Prerequisite: WS0's `server/lib/schemaFeatures.ts (new)`, `shared/fieldOps/jobs.
     - Files: `scripts/fieldops/seeds/playbooks/ (new)` and `scripts/fieldops/seeds/sea/SG/ (new)` (amended seeds and new ones), `server/services/fieldOps/doctrine/seedRegister.ts (new)` (the `review.history` check) and its test; WS9's briefs `doctrine_review` and `doctrine_agency`.
     - Done when: AC1.64 passes. Commit 7.
 
+25. **T1.25 Site-specific responders (added 22 Nov 2026; D57).**
+    - Files: `server/services/fieldOps/doctrine/seedRegister.ts (new)` (`site_bound`), the Changi Airport Emergency Services register entry and doctrine seed under `scripts/fieldops/seeds/sea/SG/ (new)`.
+    - Done when: AC1.66 passes and the entry is reviewed. Commit 7.
+26. **T1.26 Custom doctrine storage, extraction and review (added 22 Nov 2026; D58).**
+    - Files: the amended migration 222; `server/services/fieldOps/doctrine/customExtract.ts (new)` and its test; `server/services/fieldOps/doctrine/access.ts (new)` (the organisation rule); `server/routes/fieldOpsDoctrine.ts (new)` (the custom routes); `frontend/src/components/FieldOps/Agencies/VenueDoctrinePanel.tsx (new)`; `package.json` (touched).
+    - Done when: AC1.67 to AC1.69 pass. Commits 2, 3 and 6.
+27. **T1.27 Precedence and custom teams (added 22 Nov 2026; D59).**
+    - Files: `server/services/fieldOps/doctrine/customMerge.ts (new)` and its test; `server/services/fieldOps/doctrine/resolve.ts (new)`; the Singapore ceiling rows (`doctrine_force_ceilings`), drafted by the pipeline from public law and reviewed by the legal reviewer.
+    - Done when: AC1.70 to AC1.74 pass. Commits 4 and 7.
+
 ## 13. Commit plan and backtracking
 
 | Commit | Tasks | What lands | Backtracking |
@@ -4927,6 +5063,9 @@ None of the five files another session edits (README) is touched: `frontend/src/
 17. **Added 22 Nov 2026.** **A missing block on an armed archetype.** Warning or blocker? Default: a warning, `agency_use_of_force_missing` (section 2.3).
 18. **Added 22 Nov 2026.** **Countries beyond ASEAN.** Which, in which order? Default: GB (its public joint-doctrine material), AU, NZ, US, after Singapore and Malaysia (Choice 26).
 19. **Added 22 Nov 2026.** **Map powers for the armed archetypes.** Should tactical, military or CBRN teams get their own placeable assets and actions beyond WS9's units? Default: not in this version (Choice 23).
+20. **Added 22 Nov 2026.** **Ceiling sources (D59).** Which Singapore laws set the ceiling for private security officers, auxiliary police officers and company emergency response teams? Default: the Private Security Industry Act 2007, the Police Force Act's auxiliary police provisions and the Fire Safety Act, each to verify by the legal reviewer before any custom doctrine is merged in production.
+21. **Added 22 Nov 2026.** **Custom document retention.** Default: kept until the trainer deletes it or the client organisation is deleted. Should a maximum period apply?
+22. **Added 22 Nov 2026.** **The client's own reviewer.** Default: the trainer reviews; a named reviewer from the client is a later option.
 
 ### 15.3 Cross-spec requests
 
@@ -4989,3 +5128,4 @@ Only the requests still open on 25 Oct 2026 are listed. The earlier requests to 
 14. **Added 3 Nov 2026.** On staging an uploaded document's file is stored nowhere, its text is gone after its expiry, a marked document and one with device instructions are refused with nothing stored, and no log line carries a document's text, filename or agency name (manual check M7).
 15. **Added 22 Nov 2026.** AC1.54 to AC1.62 pass with their tests, and the file of section 11.7 is in the `test` script.
 16. **Added 22 Nov 2026.** Singapore's register, with its units and its legal authorities, is reviewed by the country and use-of-force reviewers and seeded in development; every seed names its run or its person and a located source; coverage rows exist for Singapore's archetypes.
+17. **Added 22 Nov 2026.** AC1.66 to AC1.74 pass; no custom doctrine or document is readable outside its owner and client organisation; Changi Airport Emergency Services is reviewed and seeded.

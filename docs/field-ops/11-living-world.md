@@ -88,6 +88,8 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 | D52 | Decided | **Added 22 Nov 2026.** Individual evacuees, storey choice, lifts and flight in the street (W48, W52, W53, section 6.30). |
 | D53 | Decided | **Added 22 Nov 2026.** Slopes (W54, section 6.30.6). |
 | D54 | Decided | **Added 22 Nov 2026.** Unit kinds and equipment as seeded data, and RTS controls (W56, sections 6.32 and 7.13). |
+| D56 | Decided | **Added 22 Nov 2026.** Response standards, hospitals and specialties (migration 254, amended) and the hooks `responseStandardFor` and `chooseDestination` (section 6.33). |
+| D57 | Decided | **Added 22 Nov 2026.** The named-site rule of section 6.19 has one exception, `SITE_BOUND_RESPONDERS`, starting with Changi Airport Emergency Services (AC9.81). |
 
 Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 250 to 256); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
 
@@ -403,7 +405,7 @@ The test files are in section 11.1. Pure modules are tested without a database o
 78. **AC9.78** Given a vehicle-impact threat at a facade stud, then the studs within its reach take damage from its kinetic energy against the facade class, and its fuel spill starts the rule's pool fire; given a flood threat, then basement studs' water depth rises at its inflow rate over their area, and electrical items below the water isolate, turning off the smoke control they serve. Test: `server/services/fieldOps/world/engine/threats.test.ts (new)`.
 79. **AC9.79** Given a layered state, when the encoder builds a team delta, then each changed stud of a storey is four bytes (fire state, visibility class of each layer, interface height in decimetres, heat class, gas tier), the head layer drives the default colour, the trainer's layer choice changes only the colour, and a delta of the largest world stays under 64 KB; the client decodes it back to the same classes. Test: `server/services/fieldOps/world/render/layerEncoding.test.ts (new)`; `frontend/tests/worldLayerModel.test.ts (new)`, "layers".
 80. **AC9.80** Given the largest layered world (32,000 stud columns times storeys, 128,000 layer cells, 12 storeys, 400 groups, 40 units, 24 plumes) hosted in a worker, when it ticks for 300 seconds, then the mean tick is under 50 ms, none exceeds 250 ms, the engine state stays under 96 MB, and the prepare job builds it in under 120 s; and no file under `server/services/fieldOps/world/` or `server/lib/fieldOps/` imports the chat client, `fetch`, a map service or anything under `scripts/fieldops/knowledge/`. Test: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)`, "layered"; `server/services/fieldOps/world/staticChecks.test.ts (new)`, "no research".
-81. **AC9.81** Given agent output rows with no source, a source without a locator, a value outside its table's range, a protective marking in a quoted phrase, a named site, or a device description, when `validateAgentRows` runs, then each is refused with its reason and nothing is written; given a file whose review status is `pending`, then `importApproved` skips it. Test: `server/lib/fieldOps/knowledgePipeline.test.ts (new)`, "validation".
+81. **AC9.81** Given agent output rows with no source, a source without a locator, a value outside its table's range, a protective marking in a quoted phrase, a named site, or a device description, when `validateAgentRows` runs, then each is refused with its reason and nothing is written; given a file whose review status is `pending`, then `importApproved` skips it. Test: `server/lib/fieldOps/knowledgePipeline.test.ts (new)`, "validation". **Updated 22 Nov 2026 (D57):** given `sg_cag_aes.fire_rescue.json` from the doctrine research, which names Changi Airport, then it is accepted because `sg_cag_aes` is in `SITE_BOUND_RESPONDERS`; the same text in a `building_hazards` row, or with an agency key not in the list, is refused as before.
 82. **AC9.82** Given an approved file and a new agent run that changes one row and adds one, when `diffSeedRows` runs, then it reports one change and one addition as pending, leaves the approved rows untouched, and keeps the reviewer and date on the unchanged rows. Test: `knowledgePipeline.test.ts`, "re-run diff".
 83. **AC9.83** Given a building type, an agent and a country with no row, when compile's dossier and the world build run with a recording fake chat client, then each uses its generic row labelled Assumed, writes one coverage row with status `gap` (once per key), Review lists `catalogue_gap:{key}`, and the chat client records no call. Test: `server/services/fieldOps/world/knowledge/coverage.test.ts (new)`, "gaps never ask a model".
 84. **AC9.84** Given sources whose review-due date has passed, when the coverage route is called by an admin, then they are listed as stale with their library and keys; a trainer gets 403. Test: `coverage.test.ts`, "staleness"; `server/routes/fieldOpsSpreadLibrary.test.ts (new)`, "coverage route".
@@ -451,6 +453,14 @@ The test files are in section 11.1. Pure modules are tested without a database o
 120. **AC9.120** Given a pump appliance suppressing a fire, then water leaves its tank at the hose line's flow until a hydrant link is made within hose reach, suppression scales with the flow against the fire's area, breathing-apparatus air runs down per crew member and forces withdrawal at the stored reserve, an aerial platform reaches only storeys within its height, and a thermal camera doubles the crew's sight in smoke. Test: `server/services/fieldOps/world/units/equipment.test.ts (new)`.
 121. **AC9.121** Given the RTS controls, then a drag box selects the player's units on the active storey, Shift adds, Ctrl and a digit set a control group and the digit recalls it, a right click gives the contextual command, Shift queues orders, the minimap shows units, fog and alert pings, and every command is reachable by keyboard. Test: `frontend/tests/worldRtsControls.test.ts (new)`.
 122. **AC9.122** Given `ENABLE_FIELDOPS_INCIDENT_TYPES` listing `active_shooter`, then the type is not offered and a warning is logged; given a ramming vehicle that stops, then a `suspect_last_seen` pin appears at its position for the investigation team and nothing moves from it. Test: `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`, "locked types"; `ramming.test.ts`, "driver".
+
+**Added 22 Nov 2026: response standards and hospitals (D56)**
+
+123. **AC9.123** Given the research files `response-standards.sg.json` and `hospital-capacity.sg.json` as written, then `responderSeedSchema` accepts them; the importer fills `respond_within_s` 480 and `target_share_pct` 90 for the fire and rescue standard and keeps the achieved shares in `stated_values`; the regional bed rows become capacity aggregates; a hospital row with an unknown specialty role is refused. Test: `server/services/fieldOps/world/health/responderSeeds.test.ts (new)`.
+124. **AC9.124** Given standards for SCDF fire and rescue in general and for `aircraft_impact` at Changi Airport Emergency Services, then `responseStandardFor` gives the airport one for an aircraft impact there and the general one elsewhere, and null for an agency with none. Test: `server/services/fieldOps/world/health/standards.test.ts (new)`.
+125. **AC9.125** Given three hospitals (the nearest without a burns centre, a burns centre 8 minutes further, a third 25 minutes further), then a red patient with serious burns goes to the burns centre (`specialist`), a yellow patient with a fracture to the nearest, and a red burn patient whose burns centre is 15 minutes further to the nearest with `missing: ['burns_centre']`; a hospital past its surge share is skipped as `capacity`; the result is the same twice. Test: `server/services/fieldOps/world/health/destination.test.ts (new)`.
+126. **AC9.126** Given exposure records for a heat burn, carbon monoxide, a chemical release with contamination, a crushed child and a blast injury, then `needsForCasualty` gives the needs of section 6.33.3. Test: `destination.test.ts`, "needs".
+127. **AC9.127** Given a team's transport to a hospital other than the hook's choice, then the transport proceeds as ordered and the After-Action Review lists one destination note; with no hospital rows, no note and today's behaviour. Test: `server/services/fieldOps/world/health/destination.test.ts (new)`, "team's choice".
 
 ## 5. Data model
 
@@ -1284,6 +1294,81 @@ ALTER TABLE public.fieldops_unit_equipment ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.fieldops_unit_kinds FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.fieldops_equipment FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.fieldops_unit_equipment FROM PUBLIC, anon, authenticated;
+
+-- Added 22 Nov 2026 (D56): published response standards, hospitals with their specialty roles, and capacity aggregates.
+-- Real hospitals are named: they are public facilities, as WS3's saved facilities already name them.
+CREATE TABLE IF NOT EXISTS public.fieldops_response_standards (
+  standard_key TEXT PRIMARY KEY CHECK (standard_key ~ '^[a-z][a-z0-9_]{1,63}$'),
+  label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 120),
+  country TEXT NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
+  scope TEXT NOT NULL CHECK (scope ~ '^[a-z][a-z0-9_]{1,63}$'),       -- an archetype key, a register agency key or a service key
+  incident_types TEXT[] NOT NULL DEFAULT '{}',                            -- empty: every incident type
+  respond_within_s INTEGER CHECK (respond_within_s IS NULL OR respond_within_s BETWEEN 1 AND 86400),
+  answer_within_s INTEGER CHECK (answer_within_s IS NULL OR answer_within_s BETWEEN 1 AND 3600),
+  target_share_pct NUMERIC(5, 2) CHECK (target_share_pct IS NULL OR target_share_pct BETWEEN 0 AND 100),
+  measured_from TEXT CHECK (measured_from IS NULL OR measured_from IN ('call_receipt', 'dispatch', 'unknown')),
+  stated_values JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(stated_values) = 'array'), -- every stated value as the seed gives it
+  site_bound BOOLEAN NOT NULL DEFAULT false,                              -- D57
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  row_version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.fieldops_hospitals (
+  hospital_key TEXT PRIMARY KEY CHECK (hospital_key ~ '^[a-z][a-z0-9_]{1,63}$'),
+  name TEXT NOT NULL CHECK (char_length(name) BETWEEN 2 AND 160),
+  country TEXT NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
+  ownership TEXT NOT NULL CHECK (ownership IN ('public', 'private', 'community', 'military')),
+  cluster TEXT CHECK (cluster IS NULL OR char_length(cluster) BETWEEN 2 AND 80),
+  acute BOOLEAN NOT NULL,
+  emergency_department BOOLEAN NOT NULL,
+  lat DOUBLE PRECISION CHECK (lat IS NULL OR lat BETWEEN -90 AND 90),
+  lng DOUBLE PRECISION CHECK (lng IS NULL OR lng BETWEEN -180 AND 180),
+  osm_id TEXT,                                                            -- matches WS3's saved facility when known
+  beds INTEGER CHECK (beds IS NULL OR beds BETWEEN 0 AND 20000),
+  beds_year SMALLINT CHECK (beds_year IS NULL OR beds_year BETWEEN 2000 AND 2100),
+  stated_values JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(stated_values) = 'array'),
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  row_version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.fieldops_hospital_specialties (
+  hospital_key TEXT NOT NULL REFERENCES public.fieldops_hospitals(hospital_key) ON UPDATE CASCADE ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('trauma_centre', 'burns_centre', 'paediatric', 'paediatric_emergency', 'neurosurgery',
+    'cardiothoracic', 'spinal', 'hyperbaric', 'toxicology', 'decontamination', 'obstetric', 'ophthalmology', 'psychiatric',
+    'infectious_isolation')),
+  level TEXT CHECK (level IS NULL OR level IN ('national_centre', 'regional', 'service')),
+  status TEXT NOT NULL CHECK (status IN ('sourced', 'unverified', 'assumed')),
+  source_key TEXT,
+  locator TEXT CHECK (locator IS NULL OR char_length(locator) BETWEEN 1 AND 120),
+  note TEXT CHECK (note IS NULL OR char_length(note) <= 300),
+  PRIMARY KEY (hospital_key, role)
+);
+CREATE TABLE IF NOT EXISTS public.fieldops_capacity_aggregates (
+  aggregate_key TEXT PRIMARY KEY CHECK (aggregate_key ~ '^[a-z][a-z0-9_]{1,63}$'),
+  label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 160),
+  country TEXT NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
+  scope TEXT NOT NULL,
+  stated_values JSONB NOT NULL CHECK (jsonb_typeof(stated_values) = 'array'),
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.fieldops_response_standards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fieldops_hospitals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fieldops_hospital_specialties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fieldops_capacity_aggregates ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.fieldops_response_standards FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.fieldops_hospitals FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.fieldops_hospital_specialties FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.fieldops_capacity_aggregates FROM PUBLIC, anon, authenticated;
 
 COMMIT;
 ```
@@ -2601,7 +2686,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.fieldops_seed_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals')),
   run_kind TEXT NOT NULL CHECK (run_kind IN ('agent', 'person', 'import')),
   agent_model TEXT CHECK (agent_model IS NULL OR char_length(agent_model) BETWEEN 2 AND 120),
   brief_key TEXT CHECK (brief_key IS NULL OR brief_key ~ '^[a-z][a-z0-9_]{1,63}$'),
@@ -2640,7 +2725,7 @@ CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_sources (
 
 CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_coverage (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals')),
   country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
   subject_key TEXT NOT NULL CHECK (char_length(subject_key) BETWEEN 1 AND 120),
   status TEXT NOT NULL CHECK (status IN ('covered', 'assumed', 'gap')),
@@ -2695,7 +2780,7 @@ Two new files under `shared/` (master 10.7: no package imports, no enums), and o
 
 ```ts
 // shared/fieldOps/knowledge.ts (new). Owned by WS9. Types and constants only.
-export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units'] as const; // 'units' added 22 Nov 2026: unit kinds and equipment
+export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals'] as const; // 'units' (unit kinds, equipment, response standards) and 'hospitals' added 22 Nov 2026
 export type KnowledgeLibrary = (typeof KNOWLEDGE_LIBRARIES)[number];
 export const COVERAGE_STATUSES = ['covered', 'assumed', 'gap'] as const;
 export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
@@ -4186,9 +4271,9 @@ The decisions are pure functions in `server/lib/fieldOps/knowledgePipeline.ts (n
 **A run, step by step.**
 
 1. A person chooses a brief and its subjects, for example `npx tsx scripts/fieldops/knowledge/researchAgent.ts --brief building_type --subjects shopping_mall,food_centre --country SG`. The script reads `FIELDOPS_SEED_AGENT_MODEL` and `FIELDOPS_SEED_SEARCH_PROVIDER` (and the provider's key) from the person's own environment; they are never set on Render.
-2. The agent searches and reads under the brief's source rules: for doctrines, WS1's rules (`02-teams-and-doctrines.md` section 6.11.3, and section 6.11.5 for use of force); for building hazards, codes and regulations (the Singapore Civil Defence Force's Fire Code, the Ministry of Manpower's workplace safety regulations, the National Environment Agency, the Energy Market Authority), standards bodies (NFPA, BSI, ISO, CEN), process-safety and fire-engineering references (CCPS, the TNO Yellow Book, the SFPE Handbook) and peer-reviewed papers; for agents and threats, the US EPA's AEGL programme, NOAA's CAMEO Chemicals, NIOSH, CCPS and TNO; for movement, the SFPE Handbook, ISO and BS documents and peer-reviewed studies. It never uses a document about one named site, even a public one, and never anything marked, leaked or paywalled without a licence.
+2. The agent searches and reads under the brief's source rules: for doctrines, WS1's rules (`02-teams-and-doctrines.md` section 6.11.3, and section 6.11.5 for use of force); for building hazards, codes and regulations (the Singapore Civil Defence Force's Fire Code, the Ministry of Manpower's workplace safety regulations, the National Environment Agency, the Energy Market Authority), standards bodies (NFPA, BSI, ISO, CEN), process-safety and fire-engineering references (CCPS, the TNO Yellow Book, the SFPE Handbook) and peer-reviewed papers; for agents and threats, the US EPA's AEGL programme, NOAA's CAMEO Chemicals, NIOSH, CCPS and TNO; for movement, the SFPE Handbook, ISO and BS documents and peer-reviewed studies. It never uses a document about one named site, even a public one, and never anything marked, leaked or paywalled without a licence. **Updated 22 Nov 2026 (D57):** one exception: for a responder listed in `SITE_BOUND_RESPONDERS` (`server/lib/fieldOps/knowledgePipeline.ts (new)`; first `sg_cag_aes`, Changi Airport Emergency Services), the briefs `doctrine_agency`, `doctrine_review` and the response-standard rows may use that responder's or its operator's own official publications and the law regulating its site, for that responder's doctrine and standards only. The exception never covers building-hazard, threat or movement rows, a site's security arrangements, or any vulnerability.
 3. It returns JSON in `agentOutputSchema` (section 8.5): rows in the library's seed format, each with `SeedProvenance` (sources with locators and at most 25 quoted words, a confidence, and the fields the sources do not state as `assumed_fields`), the sources themselves, and the subjects it could not cover with the sources it checked.
-4. `validateAgentRows` refuses a row with no source, a source without a locator, a value outside its table's SQL range or a movement parameter's plausible range, a quoted phrase over 25 words or with a protective marking (WS1's marking list, `02-teams-and-doctrines.md` section 6.13), text that fails `moderateDeviceText`, or text that names a site: a saved building name of the site's country, a street address or a postal code. Refusals are written to the run's manifest with their reasons.
+4. `validateAgentRows` refuses a row with no source, a source without a locator, a value outside its table's SQL range or a movement parameter's plausible range, a quoted phrase over 25 words or with a protective marking (WS1's marking list, `02-teams-and-doctrines.md` section 6.13), text that fails `moderateDeviceText`, or text that names a site: a saved building name of the site's country, a street address or a postal code. **Updated 22 Nov 2026 (D57):** the site-name test is skipped for rows of the `doctrines` and `units` libraries whose `agency_key` is in `SITE_BOUND_RESPONDERS`; every other test still applies to them. Refusals are written to the run's manifest with their reasons.
 5. The script writes the valid rows as pending files and `run.json` (the run id, library, brief hash, model, times, counts and sources) into `scripts/fieldops/seeds/_incoming/<run_id>/`, which is committed on a review branch, never on `master` directly.
 6. `reviewQueue.ts` writes `review-pack.md` for the run: each row with its values, sources and locators, confidence, assumed fields, its diff against the approved file, and the library's checklist. The reviewers are the libraries' own: WS1's per-country doctrine reviewers (with a legal or service reviewer for use of force), the D22 reviewer for WS6's device library and bomb disposal, and the W24 reviewer for WS9's libraries.
 7. The reviewer marks each row approved, amended or rejected in the file's review block, with their name, qualification and date; `diffSeeds.ts --apply-approved` moves approved rows into the canonical seed files. The pull request that carries this is the human review queue's record.
@@ -4595,6 +4680,44 @@ D54, W56, master 10.8 item 49.
 - **Deployment.** On arrival a crew deploys equipment as placed assets: a hose line from the appliance to its target, a ladder at a facade stud, a decon point, a casualty collection point, a barrier line; each carries its equipment key and is shown on the map.
 - **Commands.** Every command of section 6.14 takes an optional queue position, so orders can be queued; rally points are a per-origin setting. AI agencies use the same commands (D34).
 
+
+### 6.33 Response standards, hospitals and the nearest-versus-specialist hook (added 22 Nov 2026)
+
+D56, master 10.8 item 50. Modules in `server/services/fieldOps/world/health/ (new)`.
+
+#### 6.33.1 Seed format
+
+`fieldops_responder_seed_v1`, aligned with the research files of 22 Nov (`response-standards.sg.json` and `hospital-capacity.sg.json`, format `fieldops_responder_seed_v0`, which it accepts unchanged): the header of section 5.12 with `library` (`units` or `hospitals`), and `rows`, each with `key`, `label`, `country`, `scope`, `values` (`[{ param, value, unit, status, source_key, locator }]`, `status` one of `sourced`, `unverified`, `assumed`, `gap`), `review_notes` and `provenance` (`SeedProvenance` plus `unverified_fields` and `withheld_fields`). `responderSeedSchema` in `server/lib/fieldOps/knowledgeSchemas.ts (new)` validates it; the importer maps rows by kind:
+
+- **A response standard** (`library: 'units'`, scope an archetype, an agency key or a service key, optional `incident_types`): `respond_within_s`, `answer_within_s` and `target_share_pct` fill their columns; every other param (achieved shares by year, system size) stays in `stated_values`.
+- **A hospital** (`library: 'hospitals'`, `scope: 'hospital'`): adds `name`, `ownership`, `cluster`, `acute`, `emergency_department`, `location` (`[lat, lng]` or null), `osm_id` and `specialties` (`[{ role, level, status, source_key, locator, note }]`, `role` from `SpecialtyRole`); `beds_{yyyy}` values fill `beds` with the latest year.
+- **An aggregate** (`library: 'hospitals'`, any other scope, for example the national and regional bed rows the research drafted): stored as `fieldops_capacity_aggregates`.
+
+The hospital worker extending `hospital-capacity.sg.json` with named hospitals and specialties writes rows in this shape. A specialty the sources do not state is absent, never guessed (D38).
+
+#### 6.33.2 `responseStandardFor`
+
+`responseStandardFor(country, scope, incidentType, standards)` returns the most specific active standard (the agency key, then the archetype, then the service; with the incident type before an empty list) or null. Review shows it beside each agency ("SCDF target: 8 minutes, 90 per cent of the time"); the After-Action Review compares each unit's first arrival with it. It never changes travel times or scores by itself.
+
+#### 6.33.3 `chooseDestination`
+
+```ts
+// server/services/fieldOps/world/health/destination.ts (new). Pure.
+export function needsForCasualty(c: { colour: 'red' | 'yellow' | 'green'; agents: string[]; mechanism: 'blast' | 'burn' | 'crush' | 'impact' | 'toxic' | 'smoke' | 'other'; child: boolean; contaminated: boolean }): SpecialtyRole[];
+export function chooseDestination(
+  patient: { needs: SpecialtyRole[]; colour: 'red' | 'yellow' | 'green'; contaminated: boolean },
+  candidates: Array<{ hospital: HospitalRow; travel_s: number; received: number }>,
+  policy: { bypass_s: { red: number; yellow: number; green: number }; surge_share: number },
+): { hospital_key: string; reason: 'nearest' | 'specialist' | 'capacity'; bypass_s: number; missing: SpecialtyRole[] };
+```
+
+- **Needs.** A serious or worse burn needs `burns_centre`; carbon monoxide or smoke with serious exposure needs `hyperbaric`; a toxic agent needs `toxicology`, and contamination `decontamination`; red blast, impact or crush needs `trauma_centre`; a child needs `paediatric`. The table is a constant, `SPECIALTY_NEEDS`, reviewed with the library.
+- **Choice.** The nearest hospital with an emergency department, unless the patient has needs it lacks and a hospital with them is within the colour's extra travel (`bypass_s`: red 600 s, yellow 1,200 s, green 0, planning values, reviewer to confirm); a hospital that has received more than `surge_share` (0.02, planning) of its beds is skipped as `capacity`. Ties go to the shorter travel.
+- **Uses (kept light).** WS9's ambulance transport (section 6.8.9) uses it when a team names no destination; when a team names one, the After-Action Review notes "A specialist centre was {n} minutes further" where the hook would have chosen otherwise. WS7's AI agencies call it for their transport decisions. No score changes in this version.
+
+#### 6.33.4 Before the tables are seeded
+
+With no hospital rows, transport uses today's behaviour and WS3's saved facilities, and the After-Action Review shows no destination notes; with no standards, Review shows "No published standard in the library", recorded as a coverage gap (W38).
 
 ## 7. Client
 
@@ -5280,6 +5403,10 @@ New files, appended to the `test` script in `package.json` in this order with th
 
 New files, appended to the `test` script in `package.json` with their tasks: `server/services/fieldOps/world/population/populate.test.ts (new)` (AC9.105, AC9.106), `server/services/fieldOps/world/population/casualties.test.ts (new)` (AC9.107, AC9.108), `server/services/fieldOps/world/agents/routeChoice.test.ts (new)` (AC9.110), `server/services/fieldOps/world/agents/storeys.test.ts (new)` (AC9.111, AC9.112), `server/services/fieldOps/world/agents/perception.test.ts (new)` (AC9.113), `server/services/fieldOps/world/agents/outdoors.test.ts (new)` (AC9.114), `server/services/fieldOps/world/agents/agents.test.ts (new)` (AC9.117), `server/services/fieldOps/world/incidents/storyline.test.ts (new)` (AC9.116), `server/services/fieldOps/world/units/unitKinds.test.ts (new)` (AC9.119), `server/services/fieldOps/world/units/equipment.test.ts (new)` (AC9.120), `frontend/tests/worldRtsControls.test.ts (new)` (AC9.121). Cases added: `buildWorldModel.test.ts` "storey plans" (AC9.109), `crowdCrush.test.ts` "slopes" (AC9.115), `worldBudget.test.ts` "agents" (AC9.118), `incidentTypes.test.ts` "locked types" and `ramming.test.ts` "driver" (AC9.122). Manual steps: **M19** populate a three-storey mall, set off a device on G and watch G's survivors go up while L2 comes down; **M20** a building fire with a power failure at minute 4: lights and smoke control fail, lifts recall, people leave into the street and teams meet them; **M21** select, group and queue units with the keyboard only.
 
+### 11.9 Tests of the response standards and hospitals (added 22 Nov 2026)
+
+New files, added to the `test` script in `package.json`: `server/services/fieldOps/world/health/responderSeeds.test.ts (new)` (AC9.123), `server/services/fieldOps/world/health/standards.test.ts (new)` (AC9.124) and `server/services/fieldOps/world/health/destination.test.ts (new)` (AC9.125 to AC9.127).
+
 ## 12. Tasks
 
 The tasks follow the slices of section 4.2 (master section 6, build-order item 7). Each slice ends with the flag still able to fall back to today's behaviour, and each task adds its test files to the `test` script of `package.json` as it creates them (section 11.5). A file is marked new where it is first created; later tasks extend it.
@@ -5547,6 +5674,12 @@ If slice 2 is not yet built when these tasks start, T9.8 and T9.9 are built dire
 51. **T9.51 RTS controls and evacuee dots.** Files: in `frontend/src/components/FieldOps/World/`: `WorldCommandCard.tsx`, `WorldMinimap.tsx`, `WorldAlerts.tsx`, `worldSelection.ts`, `WorldLayersCanvas.tsx` (extended); `frontend/tests/worldRtsControls.test.ts (new)`. Done when AC9.121 and M21 pass. Commit: 19.
 52. **T9.52 The agent budget.** Files: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)` (extended), `server/services/fieldOps/world/render/layerEncoding.ts (new)` (agent deltas), `scripts/fieldops-world-soak.ts (new)`. Done when AC9.118, M19 and M20 pass. Commit: 19.
 
+**Added 22 Nov 2026: response standards and hospitals (D56)**
+
+53. **T9.53 Tables and seeds.** Files: `migrations/254_fieldops_world_units.sql (new)` (amended); `responderSeedSchema` in `server/lib/fieldOps/knowledgeSchemas.ts (new)`; `response-standards.json`, `hospitals.json` and `capacity-aggregates.json` in the seed folder; `server/services/fieldOps/world/health/responderSeeds.test.ts (new)`. Done when AC9.123 passes. Commit: 20.
+54. **T9.54 `responseStandardFor` in Review and the After-Action Review.** Files: `server/services/fieldOps/world/health/standards.ts (new)` and its test. Done when AC9.124 passes. Commit: 20.
+55. **T9.55 `chooseDestination` and the transport hook.** Files: `server/services/fieldOps/world/health/destination.ts (new)` and its test; `server/services/fieldOps/world/engine/units.ts (new)` (the transport task). Done when AC9.125 to AC9.127 pass. Commit: 20.
+
 ## 13. Commit plan and backtracking
 
 Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run typecheck`, `npm run lint` and `npm --prefix frontend run build` pass, and its migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), with their rollback comments tried on a branch database. Only then is each migration applied once, in order, on the shared project, which serves development, preview and production alike (section 10.2). A commit that fails any of them is fixed or reverted before the next one starts. Backing a commit out never runs a rollback on the shared project: its tables are additive, and nothing reads them once the code is reverted or the flag is off (D23).
@@ -5587,6 +5720,7 @@ Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run t
 | 17. "WS9: individual evacuees and slopes" | T9.45 to T9.47 | Agents indoors and in the street | Set `WORLD_LIMITS.maxAgents` to 0: every person moves as W8's groups |
 | 18. "WS9: unit kinds and equipment" | T9.50 | Seeded kinds and equipment | Empty tables: `UNIT_CATALOGUE` applies, labelled Assumed |
 | 19. "WS9: RTS controls and the agent budget" | T9.51, T9.52 | The RTS client and its budget | Revert the client files; the units panel of section 7.3 still dispatches |
+| 20. "WS9: response standards and hospitals" (**added 22 Nov 2026**) | T9.53 to T9.55 | Standards in Review and the After-Action Review; destination choice | Empty tables: today's transport and no notes |
 
 Backtracking within a commit: when a task shows that an earlier decision of this spec is wrong (a budget missed, a gate too wide, a seed value implausible in play), the builder stops, changes the decision in this document first (section 2.2 and the section that applies it), adjusts the criteria, and only then the code. The D31 review can change any seed value without a code change, through the admin routes.
 
@@ -5789,6 +5923,8 @@ WS9's own questions:
 46. **Added 22 Nov 2026. Should players see every evacuee, or only those in their cover?** **Assumed (D34, D52):** only those in their cover; the trainer sees all.
 47. **Added 22 Nov 2026. How far outside do evacuees run?** **Assumed (D52):** to 200 m, an assembly point, or the site ring's edge (at most 500 m), where they count as dispersed.
 48. **Added 22 Nov 2026. Do hydrants come from data?** **Assumed (D54):** none are in the saved data; one is assumed every 100 m along roads, labelled Assumed, until a public source is approved.
+49. **Added 22 Nov 2026. How far may an ambulance bypass the nearest hospital for a specialist?** **Assumed (D56):** 10 minutes for red, 20 for yellow, none for green, until a medical reviewer sets them.
+50. **Added 22 Nov 2026. Should destination fit change scores?** **Assumed (D56):** no in this version; the After-Action Review only notes it.
 ### 15.3 Requests WS9 makes of other specs
 
 | To | Request | Why |
@@ -5862,3 +5998,4 @@ WS9 is done when every line below holds on staging, and the production lines hol
 19. **Added 22 Nov 2026.** For each incident type turned on in production: its criteria pass, its rows and template are reviewed (and, for an attack-like type, signed by the security reviewer), and `ENABLE_FIELDOPS_INCIDENT_TYPES` lists it.
 20. **Added 22 Nov 2026.** Phase 1's criteria AC9.85 to AC9.96, AC9.102 to AC9.104 and manual steps M16 to M18 pass on staging.
 21. **Added 22 Nov 2026.** AC9.105 to AC9.122 pass with their tests, and M19 to M21 pass on staging; a populated three-storey scene runs within the budget of AC9.118.
+22. **Added 22 Nov 2026.** AC9.123 to AC9.127 pass; Singapore's response standards and hospital rows are reviewed and imported, each specialty with a source or absent.

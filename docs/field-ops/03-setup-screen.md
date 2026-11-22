@@ -1,6 +1,6 @@
 # Setup screen: document, footprint radar, blueprint, five lanes and readiness (WS2)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** master D46 and D47 widen the incident types in phases (section 15.5, AC2.36 to AC2.38, T2.23). The owner's answers of the same day: events combine (D49) and the armed-attacker types stay locked (D48).
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** master D46 and D47 widen the incident types in phases (section 15.5, AC2.36 to AC2.38, T2.23). The owner's answers of the same day: events combine (D49) and the armed-attacker types stay locked (D48). Section 15.6 adds the venue's own team and the client organisation for D58.
 **Workstream:** WS2
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `02-teams-and-doctrines.md`, `04-site-picker.md`; softly `07-device-and-physics.md` and `08-people-or-ai.md`
 **Flags:** `ENABLE_FIELDOPS_V2` with `VITE_ENABLE_FIELDOPS_V2`, and `ENABLE_FIELDOPS_BLUEPRINT`
@@ -2933,6 +2933,15 @@ Master D46 and D47, 10.8 item 46; WS9's request in `11-living-world.md` section 
 - **The radar.** Its closed list holds every key of master 10.1; for an enabled type it proposes the type and the event's class fields only when the document states them, and never a place, a path or a time (D47).
 - **Readiness.** "Place the {event} in Lay out the scene" until the event's geometry exists; it blocks compile, not the layout step.
 - **Copy.** Tile labels come from `fieldops_incident_types.label`; the briefing note of each type appears under its tile when chosen.
+
+### 15.6 The venue's own team and the client organisation (added 22 Nov 2026)
+
+Master D58, 10.8 item 51.
+
+- **Client organisation.** `setup_v2.client_organisation_id: string | null`, one of the trainer's `client_organisations` (`migrations/193_payment_portal.sql:22-31`), chosen at the top of Setup ("Exercise for: {client}" or "No client"). The save route checks it belongs to the trainer. It scopes custom doctrines (`02-teams-and-doctrines.md` section 6.14.1).
+- **Entry point.** The agency lane shows "Add the venue's own team" after the radar's cards. It adds a card with `custom: true` and opens WS1's drawer on its "Venue's own doctrine" tab (`02-teams-and-doctrines.md` section 7.13). When the radar reads the venue's own security or safety team in the document, it proposes this card, without a doctrine.
+- **Readiness.** A custom card whose doctrine is pending review blocks compile with "Review the venue team's doctrine"; it never blocks the layout step.
+- **Tests.** `server/lib/fieldOps/setupSchemas.test.ts (new)` gains "client organisation": another trainer's client is refused, null is allowed.
 
 ## 16. Definition of done
 
