@@ -23,6 +23,23 @@ const ORDER = [
 
 const MIGRATIONS = path.resolve(import.meta.dirname, '../../../..', 'migrations');
 
+/** Tables created by 261, 262 and 263. Their SQL revokes anon and authenticated. */
+const REVOKED_FROM_API = [
+  'fieldops_unit_kinds',
+  'fieldops_equipment',
+  'fieldops_unit_equipment',
+  'fieldops_response_standards',
+  'fieldops_hospitals',
+  'fieldops_hospital_specialties',
+  'fieldops_capacity_aggregates',
+  'fieldops_knowledge_import_runs',
+  'fieldops_seed_files',
+  'fieldops_knowledge_records',
+  'fieldops_knowledge_record_history',
+  'fieldops_knowledge_reference_values',
+  'fieldops_library_row_history',
+];
+
 function localUrl(): string | null {
   const url = process.env.KNOWLEDGE_DB_URL;
   if (!url) return null;
@@ -80,7 +97,7 @@ describe('knowledge migrations on a local database', () => {
   const url = localUrl();
 
   it(
-    'applies 221-263 twice, keeps the catalog, and refuses anon',
+    'applies 221-263 twice, lets service_role select, and refuses anon on 261-263',
     { skip: url ? false : 'KNOWLEDGE_DB_URL unset or not local' },
     async () => {
       assert.ok(url);
@@ -108,32 +125,31 @@ describe('knowledge migrations on a local database', () => {
            AND (c.relname LIKE 'fieldops_%' OR c.relname LIKE 'doctrine%' OR c.relname LIKE 'team_archetype%')
       `);
         assert.ok(tables.rows.length >= 24);
+
+        // Spec M3: service_role can select every new table. Supabase's default
+        // grants give it that access; the copied SQL does not GRANT it itself.
+        await client.query('BEGIN');
+        await client.query('SET LOCAL ROLE service_role');
+        for (const table of tables.rows) {
+          await client.query(`SELECT 1 FROM public.${quoteIdent(table.relname)} LIMIT 1`);
+        }
+        await client.query('ROLLBACK');
+
+        // anon and authenticated are revoked on 261, 262 and 263. PR #23's
+        // twelve tables still keep Supabase's default table grants, so this
+        // test does not claim those are denied.
         for (const role of ['anon', 'authenticated']) {
-          for (const table of tables.rows) {
+          for (const name of REVOKED_FROM_API) {
             await client.query('BEGIN');
             await assert.rejects(
               client.query(
-                `SET LOCAL ROLE ${role}; SELECT 1 FROM public.${quoteIdent(table.relname)} LIMIT 1`,
+                `SET LOCAL ROLE ${role}; SELECT 1 FROM public.${quoteIdent(name)} LIMIT 1`,
               ),
               /permission denied/i,
             );
             await client.query('ROLLBACK');
           }
         }
-
-        await client.query('BEGIN');
-        await client.query('SET LOCAL ROLE service_role');
-        await client.query('SELECT 1 FROM public.fieldops_seed_files LIMIT 1');
-        await client.query('ROLLBACK');
-
-        await client.query('BEGIN');
-        await assert.rejects(
-          client.query(
-            `SET LOCAL ROLE service_role; SELECT 1 FROM public.fieldops_unit_kinds LIMIT 1`,
-          ),
-          /permission denied/i,
-        );
-        await client.query('ROLLBACK');
       } finally {
         await client.end();
       }
