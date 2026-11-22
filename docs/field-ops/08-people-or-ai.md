@@ -2644,7 +2644,7 @@ Only requests still open after the master's rulings and the other specs' answers
 
 Master D40 and D43, 10.8 items 44 and 45; WS1's and WS9's requests.
 
-- **Use of force.** The doctrine plan's `never_do` now holds the force levels the agency's doctrine does not authorise (`02-teams-and-doctrines.md` section 5.4.1). The planner adds them to the agency's forbidden list as it adds every never-do item, and the action guard refuses a decision whose text the planner's classifier marks as ordering one of them, with the reason "Not authorised for this agency's units."
+- **Use of force.** The doctrine plan's `never_do` now holds the force levels the agency's doctrine states as not authorised (never the levels it leaves unstated, **updated 22 Nov 2026**) (`02-teams-and-doctrines.md` section 5.4.1). The planner adds them to the agency's forbidden list as it adds every never-do item, and the action guard refuses a decision whose text the planner's classifier marks as ordering one of them, with the reason "Not authorised for this agency's units."
 - **Archetypes.** The three armed archetypes act through WS9's units and the talk-only scope; they gain no action kind in this version (`02-teams-and-doctrines.md` Choice 23).
 - **Perception.** An AI agency's view of the layered world carries each stud's storey and its head-layer classes as a person's does (`11-living-world.md` section 6.25); its dispatch targets name a storey. It reads the same fog.
 - **Tests.** `server/services/fieldOps/bots/planner.test.ts (new)` gains "force levels in never_do"; it is already in the `test` script.

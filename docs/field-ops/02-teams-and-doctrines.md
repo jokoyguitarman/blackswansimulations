@@ -23,7 +23,7 @@
 8. **Seeding** from the demo agent's playbooks, the 229 per-scenario entries and the corporate charter shape, with nothing called Verified until a person has reviewed it.
 9. **Added 3 Nov 2026.** **Doctrines grouped by country (D29).** Every doctrine and every archetype alias carries a country (ISO 3166-1 alpha-2, null for a generic doctrine) and the agency it was written for or names. The library is seeded once, during development, with the doctrines of the Southeast Asian response agencies, taken from official public sources and reviewed by a person; compile never researches doctrines. Matching looks in the agency's country first, then at generic doctrines, then at other countries, and says where each doctrine comes from (master 10.8 item 37).
 10. **Added 3 Nov 2026.** **Three ways in when an agency has no doctrine (D30).** In the doctrine drawer the trainer picks any library doctrine from a browser with search and country and team-type filters, writes one in the existing editor, or uploads the agency's own doctrine document (PDF, DOCX or TXT), whose text is drafted into the fields for her to check. In every case she states the country before saving, and a new doctrine is saved Unverified (D2).
-11. **Added 22 Nov 2026.** **Use of force and legal authority (D40).** A doctrine may state the legal instruments that give its agency its powers and the use of force its units may apply, as public law and published policy state them. The judges, Review and the AI planner read them through the existing projection: force the unit is not authorised to use becomes a forbidden action.
+11. **Added 22 Nov 2026.** **Use of force and legal authority (D40).** A doctrine may state the legal instruments that give its agency its powers and the use of force its units may apply, as public law and published policy state them. The judges, Review and the AI planner read them through the existing projection: force a source says the unit may not use becomes a forbidden action, and a level no source states is shown as "not stated; to verify" (**updated 22 Nov 2026**).
 12. **Added 22 Nov 2026.** **Armed and military units (D40).** Three archetypes, `tactical_response`, `military_support` and `cbrn_defence`, and units listed in each country's agency register as organisations with their public role, so a card named after a police tactical unit or an armed-forces support group matches.
 13. **Added 22 Nov 2026.** **Seeds drafted by an agent, decided by a person (D39).** The registers and doctrine seeds are drafted by WS9's offline research agent with a cited source per row and reviewed as section 6.11.3 says; Singapore first, then the ASEAN order, then other countries where public sources allow; every gap is recorded (D38).
 
@@ -275,7 +275,7 @@ The fuzzy lookup is `resolveTeamDoctrines` (`server/services/environmentalConsis
 | AC1.53 | **Added 3 Nov 2026.** library doctrines for 'SG', 'MY' and no country, including two with the same archetype and title in different countries | the countries route and the list with `country=MY`, `country=generic` and `prefer_country=MY` are called | per-country counts with null for generic; each filter returns only its group; `best` puts the MY doctrines first; both same-titled doctrines exist, and a third with the same country, archetype and title answers 409 `DOCTRINE_TITLE_TAKEN` | `scripts/fieldops/e2e-doctrines.ts (new)`, step 11 |
 | AC1.54 | **Added 22 Nov 2026.** `shared/fieldOps/vocabulary.ts (new)`, `shared/fieldOps/archetypes.ts (new)` and migration 221 | the lists, the catalogue and the SQL are compared | `ARCHETYPE_KEYS` has 16 keys ending with `tactical_response`, `military_support` and `cbrn_defence`; the catalogue has their rows of section 5.2.1; 221's check and seed rows hold them; `actionScopeFor` gives them the zone access of section 5.2.4 and no claim kind, triage, sweep or statement | `server/lib/fieldOps/vocabulary.test.ts (new)`, `server/lib/fieldOps/archetypes.test.ts (new)` |
 | AC1.55 | **Added 22 Nov 2026.** contents with no use-of-force block; with an `unarmed` framework listing `lethal`; with a condition whose level is not authorised; with an unknown authority id; with `lethal` and no command authority; and a valid police block | `validateDoctrineContent` and `DoctrineContentSchema` check each | they agree: the first and last pass, the others are refused at the named path; the first's content hash equals the hash it had before 22 Nov | `server/lib/fieldOps/doctrineUseOfForce.test.ts (new)` |
-| AC1.56 | **Added 22 Nov 2026.** a doctrine authorising presence, verbal and physical control, with two legal authorities and one condition | `buildDoctrineSnapshot`, `applySnapshotToPayload` and `buildDoctrinePlan` run | the projection's forbidden actions gain "Use less-lethal force" and "Use lethal force" with the instrument as the reason; one standards finding "{label}: use of force and legal authority" lists the authorities and the condition; `good_looks_like` and the rubric are unchanged; the plan's `never_do` holds both; the charter's `out_of_lane` holds both | `server/services/fieldOps/doctrine/snapshot.test.ts (new)`, `server/services/fieldOps/doctrine/plan.test.ts (new)` |
+| AC1.56 | **Added 22 Nov 2026.** a doctrine authorising presence, verbal and physical control, with two legal authorities and one condition | `buildDoctrineSnapshot`, `applySnapshotToPayload` and `buildDoctrinePlan` run | the projection's forbidden actions gain "Use less-lethal force" and "Use lethal force" with the instrument as the reason; one standards finding "{label}: use of force and legal authority" lists the authorities and the condition; `good_looks_like` and the rubric are unchanged; the plan's `never_do` holds both; the charter's `out_of_lane` holds both. **Updated 22 Nov 2026:** with `lethal` also in `not_authorised_levels`, only "Use lethal force" is forbidden and in `never_do`; `less_lethal`, stated nowhere, appears only in the standards finding as "Less-lethal: not stated in this doctrine's sources; to verify". | `server/services/fieldOps/doctrine/snapshot.test.ts (new)`, `server/services/fieldOps/doctrine/plan.test.ts (new)` |
 | AC1.57 | **Added 22 Nov 2026.** an armed archetype's card whose doctrine has no use-of-force block | `collectAgencyIssues` runs | one warning `agency_use_of_force_missing`, gate null, anchor ending `:doctrine`; nothing is blocked | `server/lib/fieldOps/agencySchemas.test.ts (new)` |
 | AC1.58 | **Added 22 Nov 2026.** a register with an agency and two units, one unit alias shared with another country | `AgencyRegisterFileSchema` and `aliasRowsFromRegister` run | the register validates; each unit alias becomes an alias row whose `agency_name` is the unit's name; a unit archetype outside `ARCHETYPE_KEYS` is refused; the rows are the same on a second run | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
 | AC1.59 | **Added 22 Nov 2026.** seed files drafted by the agent: one without a run id, one with a source without a locator, one approved without a reviewer, one with a use-of-force block approved by a reviewer whose role is `doctrine`, and a valid one | `DoctrineSeedFileSchema` and `checkSeedFolder` run | the first four are refused with their reasons; the valid one passes and its source note names its first source | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
@@ -284,6 +284,7 @@ The fuzzy lookup is `resolveTeamDoctrines` (`server/services/environmentalConsis
 | AC1.62 | **Added 22 Nov 2026.** the drawer on a seeded doctrine with a use-of-force block, and on the trainer's own new doctrine | it renders | the seed shows "Use of force and legal authority" read-only with the authorities and levels; her own shows the editable section, collapsed, and saving a level not in the framework shows "That level is outside this framework." | `frontend/tests/doctrineDrawerState.test.ts (new)` |
 | AC1.63 | **Added 22 Nov 2026.** `DOCTRINE_INCIDENT_TYPES_ALL` and a doctrine whose `applies_to` names `stampede_crush` | the list is compared with master 10.1 and `rankDoctrines` runs for a `stampede_crush` card and a `bombing` card | the list holds every live key of every phase; the doctrine is offered for the crush card and not for the bombing card; a doctrine with an empty `applies_to` is offered for both | `server/lib/fieldOps/vocabulary.test.ts (new)`, `server/services/fieldOps/doctrine/resolve.test.ts (new)` |
 | AC1.64 | **Added 22 Nov 2026.** the six playbook seeds and the imported entries, each with a review record of section 6.11.8 | the seed register test runs | every seed has a 22 Nov review entry (kept, amended or retired) naming its reviewer, each amended seed is a new version, and every incident type of phase 1 has at least one Singapore seed per responder archetype or a recorded gap | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
+| AC1.65 | **Added 22 Nov 2026.** the agent-drafted Singapore files and the playbook review of 22 Nov, and the same files with one unknown key added | `checkSeedFolder` runs | the files with the D39 fields (`locator`, `quoted_phrase`, `drafted_by`, `run_id`, `confidence`, `assumed_fields`, `claims`, `verify`, `reviewer_role`, `required_reviewer_roles`, `history`) validate; a quote of 26 words, an agent file with no run id, a source with no locator in an agent file, and the unknown key are each refused; the person-drafted example seed of section 6.11 still validates | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)` |
 
 ## 5. Data model
 
@@ -304,7 +305,15 @@ export const STOPPED_INCIDENT_TYPES = [
   'kidnapping',
   'hijacking',
 ] as const;
-export const INCIDENT_TYPE_KEYS = [...LIVE_INCIDENT_TYPES, ...STOPPED_INCIDENT_TYPES] as const;
+/** Added 22 Nov 2026 (D46, master 10.1): offered when ENABLE_FIELDOPS_INCIDENT_TYPES enables their phase. Keys equal template ids. */
+export const PHASED_INCIDENT_TYPES = [
+  'building_fire', 'utility_failure', 'arson', 'stampede_crush', 'vehicle_ramming', 'aircraft_impact', 'gas_explosion', 'chemical_release',
+  'structural_collapse', 'rail_incident', 'road_collision', 'flash_flood',
+  'biohazard', 'maritime_incident', 'earthquake',
+] as const; // gas_attack, already in STOPPED_INCIDENT_TYPES, is phase 3 too
+/** Added 22 Nov 2026 (D48): named, never offered. open_field_shooting and knife_attack stay in STOPPED_INCIDENT_TYPES. */
+export const LOCKED_INCIDENT_TYPES = ['active_shooter'] as const;
+export const INCIDENT_TYPE_KEYS = [...LIVE_INCIDENT_TYPES, ...STOPPED_INCIDENT_TYPES, ...PHASED_INCIDENT_TYPES, ...LOCKED_INCIDENT_TYPES] as const;
 export type LiveIncidentTypeKey = (typeof LIVE_INCIDENT_TYPES)[number];
 export type IncidentTypeKey = (typeof INCIDENT_TYPE_KEYS)[number];
 
@@ -320,6 +329,23 @@ export const INCIDENT_TYPE_LABELS: Readonly<Record<IncidentTypeKey, string>> = {
   poisoning: 'Poisoning',
   kidnapping: 'Kidnapping / Hostage',
   hijacking: 'Hijacking',
+  // Added 22 Nov 2026 (D46, D48): the template's display name where one exists.
+  building_fire: 'Building fire',
+  utility_failure: 'Utility failure',
+  arson: 'Arson',
+  stampede_crush: 'Crowd crush / stampede',
+  vehicle_ramming: 'Vehicle ramming',
+  aircraft_impact: 'Aircraft impact or crash',
+  gas_explosion: 'Gas explosion',
+  chemical_release: 'Chemical release',
+  structural_collapse: 'Structural collapse',
+  rail_incident: 'Rail incident',
+  road_collision: 'Road collision',
+  flash_flood: 'Flash flood',
+  biohazard: 'Biological hazard',
+  maritime_incident: 'Maritime incident',
+  earthquake: 'Earthquake',
+  active_shooter: 'Active shooter',
 };
 
 export const EXISTING_ARCHETYPE_KEYS = [
@@ -363,6 +389,9 @@ export const ARCHETYPE_LABELS: Readonly<Record<ArchetypeKey, string>> = {
   hospital_ed: 'Hospital / ED',
   utilities: 'Utilities',
   ministry_liaison: 'Ministry Liaison',
+  tactical_response: 'Tactical Response', // added 22 Nov 2026 (D40), as section 5.2.1 and migration 221 label them
+  military_support: 'Military Support',
+  cbrn_defence: 'CBRN Defence',
 };
 
 export const OPERATION_MODES = ['people', 'ai'] as const;
@@ -1019,7 +1048,7 @@ export const DOCTRINE_INCIDENT_TYPES_ALL: readonly IncidentTypeKey[];
 | `good_looks_like` | `scenario_teams.expected_actions` as `TeamExpectedAction[]` | `{ action_id: id, description, detection_action_type: detection, timing_benchmark_minutes: within_minutes, weight, tier }` |
 | `scoring_rubric` | `scenario_teams.scoring_rubric` | The text, or "Judge against the doctrine: {first three good-looks-like items}." when empty |
 | `mission`, step actions, never-do, hand-offs | `scenario_teams.charter` (`FieldOpsTeamCharter`, 5.5) | `mission`; `responsibilities`: step actions; `out_of_lane`: never-do actions, then "Hand over to {to_label} when {when}" |
-| `use_of_force` (**added 22 Nov 2026**) | `ForbiddenAction[]` and `charter.out_of_lane` | For each level in `unauthorisedLevels`, above the highest authorised one: `{ action: "Use {level words} force", why: "Not authorised for this unit under {first instrument}." or "Not stated in this doctrine's sources.", exception: null }` |
+| `use_of_force` (**added 22 Nov 2026**; **updated 22 Nov 2026**) | `ForbiddenAction[]` and `charter.out_of_lane` | For each level in `unauthorisedLevels` (those a source states the unit may not use): `{ action: "Use {level words} force", why: "Not authorised for this unit under {first instrument}.", exception: null }`. A level in neither list is **not stated**: it is never a forbidden action and never enters `never_do`; it appears only in the standards finding below as "{Level}: not stated in this doctrine's sources; to verify" |
 | `legal_authorities`, `use_of_force` (**added 22 Nov 2026**) | A further `StandardsFinding` | `domain`: "{archetype label}: use of force and legal authority"; `source`: "{title}, version {n}"; `key_points`: each authority as "{instrument} {provision}: {power}", each condition as "{Level}: {when}", then the principles and the command authority |
 
 The projection never carries `good_looks_like` or `scoring_rubric` into a finding, so nothing scoring-related can reach the Insider or a row participants read (section 3.1); team scoring reads the measures from the `expected_actions` and `scoring_rubric` columns WS5 writes.
@@ -1040,16 +1069,18 @@ export type UseOfForceFramework = (typeof USE_OF_FORCE_FRAMEWORKS)[number];
 export interface DoctrineUseOfForce {
   framework: UseOfForceFramework;
   authorised_levels: ForceLevel[];   // the levels the unit may use, as its public law and policy state; at least 'presence'
+  not_authorised_levels: ForceLevel[]; // added 22 Nov 2026: levels a source states the unit may not use; any other level is 'not stated'
   conditions: Array<{ id: string; level: ForceLevel; when: string; authority_ids: string[] }>; // 'uf_' ids; 0 to 8; `when` at most 240 characters
   principles: string[];              // 0 to 6, at most 160 characters each, for example "Force must be necessary and proportionate."
   command_authority: string | null;  // at most 160 characters: who may authorise the highest level
   civil_support: string | null;      // at most 200 characters: how a military unit acts in support of the civil authority
 }
 export function validateUseOfForce(block: DoctrineUseOfForce, authorities: DoctrineLegalAuthority[]): Array<{ path: string; message: string }>;
-export function unauthorisedLevels(block: DoctrineUseOfForce | null | undefined): ForceLevel[];
+export function unauthorisedLevels(block: DoctrineUseOfForce | null | undefined): ForceLevel[];   // updated 22 Nov 2026: not_authorised_levels only
+export function unstatedLevels(block: DoctrineUseOfForce | null | undefined): ForceLevel[];       // added 22 Nov 2026: neither list
 ```
 
-**Rules** (`validateUseOfForce`, mirrored by the zod schema): an `unarmed` framework authorises nothing above `physical_control`; every condition's level is authorised; every `authority_ids` entry names an authority of the same doctrine; authorising `lethal` needs a `command_authority`; every text passes the save-time screen and `moderateDeviceText`. A `military_rules_of_engagement` block needs a `civil_support` sentence. Nothing describes a tactic, a formation, a weapon's use or a unit's strength (section 6.11.5).
+**Rules** (`validateUseOfForce`, mirrored by the zod schema): an `unarmed` framework authorises nothing above `physical_control`; every condition's level is authorised; **added 22 Nov 2026:** `authorised_levels` and `not_authorised_levels` do not overlap, and an `unarmed` framework lists `less_lethal` and `lethal` as not authorised; every `authority_ids` entry names an authority of the same doctrine; authorising `lethal` needs a `command_authority`; every text passes the save-time screen and `moderateDeviceText`. A `military_rules_of_engagement` block needs a `civil_support` sentence. Nothing describes a tactic, a formation, a weapon's use or a unit's strength (section 6.11.5).
 
 ### 5.5 Charter columns and the snapshot's companions
 
@@ -2197,8 +2228,40 @@ export const SeedSourceSchema = z
     accessed_at: isoDate,
     language: z.string().regex(/^[a-z]{2,3}$/), // ISO 639 code of the source, for example 'ms', 'id', 'th', 'vi'
     terms_note: text(3, 300), // how the publisher's terms allow this use, as the reviewer checked them
+    // Added 22 Nov 2026 (D39, D55): where in the source, and at most 25 words quoted verbatim.
+    locator: text(1, 120).nullable().default(null),
+    quoted_phrase: z.string().max(300).nullable().default(null)
+      .refine((q) => q === null || q.trim().split(/\s+/).length <= 25, { message: 'a quote is at most 25 words' }),
   })
   .strict();
+
+/** Added 22 Nov 2026 (D39, D55): reviewer roles, provenance of a drafting run, and the review history. */
+export const REVIEWER_ROLES = ['doctrine', 'language', 'legal', 'police_service', 'military_service', 'fire_service', 'medical', 'eod'] as const;
+const draftingFields = {
+  drafted_by: z.enum(['person', 'agent']).default('person'),
+  run_id: uuid.nullable().default(null), // fieldops_seed_runs.id; required when drafted_by is 'agent'
+  confidence: z.enum(['high', 'medium', 'low']).nullable().default(null),
+  assumed_fields: z.array(text(1, 120)).max(40).default([]),
+};
+const ReviewHistoryEntrySchema = z
+  .object({
+    date: isoDate,
+    reviewer: text(2, 80),
+    reviewer_role: z.enum(REVIEWER_ROLES),
+    action: z.enum(['kept', 'amended', 'retired', 'approved', 'rejected']),
+    version: z.number().int().min(1).nullable(),
+    note: z.string().max(1000),
+  })
+  .strict();
+const reviewFields = {
+  status: z.enum(['pending', 'approved_for_import', 'rejected']),
+  reviewer: text(2, 80).nullable(),
+  reviewed_at: isoDate.nullable(),
+  notes: z.string().max(2000),
+  reviewer_role: z.enum(REVIEWER_ROLES).nullable().default(null),
+  required_reviewer_roles: z.array(z.enum(REVIEWER_ROLES)).max(4).default([]),
+  history: z.array(ReviewHistoryEntrySchema).max(50).default([]),
+};
 
 export const DoctrineSeedFileSchema = z
   .object({
@@ -2221,19 +2284,28 @@ export const DoctrineSeedFileSchema = z
         // Added 3 Nov 2026: the sources of an official seed, and how an import's country was found.
         sources: z.array(SeedSourceSchema).max(6).default([]),
         country_basis: z.enum(['scenario_centre', 'team_key_alias', 'none']).nullable().default(null),
+        // Added 22 Nov 2026 (D39): who drafted it, and which source and locator supports each step, never-do and hand-off id.
+        ...draftingFields,
+        claims: z
+          .record(z.string().regex(/^(st|nv|ho)_[a-z0-9]{3,24}$/), z.object({ source_index: z.number().int().min(-1).max(5), locator: text(1, 120) }).strict())
+          .default({}), // source_index -1 means the register entry
       })
       .strict(),
     content: DoctrineContentSchema,
-    review: z
-      .object({
-        status: z.enum(['pending', 'approved_for_import', 'rejected']),
-        reviewer: text(2, 80).nullable(),
-        reviewed_at: isoDate.nullable(),
-        notes: z.string().max(2000),
-      })
-      .strict(),
+    review: z.object(reviewFields).strict(),
   })
   .strict()
+  // Added 22 Nov 2026 (D39): an agent-drafted file names its run, and every source it cites has a locator.
+  .refine((f) => f.provenance.drafted_by !== 'agent' || (f.provenance.run_id !== null && f.provenance.sources.every((x) => x.locator !== null)), {
+    path: ['provenance'],
+    message: 'an agent-drafted seed names its run and a locator for every source',
+  })
+  // Added 22 Nov 2026 (Choice 24): an approved use-of-force block has a legal or service reviewer.
+  .refine((f) => f.review.status !== 'approved_for_import' || !f.content.use_of_force
+      || ['legal', 'police_service', 'military_service'].includes(f.review.reviewer_role ?? ''), {
+    path: ['review', 'reviewer_role'],
+    message: 'a use-of-force block needs a legal or service reviewer',
+  })
   // Added 3 Nov 2026 (section 6.11.3): an official seed names its country and at least one source;
   // an approved file names its reviewer and date.
   .refine((f) => f.provenance.kind !== 'official_public_source' || (f.country !== null && f.provenance.sources.length > 0), {
@@ -2278,6 +2350,10 @@ export const AgencyRegisterFileSchema = z
               )
               .max(20),
             sources: z.array(SeedSourceSchema).min(1).max(6),
+            // Added 22 Nov 2026 (D39): who drafted the entry, and whether the agency's own publications confirm it.
+            drafted_by: z.enum(['person', 'agent']).default('person'),
+            verify: z.enum(['located', 'to verify']).default('to verify'),
+            verify_note: z.string().max(300).nullable().default(null),
             // Added 22 Nov 2026 (D40, Choice 25): units of the agency, as organisations with a public role.
             units: z
               .array(
@@ -2290,6 +2366,9 @@ export const AgencyRegisterFileSchema = z
                     public_role: text(3, 240),
                     aliases: z.array(z.object({ phrase: text(2, 80), kind: z.enum(['exact', 'function', 'organisation']), archetype_key: z.enum(ARCHETYPE_KEYS) }).strict()).max(10),
                     sources: z.array(SeedSourceSchema).min(1).max(6),
+                    drafted_by: z.enum(['person', 'agent']).default('person'), // added 22 Nov 2026 (D39)
+                    verify: z.enum(['located', 'to verify']).default('to verify'),
+                    verify_note: z.string().max(300).nullable().default(null),
                   })
                   .strict(),
               )
@@ -2301,16 +2380,15 @@ export const AgencyRegisterFileSchema = z
       .min(1)
       .max(40)
       .refine((list) => new Set(list.map((a) => a.key)).size === list.length, { message: 'agency keys repeat' }),
-    review: z
-      .object({
-        status: z.enum(['pending', 'approved_for_import', 'rejected']),
-        reviewer: text(2, 80).nullable(),
-        reviewed_at: isoDate.nullable(),
-        notes: z.string().max(2000),
-      })
-      .strict(),
+    // Added 22 Nov 2026 (D39): the register's own drafting run.
+    provenance: z.object(draftingFields).strict().default({ drafted_by: 'person', run_id: null, confidence: null, assumed_fields: [] }),
+    review: z.object(reviewFields).strict(),
   })
   .strict()
+  .refine((f) => f.provenance.drafted_by !== 'agent' || f.provenance.run_id !== null, {
+    path: ['provenance', 'run_id'],
+    message: 'an agent-drafted register names its run',
+  })
   .refine((f) => f.review.status !== 'approved_for_import' || (f.review.reviewer !== null && f.review.reviewed_at !== null), {
     path: ['review'],
     message: 'an approved register names its reviewer and date',
@@ -3010,6 +3088,20 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
 
 **Transcribing a playbook.** The numbered "perfect response sequence" becomes `sequence`, one step per number, with time windows taken from the order of work and the engine's own start times (the sweep queue starts at minute 3, hazards at 5 and patients at 6: `server/services/injectSchedulerService.ts:1279`, `:1778`, `:1447`). Lines that say never or do not become `never`, with the reason from the same bullet. Each explicit hand-over to another team becomes a `hand_offs` entry with its archetype. The steps that carry a time target become `good_looks_like`, detected as `decision_recorded`. Game mechanics are left out: action formats such as the sweep action, the two-minute detonation rule, and statement-quality rules written for the validator. The bomb-disposal seed keeps response steps at the level of cordon, communications discipline, remote assessment, render safe by the qualified team, evidence and all clear; it is reviewed by the D22 reviewer before an admin verifies it.
 
+**Added 22 Nov 2026: what the playbook review removes (D55, section 6.11.8).** The review of 22 Nov read the six playbooks against public Singapore sources; the seeds are transcribed with these amendments, and the playbook text itself is treated as restricted-adjacent and not quoted in review packs:
+
+| Playbook | Amendment |
+| --- | --- |
+| All | No real coordinates or venue names (the evacuation example's coordinates are in Sydney); no game mechanics (equipment lists, flow rates, ratios, action formats, validator rules) |
+| `fire_rescue` | Remove the US protective-equipment levels (A to D) and the US NFPA fire classes ("Class C fire (electrical)"); keep "do not use water on an electrical fire" without a class label; remove the North American Emergency Response Guidebook and US brand names. Replace "only fire and rescue enter the hot zone" (see the example below): specialist teams such as bomb disposal and police tactical units may need access |
+| `medical_triage` | State START completely (a casualty who breathes once the airway is repositioned is Immediate) or name it without reproducing it; remove all drug doses, fluid regimens and antidotes, and contested clinical advice; hand the choice of receiving hospital to `hospital_ed` |
+| `bomb_disposal_eod` | Remove render-safe technique selection, container-specific guidance, the communications-blackout rationale and tool lists (device-defeat detail, section 6.11.3 rule 7); keep only the 6.11 level |
+| `evacuation_crowd` | Remove the coordinates, the flow rate, the marshal ratio and "stop the evacuation"; cordons and access control belong to `police_security` |
+| `pursuit_investigation` | Remove "negotiate, coordinate tactical response" (hand over to `tactical_response`) and "explosive ordnance disposal" as a forensic role |
+| `media_comms` | Remove the statement-quality validator rules and the contradiction they cause ("never omit numbers") |
+
+These amendments bind the seed files only; the demo agent's own playbooks in `server/services/demoAIAgentService.ts` are unchanged by this spec.
+
 **The importer** (`scripts/fieldops/import-scenario-doctrines.ts (new)`, run with `npx tsx`, read-only):
 
 1. Reads, with the service role, every scenario whose `insider_knowledge` has `team_doctrines`, 20 at a time: `id`, `initial_state->scenario_type` and `insider_knowledge->team_doctrines`, `->team_workflows`, `->forbidden_actions`.
@@ -3039,7 +3131,12 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
     "extracted_by": "Field-ops build team",
     "extracted_at": "2026-11-02",
     "sources": [],
-    "country_basis": null
+    "country_basis": null,
+    "drafted_by": "person",
+    "run_id": null,
+    "confidence": null,
+    "assumed_fields": [],
+    "claims": {}
   },
   "content": {
     "schema_version": 1,
@@ -3053,7 +3150,7 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
       { "id": "st_watch1", "window": { "from_min": 20, "to_min": null }, "label": "Monitoring", "action": "Watch for re-ignition and spread; declare contained, then resolved, only when monitoring confirms it." }
     ],
     "never": [
-      { "id": "nv_hotzn1", "action": "Let medical or evacuation teams into the hot zone before it is declared safe", "why": "Only fire and rescue crews in full protective equipment work in the hot zone.", "exception": null },
+      { "id": "nv_hotzn1", "action": "Let teams without protective equipment or a role in the hot zone enter it before it is declared safe", "why": "Fire and rescue crews in protective equipment, and specialist teams with a hot-zone role such as bomb disposal and police tactical units, are the only ones who work there.", "exception": null },
       { "id": "nv_water1", "action": "Use water on an electrical fire", "why": "Water conducts electricity and endangers the crew.", "exception": null }
     ],
     "hand_offs": [
@@ -3070,7 +3167,7 @@ Nothing is seeded as Verified. Seeds enter as Unverified library doctrines with 
     "workflow": { "endgame": "Every hazard contained and monitored, every casualty out of the hot zone.", "personnel_ratios": {}, "sop_checklist": [] },
     "scoring_rubric": ""
   },
-  "review": { "status": "approved_for_import", "reviewer": "Named reviewer", "reviewed_at": "2026-11-05", "notes": "Checked against the playbook; wording simplified." }
+  "review": { "status": "approved_for_import", "reviewer": "Named reviewer", "reviewed_at": "2026-11-05", "notes": "Checked against the playbook; wording simplified. Amended on 22 Nov 2026 by the playbook review: the hot-zone never-do no longer excludes specialist teams.", "reviewer_role": "fire_service", "required_reviewer_roles": ["fire_service"], "history": [] }
 }
 ```
 
@@ -3134,7 +3231,7 @@ D29: the library is seeded, once and during development, with the doctrines of t
 | SG | police | `police_security` | SPF Special Operations Command | SOC; Special Operations Command |
 | SG | investigation | `pursuit_investigation` | SPF Criminal Investigation Department | CID; Criminal Investigation Department |
 | SG | civil_defence | `fire_rescue`, `medical_triage` | Singapore Civil Defence Force | SCDF; Singapore Civil Defence Force; 995 |
-| SG | bomb_disposal | `bomb_disposal_eod` | The unit that renders improvised devices safe for the police (SPF or the Singapore Armed Forces' explosive ordnance disposal units) | the generic EOD aliases only |
+| SG | bomb_disposal | `bomb_disposal_eod` | **Resolved 22 Nov 2026:** the Singapore Armed Forces' 36th Battalion, Singapore Combat Engineers (36 SCE), within the Chemical, Biological, Radiological and Explosives Defence Group, which MINDEF's own publication describes as the national responder to explosive threats (*Pioneer*, 18 Oct 2023); recorded as a unit of the `sg_saf` register entry (Choice 25). The D22 reviewer confirms the wording | 36 SCE; the generic EOD aliases |
 | SG | health | `hospital_ed` | Ministry of Health and the public hospitals | MOH; Ministry of Health |
 | SG | ministry | `ministry_liaison` | Ministry of Home Affairs | MHA; Ministry of Home Affairs; Home Team |
 | SG | transport | `transport_operator` | Land Transport Authority; SMRT; SBS Transit | LTA; SMRT; SBS Transit |
@@ -3255,7 +3352,7 @@ A centre outside the box with no alias also gives null: the importer does not gu
 D40. The register and the doctrine seeds carry three more kinds of content, all from public sources only, under section 6.11.3's rules and these:
 
 1. **Legal authorities.** Acts, subsidiary legislation and government gazettes in their published form, cited by instrument and provision, and restated plainly. For Singapore the first instruments to check are the Police Force Act 2004, the Criminal Procedure Code 2010, the Public Order Act 2009, the Public Order and Safety (Special Powers) Act 2018, the Infrastructure Protection Act 2017, the Singapore Armed Forces Act 1972, the Civil Defence Act 1986 and the Fire Safety Act 1993; each is to verify against Singapore Statutes Online before it is cited.
-2. **Use of force.** Only what an agency or ministry has published: a public use-of-force policy, a published annual report or public parliamentary answer that states a principle, or the law itself. Levels are stated as the continuum of `FORCE_LEVELS`; a level the sources do not state is left out, which projects it as not authorised. Rules of engagement of armed forces are restricted almost everywhere: a military doctrine states only the public legal basis of its support to the civil authority and the principles the ministry has published, with `framework: 'military_rules_of_engagement'` and `civil_support`.
+2. **Use of force.** Only what an agency or ministry has published: a public use-of-force policy, a published annual report or public parliamentary answer that states a principle, or the law itself. Levels are stated as the continuum of `FORCE_LEVELS`; a level a source says is not allowed goes in `not_authorised_levels`; a level no source states is left out of both lists and projects as "not stated; to verify", never as not authorised (**updated 22 Nov 2026**: an omitted level used to project as not authorised, which would have told AI agencies that a police force may not use less-lethal force when its sources are merely silent). Rules of engagement of armed forces are restricted almost everywhere: a military doctrine states only the public legal basis of its support to the civil authority and the principles the ministry has published, with `framework: 'military_rules_of_engagement'` and `civil_support`.
 3. **Units.** A unit is recorded by its public name, its own-language name, its archetypes and a one-sentence public role ("Responds to armed incidents that need a tactical team"). Never its strength, location, equipment, call signs or tactics.
 4. **Review.** A use-of-force block is approved by a reviewer whose `review.reviewer_role` is `legal`, `police_service` or `military_service` (Choice 24, AC1.59), in addition to the country reviewer of section 6.11.3.
 
@@ -4307,7 +4404,7 @@ description: Fire and rescue crews for the mall and its car park.
 
 ### 8.6 Use of force in prompts (added 22 Nov 2026)
 
-No model drafts a use-of-force or legal-authority block (AC1.61). The blocks reach models only through the projection of section 5.4.1, inside the delimited doctrine block of section 8.3, so a judge reads "Use lethal force: not authorised for this unit under {instrument}" as data. WS7's planner receives the unauthorised levels in `never_do` (`buildDoctrinePlan`), and its guard refuses an action that names one.
+No model drafts a use-of-force or legal-authority block (AC1.61). The blocks reach models only through the projection of section 5.4.1, inside the delimited doctrine block of section 8.3, so a judge reads "Use lethal force: not authorised for this unit under {instrument}" as data. WS7's planner receives the levels stated as not authorised in `never_do` (`buildDoctrinePlan`), and its guard refuses an action that names one; levels not stated never reach `never_do` (**updated 22 Nov 2026**).
 
 ## 9. Security, privacy and safety
 
@@ -4686,7 +4783,7 @@ Prerequisite: WS0's `server/lib/schemaFeatures.ts (new)`, `shared/fieldOps/jobs.
     - Goal: D39 and D40 for the seeding programme.
     - Files: touched `server/services/fieldOps/doctrine/seedRegister.ts (new)`, `scripts/fieldops/seed-doctrines.ts (new)`, `server/services/fieldOps/doctrine/resolve.ts (new)`, `scripts/fieldops/seeds/sea/SG/agencies.json (new)`, their tests; WS9's `scripts/fieldops/knowledge/briefs/ (new)` gains the `doctrine_agency` and `use_of_force` briefs.
     - Steps: sections 6.11.5 and 6.11.6; the register's `units`; provenance with `drafted_by` and `run_id`; the seeder's provenance and coverage rows; `recordGap` in `rankDoctrines`.
-    - Done when: AC1.58 to AC1.60 pass; Singapore's register with its units and legal authorities is reviewed and seeded in development.
+    - Done when: AC1.58 to AC1.60 pass; Singapore's register with its units and legal authorities is reviewed and seeded in development. **Added 22 Nov 2026:** the seed schemas of section 6.3 carry the D39 fields, so agent-drafted files validate (AC1.65).
     - Tests: `seedRegister.test.ts`, `resolve.test.ts`. Commit 7.
 23. **T1.23 Responders for the new incident types (added 22 Nov 2026).**
     - Goal: section 6.11.7.
@@ -4805,7 +4902,7 @@ None of the five files another session edits (README) is touched: `frontend/src/
 | R18 | **Added 3 Nov 2026.** Names in scripts without spaces, or with diacritics, defeat token matching | Medium, medium | Substring aliases for Thai, Lao, Khmer and Burmese; diacritic-free Latin normalisation; the ranking call with the country as context; the trainer's Change type (section 6.5.1) |
 | R19 | **Added 3 Nov 2026.** Seeding eleven countries is a large, slow piece of work (master risk 21) | High, medium | A priority order with Singapore and Malaysia first; generic playbook seeds cover every gap; coverage visible through the countries route; seeding is data, so no release waits for it |
 | R20 | **Added 3 Nov 2026.** The protective-marking check refuses a public document that only looks marked | Medium, low | Whole-line matching in capitals only; the trainer can still write the doctrine; refusals are counted, and the list is tuned by each country's reviewer (section 6.13) |
-| R21 | **Added 22 Nov 2026.** A use-of-force block restates restricted rules of engagement, or mis-states the law (master risk 24) | Medium, high | Public sources only; the marking check; a legal or service reviewer; Unverified until verified; levels not stated are projected as not authorised, the conservative reading (sections 6.11.5 and 9.8) |
+| R21 | **Added 22 Nov 2026.** A use-of-force block restates restricted rules of engagement, or mis-states the law (master risk 24) | Medium, high | Public sources only; the marking check; a legal or service reviewer; Unverified until verified; only levels a source states as not authorised become forbidden actions; unstated levels are shown "not stated; to verify" and a reviewer signs off before a police block without `less_lethal` is imported (sections 5.4.1, 6.11.5 and 9.8; **updated 22 Nov 2026**) |
 | R22 | **Added 22 Nov 2026.** The research agent cites a source that does not say what the row says (master risk 26) | Medium, medium | A locator per source; the reviewer checks each claim at its locator; WS9's validation refuses rows without one (AC1.59) |
 | R23 | **Added 22 Nov 2026.** Doctrines and laws change after seeding (master risk 23) | High, medium | 180-day review dates; diffs on re-run; new versions through review; snapshots in compiled scenarios (section 6.11.6) |
 
