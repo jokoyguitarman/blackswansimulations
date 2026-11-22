@@ -17,6 +17,7 @@ import type { WallInspectionPoint } from './wallInspection';
 import { isInsidePolygon, polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
 import { getIcon, preloadIcons, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
+import type { HazardFxContext, HazardFxRenderer } from './fx/drawHazardFx';
 
 export interface RenderContext {
   scale: number;
@@ -43,6 +44,8 @@ export interface ShowcaseRenderFx {
   zoneCounts: Record<string, number>;
   /** Metres. Drawn around the outline during setup. */
   assemblyRingM?: number | null;
+  /** Animated overlay. Classic, or a missing renderer, keeps the square field. */
+  hazardFx?: { renderer: HazardFxRenderer; ctx: HazardFxContext } | null;
 }
 
 function toCanvas(mx: number, my: number, rc: RenderContext) {
@@ -169,8 +172,15 @@ export function renderRTS(
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
 
+  const hazardAnimated =
+    !!showcaseFx?.hazardFx && showcaseFx.hazardFx.ctx.quality !== 'classic';
+
   if (showcaseFx) {
-    drawHazardField(ctx, rc, showcaseFx);
+    if (hazardAnimated && showcaseFx.hazardFx) {
+      showcaseFx.hazardFx.renderer.draw(ctx, rc, showcaseFx.hazardFx.ctx);
+    } else {
+      drawHazardField(ctx, rc, showcaseFx);
+    }
     if (showcaseFx.assemblyRingM && showcaseFx.assemblyRingM > 0) {
       drawAssemblyRing(ctx, buildingVerts, showcaseFx.assemblyRingM, rc);
     }
@@ -225,6 +235,10 @@ export function renderRTS(
     if (ped.state === 'left_map') continue;
     if (ped.evacuated && ped.state !== 'outside' && ped.state !== 'arrived') continue;
     drawPedestrian(ctx, ped, rc);
+  }
+
+  if (hazardAnimated && showcaseFx?.hazardFx) {
+    showcaseFx.hazardFx.renderer.drawAbove(ctx, rc, showcaseFx.hazardFx.ctx);
   }
 
   for (const unit of state.units) {

@@ -23,7 +23,6 @@ import { SHOWCASE, SHOWCASE_SOURCES } from '../lib/evacuation/showcaseConstants'
 import {
   blastEffectsTriggerSec,
   countdownLabel,
-  isBlastDue,
   shiftEvents,
 } from '../lib/evacuation/showcase';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
@@ -40,6 +39,10 @@ import {
   type ChargeSpec,
 } from '../lib/rts/blast/blastModel';
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
+import { FX, type FxQuality } from '../lib/rts/fx/fxConstants';
+import { createAccumulator, takeSteps } from '../lib/rts/fx/simClock';
+import { buildRasterLayout, type RasterLayout } from '../lib/rts/fx/hazardRaster';
+import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
 import {
   UNIT_CATALOG,
   EQUIPMENT_CATALOG,
@@ -174,6 +177,16 @@ function showcaseInjuryRings(
     glassBreakageM: roundTenth(rings.glassBreakageM),
     faint,
   };
+}
+
+function readFxQuality(): FxQuality {
+  try {
+    const value = localStorage.getItem('rtsFxQuality');
+    if (value === 'high' || value === 'low' || value === 'classic') return value;
+  } catch {
+    /* private mode */
+  }
+  return 'high';
 }
 
 function aboveGroundHeightM(floors: string[] | undefined): number {
@@ -748,6 +761,38 @@ export function DebugRTSSim() {
   );
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
+  const [fxQuality, setFxQuality] = useState<FxQuality>(readFxQuality);
+  const fxQualityRef = useRef(fxQuality);
+  fxQualityRef.current = fxQuality;
+  const [fxDowngraded, setFxDowngraded] = useState(false);
+  const fxPrevQualityRef = useRef<FxQuality>('high');
+  const fxSuppressRef = useRef(false);
+  const fxTimesRef = useRef(new Float32Array(60));
+  const fxTimePosRef = useRef(0);
+  const fxTimeCountRef = useRef(0);
+  const fxWarmupRef = useRef(30);
+  const fxDebugRef = useRef(searchParams.get('fxdebug') === '1');
+  const hazardFxRef = useRef<HazardFxRenderer | null>(null);
+  if (hazardFxRef.current === null && typeof document !== 'undefined') {
+    hazardFxRef.current = new HazardFxRenderer(FX.FX_RNG_SEED);
+  }
+  const hazardFxSlotRef = useRef<{ renderer: HazardFxRenderer; ctx: HazardFxContext } | null>(
+    null,
+  );
+  const hazardFxCtxRef = useRef<HazardFxContext>({
+    quality: 'high',
+    reducedMotion: false,
+    nowMs: 0,
+    layout: null,
+    states: null,
+    buildingVerts: [],
+    cellM: 3,
+  });
+  const rasterLayoutRef = useRef<RasterLayout | null>(null);
+  const rasterStudsRef = useRef<unknown>(null);
+  const evacAccRef = useRef(createAccumulator());
+  const effectsAccRef = useRef(createAccumulator());
+  const evacStepsDoneRef = useRef(0);
   const [showcaseHud, setShowcaseHud] = useState<{
     metrics: ShowcaseMetrics | null;
     burning: number;
@@ -1609,36 +1654,10 @@ export function DebugRTSSim() {
       rts.tick(dt);
 
       const showcaseOn = showcaseRef.current;
-      if (
-        showcaseOn &&
-        rts.state.clock.phase !== 'setup' &&
-        isBlastDue(rts.state.clock.elapsed, blastFiredRef.current)
-      ) {
-        blastFiredRef.current = true;
-        const site = blastSiteRef.current;
-        if (site) {
-          const manual = manualRadiusRef.current;
-          const spec = chargeRef.current;
-          evacEngRef.current?.triggerBlast(
-            site,
-            manual
-              ? blastRadiusRef.current
-              : {
-                  mode: 'pressure',
-                  spec,
-                  heightM: spec.burst === 'free_air' ? spec.heightM : 0,
-                },
-          );
-        }
-        explosionStartRef.current = performance.now();
-        setBanner({
-          until: performance.now() + SHOWCASE.BANNER_S * 1000,
-          text: `EXPLOSION · ${rts.formatClock()}`,
-        });
-      }
 
       const evac = evacEngRef.current;
-      if (evac && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+      const simRunning = !rts.state.clock.paused && rts.state.clock.phase !== 'setup';
+      if (evac && simRunning) {
         if (showcaseOn) {
           const liveEffects = effectsEngineRef.current;
           if (liveEffects) hazardFieldRef.current?.setStates(liveEffects.studStates);
@@ -1654,9 +1673,52 @@ export function DebugRTSSim() {
                 kind: zoneKindsRef.current[e.id] ?? 'assembly',
               })),
           );
+          const evacSteps = takeSteps(
+            evacAccRef.current,
+            dt,
+            rts.state.clock.speed,
+            FX.FIXED_DT,
+            FX.MAX_STEPS_PER_FRAME,
+          );
+          const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
+          let cursor = 0;
+          if (
+            !blastFiredRef.current &&
+            evacStepsDoneRef.current + evacSteps >= blastStep
+          ) {
+            const pre = Math.max(
+              0,
+              Math.min(evacSteps, blastStep - evacStepsDoneRef.current),
+            );
+            for (; cursor < pre; cursor++) evac.step();
+            blastFiredRef.current = true;
+            const site = blastSiteRef.current;
+            if (site) {
+              const manual = manualRadiusRef.current;
+              const spec = chargeRef.current;
+              evac.triggerBlast(
+                site,
+                manual
+                  ? blastRadiusRef.current
+                  : {
+                      mode: 'pressure',
+                      spec,
+                      heightM: spec.burst === 'free_air' ? spec.heightM : 0,
+                    },
+              );
+            }
+            explosionStartRef.current = performance.now();
+            setBanner({
+              until: performance.now() + SHOWCASE.BANNER_S * 1000,
+              text: `EXPLOSION · ${rts.formatClock()}`,
+            });
+          }
+          for (; cursor < evacSteps; cursor++) evac.step();
+          evacStepsDoneRef.current += evacSteps;
+        } else {
+          const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
+          for (let i = 0; i < stepsPerFrame; i++) evac.step();
         }
-        const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
-        for (let i = 0; i < stepsPerFrame; i++) evac.step();
         const snaps = evac.getSnapshots();
         pedestriansRef.current = snaps;
         setPedestrians(snaps);
@@ -1672,13 +1734,28 @@ export function DebugRTSSim() {
       }
 
       const effectsEng = effectsEngineRef.current;
-      if (effectsEng && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
-        const effectDt = dt * rts.state.clock.speed;
-        effectsEng.step(
-          effectDt,
-          interiorWallsRef.current,
-          hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current),
-        );
+      if (effectsEng && simRunning) {
+        let effectDt: number;
+        if (showcaseOn) {
+          const effectSteps = takeSteps(
+            effectsAccRef.current,
+            dt,
+            rts.state.clock.speed,
+            FX.EFFECTS_DT,
+            FX.MAX_STEPS_PER_FRAME,
+          );
+          const walls = interiorWallsRef.current;
+          const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
+          for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
+          effectDt = effectSteps * FX.EFFECTS_DT;
+        } else {
+          effectDt = dt * rts.state.clock.speed;
+          effectsEng.step(
+            effectDt,
+            interiorWallsRef.current,
+            hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current),
+          );
+        }
         effectStatesRef.current = new Map(effectsEng.studStates);
 
         // Casualty deterioration based on spatial effects
@@ -1722,6 +1799,29 @@ export function DebugRTSSim() {
       if (canvas && rc) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          if (showcaseOn) {
+            const studs = simStudsRef.current;
+            if (rasterStudsRef.current !== studs) {
+              rasterStudsRef.current = studs;
+              rasterLayoutRef.current = buildRasterLayout(studs, 3);
+            }
+            const fxCtx = hazardFxCtxRef.current;
+            fxCtx.quality = fxQualityRef.current;
+            fxCtx.reducedMotion = reducedMotionRef.current;
+            fxCtx.nowMs = performance.now();
+            fxCtx.layout = rasterLayoutRef.current;
+            fxCtx.states = effectsEngineRef.current?.studStates ?? null;
+            fxCtx.buildingVerts = projectedVertsRef.current;
+            fxCtx.cellM = 3;
+            const renderer = hazardFxRef.current;
+            const slot = hazardFxSlotRef.current;
+            if (renderer && slot) {
+              slot.renderer = renderer;
+              slot.ctx = fxCtx;
+            } else if (renderer) {
+              hazardFxSlotRef.current = { renderer, ctx: fxCtx };
+            }
+          }
           const planted = new Set(plantedItemsRef.current.map((p) => p.wallPointId));
           const discovered = new Set(
             plantedItemsRef.current.filter((p) => p.discovered).map((p) => p.wallPointId),
@@ -1814,9 +1914,61 @@ export function DebugRTSSim() {
                     rts.state.clock.phase === 'setup'
                       ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
                       : null,
+                  hazardFx: hazardFxSlotRef.current,
                 }
               : null,
           );
+          if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
+            const sample = hazardFxRef.current.last.ms;
+            if (fxWarmupRef.current > 0) {
+              fxWarmupRef.current--;
+            } else {
+              const ring = fxTimesRef.current;
+              const pos = fxTimePosRef.current;
+              ring[pos] = sample;
+              fxTimePosRef.current = (pos + 1) % ring.length;
+              if (fxTimeCountRef.current < ring.length) fxTimeCountRef.current++;
+              if (fxTimeCountRef.current === ring.length && !fxSuppressRef.current) {
+                let sum = 0;
+                for (let i = 0; i < ring.length; i++) sum += ring[i];
+                if (sum / ring.length > FX.AUTO_DOWNGRADE_MS) {
+                  const current = fxQualityRef.current;
+                  const next = current === 'high' ? 'low' : current === 'low' ? 'classic' : null;
+                  if (next) {
+                    fxPrevQualityRef.current = current;
+                    fxQualityRef.current = next;
+                    setFxQuality(next);
+                    setFxDowngraded(true);
+                    fxTimeCountRef.current = 0;
+                    fxWarmupRef.current = 30;
+                    try {
+                      localStorage.setItem('rtsFxQuality', next);
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (fxDebugRef.current && showcaseOn) {
+            const stats = hazardFxRef.current?.last;
+            const collisions = rasterLayoutRef.current?.collisions ?? 0;
+            const label =
+              collisions > 0
+                ? `fx ${(stats?.ms ?? 0).toFixed(2)} · embers ${stats?.embers ?? 0} · quality ${fxQualityRef.current} · collisions ${collisions}`
+                : `fx ${(stats?.ms ?? 0).toFixed(2)} · embers ${stats?.embers ?? 0} · quality ${fxQualityRef.current}`;
+            ctx.save();
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            const box = ctx.measureText(label).width + 16;
+            ctx.fillRect(canvas.width - box - 8, 8, box, 20);
+            ctx.fillStyle = '#bbf7d0';
+            ctx.fillText(label, canvas.width - 16, 11);
+            ctx.restore();
+          }
         }
       }
 
@@ -1825,6 +1977,13 @@ export function DebugRTSSim() {
     },
     [rerender, updateRenderCtx],
   );
+
+  useEffect(() => {
+    return () => {
+      hazardFxRef.current?.dispose();
+      hazardFxRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (phase !== 'rts') return;
@@ -3026,6 +3185,11 @@ export function DebugRTSSim() {
     setBanner(null);
     setShowcaseHud(null);
     hudAtRef.current = 0;
+    evacAccRef.current.acc = 0;
+    evacAccRef.current.dropped = 0;
+    effectsAccRef.current.acc = 0;
+    effectsAccRef.current.dropped = 0;
+    evacStepsDoneRef.current = 0;
 
     if (!enrichResult && hazardZones.length > 0) {
       setDetonationLoading(true);
@@ -4760,6 +4924,52 @@ export function DebugRTSSim() {
                       <option value="mixed">Mixed (30% disperse)</option>
                     </select>
                   </label>
+                  <label className="block text-green-500">
+                    Effects
+                    <select
+                      value={fxQuality}
+                      onChange={(e) => {
+                        const next = e.target.value as FxQuality;
+                        setFxQuality(next);
+                        setFxDowngraded(false);
+                        fxTimeCountRef.current = 0;
+                        fxWarmupRef.current = 30;
+                        try {
+                          localStorage.setItem('rtsFxQuality', next);
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      className="mt-1 w-full bg-black border border-green-800 text-green-300 px-2 py-1 rounded"
+                    >
+                      <option value="high">High</option>
+                      <option value="low">Low</option>
+                      <option value="classic">Classic</option>
+                    </select>
+                  </label>
+                  {fxDowngraded && (
+                    <div className="text-amber-400">
+                      Effects lowered to keep the sim smooth{' '}
+                      <button
+                        type="button"
+                        className="underline"
+                        onClick={() => {
+                          const prev = fxPrevQualityRef.current;
+                          fxSuppressRef.current = true;
+                          setFxQuality(prev);
+                          setFxDowngraded(false);
+                          fxTimeCountRef.current = 0;
+                          try {
+                            localStorage.setItem('rtsFxQuality', prev);
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     {(() => {
                       const zones = gameState.equipment.filter(
