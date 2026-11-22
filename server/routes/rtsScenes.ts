@@ -22,6 +22,7 @@ router.post('/', requireAuth, requireStaff, json(), async (req: AuthenticatedReq
       hazardZones,
       stairwells,
       blastSite,
+      levels,
       casualtyClusters,
       plantedItems,
       wallInspectionPoints,
@@ -48,6 +49,7 @@ router.post('/', requireAuth, requireStaff, json(), async (req: AuthenticatedReq
         hazard_zones: hazardZones || [],
         stairwells: stairwells || [],
         blast_site: blastSite || null,
+        levels: levels || [],
         casualty_clusters: casualtyClusters || [],
         planted_items: plantedItems || [],
         wall_inspection_points: wallInspectionPoints || [],
@@ -145,6 +147,7 @@ router.patch('/:id', requireAuth, requireStaff, json(), async (req: Authenticate
       'casualty_image_urls',
       'pedestrian_count',
       'enrichment_result',
+      'levels',
     ];
 
     const fieldMap: Record<string, string> = {

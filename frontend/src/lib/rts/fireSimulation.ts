@@ -1,5 +1,7 @@
 import type { Vec2 } from '../evacuation/types';
+import { LEVEL } from '../evacuation/levelConstants';
 import type { InteriorWall, HazardZone, HazardType } from './types';
+import { levelOf, neighborIdsByLevel, type ShaftPair } from './levels';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,7 @@ export interface FireSimStud {
   id: string;
   simPos: Vec2;
   spatialContext: string | null;
+  level?: string;
 }
 
 // ── Default parameters (NFPA / ISO 834 based) ───────────────────────────
@@ -124,6 +127,8 @@ export class FireSimulation {
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
+  private shaftPairs: ShaftPair[] = [];
+  private shaftBurn = new Map<string, number>();
 
   constructor(params?: FireParams) {
     this.params = params ?? { ...DEFAULT_FIRE_PARAMS };
@@ -134,6 +139,8 @@ export class FireSimulation {
     this.states.clear();
     this.neighborCache.clear();
     this.wallBreachTimers.clear();
+    this.shaftPairs = [];
+    this.shaftBurn.clear();
     this.elapsed = 0;
 
     for (const s of studs) {
@@ -145,17 +152,13 @@ export class FireSimulation {
   }
 
   private buildNeighborCache(studs: FireSimStud[]) {
-    for (const s of studs) {
-      const neighbors: string[] = [];
-      for (const other of studs) {
-        if (other.id === s.id) continue;
-        const d = Math.hypot(other.simPos.x - s.simPos.x, other.simPos.y - s.simPos.y);
-        if (d <= NEIGHBOR_RADIUS) {
-          neighbors.push(other.id);
-        }
-      }
-      this.neighborCache.set(s.id, neighbors);
-    }
+    const built = neighborIdsByLevel(studs, NEIGHBOR_RADIUS);
+    for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
+  }
+
+  setShaftPairs(pairs: ShaftPair[]) {
+    this.shaftPairs = pairs;
+    this.shaftBurn.clear();
   }
 
   ignite(studIds: string[]) {
@@ -207,7 +210,9 @@ export class FireSimulation {
 
           let blocked = false;
           let wallMaterial = '';
+          const srcLevel = levelOf(src);
           for (const w of walls) {
+            if (levelOf(w) !== srcLevel) continue;
             if (wallBlocksFire(src.simPos, dest.simPos, w)) {
               wallMaterial = getWallMaterial(w);
               const resistance = this.lookupResistance(wallMaterial);
@@ -227,7 +232,10 @@ export class FireSimulation {
           }
 
           if (!blocked) {
-            const accel = this.getHazardAcceleration(dest.simPos, hazards);
+            const accel = this.getHazardAcceleration(
+              dest.simPos,
+              hazards.filter((h) => levelOf(h) === levelOf(dest)),
+            );
             if (accel > 0) {
               toHeat.push({ id: nId, accel });
             } else if (this.params.ambientSpread && dest.spatialContext === 'inside_building') {
@@ -257,6 +265,21 @@ export class FireSimulation {
       const effectiveAccel = Math.max(1, accel);
       nState.timer = this.params.heatTransferRate / effectiveAccel;
       nState.fuelFactor = effectiveAccel > 1 ? effectiveAccel * 0.5 : 1.0;
+    }
+
+    for (const pair of this.shaftPairs) {
+      if (pair.kind !== 'stair') continue;
+      const lower = this.states.get(pair.lower);
+      const key = `${pair.lower}->${pair.upper}`;
+      if (lower?.state !== 'burning') continue;
+      const burned = (this.shaftBurn.get(key) ?? 0) + dt;
+      this.shaftBurn.set(key, burned);
+      if (burned + 1e-9 < LEVEL.STAIR_FIRE_HEAT_S) continue;
+      const upper = this.states.get(pair.upper);
+      if (!upper || upper.state !== 'none') continue;
+      upper.state = 'heating';
+      upper.timer = this.params.heatTransferRate;
+      upper.fuelFactor = 1;
     }
   }
 
