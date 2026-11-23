@@ -1,6 +1,5 @@
 import type { Vec2, ExitDef, ShowcaseZone } from '../evacuation/types';
 import type { PedSnapshot } from '../evacuation/engine';
-import { SHOWCASE } from '../evacuation/showcaseConstants';
 import { explosionFxFrame } from '../evacuation/showcase';
 import { headSmoke } from '../evacuation/hazardSensing';
 import type {
@@ -31,7 +30,15 @@ export interface ShowcaseRenderFx {
   effectStates: Map<string, { smoke: number; fire: { state: string } }> | null;
   cellM: number;
   explosion: { pos: Vec2; radiusM: number; ageS: number; reducedMotion: boolean } | null;
-  injuryRings: { pos: Vec2; radiusM: number } | null;
+  injuryRings: {
+    pos: Vec2;
+    lethalM: number;
+    seriousM: number;
+    minorM: number;
+    glassInjuryM: number | null;
+    glassBreakageM: number | null;
+    faint?: boolean;
+  } | null;
   zones: ShowcaseZone[];
   zoneCounts: Record<string, number>;
   /** Metres. Drawn around the outline during setup. */
@@ -607,44 +614,70 @@ function drawShowcaseZones(
 
 function drawShowcaseInjuryRings(
   ctx: CanvasRenderingContext2D,
-  rings: { pos: Vec2; radiusM: number },
+  rings: NonNullable<ShowcaseRenderFx['injuryRings']>,
   rc: RenderContext,
 ) {
   const p = toCanvas(rings.pos.x, rings.pos.y, rc);
-  const bands = [
-    { frac: SHOWCASE.MINOR_RING_FRACTION, stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.06)', label: 'MINOR' },
-    { frac: SHOWCASE.SERIOUS_RING_FRACTION, stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.08)', label: 'SERIOUS' },
-    { frac: SHOWCASE.LETHAL_RING_FRACTION, stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.12)', label: 'LETHAL' },
+  const base = rings.faint ? 0.35 : 1;
+  const calculated = rings.glassInjuryM != null || rings.glassBreakageM != null;
+  const layers: Array<{
+    radiusM: number | null;
+    stroke: string;
+    fill: string | null;
+    label: string;
+    dash: number[];
+    alpha: number;
+  }> = [
+    { radiusM: rings.glassBreakageM, stroke: '#7dd3fc', fill: null, label: 'GLASS BREAKAGE', dash: [2, 3], alpha: 0.5 },
+    { radiusM: rings.glassInjuryM, stroke: '#38bdf8', fill: null, label: 'GLASS INJURY', dash: [6, 4], alpha: 1 },
+    { radiusM: rings.minorM, stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.06)', label: 'MINOR', dash: [6, 4], alpha: 1 },
+    { radiusM: rings.seriousM, stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.08)', label: 'SERIOUS', dash: [6, 4], alpha: 1 },
+    { radiusM: rings.lethalM, stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.12)', label: 'LETHAL', dash: [6, 4], alpha: 1 },
   ];
+  ctx.save();
   let outer = 0;
-  for (const band of bands) {
-    const r = mToCanvas(rings.radiusM * band.frac, rc);
+  let prevLabelY = Infinity;
+  for (const layer of layers) {
+    if (layer.radiusM == null || layer.radiusM <= 0) continue;
+    const r = mToCanvas(layer.radiusM, rc);
     if (r < 3) continue;
     outer = Math.max(outer, r);
+    ctx.globalAlpha = base * layer.alpha;
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = band.fill;
-    ctx.fill();
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = band.stroke;
+    if (layer.fill) {
+      ctx.fillStyle = layer.fill;
+      ctx.fill();
+    }
+    ctx.setLineDash(layer.dash);
+    ctx.strokeStyle = layer.stroke;
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = band.stroke;
+    ctx.fillStyle = layer.stroke;
     ctx.font = '11px monospace';
-    ctx.save();
     ctx.textAlign = 'left';
-    ctx.fillText(band.label, p.cx + 4, p.cy - r + 12);
-    ctx.restore();
+    const labelY = p.cy - r + 12;
+    const crowded = Math.abs(labelY - prevLabelY) < 12;
+    ctx.fillText(layer.label, p.cx + (crowded ? 78 : 4), labelY);
+    prevLabelY = labelY;
   }
   if (outer > 0) {
-    ctx.save();
+    const minorR =
+      rings.minorM != null && rings.minorM > 0 ? mToCanvas(rings.minorM, rc) : outer;
+    ctx.globalAlpha = base;
     ctx.fillStyle = '#fde68a';
     ctx.font = '11px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('Injury rings scaled from the slider radius; walls not modelled', p.cx + 6, p.cy - outer - 6);
-    ctx.restore();
+    ctx.fillText(
+      calculated
+        ? 'Calculated rings (pending review) · walls not modelled'
+        : 'Injury rings scaled from the slider radius; walls not modelled',
+      p.cx + 6,
+      Math.max(14, p.cy - minorR - 6),
+    );
   }
+  ctx.restore();
 }
 
 function drawAssemblyRing(ctx: CanvasRenderingContext2D, verts: Vec2[], distM: number, rc: RenderContext) {

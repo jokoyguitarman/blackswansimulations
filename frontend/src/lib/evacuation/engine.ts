@@ -25,6 +25,7 @@ import {
   exitRouteHazardous,
   extinctionK,
   mulberry32,
+  isNearWallBehind,
   steerToTarget,
   nextPosture,
   outdoorSpeed,
@@ -39,6 +40,12 @@ import {
 } from './hazardSensing';
 import { SHOWCASE } from './showcaseConstants';
 import { blastInjuryBand } from './showcase';
+import {
+  bandForEffectiveKpa,
+  blastPressureAt,
+  computeBlastRings,
+  type ChargeSpec,
+} from '../rts/blast/blastModel';
 
 export type { Posture } from './hazardSensing';
 
@@ -59,6 +66,9 @@ export interface PedSnapshot {
   familiarity?: Familiarity;
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
   zoneId?: string | null;
+  /** Effective pressure for someone inside the minor ring, in kPa. */
+  blastKpa?: number;
+  nearWall?: boolean;
 }
 
 export interface ShowcaseMetrics {
@@ -118,6 +128,8 @@ interface PedLabel {
   forcedCrawl?: boolean;
   shelterTarget?: Vec2 | null;
   blastImpulse?: Vec2 | null;
+  blastKpa?: number;
+  nearWall?: boolean;
   exitUsed?: Vec2 | null;
   jitterTarget?: Vec2 | null;
   jitterUntil?: number;
@@ -162,7 +174,7 @@ export class PolygonEvacuationEngine {
   private mouthGrant = new Set<number>();
   private flowAcc = new Map<string, number>();
   private zones: ShowcaseZone[] = [];
-  private blast: { site: Vec2; radius: number } | null = null;
+  private blast: { site: Vec2; radius: number; glassInjuryM?: number } | null = null;
   private turnedBackCount = 0;
   private rerouteCount = 0;
   private unsafeZoneNote: string | null = null;
@@ -560,17 +572,49 @@ export class PolygonEvacuationEngine {
   }
 
   /** Illustrative blast. A second call does nothing. */
-  triggerBlast(site: Vec2, radius: number) {
+  triggerBlast(site: Vec2, arg: number | { mode: 'pressure'; spec: ChargeSpec; heightM: number }) {
     if (!this.showcase || this.blast) return;
-    this.blast = { site: { x: site.x, y: site.y }, radius };
+    const pressure = typeof arg === 'number' ? null : arg;
+    let radius: number;
+    let glassInjuryM: number | undefined;
+    if (typeof arg === 'number') {
+      radius = arg;
+    } else {
+      const rings = computeBlastRings(arg.spec);
+      radius = rings.minorM;
+      glassInjuryM = rings.glassInjuryM;
+    }
+    this.blast = {
+      site: { x: site.x, y: site.y },
+      radius,
+      ...(glassInjuryM != null ? { glassInjuryM } : {}),
+    };
     const dt = this.config.dt;
+    const h = pressure ? (pressure.spec.burst === 'surface' ? 0 : pressure.heightM) : 0;
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state === 'down' || ped.state === 'left_map' || ped.state === 'arrived') continue;
       const dx = body.position.x - site.x;
       const dy = body.position.y - site.y;
       const dist = Math.hypot(dx, dy);
-      const band = blastInjuryBand(dist, radius);
+      let band: ReturnType<typeof blastInjuryBand>;
+      if (pressure) {
+        const near = isNearWallBehind(
+          { x: body.position.x, y: body.position.y },
+          site,
+          this.interiorWalls,
+          this.config.vertices,
+          this.exits,
+        );
+        const felt = blastPressureAt(pressure.spec, Math.hypot(dx, dy, h), near);
+        band = bandForEffectiveKpa(felt.effectiveKpa);
+        if (band !== 'none') {
+          ped.blastKpa = felt.effectiveKpa;
+          ped.nearWall = near;
+        }
+      } else {
+        band = blastInjuryBand(dist, radius);
+      }
       if (band === 'lethal' || band === 'serious') {
         ped.state = 'down';
         ped.injury = band;
@@ -1225,7 +1269,10 @@ export class PolygonEvacuationEngine {
     if (distanceToOutline(zone.pos.x, zone.pos.y, this.config.vertices) < minD) return false;
     if (this.blast) {
       const d = Math.hypot(zone.pos.x - this.blast.site.x, zone.pos.y - this.blast.site.y);
-      if (d <= SHOWCASE.ZONE_UNSAFE_FACTOR * this.blast.radius) return false;
+      const glass = this.blast.glassInjuryM;
+      const limit =
+        glass != null && glass > 0 ? glass : SHOWCASE.ZONE_UNSAFE_FACTOR * this.blast.radius;
+      if (d <= limit) return false;
     }
     return true;
   }
@@ -1388,6 +1435,10 @@ export class PolygonEvacuationEngine {
         snap.familiarity = ped.familiarity;
         snap.injury = ped.injury;
         snap.zoneId = ped.zoneId ?? null;
+        if (ped.blastKpa != null) {
+          snap.blastKpa = ped.blastKpa;
+          snap.nearWall = ped.nearWall === true;
+        }
       }
       return snap;
     });
