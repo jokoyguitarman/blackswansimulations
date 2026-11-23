@@ -728,6 +728,15 @@ export const DOWNED_AVOID_M = 0.8;
 /** Centre-to-centre distance at which two pedestrians touch. */
 export const DOWNED_CONTACT_M = BODY_RADIUS_M * 2;
 
+/**
+ * A walker-centre gap narrower than this, and not against the jamb, jams.
+ * Two bodies with a 0.6 m surface gap leave 0.10 m between their contact
+ * disks; people overlap by a few centimetres and stop, and the door still
+ * looks open so nobody reroutes. A sliver against the frame still counts
+ * as open: one body in a 1.6 m door leaves only that, and people get through.
+ */
+const NARROW_INTERIOR_LANE_M = 0.15;
+
 interface DoorFrame {
   ux: number;
   uy: number;
@@ -736,9 +745,23 @@ interface DoorFrame {
   len: number;
 }
 
-function doorFrame(wall: WallLike): DoorFrame {
-  const { ux, uy, len } = wallFrame(wall);
-  return { ux, uy, nx: -uy, ny: ux, len };
+/**
+ * Reused frames. `frameScratch` is only valid until the next load.
+ * `frameHold` is for a caller that then loads the scratch frame.
+ */
+const frameScratch: DoorFrame = { ux: 0, uy: 0, nx: 0, ny: 0, len: 0 };
+const frameHold: DoorFrame = { ux: 0, uy: 0, nx: 0, ny: 0, len: 0 };
+
+function loadDoorFrame(wall: WallLike, out: DoorFrame): DoorFrame {
+  const dx = wall.endX - wall.startX;
+  const dy = wall.endY - wall.startY;
+  const len = Math.hypot(dx, dy) || 1;
+  out.len = len;
+  out.ux = dx / len;
+  out.uy = dy / len;
+  out.nx = -out.uy;
+  out.ny = out.ux;
+  return out;
 }
 
 /** Walker-centre span of a door, metres from the wall start. Null when the opening is narrower than a body. */
@@ -762,12 +785,13 @@ function bodiesOnDoor(
   wall: WallLike,
   bodies: ReadonlyArray<{ x: number; y: number }>,
   contact: number,
+  count = bodies.length,
 ): BodyOnDoor[] {
-  const frame = doorFrame(wall);
+  const frame = loadDoorFrame(wall, frameScratch);
   const centre = wall.doorPosition * frame.len;
   const half = wall.doorWidth / 2 + contact;
   const out: BodyOnDoor[] = [];
-  for (let i = 0; i < bodies.length; i++) {
+  for (let i = 0; i < count; i++) {
     const b = bodies[i];
     const dx = b.x - wall.startX;
     const dy = b.y - wall.startY;
@@ -780,18 +804,30 @@ function bodiesOnDoor(
   return out;
 }
 
+function laneUsable(lo: number, hi: number, spanLo: number, spanHi: number): boolean {
+  const width = hi - lo;
+  if (!(width > 1e-3)) return false;
+  if (width + 1e-6 >= NARROW_INTERIOR_LANE_M) return true;
+  // Against the frame, not between two bodies. Keep this: the 0.05 m sliver
+  // beside one body in a 1.6 m door is how that crowd gets through.
+  return lo <= spanLo + 1e-3 || hi >= spanHi - 1e-3;
+}
+
 /**
  * Centre-line intervals a walker can still use, metres from the wall start.
- * Null when no body reaches the opening. Empty when bodies cover every usable point.
+ * Null when no body reaches the opening. Empty when bodies cover every usable
+ * point, including when the only leftover is a narrow lane between bodies.
+ * `count` lets the caller pass a reused buffer longer than the live list.
  */
-function doorFreeLanes(
+export function doorFreeLanes(
   wall: WallLike,
   bodies: ReadonlyArray<{ x: number; y: number }>,
   contact = DOWNED_CONTACT_M,
+  count = bodies.length,
 ): Array<[number, number]> | null {
   const span = usableAlong(wall);
   if (!span) return null;
-  const onDoor = bodiesOnDoor(wall, bodies, contact);
+  const onDoor = bodiesOnDoor(wall, bodies, contact, count);
   if (onDoor.length === 0) return null;
   const cuts: Array<[number, number]> = [];
   for (const b of onDoor) {
@@ -807,14 +843,14 @@ function doorFreeLanes(
   const free: Array<[number, number]> = [];
   let cursor = span.lo;
   for (const [a, c] of cuts) {
-    if (a > cursor + 1e-3) free.push([cursor, a]);
+    if (a > cursor + 1e-3 && laneUsable(cursor, a, span.lo, span.hi)) free.push([cursor, a]);
     if (c > cursor) cursor = c;
   }
-  if (span.hi > cursor + 1e-3) free.push([cursor, span.hi]);
+  if (span.hi > cursor + 1e-3 && laneUsable(cursor, span.hi, span.lo, span.hi)) free.push([cursor, span.hi]);
   return free;
 }
 
-/** True when bodies cover every point a walker centre could occupy in the opening. */
+/** True when no usable walker-centre lane remains in the opening. */
 export function doorBlockedByBodies(
   wall: WallLike,
   bodies: ReadonlyArray<{ x: number; y: number }>,
@@ -838,10 +874,36 @@ export function doorMouthIndices(
   return [...ids];
 }
 
+/** Writes 1 at each index standing in any door opening, and 0 at the rest. */
+export function markBodiesInDoors(
+  walls: readonly WallLike[],
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  mark: number[],
+  contact = DOWNED_CONTACT_M,
+): void {
+  for (let i = 0; i < bodies.length; i++) mark[i] = 0;
+  for (const wall of walls) {
+    if (!wall.hasDoor || !(wall.doorWidth > 0)) continue;
+    const frame = loadDoorFrame(wall, frameScratch);
+    const centre = wall.doorPosition * frame.len;
+    const half = wall.doorWidth / 2 + contact;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const dx = b.x - wall.startX;
+      const dy = b.y - wall.startY;
+      const off = dx * frame.nx + dy * frame.ny;
+      if (Math.abs(off) >= contact) continue;
+      const along = dx * frame.ux + dy * frame.uy;
+      if (along < centre - half || along > centre + half) continue;
+      mark[i] = 1;
+    }
+  }
+}
+
 /** Where the segment crosses a door opening, as a fraction along a→b. */
 function openingCrossT(a: Vec2, b: Vec2, wall: WallLike): number | null {
   if (!wall.hasDoor || !(wall.doorWidth > 0)) return null;
-  const frame = doorFrame(wall);
+  const frame = loadDoorFrame(wall, frameScratch);
   const ax = a.x - wall.startX;
   const ay = a.y - wall.startY;
   const bx = b.x - wall.startX;
@@ -896,12 +958,13 @@ export function doorSqueezeAim(
   walls: readonly WallLike[],
   bodies: ReadonlyArray<{ x: number; y: number }>,
   contact = DOWNED_CONTACT_M,
+  lanesFor?: (wall: WallLike) => Array<[number, number]> | null,
 ): { aim: Vec2; mouth: number[] } | null {
   let bestWall: WallLike | null = null;
   let bestT = Infinity;
   let bestLanes: Array<[number, number]> | null = null;
   for (const wall of walls) {
-    const lanes = doorFreeLanes(wall, bodies, contact);
+    const lanes = lanesFor ? lanesFor(wall) : doorFreeLanes(wall, bodies, contact);
     if (!lanes || lanes.length === 0) continue;
     const t = openingCrossT(pos, target, wall);
     if (t == null || t >= bestT) continue;
@@ -910,7 +973,7 @@ export function doorSqueezeAim(
     bestLanes = lanes;
   }
   if (!bestWall || !bestLanes) return null;
-  const frame = doorFrame(bestWall);
+  const frame = loadDoorFrame(bestWall, frameHold);
   const along = (pos.x - bestWall.startX) * frame.ux + (pos.y - bestWall.startY) * frame.uy;
   const onDoor = bodiesOnDoor(bestWall, bodies, contact);
   let lane = bestLanes[0];
@@ -961,15 +1024,23 @@ export function doorSqueezeAim(
  * A head-on repulsion stops on the body; this puts the aim on one side of it.
  * A body may carry its own radius. Door mouths pass contact distance; open floor stays at 0.8 m.
  */
+let skipGen = 1;
+const skipStamp: number[] = [];
+
 export function steerPastBodies(
   pos: Vec2,
   target: Vec2,
   bodies: ReadonlyArray<{ x: number; y: number; radius?: number }>,
   radius = DOWNED_AVOID_M,
+  out?: Vec2,
 ): Vec2 {
   let aimX = target.x;
   let aimY = target.y;
-  const skipped = new Set<number>();
+  if (++skipGen >= 0x7ffffffe) {
+    skipStamp.fill(0);
+    skipGen = 1;
+  }
+  const gen = skipGen;
   for (let pass = 0; pass < 4; pass++) {
     const dx = aimX - pos.x;
     const dy = aimY - pos.y;
@@ -983,7 +1054,7 @@ export function steerPastBodies(
     let bestVy = 0;
     let bestAvoid = radius;
     for (let i = 0; i < bodies.length; i++) {
-      if (skipped.has(i)) continue;
+      if (skipStamp[i] === gen) continue;
       const avoid = bodies[i].radius ?? radius;
       const vx = bodies[i].x - pos.x;
       const vy = bodies[i].y - pos.y;
@@ -1002,7 +1073,7 @@ export function steerPastBodies(
       }
     }
     if (bestI < 0) break;
-    skipped.add(bestI);
+    skipStamp[bestI] = gen;
     const cross = ux * bestVy - uy * bestVx;
     // Positive cross means the body is to the left. Step the other way.
     const side =
@@ -1014,6 +1085,11 @@ export function steerPastBodies(
     const past = Math.min(len, Math.max(bestAlong, 0) + bestAvoid);
     aimX = pos.x + ux * past - uy * side * bestAvoid;
     aimY = pos.y + uy * past + ux * side * bestAvoid;
+  }
+  if (out) {
+    out.x = aimX;
+    out.y = aimY;
+    return out;
   }
   return { x: aimX, y: aimY };
 }

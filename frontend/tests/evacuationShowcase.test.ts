@@ -943,6 +943,21 @@ test('a centred body leaves a lane in a 1.6 m door and closes a 1.0 m door', () 
   assert.ok(Math.abs(y - 17) <= 0.55, `lane misses the opening at ${y}`);
 });
 
+test('a free lane under 0.15 m between two bodies closes the door', () => {
+  const wall = {
+    startX: 20, startY: 0, endX: 20, endY: 20, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5,
+  };
+  // Surface gap 0.6 m: centres 1.1 m apart, so the walker-centre lane is 0.10 m
+  // and it sits between the bodies, not against the jamb.
+  const jammed = [{ x: 20, y: 9.45 }, { x: 20, y: 10.55 }];
+  assert.equal(doorBlockedByBodies(wall, jammed), true);
+  // 0.20 m interior lane, and a lane of exactly 0.15 m, both stay open.
+  assert.equal(doorBlockedByBodies(wall, [{ x: 20, y: 9.15 }, { x: 20, y: 10.35 }]), false);
+  assert.equal(doorBlockedByBodies(wall, [{ x: 20, y: 9.15 }, { x: 20, y: 10.3 }]), false);
+  // The jamb sliver beside one centred body is still a way through.
+  assert.equal(doorBlockedByBodies(wall, [{ x: 20, y: 10 }]), false);
+});
+
 test('a walker steers past a static body instead of stopping on it', () => {
   const eng = showcaseEngine(2);
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
@@ -1018,6 +1033,65 @@ test('a body in a 1.6 m door is not a wall: the ten walkers are through within 9
   });
   assert.equal(stuck.length, 0, `${stuck.length} still east of the door, closest approach ${minD.toFixed(3)} m`);
   assert.ok(minD >= 0.45, `walked through the body, closest approach ${minD.toFixed(3)} m`);
+  eng.destroy();
+});
+
+test('a 0.6 m gap between two bodies sends people to the other exit', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const walls = [
+    { startX: 20, startY: 0, endX: 20, endY: 20, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 10,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [
+      exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+      exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 }),
+    ],
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: 1 },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  // Centres 1.1 m apart: 0.6 m between the surfaces, 0.10 m of walker centre.
+  bodies.slice(0, 2).forEach((body, i) => {
+    Matter.Body.setPosition(body, { x: 20, y: i === 0 ? 9.45 : 10.55 });
+    Matter.Body.setStatic(body, true);
+    (body as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  });
+  const walkers = bodies.slice(2);
+  walkers.forEach((body, i) => {
+    Matter.Body.setPosition(body, { x: 26, y: 6 + i });
+    Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+      state: 'evacuating',
+      targetExitId: 'west',
+      exitCost: 30,
+      nextCheckAt: 1e9,
+      posture: 'stand',
+    });
+  });
+  eng.step();
+  for (const body of walkers) {
+    const ped = (body as Matter.Body & { __ped: { targetExitId: string } }).__ped;
+    assert.equal(ped.targetExitId, 'east');
+  }
+  for (let i = 0; i < 90 * 60; i++) eng.step();
+  const stuck = walkers.filter((body) => {
+    const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+    return ped.state === 'evacuating' && body.position.x < 30;
+  });
+  assert.equal(stuck.length, 0, `${stuck.length} still short of the east exit`);
   eng.destroy();
 });
 
