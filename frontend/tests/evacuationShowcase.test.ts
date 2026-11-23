@@ -1103,6 +1103,213 @@ test('a jamb lane does not leave a pair stuck in the doorway', () => {
   }
 });
 
+test('a swing beside a door jamb does not land inside the slab', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 3,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [
+      exit({ id: 'W', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 }),
+      exit({ id: 'N', center: { x: 30, y: 40 }, edgeIndex: 2, width: 2 }),
+    ],
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: 2 },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  Matter.Body.setPosition(bodies[0], { x: 22, y: 16.75 });
+  Matter.Body.setStatic(bodies[0], true);
+  (bodies[0] as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  // The same spot just under the north jamb. An unchecked 0.45 m arm
+  // puts one of them 18 cm inside that jamb. Called directly so the solver
+  // does not fling the pair apart before the swing.
+  const stacked = [
+    { x: 21.586, y: 17.542 },
+    { x: 21.662, y: 17.543 },
+  ];
+  bodies.slice(1).forEach((body, i) => {
+    Matter.Body.setPosition(body, stacked[i]);
+    Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+      state: 'evacuating',
+      targetExitId: 'W',
+      exitCost: 30,
+      nextCheckAt: 0,
+      posture: 'stand',
+    });
+  });
+  (eng as unknown as { orbitApart(a: Matter.Body, b: Matter.Body): void }).orbitApart(bodies[1], bodies[2]);
+  const overlap = (body: Matter.Body) =>
+    Math.max(
+      wallSlabOverlap(body.position.x, body.position.y, 22, 0, 22, 16.2),
+      wallSlabOverlap(body.position.x, body.position.y, 22, 17.8, 22, 34),
+    );
+  const landed = bodies.slice(1);
+  for (const body of landed) {
+    assert.ok(
+      overlap(body) <= 0.001,
+      `landed inside the jamb at ${body.position.x.toFixed(3)},${body.position.y.toFixed(3)} by ${(overlap(body) * 100).toFixed(1)} cm`,
+    );
+  }
+  const apart = Math.hypot(
+    landed[0].position.x - landed[1].position.x,
+    landed[0].position.y - landed[1].position.y,
+  );
+  assert.ok(
+    apart >= 0.5,
+    `pair was not separated, ${apart.toFixed(3)} m apart at ${landed.map((body) => `${body.position.x.toFixed(3)},${body.position.y.toFixed(3)}`).join(' ')}`,
+  );
+  eng.destroy();
+});
+
+test('an open jamb lane lets all ten walkers out on every seed', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+    { startX: 46, startY: 0, endX: 46, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 46, startY: 8, endX: 60, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const lanes: Array<{ name: string; blockers: Array<[number, number]> }> = [
+    { name: '0.80 m lane', blockers: [[22, 16.75]] },
+    { name: '0.53 m jamb lane', blockers: [[22, 16.98], [22, 17.55]] },
+  ];
+  for (const lane of lanes) {
+    const outs: number[] = [];
+    let worstWall = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const result = runJambLane(verts, walls, lane.blockers, seed);
+      outs.push(result.out);
+      worstWall = Math.max(worstWall, result.wallOverlap);
+    }
+    assert.deepEqual(outs, [10, 10, 10, 10, 10, 10, 10, 10], `${lane.name}: ${outs.join(', ')}`);
+    assert.ok(worstWall <= 0.01, `${lane.name} entered a wall by ${(worstWall * 100).toFixed(1)} cm`);
+  }
+});
+
+function wallSlabOverlap(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const len = Math.hypot(bx - ax, by - ay);
+  const ux = (bx - ax) / len;
+  const uy = (by - ay) / len;
+  const t = (px - ax) * ux + (py - ay) * uy;
+  const n = Math.abs(-(px - ax) * uy + (py - ay) * ux);
+  const dt = t < 0 ? -t : t > len ? t - len : 0;
+  const dn = Math.max(0, n - 0.4);
+  return 0.25 - Math.hypot(dt, dn);
+}
+
+function runJambLane(
+  verts: Vec2[],
+  walls: Array<{ startX: number; startY: number; endX: number; endY: number; hasDoor: boolean; doorWidth: number; doorPosition: number }>,
+  blockers: Array<[number, number]>,
+  seed: number,
+): { out: number; wallOverlap: number } {
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: blockers.length + 10,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [
+      exit({ id: 'W', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 }),
+      exit({ id: 'N', center: { x: 30, y: 40 }, edgeIndex: 2, width: 2 }),
+    ],
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  blockers.forEach(([x, y], i) => {
+    Matter.Body.setPosition(bodies[i], { x, y });
+    Matter.Body.setStatic(bodies[i], true);
+    (bodies[i] as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  });
+  const rng = mulberry32(seed * 7919);
+  const walkers = bodies.slice(blockers.length);
+  walkers.forEach((body, i) => {
+    Matter.Body.setPosition(body, {
+      x: 25 + (i % 5) * 1.2 + rng() * 0.6,
+      y: 14.5 + Math.floor(i / 5) * 2.5 + rng() * 1.5,
+    });
+    Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+      state: 'evacuating',
+      targetExitId: 'W',
+      exitCost: 30,
+      nextCheckAt: 0,
+      posture: 'stand',
+    });
+  });
+  const solids = solidSlabs(walls);
+  let wallOverlap = 0;
+  for (let i = 0; i < 120 * 60; i++) {
+    eng.step();
+    for (const body of walkers) {
+      const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+      if (ped.state !== 'evacuating') continue;
+      for (const slab of solids) {
+        wallOverlap = Math.max(wallOverlap, wallSlabOverlap(body.position.x, body.position.y, ...slab));
+      }
+    }
+  }
+  const out = walkers.filter((body) => {
+    const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+    return ped.state === 'outside' || ped.state === 'left_map';
+  }).length;
+  eng.destroy();
+  return { out, wallOverlap };
+}
+
+function solidSlabs(
+  walls: Array<{ startX: number; startY: number; endX: number; endY: number; hasDoor: boolean; doorWidth: number; doorPosition: number }>,
+): Array<[number, number, number, number]> {
+  const solids: Array<[number, number, number, number]> = [];
+  for (const wall of walls) {
+    if (!wall.hasDoor) {
+      solids.push([wall.startX, wall.startY, wall.endX, wall.endY]);
+      continue;
+    }
+    const len = Math.hypot(wall.endX - wall.startX, wall.endY - wall.startY);
+    const centre = wall.doorPosition * len;
+    const half = wall.doorWidth / 2;
+    const ux = (wall.endX - wall.startX) / len;
+    const uy = (wall.endY - wall.startY) / len;
+    solids.push([
+      wall.startX,
+      wall.startY,
+      wall.startX + ux * (centre - half),
+      wall.startY + uy * (centre - half),
+    ]);
+    solids.push([
+      wall.startX + ux * (centre + half),
+      wall.startY + uy * (centre + half),
+      wall.endX,
+      wall.endY,
+    ]);
+  }
+  return solids;
+}
+
 test('a 0.6 m gap between two bodies sends people to the other exit', () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },

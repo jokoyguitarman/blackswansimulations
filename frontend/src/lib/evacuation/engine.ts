@@ -233,6 +233,11 @@ export class PolygonEvacuationEngine {
   private mouthGrant = new Set<number>();
   /** Walkers who were stacked on one point in a door. They collide until they leave it. */
   private stackedPair = new Set<number>();
+  /** Where each walker was at the start of this step, so a contact that undoes the step is visible. */
+  private placeX: number[] = [];
+  private placeY: number[] = [];
+  /** Frames a slipping walker has stayed on a downed body. A passing graze does not count. */
+  private stillOnBody = new WeakMap<Matter.Body, number>();
   private flowAcc = new Map<string, number>();
   private zones: ShowcaseZone[] = [];
   private blast: { site: Vec2; radius: number; glassInjuryM?: number } | null = null;
@@ -790,6 +795,7 @@ export class PolygonEvacuationEngine {
     const dt = this.config.dt;
     this.refreshMouthGrants();
     this.tickStairs(dt);
+    this.rememberPlaces();
     const outside: Array<{ id: number; x: number; y: number }> = [];
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
@@ -1074,6 +1080,9 @@ export class PolygonEvacuationEngine {
    * Two centres on one point never get a contact normal, so they stay stacked
    * on the body. Those two are eased apart and collide again. Ending the slip
    * for everyone past the line jams the rest of the crowd in the opening.
+   * A lone walker pressed into a downed body is different: that body keeps the
+   * wall category, and the resting contact pulls every step back into the slop.
+   * Once they have sat there, they are set just clear of it.
    */
   private slipThroughOpenings() {
     const slipping = new Set<Matter.Body>();
@@ -1126,6 +1135,7 @@ export class PolygonEvacuationEngine {
       if (inMouth && (released || pastLine)) slipping.add(body);
     }
     this.separateSameSpot(doorMouth, slipping);
+    this.releasePinned(slipping);
     for (const body of this.pedestrians) {
       const saved = this.restMask.get(body);
       const rest = saved ?? body.collisionFilter.mask ?? 0;
@@ -1163,16 +1173,61 @@ export class PolygonEvacuationEngine {
     }
   }
 
-  /** Place a stacked pair on opposite sides of the nearest downed body. */
+  private rememberPlaces() {
+    const n = this.pedestrians.length;
+    for (let i = 0; i < n; i++) {
+      this.placeX[i] = this.pedestrians[i].position.x;
+      this.placeY[i] = this.pedestrians[i].position.y;
+    }
+  }
+
+  /**
+   * Walls this person can actually hit: their own storey, plus the shell.
+   * A swing is rejected when it would sit inside one of those slabs.
+   */
+  private clearanceWalls(ped: PedLabel): WallLike[] {
+    const shell = this.separationWalls().filter((wall) => !this.interiorWalls.includes(wall));
+    return [...this.wallsNear(ped), ...shell];
+  }
+
+  /** True when a centre is outside wall slabs and not on another person. */
+  private spotClear(
+    x: number,
+    y: number,
+    walls: WallLike[],
+    ped: PedLabel,
+    skipA?: Matter.Body,
+    skipB?: Matter.Body,
+  ): boolean {
+    const next = separateFromWalls({ x, y }, walls);
+    if ((next.x - x) * (next.x - x) + (next.y - y) * (next.y - y) > 1e-6) return false;
+    for (const other of this.pedestrians) {
+      if (other === skipA || other === skipB) continue;
+      const op = this.pedOf(other);
+      if (ped.level && op.level && ped.level !== op.level) continue;
+      const dx = other.position.x - x;
+      const dy = other.position.y - y;
+      if (dx * dx + dy * dy < DOWNED_CONTACT_M * DOWNED_CONTACT_M) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Place a stacked pair on opposite sides of the nearest downed body.
+   * The arm starts at 0.45 m. A landing inside a jamb, a wall or another
+   * body is shortened, then turned, and dropped if nothing is clear.
+   */
   private orbitApart(a: Matter.Body, b: Matter.Body) {
     const mx = (a.position.x + b.position.x) / 2;
     const my = (a.position.y + b.position.y) / 2;
+    const pedA = this.pedOf(a);
     let sx = mx;
     let sy = my - 1;
     let best = 1.2;
     for (const other of this.pedestrians) {
       if (other === a || other === b) continue;
       const ped = this.pedOf(other);
+      if (ped.level && pedA.level && ped.level !== pedA.level) continue;
       if (ped.state !== 'down' && !other.isStatic) continue;
       const d = Math.hypot(other.position.x - mx, other.position.y - my);
       if (d < best) {
@@ -1191,13 +1246,140 @@ export class PolygonEvacuationEngine {
       rx /= rl;
       ry /= rl;
     }
-    const arm = 0.45;
     const tx = -ry;
     const ty = rx;
-    Matter.Body.setPosition(a, { x: mx - tx * arm, y: my - ty * arm });
-    Matter.Body.setPosition(b, { x: mx + tx * arm, y: my + ty * arm });
-    Matter.Body.setVelocity(a, { x: 0, y: 0 });
-    Matter.Body.setVelocity(b, { x: 0, y: 0 });
+    const walls = this.clearanceWalls(pedA);
+    const arms = [0.45, 0.38, 0.32];
+    for (let step = 0; step <= 6; step++) {
+      const ang = step * (Math.PI / 12);
+      const c = Math.cos(ang);
+      const s = Math.sin(ang);
+      const dx = tx * c + rx * s;
+      const dy = ty * c + ry * s;
+      for (const arm of arms) {
+        const ax = mx - dx * arm;
+        const ay = my - dy * arm;
+        const bx = mx + dx * arm;
+        const by = my + dy * arm;
+        if (!this.spotClear(ax, ay, walls, pedA, a, b) || !this.spotClear(bx, by, walls, pedA, a, b)) {
+          continue;
+        }
+        Matter.Body.setPosition(a, { x: ax, y: ay });
+        Matter.Body.setPosition(b, { x: bx, y: by });
+        Matter.Body.setVelocity(a, { x: 0, y: 0 });
+        Matter.Body.setVelocity(b, { x: 0, y: 0 });
+        return;
+      }
+    }
+  }
+
+  /**
+   * A slipping walker overlapping a static body can be commanded away and
+   * still not move: the contact is inside the solver slop, so each step is
+   * pulled back. After a few such frames, set them just clear of the body,
+   * on a spot that is not inside a wall or someone else.
+   */
+  private releasePinned(slipping: Set<Matter.Body>) {
+    const n = this.pedestrians.length;
+    let walls: WallLike[] | null = null;
+    let wallLevel: string | undefined;
+    for (let i = 0; i < n; i++) {
+      const body = this.pedestrians[i];
+      const ped = this.pedOf(body);
+      if (ped.state !== 'evacuating') continue;
+      if (!slipping.has(body) && !this.stackedPair.has(ped.pedId)) {
+        this.stillOnBody.delete(body);
+        continue;
+      }
+      const movedX = body.position.x - (this.placeX[i] ?? body.position.x);
+      const movedY = body.position.y - (this.placeY[i] ?? body.position.y);
+      if (movedX * movedX + movedY * movedY > 1e-6) {
+        this.stillOnBody.set(body, 0);
+        continue;
+      }
+      let sx = 0;
+      let sy = 0;
+      let best = DOWNED_CONTACT_M;
+      let anchor: Matter.Body | null = null;
+      for (const other of this.pedestrians) {
+        if (other === body) continue;
+        const op = this.pedOf(other);
+        if (ped.level && op.level && ped.level !== op.level) continue;
+        if (op.state !== 'down' && !other.isStatic) continue;
+        const d = Math.hypot(other.position.x - body.position.x, other.position.y - body.position.y);
+        if (d < best) {
+          best = d;
+          sx = other.position.x;
+          sy = other.position.y;
+          anchor = other;
+        }
+      }
+      if (!anchor) {
+        this.stillOnBody.set(body, 0);
+        continue;
+      }
+      const still = (this.stillOnBody.get(body) ?? 0) + 1;
+      this.stillOnBody.set(body, still);
+      if (still < 6) continue;
+      let ax = body.position.x - sx;
+      let ay = body.position.y - sy;
+      const al = Math.hypot(ax, ay);
+      if (al < 1e-3) {
+        ax = 0;
+        ay = -1;
+      } else {
+        ax /= al;
+        ay /= al;
+      }
+      const goal = this.steerGoal(ped);
+      let gx = goal ? goal.x - body.position.x : ax;
+      let gy = goal ? goal.y - body.position.y : ay;
+      const gl = Math.hypot(gx, gy);
+      if (gl < 0.3) continue;
+      gx /= gl;
+      gy /= gl;
+      const side = Math.sign(ax * gy - ay * gx) || 1;
+      if (!walls || wallLevel !== (ped.level ?? '')) {
+        walls = this.clearanceWalls(ped);
+        wallLevel = ped.level ?? '';
+      }
+      const spot = this.clearOfBody(sx, sy, ax, ay, gx, gy, side, walls, ped, body);
+      if (!spot) continue;
+      Matter.Body.setPosition(body, spot);
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      this.stillOnBody.set(body, 0);
+    }
+  }
+
+  /** A point just outside `anchor`, toward the goal, and off the walls. */
+  private clearOfBody(
+    sx: number,
+    sy: number,
+    ax: number,
+    ay: number,
+    gx: number,
+    gy: number,
+    side: number,
+    walls: WallLike[],
+    ped: PedLabel,
+    self: Matter.Body,
+  ): Vec2 | null {
+    for (const radius of [0.58, 0.7]) {
+      for (const dir of [side, -side]) {
+        for (let step = 0; step <= 6; step++) {
+          const ang = dir * step * (Math.PI / 12);
+          const c = Math.cos(ang);
+          const s = Math.sin(ang);
+          const rx = ax * c - ay * s;
+          const ry = ax * s + ay * c;
+          if (rx * gx + ry * gy < -0.15) continue;
+          const x = sx + rx * radius;
+          const y = sy + ry * radius;
+          if (this.spotClear(x, y, walls, ped, self)) return { x, y };
+        }
+      }
+    }
+    return null;
   }
 
   private wallsNear(ped: PedLabel): InteriorWallDef[] {
