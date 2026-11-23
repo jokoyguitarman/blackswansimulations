@@ -119,6 +119,68 @@ export function buildRasterLayout(
   return { minX, minY, cellM, cols, rows, index, studIds, xs, ys, occupied, collisions };
 }
 
+/** Blank and the legacy "Ground" label are the ground storey. */
+export function rasterStoreyId(floor: string | undefined): string {
+  if (!floor || floor === 'Ground') return 'G';
+  return floor;
+}
+
+export interface RasterLayoutCache {
+  studs: unknown;
+  multi: boolean;
+  byLevel: Map<string, RasterLayout> | null;
+  single: RasterLayout | null;
+}
+
+export function createRasterLayoutCache(): RasterLayoutCache {
+  return { studs: null, multi: false, byLevel: null, single: null };
+}
+
+/** One layout per storey. Studs on the same x,y no longer share a pixel across floors. */
+export function buildRasterLayoutsByLevel(
+  studs: ReadonlyArray<{ id: string; simPos: { x: number; y: number }; floor?: string }>,
+  cellM: number,
+): Map<string, RasterLayout> {
+  const groups = new Map<string, Array<{ id: string; simPos: { x: number; y: number } }>>();
+  for (const stud of studs) {
+    const id = rasterStoreyId(stud.floor);
+    const list = groups.get(id);
+    if (list) list.push(stud);
+    else groups.set(id, [stud]);
+  }
+  const layouts = new Map<string, RasterLayout>();
+  for (const [id, list] of groups) layouts.set(id, buildRasterLayout(list, cellM));
+  return layouts;
+}
+
+/**
+ * The layout the animated overlay should draw.
+ * A single floor keeps one layout of every stud. Several floors keep a cached
+ * layout per storey and return only the active one. The cache rebuilds when
+ * the stud list identity changes, or when the scene gains or loses storeys.
+ */
+export function activeRasterLayout(
+  cache: RasterLayoutCache,
+  studs: ReadonlyArray<{ id: string; simPos: { x: number; y: number }; floor?: string }>,
+  cellM: number,
+  multi: boolean,
+  activeLevel: string,
+): RasterLayout | null {
+  if (cache.studs !== studs || cache.multi !== multi) {
+    cache.studs = studs;
+    cache.multi = multi;
+    if (multi) {
+      cache.byLevel = buildRasterLayoutsByLevel(studs, cellM);
+      cache.single = null;
+    } else {
+      cache.byLevel = null;
+      cache.single = buildRasterLayout(studs, cellM);
+    }
+  }
+  if (!multi) return cache.single;
+  return cache.byLevel?.get(rasterStoreyId(activeLevel)) ?? null;
+}
+
 function smokeRgb(h: number, channel: 0 | 1 | 2): number {
   const from = channel === 2 ? 98 : 88;
   const to = channel === 2 ? 46 : 40;

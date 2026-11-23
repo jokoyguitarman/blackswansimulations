@@ -51,7 +51,7 @@ import {
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
 import { FX, noteDowngradeFrom, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
 import { createAccumulator, takeSteps } from '../lib/rts/fx/simClock';
-import { buildRasterLayout, type RasterLayout } from '../lib/rts/fx/hazardRaster';
+import { activeRasterLayout, createRasterLayoutCache, type RasterLayout } from '../lib/rts/fx/hazardRaster';
 import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
 import {
   UNIT_CATALOG,
@@ -769,8 +769,8 @@ export function DebugRTSSim() {
     buildingVerts: [],
     cellM: 3,
   });
+  const rasterCacheRef = useRef(createRasterLayoutCache());
   const rasterLayoutRef = useRef<RasterLayout | null>(null);
-  const rasterStudsRef = useRef<unknown>(null);
   const evacAccRef = useRef(createAccumulator());
   const effectsAccRef = useRef(createAccumulator());
   const evacStepsDoneRef = useRef(0);
@@ -1867,16 +1867,19 @@ export function DebugRTSSim() {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           if (showcaseOn) {
-            const studs = simStudsRef.current;
-            if (rasterStudsRef.current !== studs) {
-              rasterStudsRef.current = studs;
-              rasterLayoutRef.current = buildRasterLayout(studs, 3);
-            }
+            const layout = activeRasterLayout(
+              rasterCacheRef.current,
+              simStudsRef.current,
+              3,
+              levelsRef.current.length > 1,
+              activeLevelRef.current,
+            );
+            rasterLayoutRef.current = layout;
             const fxCtx = hazardFxCtxRef.current;
             fxCtx.quality = fxQualityRef.current;
             fxCtx.reducedMotion = reducedMotionRef.current;
             fxCtx.nowMs = performance.now();
-            fxCtx.layout = rasterLayoutRef.current;
+            fxCtx.layout = layout;
             fxCtx.states = effectsEngineRef.current?.studStates ?? null;
             fxCtx.buildingVerts = projectedVertsRef.current;
             fxCtx.cellM = 3;
