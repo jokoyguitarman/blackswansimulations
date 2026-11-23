@@ -19,6 +19,7 @@ const ORDER = [
   '261',
   '262',
   '263',
+  '264',
 ];
 
 const MIGRATIONS = path.resolve(import.meta.dirname, '../../../..', 'migrations');
@@ -39,6 +40,24 @@ const REVOKED_FROM_API = [
   'fieldops_knowledge_reference_values',
   'fieldops_library_row_history',
 ];
+
+/** PR #23 tables that enabled RLS and kept Supabase's default grants until 264. */
+const PR23_TABLES = [
+  'team_archetypes',
+  'team_archetype_aliases',
+  'doctrines',
+  'doctrine_versions',
+  'doctrine_source_documents',
+  'doctrine_usage',
+  'doctrine_reports',
+  'doctrine_events',
+  'fieldops_explosive_materials',
+  'fieldops_injury_thresholds',
+  'fieldops_physics_reviews',
+  'fieldops_physics_library_changes',
+];
+
+const WRITE_PRIVILEGES = ['TRUNCATE', 'INSERT', 'UPDATE', 'DELETE'] as const;
 
 function localUrl(): string | null {
   const url = process.env.KNOWLEDGE_DB_URL;
@@ -97,7 +116,7 @@ describe('knowledge migrations on a local database', () => {
   const url = localUrl();
 
   it(
-    'applies 221-263 twice, lets service_role select, and refuses anon on 261-263',
+    'applies 221-264 twice, lets service_role select, and blocks anon writes on the PR #23 tables',
     { skip: url ? false : 'KNOWLEDGE_DB_URL unset or not local' },
     async () => {
       assert.ok(url);
@@ -135,9 +154,7 @@ describe('knowledge migrations on a local database', () => {
         }
         await client.query('ROLLBACK');
 
-        // anon and authenticated are revoked on 261, 262 and 263. PR #23's
-        // twelve tables still keep Supabase's default table grants, so this
-        // test does not claim those are denied.
+        // anon and authenticated are revoked on 261, 262 and 263.
         for (const role of ['anon', 'authenticated']) {
           for (const name of REVOKED_FROM_API) {
             await client.query('BEGIN');
@@ -148,6 +165,22 @@ describe('knowledge migrations on a local database', () => {
               /permission denied/i,
             );
             await client.query('ROLLBACK');
+          }
+        }
+
+        // 264 takes TRUNCATE, INSERT, UPDATE and DELETE off the twelve PR #23
+        // tables. SELECT stays out of this assertion: the app does not read
+        // them as these roles, and 264 revokes it, but a later SELECT grant
+        // would not bring the write privileges back.
+        for (const role of ['anon', 'authenticated']) {
+          for (const name of PR23_TABLES) {
+            for (const privilege of WRITE_PRIVILEGES) {
+              const allowed = await client.query<{ allowed: boolean }>(
+                `SELECT has_table_privilege($1, $2, $3) AS allowed`,
+                [role, `public.${quoteIdent(name)}`, privilege],
+              );
+              assert.equal(allowed.rows[0]?.allowed, false, `${role} ${privilege} ${name}`);
+            }
           }
         }
       } finally {
