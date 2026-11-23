@@ -29,9 +29,9 @@ import {
   steerPastBodies,
   DOWNED_AVOID_M,
   DOWNED_CONTACT_M,
-  doorBlockedByBodies,
-  doorMouthIndices,
+  doorFreeLanes,
   doorSqueezeAim,
+  markBodiesInDoors,
   routeCrossesBlockedDoor,
   segmentHitsBlockedDoor,
   steerToTarget,
@@ -74,35 +74,10 @@ const WALL_THICKNESS = 0.8;
 const PED_CATEGORY = 0x0001;
 const WALL_CATEGORY = 0x0002;
 const STATIC_CELL_M = 2;
-
-/** Cells the segment touches, plus one cell of padding so a 0.8 m keep-out is never missed. */
-function cellKeysAlong(ax: number, ay: number, bx: number, by: number): string[] {
-  const x0 = Math.floor(ax / STATIC_CELL_M);
-  const y0 = Math.floor(ay / STATIC_CELL_M);
-  const x1 = Math.floor(bx / STATIC_CELL_M);
-  const y1 = Math.floor(by / STATIC_CELL_M);
-  const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const add = (cx: number, cy: number) => {
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const key = `${cx + dx},${cy + dy}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(key);
-      }
-    }
-  };
-  if (steps === 0) {
-    add(x0, y0);
-    return out;
-  }
-  for (let i = 0; i <= steps; i++) {
-    add(Math.round(x0 + ((x1 - x0) * i) / steps), Math.round(y0 + ((y1 - y0) * i) / steps));
-  }
-  return out;
-}
+/** Numeric cell id `(cx + bias) * stride + (cy + bias)`. Covers ±8 km at 2 m cells. */
+const CELL_BIAS = 4096;
+const CELL_STRIDE = 8192;
+const CELL_STAMP_SLOTS = 8192;
 
 export interface PedSnapshot {
   id: number;
@@ -276,7 +251,28 @@ export class PolygonEvacuationEngine {
   private wallsByLevel = new Map<string, InteriorWallDef[]>();
   private motionSerial = 0;
   private staticIndexSerial = -1;
-  private staticCells = new Map<string, Array<{ x: number; y: number; body: Matter.Body }>>();
+  private grids = new Map<string, Map<number, { hits: Array<{ x: number; y: number; body: Matter.Body }>; len: number }>>();
+  private levelBodies = new Map<string, Array<{ x: number; y: number }>>();
+  private levelBodyN = new Map<string, number>();
+  private laneGen = 0;
+  private laneCache = new WeakMap<WallLike, { gen: number; lanes: Array<[number, number]> | null }>();
+  private readonly lookupLanes = (wall: WallLike): Array<[number, number]> | null => {
+    const hit = this.laneCache.get(wall);
+    return hit && hit.gen === this.laneGen ? hit.lanes : null;
+  };
+  private cellIds: number[] = [];
+  private cellN = 0;
+  private stampKeys = new Int32Array(CELL_STAMP_SLOTS);
+  private stampGens = new Int32Array(CELL_STAMP_SLOTS);
+  private stampMask = CELL_STAMP_SLOTS - 1;
+  private stampGen = 1;
+  private nearPool: Array<{ x: number; y: number; radius?: number }> = [];
+  private nearView: Array<{ x: number; y: number; radius?: number }> = [];
+  private steerView: Array<{ x: number; y: number; radius?: number }> = [];
+  private mouthMark: number[] = [];
+  private squeezeSkip: number[] = [];
+  private steerAim: Vec2 = { x: 0, y: 0 };
+  private steerPos: Vec2 = { x: 0, y: 0 };
   private blockedDoorsByLevel = new Map<string, WallLike[]>();
 
   constructor(
@@ -574,7 +570,7 @@ export class PolygonEvacuationEngine {
         repX += push.x;
         repY += push.y;
       }
-      const bodies = this.pushFromBodies(body, steered.near, steered.mouth, targetSpeed, dt);
+      const bodies = this.pushFromBodies(body, steered.near, targetSpeed, dt);
       repX += bodies.x;
       repY += bodies.y;
 
@@ -1543,55 +1539,148 @@ export class PolygonEvacuationEngine {
     return n / Math.PI;
   }
 
-  /**
-   * Downed people, and any other static body on this floor, along the way to
-   * `toward`. Built once per step into cells, so a step does not compare every
-   * pair. Another storey is a different cell key.
-   */
-  private staticBodiesNear(self: Matter.Body, toward: Vec2): Array<{ x: number; y: number }> {
-    this.prepareStaticBodies();
-    const ped = this.pedOf(self);
-    return this.staticNear(ped.level ?? '', self.position.x, self.position.y, toward.x, toward.y, self);
+  private bumpStamp() {
+    this.stampGen++;
+    if (this.stampGen >= 0x7ffffffe) {
+      this.stampGens.fill(0);
+      this.stampGen = 1;
+    }
   }
 
-  private staticNear(
-    level: string,
-    ax: number,
-    ay: number,
-    bx: number,
-    by: number,
-    self?: Matter.Body,
-  ): Array<{ x: number; y: number }> {
-    const out: Array<{ x: number; y: number }> = [];
-    for (const cell of cellKeysAlong(ax, ay, bx, by)) {
-      const list = this.staticCells.get(`${level}\0${cell}`);
-      if (!list) continue;
-      for (const hit of list) {
-        if (self && hit.body === self) continue;
-        out.push({ x: hit.x, y: hit.y });
+  /** True the first time `id` is seen for this query. */
+  private stampFresh(id: number): boolean {
+    let i = (Math.imul(id, 0x9e3779b1) >>> 0) & this.stampMask;
+    const g = this.stampGen;
+    const keys = this.stampKeys;
+    const gens = this.stampGens;
+    const mask = this.stampMask;
+    for (let n = 0; n <= mask; n++) {
+      if (gens[i] !== g) {
+        gens[i] = g;
+        keys[i] = id;
+        return true;
+      }
+      if (keys[i] === id) return false;
+      i = (i + 1) & mask;
+    }
+    return true;
+  }
+
+  /** Cells the segment touches, plus one cell of padding so a 0.8 m keep-out is never missed. */
+  private cellsAlong(ax: number, ay: number, bx: number, by: number): number {
+    const x0 = Math.floor(ax / STATIC_CELL_M);
+    const y0 = Math.floor(ay / STATIC_CELL_M);
+    const x1 = Math.floor(bx / STATIC_CELL_M);
+    const y1 = Math.floor(by / STATIC_CELL_M);
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    this.bumpStamp();
+    this.cellN = 0;
+    if (steps === 0) this.notePad(x0, y0);
+    else {
+      for (let i = 0; i <= steps; i++) {
+        this.notePad(
+          Math.round(x0 + ((x1 - x0) * i) / steps),
+          Math.round(y0 + ((y1 - y0) * i) / steps),
+        );
       }
     }
-    return out;
+    return this.cellN;
+  }
+
+  private notePad(cx: number, cy: number) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const id = (cx + dx + CELL_BIAS) * CELL_STRIDE + (cy + dy + CELL_BIAS);
+        if (!this.stampFresh(id)) continue;
+        this.cellIds[this.cellN++] = id;
+      }
+    }
+  }
+
+  private addStaticHit(level: string, body: Matter.Body) {
+    const cx = Math.floor(body.position.x / STATIC_CELL_M);
+    const cy = Math.floor(body.position.y / STATIC_CELL_M);
+    const id = (cx + CELL_BIAS) * CELL_STRIDE + (cy + CELL_BIAS);
+    let grid = this.grids.get(level);
+    if (!grid) {
+      grid = new Map();
+      this.grids.set(level, grid);
+    }
+    let bucket = grid.get(id);
+    if (!bucket) {
+      bucket = { hits: [], len: 0 };
+      grid.set(id, bucket);
+    }
+    let hit = bucket.hits[bucket.len];
+    if (!hit) {
+      hit = { x: 0, y: 0, body };
+      bucket.hits.push(hit);
+    }
+    hit.x = body.position.x;
+    hit.y = body.position.y;
+    hit.body = body;
+    bucket.len++;
+    let pts = this.levelBodies.get(level);
+    if (!pts) {
+      pts = [];
+      this.levelBodies.set(level, pts);
+    }
+    const n = this.levelBodyN.get(level) ?? 0;
+    let point = pts[n];
+    if (!point) {
+      point = { x: 0, y: 0 };
+      pts.push(point);
+    }
+    point.x = hit.x;
+    point.y = hit.y;
+    this.levelBodyN.set(level, n + 1);
+  }
+
+  /**
+   * Static bodies on this floor whose cells the segment touches.
+   * The lists are reused; the result is valid until the next fill.
+   */
+  private fillNear(level: string, ax: number, ay: number, bx: number, by: number, self?: Matter.Body) {
+    this.prepareStaticBodies();
+    const nCells = this.cellsAlong(ax, ay, bx, by);
+    const grid = this.grids.get(level);
+    const view = this.nearView;
+    view.length = 0;
+    if (!grid) return;
+    const ids = this.cellIds;
+    for (let i = 0; i < nCells; i++) {
+      const bucket = grid.get(ids[i]);
+      if (!bucket) continue;
+      for (let j = 0; j < bucket.len; j++) {
+        const hit = bucket.hits[j];
+        if (self && hit.body === self) continue;
+        let slot = this.nearPool[view.length];
+        if (!slot) {
+          slot = { x: 0, y: 0 };
+          this.nearPool.push(slot);
+        }
+        slot.x = hit.x;
+        slot.y = hit.y;
+        slot.radius = undefined;
+        view.push(slot);
+      }
+    }
   }
 
   /** One grid per storey, then the doors whose openings those bodies have closed. */
   private prepareStaticBodies() {
     if (this.staticIndexSerial === this.motionSerial) return;
     this.staticIndexSerial = this.motionSerial;
-    this.staticCells.clear();
+    for (const grid of this.grids.values()) {
+      for (const bucket of grid.values()) bucket.len = 0;
+    }
+    for (const level of this.levelBodyN.keys()) this.levelBodyN.set(level, 0);
+    this.laneGen++;
     for (const body of this.pedestrians) {
       const other = this.pedOf(body);
       if (other.state !== 'down' && !body.isStatic) continue;
       const level = other.level ?? '';
-      const cx = Math.floor(body.position.x / STATIC_CELL_M);
-      const cy = Math.floor(body.position.y / STATIC_CELL_M);
-      const key = `${level}\0${cx},${cy}`;
-      let list = this.staticCells.get(key);
-      if (!list) {
-        list = [];
-        this.staticCells.set(key, list);
-      }
-      list.push({ x: body.position.x, y: body.position.y, body });
+      this.addStaticHit(level, body);
       // A slipping walker drops their own category. A downed body keeps the
       // wall bit of its storey, which that mask still includes, so people
       // squeeze past it instead of walking through it. Other storeys use
@@ -1602,15 +1691,16 @@ export class PolygonEvacuationEngine {
     }
     this.blockedDoorsByLevel.clear();
     const groups: Array<[string, InteriorWallDef[]]> =
-      this.wallsByLevel.size > 0
-        ? [...this.wallsByLevel.entries()]
-        : [['', this.interiorWalls]];
+      this.wallsByLevel.size > 0 ? [...this.wallsByLevel.entries()] : [['', this.interiorWalls]];
     for (const [level, walls] of groups) {
+      const pts = this.levelBodies.get(level) ?? [];
+      const count = this.levelBodyN.get(level) ?? 0;
       const blocked: WallLike[] = [];
       for (const wall of walls) {
         if (!wall.hasDoor || !(wall.doorWidth > 0)) continue;
-        const bodies = this.staticNear(level, wall.startX, wall.startY, wall.endX, wall.endY);
-        if (doorBlockedByBodies(wall, bodies)) blocked.push(wall);
+        const lanes = doorFreeLanes(wall, pts, DOWNED_CONTACT_M, count);
+        this.laneCache.set(wall, { gen: this.laneGen, lanes });
+        if (lanes != null && lanes.length === 0) blocked.push(wall);
       }
       if (blocked.length > 0) this.blockedDoorsByLevel.set(level, blocked);
     }
@@ -1664,14 +1754,14 @@ export class PolygonEvacuationEngine {
   private pushFromBodies(
     body: Matter.Body,
     near: ReadonlyArray<{ x: number; y: number }>,
-    mouth: ReadonlySet<number>,
     targetSpeed: number,
     dt: number,
   ): Vec2 {
     let x = 0;
     let y = 0;
+    const mark = this.mouthMark;
     for (let i = 0; i < near.length; i++) {
-      const radius = mouth.has(i) ? DOWNED_CONTACT_M : DOWNED_AVOID_M;
+      const radius = mark[i] ? DOWNED_CONTACT_M : DOWNED_AVOID_M;
       const push = this.obstaclePush(body, near[i].x, near[i].y, radius, targetSpeed, dt);
       x += push.x;
       y += push.y;
@@ -1683,29 +1773,40 @@ export class PolygonEvacuationEngine {
    * Open floor keeps the 0.8 m sidestep. A body in a door is contact distance,
    * and a passable door is aimed through the free lane so that sidestep does
    * not throw the line into the jamb.
+   * `mouthMark` lines up with the returned `near` list.
    */
   private aimAroundBodies(body: Matter.Body, target: Vec2): {
     aim: Vec2;
     near: Array<{ x: number; y: number }>;
-    mouth: Set<number>;
   } {
     const ped = this.pedOf(body);
-    const pos = { x: body.position.x, y: body.position.y };
-    const near = this.staticBodiesNear(body, target);
+    const pos = this.steerPos;
+    pos.x = body.position.x;
+    pos.y = body.position.y;
+    this.fillNear(ped.level ?? '', pos.x, pos.y, target.x, target.y, body);
     const walls = this.wallsNear(ped);
-    const squeeze = doorSqueezeAim(pos, target, walls, near);
-    const mouth = new Set<number>(doorMouthIndices(walls, near));
-    const tuned = near.map((b, i) => ({
-      x: b.x,
-      y: b.y,
-      radius: mouth.has(i) ? DOWNED_CONTACT_M : undefined,
-    }));
-    const forSteer = squeeze ? tuned.filter((_, i) => !squeeze.mouth.includes(i)) : tuned;
-    return {
-      aim: steerPastBodies(pos, squeeze?.aim ?? target, forSteer),
-      near,
-      mouth,
-    };
+    const near = this.nearView;
+    markBodiesInDoors(walls, near, this.mouthMark);
+    const squeeze = doorSqueezeAim(pos, target, walls, near, DOWNED_CONTACT_M, this.lookupLanes);
+    const mark = this.mouthMark;
+    let forSteer: Array<{ x: number; y: number; radius?: number }> = near;
+    if (squeeze && squeeze.mouth.length > 0) {
+      const skip = this.squeezeSkip;
+      for (let k = 0; k < squeeze.mouth.length; k++) skip[squeeze.mouth[k]] = 1;
+      const dst = this.steerView;
+      dst.length = 0;
+      for (let i = 0; i < near.length; i++) {
+        near[i].radius = mark[i] ? DOWNED_CONTACT_M : undefined;
+        if (skip[i] === 1) continue;
+        dst.push(near[i]);
+      }
+      for (let k = 0; k < squeeze.mouth.length; k++) skip[squeeze.mouth[k]] = 0;
+      forSteer = dst;
+    } else {
+      for (let i = 0; i < near.length; i++) near[i].radius = mark[i] ? DOWNED_CONTACT_M : undefined;
+    }
+    steerPastBodies(pos, squeeze?.aim ?? target, forSteer, DOWNED_AVOID_M, this.steerAim);
+    return { aim: this.steerAim, near };
   }
 
   private steer(
@@ -1757,7 +1858,7 @@ export class PolygonEvacuationEngine {
     }
     // A downed body still pushes, including backwards. Stripping that is
     // what walks people into the body they are trying to pass.
-    const bodies = this.pushFromBodies(body, steered.near, steered.mouth, targetSpeed, dt);
+    const bodies = this.pushFromBodies(body, steered.near, targetSpeed, dt);
     repX += bodies.x;
     repY += bodies.y;
     // The 0.4 s blend never catches the air drag, so a crawler held on a
