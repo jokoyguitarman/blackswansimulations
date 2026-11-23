@@ -1,0 +1,70 @@
+{
+  "file": "sources.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "source_key": "nureg_1805",
+      "title": "NUREG-1805 Fire Dynamics Tools (FDTs), Final Report (Iqbal and Salley)",
+      "publisher": "US Nuclear Regulatory Commission (via GPO govinfo)",
+      "url": "https://www.govinfo.gov/content/pkg/GOVPUB-Y3_N88-PURL-gpo61712/pdf/GOVPUB-Y3_N88-PURL-gpo61712.pdf",
+      "published_on": "2004-12",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "US federal government work; public domain. Some tables are reproduced from the SFPE Handbook 'with permission': confirm reuse of those tables.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["spread", "movement"],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "ustc_running_2020",
+      "title": "Flows of walking and running pedestrians in a corridor through exits of different widths (project summary)",
+      "publisher": "USTC complex systems lab",
+      "url": "http://complex.ustc.edu.cn/2020/1213/c18202a463395/page.htm",
+      "published_on": "2020",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Summary page only; primary paper not read (to verify).",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["movement"],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "nz_cvm2_2025",
+      "title": "C/VM2 Framework for fire safety design, Second Edition (effective 28 July 2025)",
+      "publisher": "NZ Ministry of Business, Innovation and Employment",
+      "url": "https://www.building.govt.nz/assets/Uploads/building-code-compliance/c-protection-from-fire/asvm/c-protection-from-fire-vm2-second-edition.pdf",
+      "published_on": "2025-07-28",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "NZ Crown copyright; reuse with attribution.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["spread", "movement"],
+      "access_status": "accessed",
+      "status": "active"
+    },
+    {
+      "source_key": "en_1991_1_2_2002",
+      "title": "EN 1991-1-2:2002 Eurocode 1 Part 1-2, Annex F equivalent time of fire exposure",
+      "publisher": "CEN (via EU JRC)",
+      "url": "https://eurocodes.jrc.ec.europa.eu/",
+      "published_on": "2002",
+      "accessed_on": "2026-11-22",
+      "language": "en",
+      "terms_note": "Already cited by physics-movement seeds; Annex F not re-read here.",
+      "content_hash": null,
+      "review_interval_days": 730,
+      "next_review_due": "2028-11-21",
+      "libraries": ["spread"],
+      "access_status": "not_reread",
+      "status": "active"
+    }
+  ]
+}

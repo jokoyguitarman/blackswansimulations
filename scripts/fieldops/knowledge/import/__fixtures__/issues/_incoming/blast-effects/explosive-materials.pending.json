@@ -1,0 +1,72 @@
+{
+  "file": "explosive-materials.pending.json",
+  "review_status": "pending",
+  "rows": [
+    {
+      "material_key": "smokeless_powder",
+      "label": "Smokeless powder",
+      "aliases": ["smokeless powder", "propellant powder"],
+      "tnt_eq_pressure": null,
+      "tnt_eq_impulse": null,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 70,
+      "source_ref": "No public blast TNT-equivalence found in the sources read",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "RE table has nitrocellulose (1.10) but no smokeless-powder row",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": ["tnt_eq_pressure", "tnt_eq_impulse", "gurney_velocity_m_s"],
+        "to_verify": ["value required before import: tnt_eq_* are NOT NULL in migration 239"]
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    },
+    {
+      "material_key": "anfo",
+      "label": "ANFO",
+      "aliases": ["anfo", "ammonium nitrate fuel oil"],
+      "tnt_eq_pressure": 0.82,
+      "tnt_eq_impulse": 0.82,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 10,
+      "source_ref": "IATG 01.80 (2021) Table 10, from AASTP-1 Table 5-2",
+      "valid_pressure_range_mpa": [0.007, 0.7],
+      "note": "Wikipedia's demolition RE factor (0.74) is lower; non-ideal explosive, large scatter with charge size.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'ANFO'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": ["gurney_velocity_m_s"],
+        "to_verify": []
+      },
+      "review": {
+        "state": "pending",
+        "decision": null,
+        "reviewer_name": null,
+        "reviewer_qualification": null,
+        "decided_on": null
+      }
+    }
+  ]
+}
