@@ -88,7 +88,7 @@ import {
   COMMON_PICKS,
   MATERIAL_LIBRARY,
   absorbLegacyFuelCircles,
-  confirmedFuelStudIds,
+  confirmedFuelCells,
   entryById,
   entryCanBurn,
   matchFromEntry,
@@ -292,6 +292,17 @@ interface StudPoint {
 }
 interface SimStud extends StudPoint {
   simPos: Vec2;
+}
+
+function fuelCellsFor(objects: readonly PlacedObject[], studs: readonly SimStud[]) {
+  return confirmedFuelCells(
+    objects,
+    studs.map((stud) => ({
+      id: stud.id,
+      simPos: stud.simPos,
+      level: storeyId(stud.floor),
+    })),
+  );
 }
 
 function objectsOnStuds(
@@ -2035,12 +2046,12 @@ export function DebugRTSSim() {
           );
           const walls = interiorWallsRef.current;
           const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
-          effectsEng.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
+          effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
           for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
           effectDt = effectSteps * FX.EFFECTS_DT;
         } else {
           effectDt = dt * rts.state.clock.speed;
-          effectsEng.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
+          effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
           effectsEng.step(
             effectDt,
             interiorWallsRef.current,
@@ -2162,12 +2173,12 @@ export function DebugRTSSim() {
             gpsSimPosRef.current
               ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
               : null,
-            showStudGridRef.current
-              ? simStudsRef.current.filter(
+            showcaseOn || !showStudGridRef.current
+              ? null
+              : simStudsRef.current.filter(
                   (s) =>
                     levelsRef.current.length <= 1 || storeyId(s.floor) === activeLevelRef.current,
-                )
-              : null,
+                ),
             effectStatesRef.current,
             showcaseOn ? blastRadiusRef.current : undefined,
             showcaseOn ? false : true,
@@ -3508,15 +3519,12 @@ export function DebugRTSSim() {
       const liveRings = ringsRef.current;
       const spreadRadius = manual ? blastRadiusRef.current : liveRings.ignitionM;
       const affectRadius = manual ? blastRadiusRef.current : liveRings.minorM;
-      const engine = new SpatialEffectsEngine({
-        ...(fireParams ?? DEFAULT_FIRE_PARAMS),
-        ambientSpread: true,
-        ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
-      });
+      const engine = new SpatialEffectsEngine(fireParams ?? DEFAULT_FIRE_PARAMS);
       engine.init(asFireStuds);
       attachShafts(engine);
-      const fuelIds = confirmedFuelStudIds(placedObjectsRef.current);
-      engine.setFuelStuds(fuelIds);
+      const fuelCells = fuelCellsFor(placedObjectsRef.current, studs);
+      const fuelIds = new Set(fuelCells.keys());
+      engine.setFuelCells(fuelCells);
       const t0 = blastEffectsTriggerSec(engine.timeScale);
       if (enrichResult?.hazardAnalysis) {
         for (const ha of enrichResult.hazardAnalysis) {
@@ -3593,7 +3601,7 @@ export function DebugRTSSim() {
     const engine = new SpatialEffectsEngine(fireParams ?? undefined);
     engine.init(asFireStuds);
     attachShafts(engine);
-    engine.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
+    engine.setFuelCells(fuelCellsFor(placedObjectsRef.current, studs));
 
     if (enrichResult?.hazardAnalysis) {
       for (const ha of enrichResult.hazardAnalysis) {
@@ -6139,7 +6147,9 @@ export function DebugRTSSim() {
                       className="rounded border-green-700"
                     />
                     Show stud grid
-                    <span className="text-green-800">({allSimStuds.length} studs)</span>
+                    <span className="text-green-800">
+                      ({allSimStuds.length} studs, hidden in the showcase)
+                    </span>
                   </label>
                   <label className="flex items-center gap-2 text-xs text-cyan-500 cursor-pointer">
                     <input
@@ -6598,7 +6608,7 @@ export function DebugRTSSim() {
                             );
                           }
 
-                          preview.setFuelStuds(confirmedFuelStudIds(placedObjects));
+                          preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
                           preview.runPreview(
                             effectPreviewTime,
                             interiorWalls,

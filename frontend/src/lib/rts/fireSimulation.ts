@@ -1,20 +1,40 @@
 import type { Vec2 } from '../evacuation/types';
 import { LEVEL } from '../evacuation/levelConstants';
-import type { InteriorWall, HazardZone, HazardType } from './types';
+import type { InteriorWall, HazardZone } from './types';
 import { levelOf, neighborIdsByLevel, type ShaftPair } from './levels';
+import { defaultLightFuel } from './materialLibrary';
+import {
+  FIREBALL_PULSE_S,
+  FLAME_STANDOFF_M,
+  FLASHOVER_KW_M2,
+  addIgnitionDose,
+  burnoutSec,
+  fireballFluxKwM2,
+  frontSpeedMps,
+  heatReleaseKw,
+  ignitionTimeSec,
+  pointSourceFluxKwM2,
+  type FuelCell,
+} from './flameFront';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 export type FireState = 'none' | 'heating' | 'burning' | 'burnt_out';
 
 export interface FireParams {
+  /** Unused. The flame front does not read a spread rate in seconds. */
   baseSpreadRate: number;
+  /** Fallback burn time when a stud has no fuel numbers. */
   burnDuration: number;
+  /** Unused. Ignition time is t_ig. */
   heatTransferRate: number;
+  /** Seconds a barrier resists after the source side has flashed over. */
   wallResistance: Record<string, number>;
+  /** Unused. A hazard circle does not speed the front. */
   hazardAcceleration: Record<string, number>;
-  /** Showcase only. Unset keeps today's spread (hazard zones only). */
+  /** Unused. The 8 m neighbour rule is gone. */
   ambientSpread?: boolean;
+  /** Unused. The 30 s ambient timer is gone. */
   ambientHeatSec?: number;
 }
 
@@ -22,6 +42,10 @@ export interface FireStudState {
   state: FireState;
   timer: number;
   fuelFactor: number;
+  /** 0–1, how far the front has crossed into this stud. */
+  approach?: number;
+  /** Accumulated Σ dt / t_ig. Holds when the flux drops below CHF. */
+  dose?: number;
 }
 
 export interface FireSimStud {
@@ -31,7 +55,7 @@ export interface FireSimStud {
   level?: string;
 }
 
-// ── Default parameters (NFPA / ISO 834 based) ───────────────────────────
+// ── Barrier ratings (seconds). The timer starts at flashover, not before. ─
 
 export const DEFAULT_FIRE_PARAMS: FireParams = {
   baseSpreadRate: 30,
@@ -113,9 +137,18 @@ function getWallMaterial(wall: InteriorWall): string {
   return (wall.material || '').toLowerCase().trim();
 }
 
-// ── Neighbor search radius (diagonal of 5m grid = ~7.1m, add margin) ───
-
+/**
+ * Neighbour lookup. Wider than a single stud step so the existing order
+ * check still sees the old 8 m set. The front itself refuses anything past
+ * FRONT_LINK_M, so fire does not jump that neighbourhood.
+ */
 const NEIGHBOR_RADIUS = 8;
+
+/**
+ * One step on the 3 m grid, including the diagonal (about 4.24 m).
+ * The front crosses to that next fuel stud and not across an empty one.
+ */
+const FRONT_LINK_M = 4.5;
 
 // ── Fire Simulation Class ────────────────────────────────────────────────
 
@@ -130,11 +163,14 @@ export class FireSimulation {
   private shaftPairs: ShaftPair[] = [];
   private shaftBurn = new Map<string, number>();
   /**
-   * Null keeps today's rule: a blast radius and indoor ambient spread treat
-   * every stud as fuel. A set, including an empty one, is the library: only
-   * those studs ignite.
+   * Null means the caller named no fuel: indoor studs stand in as light wood.
+   * A set, including an empty one, is the library: only those studs ignite.
    */
   private fuelStuds: Set<string> | null = null;
+  private fuelCells: Map<string, FuelCell> | null = null;
+  private burn = new Map<string, { age: number; flashed: boolean }>();
+  /** Wall timers already advanced during this step. */
+  private wallTick = new Set<string>();
 
   constructor(params?: FireParams) {
     this.params = params ?? { ...DEFAULT_FIRE_PARAMS };
@@ -147,11 +183,13 @@ export class FireSimulation {
     this.wallBreachTimers.clear();
     this.shaftPairs = [];
     this.shaftBurn.clear();
+    this.burn.clear();
+    this.wallTick.clear();
     this.elapsed = 0;
 
     for (const s of studs) {
       this.studIndex.set(s.id, s);
-      this.states.set(s.id, { state: 'none', timer: 0, fuelFactor: 1.0 });
+      this.states.set(s.id, { state: 'none', timer: 0, fuelFactor: 1.0, approach: 0, dose: 0 });
     }
 
     this.buildNeighborCache(studs);
@@ -167,121 +205,171 @@ export class FireSimulation {
     this.shaftBurn.clear();
   }
 
-  /** Pass null to restore the old indoor rule. The set survives init. */
+  /** Pass null for the indoor light-wood stand-in. The set survives init. */
   setFuelStuds(ids: ReadonlySet<string> | null) {
     this.fuelStuds = ids == null ? null : new Set(ids);
+    this.fuelCells = null;
+  }
+
+  /**
+   * Category and ignition numbers per stud. Null is the indoor stand-in.
+   * The id set is the map's keys, so an empty map burns nothing.
+   */
+  setFuelCells(cells: ReadonlyMap<string, FuelCell> | null) {
+    if (cells == null) {
+      this.fuelCells = null;
+      this.fuelStuds = null;
+      return;
+    }
+    this.fuelCells = new Map(cells);
+    this.fuelStuds = new Set(cells.keys());
   }
 
   private acceptsFuel(id: string): boolean {
-    return this.fuelStuds == null || this.fuelStuds.has(id);
+    if (this.fuelStuds == null) {
+      return this.studIndex.get(id)?.spatialContext === 'inside_building';
+    }
+    return this.fuelStuds.has(id);
+  }
+
+  private cellFor(id: string): FuelCell | null {
+    if (!this.acceptsFuel(id)) return null;
+    return this.fuelCells?.get(id) ?? defaultLightFuel();
+  }
+
+  private burningCell(id: string): FuelCell {
+    return this.fuelCells?.get(id) ?? defaultLightFuel();
+  }
+
+  private catchFire(id: string) {
+    const state = this.states.get(id);
+    if (!state || state.state === 'burning' || state.state === 'burnt_out') return;
+    const cell = this.burningCell(id);
+    state.state = 'burning';
+    state.timer = burnoutSec(cell);
+    state.fuelFactor = 1;
+    state.approach = 1;
+    state.dose = 1;
+    if (!this.burn.has(id)) this.burn.set(id, { age: 0, flashed: false });
   }
 
   ignite(studIds: string[]) {
-    for (const id of studIds) {
-      const state = this.states.get(id);
-      if (state && state.state === 'none') {
-        state.state = 'burning';
-        state.timer = this.params.burnDuration;
-      }
-    }
+    for (const id of studIds) this.catchFire(id);
   }
 
+  /**
+   * The blast pulse. Fuel inside the radius takes the fireball flux for the
+   * whole pulse at once. Tile and anything outside the radius are unchanged.
+   */
   igniteRadius(center: Vec2, radius: number, level?: string) {
-    const ids: string[] = [];
     for (const [id, stud] of this.studIndex) {
       if (level && (stud.level ?? 'G') !== level) continue;
-      const d = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
-      if (d <= radius && this.acceptsFuel(id)) {
-        ids.push(id);
+      if (!this.acceptsFuel(id)) continue;
+      const distance = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
+      if (distance > radius + 1e-6) continue;
+      const state = this.states.get(id);
+      const cell = this.cellFor(id);
+      if (!state || !cell || state.state === 'burning' || state.state === 'burnt_out') continue;
+      const flux = fireballFluxKwM2(distance, radius);
+      const tig = ignitionTimeSec(flux, cell.chfKwM2, cell.trp);
+      const dose = tig == null ? state.dose ?? 0 : (state.dose ?? 0) + FIREBALL_PULSE_S / tig;
+      state.dose = dose;
+      if (dose >= 1 - 1e-6) this.catchFire(id);
+      else if (dose > 0) {
+        state.state = 'heating';
+        state.approach = Math.min(1, dose);
       }
     }
-    this.ignite(ids);
   }
 
-  step(dt: number, walls: InteriorWall[], hazards: HazardZone[]) {
+  step(dt: number, walls: InteriorWall[], _hazards: HazardZone[]) {
     if (dt <= 0) return;
     this.elapsed += dt;
+    this.wallTick.clear();
 
-    const toHeat: Array<{ id: string; accel: number }> = [];
+    const burning: Array<{
+      id: string;
+      stud: FireSimStud;
+      cell: FuelCell;
+      heatKw: number;
+      reachM: number;
+      flashed: boolean;
+    }> = [];
 
     for (const [id, fState] of this.states) {
-      if (fState.state === 'burning') {
-        fState.timer -= dt;
-        if (fState.timer <= 0) {
-          fState.state = 'burnt_out';
-          fState.timer = 0;
-          continue;
-        }
+      if (fState.state !== 'burning') continue;
+      const stud = this.studIndex.get(id);
+      if (!stud) continue;
+      const meta = this.burn.get(id) ?? { age: 0, flashed: false };
+      meta.age += dt;
+      const cell = this.burningCell(id);
+      const heatKw = heatReleaseKw(cell, meta.age);
+      if (!meta.flashed && pointSourceFluxKwM2(heatKw, FLAME_STANDOFF_M) >= FLASHOVER_KW_M2) {
+        meta.flashed = true;
+      }
+      this.burn.set(id, meta);
+      fState.timer -= dt;
+      fState.approach = 1;
+      if (fState.timer <= 0) {
+        fState.state = 'burnt_out';
+        fState.timer = 0;
+        fState.approach = 0;
+        continue;
+      }
+      burning.push({
+        id,
+        stud,
+        cell,
+        heatKw,
+        reachM: meta.age * frontSpeedMps(cell.spreadMPerMin),
+        flashed: meta.flashed,
+      });
+    }
 
-        const src = this.studIndex.get(id);
-        if (!src) continue;
-        const neighbors = this.neighborCache.get(id) ?? [];
-
-        for (const nId of neighbors) {
-          const nState = this.states.get(nId);
-          if (!nState || nState.state !== 'none') continue;
-
-          const dest = this.studIndex.get(nId);
-          if (!dest) continue;
-
-          let blocked = false;
-          let wallMaterial = '';
-          const srcLevel = levelOf(src);
-          for (const w of walls) {
-            if (levelOf(w) !== srcLevel) continue;
-            if (wallBlocksFire(src.simPos, dest.simPos, w)) {
-              wallMaterial = getWallMaterial(w);
-              const resistance = this.lookupResistance(wallMaterial);
-              if (resistance === Infinity) {
-                blocked = true;
-                break;
-              }
-
-              const breachKey = `${id}->${nId}`;
-              const elapsed = this.wallBreachTimers.get(breachKey) ?? 0;
-              if (elapsed < resistance) {
-                this.wallBreachTimers.set(breachKey, elapsed + dt);
-                blocked = true;
-              }
-              break;
-            }
-          }
-
-          if (!blocked) {
-            if (!this.acceptsFuel(nId)) continue;
-            const accel = this.getHazardAcceleration(
-              dest.simPos,
-              hazards.filter((h) => levelOf(h) === levelOf(dest)),
-            );
-            if (accel > 0) {
-              toHeat.push({ id: nId, accel });
-            } else if (this.params.ambientSpread && dest.spatialContext === 'inside_building') {
-              toHeat.push({ id: nId, accel: 0 });
-            }
-          }
-        }
-      } else if (fState.state === 'heating') {
-        fState.timer -= dt;
-        if (fState.timer <= 0) {
-          fState.state = 'burning';
-          fState.timer = this.params.burnDuration * fState.fuelFactor;
-        }
+    const incoming = new Map<string, { flux: number; approach: number }>();
+    for (const src of burning) {
+      const neighbors = this.neighborCache.get(src.id) ?? [];
+      for (const nId of neighbors) {
+        const dest = this.studIndex.get(nId);
+        const nState = this.states.get(nId);
+        if (!dest || !nState) continue;
+        if (nState.state === 'burning' || nState.state === 'burnt_out') continue;
+        if (!this.acceptsFuel(nId)) continue;
+        const dist = Math.hypot(dest.simPos.x - src.stud.simPos.x, dest.simPos.y - src.stud.simPos.y);
+        if (!(dist > 0) || dist > FRONT_LINK_M) continue;
+        if (!this.crossingOpen(src.stud, dest, walls, src.flashed, dt)) continue;
+        const slot = incoming.get(nId) ?? { flux: 0, approach: 0 };
+        slot.flux += pointSourceFluxKwM2(src.heatKw, Math.max(dist, FLAME_STANDOFF_M));
+        const along = src.reachM / dist;
+        if (along > slot.approach) slot.approach = along;
+        incoming.set(nId, slot);
       }
     }
 
-    for (const { id, accel } of toHeat) {
-      const nState = this.states.get(id);
-      if (!nState || nState.state !== 'none') continue;
-      if (accel === 0) {
-        nState.state = 'heating';
-        nState.timer = this.params.ambientHeatSec ?? 30;
-        nState.fuelFactor = 1;
+    for (const [id, fState] of this.states) {
+      if (fState.state !== 'heating' || incoming.has(id)) continue;
+      if ((fState.dose ?? 0) > 0) {
+        fState.approach = Math.min(1, fState.dose ?? 0);
         continue;
       }
-      nState.state = 'heating';
-      const effectiveAccel = Math.max(1, accel);
-      nState.timer = this.params.heatTransferRate / effectiveAccel;
-      nState.fuelFactor = effectiveAccel > 1 ? effectiveAccel * 0.5 : 1.0;
+      fState.state = 'none';
+      fState.approach = 0;
+    }
+
+    for (const [id, slot] of incoming) {
+      const fState = this.states.get(id);
+      const cell = this.cellFor(id);
+      if (!fState || !cell || fState.state === 'burning' || fState.state === 'burnt_out') continue;
+      const dose = addIgnitionDose(fState.dose ?? 0, slot.flux, cell.chfKwM2, cell.trp, dt);
+      fState.dose = dose;
+      if (dose >= 1 || slot.approach >= 1) {
+        this.catchFire(id);
+        continue;
+      }
+      if (dose > 0 || slot.approach > 0) {
+        fState.state = 'heating';
+        fState.approach = Math.max(slot.approach, Math.min(1, dose));
+      }
     }
 
     for (const pair of this.shaftPairs) {
@@ -295,10 +383,38 @@ export class FireSimulation {
       if (!this.acceptsFuel(pair.upper)) continue;
       const upper = this.states.get(pair.upper);
       if (!upper || upper.state !== 'none') continue;
-      upper.fuelFactor = 1;
-      upper.state = 'burning';
-      upper.timer = this.params.burnDuration;
+      this.catchFire(pair.upper);
     }
+  }
+
+  /**
+   * A door gap is open. A solid barrier stays shut until the source has
+   * flashed over, then for its rating. Concrete and the other infinite
+   * ratings never open. The timer does not run before flashover.
+   */
+  private crossingOpen(
+    src: FireSimStud,
+    dest: FireSimStud,
+    walls: InteriorWall[],
+    flashed: boolean,
+    dt: number,
+  ): boolean {
+    const srcLevel = levelOf(src);
+    for (const wall of walls) {
+      if (levelOf(wall) !== srcLevel) continue;
+      if (!wallBlocksFire(src.simPos, dest.simPos, wall)) continue;
+      if (!flashed) return false;
+      const resistance = this.lookupResistance(getWallMaterial(wall));
+      if (resistance === Infinity) return false;
+      const key = `${src.id}->${dest.id}`;
+      const elapsed = this.wallBreachTimers.get(key) ?? 0;
+      if (this.wallTick.has(key)) return elapsed + 1e-9 >= resistance;
+      const next = elapsed + dt;
+      this.wallBreachTimers.set(key, next);
+      this.wallTick.add(key);
+      return next + 1e-9 >= resistance;
+    }
+    return true;
   }
 
   private lookupResistance(material: string): number {
@@ -309,18 +425,6 @@ export class FireSimulation {
       }
     }
     return this.params.wallResistance[''] ?? 900;
-  }
-
-  private getHazardAcceleration(pos: Vec2, hazards: HazardZone[]): number {
-    let maxAccel = 0;
-    for (const h of hazards) {
-      const d = Math.hypot(h.pos.x - pos.x, h.pos.y - pos.y);
-      if (d <= h.radius) {
-        const accel = this.params.hazardAcceleration[h.hazardType as HazardType] ?? 1;
-        if (accel > maxAccel) maxAccel = accel;
-      }
-    }
-    return maxAccel;
   }
 
   runPreview(

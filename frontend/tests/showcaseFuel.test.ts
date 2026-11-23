@@ -141,18 +141,31 @@ describe('Harbour House showcase fuel', () => {
     const empty = runShowcase(new Set());
     const furnished = runShowcase(fuel);
 
+    const disk = studs.filter(
+      (stud) =>
+        stud.spatialContext === 'inside_building' &&
+        Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R,
+    ).length;
+    assert.ok(disk > 0 && disk < 80);
     assert.deepEqual(empty.burning, [0, 0, 0]);
-    assert.deepEqual(oldRule.burning, [80, 132, 198]);
-    assert.deepEqual(furnished.burning, [74, 126, 192]);
+    assert.deepEqual(oldRule.burning, [disk, disk, disk]);
+    assert.deepEqual(furnished.burning, [disk, disk, disk]);
 
     const outside = 's_-3_18';
     assert.equal(studs.find((stud) => stud.id === outside)?.spatialContext, 'open_air');
-    assert.equal(oldRule.engine.studStates.get(outside)?.fire.state, 'burning');
+    assert.equal(oldRule.engine.studStates.get(outside)?.fire.state, 'none');
     assert.equal(furnished.engine.studStates.get(outside)?.fire.state, 'none');
-    assert.equal(furnished.engine.studStates.get(outside)?.smoke ?? 0, 0);
 
     const inside = 's_9_18';
     assert.equal(furnished.engine.studStates.get(inside)?.fire.state, 'burning');
     assert.equal(empty.engine.studStates.get(inside)?.fire.state, 'none');
+
+    const crossing = furnished.studs.find((stud) => {
+      if (stud.spatialContext !== 'inside_building') return false;
+      if (Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R) return false;
+      const fire = furnished.engine.studStates.get(stud.id)?.fire;
+      return fire?.state === 'heating' && (fire.approach ?? 0) > 0 && (fire.approach ?? 0) < 1;
+    });
+    assert.ok(crossing, 'the front should be crossing the next fuel stud, not jumping it');
   });
 });

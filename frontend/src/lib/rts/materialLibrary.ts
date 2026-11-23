@@ -2,14 +2,16 @@
  * Curated materials for objects a trainer places on a stud.
  *
  * The trainer never picks a fuel category. They describe the object, the
- * keyword list matches library entries, and they confirm the names. The fire
- * sim reads only the category, and only after confirm. Toxic yields and the
- * ignition numbers are stored for later phases. Nothing in Phase 1 reads them.
+ * keyword list matches library entries, and they confirm the names. After
+ * confirm, the fire sim reads the category and that entry's ignition numbers.
+ * Toxic yields stay stored and unread.
  *
  * Light-fuel CHF 10 kW/m² and TRP 134 are the red-oak row, used as the stand-in
  * for ordinary wood. Heavy-fuel CHF, the shorter TRP, both room-scale speeds,
  * both fuel loads, and every yield are assumed.
  */
+
+import type { FuelCell } from './flameFront';
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -34,7 +36,7 @@ export interface MaterialEntry {
   trp: number | null;
   /** α in Q = α t², kW/s². Null does not grow a fire. */
   alphaKwS2: number | null;
-  /** Room-scale front, metres per minute. Phase 1 does not move a front. */
+  /** Room-scale front, metres per minute. */
   spreadMPerMin: number | null;
   fuelLoadKgM2: number | null;
   liquidPool: boolean;
@@ -56,6 +58,13 @@ export interface PlacedObject {
   description: string;
   matches: MaterialMatch[];
   confirmed: boolean;
+  /**
+   * Legacy circle radius, metres. Confirmed fuel then covers every stud
+   * inside it. A point object leaves this unset and fuels only its stud.
+   */
+  coverRadiusM?: number;
+  /** Centre of that circle. Snap moves `pos` onto a stud and leaves this. */
+  coverCenter?: { x: number; y: number };
 }
 
 export interface CommonPick {
@@ -214,6 +223,49 @@ export function entryCanBurn(fuel: FuelCategory): boolean {
   return fuel === 'light' || fuel === 'heavy';
 }
 
+/** The entry's ignition numbers, or null when that entry cannot burn. */
+export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
+  if (entry.fuel !== 'light' && entry.fuel !== 'heavy') return null;
+  if (
+    entry.chfKwM2 == null ||
+    entry.trp == null ||
+    entry.alphaKwS2 == null ||
+    entry.spreadMPerMin == null ||
+    entry.fuelLoadKgM2 == null
+  ) {
+    return null;
+  }
+  return {
+    category: entry.fuel,
+    chfKwM2: entry.chfKwM2,
+    trp: entry.trp,
+    alphaKwS2: entry.alphaKwS2,
+    spreadMPerMin: entry.spreadMPerMin,
+    fuelLoadKgM2: entry.fuelLoadKgM2,
+    liquidPool: entry.liquidPool,
+  };
+}
+
+/** Wood, used when a scene names no fuel. Assumed stand-in for an ordinary interior. */
+export function defaultLightFuel(): FuelCell {
+  const cell = fuelCellFromEntry(entryById('wood') as MaterialEntry);
+  if (!cell) {
+    throw new Error('wood entry is missing its ignition numbers');
+  }
+  return cell;
+}
+
+function worstFuelCell(matches: readonly MaterialMatch[]): FuelCell | null {
+  let best: FuelCell | null = null;
+  for (const match of matches) {
+    const entry = entryById(match.entryId);
+    const cell = entry ? fuelCellFromEntry(entry) : null;
+    if (!cell) continue;
+    if (!best || (cell.category === 'heavy' && best.category === 'light')) best = cell;
+  }
+  return best;
+}
+
 export function matchFromEntry(
   entry: MaterialEntry,
   source: MaterialMatch['source'],
@@ -283,14 +335,47 @@ export function matchMaterials(
   return entry ? [matchFromEntry(entry, 'ai')] : [];
 }
 
-/** Studs a confirmed light or heavy entry may burn. Unconfirmed objects are skipped. */
-export function confirmedFuelStudIds(objects: readonly PlacedObject[]): Set<string> {
-  const ids = new Set<string>();
+/**
+ * Confirmed light or heavy fuel, one cell per stud. Heavy wins when two
+ * objects cover the same stud. A legacy circle covers every stud inside its
+ * old radius; pass the stud list or that circle falls back to its own stud.
+ * Unconfirmed objects are skipped.
+ */
+export function confirmedFuelCells(
+  objects: readonly PlacedObject[],
+  studs?: readonly SnapStud[],
+): Map<string, FuelCell> {
+  const cells = new Map<string, FuelCell>();
+  const add = (id: string, cell: FuelCell) => {
+    if (!id) return;
+    const prev = cells.get(id);
+    if (!prev || (cell.category === 'heavy' && prev.category === 'light')) cells.set(id, cell);
+  };
   for (const obj of objects) {
-    if (!obj.confirmed || !obj.studId) continue;
-    if (obj.matches.some((match) => entryCanBurn(match.fuel))) ids.add(obj.studId);
+    if (!obj.confirmed) continue;
+    const cell = worstFuelCell(obj.matches);
+    if (!cell) continue;
+    if (obj.coverRadiusM && obj.coverRadiusM > 0 && studs && studs.length > 0) {
+      const center = obj.coverCenter ?? obj.pos;
+      const level = obj.level || 'G';
+      for (const stud of studs) {
+        if ((stud.level || 'G') !== level) continue;
+        const dist = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
+        if (dist <= obj.coverRadiusM + 1e-6) add(stud.id, cell);
+      }
+      continue;
+    }
+    if (obj.studId) add(obj.studId, cell);
   }
-  return ids;
+  return cells;
+}
+
+/** Stud ids from `confirmedFuelCells`. */
+export function confirmedFuelStudIds(
+  objects: readonly PlacedObject[],
+  studs?: readonly SnapStud[],
+): Set<string> {
+  return new Set(confirmedFuelCells(objects, studs).keys());
 }
 
 const LEGACY_FUEL_CIRCLES = new Set(['combustible', 'ignitable']);
@@ -303,6 +388,8 @@ export interface LegacyFuelCircle {
   description?: string;
   studId?: string;
   level?: string;
+  /** Old circle radius, metres. Every stud inside it becomes fuel. */
+  radius?: number;
 }
 
 /**
@@ -339,6 +426,9 @@ export function absorbLegacyFuelCircles<T extends LegacyFuelCircle>(
       description: zone.description?.trim() || zone.label?.trim() || 'Furnishing',
       matches,
       confirmed: options?.confirmed ?? false,
+      ...(zone.radius && zone.radius > 0
+        ? { coverRadiusM: zone.radius, coverCenter: { x: zone.pos.x, y: zone.pos.y } }
+        : {}),
     });
     taken.add(id);
   }

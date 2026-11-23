@@ -232,7 +232,7 @@ export function writeSmokeRGBA(
 
 export function writeFireRGBA(
   layout: RasterLayout,
-  states: ReadonlyMap<string, { fire: { state: string } }>,
+  states: ReadonlyMap<string, { fire: { state: string; approach?: number } }>,
   out: Uint8ClampedArray,
   dirty?: DirtyBox,
   cover?: { fire: number },
@@ -254,10 +254,12 @@ export function writeFireRGBA(
       b = 64;
       a = 191;
     } else if (state === 'heating') {
+      const approach = st?.fire.approach;
+      const grown = approach == null ? 1 : Math.max(0, Math.min(1, approach));
       r = 251;
       g = 146;
       b = 60;
-      a = 115;
+      a = Math.round(40 + 75 * grown);
     } else if (state === 'burnt_out') {
       r = 60;
       g = 60;

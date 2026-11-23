@@ -392,19 +392,12 @@ describe('evacuation showcase', () => {
     assert.equal(reduced.shakePx, 0);
   });
 
-  test('12 ambient fire spread stays indoors', () => {
+  test('12 flame front stays on indoor fuel', () => {
     const studs = [
       { id: 'a', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
       { id: 'b', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
       { id: 'c', simPos: { x: 0, y: 3 }, spatialContext: 'open_air' },
     ];
-    const plain = new FireSimulation();
-    plain.init(studs);
-    plain.ignite(['a']);
-    for (let i = 0; i < 60; i++) plain.step(1, [], []);
-    assert.equal(plain.states.get('b')?.state, 'none');
-    assert.equal(plain.states.get('c')?.state, 'none');
-
     const spread = new FireSimulation({
       baseSpreadRate: 30,
       burnDuration: 300,
@@ -418,8 +411,12 @@ describe('evacuation showcase', () => {
     spread.ignite(['a']);
     spread.step(1, [], []);
     assert.equal(spread.states.get('b')?.state, 'heating');
+    assert.notEqual(spread.states.get('b')?.state, 'burning');
     assert.equal(spread.states.get('c')?.state, 'none');
     for (let i = 0; i < 30; i++) spread.step(1, [], []);
+    assert.equal(spread.states.get('b')?.state, 'heating');
+    assert.equal(spread.states.get('c')?.state, 'none');
+    for (let i = 0; i < 330; i++) spread.step(1, [], []);
     assert.equal(spread.states.get('b')?.state, 'burning');
     assert.equal(spread.states.get('c')?.state, 'none');
   });

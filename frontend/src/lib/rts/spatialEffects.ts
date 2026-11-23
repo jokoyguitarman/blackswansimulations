@@ -6,6 +6,7 @@ import {
   type FireStudState,
   type FireParams,
 } from './fireSimulation';
+import type { FuelCell } from './flameFront';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -187,10 +188,16 @@ export class SpatialEffectsEngine {
     this.fireSim.setShaftPairs(this.verticalPairs);
   }
 
-  /** Confirmed light and heavy studs. Null keeps the old indoor rule. */
+  /** Confirmed studs, with light wood assumed where no category was stored. Null is the indoor stand-in. */
   setFuelStuds(ids: ReadonlySet<string> | null) {
     this.fuelGate = ids == null ? null : new Set(ids);
     this.fireSim.setFuelStuds(this.fuelGate);
+  }
+
+  /** Per-stud category. An empty map burns nothing. Null is the indoor stand-in. */
+  setFuelCells(cells: ReadonlyMap<string, FuelCell> | null) {
+    this.fuelGate = cells == null ? null : new Set(cells.keys());
+    this.fireSim.setFuelCells(cells);
   }
 
   registerHazard(

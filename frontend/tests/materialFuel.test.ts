@@ -131,7 +131,8 @@ function blastEngine(fuel: Set<string> | null) {
   engine.init([
     { id: 'tile', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
     { id: 'table', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
-    { id: 'next', simPos: { x: 3, y: 6 }, spatialContext: 'inside_building' },
+    { id: 'next', simPos: { x: 6, y: 0 }, spatialContext: 'inside_building' },
+    { id: 'yard', simPos: { x: 1, y: 0 }, spatialContext: 'open_air' },
   ]);
   if (fuel) engine.setFuelStuds(fuel);
   engine.registerHazard(
@@ -236,6 +237,42 @@ describe('legacy circles become objects', () => {
     assert.equal(confirmedFuelStudIds(absorbed.objects).size, 0);
   });
 
+  test('a converted circle fuels every stud inside its old radius', () => {
+    const absorbed = absorbLegacyFuelCircles(
+      [
+        {
+          id: 'tables',
+          pos: { x: 0, y: 0 },
+          radius: 3,
+          hazardType: 'combustible',
+          description: 'Wooden table tops',
+        },
+        {
+          id: 'gas',
+          pos: { x: 20, y: 0 },
+          radius: 5,
+          hazardType: 'ignitable',
+          description: 'Gas line',
+        },
+      ],
+      [],
+      { confirmed: true },
+    );
+    const studs = [
+      { id: 'c', simPos: { x: 0, y: 0 }, level: 'G' },
+      { id: 'e', simPos: { x: 3, y: 0 }, level: 'G' },
+      { id: 'far', simPos: { x: 6, y: 0 }, level: 'G' },
+      { id: 'up', simPos: { x: 0, y: 0 }, level: 'L1' },
+      { id: 'gas', simPos: { x: 20, y: 0 }, level: 'G' },
+    ];
+    const fuel = confirmedFuelStudIds(absorbed.objects, studs);
+    assert.equal(fuel.has('c'), true);
+    assert.equal(fuel.has('e'), true);
+    assert.equal(fuel.has('far'), false);
+    assert.equal(fuel.has('up'), false);
+    assert.equal(fuel.has('gas'), false);
+  });
+
   test('the food court ships confirmed, and the open tile is not fuel', () => {
     const polygon = foodCourtSample.scene.buildingPolygon.map(
       (pair) => [pair[0], pair[1]] as [number, number],
@@ -247,13 +284,31 @@ describe('legacy circles become objects', () => {
     );
     assert.equal(placed.length, 7);
     assert.equal(placed.every((obj) => obj.confirmed && obj.studId), true);
-    const fuel = confirmedFuelStudIds(placed);
+    const fuel = confirmedFuelStudIds(
+      placed,
+      studs.map((stud) => ({ id: stud.id, simPos: stud.simPos, level: stud.floor })),
+    );
     const fryer = placed.find((obj) => obj.id === 'legacy-hz-gas-fryer');
     const noodle = placed.find((obj) => obj.id === 'legacy-hz-gas-noodle');
     const table = placed.find((obj) => obj.id === 'legacy-hz-tables-mid');
     assert.ok(fryer && fuel.has(fryer.studId));
-    assert.ok(table && fuel.has(table.studId));
-    assert.ok(noodle);
+    assert.ok(table && table.coverCenter && table.coverRadiusM === 3);
+    assert.deepEqual(table.coverCenter, { x: 0.5, y: 0.5 });
+    const tableStuds = studs.filter(
+      (stud) =>
+        (stud.floor || 'G') === (table.level || 'G') &&
+        Math.hypot(stud.simPos.x - table.coverCenter.x, stud.simPos.y - table.coverCenter.y) <=
+          table.coverRadiusM + 1e-6,
+    );
+    assert.ok(tableStuds.length >= 1);
+    for (const stud of tableStuds) assert.equal(fuel.has(stud.id), true);
+    assert.ok(noodle && noodle.coverCenter && noodle.coverRadiusM === 2);
+    const noodleStuds = studs.filter(
+      (stud) =>
+        Math.hypot(stud.simPos.x - noodle.coverCenter.x, stud.simPos.y - noodle.coverCenter.y) <=
+        noodle.coverRadiusM + 1e-6,
+    );
+    for (const stud of noodleStuds) assert.equal(fuel.has(stud.id), false);
     assert.equal(fuel.has(noodle.studId), false);
     assert.deepEqual(
       noodle.matches.map((match) => match.entryId),
@@ -291,23 +346,30 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'none');
   });
 
-  test('a blast lights a confirmed table and leaves the bare tile dark', () => {
+  test('a blast lights a confirmed table and the front then crosses to the next fuel stud', () => {
     const { engine, zone } = blastEngine(new Set(['table', 'next']));
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
+    assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
     assert.equal(engine.studStates.get('table')?.fire.state, 'burning');
-    assert.equal(engine.studStates.get('next')?.fire.state, 'heating');
+    assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
 
-    engine.step(30, [], [zone]);
+    let seconds = 0.1;
+    while (engine.studStates.get('next')?.fire.state !== 'burning' && seconds < 400) {
+      engine.step(1, [], [zone]);
+      seconds += 1;
+    }
+    assert.ok(seconds > 350 && seconds < 370, `front arrived in ${seconds}s`);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
-    assert.equal(engine.studStates.get('next')?.fire.state, 'burning');
+    assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });
 
-  test('without a fuel set the old blast still lights every stud in the radius', () => {
+  test('without a fuel set the blast lights indoor studs and leaves the yard dark', () => {
     const { engine, zone } = blastEngine(null);
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'burning');
     assert.equal(engine.studStates.get('table')?.fire.state, 'burning');
+    assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });
 
   test('blast smoke builds on fuel and stays off open tile', () => {
