@@ -353,6 +353,8 @@ describe('legacy circles become objects', () => {
     assert.ok(pizzaTable && pizzaGas && fuel.has(pizzaTable.studId));
     const pizzaGap = Math.hypot(pizzaTable.pos.x - pizzaGas.pos.x, pizzaTable.pos.y - pizzaGas.pos.y);
     assert.ok(pizzaGap > 2.5 && pizzaGap < 3.5, `pizza table is ${pizzaGap} m from the gas line`);
+    const pizzaFridge = placed.find((obj) => obj.id === 'elec-pizza');
+    assert.ok(pizzaFridge && pizzaFridge.studId !== pizzaTable.studId);
   });
 });
 

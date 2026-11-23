@@ -712,6 +712,7 @@ export function DebugRTSSim() {
   const [placedObjects, setPlacedObjects] = useState<PlacedObject[]>([]);
   const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
   const [gasJetCount, setGasJetCount] = useState(0);
+  const [arcCount, setArcCount] = useState(0);
   const [placingObject, setPlacingObject] = useState(false);
   const [objectNotice, setObjectNotice] = useState<string | null>(null);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
@@ -1261,6 +1262,7 @@ export function DebugRTSSim() {
     effectsEngineRef.current = null;
     setEffectStates(null);
     setGasJetCount(0);
+    setArcCount(0);
     rtsRef.current = new RTSEngine();
     setPedestrians([]);
     setWallPoints([]);
@@ -1636,6 +1638,7 @@ export function DebugRTSSim() {
     effectsEngineRef.current = null;
     setEffectStates(null);
     setGasJetCount(0);
+    setArcCount(0);
     const verts = projectPolygon(polygon);
     rtsRef.current = new RTSEngine();
     rtsRef.current.setBuildingVertices(verts);
@@ -2095,6 +2098,8 @@ export function DebugRTSSim() {
         effectStatesRef.current = new Map(effectsEng.studStates);
         const jetCount = effectsEng.gasJets().length;
         setGasJetCount((prev) => (prev === jetCount ? prev : jetCount));
+        const liveArcs = effectsEng.electricalArcs().length;
+        setArcCount((prev) => (prev === liveArcs ? prev : liveArcs));
 
         // Casualty deterioration based on spatial effects
         const eStates = effectsEng.studStates;
@@ -2278,6 +2283,7 @@ export function DebugRTSSim() {
               : null,
             placedObjectDraws(placedObjectsRef.current),
             effectsEngineRef.current?.gasJets() ?? null,
+            effectsEngineRef.current?.electricalArcs() ?? null,
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -2846,6 +2852,15 @@ export function DebugRTSSim() {
             ) {
               effectsEngineRef.current.shutOffGas(hitObj.id);
               setGasJetCount(effectsEngineRef.current.gasJets().length);
+            }
+            if (
+              rts.state.clock.phase !== 'setup' &&
+              hitObj.confirmed &&
+              hitObj.matches.some((match) => match.behaviour === 'electrical') &&
+              effectsEngineRef.current?.isArcing(hitObj.id)
+            ) {
+              effectsEngineRef.current.shutOffPower(hitObj.id);
+              setArcCount(effectsEngineRef.current.electricalArcs().length);
             }
             setActiveObjectId(hitObj.id);
             rts.state.selection.selectionBox = null;
@@ -3718,6 +3733,7 @@ export function DebugRTSSim() {
     blastFiredRef.current = false;
     explosionStartRef.current = null;
     setGasJetCount(0);
+    setArcCount(0);
     setBanner(null);
     setShowcaseHud(null);
     hudAtRef.current = 0;
@@ -5741,6 +5757,20 @@ export function DebugRTSSim() {
                           )}
                         </div>
                       )}
+                    {active.confirmed &&
+                      active.matches.some((match) => match.behaviour === 'electrical') &&
+                      effectsEngineRef.current?.isArcing(active.id) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            effectsEngineRef.current?.shutOffPower(active.id);
+                            setArcCount(effectsEngineRef.current?.electricalArcs().length ?? 0);
+                          }}
+                          className="w-full text-xs px-2 py-1.5 rounded border border-sky-400 bg-sky-900/50 text-sky-100"
+                        >
+                          Shut off this supply
+                        </button>
+                      )}
                   </div>
                 );
               })()}
@@ -5978,6 +6008,22 @@ export function DebugRTSSim() {
                   className="w-full text-xs px-2 py-1.5 rounded border border-orange-400 bg-orange-800 text-orange-50 font-bold"
                 >
                   Shut off gas
+                </button>
+              </div>
+            )}
+
+            {arcCount > 0 && (
+              <div className="bg-gray-900 border border-sky-500 rounded p-3 space-y-2">
+                <div className="text-xs text-sky-200">Arcs {arcCount}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    effectsEngineRef.current?.shutOffPower();
+                    setArcCount(0);
+                  }}
+                  className="w-full text-xs px-2 py-1.5 rounded border border-sky-400 bg-sky-800 text-sky-50 font-bold"
+                >
+                  Shut off power
                 </button>
               </div>
             )}

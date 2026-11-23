@@ -33,7 +33,7 @@ export const foodCourtSample = {
     ],
     "centerLat": 1.3,
     "centerLng": 103.8,
-    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Tables and the fryer oil are confirmed objects. Gas lines are confirmed and do not burn until a blast opens one. Each stall has an electrical appliance, which is an ignition source and not fuel. A wooden table sits in the noodle stall, one stud from that gas line.",
+    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Tables and the fryer oil are confirmed objects. Gas lines are confirmed and do not burn until a blast opens one. Each stall has an electrical appliance. It is not fuel, and it does not arc until a blast faults it. A wooden table sits one stud from the noodle gas line, and another one stud from the pizza gas line. The pizza fridge is the next stud, not under that table.",
     "pedestrianCount": 0,
     "levels": [
       {
@@ -480,9 +480,11 @@ function confirmedPoint(
 }
 
 /**
- * The old circles, already confirmed, plus one wooden table in the noodle
- * stall and one electrical appliance in each stall. The drinks text does not
- * say "gas line": that appliance is electrical only, so it is not a pipe.
+ * The old circles, already confirmed, plus a wooden table one stud from the
+ * noodle and pizza gas lines, and one electrical appliance in each stall.
+ * The pizza fridge is the next stud east of that table, not on it, so the
+ * jet can light the table on its own. The drinks text does not say "gas
+ * line": that appliance is electrical only, so it is not a pipe.
  */
 export function foodCourtPlacedObjects(): PlacedObject[] {
   return [
@@ -492,7 +494,7 @@ export function foodCourtPlacedObjects(): PlacedObject[] {
     confirmedPoint('elec-noodle', -14.5, -8.5, 'electrical', 'Noodle stall. Fridge.'),
     confirmedPoint('elec-grill', -5.5, -8.5, 'electrical', 'Grill stall. Fridge.'),
     confirmedPoint('elec-fryer', 0.5, -8.5, 'electrical', 'Fryer stall. Fridge.'),
-    confirmedPoint('elec-pizza', 6.5, -8.5, 'electrical', 'Pizza stall. Fridge.'),
+    confirmedPoint('elec-pizza', 8.5, -8.5, 'electrical', 'Pizza stall. Fridge beside the table.'),
     confirmedPoint(
       'elec-drinks',
       12.5,

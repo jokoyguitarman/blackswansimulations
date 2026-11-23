@@ -1,11 +1,12 @@
 import type { Vec2 } from '../evacuation/types';
 import { LEVEL } from '../evacuation/levelConstants';
-import { isNearWallBehind } from '../evacuation/hazardSensing';
 import type { InteriorWall, HazardZone } from './types';
 import { levelOf, neighborIdsByLevel, type ShaftPair } from './levels';
 import { defaultLightFuel, type ElectricalPlacement, type GasLinePlacement } from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
 import {
+  ELECTRICAL_ARC_SEC,
+  ELECTRICAL_DAMAGE_KPA,
   ELECTRICAL_IGNITE_M,
   FIREBALL_PULSE_S,
   FLAME_STANDOFF_M,
@@ -79,6 +80,13 @@ export interface GasLineState {
   age: number;
 }
 
+/** An arc that is burning right now, for the picture on the plan. */
+export interface ElectricalArc {
+  id: string;
+  pos: Vec2;
+  level: string;
+}
+
 interface GasRuntime {
   id: string;
   pos: Vec2;
@@ -86,6 +94,16 @@ interface GasRuntime {
   autoShutoffSec: number | null;
   ruptured: boolean;
   jetting: boolean;
+  shutoff: boolean;
+  age: number;
+}
+
+interface ArcRuntime {
+  id: string;
+  pos: Vec2;
+  level: string;
+  damaged: boolean;
+  arcing: boolean;
   shutoff: boolean;
   age: number;
 }
@@ -240,7 +258,8 @@ export class FireSimulation {
   private flashedStuds = new Set<string>();
   /** Survives setGasLines, so a shut valve stays shut when the page refreshes the list. */
   private gasRuntime = new Map<string, GasRuntime>();
-  private electrical: ElectricalPlacement[] = [];
+  /** Survives setElectricalSources, so a shut supply stays shut. */
+  private arcRuntime = new Map<string, ArcRuntime>();
   private charge: ChargeSpec | null = null;
 
   constructor(params?: FireParams) {
@@ -261,7 +280,7 @@ export class FireSimulation {
     this.compartmentKey = '';
     this.flashedStuds.clear();
     this.gasRuntime.clear();
-    this.electrical = [];
+    this.arcRuntime.clear();
     this.charge = null;
     this.elapsed = 0;
 
@@ -379,13 +398,27 @@ export class FireSimulation {
     this.gasRuntime = next;
   }
 
-  /** Confirmed arcs and electrical circles. Replaced every call. They are not fuel. */
+  /**
+   * Confirmed electrical fittings. Damage, the arc, and shutoff stay with
+   * the id, so calling this every frame does not start an undamaged fitting
+   * or restart a supply that was shut off. A fitting that disappeared is
+   * dropped. They are not fuel, and they do not arc until a blast faults them.
+   */
   setElectricalSources(sources: readonly ElectricalPlacement[]) {
-    this.electrical = sources.map((source) => ({
-      id: source.id,
-      pos: { x: source.pos.x, y: source.pos.y },
-      level: source.level || 'G',
-    }));
+    const next = new Map<string, ArcRuntime>();
+    for (const source of sources) {
+      const prev = this.arcRuntime.get(source.id);
+      next.set(source.id, {
+        id: source.id,
+        pos: { x: source.pos.x, y: source.pos.y },
+        level: source.level || 'G',
+        damaged: prev?.damaged ?? false,
+        arcing: prev?.arcing ?? false,
+        shutoff: prev?.shutoff ?? false,
+        age: prev?.age ?? 0,
+      });
+    }
+    this.arcRuntime = next;
   }
 
   /**
@@ -398,6 +431,19 @@ export class FireSimulation {
       if (id && line.id !== id) continue;
       line.shutoff = true;
       line.jetting = false;
+    }
+  }
+
+  /**
+   * Trainer or player power shutoff. Omit the id to kill every arc.
+   * Fuel that is already burning stays burning. A stud that was only heating
+   * keeps the dose it has.
+   */
+  shutOffPower(id?: string) {
+    for (const arc of this.arcRuntime.values()) {
+      if (id && arc.id !== id) continue;
+      arc.shutoff = true;
+      arc.arcing = false;
     }
   }
 
@@ -415,6 +461,20 @@ export class FireSimulation {
     return !!line && line.jetting && !line.shutoff;
   }
 
+  electricalArcs(): ElectricalArc[] {
+    const arcs: ElectricalArc[] = [];
+    for (const arc of this.arcRuntime.values()) {
+      if (!arc.arcing || arc.shutoff) continue;
+      arcs.push({ id: arc.id, pos: { x: arc.pos.x, y: arc.pos.y }, level: arc.level });
+    }
+    return arcs;
+  }
+
+  isArcing(id: string): boolean {
+    const arc = this.arcRuntime.get(id);
+    return !!arc && arc.arcing && !arc.shutoff;
+  }
+
   gasLineState(id: string): GasLineState | null {
     const line = this.gasRuntime.get(id);
     if (!line) return null;
@@ -422,22 +482,33 @@ export class FireSimulation {
   }
 
   /**
-   * Open a gas line where the blast's effective pressure reaches
+   * Open a gas line where the blast's incident overpressure reaches
    * GAS_RUPTURE_KPA. A line inside the fireball, or one that already has a
-   * flame or an arc nearby, then burns as a jet at that point. A rupture
-   * with no ignition source does nothing visible: no cloud and no second blast.
-   * `level` omitted means every storey, matching igniteRadius.
+   * flame or an arcing fitting nearby, then burns as a jet at that point.
+   * A rupture with no ignition source does nothing visible: no cloud and no
+   * second blast. The same blast faults an appliance inside the fireball or
+   * at ELECTRICAL_DAMAGE_KPA, and that fitting then arcs. `level` omitted
+   * means every storey, matching igniteRadius.
    */
   applyBlast(origin: Vec2, fireballRadiusM: number, level: string | undefined, walls: InteriorWall[]) {
     const spec = this.charge;
-    if (!spec || this.gasRuntime.size === 0) return;
+    if (!spec) return;
+    for (const arc of this.arcRuntime.values()) {
+      if (arc.shutoff || arc.damaged) continue;
+      if (level && arc.level !== level) continue;
+      const dist = Math.hypot(arc.pos.x - origin.x, arc.pos.y - origin.y);
+      const inFireball = fireballRadiusM > 0 && dist <= fireballRadiusM + 1e-6;
+      const faulted = inFireball || this.incidentKpa(origin, arc.pos, spec) >= ELECTRICAL_DAMAGE_KPA;
+      if (!faulted) continue;
+      arc.damaged = true;
+      arc.arcing = true;
+    }
     for (const line of this.gasRuntime.values()) {
       if (line.shutoff || line.ruptured) continue;
       if (level && line.level !== level) continue;
-      const pressure = this.pressureAt(origin, line, spec, walls);
-      if (!(pressure >= GAS_RUPTURE_KPA)) continue;
-      line.ruptured = true;
       const dist = Math.hypot(line.pos.x - origin.x, line.pos.y - origin.y);
+      if (!(this.incidentKpa(origin, line.pos, spec) >= GAS_RUPTURE_KPA)) continue;
+      line.ruptured = true;
       const inFireball = fireballRadiusM > 0 && dist <= fireballRadiusM + 1e-6;
       if (inFireball || this.ignitionNear(line, walls)) line.jetting = true;
     }
@@ -559,8 +630,14 @@ export class FireSimulation {
       this.addSourceFlux(line.pos, line.level, GAS_JET_KW, walls, seconds, dt, slotFor);
     }
     const arcKw = electricalHeatReleaseKw();
-    for (const source of this.electrical) {
-      this.addSourceFlux(source.pos, source.level, arcKw, walls, dt, dt, slotFor);
+    for (const arc of this.arcRuntime.values()) {
+      if (!arc.arcing || arc.shutoff) continue;
+      const room = Math.max(0, ELECTRICAL_ARC_SEC - arc.age);
+      const seconds = Math.min(dt, room);
+      arc.age += seconds;
+      if (arc.age + 1e-9 >= ELECTRICAL_ARC_SEC) arc.arcing = false;
+      if (!(seconds > 0)) continue;
+      this.addSourceFlux(arc.pos, arc.level, arcKw, walls, seconds, dt, slotFor);
     }
 
     for (const [id, fState] of this.states) {
@@ -617,7 +694,8 @@ export class FireSimulation {
   }
 
   private ignitionNear(line: GasRuntime, walls: InteriorWall[]): boolean {
-    for (const source of this.electrical) {
+    for (const source of this.arcRuntime.values()) {
+      if (!source.arcing || source.shutoff) continue;
       if (source.level !== line.level) continue;
       const dist = Math.hypot(source.pos.x - line.pos.x, source.pos.y - line.pos.y);
       if (dist > ELECTRICAL_IGNITE_M + 1e-6) continue;
@@ -636,26 +714,11 @@ export class FireSimulation {
     return false;
   }
 
-  private pressureAt(origin: Vec2, line: GasRuntime, spec: ChargeSpec, walls: InteriorWall[]): number {
+  /** Side-on overpressure. The Clancey table is incident, not reflected. */
+  private incidentKpa(origin: Vec2, pos: Vec2, spec: ChargeSpec): number {
     const height = spec.burst === 'surface' ? 0 : spec.heightM;
-    const range = Math.hypot(line.pos.x - origin.x, line.pos.y - origin.y, height);
-    const near = isNearWallBehind(
-      line.pos,
-      origin,
-      walls
-        .filter((wall) => levelOf(wall) === line.level)
-        .map((wall) => ({
-          startX: wall.start.x,
-          startY: wall.start.y,
-          endX: wall.end.x,
-          endY: wall.end.y,
-          hasDoor: wall.hasDoor,
-          doorWidth: wall.doorWidth,
-          doorPosition: wall.doorPosition,
-        })),
-      [],
-    );
-    return blastPressureAt(spec, range, near).effectiveKpa;
+    const range = Math.hypot(pos.x - origin.x, pos.y - origin.y, height);
+    return blastPressureAt(spec, range, false).psKpa;
   }
 
   /** A solid wall between the two points. A door gap is open. Flashover is not required. */

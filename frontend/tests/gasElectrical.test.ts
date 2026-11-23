@@ -3,6 +3,8 @@ import { describe, test } from 'node:test';
 import { blastPressureAt, type ChargeSpec } from '../src/lib/rts/blast/blastModel';
 import {
   ELECTRICAL_ARC_FLUX_KW_M2,
+  ELECTRICAL_ARC_SEC,
+  ELECTRICAL_DAMAGE_KPA,
   ELECTRICAL_IGNITE_M,
   FLAME_STANDOFF_M,
   GAS_JET_KW,
@@ -13,6 +15,7 @@ import {
 import { FireSimulation, type FireSimStud } from '../src/lib/rts/fireSimulation';
 import {
   confirmedElectricalSources,
+  confirmedFuelCells,
   confirmedGasLines,
   defaultLightFuel,
   matchMaterials,
@@ -108,9 +111,9 @@ describe('gas rupture and the jet', () => {
 
   test('pressure below 20.7 kPa does not open the line, even inside the fireball', () => {
     let far = 1;
-    while (blastPressureAt(TNT10, far, false).effectiveKpa >= GAS_RUPTURE_KPA && far < 400) far += 1;
+    while (blastPressureAt(TNT10, far, false).psKpa >= GAS_RUPTURE_KPA && far < 400) far += 1;
     assert.ok(far < 400, 'expected some range under the rupture pressure');
-    assert.ok(blastPressureAt(TNT10, 1, false).effectiveKpa >= GAS_RUPTURE_KPA);
+    assert.ok(blastPressureAt(TNT10, 1, false).psKpa >= GAS_RUPTURE_KPA);
 
     const sim = new FireSimulation();
     sim.init([stud('wood', far, 3)]);
@@ -208,9 +211,12 @@ describe('gas rupture and the jet', () => {
     assert.equal(arc.gasLineState('pipe')?.ruptured, true);
     assert.equal(arc.gasLineState('pipe')?.jetting, false);
     arc.setElectricalSources([{ id: 'far-arc', pos: { x: 2 + ELECTRICAL_IGNITE_M + 0.4, y: 0 }, level: 'G' }]);
+    arc.applyBlast({ x: 0, y: 0 }, 0.4, 'G', []);
     arc.step(0.1, [], []);
+    assert.equal(arc.electricalArcs().length, 1);
     assert.equal(arc.gasLineState('pipe')?.jetting, false);
     arc.setElectricalSources([{ id: 'near-arc', pos: { x: 2, y: 0 }, level: 'G' }]);
+    arc.applyBlast({ x: 0, y: 0 }, 0.4, 'G', []);
     arc.step(0.1, [], []);
     assert.equal(arc.gasLineState('pipe')?.jetting, true);
   });
@@ -276,6 +282,25 @@ describe('gas rupture and the jet', () => {
     assert.ok(doseOf(open.sim) > 0);
   });
 
+  test('a wall behind the line does not turn incident pressure into the reflected value', () => {
+    const small: ChargeSpec = { presetKey: 'tnt', amountKg: 0.2, burst: 'surface', heightM: 1.5 };
+    const open = blastPressureAt(small, 6, false);
+    const reflected = blastPressureAt(small, 6, true);
+    assert.ok(open.psKpa < GAS_RUPTURE_KPA, `incident ${open.psKpa}`);
+    assert.ok(reflected.effectiveKpa >= GAS_RUPTURE_KPA, `reflected ${reflected.effectiveKpa}`);
+
+    const sim = new FireSimulation();
+    sim.init([stud('wood', 9, 0)]);
+    sim.setFuelCells(new Map([['wood', defaultLightFuel()]]));
+    sim.setBlastCharge(small);
+    sim.setGasLines([line('pipe', 6, 0)]);
+    sim.applyBlast({ x: 0, y: 0 }, 20, 'G', [wall(7.2, -3, 7.2, 3)]);
+    assert.equal(sim.gasLineState('pipe')?.ruptured, false);
+    assert.equal(sim.gasJets().length, 0);
+    sim.step(5, [wall(7.2, -3, 7.2, 3)], []);
+    assert.equal(sim.states.get('wood')?.state, 'none');
+  });
+
   test('a blast on another storey does not open this line', () => {
     const sim = new FireSimulation();
     sim.init([stud('wood', 3, 0, 'G'), stud('up', 3, 0, 'L1')]);
@@ -299,13 +324,21 @@ describe('electrical arcs', () => {
     assert.ok(atNext < 10);
   });
 
-  test('an arc ignites fuel on its stud and leaves a stud 3 m away dark', () => {
+  test('an arc ignites fuel on its stud only after the blast faults it', () => {
     const sim = new FireSimulation();
     sim.init([stud('here', 0, 0), stud('next', 3, 0)]);
     sim.setFuelCells(new Map([['here', defaultLightFuel()], ['next', defaultLightFuel()]]));
+    sim.setBlastCharge(TNT10);
     sim.setElectricalSources([{ id: 'fridge', pos: { x: 0.4, y: 0 }, level: 'G' }]);
+    for (let t = 0; t < 300; t++) sim.step(1, [], []);
+    assert.equal(sim.states.get('here')?.state, 'none');
+    assert.equal(sim.electricalArcs().length, 0);
+
+    sim.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
+    assert.equal(sim.electricalArcs().length, 1);
     let seconds = 0;
     while (sim.states.get('here')?.state !== 'burning' && seconds < 200) {
+      sim.setElectricalSources([{ id: 'fridge', pos: { x: 0.4, y: 0 }, level: 'G' }]);
       sim.step(1, [], []);
       seconds += 1;
     }
@@ -313,6 +346,70 @@ describe('electrical arcs', () => {
     assert.ok(seconds > 100 && seconds < 160, `arc lit the stud at ${seconds}s`);
     assert.equal(sim.states.get('next')?.state, 'none');
     assert.equal(sim.gasJets().length, 0);
+  });
+
+  test('the fireball faults an appliance the pressure threshold would spare', () => {
+    const small: ChargeSpec = { presetKey: 'tnt', amountKg: 0.2, burst: 'surface', heightM: 1.5 };
+    const range = 6;
+    assert.ok(blastPressureAt(small, range, false).psKpa < ELECTRICAL_DAMAGE_KPA);
+    const spared = new FireSimulation();
+    spared.init([stud('wood', range, 0)]);
+    spared.setFuelCells(new Map([['wood', defaultLightFuel()]]));
+    spared.setBlastCharge(small);
+    spared.setElectricalSources([{ id: 'fridge', pos: { x: range, y: 0 }, level: 'G' }]);
+    spared.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
+    assert.equal(spared.electricalArcs().length, 0);
+    spared.step(30, [], []);
+    assert.equal(spared.states.get('wood')?.state, 'none');
+
+    const inside = new FireSimulation();
+    inside.init([stud('wood', range, 0)]);
+    inside.setFuelCells(new Map([['wood', defaultLightFuel()]]));
+    inside.setBlastCharge(small);
+    inside.setElectricalSources([{ id: 'fridge', pos: { x: range, y: 0 }, level: 'G' }]);
+    inside.applyBlast({ x: 0, y: 0 }, range + 1, 'G', []);
+    assert.equal(inside.electricalArcs().length, 1);
+  });
+
+  test('shutoff and the assumed duration stop the arc across frame sizes', () => {
+    const fridge = { id: 'fridge', pos: { x: 0, y: 0 }, level: 'G' };
+    const woodAt = 0.6;
+    const frames = [0.1, 0.7, 1];
+    const total = ELECTRICAL_ARC_SEC + 0.4;
+    const doses = frames.map((dt) => {
+      const sim = new FireSimulation();
+      sim.init([stud('warm', woodAt, 0)]);
+      sim.setFuelCells(new Map([['warm', defaultLightFuel()]]));
+      sim.setBlastCharge(TNT10);
+      sim.setElectricalSources([fridge]);
+      sim.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
+      let t = 0;
+      while (t + 1e-9 < total) {
+        const step = Math.min(dt, total - t);
+        sim.setElectricalSources([fridge]);
+        sim.step(step, [], []);
+        t += step;
+      }
+      return doseOf(sim, 'warm');
+    });
+    for (const dose of doses) {
+      assert.ok(Math.abs(dose - doses[0]!) < 1e-6, `arc doses ${doses.join(', ')}`);
+    }
+    assert.ok(doses[0]! > 0 && doses[0]! < 1);
+
+    const sim = new FireSimulation();
+    sim.init([stud('warm', woodAt, 0)]);
+    sim.setFuelCells(new Map([['warm', defaultLightFuel()]]));
+    sim.setBlastCharge(TNT10);
+    sim.setElectricalSources([fridge]);
+    sim.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
+    sim.step(2, [], []);
+    const warmed = doseOf(sim, 'warm');
+    sim.shutOffPower();
+    sim.setElectricalSources([fridge]);
+    sim.step(10, [], []);
+    assert.equal(sim.electricalArcs().length, 0);
+    assert.equal(doseOf(sim, 'warm'), warmed);
   });
 
   test('a blast on an electrical object does not open a pipe that is not there', () => {
@@ -344,6 +441,10 @@ describe('electrical arcs', () => {
     sim.step(30, [], [zone]);
     assert.equal(sim.states.get('wood')?.state, 'none');
     sim.setElectricalSources(confirmedElectricalSources([], [zone]));
+    sim.step(30, [], []);
+    assert.equal(sim.states.get('wood')?.state, 'none');
+    sim.setBlastCharge(TNT10);
+    sim.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
     sim.step(1, [], []);
     assert.equal(sim.states.get('wood')?.state, 'heating');
   });
@@ -440,11 +541,70 @@ describe('the food court drinks stall', () => {
       const pipe = lines.find((item) => item.id === jet.id);
       assert.ok(pipe);
       const range = Math.hypot(pipe.pos.x - drinks.pos.x, pipe.pos.y - drinks.pos.y);
-      assert.ok(blastPressureAt(TNT10, range, false).effectiveKpa >= GAS_RUPTURE_KPA);
+      assert.ok(blastPressureAt(TNT10, range, false).psKpa >= GAS_RUPTURE_KPA);
     }
     assert.ok(table && noodle);
     const gap = Math.hypot(table.pos.x - noodle.pos.x, table.pos.y - noodle.pos.y);
     assert.ok(gap > 2.5 && gap < 3.5, `noodle table is ${gap} m from its gas line`);
+  });
+
+  test('no blast leaves the food court dark for five minutes', () => {
+    const rig = foodCourtRig();
+    const table = rig.placed.find((obj) => obj.id === 'pizza-table');
+    const fridge = rig.placed.find((obj) => obj.id === 'elec-pizza');
+    assert.ok(table && fridge);
+    assert.notEqual(table.studId, fridge.studId);
+    const sim = new FireSimulation();
+    sim.init(rig.asFire);
+    sim.setFuelCells(rig.fuel);
+    sim.setGasLines(rig.lines);
+    sim.setElectricalSources(rig.arcs);
+    for (let t = 0; t < 300; t++) {
+      sim.setGasLines(rig.lines);
+      sim.setElectricalSources(rig.arcs);
+      sim.step(1, rig.walls, []);
+    }
+    for (const state of sim.states.values()) assert.equal(state.state, 'none');
+    assert.equal(sim.gasJets().length, 0);
+    assert.equal(sim.electricalArcs().length, 0);
+    assert.equal(sim.states.get(table.studId)?.state, 'none');
+  });
+
+  test('the pizza jet lights its table and the fridge beside it stays dark', () => {
+    const rig = foodCourtRig();
+    const table = rig.placed.find((obj) => obj.id === 'pizza-table');
+    const gas = rig.placed.find((obj) => obj.id === 'legacy-hz-gas-pizza');
+    const fridge = rig.placed.find((obj) => obj.id === 'elec-pizza');
+    assert.ok(table && gas && fridge);
+    assert.notEqual(table.studId, fridge.studId);
+    const charge: ChargeSpec = { presetKey: 'unknown', amountKg: 0.2, burst: 'surface', heightM: 1.5 };
+    const fridgeRange = Math.hypot(fridge.pos.x - gas.pos.x, fridge.pos.y - gas.pos.y);
+    assert.ok(fridgeRange > 1, 'the fridge is outside the 1 m fireball');
+    assert.ok(blastPressureAt(charge, fridgeRange, false).psKpa < ELECTRICAL_DAMAGE_KPA);
+
+    const sim = new FireSimulation();
+    sim.init(rig.asFire);
+    sim.setFuelCells(rig.fuel);
+    sim.setBlastCharge(charge);
+    sim.setGasLines(rig.lines);
+    sim.setElectricalSources(rig.arcs);
+    sim.applyBlast(gas.pos, 1, 'G', rig.walls);
+    assert.equal(sim.isJetting(gas.id), true);
+    assert.equal(sim.isArcing(fridge.id), false);
+    let seconds = 0;
+    while (sim.states.get(table.studId)?.state !== 'burning' && seconds < 120) {
+      sim.setGasLines(rig.lines);
+      sim.setElectricalSources(rig.arcs);
+      sim.setBlastCharge(charge);
+      sim.step(1, rig.walls, []);
+      seconds += 1;
+    }
+    assert.equal(sim.states.get(table.studId)?.state, 'burning');
+    assert.ok(seconds > 40 && seconds < 90, `table caught at ${seconds}s`);
+    assert.equal(sim.isArcing(fridge.id), false);
+    let burning = 0;
+    for (const state of sim.states.values()) if (state.state === 'burning') burning += 1;
+    assert.equal(burning, 1);
   });
 
   test('an unconfirmed gas line is not a pipe, and a blank valve does not auto-close', () => {
@@ -466,3 +626,33 @@ describe('the food court drinks stall', () => {
     assert.equal(lines.find((item) => item.id === 'timed')?.autoShutoffSec, 12);
   });
 });
+
+function foodCourtRig() {
+  const polygon = foodCourtSample.scene.buildingPolygon.map(
+    (pair) => [pair[0], pair[1]] as [number, number],
+  );
+  const studs = projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']));
+  const placed = snapObjectsToStuds(
+    foodCourtPlacedObjects(),
+    studs.map((item) => ({ id: item.id, simPos: item.simPos, level: item.floor })),
+  );
+  const snapStuds = studs.map((item) => ({
+    id: item.id,
+    simPos: item.simPos,
+    level: item.floor,
+    spatialContext: item.spatialContext,
+  }));
+  return {
+    placed,
+    fuel: confirmedFuelCells(placed, snapStuds),
+    lines: confirmedGasLines(placed),
+    arcs: confirmedElectricalSources(placed),
+    walls: foodCourtSample.scene.interiorWalls as unknown as InteriorWall[],
+    asFire: studs.map((item) => ({
+      id: item.id,
+      simPos: item.simPos,
+      spatialContext: item.spatialContext,
+      level: item.floor === 'Ground' ? 'G' : item.floor,
+    })),
+  };
+}

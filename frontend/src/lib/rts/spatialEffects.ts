@@ -228,12 +228,25 @@ export class SpatialEffectsEngine {
     this.fireSim.shutOffGas(id);
   }
 
+  /** Kill one arc, or every arc when the id is omitted. */
+  shutOffPower(id?: string) {
+    this.fireSim.shutOffPower(id);
+  }
+
   gasJets(): GasJet[] {
     return this.fireSim.gasJets();
   }
 
+  electricalArcs() {
+    return this.fireSim.electricalArcs();
+  }
+
   isJetting(id: string): boolean {
     return this.fireSim.isJetting(id);
+  }
+
+  isArcing(id: string): boolean {
+    return this.fireSim.isArcing(id);
   }
 
   gasLineState(id: string) {
