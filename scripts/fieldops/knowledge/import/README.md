@@ -70,7 +70,8 @@ for file in \
   migrations/259_fieldops_knowledge_provenance.sql \
   migrations/261_fieldops_units_hospitals_library.sql \
   migrations/262_fieldops_knowledge_staging.sql \
-  migrations/263_fieldops_library_row_history.sql
+  migrations/263_fieldops_library_row_history.sql \
+  migrations/264_revoke_pr23_rls_table_grants.sql
 do
   psql "$KNOWLEDGE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$file"
 done
