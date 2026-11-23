@@ -1,0 +1,380 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "police_security",
+  "title": "SPF: Police / Security response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Police Force",
+  "agency_key": "sg_spf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_spf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Police Force Act 2004",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/PFA2004",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 4(1), (2)(e), (f); s. 26(1)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Criminal Procedure Code 2010",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CPC2010",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 57, 58, 63, 75, 76",
+        "quoted_phrase": "may act in any manner (including doing anything likely to cause the death of, or grievous hurt to, any person)"
+      },
+      {
+        "title": "Public Order and Safety (Special Powers) Act 2018 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/POSSPA2018",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 8, 11, 16 to 26; 18(8)",
+        "quoted_phrase": "A police officer may use such force as is reasonably necessary, including the use of lethal weapons"
+      },
+      {
+        "title": "Infrastructure Protection Act 2017",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/IPA2017",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 22(2), 23",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Singapore Armed Forces Act 1972 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/SAFA1972",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 201G(1)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Written Reply to Parliamentary Questions on the Use of Appropriate and Proportionate Force by Law Enforcement Officers",
+        "publisher": "Ministry of Home Affairs",
+        "url": "https://www.mha.gov.sg/media-room/newsroom/written-reply-to-parliamentary-questions-on-the-use-of-appropriate-and-proportionate-force-by-law-enforcement-officers-by-mr-k-shanmugam-minister-for-home-affairs-and-minister-for-law/",
+        "published": "2021-02-26",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Answer, paras 1 to 5",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "use_of_force.authorised_levels.less_lethal",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_order0001"
+        ],
+        "source_index": 0,
+        "locator": "s. 4(1) and (2)(e), (f)"
+      },
+      {
+        "ids": [
+          "st_barrier01"
+        ],
+        "source_index": 0,
+        "locator": "s. 26(1)"
+      },
+      {
+        "ids": [
+          "st_prevent01"
+        ],
+        "source_index": 1,
+        "locator": "s. 63(1), (3)"
+      },
+      {
+        "ids": [
+          "st_arrest001",
+          "nv_restrain1"
+        ],
+        "source_index": 1,
+        "locator": "ss. 75, 76"
+      },
+      {
+        "ids": [
+          "st_special01",
+          "nv_special01"
+        ],
+        "source_index": 2,
+        "locator": "ss. 8, 11, 16"
+      },
+      {
+        "ids": [
+          "st_receive01"
+        ],
+        "source_index": 4,
+        "locator": "s. 201G(1)"
+      },
+      {
+        "ids": [
+          "ho_eod00001"
+        ],
+        "source_index": -1,
+        "locator": "Unit register: sg_saf_36_sce (Pioneer, 18 Oct 2023)"
+      },
+      {
+        "ids": [
+          "ho_tactcl01"
+        ],
+        "source_index": -1,
+        "locator": "Unit register: sg_spf_star (SPF Our People)"
+      },
+      {
+        "ids": [
+          "ho_scdfim01"
+        ],
+        "source_index": -1,
+        "locator": "Agency register: sg_scdf (SCDF Training Directory)"
+      },
+      {
+        "ids": [
+          "use_of_force.principles"
+        ],
+        "source_index": 5,
+        "locator": "paras 3 to 5"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Maintain law and order, preserve public peace, prevent and detect crimes and apprehend offenders, as the Police Force Act 2004 sets out, using force only as the law allows.",
+    "sequence": [
+      {
+        "id": "st_prevent01",
+        "window": null,
+        "label": "Prevent the offence",
+        "action": "Intervene to prevent an offence you have reasonable grounds to suspect may be committed, using all lawful means, including removing a person from a place."
+      },
+      {
+        "id": "st_barrier01",
+        "window": null,
+        "label": "Barriers",
+        "action": "Place barriers across roads or public places where needed to maintain order or prevent crime, and stop vehicles at them."
+      },
+      {
+        "id": "st_order0001",
+        "window": null,
+        "label": "Order in public places",
+        "action": "Preserve order in public places and regulate traffic, removing obstructions."
+      },
+      {
+        "id": "st_special01",
+        "window": null,
+        "label": "Special powers",
+        "action": "Where the Minister has made an activation order and the Commissioner a special authorisation, exercise the special powers in the target area: cordons, road closures, movement control and searches."
+      },
+      {
+        "id": "st_arrest001",
+        "window": null,
+        "label": "Arrest",
+        "action": "Arrest by touching or confining the person unless they submit; if they forcibly resist, use all reasonable means necessary."
+      },
+      {
+        "id": "st_receive01",
+        "window": null,
+        "label": "Receive detainees",
+        "action": "Take over any person arrested or detained by SAF servicemen deployed in aid of the civil authorities."
+      }
+    ],
+    "never": [
+      {
+        "id": "nv_restrain1",
+        "action": "Restrain an arrested person more than is necessary to prevent escape",
+        "why": "Criminal Procedure Code 2010 s. 76.",
+        "exception": null
+      },
+      {
+        "id": "nv_special01",
+        "action": "Use special powers outside a target area or without a special authorisation in effect",
+        "why": "POSSPA 2018 Part 4 powers are exercised pursuant to a special authorisation, in its target area.",
+        "exception": null
+      }
+    ],
+    "hand_offs": [
+      {
+        "id": "ho_eod00001",
+        "to_archetype": "bomb_disposal_eod",
+        "to_label": "SAF EOD (36 SCE)",
+        "when": "A suspected explosive device or explosive ordnance is found."
+      },
+      {
+        "id": "ho_tactcl01",
+        "to_archetype": "tactical_response",
+        "to_label": "SPF Special Operations Command",
+        "when": "An incident involves armed criminals or hostages and needs a tactical armed response."
+      },
+      {
+        "id": "ho_scdfim01",
+        "to_archetype": "incident_command",
+        "to_label": "SCDF Incident Manager",
+        "when": "The consequences of a major disaster or civil emergency need managing."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_pfa0004",
+        "instrument": "Police Force Act 2004",
+        "provision": "s. 4",
+        "power": "Functions of the Police Force: maintain law and order, preserve public peace, prevent and detect crimes and apprehend offenders; duties include regulating traffic and preserving order in public places.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_pfa0026",
+        "instrument": "Police Force Act 2004",
+        "provision": "s. 26",
+        "power": "Any police officer may erect barriers across a public road or place to maintain order or prevent or detect crime, and take reasonable steps to stop vehicles and people passing them.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_cpc57058",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "ss. 57 and 58",
+        "power": "A police officer may command an unlawful assembly, or an assembly of five or more likely to disturb the peace, to disperse, and may disperse it by force if it does not.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_cpc00063",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "s. 63",
+        "power": "An officer must use all lawful means to prevent a suspected offence, and may do what is likely to cause death or grievous hurt when necessary to apprehend a person doing or about to do a terrorist act.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_cpc75076",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "ss. 75 and 76",
+        "power": "If a person forcibly resists or evades arrest, all reasonable means necessary may be used; an arrested person must not be restrained more than is necessary to prevent escape.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_posspa01",
+        "instrument": "Public Order and Safety (Special Powers) Act 2018",
+        "provision": "ss. 8, 11, 16 to 26; 18(8), 19(5), 20(4)",
+        "power": "Under a Ministerial activation order and a special authorisation, police may cordon, close roads, control movement and search in the target area, using reasonably necessary force, including lethal weapons, to enforce them.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_ipa00022",
+        "instrument": "Infrastructure Protection Act 2017",
+        "provision": "ss. 22 and 23",
+        "power": "An authorised officer may remove or arrest, with reasonable force, a person in a protected area or place without good reason; force may extend to causing death if the person does not stop after three directions.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_safa201g",
+        "instrument": "Singapore Armed Forces Act 1972",
+        "provision": "s. 201G",
+        "power": "A person arrested or detained by a serviceman deployed in aid of civil authorities must be handed to a police officer as soon as practicable.",
+        "jurisdiction": null
+      }
+    ],
+    "use_of_force": {
+      "framework": "police_use_of_force",
+      "authorised_levels": [
+        "presence",
+        "verbal",
+        "physical_control",
+        "lethal"
+      ],
+      "conditions": [
+        {
+          "id": "uf_verbal01",
+          "level": "verbal",
+          "when": "Command an unlawful assembly, or one of five or more likely to disturb the peace, to disperse.",
+          "authority_ids": [
+            "la_cpc57058"
+          ]
+        },
+        {
+          "id": "uf_physcl01",
+          "level": "physical_control",
+          "when": "Touch or confine a person to arrest them; use all reasonable means necessary if they forcibly resist or try to evade arrest.",
+          "authority_ids": [
+            "la_cpc75076"
+          ]
+        },
+        {
+          "id": "uf_lethal01",
+          "level": "lethal",
+          "when": "The officer has reasonable grounds to believe a person is doing or about to do something that may amount to a terrorist act, and the act is necessary to apprehend them.",
+          "authority_ids": [
+            "la_cpc00063"
+          ]
+        },
+        {
+          "id": "uf_lethal02",
+          "level": "lethal",
+          "when": "Under a special authorisation in force, to stop people or vehicles entering a cordoned area or to enforce road-closure and movement orders, as reasonably necessary.",
+          "authority_ids": [
+            "la_posspa01"
+          ]
+        }
+      ],
+      "principles": [
+        "Force must be reasonably necessary (CPC s. 75(2); POSSPA ss. 18 to 20).",
+        "An arrested person must not be restrained more than is necessary to prevent escape (CPC s. 76).",
+        "Officers evaluate the threat and decide the force needed in real time (MHA, 26 Feb 2021).",
+        "Complaints of disproportionate force are investigated by MHA (MHA, 26 Feb 2021)."
+      ],
+      "command_authority": "The officer's own reasonable belief under CPC s. 63(2); POSSPA powers need the Minister's activation order and the Commissioner's special authorisation.",
+      "civil_support": null
+    }
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country",
+      "legal or police_service"
+    ],
+    "notes": "Use of force: less_lethal is omitted because no located official source states it; under 5.4.1 the projection will read \"Use less-lethal force: not stated in this doctrine's sources.\" Reviewer (legal or police_service) to locate a public source or confirm. Hand-offs to EOD, SOC and SCDF are drawn from the register entries, not from a statute. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles; use-of-force block withheld pending a legal, police_service or military_service reviewer (AC1.59).",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

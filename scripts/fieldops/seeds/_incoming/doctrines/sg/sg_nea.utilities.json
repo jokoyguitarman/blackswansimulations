@@ -1,0 +1,124 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "utilities",
+  "title": "NEA: Utilities response",
+  "applies_to": [
+    "chemical_release"
+  ],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "National Environment Agency",
+  "agency_key": "sg_nea",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_nea",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Environmental Protection Division Report 2013",
+        "publisher": "National Environment Agency",
+        "url": "https://www.nea.gov.sg/docs/default-source/resource/publications/environmental-protection-division-annual-report/neareport2013.pdf",
+        "published": "2013",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Terrain Decontamination",
+        "quoted_phrase": "Once the area is secure, NEA will move in to carry out terrain decontamination"
+      },
+      {
+        "title": "Safety Audit Guidelines",
+        "publisher": "National Environment Agency",
+        "url": "https://www.nea.gov.sg/our-services/pollution-control/chemical-safety/safety-audit-guidelines",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "para 1",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "low",
+    "assumed_fields": [
+      "archetype_key (Assumed)",
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_waitscdf1",
+          "st_terrain01",
+          "ho_scdf0003"
+        ],
+        "source_index": 0,
+        "locator": "Terrain Decontamination"
+      },
+      {
+        "ids": [
+          "mission"
+        ],
+        "source_index": 1,
+        "locator": "para 1"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Control hazardous substances and, after a toxic chemical or radiological release, restore the affected area through terrain decontamination once SCDF has secured it.",
+    "sequence": [
+      {
+        "id": "st_waitscdf1",
+        "window": null,
+        "label": "After SCDF",
+        "action": "Let SCDF carry out the initial response to save lives, mitigate the source and do preliminary site decontamination."
+      },
+      {
+        "id": "st_terrain01",
+        "window": null,
+        "label": "Terrain decontamination",
+        "action": "Once the area is secure, carry out terrain decontamination to restore the affected area to normalcy."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_scdf0003",
+        "to_archetype": "fire_rescue",
+        "to_label": "SCDF",
+        "when": "A toxic chemical or radiological substance is released and lives are at risk."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Archetype utilities is Assumed. Source is a 2013 report (\"a new capability which the NEA is building up\"); current arrangements to verify. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

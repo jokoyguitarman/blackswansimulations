@@ -1,0 +1,102 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "pursuit_investigation",
+  "title": "SPF CID: Pursuit & Investigation response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "SPF Criminal Investigation Department",
+  "agency_key": "sg_spf_cid",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_spf_cid",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "SPF | Our People",
+        "publisher": "Singapore Police Force",
+        "url": "https://www.police.gov.sg/who-we-are/our-people",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Criminal Investigation Department: mission; Major Crime Division; Intelligence Division",
+        "quoted_phrase": "To prevent, deter and detect crime through excellence in investigation."
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "hand_offs",
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_investg01"
+        ],
+        "source_index": 0,
+        "locator": "mission; Major Crime Division"
+      },
+      {
+        "ids": [
+          "st_intel0001"
+        ],
+        "source_index": 0,
+        "locator": "Intelligence Division"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Prevent, deter and detect crime through excellence in investigation; the Major Crime Division investigates homicide, kidnapping, firearm offences and bomb and explosive-related offences.",
+    "sequence": [
+      {
+        "id": "st_investg01",
+        "window": null,
+        "label": "Investigate",
+        "action": "Investigate the major offences of the incident (homicide, kidnapping, firearm, bomb and explosive-related) through the Major Crime Division; follow the agency's standard operating procedure."
+      },
+      {
+        "id": "st_intel0001",
+        "window": null,
+        "label": "Intelligence",
+        "action": "Collect, analyse and disseminate criminal intelligence in support of the investigation."
+      }
+    ],
+    "never": [],
+    "hand_offs": [],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Thin by design: investigation procedure is internal. Evidence hand-over from SAF EOD is recorded on the EOD seed. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

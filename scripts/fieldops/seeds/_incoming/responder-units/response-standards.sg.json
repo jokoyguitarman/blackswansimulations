@@ -1,0 +1,494 @@
+{
+  "file": "response-standards.sg.json",
+  "schema_version": 1,
+  "library": "units",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
+  "note": "Published response-time targets, achieved shares and system size. No turnout time is published for any SCDF appliance.",
+  "rows": [
+    {
+      "key": "sg_995_answer",
+      "label": "995 call answering target",
+      "country": "SG",
+      "scope": "scdf_operations_centre",
+      "values": [
+        {
+          "param": "answer_within_s",
+          "value": 10,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 1"
+        },
+        {
+          "param": "target_share_pct",
+          "value": 95,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 1"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_fire_rescue_response",
+      "label": "Fire and rescue response target",
+      "country": "SG",
+      "scope": "fire_rescue",
+      "values": [
+        {
+          "param": "respond_within_s",
+          "value": 480,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 2: within 8 minutes"
+        },
+        {
+          "param": "target_share_pct",
+          "value": 90,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 2: 90% of the time"
+        }
+      ],
+      "review_notes": [
+        "'Respond' is not defined in the pledge (call receipt to arrival is Assumed)."
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 2: within 8 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 2: 90% of the time",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_ambulance_response",
+      "label": "Ambulance response target",
+      "country": "SG",
+      "scope": "ems",
+      "values": [
+        {
+          "param": "respond_within_s",
+          "value": 660,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 3: within 11 minutes"
+        },
+        {
+          "param": "target_share_pct",
+          "value": 80,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_qsi_2025",
+          "locator": "p.1, item 3: 80% of the time"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 3: within 11 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_qsi_2025",
+            "locator": "p.1, item 3: 80% of the time",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_ambulance_response_achieved",
+      "label": "Ambulance calls reached within 11 minutes (achieved)",
+      "country": "SG",
+      "scope": "ems",
+      "values": [
+        {
+          "param": "share_2014_pct",
+          "value": 83,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "parl_2015_ems",
+          "locator": "para 3: responded to 83% of the cases within 11 minutes"
+        },
+        {
+          "param": "share_2015_pct",
+          "value": 84.9,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2016",
+          "locator": "para 5: 84.9% in 2015"
+        },
+        {
+          "param": "share_2016_pct",
+          "value": 87.1,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2016",
+          "locator": "para 5: 87.1% ambulance calls within 11 minutes"
+        },
+        {
+          "param": "share_2017_pct",
+          "value": 88.9,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2017",
+          "locator": "Executive summary: 88.9% within 11 minutes"
+        },
+        {
+          "param": "share_2023_pct",
+          "value": 80,
+          "unit": "%",
+          "status": "unverified",
+          "source_key": "st_ems_2024",
+          "locator": "para 9",
+          "quoted_phrase": "The SCDF ambulance arrives within 11 minutes for 80 per cent of calls.",
+          "note": "News, quoting SCDF; may restate the target rather than the achieved share."
+        }
+      ],
+      "review_notes": [
+        "2018 to 2025 releases were checked: none states the 11-minute achieved share after 2017 (2024 and 2025 releases read by search only). 2023 value is news-only."
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "parl_2015_ems",
+            "locator": "para 3: responded to 83% of the cases within 11 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2016",
+            "locator": "para 5: 84.9% in 2015",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2016",
+            "locator": "para 5: 87.1% ambulance calls within 11 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2017",
+            "locator": "Executive summary: 88.9% within 11 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_ems_2024",
+            "locator": "para 9",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "share_2023_pct"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_airport_rffs_response",
+      "label": "Airport rescue and firefighting response (Changi)",
+      "country": "SG",
+      "scope": "sg_cag_aes",
+      "values": [
+        {
+          "param": "respond_within_s",
+          "value": 120,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "changi_aes",
+          "locator": "Safety Infrastructure: 2 minutes"
+        },
+        {
+          "param": "respond_limit_s",
+          "value": 180,
+          "unit": "s",
+          "status": "sourced",
+          "source_key": "changi_aes",
+          "locator": "Safety Infrastructure: not exceeding 3 minutes"
+        },
+        {
+          "param": "turnout_s",
+          "value": 15,
+          "unit": "s",
+          "status": "unverified",
+          "source_key": "cna_aes_2020",
+          "locator": "THREE MINUTES TO SAVE LIVES: 15 seconds to get into vehicles"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: 2 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "changi_aes",
+            "locator": "Safety Infrastructure: not exceeding 3 minutes",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_aes_2020",
+            "locator": "THREE MINUTES TO SAVE LIVES: 15 seconds to get into vehicles",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "turnout_s"
+        ],
+        "withheld_fields": []
+      },
+      "incident_types": [
+        "aircraft_impact"
+      ],
+      "site_bound": true
+    },
+    {
+      "key": "sg_ems_system_context",
+      "label": "SCDF emergency medical system size",
+      "country": "SG",
+      "scope": "ems",
+      "values": [
+        {
+          "param": "ambulances_operational",
+          "value": 95,
+          "unit": "vehicles",
+          "status": "unverified",
+          "source_key": "st_ems_fleet_2025",
+          "locator": "figures given by SCDF: operational fleet of 95 ambulances"
+        },
+        {
+          "param": "fire_stations",
+          "value": 23,
+          "unit": "stations",
+          "status": "unverified",
+          "source_key": "st_ems_fleet_2025",
+          "locator": "SCDF said: 23 fire stations"
+        },
+        {
+          "param": "fire_posts",
+          "value": 30,
+          "unit": "posts",
+          "status": "unverified",
+          "source_key": "st_ems_fleet_2025",
+          "locator": "SCDF said: 30 fire posts"
+        },
+        {
+          "param": "dynamic_deployment_bases",
+          "value": 8,
+          "unit": "bases",
+          "status": "unverified",
+          "source_key": "st_ems_fleet_2025",
+          "locator": "SCDF said: eight dynamic deployment bases"
+        },
+        {
+          "param": "ems_calls_2025",
+          "value": 257158,
+          "unit": "calls",
+          "status": "sourced",
+          "source_key": "scdf_stats_2025",
+          "locator": "para 5: 257,158 EMS calls in 2025"
+        },
+        {
+          "param": "fire_calls_2025",
+          "value": 2050,
+          "unit": "calls",
+          "status": "sourced",
+          "source_key": "scdf_stats_2025",
+          "locator": "para 16: 2,050 fire calls in 2025"
+        }
+      ],
+      "review_notes": [
+        "Context for WS9 caps and default counts; not a per-session value."
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "st_ems_fleet_2025",
+            "locator": "figures given by SCDF: operational fleet of 95 ambulances",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_ems_fleet_2025",
+            "locator": "SCDF said: 23 fire stations",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_ems_fleet_2025",
+            "locator": "SCDF said: 30 fire posts",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_ems_fleet_2025",
+            "locator": "SCDF said: eight dynamic deployment bases",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2025",
+            "locator": "para 5: 257,158 EMS calls in 2025",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2025",
+            "locator": "para 16: 2,050 fire calls in 2025",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "ambulances_operational",
+          "dynamic_deployment_bases",
+          "fire_posts",
+          "fire_stations"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "key": "sg_life_threatening_response_achieved",
+      "label": "Life-threatening EMS cases reached within 8 minutes (achieved)",
+      "country": "SG",
+      "scope": "ems",
+      "values": [
+        {
+          "param": "share_2018_pct",
+          "value": 82,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2018",
+          "locator": "p.3, para 5",
+          "quoted_phrase": "In 2018, SCDF was able to respond to 82% of life-threatening cases within eight minutes due to the faster arrival of the fire bikes"
+        },
+        {
+          "param": "share_2018_ambulance_only_pct",
+          "value": 73.4,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2018",
+          "locator": "p.3, para 5",
+          "quoted_phrase": "as compared to 73.4% based on ambulance response time"
+        },
+        {
+          "param": "share_2019_pct",
+          "value": 82.1,
+          "unit": "%",
+          "status": "sourced",
+          "source_key": "scdf_stats_2019",
+          "locator": "p.2",
+          "quoted_phrase": "In 2019, SCDF was able to respond to 82.1% of life-threatening cases within eight minutes due to the faster arrival of EMTs"
+        }
+      ],
+      "review_notes": [
+        "First arrival includes fire bikes and EMTs, not only ambulances. Not a published target; the pledge targets stay 8 min (fire/rescue) and 11 min (ambulance)."
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_stats_2018",
+            "locator": "p.3, para 5",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_stats_2019",
+            "locator": "p.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_995_answer": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_fire_rescue_response": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_ambulance_response": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_ambulance_response_achieved": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_airport_rffs_response": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A4)."
+      },
+      "sg_ems_system_context": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_life_threatening_response_achieved": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

@@ -1,0 +1,1513 @@
+{
+  "file": "hazard-interactions.json",
+  "schema_version": 1,
+  "library": "building_hazards",
+  "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+    "country": "SG",
+    "sources_file": "sources.json"
+  },
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "lpg_bank_blast_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lpg_cloud_ignition": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lpg_bank_fire_bleve": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_blast_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_collapse_rupture": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "fryer_oil_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "transformer_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "transformer_blast": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "diesel_tank_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sprinkler_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sprinkler_blast_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "smoke_control_power_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "oxygen_fire_enrichment": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "li_ion_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "pool_chemical_mix": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A2)."
+      },
+      "traction_power_flood": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "town_gas_cloud_ignition": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "ev_battery_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "amd_battery_runaway": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "vehicle_fuel_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "diesel_vehicle_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "flammable_store_pool_fire": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lead_acid_hydrogen_flash": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "ammonia_plant_rupture": {
+        "decision": "amended",
+        "notes": "Assumed default, spec section 2.4 (A2)."
+      },
+      "oxygen_cylinder_fire_burst": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "lab_chemicals_toxic_smoke": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "pool_chemical_flood": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "switch_room_flood_power": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generator_flood_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "gas_shutoff_on_power_loss": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "kitchen_suppression_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "gaseous_suppression_activation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  },
+  "review_flags": {
+    "lpg_bank_blast_rupture": [
+      "Unverified: cites source(s) not accessed in this run: ccps-2010-vce-bleve",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "lpg_cloud_ignition": [
+      "Unverified: cites source(s) not accessed in this run: tno-yellow-book-cpr14e",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "lpg_bank_fire_bleve": [
+      "Unverified: cites source(s) not accessed in this run: ccps-2010-vce-bleve",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "town_gas_blast_rupture": [
+      "Unverified: cites source(s) not accessed in this run: ccps-2010-vce-bleve",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "town_gas_collapse_rupture": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "fryer_oil_fire": [
+      "Unverified: cites source(s) not accessed in this run: sfpe-handbook-2016",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "transformer_fire": [
+      "Unverified: cites source(s) not accessed in this run: sfpe-handbook-2016",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "transformer_blast": [
+      "Unverified: cites source(s) not accessed in this run: sfpe-handbook-2016",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "diesel_tank_fire": [
+      "Unverified: cites source(s) not accessed in this run: sfpe-handbook-2016",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "sprinkler_activation": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-13",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "sprinkler_blast_loss": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "smoke_control_power_loss": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "oxygen_fire_enrichment": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "li_ion_runaway": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-855, ul-9540a",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "pool_chemical_mix": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "traction_power_flood": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "town_gas_cloud_ignition": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille"
+    ],
+    "ev_battery_runaway": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "amd_battery_runaway": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "vehicle_fuel_pool_fire": [
+      "Unverified: cites source(s) not accessed in this run: bre-bd2552-2010",
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "diesel_vehicle_pool_fire": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "flammable_store_pool_fire": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "lead_acid_hydrogen_flash": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille"
+    ],
+    "ammonia_plant_rupture": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "oxygen_cylinder_fire_burst": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "lab_chemicals_toxic_smoke": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "pool_chemical_flood": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "switch_room_flood_power": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "generator_flood_loss": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "gas_shutoff_on_power_loss": [
+      "Assumed: delay_high_s, delay_low_s"
+    ],
+    "kitchen_suppression_activation": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ],
+    "gaseous_suppression_activation": [
+      "Assumed: delay_high_s, delay_low_s, probability_permille, threshold"
+    ]
+  },
+  "rows": [
+    {
+      "rule_key": "lpg_bank_blast_rupture",
+      "kind_key": "lpg_cylinder_bank",
+      "trigger": "overpressure_kpa",
+      "threshold": 20,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "propane",
+      "delay_low_s": 0,
+      "delay_high_s": 5,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "LPG cylinders are damaged and release gas.",
+      "source_keys": [
+        "ccps-2010-vce-bleve"
+      ],
+      "source_ref": "CCPS (2010), named by WS9 5.19",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ccps-2010-vce-bleve",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "lpg_cloud_ignition",
+      "kind_key": "lpg_cylinder_bank",
+      "trigger": "gas_in_flammable_range",
+      "threshold": 1,
+      "effect": "vapour_cloud_ignition",
+      "threat_key": "vce_low_congestion",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 60,
+      "probability_permille": 300,
+      "requires_ignition_source": true,
+      "event_text": "A cloud of LPG finds an ignition source and ignites.",
+      "source_keys": [
+        "niosh-npg-propane",
+        "tno-yellow-book-cpr14e"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Propane; TNO Yellow Book (not accessed)",
+      "source_note": "Flammable range 2.1 to 9.5% from NIOSH; threshold 1 means 'inside the range'. Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-propane",
+            "locator": "LEL 2.1%, UEL 9.5%",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "tno-yellow-book-cpr14e",
+            "locator": "multi-energy method (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "lpg_bank_fire_bleve",
+      "kind_key": "lpg_cylinder_bank",
+      "trigger": "fire_exposure_s",
+      "threshold": 600,
+      "effect": "fireball",
+      "threat_key": "bleve_fireball",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 300,
+      "requires_ignition_source": false,
+      "event_text": "A fire-exposed LPG cylinder fails and produces a fireball.",
+      "source_keys": [
+        "ccps-2010-vce-bleve"
+      ],
+      "source_ref": "CCPS (2010), named by WS9 5.19",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ccps-2010-vce-bleve",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "town_gas_blast_rupture",
+      "kind_key": "town_gas_service",
+      "trigger": "overpressure_kpa",
+      "threshold": 30,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "town_gas",
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 400,
+      "requires_ignition_source": false,
+      "event_text": "A gas pipe is broken and town gas escapes.",
+      "source_keys": [
+        "ccps-2010-vce-bleve",
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook; CCPS (2010)",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Appendix B",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "ccps-2010-vce-bleve",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "town_gas_collapse_rupture",
+      "kind_key": "town_gas_service",
+      "trigger": "structural_state",
+      "threshold": 3,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "town_gas",
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 800,
+      "requires_ignition_source": false,
+      "event_text": "Collapsed structure breaks the gas service and town gas escapes.",
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook",
+      "source_note": "Threshold 3 stands for 'collapsed' in the structural-state scale (mapping Assumed). Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Appendix B",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "fryer_oil_fire",
+      "kind_key": "cooking_oil_fryers",
+      "trigger": "fire_exposure_s",
+      "threshold": 60,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 30,
+      "probability_permille": 900,
+      "requires_ignition_source": false,
+      "event_text": "Hot cooking oil catches fire.",
+      "source_keys": [
+        "scdf-fsm-briefing-2023",
+        "sfpe-handbook-2016"
+      ],
+      "source_ref": "SCDF FSM Briefing 2023; SFPE Handbook (not accessed)",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fsm-briefing-2023",
+            "locator": "Item 2, Kitchen Exhaust Duct (KED) Fire Safety",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "sfpe-handbook-2016",
+            "locator": "pool fire chapter (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "transformer_fire",
+      "kind_key": "oil_filled_transformer",
+      "trigger": "fire_exposure_s",
+      "threshold": 300,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 600,
+      "requires_ignition_source": false,
+      "event_text": "Transformer oil leaks and burns.",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "sfpe-handbook-2016"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2); SFPE Handbook (not accessed)",
+      "source_note": "Fire Code requires a catch pit for oil-cooled transformers. Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          },
+          {
+            "source_key": "sfpe-handbook-2016",
+            "locator": "pool fire chapter (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "transformer_blast",
+      "kind_key": "oil_filled_transformer",
+      "trigger": "overpressure_kpa",
+      "threshold": 50,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 30,
+      "probability_permille": 300,
+      "requires_ignition_source": false,
+      "event_text": "A damaged transformer spills oil that catches fire.",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "sfpe-handbook-2016"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          },
+          {
+            "source_key": "sfpe-handbook-2016",
+            "locator": "pool fire chapter (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "diesel_tank_fire",
+      "kind_key": "diesel_generator_day_tank",
+      "trigger": "fire_exposure_s",
+      "threshold": 600,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "Diesel from the generator tank catches fire.",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "sfpe-handbook-2016"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "Diesel's high flash point (Class III) slows ignition. Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          },
+          {
+            "source_key": "sfpe-handbook-2016",
+            "locator": "pool fire chapter (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "sprinkler_activation",
+      "kind_key": "sprinkler_system",
+      "trigger": "ceiling_temp_c",
+      "threshold": 68,
+      "effect": "activate",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 950,
+      "requires_ignition_source": false,
+      "event_text": "Sprinklers operate over the fire.",
+      "source_keys": [
+        "nfpa-13",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4; NFPA 13 (not accessed)",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nfpa-13",
+            "locator": "temperature ratings (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "sprinkler_blast_loss",
+      "kind_key": "sprinkler_system",
+      "trigger": "overpressure_kpa",
+      "threshold": 30,
+      "effect": "loss_of_function",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 700,
+      "requires_ignition_source": false,
+      "event_text": "Sprinkler pipework is damaged and stops working in this area.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "smoke_control_power_loss",
+      "kind_key": "smoke_control_system",
+      "trigger": "power_loss",
+      "threshold": 1,
+      "effect": "loss_of_function",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 800,
+      "requires_ignition_source": false,
+      "event_text": "Smoke control stops when its power fails.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.5.2",
+      "source_note": "Secondary power normally covers this; the rule models both supplies lost. Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.5.2 Primary and Secondary Power Supplies",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "oxygen_fire_enrichment",
+      "kind_key": "bulk_liquid_oxygen",
+      "trigger": "fire_exposure_s",
+      "threshold": 120,
+      "effect": "oxygen_enrichment",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 60,
+      "probability_permille": 700,
+      "requires_ignition_source": false,
+      "event_text": "Escaping oxygen makes nearby fire burn more fiercely.",
+      "source_keys": [
+        "cameo-oxygen"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": "Materials that burn in air will burn more vigorously in oxygen."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "li_ion_runaway",
+      "kind_key": "ups_battery_room",
+      "trigger": "fire_exposure_s",
+      "threshold": 180,
+      "effect": "thermal_runaway",
+      "threat_key": null,
+      "agent_key": "hydrogen_fluoride",
+      "delay_low_s": 0,
+      "delay_high_s": 300,
+      "probability_permille": 600,
+      "requires_ignition_source": false,
+      "event_text": "Battery cells overheat in a chain reaction and give off toxic gas.",
+      "source_keys": [
+        "nfpa-855",
+        "scdf-fire-code-2023-cl10-3",
+        "ul-9540a"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.3; UL 9540A; NFPA 855",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (20 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "ul-9540a",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nfpa-855",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "pool_chemical_mix",
+      "kind_key": "pool_chlorination",
+      "trigger": "structural_state",
+      "threshold": 1,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "chlorine",
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 200,
+      "requires_ignition_source": false,
+      "event_text": "Pool chemicals mix and give off chlorine gas.",
+      "source_keys": [
+        "cameo-reactivity-rg44-rg60",
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06; CAMEO reactivity RG44-RG60",
+      "source_note": "Threshold 2 stands for 'damaged' (mapping Assumed). Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Storage of chemicals (2)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cameo-reactivity-rg44-rg60",
+            "locator": "Hazard Predictions; Potential Gas Byproducts: Chlorine",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "traction_power_flood",
+      "kind_key": "traction_power_equipment",
+      "trigger": "flood_depth_m",
+      "threshold": 0.1,
+      "effect": "power_loss",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 900,
+      "requires_ignition_source": false,
+      "event_text": "Flooding cuts traction power.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.1",
+      "source_note": "Threshold, delays and probability are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "town_gas_cloud_ignition",
+      "kind_key": "town_gas_service",
+      "trigger": "gas_in_flammable_range",
+      "threshold": 1,
+      "effect": "flash_fire",
+      "threat_key": "flash_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 60,
+      "probability_permille": 300,
+      "requires_ignition_source": true,
+      "event_text": "Leaked town gas finds an ignition source and flashes.",
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook Appendix B",
+      "source_note": "Flammable range 3 to 55% from City Energy. Delay and probability Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Appendix B (f) Limits of flammability",
+            "quoted_phrase": "3.0 – 55 % of gas in air"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille"
+        ]
+      }
+    },
+    {
+      "rule_key": "ev_battery_runaway",
+      "kind_key": "ev_traction_batteries",
+      "trigger": "fire_exposure_s",
+      "threshold": 300,
+      "effect": "thermal_runaway",
+      "threat_key": null,
+      "agent_key": "hydrogen_fluoride",
+      "delay_low_s": 0,
+      "delay_high_s": 600,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "An electric car's battery overheats and gives off toxic gas.",
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025 para 27",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27 (EVs 6.82% of vehicles at end 2025)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "amd_battery_runaway",
+      "kind_key": "amd_lithium_batteries",
+      "trigger": "fire_exposure_s",
+      "threshold": 60,
+      "effect": "thermal_runaway",
+      "threat_key": null,
+      "agent_key": "hydrogen_fluoride",
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 700,
+      "requires_ignition_source": false,
+      "event_text": "A mobility-device battery overheats, bursts into flame and gives off toxic gas.",
+      "source_keys": [
+        "nfec-amd-fire-safety"
+      ],
+      "source_ref": "NFEC AMD fire safety page",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "nfec-amd-fire-safety",
+            "locator": "Fire Safety Tips",
+            "quoted_phrase": "the battery may explode and emit toxic gases, and the resulting fire could spread quickly"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "vehicle_fuel_pool_fire",
+      "kind_key": "vehicle_fuel_tanks",
+      "trigger": "fire_exposure_s",
+      "threshold": 300,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 300,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "A burning car's fuel tank fails and spreads burning fuel.",
+      "source_keys": [
+        "bre-bd2552-2010",
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline; BRE BD 2552 (not accessed)",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "bre-bd2552-2010",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "diesel_vehicle_pool_fire",
+      "kind_key": "diesel_vehicle_tanks",
+      "trigger": "fire_exposure_s",
+      "threshold": 600,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 300,
+      "probability_permille": 400,
+      "requires_ignition_source": false,
+      "event_text": "A burning vehicle's diesel tank fails and spreads burning fuel.",
+      "source_keys": [
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "flammable_store_pool_fire",
+      "kind_key": "flammable_liquid_store",
+      "trigger": "fire_exposure_s",
+      "threshold": 120,
+      "effect": "pool_fire",
+      "threat_key": "pool_fire",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 700,
+      "requires_ignition_source": false,
+      "event_text": "Stored flammable liquids leak and burn.",
+      "source_keys": [
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Petroleum classes",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "lead_acid_hydrogen_flash",
+      "kind_key": "lead_acid_battery_room",
+      "trigger": "gas_in_flammable_range",
+      "threshold": 1,
+      "effect": "flash_fire",
+      "threat_key": "flash_fire",
+      "agent_key": "hydrogen",
+      "delay_low_s": 0,
+      "delay_high_s": 30,
+      "probability_permille": 300,
+      "requires_ignition_source": true,
+      "event_text": "Hydrogen gathered in the battery room ignites.",
+      "source_keys": [
+        "cameo-hydrogen",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.1.15c; CAMEO Chemicals: Hydrogen",
+      "source_note": "Normally held at 1% or less by ventilation; fires only once hydrogen reaches its 4% LFL. Delay and probability Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.1.15c",
+            "quoted_phrase": "does not exceed 1% of the total volume of the room"
+          },
+          {
+            "source_key": "cameo-hydrogen",
+            "locator": "LEL 4%, UEL 75%",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille"
+        ]
+      }
+    },
+    {
+      "rule_key": "ammonia_plant_rupture",
+      "kind_key": "ammonia_refrigeration",
+      "trigger": "structural_state",
+      "threshold": 1,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "ammonia",
+      "delay_low_s": 0,
+      "delay_high_s": 60,
+      "probability_permille": 500,
+      "requires_ignition_source": false,
+      "event_text": "Damaged refrigeration pipework releases ammonia.",
+      "source_keys": [
+        "ss-683-2-2022-preview"
+      ],
+      "source_ref": "SS 683-2:2022 introduction",
+      "source_note": "Threshold 2 stands for 'damaged' (mapping Assumed). Delay and probability Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ss-683-2-2022-preview",
+            "locator": "Introduction 0.2 and 0.3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "oxygen_cylinder_fire_burst",
+      "kind_key": "medical_gas_cylinders",
+      "trigger": "fire_exposure_s",
+      "threshold": 600,
+      "effect": "vessel_burst",
+      "threat_key": "vessel_burst",
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 300,
+      "probability_permille": 300,
+      "requires_ignition_source": false,
+      "event_text": "A fire-exposed oxygen cylinder fails violently.",
+      "source_keys": [
+        "cameo-oxygen"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen",
+      "source_note": "Behaviour from CAMEO; timing and probability Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": "Under prolonged exposure to fire or intense heat the containers may rupture violently and rocket."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "lab_chemicals_toxic_smoke",
+      "kind_key": "laboratory_chemicals",
+      "trigger": "fire_exposure_s",
+      "threshold": 120,
+      "effect": "toxic_combustion_products",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 120,
+      "probability_permille": 700,
+      "requires_ignition_source": false,
+      "event_text": "Burning laboratory chemicals give off toxic smoke.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.2",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.2 (SS 641)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "pool_chemical_flood",
+      "kind_key": "pool_chlorination",
+      "trigger": "flood_depth_m",
+      "threshold": 0.1,
+      "effect": "rupture_release",
+      "threat_key": null,
+      "agent_key": "chlorine",
+      "delay_low_s": 0,
+      "delay_high_s": 600,
+      "probability_permille": 200,
+      "requires_ignition_source": false,
+      "event_text": "Floodwater reaches the pool chemical store and gives off chlorine gas.",
+      "source_keys": [
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06",
+      "source_note": "Hazard from the circular; values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Storage of chemicals (1)",
+            "quoted_phrase": "Flooding and seepage of water in these rooms should be prevented"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "switch_room_flood_power",
+      "kind_key": "electrical_switch_room",
+      "trigger": "flood_depth_m",
+      "threshold": 0.1,
+      "effect": "power_loss",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 900,
+      "requires_ignition_source": false,
+      "event_text": "Flooding trips the switch room and cuts power.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "generator_flood_loss",
+      "kind_key": "emergency_generator",
+      "trigger": "flood_depth_m",
+      "threshold": 0.3,
+      "effect": "loss_of_function",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 800,
+      "requires_ignition_source": false,
+      "event_text": "Flooding stops the emergency generator.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "gas_shutoff_on_power_loss",
+      "kind_key": "gas_leak_detection_shutoff",
+      "trigger": "power_loss",
+      "threshold": 1,
+      "effect": "activate",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 0,
+      "probability_permille": 1000,
+      "requires_ignition_source": false,
+      "event_text": "The gas supply shuts off when power fails.",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.5b",
+      "source_note": "Fail-safe behaviour from the Code; probability 1000 follows from fail-safe design.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.5b",
+            "quoted_phrase": "A fail-safe central solenoid isolation valve interlocked with the gas leak detection system shall be installed"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s"
+        ]
+      }
+    },
+    {
+      "rule_key": "kitchen_suppression_activation",
+      "kind_key": "kitchen_suppression_system",
+      "trigger": "ceiling_temp_c",
+      "threshold": 180,
+      "effect": "activate",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 0,
+      "delay_high_s": 10,
+      "probability_permille": 900,
+      "requires_ignition_source": false,
+      "event_text": "The kitchen suppression system discharges and shuts off the gas.",
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3c(1)",
+      "source_note": "Interlock from the Code; activation temperature and probability Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3c(1)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    },
+    {
+      "rule_key": "gaseous_suppression_activation",
+      "kind_key": "gaseous_suppression_system",
+      "trigger": "ceiling_temp_c",
+      "threshold": 70,
+      "effect": "activate",
+      "threat_key": null,
+      "agent_key": null,
+      "delay_low_s": 30,
+      "delay_high_s": 60,
+      "probability_permille": 900,
+      "requires_ignition_source": false,
+      "event_text": "The room's gas suppression system discharges after its pre-alarm.",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.5",
+      "source_note": "All values Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "delay_high_s",
+          "delay_low_s",
+          "probability_permille",
+          "threshold"
+        ]
+      }
+    }
+  ]
+}

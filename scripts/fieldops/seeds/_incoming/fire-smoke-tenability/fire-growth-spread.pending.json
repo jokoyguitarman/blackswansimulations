@@ -1,0 +1,932 @@
+{
+  "file": "fire-growth-spread.pending.json",
+  "schema_version": 1,
+  "library": "spread",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-f053248e-fcdd-571e-8c24-5eefd7303c53), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+    "brief_key": "fire_smoke_tenability",
+    "note": "Drafted offline from public sources; nothing here is reviewed. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: engine constants and tables with no column in migrations 250/258; WS9 to decide a home",
+  "rows": [
+    {
+      "ref_key": "t2_alpha_classes",
+      "topic": "fire_growth",
+      "value": {
+        "slow": 0.00293,
+        "medium": 0.01172,
+        "fast": 0.0469,
+        "ultra_fast": 0.1876,
+        "car_park_cvm2": 0.0117,
+        "storage_3_to_5m_cvm2": 0.188
+      },
+      "unit": "kW/s2",
+      "note": "Q = alpha t^2 to 1.055 MW at 600/300/150/75 s. Spec 6.23.2 values confirmed. C/VM2 adds car parks (no stacking) and 3-5 m storage; storage over 5 m and stackers use 0.00068 t^3 H.",
+      "extends": "exposure-reference en1991_t_alpha, cvm2_alpha_fast",
+      "worked_example": {
+        "inputs": {
+          "alpha_kw_s2": 0.0469,
+          "t_s": 120
+        },
+        "expected": {
+          "Q_kw": 675.4
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fhwa_hif24005",
+            "locator": "s. 2.1.2",
+            "quoted_phrase": "the time for a fast growth rate fire to reach 1.06 MW is 150 s at a growth rate constant of 46.9 W/s 2"
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "critical_heat_flux_by_material",
+      "topic": "ignition",
+      "value": {
+        "polypropylene": [
+          15,
+          193
+        ],
+        "nylon": [
+          15,
+          270
+        ],
+        "pmma": [
+          11,
+          274
+        ],
+        "polycarbonate": [
+          15,
+          331
+        ],
+        "polycarbonate_panel": [
+          16,
+          420
+        ],
+        "wood_red_oak": [
+          10,
+          134
+        ],
+        "wood_douglas_fir": [
+          10,
+          138
+        ],
+        "wood_douglas_fir_fr": [
+          10,
+          251
+        ],
+        "corrugated_paper_light": [
+          10,
+          152
+        ],
+        "cable_pvc_pvc_power": [
+          [
+            13,
+            25
+          ],
+          [
+            156,
+            341
+          ]
+        ],
+        "cable_pe_pvc_power": [
+          15,
+          [
+            221,
+            244
+          ]
+        ],
+        "cable_xlpe_xlpe_power": [
+          [
+            20,
+            25
+          ],
+          [
+            273,
+            386
+          ]
+        ],
+        "cable_pvc_pvc_comms": [
+          15,
+          131
+        ]
+      },
+      "unit": "[CHF kW/m2, TRP kW s^0.5/m2]",
+      "note": "Tewarson's CHF and thermal response parameter. Below CHF a target never ignites.",
+      "spec_ref": "6.23.2 Radiation (12.5 kW/m2, 30 s)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 6, Table 6-3 (p. 6-6)",
+            "quoted_phrase": "Critical Heat Flux and Thermal Response Parameters of Selected Materials (Tewarson, 1995, © SFPE. With permission.)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "SFPE copyright on the table: values are facts, but confirm reuse terms"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "ignition_time_thick",
+      "topic": "ignition",
+      "value": "t_ig = (pi/4) (TRP/(q - CHF))^2 for q > CHF",
+      "unit": "s",
+      "note": "Replace the spec's fixed 30 s at 12.5 kW/m2: a stud's combustible contents ignite when accumulated exposure reaches t_ig at its current flux (sum dt/t_ig(q) >= 1 for varying flux, Assumed).",
+      "spec_ref": "6.23.2 Radiation",
+      "worked_example": {
+        "inputs": {
+          "material": "red oak",
+          "CHF": 10,
+          "TRP": 134
+        },
+        "expected": {
+          "t_ig_at_20kw_s": 141,
+          "t_ig_at_12_5kw_s": 2256,
+          "t_ig_at_9kw": "never (below CHF)"
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 6, Eq. 6-2, 6-3 (p. 6-5)",
+            "quoted_phrase": "the inverse of the square root of ignition time is expected to be a linear function of the external heat flux"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "dose summation for varying flux"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "ignition_times_measured",
+      "topic": "ignition",
+      "value": {
+        "pmma_pu_foam_acrylic_carpet_10kw": 300,
+        "wool_carpet_20kw": 70,
+        "gypsum_board_paper_20kw": 150,
+        "wood_particle_board_20kw": 250,
+        "polyisocyanurate_foam_30kw": 5,
+        "wool_nylon_carpet_30kw": 70,
+        "hardboard_30kw": 150
+      },
+      "unit": "s",
+      "note": "Spot checks for ignition_time_thick.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 6, Table 6-2 (p. 6-4)",
+            "quoted_phrase": "Typical Ignition Times of Thick Solid Fuels (Quintiere, 1997)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "flashover_hrr_mqh",
+      "topic": "flashover",
+      "value": "Q_fo = 610 sqrt(hk AT Ao sqrt(Ho))",
+      "unit": "kW",
+      "note": "HRR needed for flashover in a room; AT excludes vents. Use per smoke region with its openings.",
+      "worked_example": {
+        "inputs": {
+          "room_m": [
+            4,
+            5,
+            2.6
+          ],
+          "door_m": [
+            0.9,
+            2
+          ],
+          "lining": "concrete kpc 2.9",
+          "t_s": 600
+        },
+        "expected": {
+          "A_T_m2": 85,
+          "h_k_kw_m2K": 0.0695,
+          "Q_fo_MQH_kw": 2366,
+          "Q_fo_Babrauskas_kw": 1909,
+          "Q_fo_Thomas_kw": 1625,
+          "dT_MQH_at_500kW_K": 174.8
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 13, s. 13.3.1.1, Eq. 13-2 (p. 13-5)",
+            "quoted_phrase": "McCaffrey, Quintiere, and Harkleroad (1981) found that their data for predicting compartment hot gas temperature may extend to predict the HRR required"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "flashover_hrr_babrauskas",
+      "topic": "flashover",
+      "value": "Q_fo = 750 Ao sqrt(Ho)",
+      "unit": "kW",
+      "note": "33 room tests, 11 to 3,840 kW, wood and polyurethane fuels. Ignores linings.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 13, s. 13.3.1.2, Eq. 13-3 (p. 13-6)",
+            "quoted_phrase": "Babrauskas found that the HRR required to cause flashover is describe by the following relation"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "flashover_hrr_thomas",
+      "topic": "flashover",
+      "value": "Q_fo = 7.8 AT + 378 Ao sqrt(Ho)",
+      "unit": "kW",
+      "note": "Based on a 520 C layer rise and 22 kW/m2 to the floor.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 13, s. 13.3.1.3, Eq. 13-4 (p. 13-6)",
+            "quoted_phrase": "He predicted a temperature rise of 520 °C (968 °F) and a black body radiation level of 22 kW/m2"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "flashover_criteria",
+      "topic": "flashover",
+      "value": {
+        "upper_layer_C": 600,
+        "floor_flux_kw_m2": 20,
+        "cvm2_design_upper_layer_C": 500,
+        "transition_s": 15,
+        "post_fo_hrr_if_vent_limited": "1.5 x ventilation limit"
+      },
+      "unit": "-",
+      "note": "Trigger full involvement of a region when either criterion is met. C/VM2 uses 500 C (lower end) and ramps to the peak over 15 s. Floor flux from the layer: q = sigma eps T^4 (use 20 kW/m2 as the alternative trigger).",
+      "spec_ref": "6.23.2 Flashover (600 C)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "peacock_1999",
+            "locator": "Conclusions, item 1",
+            "quoted_phrase": "Define flashover as occurring at 600°C upper gas temperature or 20 kW/m heat flux."
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.3.3.2 and Table 2.3.3.1 cases 3-5",
+            "quoted_phrase": "Flashover is assumed to occur when the average upper layer temperature (TUL) first reaches 500°C."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "flame_spread_rates",
+      "topic": "flame_spread",
+      "value": {
+        "smouldering": [
+          0.001,
+          0.01
+        ],
+        "lateral_or_downward_thick_solids": 0.1,
+        "wind_driven_forest_brush": [
+          1,
+          30
+        ],
+        "upward_thick_solids": [
+          1,
+          100
+        ],
+        "horizontal_over_liquids": [
+          1,
+          100
+        ]
+      },
+      "unit": "cm/s",
+      "note": "Order-of-magnitude rates by mode. Lateral 0.1 cm/s = 0.06 m/min; upward up to 60 m/min. The spec's contents rates (0.5-8 m/min) are effective room-scale spread rates, much faster than lateral surface spread; keep them as fitted values, labelled.",
+      "spec_ref": "5.12.2 flame_spread_m_min",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "usfa_r0204",
+            "locator": "Unit 1, slide 1-61 flame spread table",
+            "quoted_phrase": "Flame spread is the speed at which a flame front moves across a fuel's surface."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "per-material room-scale spread rates (no open table found)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "compartment_to_compartment",
+      "topic": "fire_spread",
+      "value": "A closed fire-rated door or wall passes fire after its fire-resistance rating under full-developed exposure; time scaled by the equivalent time of exposure t_e = q_f k_b w_f k_c (EN 1991-1-2 Annex F)",
+      "unit": "min",
+      "note": "Rule for the grid: burn_through_s = rating_min x 60 x (t_standard/t_e) is Assumed; until reviewed use rating x 60 s once the region has flashed over, and never before flashover.",
+      "spec_ref": "5.12.1 burn_through_s",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "scdf_fire_code_2023_cl3_7",
+            "locator": "Cl. 3.7.1",
+            "quoted_phrase": "The walls and floors shall be constructed to have the necessary fire resistance of min. 1 hour"
+          },
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex F",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "scaling rule",
+          "no burn-through before flashover"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "fire_door_ratings_sg",
+      "topic": "fire_spread",
+      "value": {
+        "compartment_wall_min_h": 1,
+        "door_in_compartment_wall": "same as wall",
+        "door_to_protected_shaft": "max(0.5 h, wall/2)",
+        "exit_staircase_door_min_h": 0.5,
+        "flat_entrance_door_h": 0.5
+      },
+      "unit": "h",
+      "note": "Singapore Fire Code 2023. Fire doors are self-closing; held-open doors close on alarm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "scdf_fire_code_2023_cl3_7",
+            "locator": "Cl. 3.7.2",
+            "quoted_phrase": "a door which has the same fire resistance rating as the compartment wall"
+          },
+          {
+            "source_key": "scdf_fire_code_2023_cl3_8",
+            "locator": "Cl. 3.8.3",
+            "quoted_phrase": "Doors in protected shaft must have at least ½-hr fire resistance rating or half the fire resistance of the protecting structure whichever is greater."
+          },
+          {
+            "source_key": "scdf_fire_code_2023_cl3_10",
+            "locator": "Cl. 3.10.3",
+            "quoted_phrase": "Doors opening into the exit staircase shall have at least ½-hr fire resistance rating and fitted with an automatic self-closing device."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "sprinkler_activation",
+      "topic": "sprinkler",
+      "value": "dTL/dt = sqrt(u)/RTI (Tg - TL); steady: t = RTI/sqrt(u) ln((Tg - Ta)/(Tg - Tact))",
+      "unit": "s",
+      "note": "Integrate per tick at the stud's ceiling-jet temperature and velocity (alpert_ceiling_jet_*). Seeded C/VM2 RTI and Tact apply.",
+      "spec_ref": "W29",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 1000,
+          "H_m": 3,
+          "r_m": 4,
+          "RTI": 50,
+          "T_act_C": 68,
+          "T_amb_C": 20
+        },
+        "expected": {
+          "dT_jet_K": 71.2,
+          "u_jet_m_s": 1.064,
+          "t_activation_s": 54.4
+        },
+        "tolerance": "1 %",
+        "note": "Steady fire, C-factor ignored (NUREG Eq. 10-2)."
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "cfast_trg_7",
+            "locator": "s. 6.1, Eq. 6.1-6.2",
+            "quoted_phrase": "RTI (Response Time Index) is a measure of the sensor's thermal inertia."
+          },
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 10, Eq. 10-2 (p. 10-9)",
+            "quoted_phrase": "For steady-state fires, the time (tactivation) required to heat the sensing element of a suppression device from room temperature to operation temperature is given by"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "sprinkler_rti_generic",
+      "topic": "sprinkler",
+      "value": {
+        "standard_bulb": 235,
+        "standard_link": 130,
+        "quick_bulb": 42,
+        "quick_link": 34
+      },
+      "unit": "(m s)^0.5",
+      "note": "Alternatives to the C/VM2 design values (50 QR, 135 SR).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 10, Table 10-3 (p. 10-8)",
+            "quoted_phrase": "Table 10-3 provides generic RTIs for sprinklers."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "sprinkler_suppression_decay",
+      "topic": "sprinkler",
+      "value": {
+        "bound_tau_s": 435,
+        "crib_tau": "3.0 w^-1.85 (w mm/s)",
+        "tau_at_0.07mm_s": 410
+      },
+      "unit": "s",
+      "note": "Q(t) = Q(t_act) exp(-(t - t_act)/tau) for fuel not shielded from spray, spray density at least 0.07 mm/s. Option to replace the spec's constant cap (C/VM2) once a unit or the system suppresses; shielded fuel keeps the cap.",
+      "spec_ref": "W29, AC9.62",
+      "worked_example": {
+        "inputs": {
+          "Q_act_kw": 1000,
+          "t_after_s": 300,
+          "spray_mm_s": 0.07
+        },
+        "expected": {
+          "tau_crib_s": 411,
+          "Q_bound_435_kw": 501.7
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nist_ir_5254",
+            "locator": "Abstract and Eq. 1",
+            "quoted_phrase": "Madrzykowski and Vettori [8] observed that the reduction in heat release rate of all of the furnishings are bounded by the curve"
+          },
+          {
+            "source_key": "nist_ir_5254",
+            "locator": "Abstract",
+            "quoted_phrase": "Using this result, the time constant for suppression at a sprinkler spray density of 0.07 mm/s is 410 s."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "sprinkler_reliability",
+      "topic": "sprinkler",
+      "value": {
+        "operated": 0.92,
+        "effective_when_operated": 0.97,
+        "operated_and_effective": 0.89,
+        "one_head_only": 0.77,
+        "five_or_fewer": 0.96
+      },
+      "unit": "share",
+      "note": "US 2017-2021 structure fires large enough to activate. Draw once per world from a seeded stream (Assumed use).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nfpa_sprinklers_2024",
+            "locator": "Key findings",
+            "quoted_phrase": "sprinklers operated in 92 percent of such fires and were effective at controlling the fire in 97 percent of the incidents."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "applying US data to Singapore"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "pool_fire_hrr",
+      "topic": "outdoor_fire",
+      "value": "Q = m'' dHc A (1 - exp(-k beta D))",
+      "unit": "kW",
+      "note": "Large pools: m'' kg/m2s, dHc kJ/kg, kbeta 1/m: gasoline 0.055/43,700/2.1; diesel-like fuel oil heavy 0.035/39,700/1.7; kerosene 0.039/43,200/3.5; LPG 0.099/46,000/1.4; LNG 0.078/50,000/1.1; transformer oil 0.039/46,400/0.7; methanol 0.017/20,000; ethanol 0.015/26,800.",
+      "worked_example": {
+        "inputs": {
+          "D_m": 3,
+          "m_flux": 0.055,
+          "dHc_kJ_kg": 43700,
+          "k_beta": 2.1
+        },
+        "expected": {
+          "Q_kw": 16958
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 3, Eq. 3-2 and Table 3-2 (p. 3-3, 3-4)",
+            "quoted_phrase": "If the area of the fuel and the effective heat of combustion are known, the above equation becomes"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "point_source_radiation",
+      "topic": "outdoor_fire",
+      "value": "q = chi_r Q/(4 pi R^2)",
+      "unit": "kW/m2",
+      "note": "chi_r 0.15 (alcohol) to 0.60 (sooty hydrocarbons); C/VM2 radiative 0.35 for building fires. Use for radiant flux at stud and agent positions outside the flame.",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 2000,
+          "chi_r": 0.35,
+          "R_m": 4
+        },
+        "expected": {
+          "q_kw_m2": 3.482,
+          "t_pain_s_cvm2": 21.5,
+          "t_pain_min_iso": 0.39
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 5, Eq. 5-1 (p. 5-3)",
+            "quoted_phrase": "χr depends on the fuel, flame size, and flame configuration, and can vary from approximately 0.15 for low-sooting fuels (e.g., alcohol) to 0.60"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "vehicle_fire_hrr",
+      "topic": "outdoor_fire",
+      "value": {
+        "passenger_car": {
+          "peak_MW": 8,
+          "range_MW": [
+            5,
+            10
+          ],
+          "t_peak_min": 10
+        },
+        "multiple_cars": {
+          "peak_MW": 15,
+          "range_MW": [
+            10,
+            20
+          ],
+          "t_peak_min": 20
+        },
+        "bus": {
+          "peak_MW": 30,
+          "range_MW": [
+            25,
+            34
+          ],
+          "t_peak_min": 15
+        },
+        "heavy_goods": {
+          "peak_MW": 150,
+          "range_MW": [
+            20,
+            200
+          ],
+          "t_peak_min": 15
+        },
+        "fuel_tanker": {
+          "peak_MW": 300,
+          "range_MW": [
+            200,
+            300
+          ]
+        }
+      },
+      "unit": "MW, min",
+      "note": "NFPA 502 representative values without fixed firefighting. Shape: t-squared to peak (alpha = peak/t_peak^2; car 8 MW at 600 s gives 0.022 kW/s2, Assumed), plateau, then decay. 60 % of single cars peak within 20 min.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nfpa_502_2025_roa",
+            "locator": "Annex A.11.4.1, Table A.11.4.1",
+            "quoted_phrase": "The representative HRR given in the second column are suggested as typical peak HRR and time-to-peak HRR without fixed water-based firefighting systems"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "t-squared shape and plateau"
+        ],
+        "to_verify": [
+          "2025 edition final text (read from the revision report)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "window_emitted_flux",
+      "topic": "outdoor_fire",
+      "value": {
+        "fled_le_400": 83,
+        "fled_400_800": 103,
+        "fled_gt_800": 144,
+        "fire_resisting_glazing_factor": 0.5
+      },
+      "unit": "kW/m2",
+      "note": "Radiation from a post-flashover window onto an escape route: q = Fw eps k qw.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "3.7.3, Eq. 3.7",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "per-material room-scale flame spread rates"
+    },
+    {
+      "subject": "car-to-car spread intervals (BRE BD 2552 not accessed)"
+    },
+    {
+      "subject": "SS CP 52 sprinkler temperatures"
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_8a8a96dcd2ad": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_2ceb9c218357": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_892a62f0da2b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

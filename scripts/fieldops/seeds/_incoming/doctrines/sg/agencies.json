@@ -1,0 +1,1564 @@
+{
+  "format": "fieldops_agency_register_v1",
+  "country": "SG",
+  "agencies": [
+    {
+      "key": "sg_spf",
+      "name": "Singapore Police Force",
+      "local_name": null,
+      "agency_type": "police",
+      "archetype_keys": [
+        "police_security",
+        "evacuation_crowd"
+      ],
+      "aliases": [
+        {
+          "phrase": "SPF",
+          "kind": "organisation",
+          "archetype_key": "police_security"
+        },
+        {
+          "phrase": "Singapore Police Force",
+          "kind": "organisation",
+          "archetype_key": "police_security"
+        },
+        {
+          "phrase": "999",
+          "kind": "exact",
+          "archetype_key": "police_security"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Police Force Act 2004",
+          "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+          "url": "https://sso.agc.gov.sg/Act/PFA2004",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+          "locator": "s. 4 Functions and duties of Police Force",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Oral Reply to Parliamentary Questions on Regulatory Requirements and Policy Measures to Prevent Risks Arising from Crowd Surges During Festive Periods and at Public Events",
+          "publisher": "Ministry of Home Affairs",
+          "url": "https://www.mha.gov.sg/media-room/newsroom/oral-reply-to-pq-on-regulatory-requirements-and-policy-measures-to-prevent-risks-arising-from-crowd-surges-during-festive-periods-and-at-public-events/",
+          "published": "2022-11-28",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Answer, paras 2 to 5 and 8",
+          "quoted_phrase": "Members of the public may call 999 to alert the Police if there are safety concerns related to overcrowding."
+        }
+      ],
+      "units": [
+        {
+          "key": "sg_spf_ert",
+          "name": "Emergency Response Teams (ERT)",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response",
+            "police_security"
+          ],
+          "public_role": "Patrol high-footfall locations and transport nodes and respond swiftly to neutralise armed or terror threats.",
+          "aliases": [
+            {
+              "phrase": "ERT",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Terrorism and Self Radicalisation",
+              "publisher": "Government of Singapore (SG101)",
+              "url": "https://www.sg101.gov.sg/defence-and-security/current-threats/terrorism-and-self-radicalisation/",
+              "published": "2025-10-06",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Safeguarding Singapore Against Terrorism, para 1",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_irt",
+          "name": "In-Situ Reaction Teams (IRT)",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response",
+            "police_security"
+          ],
+          "public_role": "Frontline officers deployed at iconic high-footfall areas to deter and give a quick response to armed threats, complementing the ERTs.",
+          "aliases": [
+            {
+              "phrase": "IRT",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Terrorism and Self Radicalisation",
+              "publisher": "Government of Singapore (SG101)",
+              "url": "https://www.sg101.gov.sg/defence-and-security/current-threats/terrorism-and-self-radicalisation/",
+              "published": "2025-10-06",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Safeguarding Singapore Against Terrorism, para 1",
+              "quoted_phrase": null
+            },
+            {
+              "title": "Singapore Police Force Annual 2020",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/docs/spf/SPF/Files/Publications/PDF/SPF-Annual-Report-2020.pdf",
+              "published": "2020",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Enhancing Operational Capabilities to Combat Evolving Threats",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_procom",
+          "name": "Protective Security Command (ProCom)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security"
+          ],
+          "public_role": "Protects strategic events and locations during peacetime and national emergency.",
+          "aliases": [
+            {
+              "phrase": "ProCom",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            },
+            {
+              "phrase": "Protective Security Command",
+              "kind": "organisation",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Protective Security Command, mission",
+              "quoted_phrase": "To protect strategic events and locations during Peacetime and National Emergency."
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_transcom",
+          "name": "Public Transport Security Command (TransCom)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security"
+          ],
+          "public_role": "Oversees policing of the public land transport network, rail and bus, and is usually first despatched to incidents on it.",
+          "aliases": [
+            {
+              "phrase": "TransCom",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Public Transport Security Command, introduction and roles",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_gurkha_contingent",
+          "name": "Gurkha Contingent (GC)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security",
+            "tactical_response"
+          ],
+          "public_role": "Guards selected installations, provides security at major events and augments police response to public order and public security incidents.",
+          "aliases": [
+            {
+              "phrase": "Gurkha Contingent",
+              "kind": "organisation",
+              "archetype_key": "police_security"
+            },
+            {
+              "phrase": "GC",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Written Reply to Parliamentary Question on Changes to the Role of the Gurkha Contingent",
+              "publisher": "Ministry of Home Affairs",
+              "url": "https://www.mha.gov.sg/mediaroom/parliamentary/written-reply-to-parliamentary-question-on-changes-to-the-role-of-the-gurkha-contingent-by-mr-k-shanmugam-minister-for-home-affairs-and-minister-for-law",
+              "published": "2019-11-05",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Answer, para 1",
+              "quoted_phrase": null
+            },
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Gurkha Contingent, roles / functions",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_pcg",
+          "name": "Police Coast Guard (PCG)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security"
+          ],
+          "public_role": "Prevents, deters and detects crime in Singapore territorial waters.",
+          "aliases": [
+            {
+              "phrase": "PCG",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            },
+            {
+              "phrase": "Police Coast Guard",
+              "kind": "organisation",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Police Coast Guard, mission",
+              "quoted_phrase": "To Prevent, Deter and Detect Crime in Singapore Territorial Waters."
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_apd",
+          "name": "Airport Police Division (APD)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security"
+          ],
+          "public_role": "State authority for aviation security; maintains law and order at Changi and Seletar airports and protects them against terrorism and unlawful interference.",
+          "aliases": [
+            {
+              "phrase": "APD",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            },
+            {
+              "phrase": "Airport Police",
+              "kind": "organisation",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Airport Police Division: introduction; roles / functions",
+              "quoted_phrase": "The Airport Police Division (APD) is the state authority responsible for aviation security in Singapore."
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_sog",
+          "name": "Special Operations Group (SOG)",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response"
+          ],
+          "public_role": "Command structure over the SPF hostage-rescue units (STAR Unit, PCG Special Task Squadron, Gurkha Special Action Group), activated for complex public security incidents.",
+          "aliases": [
+            {
+              "phrase": "SOG",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Direct Recruitment For New Special Operations Group (SOG)",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/media-room/news/20241129_direct_recruitment_for_new_special_operations_group",
+              "published": "2024-11-29",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "paras 1 and 2",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "to verify",
+          "verify_note": "Announced as being formed (Nov 2024); reviewer to confirm it is operational."
+        }
+      ],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": null
+    },
+    {
+      "key": "sg_spf_soc",
+      "name": "SPF Special Operations Command",
+      "local_name": null,
+      "agency_type": "tactical_police",
+      "archetype_keys": [
+        "tactical_response",
+        "police_security"
+      ],
+      "aliases": [
+        {
+          "phrase": "SOC",
+          "kind": "exact",
+          "archetype_key": "tactical_response"
+        },
+        {
+          "phrase": "Special Operations Command",
+          "kind": "organisation",
+          "archetype_key": "tactical_response"
+        }
+      ],
+      "sources": [
+        {
+          "title": "SPF | Our People",
+          "publisher": "Singapore Police Force",
+          "url": "https://www.police.gov.sg/who-we-are/our-people",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Special Operations Command, introduction",
+          "quoted_phrase": "The Special Operations Command (SOC) is the strategic force of the Singapore Police Force (SPF)."
+        }
+      ],
+      "units": [
+        {
+          "key": "sg_spf_ptu",
+          "name": "Police Tactical Unit (PTU)",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security",
+            "tactical_response"
+          ],
+          "public_role": "Handles public order, from civil disturbances to riots, and security duties including searches for armed criminals and response to terrorist incidents.",
+          "aliases": [
+            {
+              "phrase": "PTU",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Special Operations Command, roles table, PTU",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_star",
+          "name": "Special Tactics and Rescue (STAR) Unit",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response"
+          ],
+          "public_role": "Gives the SPF its highest level of tactical armed response: apprehending armed criminals and hostage rescue on land and at sea.",
+          "aliases": [
+            {
+              "phrase": "STAR",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            },
+            {
+              "phrase": "Special Tactics and Rescue",
+              "kind": "organisation",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Special Operations Command, roles table, STAR Unit",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_k9",
+          "name": "Police K-9 Unit",
+          "local_name": null,
+          "archetype_keys": [
+            "police_security"
+          ],
+          "public_role": "Dogs trained for explosive detection, drug detection, guard duties and anti-crime operations, supporting public order and security operations.",
+          "aliases": [
+            {
+              "phrase": "K-9",
+              "kind": "exact",
+              "archetype_key": "police_security"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Special Operations Command, roles table, Police K-9 Unit",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_spf_cnu",
+          "name": "Crisis Negotiation Unit (CNU)",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response"
+          ],
+          "public_role": "Negotiators on standby for crises such as suicide intervention and civil disobedience, aiming at peaceful resolution.",
+          "aliases": [
+            {
+              "phrase": "CNU",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            },
+            {
+              "phrase": "Crisis Negotiation Unit",
+              "kind": "organisation",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "SPF | Our People",
+              "publisher": "Singapore Police Force",
+              "url": "https://www.police.gov.sg/who-we-are/our-people",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Special Operations Command, roles table, CNU",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "to verify",
+          "verify_note": "Archetype tactical_response is Assumed; no archetype for negotiation exists."
+        }
+      ],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": null
+    },
+    {
+      "key": "sg_spf_cid",
+      "name": "SPF Criminal Investigation Department",
+      "local_name": null,
+      "agency_type": "investigation",
+      "archetype_keys": [
+        "pursuit_investigation"
+      ],
+      "aliases": [
+        {
+          "phrase": "CID",
+          "kind": "exact",
+          "archetype_key": "pursuit_investigation"
+        },
+        {
+          "phrase": "Criminal Investigation Department",
+          "kind": "organisation",
+          "archetype_key": "pursuit_investigation"
+        }
+      ],
+      "sources": [
+        {
+          "title": "SPF | Our People",
+          "publisher": "Singapore Police Force",
+          "url": "https://www.police.gov.sg/who-we-are/our-people",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Criminal Investigation Department, Major Crime Division",
+          "quoted_phrase": "investigates homicide, kidnapping, firearm-related offences, serious sexual crimes, bomb and explosive-related offences"
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": null
+    },
+    {
+      "key": "sg_scdf",
+      "name": "Singapore Civil Defence Force",
+      "local_name": null,
+      "agency_type": "civil_defence",
+      "archetype_keys": [
+        "fire_rescue",
+        "medical_triage",
+        "incident_command"
+      ],
+      "aliases": [
+        {
+          "phrase": "SCDF",
+          "kind": "organisation",
+          "archetype_key": "fire_rescue"
+        },
+        {
+          "phrase": "Singapore Civil Defence Force",
+          "kind": "organisation",
+          "archetype_key": "fire_rescue"
+        },
+        {
+          "phrase": "995",
+          "kind": "exact",
+          "archetype_key": "fire_rescue"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+          "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+          "url": "https://sso.agc.gov.sg/Act/CDA1986",
+          "published": "2021-12-31",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+          "locator": "s. 3 and s. 4",
+          "quoted_phrase": null
+        },
+        {
+          "title": "About SCDF",
+          "publisher": "Singapore Civil Defence Force",
+          "url": "https://www.scdf.gov.sg/home/about-scdf",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "page body",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Training Directory, Civil Defence Academy Singapore",
+          "publisher": "Singapore Civil Defence Force",
+          "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Singapore Civil Defence Force, introduction",
+          "quoted_phrase": "Under Singapore's HomeFront Crisis Management System, the SCDF was appointed as the Incident Manager"
+        }
+      ],
+      "units": [
+        {
+          "key": "sg_scdf_dart",
+          "name": "Disaster Assistance and Rescue Team (DART)",
+          "local_name": null,
+          "archetype_keys": [
+            "fire_rescue"
+          ],
+          "public_role": "SCDF specialist unit for complex operations such as urban search and rescue, water rescue, height rescue and prolonged firefighting.",
+          "aliases": [
+            {
+              "phrase": "DART",
+              "kind": "exact",
+              "archetype_key": "fire_rescue"
+            }
+          ],
+          "sources": [
+            {
+              "title": "What it takes to be a DART Specialist (Part 1/2)",
+              "publisher": "Singapore Civil Defence Force",
+              "url": "https://www.scdf.gov.sg/home/about-scdf/media-room/our-stories/storyarticledetail/what-it-takes-to-be-a-dart-specialist-(part-1-2)",
+              "published": "2026-03-13",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "para 2",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_scdf_hazmat",
+          "name": "SCDF HazMat specialists",
+          "local_name": null,
+          "archetype_keys": [
+            "cbrn_defence",
+            "fire_rescue"
+          ],
+          "public_role": "Respond to hazardous materials incidents under SCDF's HazMat Response System, including decontamination and detection.",
+          "aliases": [
+            {
+              "phrase": "SCDF HazMat",
+              "kind": "organisation",
+              "archetype_key": "cbrn_defence"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Training Directory, Civil Defence Academy Singapore",
+              "publisher": "Singapore Civil Defence Force",
+              "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Specialist courses: Hazmat Specialist Course; Advanced Hazmat Specialist Course",
+              "quoted_phrase": null
+            },
+            {
+              "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+              "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+              "url": "https://sso.agc.gov.sg/Act/CDA1986",
+              "published": "2021-12-31",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+              "locator": "s. 4(2)(j)",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "to verify",
+          "verify_note": "Sources describe the specialist role and training; the name of a standing HazMat unit is not in a located source."
+        },
+        {
+          "key": "sg_scdf_ems",
+          "name": "SCDF Emergency Medical Services",
+          "local_name": null,
+          "archetype_keys": [
+            "medical_triage"
+          ],
+          "public_role": "Provides the emergency ambulance service and first aid and removal of casualties for treatment.",
+          "aliases": [
+            {
+              "phrase": "SCDF ambulance",
+              "kind": "function",
+              "archetype_key": "medical_triage"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+              "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+              "url": "https://sso.agc.gov.sg/Act/CDA1986",
+              "published": "2021-12-31",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+              "locator": "s. 4(2)(b) and (k)",
+              "quoted_phrase": null
+            },
+            {
+              "title": "Training Directory, Civil Defence Academy Singapore",
+              "publisher": "Singapore Civil Defence Force",
+              "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Paramedic Specialist Course",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        }
+      ],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "Alias \"995\" is in the spec table; no located official source states the number. Verify."
+    },
+    {
+      "key": "sg_saf",
+      "name": "Singapore Armed Forces",
+      "local_name": null,
+      "agency_type": "military",
+      "archetype_keys": [
+        "military_support",
+        "bomb_disposal_eod",
+        "cbrn_defence"
+      ],
+      "aliases": [
+        {
+          "phrase": "SAF",
+          "kind": "organisation",
+          "archetype_key": "military_support"
+        },
+        {
+          "phrase": "Singapore Armed Forces",
+          "kind": "organisation",
+          "archetype_key": "military_support"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Singapore Armed Forces Act 1972 (2020 Revised Edition)",
+          "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+          "url": "https://sso.agc.gov.sg/Act/SAFA1972",
+          "published": "2021-12-31",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+          "locator": "ss. 201B to 201G (deployment in aid of civilian authorities)",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Fact Sheet: Island Defence Task Force (IDTF)",
+          "publisher": "Ministry of Defence",
+          "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/08mar23_fs/",
+          "published": "2023-03-08",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Background; Interoperability with WoG agencies",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [
+        {
+          "key": "sg_saf_idtf",
+          "name": "Island Defence Task Force (IDTF)",
+          "local_name": null,
+          "archetype_keys": [
+            "military_support"
+          ],
+          "public_role": "Works with the Home Team on homeland security, protects SAF bases and civilian key installations, and coordinates military resources for SCDF in civil emergencies.",
+          "aliases": [
+            {
+              "phrase": "IDTF",
+              "kind": "exact",
+              "archetype_key": "military_support"
+            },
+            {
+              "phrase": "Island Defence Task Force",
+              "kind": "organisation",
+              "archetype_key": "military_support"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Fact Sheet: Island Defence Task Force (IDTF)",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/08mar23_fs/",
+              "published": "2023-03-08",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Background; para c, Civil Emergencies",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_saf_adf",
+          "name": "Army Deployment Force (ADF)",
+          "local_name": null,
+          "archetype_keys": [
+            "military_support"
+          ],
+          "public_role": "High-readiness army unit that reinforces IDTF, SOTF and the Home Team in homeland security operations and civil contingencies.",
+          "aliases": [
+            {
+              "phrase": "ADF",
+              "kind": "exact",
+              "archetype_key": "military_support"
+            },
+            {
+              "phrase": "Army Deployment Force",
+              "kind": "organisation",
+              "archetype_key": "military_support"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Fact Sheet: Army Deployment Force for Homeland Security Operations and Contingencies",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2016jun30-news-releases-00031/",
+              "published": "2016-06-30",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "paras 1 and 2",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_saf_sotf",
+          "name": "Special Operations Task Force (SOTF)",
+          "local_name": null,
+          "archetype_keys": [
+            "tactical_response",
+            "military_support"
+          ],
+          "public_role": "SAF counter-terrorism task force that can be activated to support the Home Team, including in hostage situations.",
+          "aliases": [
+            {
+              "phrase": "SOTF",
+              "kind": "exact",
+              "archetype_key": "tactical_response"
+            },
+            {
+              "phrase": "Special Operations Task Force",
+              "kind": "organisation",
+              "archetype_key": "tactical_response"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Fact Sheet: Army Deployment Force for Homeland Security Operations and Contingencies",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2016jun30-news-releases-00031/",
+              "published": "2016-06-30",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "para 2",
+              "quoted_phrase": null
+            },
+            {
+              "title": "SAF Conducts Counter-Terrorism Exercise in the City",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/03aug21_nr/",
+              "published": "2021-08-03",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "paras 1 and 2",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_saf_cbre_dg",
+          "name": "Chemical, Biological, Radiological and Explosives Defence Group (CBRE DG)",
+          "local_name": null,
+          "archetype_keys": [
+            "cbrn_defence",
+            "bomb_disposal_eod"
+          ],
+          "public_role": "SAF personnel trained and equipped to respond to chemical, biological, radiological and explosive threats.",
+          "aliases": [
+            {
+              "phrase": "CBRE DG",
+              "kind": "exact",
+              "archetype_key": "cbrn_defence"
+            },
+            {
+              "phrase": "CBRE Defence Group",
+              "kind": "organisation",
+              "archetype_key": "cbrn_defence"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Exercise Northstar 9 Fact Sheet: SAF CBRE Defence Group and Medical Response Force",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2015may09-news-releases-02626/",
+              "published": "2015-05-09",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Island Defence Task Force (IDTF), para 2",
+              "quoted_phrase": "The CBRE DG comprises SAF personnel who are trained and equipped to respond to any CBRE threat."
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_saf_36_sce",
+          "name": "36th Battalion, Singapore Combat Engineers (36 SCE)",
+          "local_name": null,
+          "archetype_keys": [
+            "bomb_disposal_eod"
+          ],
+          "public_role": "The SAF's explosive ordnance disposal unit; responds to explosive ordnance and improvised explosive devices and sweeps key national events.",
+          "aliases": [
+            {
+              "phrase": "36 SCE",
+              "kind": "exact",
+              "archetype_key": "bomb_disposal_eod"
+            },
+            {
+              "phrase": "SAF EOD",
+              "kind": "organisation",
+              "archetype_key": "bomb_disposal_eod"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Singapore Combat Engineers",
+              "publisher": "Singapore Army",
+              "url": "https://www.army.gov.sg/our-forces/formations/singapore-combat-engineers/",
+              "published": null,
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Explosive Ordnance Disposal (EOD) Engineers",
+              "quoted_phrase": null
+            },
+            {
+              "title": "Their job's a blast!",
+              "publisher": "Ministry of Defence (Pioneer)",
+              "url": "https://defencepioneer.sg/pioneer-articles/their-job's-a-blast!",
+              "published": "2023-10-18",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "1) They're the #1 bomb experts in Singapore",
+              "quoted_phrase": "Today, they are the only national responder to any explosive threat in the country, whether it's an EOD or Improvised Explosive Device (IED)."
+            },
+            {
+              "title": "Factsheet: SAF's Chemical and Biological Defence Capability",
+              "publisher": "Ministry of Defence (held by the National Archives of Singapore)",
+              "url": "https://www.nas.gov.sg/archivesonline/data/pdfdoc/MINDEF_20030117001/MINDEF_20030117003.pdf",
+              "published": "2003-01-17",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "The CBRE Defence Group, first bullet",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        },
+        {
+          "key": "sg_saf_39_sce",
+          "name": "39th Battalion, Singapore Combat Engineers (39 SCE)",
+          "local_name": null,
+          "archetype_keys": [
+            "cbrn_defence"
+          ],
+          "public_role": "Chemical and biological defence unit that decontaminates incident sites with chemical or biological hazards and works with SCDF in a chemical attack.",
+          "aliases": [
+            {
+              "phrase": "39 SCE",
+              "kind": "exact",
+              "archetype_key": "cbrn_defence"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Factsheet: SAF's Chemical and Biological Defence Capability",
+              "publisher": "Ministry of Defence (held by the National Archives of Singapore)",
+              "url": "https://www.nas.gov.sg/archivesonline/data/pdfdoc/MINDEF_20030117001/MINDEF_20030117003.pdf",
+              "published": "2003-01-17",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "The CBRE Defence Group, second bullet",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "to verify",
+          "verify_note": "Source is a 2003 factsheet; current role to confirm with MINDEF."
+        },
+        {
+          "key": "sg_saf_mrf",
+          "name": "Medical Response Force (MRF)",
+          "local_name": null,
+          "archetype_keys": [
+            "medical_triage",
+            "cbrn_defence"
+          ],
+          "public_role": "SAF Medical Corps team on standby to treat casualties of chemical, biological or radiological agents on scene.",
+          "aliases": [
+            {
+              "phrase": "MRF",
+              "kind": "exact",
+              "archetype_key": "medical_triage"
+            }
+          ],
+          "sources": [
+            {
+              "title": "Exercise Northstar 9 Fact Sheet: SAF CBRE Defence Group and Medical Response Force",
+              "publisher": "Ministry of Defence",
+              "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2015may09-news-releases-02626/",
+              "published": "2015-05-09",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "Island Defence Task Force (IDTF), para 2",
+              "quoted_phrase": null
+            },
+            {
+              "title": "Factsheet: SAF's Chemical and Biological Defence Capability",
+              "publisher": "Ministry of Defence (held by the National Archives of Singapore)",
+              "url": "https://www.nas.gov.sg/archivesonline/data/pdfdoc/MINDEF_20030117001/MINDEF_20030117003.pdf",
+              "published": "2003-01-17",
+              "accessed_at": "2026-11-22",
+              "language": "en",
+              "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+              "locator": "The CBRE Defence Group, third bullet",
+              "quoted_phrase": null
+            }
+          ],
+          "drafted_by": "agent",
+          "verify": "located",
+          "verify_note": null
+        }
+      ],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": "The spec table lists CBRE DG and SOTF as separate register rows; they are modelled here as units of the SAF (Choice 25), keys aligned with responder-units/security-units.sg.json."
+    },
+    {
+      "key": "sg_moh",
+      "name": "Ministry of Health",
+      "local_name": null,
+      "agency_type": "health",
+      "archetype_keys": [
+        "hospital_ed",
+        "medical_triage"
+      ],
+      "aliases": [
+        {
+          "phrase": "MOH",
+          "kind": "organisation",
+          "archetype_key": "hospital_ed"
+        },
+        {
+          "phrase": "Ministry of Health",
+          "kind": "organisation",
+          "archetype_key": "hospital_ed"
+        }
+      ],
+      "sources": [
+        {
+          "title": "National inter-agency response plan for mass casualty incidents",
+          "publisher": "Ministry of Health",
+          "url": "https://www.moh.gov.sg/newsroom/national-inter-agency-response-plan-for-mass-casualty-incidents/",
+          "published": "2018-01-10",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Oral Reply, paras 1 and 2",
+          "quoted_phrase": "MOH oversees and coordinates the management of casualties at the incident site, and at public hospitals (PHs) and polyclinics."
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": "MOH (Singapore) shares the alias \"MOH\" with Malaysia's register in the spec table; organisation aliases are per country, so no clash, but the reviewer should confirm."
+    },
+    {
+      "key": "sg_mha",
+      "name": "Ministry of Home Affairs",
+      "local_name": null,
+      "agency_type": "ministry",
+      "archetype_keys": [
+        "ministry_liaison"
+      ],
+      "aliases": [
+        {
+          "phrase": "MHA",
+          "kind": "organisation",
+          "archetype_key": "ministry_liaison"
+        },
+        {
+          "phrase": "Ministry of Home Affairs",
+          "kind": "organisation",
+          "archetype_key": "ministry_liaison"
+        },
+        {
+          "phrase": "Home Team",
+          "kind": "organisation",
+          "archetype_key": "ministry_liaison"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Ministerial Statement on the impact of the Middle East situation on Singapore",
+          "publisher": "Ministry of Home Affairs",
+          "url": "https://www.mha.gov.sg/media-room/newsroom/ministerial-statement-on-the-impact-of-the-middle-east-situation-on-singapore/",
+          "published": "2026-04-07",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "paras 1 to 7",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Public Order and Safety (Special Powers) Act 2018 (2020 Revised Edition)",
+          "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+          "url": "https://sso.agc.gov.sg/Act/POSSPA2018",
+          "published": "2021-12-31",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+          "locator": "s. 8 Activation order by Minister",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "\"Home Team\" names MHA's agencies collectively; as an alias of MHA it may mis-route SPF or SCDF teams. Reviewer to decide."
+    },
+    {
+      "key": "sg_lta",
+      "name": "Land Transport Authority",
+      "local_name": null,
+      "agency_type": "transport",
+      "archetype_keys": [
+        "transport_operator"
+      ],
+      "aliases": [
+        {
+          "phrase": "LTA",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        },
+        {
+          "phrase": "Land Transport Authority",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        }
+      ],
+      "sources": [
+        {
+          "title": "New Rail Financing Framework",
+          "publisher": "Land Transport Authority",
+          "url": "https://www.lta.gov.sg/content/ltagov/en/who_we_are/our_work/public_transport_system/rail/new_rail_financing_framework.html",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Regulatory Framework, incident management bullet",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Joint Exercise by LTA and Public Transport Operators to Ensure Operational Readiness in Managing Rail Incidents",
+          "publisher": "Land Transport Authority",
+          "url": "https://www.lta.gov.sg/content/ltagov/en/newsroom/2026/1/news-releases/joint-exercise-by-lta-and-public-transport-operators-to-ensure-o.html",
+          "published": "2026-01-24",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "paras 1, 2 and 6",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": null
+    },
+    {
+      "key": "sg_smrt",
+      "name": "SMRT",
+      "local_name": null,
+      "agency_type": "transport",
+      "archetype_keys": [
+        "transport_operator"
+      ],
+      "aliases": [
+        {
+          "phrase": "SMRT",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Joint Exercise by LTA and Public Transport Operators to Ensure Operational Readiness in Managing Rail Incidents",
+          "publisher": "Land Transport Authority",
+          "url": "https://www.lta.gov.sg/content/ltagov/en/newsroom/2026/1/news-releases/joint-exercise-by-lta-and-public-transport-operators-to-ensure-o.html",
+          "published": "2026-01-24",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "paras 1 and 4",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "Located only in an LTA release; the operator's own public material was not searched."
+    },
+    {
+      "key": "sg_sbst",
+      "name": "SBS Transit",
+      "local_name": null,
+      "agency_type": "transport",
+      "archetype_keys": [
+        "transport_operator"
+      ],
+      "aliases": [
+        {
+          "phrase": "SBS Transit",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        },
+        {
+          "phrase": "SBST",
+          "kind": "exact",
+          "archetype_key": "transport_operator"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Joint Exercise by LTA and Public Transport Operators to Ensure Operational Readiness in Managing Rail Incidents",
+          "publisher": "Land Transport Authority",
+          "url": "https://www.lta.gov.sg/content/ltagov/en/newsroom/2026/1/news-releases/joint-exercise-by-lta-and-public-transport-operators-to-ensure-o.html",
+          "published": "2026-01-24",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "paras 1 and 4",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "Located only in an LTA release; the operator's own public material was not searched."
+    },
+    {
+      "key": "sg_pub",
+      "name": "PUB, Singapore's National Water Agency",
+      "local_name": null,
+      "agency_type": "other",
+      "archetype_keys": [
+        "utilities"
+      ],
+      "aliases": [
+        {
+          "phrase": "PUB",
+          "kind": "organisation",
+          "archetype_key": "utilities"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Flood Response",
+          "publisher": "PUB, Singapore's National Water Agency",
+          "url": "https://www.pub.gov.sg/Public/KeyInitiatives/Flood-Resilience/Flood-Response",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "page body",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Flood Forecasting and Monitoring",
+          "publisher": "PUB, Singapore's National Water Agency",
+          "url": "https://www.pub.gov.sg/Public/KeyInitiatives/Flood-Resilience/Flood-Forecasting-and-Monitoring",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "paras 2 to 4",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": "Agency type \"other\": AGENCY_TYPES has no utilities type."
+    },
+    {
+      "key": "sg_nea",
+      "name": "National Environment Agency",
+      "local_name": null,
+      "agency_type": "other",
+      "archetype_keys": [
+        "utilities"
+      ],
+      "aliases": [
+        {
+          "phrase": "NEA",
+          "kind": "organisation",
+          "archetype_key": "utilities"
+        },
+        {
+          "phrase": "National Environment Agency",
+          "kind": "organisation",
+          "archetype_key": "utilities"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Environmental Protection Division Report 2013",
+          "publisher": "National Environment Agency",
+          "url": "https://www.nea.gov.sg/docs/default-source/resource/publications/environmental-protection-division-annual-report/neareport2013.pdf",
+          "published": "2013",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Terrain Decontamination",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Safety Audit Guidelines",
+          "publisher": "National Environment Agency",
+          "url": "https://www.nea.gov.sg/our-services/pollution-control/chemical-safety/safety-audit-guidelines",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "para 1",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "Archetype utilities is Assumed: no archetype fits an environmental regulator. Reviewer to choose."
+    },
+    {
+      "key": "sg_caas",
+      "name": "Civil Aviation Authority of Singapore",
+      "local_name": null,
+      "agency_type": "other",
+      "archetype_keys": [
+        "transport_operator"
+      ],
+      "aliases": [
+        {
+          "phrase": "CAAS",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        },
+        {
+          "phrase": "Civil Aviation Authority of Singapore",
+          "kind": "organisation",
+          "archetype_key": "transport_operator"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Civil Aviation Authority of Singapore Act 2009",
+          "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+          "url": "https://sso.agc.gov.sg/Act/CAASA2009",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+          "locator": "s. 7(1)(a), (b), (g), (ga)",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Airports and aerodrome safety",
+          "publisher": "Civil Aviation Authority of Singapore",
+          "url": "https://www.caas.gov.sg/industry/airports-and-aerodrome-safety/",
+          "published": "2026-05-16",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Aerodrome safety",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "to verify",
+      "verify_note": "Archetype transport_operator is Assumed; CAAS is the regulator and air navigation and search-and-rescue coordinator, not the airport operator."
+    },
+    {
+      "key": "sg_cag_aes",
+      "name": "Changi Airport Group Airport Emergency Service",
+      "local_name": null,
+      "agency_type": "other",
+      "archetype_keys": [
+        "fire_rescue",
+        "incident_command"
+      ],
+      "aliases": [
+        {
+          "phrase": "AES",
+          "kind": "exact",
+          "archetype_key": "fire_rescue"
+        },
+        {
+          "phrase": "Airport Emergency Service",
+          "kind": "organisation",
+          "archetype_key": "fire_rescue"
+        },
+        {
+          "phrase": "Changi AES",
+          "kind": "organisation",
+          "archetype_key": "fire_rescue"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Airport Safety & Security",
+          "publisher": "Changi Airport Group",
+          "url": "https://www.changiairport.com/en/corporate/about-us/business-expertise/airport-safety-and-security.html",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "Airport Emergency Service; Airport Emergency Plan",
+          "quoted_phrase": null
+        },
+        {
+          "title": "Airport Emergency Services",
+          "publisher": "Changi Airport Group",
+          "url": "https://www.changiairport.com/en/careers/careers-with-changi-airport-group/airport-emergency-service.html",
+          "published": null,
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "para 2",
+          "quoted_phrase": null
+        },
+        {
+          "title": "AIP Singapore, AD 2 WSSS Singapore Changi Intl (valid from 02 Oct 2025)",
+          "publisher": "Civil Aviation Authority of Singapore",
+          "url": "https://aim-sg.caas.gov.sg/aim-content/uploads/aip/02-OCT-2025/AIP-2/2025-10-02-000000/html/eAIP/SG-AD-2-WSSS-en-GB.html",
+          "published": "2025-10-02",
+          "accessed_at": "2026-11-22",
+          "language": "en",
+          "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+          "locator": "WSSS AD 2.6 Rescue and fire fighting services",
+          "quoted_phrase": null
+        }
+      ],
+      "units": [],
+      "drafted_by": "agent",
+      "verify": "located",
+      "verify_note": "Site-specific source approved by the user (22 Nov 2026). AES also serves Seletar Airport and RSAF airbases (CAG careers page); RSAF airbases are Government aerodromes outside ANR-139 (reg. 3)."
+    }
+  ],
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "extracted_at": "2026-11-22",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "confidence": "medium",
+    "assumed_fields": [
+      "sg_nea.archetype_keys",
+      "sg_caas.archetype_keys",
+      "sg_cag_aes.archetype_keys.incident_command",
+      "sg_spf_soc.units.sg_spf_cnu.archetype_keys"
+    ]
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "notes": "Drafted by the research agent. Every name and alias to verify against the agency's publications (6.11.1). Rows with verify \"to verify\" need a decision. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

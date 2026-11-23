@@ -1,0 +1,223 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "tactical_response",
+  "title": "SPF SOC: Tactical Response response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "SPF Special Operations Command",
+  "agency_key": "sg_spf_soc",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_spf_soc",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "SPF | Our People",
+        "publisher": "Singapore Police Force",
+        "url": "https://www.police.gov.sg/who-we-are/our-people",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Special Operations Command, roles table: PTU, STAR Unit, CNU",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Criminal Procedure Code 2010",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CPC2010",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 63, 75, 76",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Public Order and Safety (Special Powers) Act 2018 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/POSSPA2018",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "ss. 18(8), 19(5), 20(4)",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "low",
+    "assumed_fields": [
+      "sequence (tactics withheld by policy, 6.11.5 item 3)",
+      "hand_offs.ho_police01.when",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_respond01"
+        ],
+        "source_index": 0,
+        "locator": "roles table, STAR Unit and PTU"
+      },
+      {
+        "ids": [
+          "st_negot001"
+        ],
+        "source_index": 0,
+        "locator": "roles table, CNU"
+      },
+      {
+        "ids": [
+          "st_puborder1"
+        ],
+        "source_index": 0,
+        "locator": "roles table, PTU"
+      },
+      {
+        "ids": [
+          "nv_restrain2"
+        ],
+        "source_index": 1,
+        "locator": "s. 76"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Provide the Singapore Police Force with its highest level of tactical armed response: apprehend armed criminals, conduct hostage rescue on land and at sea, and respond to terrorist incidents.",
+    "sequence": [
+      {
+        "id": "st_respond01",
+        "window": null,
+        "label": "Armed response",
+        "action": "Respond to incidents involving armed criminals or hostages that need a tactical team; follow the agency's standard operating procedure."
+      },
+      {
+        "id": "st_negot001",
+        "window": null,
+        "label": "Negotiation",
+        "action": "Where a crisis may be resolved by negotiation, the Crisis Negotiation Unit seeks a peaceful resolution."
+      },
+      {
+        "id": "st_puborder1",
+        "window": null,
+        "label": "Public order",
+        "action": "Deal with civil disturbances and riots and search for armed criminals through the Police Tactical Unit."
+      }
+    ],
+    "never": [
+      {
+        "id": "nv_restrain2",
+        "action": "Restrain an arrested person more than is necessary to prevent escape",
+        "why": "Criminal Procedure Code 2010 s. 76.",
+        "exception": null
+      }
+    ],
+    "hand_offs": [
+      {
+        "id": "ho_police01",
+        "to_archetype": "police_security",
+        "to_label": "SPF",
+        "when": "The armed threat is resolved and the scene returns to policing."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_cpc00063",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "s. 63",
+        "power": "An officer must use all lawful means to prevent a suspected offence, and may do what is likely to cause death or grievous hurt when necessary to apprehend a person doing or about to do a terrorist act.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_cpc75076",
+        "instrument": "Criminal Procedure Code 2010",
+        "provision": "ss. 75 and 76",
+        "power": "If a person forcibly resists or evades arrest, all reasonable means necessary may be used; an arrested person must not be restrained more than is necessary to prevent escape.",
+        "jurisdiction": null
+      },
+      {
+        "id": "la_posspa01",
+        "instrument": "Public Order and Safety (Special Powers) Act 2018",
+        "provision": "ss. 8, 11, 16 to 26; 18(8), 19(5), 20(4)",
+        "power": "Under a Ministerial activation order and a special authorisation, police may cordon, close roads, control movement and search in the target area, using reasonably necessary force, including lethal weapons, to enforce them.",
+        "jurisdiction": null
+      }
+    ],
+    "use_of_force": {
+      "framework": "police_use_of_force",
+      "authorised_levels": [
+        "presence",
+        "verbal",
+        "physical_control",
+        "lethal"
+      ],
+      "conditions": [
+        {
+          "id": "uf_physcl01",
+          "level": "physical_control",
+          "when": "Touch or confine a person to arrest them; use all reasonable means necessary if they forcibly resist or try to evade arrest.",
+          "authority_ids": [
+            "la_cpc75076"
+          ]
+        },
+        {
+          "id": "uf_lethal01",
+          "level": "lethal",
+          "when": "The officer has reasonable grounds to believe a person is doing or about to do something that may amount to a terrorist act, and the act is necessary to apprehend them.",
+          "authority_ids": [
+            "la_cpc00063"
+          ]
+        },
+        {
+          "id": "uf_lethal02",
+          "level": "lethal",
+          "when": "Under a special authorisation in force, to stop people or vehicles entering a cordoned area or to enforce road-closure and movement orders, as reasonably necessary.",
+          "authority_ids": [
+            "la_posspa01"
+          ]
+        }
+      ],
+      "principles": [
+        "Force must be reasonably necessary (CPC s. 75(2); POSSPA ss. 18 to 20).",
+        "An arrested person must not be restrained more than is necessary to prevent escape (CPC s. 76)."
+      ],
+      "command_authority": "The officer's own reasonable belief under CPC s. 63(2); POSSPA powers need the Minister's activation order and the Commissioner's special authorisation.",
+      "civil_support": null
+    }
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country",
+      "legal or police_service"
+    ],
+    "notes": "Deliberately thin: unit tactics are never recorded. The hand-off back to SPF is Assumed. Use-of-force block is the SPF block (same law applies). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles; use-of-force block withheld pending a legal, police_service or military_service reviewer (AC1.59).",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "hospital_ed",
+  "title": "MOH: Hospital / ED response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Ministry of Health",
+  "agency_key": "sg_moh",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_moh",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "National inter-agency response plan for mass casualty incidents",
+        "publisher": "Ministry of Health",
+        "url": "https://www.moh.gov.sg/newsroom/national-inter-agency-response-plan-for-mass-casualty-incidents/",
+        "published": "2018-01-10",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Oral Reply, paras 1 to 3",
+        "quoted_phrase": "It involves the deployment of command and field medical teams to the incident site"
+      },
+      {
+        "title": "Ambulance Diversion",
+        "publisher": "Ministry of Health",
+        "url": "https://www.moh.gov.sg/newsroom/ambulance-diversion/",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "para 2",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Training Directory, Civil Defence Academy Singapore",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/docs/default-source/cda-library/scdf_cda_training_directory.pdf",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Singapore Civil Defence Force, introduction",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window",
+      "site medical command structure"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_fieldmed1",
+          "st_capacity1"
+        ],
+        "source_index": 0,
+        "locator": "paras 1 and 2"
+      },
+      {
+        "ids": [
+          "st_divert001"
+        ],
+        "source_index": 1,
+        "locator": "para 2"
+      },
+      {
+        "ids": [
+          "ho_scdfim02"
+        ],
+        "source_index": 2,
+        "locator": "introduction (SCDF is Incident Manager)"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Oversee and coordinate the management of casualties at the incident site and at public hospitals and polyclinics under the national inter-agency response plan for mass casualty incidents.",
+    "sequence": [
+      {
+        "id": "st_fieldmed1",
+        "window": null,
+        "label": "Field medical teams",
+        "action": "Deploy command and field medical teams to the incident site."
+      },
+      {
+        "id": "st_capacity1",
+        "window": null,
+        "label": "Hospital capacity",
+        "action": "Manage resources and capacity at healthcare institutions to attend to casualties."
+      },
+      {
+        "id": "st_divert001",
+        "window": null,
+        "label": "Ambulance diversion",
+        "action": "When an emergency department faces a spike from a major incident, activate ambulance diversion to other hospitals."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_scdfim02",
+        "to_archetype": "incident_command",
+        "to_label": "SCDF Incident Manager",
+        "when": "Casualty management at the site is coordinated with the Incident Manager."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "The on-site medical command structure (Disaster Site Medical Command) is described only in a journal article; journals cannot stand as sources (6.11.3 rule 3). Reviewer to find an MOH source. The hand-off wording is Assumed from two sources. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

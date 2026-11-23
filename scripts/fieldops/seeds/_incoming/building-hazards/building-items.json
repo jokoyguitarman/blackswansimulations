@@ -1,0 +1,5239 @@
+{
+  "file": "building-items.json",
+  "schema_version": 1,
+  "library": "building_hazards",
+  "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+    "country": "SG",
+    "sources_file": "sources.json"
+  },
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "shopping_mall/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/kitchen_suppression_system/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/aerosol_stock/retail_floor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "shopping_mall/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/kitchen_suppression_system/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/town_gas_service/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/lpg_cylinder_bank/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/town_gas_service/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/lpg_cylinder_bank/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/lpg_cylinder_bank/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/amd_lithium_batteries/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house/vehicle_fuel_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/bulk_liquid_oxygen/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/medical_gas_cylinders/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/laboratory_chemicals/laboratory": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/diesel_bulk_tank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/laboratory_chemicals/laboratory": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/pool_chlorination/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/traction_power_equipment/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/diesel_vehicle_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/ev_traction_batteries/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal/smoke_control_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/vehicle_fuel_tanks/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/ev_traction_batteries/car_park": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/cooking_oil_fryers/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre/gas_leak_detection_shutoff/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre/town_gas_service/kitchen": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/combustible_stock_racks/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/ammonia_refrigeration/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/lead_acid_battery_room/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/diesel_vehicle_tanks/loading_bay": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/flammable_liquid_store/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/welding_gas_cylinders/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/lpg_cylinder_bank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/ammonia_refrigeration/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/combustible_stock_racks/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/pressurised_lpg_storage/tank_farm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/toxic_intermediate_store/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant/flammable_liquid_tank/tank_farm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/ups_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/lead_acid_battery_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/diesel_bulk_tank/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/gaseous_suppression_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/oil_filled_transformer/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/electrical_switch_room/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation/lead_acid_battery_room/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/vehicle_fuel_store/external_yard": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/vehicle_workshop_solvents/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp/ammunition_store_generic/store": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/diesel_vehicle_tanks/ground": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/emergency_generator/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/diesel_generator_day_tank/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building/electrical_switch_room/plant_room": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building/sprinkler_system/any": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  },
+  "review_flags": {
+    "shopping_mall/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/lpg_cylinder_bank/external_yard": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "shopping_mall/cooking_oil_fryers/kitchen": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "shopping_mall/kitchen_suppression_system/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "shopping_mall/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "shopping_mall/electrical_switch_room/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/aerosol_stock/retail_floor": [
+      "Unverified: cites source(s) not accessed in this run: nfpa-30b",
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "shopping_mall/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/smoke_control_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "shopping_mall/lead_acid_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "shopping_mall/vehicle_fuel_tanks/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "shopping_mall/ev_traction_batteries/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "office_building/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "office_building/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "office_building/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "office_building/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "office_building/electrical_switch_room/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "office_building/ups_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "office_building/lead_acid_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "office_building/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "office_building/vehicle_fuel_tanks/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hotel/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "hotel/cooking_oil_fryers/kitchen": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hotel/kitchen_suppression_system/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "hotel/pool_chlorination/plant_room": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hotel/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "hotel/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "hotel/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hotel/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "hotel/smoke_control_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "public_housing_block/town_gas_service/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "public_housing_block/lpg_cylinder_bank/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "public_housing_block/amd_lithium_batteries/any": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "public_housing_block/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "condominium/town_gas_service/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "condominium/lpg_cylinder_bank/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "condominium/amd_lithium_batteries/any": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "condominium/pool_chlorination/plant_room": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "condominium/vehicle_fuel_tanks/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "condominium/ev_traction_batteries/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "house/lpg_cylinder_bank/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "house/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "house/amd_lithium_batteries/any": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "house/vehicle_fuel_tanks/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hospital/bulk_liquid_oxygen/external_yard": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hospital/medical_gas_cylinders/store": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hospital/laboratory_chemicals/laboratory": [
+      "Assumed: likelihood_permille"
+    ],
+    "hospital/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "hospital/diesel_bulk_tank/external_yard": [
+      "Assumed: likelihood_permille"
+    ],
+    "hospital/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "hospital/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "hospital/ups_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "hospital/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "hospital/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "hospital/smoke_control_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "school/laboratory_chemicals/laboratory": [
+      "Assumed: likelihood_permille"
+    ],
+    "school/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "school/lpg_cylinder_bank/external_yard": [
+      "Assumed: likelihood_permille"
+    ],
+    "school/pool_chlorination/plant_room": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "school/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "school/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "rail_station/traction_power_equipment/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "rail_station/electrical_switch_room/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "rail_station/lead_acid_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "rail_station/sprinkler_system/any": [
+      "Unverified: cites source(s) not accessed in this run: cpfprts",
+      "Assumed: likelihood_permille"
+    ],
+    "rail_station/smoke_control_system/any": [
+      "Unverified: cites source(s) not accessed in this run: cpfprts",
+      "Assumed: likelihood_permille"
+    ],
+    "bus_interchange/diesel_vehicle_tanks/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "bus_interchange/ev_traction_batteries/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "bus_interchange/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "airport_terminal/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "airport_terminal/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "airport_terminal/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "airport_terminal/ups_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "airport_terminal/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "airport_terminal/smoke_control_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "car_park_building/vehicle_fuel_tanks/car_park": [
+      "Unverified: cites source(s) not accessed in this run: bre-bd2552-2010",
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "car_park_building/ev_traction_batteries/car_park": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "car_park_building/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "food_centre/lpg_cylinder_bank/external_yard": [
+      "Assumed: likelihood_permille"
+    ],
+    "food_centre/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "food_centre/cooking_oil_fryers/kitchen": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "food_centre/gas_leak_detection_shutoff/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "stadium_venue/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "stadium_venue/lpg_cylinder_bank/external_yard": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "stadium_venue/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "stadium_venue/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "place_of_worship/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "place_of_worship/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "community_centre/town_gas_service/kitchen": [
+      "Assumed: likelihood_permille"
+    ],
+    "community_centre/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "warehouse_logistics/combustible_stock_racks/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "warehouse_logistics/ammonia_refrigeration/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "warehouse_logistics/lead_acid_battery_room/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "warehouse_logistics/diesel_vehicle_tanks/loading_bay": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "warehouse_logistics/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "warehouse_logistics/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "light_industry/flammable_liquid_store/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "light_industry/welding_gas_cylinders/store": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "light_industry/lpg_cylinder_bank/external_yard": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "light_industry/ammonia_refrigeration/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "light_industry/combustible_stock_racks/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "light_industry/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "light_industry/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "light_industry/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "chemical_process_plant/pressurised_lpg_storage/tank_farm": [
+      "Assumed: likelihood_permille"
+    ],
+    "chemical_process_plant/toxic_intermediate_store/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "chemical_process_plant/flammable_liquid_tank/tank_farm": [
+      "Assumed: likelihood_permille"
+    ],
+    "data_centre/ups_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "data_centre/lead_acid_battery_room/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "data_centre/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "data_centre/diesel_bulk_tank/external_yard": [
+      "Assumed: likelihood_permille"
+    ],
+    "data_centre/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "data_centre/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "data_centre/electrical_switch_room/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "data_centre/gaseous_suppression_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "data_centre/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "electrical_substation/oil_filled_transformer/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "electrical_substation/electrical_switch_room/ground": [
+      "Assumed: likelihood_permille"
+    ],
+    "electrical_substation/lead_acid_battery_room/ground": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "military_camp/vehicle_fuel_store/external_yard": [
+      "Assumed: likelihood_permille"
+    ],
+    "military_camp/vehicle_workshop_solvents/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "military_camp/ammunition_store_generic/store": [
+      "Assumed: likelihood_permille"
+    ],
+    "police_or_fire_station/diesel_vehicle_tanks/ground": [
+      "Assumed: likelihood_permille, quantity_high, quantity_low"
+    ],
+    "police_or_fire_station/emergency_generator/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "police_or_fire_station/diesel_generator_day_tank/plant_room": [
+      "Assumed: likelihood_permille, quantity_low"
+    ],
+    "police_or_fire_station/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ],
+    "generic_building/electrical_switch_room/plant_room": [
+      "Assumed: likelihood_permille"
+    ],
+    "generic_building/sprinkler_system/any": [
+      "Assumed: likelihood_permille"
+    ]
+  },
+  "rows": [
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook on Gas Supply (2021)",
+      "source_note": "F&B tenants on piped town gas; a service main has no meaningful quantity band.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "external_yard",
+      "quantity_band": "medium",
+      "quantity_low": 15,
+      "quantity_high": 1200,
+      "quantity_unit": "kg",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3d(1)",
+      "source_note": "Regulatory envelope, not typical holdings: up to 600 kg per manifold and two manifolds per commercial building (1,200 kg). 15 kg is one standard cylinder.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3d(1)",
+            "quoted_phrase": "LPG cylinder installation (for eating outlets) with capacity up to a maximum of 600kg by weight attached to a single manifold system"
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3d(1)(d)",
+            "quoted_phrase": "the maximum number of LPG manifold systems shall not exceed two per building."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "cooking_oil_fryers",
+      "location_kind": "kitchen",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "l",
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fsm-briefing-2023"
+      ],
+      "source_ref": "SCDF FSM Briefing 2023",
+      "source_note": "Fryer oil volume band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fsm-briefing-2023",
+            "locator": "Item 2, Kitchen Exhaust Duct (KED) Fire Safety",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "kitchen_suppression_system",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3c(1)",
+      "source_note": "Kitchen fixed suppression interlocked with the gas supply.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3c(1)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "Upper bound is the Fire Code's 700 L cap in a generator room (spec planning band 500 to 2,000 L exceeds it); lower bound planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Generator room as a 2-hour compartment.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Location is ground level against an external wall per the Fire Code (spec 5.19 said basement). Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Every mall has switch rooms; likelihood Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "aerosol_stock",
+      "location_kind": "retail_floor",
+      "quantity_band": "medium",
+      "quantity_low": 100,
+      "quantity_high": 1000,
+      "quantity_unit": "count",
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "nfpa-30b"
+      ],
+      "source_ref": "NFPA 30B (not accessed)",
+      "source_note": "Kept from WS9 5.19 for review; no accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "nfpa-30b",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 950,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Sprinklered when above 24 m habitable height or compartmentation is not met.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "smoke_control_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.4.1",
+      "source_note": "Engineered smoke control for atria.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 70,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Band runs from the ESS threshold to the per-compartment maximum; typical size Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (70 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "vehicle_fuel_tanks",
+      "location_kind": "car_park",
+      "quantity_band": "large",
+      "quantity_low": 20,
+      "quantity_high": 400,
+      "quantity_unit": "count",
+      "likelihood_permille": 800,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline",
+      "source_note": "Basement car park cars per storey: planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "shopping_mall",
+      "kind_key": "ev_traction_batteries",
+      "location_kind": "car_park",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 40,
+      "quantity_unit": "count",
+      "likelihood_permille": 400,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025 para 27",
+      "source_note": "EVs were 6.82% of vehicles at end 2025; count band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27 (EVs 6.82% of vehicles at end 2025)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Ground-floor F&B tenants; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap per generator room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Generator room compartment.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Ground level, external wall. Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Switch rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "ups_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Lithium-ion UPS rooms; band from threshold to per-compartment maximum.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (20 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 70,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Lead-acid UPS rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (70 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Mandatory above 24 m habitable height.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "kind_key": "vehicle_fuel_tanks",
+      "location_kind": "car_park",
+      "quantity_band": "large",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "count",
+      "likelihood_permille": 600,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline",
+      "source_note": "Basement car park; count band Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Hotel kitchens.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "cooking_oil_fryers",
+      "location_kind": "kitchen",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fsm-briefing-2023"
+      ],
+      "source_ref": "SCDF FSM Briefing 2023",
+      "source_note": "Fryer oil band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fsm-briefing-2023",
+            "locator": "Item 2, Kitchen Exhaust Duct (KED) Fire Safety",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "kitchen_suppression_system",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3c(1)",
+      "source_note": "Kitchen suppression.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3c(1)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "pool_chlorination",
+      "location_kind": "plant_room",
+      "quantity_band": "small",
+      "quantity_low": 100,
+      "quantity_high": 1000,
+      "quantity_unit": "l",
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06 aquatic facilities circular",
+      "source_note": "Hotels with pools hold hypochlorite and acid; volume band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Para 4 table and Storage of chemicals (1) to (2)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Generator room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 950,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Most hotels exceed 24 m.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "kind_key": "smoke_control_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.3",
+      "source_note": "Corridor pressurisation.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.3 Pressurisation of Internal Corridors In Hotels",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "public_housing_block",
+      "kind_key": "town_gas_service",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021) introduction",
+      "source_note": "Household cooking gas per flat; share of HDB flats on town gas Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope",
+            "quoted_phrase": "Town gas is retailed island-wide to most residential households."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "public_housing_block",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "any",
+      "quantity_band": "small",
+      "quantity_low": 15,
+      "quantity_high": 30,
+      "quantity_unit": "kg",
+      "likelihood_permille": 200,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.1c",
+      "source_note": "Domestic cylinders, at most 2 x 15 kg per dwelling; share of flats Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.1c",
+            "quoted_phrase": "A maximum of 30kg (2 x 15kg cylinders) is permitted to be installed or stored within private dwelling unit for domestic use."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "public_housing_block",
+      "kind_key": "amd_lithium_batteries",
+      "location_kind": "any",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 2,
+      "quantity_unit": "count",
+      "likelihood_permille": 100,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025",
+      "source_note": "Household PMDs and PABs; per-storey count and share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Paras 19 and 28 (AMD fires; 34 in residential premises)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "public_housing_block",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Some blocks house a ground-level substation; share and rating Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "town_gas_service",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Household cooking gas.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "any",
+      "quantity_band": "small",
+      "quantity_low": 15,
+      "quantity_high": 30,
+      "quantity_unit": "kg",
+      "likelihood_permille": 100,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.1c",
+      "source_note": "Domestic cylinders.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.1c",
+            "quoted_phrase": "A maximum of 30kg (2 x 15kg cylinders) is permitted to be installed or stored within private dwelling unit for domestic use."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "amd_lithium_batteries",
+      "location_kind": "any",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 2,
+      "quantity_unit": "count",
+      "likelihood_permille": 100,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025",
+      "source_note": "Household AMDs; Assumed counts.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Paras 19 and 28 (AMD fires; 34 in residential premises)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "pool_chlorination",
+      "location_kind": "plant_room",
+      "quantity_band": "small",
+      "quantity_low": 100,
+      "quantity_high": 1000,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06",
+      "source_note": "Condominium pools are licensed aquatic facilities; volume band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Para 4 table and Storage of chemicals (1) to (2)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "vehicle_fuel_tanks",
+      "location_kind": "car_park",
+      "quantity_band": "large",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "count",
+      "likelihood_permille": 900,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline",
+      "source_note": "Basement car park.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "kind_key": "ev_traction_batteries",
+      "location_kind": "car_park",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 20,
+      "quantity_unit": "count",
+      "likelihood_permille": 500,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-4",
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025; Fire Code 2023 Cl.10.4",
+      "source_note": "EV charging in PG II developments; counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27 (EVs 6.82% of vehicles at end 2025)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-4",
+            "locator": "Cl.10.4.1 (PG I exempt; PG II not)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "house",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "kitchen",
+      "quantity_band": "small",
+      "quantity_low": 15,
+      "quantity_high": 30,
+      "quantity_unit": "kg",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence exemption table",
+      "source_note": "Share of houses on LPG Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Class 0 Petroleum, 'For private use in a private dwelling house'",
+            "quoted_phrase": "Not more than 30 kg in not more than 2 cylinders"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "house",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "house",
+      "kind_key": "amd_lithium_batteries",
+      "location_kind": "any",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 3,
+      "quantity_unit": "count",
+      "likelihood_permille": 200,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025",
+      "source_note": "Counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Paras 19 and 28 (AMD fires; 34 in residential premises)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "house",
+      "kind_key": "vehicle_fuel_tanks",
+      "location_kind": "ground",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 3,
+      "quantity_unit": "count",
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline",
+      "source_note": "Cars in the porch; counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "bulk_liquid_oxygen",
+      "location_kind": "external_yard",
+      "quantity_band": "large",
+      "quantity_low": 5,
+      "quantity_high": 30,
+      "quantity_unit": "m3",
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "cameo-oxygen"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen",
+      "source_note": "Vessel volume band planning value carried from WS9 spec section 5.19 (not stated by any source) (HTM 02-01 analogue not accessed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "medical_gas_cylinders",
+      "location_kind": "store",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "count",
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "cameo-oxygen"
+      ],
+      "source_ref": "CAMEO Chemicals: Oxygen",
+      "source_note": "Cylinder count Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cameo-oxygen",
+            "locator": "General Description",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "laboratory_chemicals",
+      "location_kind": "laboratory",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.2",
+      "source_note": "Mixed inventory, no quantity.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.2 (SS 641)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Laboratory, healthcare occupancy' (20 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap per generator room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "diesel_bulk_tank",
+      "location_kind": "external_yard",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "Volume not stated in an accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation (oil storage tanks in open air, 6 m from buildings)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Generator room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "ups_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Per-compartment band.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (20 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Central kitchen.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "kind_key": "smoke_control_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "laboratory_chemicals",
+      "location_kind": "laboratory",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.2",
+      "source_note": "Science laboratories; no quantity.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.2 (SS 641)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Laboratory, schools/ colleges/ tertiary institutions' (5 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Canteen stalls.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "external_yard",
+      "quantity_band": "medium",
+      "quantity_low": 30,
+      "quantity_high": 200,
+      "quantity_unit": "kg",
+      "likelihood_permille": 200,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence exemption table",
+      "source_note": "Canteen stalls on LPG: 30 kg per stall, 200 kg per eating place without a licence.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Exemption quantities, Class 0 Petroleum, 'For use in eating place'",
+            "quoted_phrase": "Not more than 30 kg per stall in the eating place"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "pool_chlorination",
+      "location_kind": "plant_room",
+      "quantity_band": "small",
+      "quantity_low": 100,
+      "quantity_high": 1000,
+      "quantity_unit": "l",
+      "likelihood_permille": 150,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "mom-aquatic-chem-circular-2025"
+      ],
+      "source_ref": "MOM/OSHD/2025-06",
+      "source_note": "Schools with pools; share and volume Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "mom-aquatic-chem-circular-2025",
+            "locator": "Para 4 table and Storage of chemicals (1) to (2)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 500,
+      "quantity_high": 1500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Rating band Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "kind_key": "traction_power_equipment",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.1",
+      "source_note": "Category only; CPFPRTS not accessed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.1 (RTS includes on-line electrical substations)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Switch rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 70,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Battery chemistry and size Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (70 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "cpfprts"
+      ],
+      "source_ref": "CPFPRTS (not accessed)",
+      "source_note": "Planning value carried from WS9 5.19.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cpfprts",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "kind_key": "smoke_control_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "cpfprts"
+      ],
+      "source_ref": "CPFPRTS (not accessed)",
+      "source_note": "Planning value.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "cpfprts",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "bus_interchange",
+      "kind_key": "diesel_vehicle_tanks",
+      "location_kind": "ground",
+      "quantity_band": "medium",
+      "quantity_low": 5,
+      "quantity_high": 60,
+      "quantity_unit": "count",
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences",
+      "source_note": "Buses in bays; counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "bus_interchange",
+      "kind_key": "ev_traction_batteries",
+      "location_kind": "ground",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 20,
+      "quantity_unit": "count",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025",
+      "source_note": "Electric buses; share and count Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27 (EVs 6.82% of vehicles at end 2025)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "bus_interchange",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Kiosks; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "F&B.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap per room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "ups_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Per-compartment band.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (20 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "kind_key": "smoke_control_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.4.1",
+      "source_note": "Large atria.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "car_park_building",
+      "kind_key": "vehicle_fuel_tanks",
+      "location_kind": "car_park",
+      "quantity_band": "large",
+      "quantity_low": 20,
+      "quantity_high": 400,
+      "quantity_unit": "count",
+      "likelihood_permille": 1000,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "bre-bd2552-2010",
+        "niosh-npg-gasoline"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Gasoline; BRE BD 2552 (not accessed)",
+      "source_note": "Cars per storey planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-gasoline",
+            "locator": "Physical properties",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "bre-bd2552-2010",
+            "locator": "not accessed",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "car_park_building",
+      "kind_key": "ev_traction_batteries",
+      "location_kind": "car_park",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 40,
+      "quantity_unit": "count",
+      "likelihood_permille": 400,
+      "per_storey": true,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-stats-2025"
+      ],
+      "source_ref": "SCDF Statistics 2025 para 27",
+      "source_note": "6.82% EV share at end 2025; count band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-stats-2025",
+            "locator": "Para 27 (EVs 6.82% of vehicles at end 2025)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "car_park_building",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.5",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.5 Car park",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "food_centre",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "external_yard",
+      "quantity_band": "medium",
+      "quantity_low": 30,
+      "quantity_high": 600,
+      "quantity_unit": "kg",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1",
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence; Fire Code 2023 Cl.10.1.3d(1)",
+      "source_note": "From one stall's 30 kg up to a 600 kg eating-outlet manifold; regulatory envelope, share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Exemption quantities, Class 0 Petroleum, 'For use in eating place'",
+            "quoted_phrase": "Not more than 30 kg per stall in the eating place"
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3d(1)",
+            "quoted_phrase": "LPG cylinder installation (for eating outlets) with capacity up to a maximum of 600kg by weight attached to a single manifold system"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "food_centre",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "food_centre",
+      "kind_key": "cooking_oil_fryers",
+      "location_kind": "kitchen",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 200,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fsm-briefing-2023"
+      ],
+      "source_ref": "SCDF FSM Briefing 2023",
+      "source_note": "Band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fsm-briefing-2023",
+            "locator": "Item 2, Kitchen Exhaust Duct (KED) Fire Safety",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "food_centre",
+      "kind_key": "gas_leak_detection_shutoff",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.5",
+      "source_note": "Required wherever LPG piping runs.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.5a",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "stadium_venue",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "Permanent generator room; temporary event generators not seeded.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "stadium_venue",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "external_yard",
+      "quantity_band": "medium",
+      "quantity_low": 30,
+      "quantity_high": 600,
+      "quantity_unit": "kg",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.10.1.3d(1)",
+      "source_note": "Catering outlets; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3d(1)",
+            "quoted_phrase": "LPG cylinder installation (for eating outlets) with capacity up to a maximum of 600kg by weight attached to a single manifold system"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "stadium_venue",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 1000,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "stadium_venue",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Enclosed parts only; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "place_of_worship",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Communal kitchens; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "place_of_worship",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 200,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "community_centre",
+      "kind_key": "town_gas_service",
+      "location_kind": "kitchen",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "city-energy-gas-handbook-2021"
+      ],
+      "source_ref": "City Energy Handbook (2021)",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "city-energy-gas-handbook-2021",
+            "locator": "Introduction and scope (commercial and industrial customers; most residential households)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "community_centre",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "combustible_stock_racks",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Racked stock; volume depends on the building.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation (high bay storage warehouse)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "ammonia_refrigeration",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 150,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "ss-683-2-2022-preview"
+      ],
+      "source_ref": "SS 683-2:2022",
+      "source_note": "Cold stores only; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ss-683-2-2022-preview",
+            "locator": "Introduction 0.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.7.1.15",
+      "source_note": "Forklift charging; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.1.15c (battery rooms, hydrogen at or below 1%)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "diesel_vehicle_tanks",
+      "location_kind": "loading_bay",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 10,
+      "quantity_unit": "count",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences",
+      "source_note": "Lorries at bays; counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 500,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "High bay must be sprinklered.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "flammable_liquid_store",
+      "location_kind": "store",
+      "quantity_band": "medium",
+      "quantity_low": 400,
+      "quantity_high": 1500,
+      "quantity_unit": "l",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence exemption table",
+      "source_note": "Band is the factory licence-exemption range by class (spec planning band 200 to 5,000 L); larger stores need a licence.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Exemption quantities, 'For use in a factory' (I 400 L, II 1,000 L, III 1,500 L)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "welding_gas_cylinders",
+      "location_kind": "store",
+      "quantity_band": "small",
+      "quantity_low": 2,
+      "quantity_high": 20,
+      "quantity_unit": "count",
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "niosh-npg-acetylene"
+      ],
+      "source_ref": "NIOSH Pocket Guide: Acetylene",
+      "source_note": "Counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "niosh-npg-acetylene",
+            "locator": "Physical Description",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "lpg_cylinder_bank",
+      "location_kind": "external_yard",
+      "quantity_band": "medium",
+      "quantity_low": 15,
+      "quantity_high": 1000,
+      "quantity_unit": "kg",
+      "likelihood_permille": 300,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-1",
+        "scdf-pfm-storage-licence"
+      ],
+      "source_ref": "SCDF P&FM Storage Licence; Fire Code 2023 Cl.10.1.3d(2)",
+      "source_note": "300 kg exempt per factory; manifolds up to 1,000 kg for industrial use.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-storage-licence",
+            "locator": "Class 0, 'For use in a factory' (300 kg per factory)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.3d(2) (600 kg to 1,000 kg single manifold, industrial applications only)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "ammonia_refrigeration",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 100,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "ss-683-2-2022-preview"
+      ],
+      "source_ref": "SS 683-2:2022",
+      "source_note": "Food factories; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "ss-683-2-2022-preview",
+            "locator": "Introduction 0.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "combustible_stock_racks",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 200,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 500,
+      "quantity_high": 2500,
+      "quantity_unit": "kva",
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Transformer kVA band is planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "chemical_process_plant",
+      "kind_key": "pressurised_lpg_storage",
+      "location_kind": "tank_farm",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule (category existence only)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "chemical_process_plant",
+      "kind_key": "toxic_intermediate_store",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule (category existence only)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "chemical_process_plant",
+      "kind_key": "flammable_liquid_tank",
+      "location_kind": "tank_farm",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "WSH (MHI) Regulations 2017 First Schedule",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule (category existence only)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "ups_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 20,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Per compartment; spec planning band 500 to 5,000 kWh exceeds the 600 kWh cap, which needs prior SCDF approval with UL 9540A and NFPA 855 evidence.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lithium-ion batteries, all types' (20 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Cl.10.3.1b Exception (1) (UL 9540A and NFPA 855 report above access level)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 70,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 400,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "Older UPS rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (70 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 500,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap per generator room.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "diesel_bulk_tank",
+      "location_kind": "external_yard",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "Bulk volume not stated in an accessed source.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Generator rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 2500,
+      "quantity_high": 5000,
+      "quantity_unit": "kva",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Rating band Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Switch rooms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "gaseous_suppression_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.5",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Often pre-action; share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "electrical_substation",
+      "kind_key": "oil_filled_transformer",
+      "location_kind": "ground",
+      "quantity_band": "large",
+      "quantity_low": 2500,
+      "quantity_high": 60000,
+      "quantity_unit": "kva",
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j(2)",
+      "source_note": "Rating band planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(2)",
+            "quoted_phrase": "Room housing transformer that uses flammable liquid shall be located at ground level against an external wall."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "electrical_substation",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "ground",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 1000,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Switchgear.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "electrical_substation",
+      "kind_key": "lead_acid_battery_room",
+      "location_kind": "ground",
+      "quantity_band": "medium",
+      "quantity_low": 70,
+      "quantity_high": 600,
+      "quantity_unit": "kwh",
+      "likelihood_permille": 600,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023-cl10-3"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 10.3.1",
+      "source_note": "DC supplies; size Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023-cl10-3",
+            "locator": "Table 10.3.1, row 'Lead-acid batteries, all types' (70 kWh threshold, 600 kWh maximum per compartment)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "military_camp",
+      "kind_key": "vehicle_fuel_store",
+      "location_kind": "external_yard",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III (military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "military_camp",
+      "kind_key": "vehicle_workshop_solvents",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 700,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III (military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "military_camp",
+      "kind_key": "ammunition_store_generic",
+      "location_kind": "store",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": false,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A",
+      "source_note": "restricted_generic: category word only, never auto-placed (WS9 9.8).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III (military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "police_or_fire_station",
+      "kind_key": "diesel_vehicle_tanks",
+      "location_kind": "ground",
+      "quantity_band": "small",
+      "quantity_low": 1,
+      "quantity_high": 10,
+      "quantity_unit": "count",
+      "likelihood_permille": 900,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-pfm-general-info"
+      ],
+      "source_ref": "SCDF General Information of P&FM Licences",
+      "source_note": "Response vehicles; counts Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-pfm-general-info",
+            "locator": "Q1(a)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_high",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "police_or_fire_station",
+      "kind_key": "emergency_generator",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, row 'Generator room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "police_or_fire_station",
+      "kind_key": "diesel_generator_day_tank",
+      "location_kind": "plant_room",
+      "quantity_band": "medium",
+      "quantity_low": 200,
+      "quantity_high": 700,
+      "quantity_unit": "l",
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.3.2.5j",
+      "source_note": "700 L cap.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.3.2.5j(1) explanation",
+            "quoted_phrase": "A max. capacity of 700 litres of diesel oil is permitted to be stored in the generator room."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille",
+          "quantity_low"
+        ]
+      }
+    },
+    {
+      "type_key": "police_or_fire_station",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "generic_building",
+      "kind_key": "electrical_switch_room",
+      "location_kind": "plant_room",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 800,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 6.4A",
+      "source_note": "Fallback; Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 6.4A, rows 'Low voltage switch room' and 'High voltage switch room'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    },
+    {
+      "type_key": "generic_building",
+      "kind_key": "sprinkler_system",
+      "location_kind": "any",
+      "quantity_band": "category_only",
+      "quantity_low": null,
+      "quantity_high": null,
+      "quantity_unit": null,
+      "likelihood_permille": 500,
+      "per_storey": false,
+      "auto_place": true,
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.6.4.1",
+      "source_note": "Fallback; Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "likelihood_permille"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,263 @@
+{
+  "file": "playbook-review.pending.json",
+  "format": "fieldops_doctrine_review_v0 (proposed; 02 section 6.11.8 names the content, not the shape)",
+  "brief": "doctrine_review",
+  "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+  "drafted_by": "agent",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "subject": "The six generic playbook seeds of 02 section 6.11, read against public Singapore sources (D55). Source text: server/services/demoAIAgentService.ts:4800-5102 at commit 8948df1. Line references in 02 section 6.11 were checked and match.",
+  "note": "Each record gives: claims the agent could source, claims it could not, steps that differ from Singapore agencies' public material, errors or outdated content, and a proposed amendment. 'proposed_action' is advice; the reviewer keeps, amends (new version) or retires, and writes review.history.",
+  "reviews": [
+    {
+      "seed": "playbooks/evacuation_crowd.json",
+      "source_lines": "server/services/demoAIAgentService.ts:4803-4832 and 4924-4965",
+      "claims_sourced": [
+        {
+          "claim": "Keep crowds out of risky areas with cordons and signage",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 4"
+        },
+        {
+          "claim": "Keep emergency lanes and close areas before they overcrowd",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 5"
+        },
+        {
+          "claim": "Give clear exit instructions by loudhailer or PA",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022",
+          "locator": "Answer, para 9"
+        },
+        {
+          "claim": "Separate walking wounded and pass anyone needing treatment to the medics",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(b) (first aid is SCDF's function)"
+        }
+      ],
+      "claims_unsourced": [
+        "Exit flow rate of about 60 people per minute through a standard door (no source; belongs in WS9's movement library, not a doctrine)",
+        "Marshal ratio 1:20",
+        "Stop the evacuation if a stampede risk is detected",
+        "Assembly points must be upwind"
+      ],
+      "differs_from_sg": [
+        "In Singapore cordons, access control and road barriers are police powers (Police Force Act s. 26; POSSPA s. 18). The playbook gives them to an 'evacuation' team; map them to SPF (police_security) or keep the team as SPF's crowd role.",
+        "The command post belongs to the Incident Manager (SCDF under the HCMS), not the evacuation team.",
+        "MHA's public guidance is to give space for dispersal and clear exit instructions, not to halt movement; 'stop the evacuation' is unsupported and may be unsafe."
+      ],
+      "errors_or_outdated": [
+        "The worked example uses coordinates [-33.889, 151.274], which are in Sydney, Australia, and a named venue pattern; remove (no real site, WS9 6.27.10).",
+        "Equipment lists (body-worn cameras, clickers) are game mechanics, to be left out as 6.11 already says."
+      ],
+      "proposed_amendment": "Keep as a generic seed, minus the Sydney example, the flow rate and ratio, and the 'stop evacuation' line. Replace the sequence with the nine MHA crowd steps where the scenario is a crowd crush (see sg/sg_spf.evacuation_crowd.json), and move cordon and access control to police_security.",
+      "proposed_action": "amend",
+      "confidence": "medium"
+    },
+    {
+      "seed": "playbooks/fire_rescue.json",
+      "source_lines": "server/services/demoAIAgentService.ts:4834-4871 (and the example in 02 section 6.11)",
+      "claims_sourced": [
+        {
+          "claim": "Rescue casualties and remove them to safety",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(a), (b)"
+        },
+        {
+          "claim": "Extinguish and prevent the spread of fire",
+          "source": "Civil Defence Act 1986",
+          "locator": "s. 4(2)(f), (i)"
+        },
+        {
+          "claim": "Mitigate hazardous materials incidents, including decontamination",
+          "source": "Civil Defence Act 1986; SCDF Training Directory",
+          "locator": "s. 4(2)(j); Hazmat Specialist Course"
+        }
+      ],
+      "claims_unsourced": [
+        "Decontamination corridor within 10 minutes; first casualties handed over within 15 minutes (time targets with no source)",
+        "Structural engineer before entry; water supply point (plausible, not located in an SCDF public source)"
+      ],
+      "differs_from_sg": [
+        "'Only fire and rescue may enter the hot zone' is wrong for a bombing in Singapore: the SAF EOD unit is the national responder to explosive threats (Pioneer, 18 Oct 2023), and police tactical units respond to armed threats. The rule also appears in 02's own example seed (never nv_hotzn1).",
+        "SCDF works to its own HazMat Response System (SCDF Training Directory); the playbook's PPE levels are US terminology.",
+        "Under the HCMS SCDF is also the Incident Manager; the playbook omits command entirely."
+      ],
+      "errors_or_outdated": [
+        "PPE 'Level A to D' is the US EPA/OSHA scheme, not Singapore's.",
+        "'Class C fire (electrical)' is the US NFPA classification. Singapore follows the European classes (to verify against SS EN 2 / SS 232), where Class C is flammable gases, electrical fires have no class, and Class F is cooking oils. The never-do 'water on electrical fires' stands; the class labels are wrong for SG.",
+        "'ERG guide' is the North American Emergency Response Guidebook.",
+        "'Jaws of life', 'Engine Company Alpha', '2000 LPM pumper' are US brand or naming conventions and game mechanics."
+      ],
+      "proposed_amendment": "Keep generic, but replace nv_hotzn1 with 'Let teams without protective equipment or a role in the hot zone enter it before it is declared safe' (why: specialist teams such as EOD and police tactical units may need access); drop the US PPE levels and fire classes, or label them 'US practice'. Use sg/sg_scdf.fire_rescue.json for Singapore cards.",
+      "proposed_action": "amend",
+      "confidence": "medium"
+    },
+    {
+      "seed": "playbooks/medical_triage.json",
+      "source_lines": "server/services/demoAIAgentService.ts:4873-4921",
+      "claims_sourced": [
+        {
+          "claim": "Hand over to hospitals; hospitals may divert ambulances in a spike",
+          "source": "MOH, Ambulance Diversion",
+          "locator": "para 2"
+        },
+        {
+          "claim": "MOH coordinates casualty management at the site and in public hospitals",
+          "source": "MOH oral reply, 10 Jan 2018",
+          "locator": "para 1"
+        },
+        {
+          "claim": "Public tells responders the injury and when a tie was applied",
+          "source": "SCDF IFAS Plus leaflet",
+          "locator": "PRESS TIE TELL"
+        }
+      ],
+      "claims_unsourced": [
+        "START algorithm values (RR over 30, capillary refill over 2 s) as Singapore practice",
+        "Parkland formula, crush-injury drugs, nerve-agent antidotes",
+        "Helicopter if over 20 minutes' drive",
+        "Triage tent placement inside the warm zone"
+      ],
+      "differs_from_sg": [
+        "The triage team picks the receiving hospital itself; in Singapore MOH oversees and coordinates casualty distribution across public hospitals (MOH, 2018). The playbook should hand destination choice to hospital_ed / MOH.",
+        "Singapore hospital EDs triage disaster casualties as P1, P2, P3 and P0 (per a journal review of SG ED plans; journals cannot stand as a source, so to verify with MOH), not START colours."
+      ],
+      "errors_or_outdated": [
+        "START is reproduced incompletely: a casualty who breathes after the airway is repositioned is Immediate; the playbook only gives the 'No' branch.",
+        "Parkland '4 ml x kg x %BSA' is one regimen; current burns guidance varies (2 to 4 ml). Clinical dosing does not belong in a doctrine seed at all.",
+        "Atropine and pralidoxime for nerve agents name warfare-agent treatment; WS9 6.27.10 keeps releases to industrial chemicals. Remove.",
+        "'Blast lung: no positive pressure' is contested clinical advice; remove."
+      ],
+      "proposed_amendment": "Amend: keep the response order (collection point at the hot/warm boundary, triage, treat by priority, transport) and the never-do 'enter the hot zone without clearance'; strip all drug doses, antidotes and the helicopter rule; replace 'choose a hospital from the list' with a hand-off to hospital_ed. Use sg/sg_scdf.medical_triage.json and sg/sg_moh.hospital_ed.json for Singapore cards.",
+      "proposed_action": "amend",
+      "confidence": "medium"
+    },
+    {
+      "seed": "playbooks/media_comms.json",
+      "source_lines": "server/services/demoAIAgentService.ts:4967-5001",
+      "claims_sourced": [
+        {
+          "claim": "Alert the public and keep them informed during an incident",
+          "source": "MHA oral reply on crowd surges, 28 Nov 2022; Civil Defence Act 1986",
+          "locator": "Answer, para 10; s. 4(2)(e)"
+        },
+        {
+          "claim": "Do not spread rumours",
+          "source": "SGSecure advisory posters (Keep Calm and Don't Spread Rumours)",
+          "locator": "poster list"
+        }
+      ],
+      "claims_unsourced": [
+        "Statement-quality rules ('NEVER omit numbers', update every 30 minutes)",
+        "Media staging area with line of sight"
+      ],
+      "differs_from_sg": [
+        "Singapore law can restrict filming and communicating police operations in a target area: POSSPA 2018 s. 30 (communications stop orders) and the 'relevant film or picture' definitions in s. 2. A Singapore media seed must account for this. Section 30 was not read in full; to verify who issues the order."
+      ],
+      "errors_or_outdated": [
+        "Internally inconsistent: 'do NOT speculate on casualties' and 'express concern without confirming numbers until verified' conflict with 'NEVER omit numbers entirely'. The latter is a validator rule (game mechanic) and must not enter the seed, as 6.11 says.",
+        "The example statement names a venue and hospital template; fine as a template, but no real names may be seeded."
+      ],
+      "proposed_amendment": "Keep generic; drop the statement-quality block. Add a never-do: 'Publish film or details of police operations in a target area while a communications stop order is in force' (Singapore only, after s. 30 is verified). No Singapore media seed was drafted in this run (gap).",
+      "proposed_action": "amend",
+      "confidence": "low"
+    },
+    {
+      "seed": "playbooks/pursuit_investigation.json",
+      "source_lines": "server/services/demoAIAgentService.ts:5003-5029",
+      "claims_sourced": [
+        {
+          "claim": "Investigate bomb and explosive-related offences",
+          "source": "SPF Our People, Criminal Investigation Department",
+          "locator": "Major Crime Division"
+        },
+        {
+          "claim": "Evidence from a device is collected and sent for forensic investigation",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, step (3)"
+        }
+      ],
+      "claims_unsourced": [
+        "Witness interview area in the cold zone",
+        "Encrypted tactical channel"
+      ],
+      "differs_from_sg": [
+        "The playbook merges investigation with tactical response ('containment perimeter, negotiate, coordinate tactical response'). In Singapore these sit with different units: CID investigates; the Special Operations Command's STAR Unit and Crisis Negotiation Unit handle armed and hostage incidents. Split into pursuit_investigation and tactical_response.",
+        "'Forensic team with ... explosive ordnance disposal' is wrong for SG: EOD is the SAF's 36 SCE, not a forensic team."
+      ],
+      "errors_or_outdated": [
+        "Step 3 ('negotiate if possible, coordinate tactical response') is close to tactical guidance; keep at the level of 'hand over to the tactical unit' (6.11.5 item 3)."
+      ],
+      "proposed_amendment": "Amend: remove step 3 and the EOD-as-forensics line; add hand-offs to tactical_response (armed threat) and from bomb_disposal_eod (evidence). Use sg/sg_spf_cid.pursuit_investigation.json for Singapore cards.",
+      "proposed_action": "amend",
+      "confidence": "medium"
+    },
+    {
+      "seed": "playbooks/bomb_disposal_eod.json",
+      "source_lines": "server/services/demoAIAgentService.ts:5031-5088",
+      "claims_sourced": [
+        {
+          "claim": "EOD commander consults the Incident Manager and assesses before acting",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, step (1)"
+        },
+        {
+          "claim": "Render safe remotely; confirm, check for further devices, collect evidence",
+          "source": "MINDEF Cyberpioneer, April 2003 (archived)",
+          "locator": "36 SCE, steps (2) and (3)"
+        },
+        {
+          "claim": "Sweeps at key national events",
+          "source": "Singapore Army, Singapore Combat Engineers",
+          "locator": "EOD Engineers"
+        }
+      ],
+      "claims_unsourced": [
+        "Staging area 150 m or more from the incident (standoffs belong to WS6's device library)",
+        "Live devices detonate after 2 minutes (game mechanic)",
+        "Cordon and communications discipline as steps (required by 6.11; no generic Singapore source located)"
+      ],
+      "differs_from_sg": [
+        "In Singapore the responder is the SAF's 36 SCE within the CBRE Defence Group, 'the only national responder to any explosive threat' (Pioneer, 18 Oct 2023), not a police bomb squad. The 02 register row 'SPF or the SAF EOD units' should be resolved to the SAF (to verify by the D22 reviewer)."
+      ],
+      "errors_or_outdated": [
+        "Steps 9, 11 to 15 and the 'Contraindications by Container' and 'Equipment' blocks give render-safe technique selection by container type, communications-blackout rationale and tool lists. These are operational device-defeat details; under 6.11.3 rule 7 and 9.4 they must not be transcribed. 6.11's transcription rule already limits the seed to cordon, communications discipline, remote assessment, render safe by the qualified team, evidence and all clear; this review confirms the source text itself should be treated as restricted-adjacent and not quoted in review packs.",
+        "Sweep action format and the 1-asset-per-cycle rule are game mechanics."
+      ],
+      "proposed_amendment": "Amend to the 6.11 level only, as sg/sg_saf.bomb_disposal_eod.json does (assessment with the Incident Manager, remote render safe by the qualified team, confirm and check for further devices, evidence to forensics). Keep cordon, communications discipline and all clear as labelled gaps until the D22 reviewer supplies or approves wording.",
+      "proposed_action": "amend",
+      "confidence": "medium"
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "playbooks/evacuation_crowd": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/fire_rescue": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/medical_triage": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/media_comms": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/pursuit_investigation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "playbooks/bomb_disposal_eod": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

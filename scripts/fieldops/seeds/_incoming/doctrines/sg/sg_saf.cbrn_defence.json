@@ -1,0 +1,152 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "cbrn_defence",
+  "title": "SAF CBRE DG: CBRN Defence response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Armed Forces",
+  "agency_key": "sg_saf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_saf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Factsheet: SAF's Chemical and Biological Defence Capability",
+        "publisher": "Ministry of Defence (held by the National Archives of Singapore)",
+        "url": "https://www.nas.gov.sg/archivesonline/data/pdfdoc/MINDEF_20030117001/MINDEF_20030117003.pdf",
+        "published": "2003-01-17",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "The CBRE Defence Group, bullets 2 and 3",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Exercise Northstar 9 Fact Sheet: SAF CBRE Defence Group and Medical Response Force",
+        "publisher": "Ministry of Defence",
+        "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/2015may09-news-releases-02626/",
+        "published": "2015-05-09",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Island Defence Task Force (IDTF), para 2",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Fact Sheet: Island Defence Task Force (IDTF)",
+        "publisher": "Ministry of Defence",
+        "url": "https://www.mindef.gov.sg/news-and-events/latest-releases/08mar23_fs/",
+        "published": "2023-03-08",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "para d, Peacetime Contingency Operations",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "low",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_decon0001",
+          "st_scdfwork1",
+          "ho_scdf0002"
+        ],
+        "source_index": 0,
+        "locator": "bullets 2 and 3"
+      },
+      {
+        "ids": [
+          "st_mrftreat"
+        ],
+        "source_index": 1,
+        "locator": "para 2"
+      },
+      {
+        "ids": [
+          "st_assign001"
+        ],
+        "source_index": 2,
+        "locator": "para d"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Respond to chemical, biological, radiological and explosive threats: decontaminate affected sites and treat chemical and biological casualties, working with SCDF.",
+    "sequence": [
+      {
+        "id": "st_assign001",
+        "window": null,
+        "label": "Assigned to IDTF",
+        "action": "Respond when CBRE teams are assigned to the Island Defence Task Force to support SPF or SCDF."
+      },
+      {
+        "id": "st_decon0001",
+        "window": null,
+        "label": "Decontaminate",
+        "action": "Decontaminate incident sites that contain chemical or biological hazards."
+      },
+      {
+        "id": "st_mrftreat",
+        "window": null,
+        "label": "Treat casualties",
+        "action": "Treat casualties of chemical, biological or radiological agents on scene through the Medical Response Force."
+      },
+      {
+        "id": "st_scdfwork1",
+        "window": null,
+        "label": "Work with SCDF",
+        "action": "Work with SCDF in the event of a chemical attack."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_scdf0002",
+        "to_archetype": "fire_rescue",
+        "to_label": "SCDF",
+        "when": "A chemical attack needs a joint response."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country",
+      "military_service"
+    ],
+    "notes": "Decontamination role from a 2003 factsheet; to verify against current MINDEF material. Agents and procedures not recorded (WS9 6.27.10: industrial chemicals only, never warfare agents). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

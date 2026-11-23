@@ -1,0 +1,704 @@
+{
+  "file": "structural-damage.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: glass and structural bands (fieldops_injury_thresholds structural keys) and indoor casualty shares",
+  "rows": [
+    {
+      "ref_key": "clancey_damage_table",
+      "topic": "structural_damage",
+      "value": [
+        {
+          "kpa": 0.14,
+          "damage": "Annoying noise (137 dB if of low frequency 10-15 Hz)"
+        },
+        {
+          "kpa": 0.21,
+          "damage": "Occasional breaking of large glass windows already under strain"
+        },
+        {
+          "kpa": 0.28,
+          "damage": "Loud noise (143 dB), sonic boom, glass failure"
+        },
+        {
+          "kpa": 0.69,
+          "damage": "Breakage of small windows under strain"
+        },
+        {
+          "kpa": 1.03,
+          "damage": "Typical pressure for glass breakage"
+        },
+        {
+          "kpa": 2.07,
+          "damage": "'Safe distance' (probability 0.95 of no serious damage below this value); projectile limit; some damage to house ceilings; 10% window glass broken"
+        },
+        {
+          "kpa": 2.76,
+          "damage": "Limited minor structural damage"
+        },
+        {
+          "kpa": [
+            3.4,
+            6.9
+          ],
+          "damage": "Large and small windows usually shattered; occasional damage to window frames"
+        },
+        {
+          "kpa": 4.8,
+          "damage": "Minor damage to house structures"
+        },
+        {
+          "kpa": 6.9,
+          "damage": "Partial demolition of houses, made uninhabitable"
+        },
+        {
+          "kpa": [
+            6.9,
+            13.8
+          ],
+          "damage": "Corrugated panels and wood panel fastenings fail"
+        },
+        {
+          "kpa": 9,
+          "damage": "Steel frame of clad building slightly distorted"
+        },
+        {
+          "kpa": 13.8,
+          "damage": "Partial collapse of walls and roofs of houses"
+        },
+        {
+          "kpa": [
+            13.8,
+            20.7
+          ],
+          "damage": "Concrete or cinder block walls, not reinforced, shattered"
+        },
+        {
+          "kpa": 15.8,
+          "damage": "Lower limit of serious structural damage"
+        },
+        {
+          "kpa": 17.2,
+          "damage": "50% destruction of brickwork of houses"
+        },
+        {
+          "kpa": 20.7,
+          "damage": "Steel frame building distorted and pulled away from foundations"
+        },
+        {
+          "kpa": [
+            20.7,
+            27.6
+          ],
+          "damage": "Frameless, self-framing steel panel building demolished; rupture of oil storage tanks"
+        },
+        {
+          "kpa": 27.6,
+          "damage": "Cladding of light industrial buildings ruptured"
+        },
+        {
+          "kpa": 34.5,
+          "damage": "Wooden utility poles snapped"
+        },
+        {
+          "kpa": [
+            34.5,
+            48.2
+          ],
+          "damage": "Nearly complete destruction of houses"
+        },
+        {
+          "kpa": [
+            48.2,
+            55.1
+          ],
+          "damage": "Brick panels, 8-12 inch thick, not reinforced, fail by shearing or flexure"
+        },
+        {
+          "kpa": 68.9,
+          "damage": "Probable total destruction of buildings"
+        }
+      ],
+      "unit": "kPa incident overpressure",
+      "note": "Indicative damage per overpressure (Clancey 1972); pressure only, no impulse. Useful for narration and band labels.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "2.2.1, Table 2.8 Damage Estimates for Common Structures Based on Overpressure [6]",
+            "quoted_phrase": "Table 2.8 Damage Estimates for Common Structures Based on Overpressure"
+          },
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "2.2.1 paragraph",
+            "quoted_phrase": "the values given in Table 2.8 and Table 2.9 are indicative only"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "primary Clancey (1972) conference paper not read"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_damage_zones",
+      "topic": "structural_damage",
+      "value": [
+        {
+          "zone": "A",
+          "level": "total destruction",
+          "kpa_over": 83
+        },
+        {
+          "zone": "B",
+          "level": "heavy damage",
+          "kpa_over": 35
+        },
+        {
+          "zone": "C",
+          "level": "moderate damage",
+          "kpa_over": 17
+        },
+        {
+          "zone": "D",
+          "level": "minor damage",
+          "kpa_over": 3.5
+        }
+      ],
+      "unit": "kPa",
+      "note": "Empirical zones for long positive phases; ignores impulse.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.1 Table 4",
+            "quoted_phrase": "Table 4. Damage Levels."
+          },
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.1",
+            "quoted_phrase": "In order to get an idea of the damage as function of the distance to an explosion a classification is made of 4 different zones"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_house_damage_probits",
+      "topic": "structural_damage",
+      "value": {
+        "minor": {
+          "probit": "Pr = 5 - 0.26 ln V",
+          "V": "(4600/Ps)^3.9 + (110/is)^5.0"
+        },
+        "major_structural": {
+          "probit": "Pr = 5 - 0.26 ln V",
+          "V": "(17500/Ps)^8.4 + (290/is)^9.3"
+        },
+        "collapse": {
+          "probit": "Pr = 5 - 0.22 ln V",
+          "V": "(40000/Ps)^7.4 + (460/is)^11.3"
+        },
+        "units": "Ps in Pa, is in Pa.s",
+        "applies_to": "houses and apartment buildings up to 4 storeys"
+      },
+      "unit": "probit",
+      "note": "Minor: window panes, doors and frames, roofs. Major: cracks in walls, some walls collapse. Collapse: house totally collapsed. Probability = 0.5*(1 + erf((Pr - 5)/sqrt(2))). Pr 5 = 50 %, 3.72 = 10 %, 2.67 = 1 %, 6.28 = 90 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.2.1, eq. (52)-(57), pp. 48-49",
+            "quoted_phrase": "The probit functions for houses or apartment-buildings up to 4 storeys are as follows"
+          },
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.2.1 damage levels",
+            "quoted_phrase": "1 Minor damage: breakage of window-panes, displacements of doors and window-frames, damages to roofs."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_highrise_collapse_probits",
+      "topic": "structural_damage",
+      "value": {
+        "shock_wave": {
+          "probit": "Pr = 5 - 2.92 ln V",
+          "V": "(0.9/Pbar)^1.4 + (3/ibar)^2.7"
+        },
+        "pressure_wave": {
+          "probit": "Pr = 5 - 2.14 ln V",
+          "V": "(1.25/Pbar)^1.9 + (3/ibar)^2.5"
+        }
+      },
+      "unit": "probit",
+      "note": "Buildings over 4 storeys; Pbar and ibar are scaled by the building's static strength and natural period (Green Book ch. 2, eqs. 19-20), so they need per-building inputs.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.2.1, eq. (58)-(61), p. 49",
+            "quoted_phrase": "For apartment buildings higher than four storeys the probit functions for light or structural damage are identical to (52) and (54)."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "scaling of Pbar and ibar (eqs. 19-20 of chapter 2) not transcribed"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_window_breakage_probits",
+      "topic": "glass",
+      "value": {
+        "before_1975": "Pr = -11.97 + 2.12 ln(Ps)",
+        "after_1975": "Pr = -16.58 + 2.53 ln(Ps)",
+        "units": "Ps in Pa"
+      },
+      "unit": "probit",
+      "note": "Fraction of window panes broken. 50 % at about 3.0 kPa (old) and 5.1 kPa (newer). Probability = 0.5*(1 + erf((Pr - 5)/sqrt(2))). Pr 5 = 50 %, 3.72 = 10 %, 2.67 = 1 %, 6.28 = 90 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.2.3, eq. (62)-(63), p. 50",
+            "quoted_phrase": "A global idea of the dynamic strength is obtainable for the pressures indicated in Chapter 6 and with the help of the following probit functions"
+          },
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 6 Glass",
+            "quoted_phrase": "It is considered, as an average, that for 3 kPa 50% of all window-panes will be broken."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "swiss_window_pi_model",
+      "topic": "glass",
+      "value": {
+        "curve": "(P - A) * (I - B) = C",
+        "C": "exp(1.3 + 2.23 ln A)",
+        "A_probit": {
+          "small_lt_1m2": "Pr = -1.013 + 3.356 ln A",
+          "medium_1_3m2": "Pr = 0.796 + 3.356 ln A",
+          "large_gt_3m2": "Pr = 2.674 + 3.356 ln A"
+        },
+        "B_probit": {
+          "small_lt_1m2": "Pr = -2.558 + 1.932 ln B",
+          "medium_1_3m2": "Pr = -0.788 + 1.932 ln B",
+          "large_gt_3m2": "Pr = 0.983 + 1.932 ln B"
+        },
+        "units": "P kPa, I kPa.ms",
+        "glazing": "dual pane, 4-6 mm annealed, modern windows"
+      },
+      "unit": "P-I iso-probit curves",
+      "note": "For a target breakage probit Pr, A and B come from the probits; the window breaks at that level when P > A, I > B and (P-A)(I-B) >= C. Breakage probability is the highest Pr satisfied (bisection).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.2.3, Tables 43-44",
+            "quoted_phrase": "The Swiss model is easy to use and covers the whole width of model deviations."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.2.3, Table 43",
+            "quoted_phrase": "(P-A)*(I-B)=C"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "primary Kummer (2004) 31st DDESB seminar not read; assignment of the two probits to A (pressure) and B (impulse) inferred from the P-I form"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iatg_breakage_to_injury",
+      "topic": "glass",
+      "value": [
+        {
+          "breakage": 1,
+          "minor_injury": 1,
+          "major_injury": 0.1,
+          "lethality": 0.01
+        },
+        {
+          "breakage": 0.5,
+          "minor_injury": 0.1,
+          "major_injury": 0.01,
+          "lethality": 0.001
+        },
+        {
+          "breakage": 0.01,
+          "minor_injury": 0.001,
+          "major_injury": 0.0001,
+          "lethality": 0.00001
+        }
+      ],
+      "unit": "probability",
+      "note": "Generalised link from window breakage to injury of people behind the glass.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.2.3, Table 46 Degree of window breakage and injury levels",
+            "quoted_phrase": "The degree of breakage is related to a probability of an injury level in a generalized way according to table 46 below"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_glass_fragment_lethality_probit",
+      "topic": "glass",
+      "value": "Pr = 2.67 + 5.62 ln(DLF * P / Pst)",
+      "unit": "probit",
+      "note": "Lethality for a person directly behind a pane, from skull fracture by glass. DLF (dynamic load factor) and Pst (pane static strength) need pane dimensions (Green Book ch. 2, 6).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.4, eq. (31), p. 28",
+            "quoted_phrase": "The profit function, for this probability of lethality due to glass fragments is derived in Annex I."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "DLF",
+          "Pst"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "scilly_damage_range",
+      "topic": "structural_damage",
+      "value": {
+        "formula": "Rx = Kx * M^(1/3) / (1 + (3175/M)^2)^(1/6)",
+        "M": "kg explosive (TNT-equivalent assumed)",
+        "K_jarrett": {
+          "A": 3.8,
+          "B": 5.6,
+          "Cb": 9.6,
+          "Ca": 28,
+          "D": 56
+        },
+        "K_gilbert_lees_scilly": {
+          "A": 4.8,
+          "B": 7.1,
+          "Cb": 12.4,
+          "Ca": 21.3,
+          "D": 42.6
+        },
+        "categories": {
+          "A": "completely demolished",
+          "B": "beyond repair, 50-75 % external brickwork destroyed",
+          "Cb": "uninhabitable, extensive repair",
+          "Ca": "uninhabitable, quick repair",
+          "D": "habitable after repairs"
+        }
+      },
+      "unit": "m",
+      "note": "Brick-built housing damage ranges from accident and war-damage data. The denominator strongly shrinks ranges for small charges.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.2.1, Tables 40-42",
+            "quoted_phrase": "Rx = (Kx . Mexp 1/3) / ( 1 + (3175/Mexp) 2) 1/6"
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.2.1, Table 42 note",
+            "quoted_phrase": "The revised values take account of the casing factor"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gls_occupant_casualties",
+      "topic": "people_in_buildings",
+      "value": [
+        {
+          "category": "Aa",
+          "damage": "totally demolished",
+          "p_killed": 0.96,
+          "p_killed_or_serious": 1,
+          "p_any_injury": 1
+        },
+        {
+          "category": "Ab",
+          "damage": "almost completely demolished",
+          "p_killed": 0.57,
+          "p_killed_or_serious": 0.66,
+          "p_any_injury": 0.82
+        },
+        {
+          "category": "A",
+          "damage": "demolished",
+          "p_killed": 0.62,
+          "p_killed_or_serious": 0.71,
+          "p_any_injury": 0.84
+        },
+        {
+          "category": "B",
+          "damage": "beyond repair",
+          "p_killed": 0.096,
+          "p_killed_or_serious": 0.15,
+          "p_any_injury": 0.38
+        },
+        {
+          "category": "Cb",
+          "damage": "uninhabitable, extensive repair",
+          "p_killed": 0.009,
+          "p_killed_or_serious": 0.043,
+          "p_any_injury": 0.13
+        },
+        {
+          "category": "Ca",
+          "damage": "uninhabitable, quick repair",
+          "p_killed": 0,
+          "p_killed_or_serious": 0.002,
+          "p_any_injury": 0.006
+        },
+        {
+          "category": "D",
+          "damage": "habitable",
+          "p_killed": 0,
+          "p_killed_or_serious": 0,
+          "p_any_injury": 0
+        }
+      ],
+      "unit": "probability",
+      "note": "Occupant outcomes by building damage category; pairs with scilly_damage_range for indoor casualties.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.3.2, Table 54 Probability Values for Secondary",
+            "quoted_phrase": "Gilbert, Lees and Scilly developed probability values for building occupants suffering fatal, serious or light injuries."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "table read from a flattened PDF; row-to-value alignment for Aa/Ab/A should be checked"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_collapse_fatality_share",
+      "topic": "people_in_buildings",
+      "value": {
+        "low": 0.2,
+        "high": 0.5
+      },
+      "unit": "share of occupants killed",
+      "note": "When a building collapses, 20-50 % of people inside die (earthquake data, assumed to hold for explosions).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 5.1, p. 29",
+            "quoted_phrase": "when a building collapses due to an earthquake, between 20% and 50% of the people present will die."
+          },
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 5.1, p. 29",
+            "quoted_phrase": "We assume that in case of a collapse caused by an explosion, the percentages will be the same as for an earthquake."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "eisenberg_structure_probit",
+      "topic": "structural_damage",
+      "value": "Pr = -23.8 + 2.92 ln(Ps)",
+      "unit": "probit (Ps in Pa)",
+      "note": "Total structural damage, pressure only (50 % at about 19 kPa). Comparison only.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "lachance_2009_ichs",
+            "locator": "Table 7, Structure failure, Eisenberg [13]",
+            "quoted_phrase": "Y = -23.8 + 2.92 ln [Ps]"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "DDESB TP-14 P-I iso-damage curves and window coefficients (Table A-19)",
+      "sources_checked": [
+        "iatg_0180_2021"
+      ],
+      "why": "TP-14 not read; IATG only points to it."
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_a50401527dc9": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

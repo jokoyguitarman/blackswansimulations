@@ -1,0 +1,685 @@
+{
+  "file": "vapour-cloud-and-fireball.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "threat_profile",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: for WS9 catalogue items (vessel burst, vapour cloud ignition) evaluated with WS6 curves (spec 07 15.5-15.6)",
+  "rows": [
+    {
+      "ref_key": "epa_vce_tnt_equivalence",
+      "topic": "vapour_cloud",
+      "value": {
+        "W_TNT": "yield * W_fuel * Hc_fuel / Hc_TNT",
+        "Hc_TNT_kj_kg": 4680,
+        "worst_case_yield": 0.1,
+        "distance_1psi_m": "17 * (0.1 * W_kg * Hc/4680)^(1/3)",
+        "distance_1psi_mi": "0.0081 * (0.1 * W_lb * Hc/4680)^(1/3)"
+      },
+      "unit": "kg TNT, m",
+      "note": "EPA worst case: 10 % yield, endpoint 1 psi. EPA's constant 17 m/kg^(1/3) is about 6 % below the Swisdak surface value for 6.895 kPa (Z = 18.1).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix C, C.1, eq. C-1",
+            "quoted_phrase": "The factor 17 is a constant for damages associated with 1.0 psi overpressures."
+          },
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix C, C.1",
+            "quoted_phrase": "HCTNT = Heat of explosion of trinitrotoluene (TNT) (4,680 kilojoules per kilogram)"
+          },
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.5",
+            "quoted_phrase": "for most major vapor cloud explosions, the range is one to ten percent."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "epa_heats_of_combustion",
+      "topic": "vapour_cloud",
+      "value": {
+        "propane": 46333,
+        "butane": 45719,
+        "isobutane": 45576,
+        "ethylene": 47145
+      },
+      "unit": "kJ/kg",
+      "note": "Sample heats of combustion for worked examples; EPA Exhibit C-1 lists all regulated flammables.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix C, Exhibit C-1, propane row",
+            "quoted_phrase": "Exhibit C-1 Heats of Combustion for Flammable Substances"
+          },
+          {
+            "source_key": "epa_rmp_oca_2009",
+            "locator": "Chapter 5, Example 18",
+            "quoted_phrase": "Ethylene heat of combustion = 47,145 kilojoules per kilogram; isobutane heat of combustion = 45,576"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "tno_multi_energy_scaling",
+      "topic": "vapour_cloud",
+      "value": {
+        "scaled_distance": "r' = r / (E/pa)^(1/3)",
+        "overpressure": "Ps = Ps' * pa",
+        "duration": "tp = tp' * (E/pa)^(1/3) / aa",
+        "dynamic_pressure": "pdyn = pdyn' * pa",
+        "E": "Ev * V_obstructed (J)",
+        "Ev_J_m3": 3500000,
+        "class_obstructed_conservative": 10,
+        "class_unobstructed": 1,
+        "class_unobstructed_turbulent_release": 3
+      },
+      "unit": "SI",
+      "note": "Charts (Figure 5.8 A-C) are not transcribed; only the scaling and the class guidance are.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_yellow_book_2005",
+            "locator": "Chapter 5, 5.5.2, eq. (5.2)-(5.5)",
+            "quoted_phrase": "r’ = r/(E/pa) 1/3 (-) (5.2)"
+          },
+          {
+            "source_key": "tno_yellow_book_2005",
+            "locator": "Chapter 5, step 4",
+            "quoted_phrase": "Ev = 3.5 MJ/m 3 is an average value for most hydrocarbons at stoichiometric concentration"
+          },
+          {
+            "source_key": "tno_yellow_book_2005",
+            "locator": "Chapter 5, step 5",
+            "quoted_phrase": "a conservative approach would be to choose a class number of 10 for each obstructed region"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "tno_multi_energy_class_peak",
+      "topic": "vapour_cloud",
+      "value": {
+        "1": 0.01,
+        "2": 0.02,
+        "3": 0.05,
+        "4": 0.1,
+        "5": 0.2,
+        "6": 0.5,
+        "7": 1,
+        "8": 2,
+        "9": 5,
+        "10": 10
+      },
+      "unit": "bar (maximum side-on overpressure near the charge)",
+      "note": "Peak source overpressure per Multi-Energy class; the decay with r' must come from the Yellow Book charts (not transcribed).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "upb_bulletin_multi_energy",
+            "locator": "Table 1 Violence index and their maximum overpressure",
+            "quoted_phrase": "Violence index and their maximum overpressure"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "read the class peaks off Yellow Book Figure 5.8A; class 10 is sometimes quoted as 20 bar"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "tno_multi_energy_class_guidance",
+      "topic": "vapour_cloud",
+      "value": [
+        {
+          "ignition": "H",
+          "obstruction": "H",
+          "confinement": "C",
+          "class": "7-10"
+        },
+        {
+          "ignition": "H",
+          "obstruction": "H",
+          "confinement": "U",
+          "class": "7-10"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "H",
+          "confinement": "C",
+          "class": "5-7"
+        },
+        {
+          "ignition": "H",
+          "obstruction": "L",
+          "confinement": "C",
+          "class": "5-7"
+        },
+        {
+          "ignition": "H",
+          "obstruction": "L",
+          "confinement": "U",
+          "class": "4-6"
+        },
+        {
+          "ignition": "H",
+          "obstruction": "N",
+          "confinement": "C",
+          "class": "4-6"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "H",
+          "confinement": "U",
+          "class": "4-5"
+        },
+        {
+          "ignition": "H",
+          "obstruction": "N",
+          "confinement": "U",
+          "class": "4-5"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "L",
+          "confinement": "C",
+          "class": "3-5"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "L",
+          "confinement": "U",
+          "class": "2-3"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "N",
+          "confinement": "C",
+          "class": "1-2"
+        },
+        {
+          "ignition": "L",
+          "obstruction": "N",
+          "confinement": "U",
+          "class": "1"
+        }
+      ],
+      "unit": "class number",
+      "note": "Kinsella decision matrix as tabulated in the Yellow Book (C = parallel-plane confinement, U = unconfined).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_yellow_book_2005",
+            "locator": "Chapter 5, Table 5.3 Initial blast strength index",
+            "quoted_phrase": "Table 5.3 Initial blast strength index"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "row 8 lacks a confinement letter in the extracted text; assumed U"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "tno_multi_energy_tnt_link",
+      "topic": "vapour_cloud",
+      "value": 0.2,
+      "unit": "TNT efficiency on the obstructed part of the cloud",
+      "note": "Class 10 Multi-Energy is similar to TNT equivalence with 20 % efficiency applied to the obstructed region only (10-100 kPa).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_yellow_book_2005",
+            "locator": "Chapter 5, 5.5.2",
+            "quoted_phrase": "the overpressures will be similar to those obtained by applying the TNT equivalence method with an efficiency factor of 20%"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "bst_flame_speed_table_2005",
+      "topic": "vapour_cloud",
+      "value": {
+        "2D": {
+          "high_congestion": {
+            "low": 0.59,
+            "medium": "DDT",
+            "high": "DDT"
+          },
+          "medium_congestion": {
+            "low": 0.47,
+            "medium": 0.66,
+            "high": 1.6
+          },
+          "low_congestion": {
+            "low": 0.079,
+            "medium": 0.47,
+            "high": 0.66
+          }
+        },
+        "2.5D": {
+          "high_congestion": {
+            "low": 0.47,
+            "medium": "DDT",
+            "high": "DDT"
+          },
+          "medium_congestion": {
+            "low": 0.29,
+            "medium": 0.55,
+            "high": 1
+          },
+          "low_congestion": {
+            "low": 0.053,
+            "medium": 0.35,
+            "high": 0.5
+          }
+        },
+        "3D": {
+          "high_congestion": {
+            "low": 0.36,
+            "medium": "DDT",
+            "high": "DDT"
+          },
+          "medium_congestion": {
+            "low": 0.11,
+            "medium": 0.44,
+            "high": 0.5
+          },
+          "low_congestion": {
+            "low": 0.026,
+            "medium": 0.23,
+            "high": 0.34
+          }
+        }
+      },
+      "unit": "flame Mach number Mf (keys under congestion are fuel reactivity)",
+      "note": "Reactivity low = methane, medium = propane, high = ethylene (and hydrogen). DDT = detonation possible: use TNT/detonation curves. 1-D entries were withdrawn.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "pierorazio_2004",
+            "locator": "Table 2 Revised Baker-Strehlow-Tang Methodology Flame Speed Table",
+            "quoted_phrase": "Table 2: Revised Baker-Strehlow-Tang Methodology Flame Speed Table"
+          },
+          {
+            "source_key": "pierorazio_2004",
+            "locator": "Table 2 notes",
+            "quoted_phrase": "2.5-D values are the simple average between 2-D and 3-D values."
+          },
+          {
+            "source_key": "pierorazio_2004",
+            "locator": "Table 2 notes",
+            "quoted_phrase": "The 1-D entries have been deleted"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "the 2004 AIChE preprint is the source read; the 2005 Process Safety Progress paper is the published version"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "bst_peak_overpressure_from_mf",
+      "topic": "vapour_cloud",
+      "value": "dP/p0 = 2.4 * Mf^2 / (1 + Mf)",
+      "unit": "ratio",
+      "note": "Peak overpressure at the cloud edge for flame Mach Mf (Tang and Baker 1999). Reproduces the paired values 0.218 bar at Mf 0.35, 0.68 at 0.70, 2.00 at 1.40. Ground-level clouds double the energy E for the blast curves.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "melani_2009_ichs",
+            "locator": "2.2.3, eq. (11) and Table 4",
+            "quoted_phrase": "The relation that links overpressures and Mf is given by Tang et al. (1999)"
+          },
+          {
+            "source_key": "melani_2009_ichs",
+            "locator": "2.2.1",
+            "quoted_phrase": "For an explosion on or near ground level, the energy is doubled to take into account the ground reflection."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "equation text is garbled in the extracted PDF; the form above is the one that reproduces Table 4"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "bleve_fireball_ccps",
+      "topic": "fireball",
+      "value": {
+        "diameter_m": "5.8 * M^(1/3)",
+        "duration_s_lt_30000kg": "0.45 * M^(1/3)",
+        "duration_s_ge_30000kg": "2.6 * M^(1/6)",
+        "centre_height_m": "0.75 * D",
+        "M": "kg of fuel"
+      },
+      "unit": "m, s",
+      "note": "HSE 2-tonne propane tests: measured diameters 45-85 m against 38-69 m predicted (Roberts et al. Table 7).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "roberts_2000_hse",
+            "locator": "Fireball duration, eq. (1)",
+            "quoted_phrase": "Both Roberts 4 and the CCPS 6 suggest using the expression"
+          },
+          {
+            "source_key": "roberts_2000_hse",
+            "locator": "Fireball diameter, Table 7",
+            "quoted_phrase": "MEASURED AND PREDICTED FIREBALL DIAMETERS"
+          },
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.10, eq. D-31/D-32",
+            "quoted_phrase": "The AIChE document gives the following equations for duration of a fireball"
+          },
+          {
+            "source_key": "dga_fireball_tool",
+            "locator": "About this tool",
+            "quoted_phrase": "The center of the fireball is taken at 0.75 D above the ground"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "centre height 0.75 D from a commercial calculator citing CCPS (1994); confirm in CCPS"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "hymes_fireball_radiation",
+      "topic": "fireball",
+      "value": {
+        "q_W_m2": "2.2 * tau_a * R * Hc * M^0.67 / (4 * pi * L^2)",
+        "R_below_relief_pressure": 0.3,
+        "R_at_or_above_relief": 0.4,
+        "tau_a_conservative": 1,
+        "Hc": "J/kg",
+        "L": "m from fireball centre"
+      },
+      "unit": "W/m2",
+      "note": "Point-source fireball radiation used by EPA for BLEVE distances.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.10, eq. D-30",
+            "quoted_phrase": "The Hymes point-source model for a fireball, as cited in the AIChE document, uses the following equation"
+          },
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.10",
+            "quoted_phrase": "R = 0.3 for vessels bursting below relief valve pressure R = 0.4 for vessels bursting at or above relief valve pressure"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "thermal_dose_criteria",
+      "topic": "thermal",
+      "value": {
+        "dose_form": "q^(4/3) * t, q in W/m2 (EPA) or kW/m2 (HSE), t in s",
+        "epa_second_degree_burn_W_m2_43_s": 3420000,
+        "hse_kw_m2_43_s": {
+          "pain": {
+            "mean": 92,
+            "range": [
+              86,
+              103
+            ]
+          },
+          "first_degree_threshold": {
+            "mean": 105,
+            "range": [
+              80,
+              130
+            ]
+          },
+          "second_degree_threshold": {
+            "mean": 290,
+            "range": [
+              240,
+              350
+            ]
+          },
+          "third_degree_threshold": {
+            "mean": 1000,
+            "range": [
+              870,
+              2600
+            ]
+          }
+        }
+      },
+      "unit": "(W/m2)^(4/3).s and (kW/m2)^(4/3).s",
+      "note": "EPA's value is 5 kW/m2 for 40 s. HSE criteria via IATG Table 58.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.10",
+            "quoted_phrase": "The corresponding dose is 3,420,000"
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.3.4, Table 58 Thermal effects on human skin by heat radiation",
+            "quoted_phrase": "Criteria are taken from HSE"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iatg_explosive_fireball",
+      "topic": "fireball",
+      "value": {
+        "diameter_m": "3.86 * Q^0.32",
+        "duration_s": "0.299 * Q^0.32",
+        "Q": "kg burning mass",
+        "temperature_correction": "fd = (Tx/Tr)^(1/3), ft = (Tx/Tr)^(10/3), Tr 3600 K, propellants Tx 2500 K",
+        "radiant_fraction": 0.4,
+        "Hc_propellant_kj_kg": 4600
+      },
+      "unit": "m, s",
+      "note": "Baker fireball for burning propellant or explosive mass (spec 07 thermal.json 'charge' relation).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.7, Tables 34-35 Fireball characterization (Baker)",
+            "quoted_phrase": "Fireball characterization (Baker)"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "to_verify": [
+          "exponent 0.32 and the correction exponents read from a flattened table; confirm in Baker et al. (1983)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "TNO Multi-Energy blast charts (Fig. 5.8 A-C) and BST blast curves as numbers",
+      "sources_checked": [
+        "tno_yellow_book_2005",
+        "pierorazio_2004",
+        "melani_2009_ichs"
+      ],
+      "why": "Published only as graphs; digitising them was out of scope. Use TNT equivalence (EPA 10 %, or 20 % on the obstructed part for class 10) until a reviewed digitisation exists."
+    },
+    {
+      "subject": "vessel burst (physical explosion) energy, Brode/Baker",
+      "sources_checked": [],
+      "why": "Not researched in this run."
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_c315ffa7ba3c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_90bca665d67b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

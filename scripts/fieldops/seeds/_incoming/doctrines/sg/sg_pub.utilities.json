@@ -1,0 +1,127 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "utilities",
+  "title": "PUB: Utilities response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "PUB, Singapore's National Water Agency",
+  "agency_key": "sg_pub",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_pub",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Flood Response",
+        "publisher": "PUB, Singapore's National Water Agency",
+        "url": "https://www.pub.gov.sg/Public/KeyInitiatives/Flood-Resilience/Flood-Response",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "page body",
+        "quoted_phrase": "During heavy rain events, our QRTs are deployed to potential flood locations to keep the public out of harm’s way."
+      },
+      {
+        "title": "Flood Forecasting and Monitoring",
+        "publisher": "PUB, Singapore's National Water Agency",
+        "url": "https://www.pub.gov.sg/Public/KeyInitiatives/Flood-Resilience/Flood-Forecasting-and-Monitoring",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 2 to 4",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "high",
+    "assumed_fields": [
+      "hand_offs",
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "st_qrt000001",
+          "st_closerd01",
+          "st_barrfld01"
+        ],
+        "source_index": 0,
+        "locator": "page body"
+      },
+      {
+        "ids": [
+          "mission",
+          "st_joc000001"
+        ],
+        "source_index": 1,
+        "locator": "paras 2 to 4"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Monitor floods in real time and respond to flash floods to keep the public out of harm's way.",
+    "sequence": [
+      {
+        "id": "st_joc000001",
+        "window": null,
+        "label": "Monitor",
+        "action": "Monitor floods round the clock at the Joint Operations Centre from water-level sensors, CCTV and weather radar, and alert teams to a flash flood."
+      },
+      {
+        "id": "st_qrt000001",
+        "window": null,
+        "label": "Deploy QRTs",
+        "action": "Deploy Quick Response Teams to potential flood locations to manage the situation on site."
+      },
+      {
+        "id": "st_closerd01",
+        "window": null,
+        "label": "Close roads",
+        "action": "Close flooded road sections and divert traffic."
+      },
+      {
+        "id": "st_barrfld01",
+        "window": null,
+        "label": "Flood barriers",
+        "action": "Deploy portable flood barriers and flood bags to divert water from roads and homes."
+      }
+    ],
+    "never": [],
+    "hand_offs": [],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "For the phase 2 flood type; applies_to left empty. The 20-minute QRT arrival in a PSD article is not used (PSD, not PUB, and phrased as an anecdote). Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

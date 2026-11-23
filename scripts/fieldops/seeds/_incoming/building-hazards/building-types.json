@@ -1,0 +1,1569 @@
+{
+  "file": "building-types.json",
+  "schema_version": 1,
+  "library": "building_hazards",
+  "prepared_by": "research agent bc-00acc3e6-9284-5cbd-acd4-71e5b8340e7b (Cursor cloud agent)",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "status_label": "PENDING human review (W24). Drafted by an agent; not importable until a reviewer marks rows approved.",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+    "country": "SG",
+    "sources_file": "sources.json"
+  },
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "shopping_mall": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "office_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hotel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "public_housing_block": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "condominium": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "house": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "hospital": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "school": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "rail_station": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "bus_interchange": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "airport_terminal": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "car_park_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "food_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "stadium_venue": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "place_of_worship": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "community_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "warehouse_logistics": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "light_industry": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "chemical_process_plant": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "data_centre": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "electrical_substation": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "military_camp": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "police_or_fire_station": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "generic_building": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  },
+  "review_flags": {
+    "shopping_mall": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "office_building": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "hotel": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, sprinklered_permille, storey_height_m"
+    ],
+    "public_housing_block": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "condominium": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "house": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, occupant_m2_per_person, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "hospital": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "school": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "rail_station": [
+      "Unverified: cites source(s) not accessed in this run: cpfprts",
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "bus_interchange": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "airport_terminal": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "car_park_building": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "food_centre": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "stadium_venue": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "place_of_worship": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "community_centre": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, occupant_m2_per_person, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "warehouse_logistics": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "light_industry": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "chemical_process_plant": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, occupant_m2_per_person, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "data_centre": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "electrical_substation": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, occupant_m2_per_person, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "military_camp": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, occupant_m2_per_person, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "police_or_fire_station": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ],
+    "generic_building": [
+      "Assumed: basement_storey_height_m, contents_key, external_spread_permille, facade_class, familiarity, frame_key, smoke_control, sprinklered_permille, storey_height_m"
+    ]
+  },
+  "rows": [
+    {
+      "type_key": "shopping_mall",
+      "label": "Shopping mall",
+      "country": "SG",
+      "place_classes": [
+        "mall",
+        "retail"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_retail",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 950,
+      "smoke_control": true,
+      "facade_class": "curtain_wall_glass",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 5,
+      "familiarity": "unfamiliar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG V) and Table 1.4B; Cl.6.4.1; Cl.7.4.1",
+      "source_note": "Purpose group and occupant load factor from the Fire Code (shop 5 m2/person; spec planning value was 3, which is the atrium-floor factor). Sprinkler share and smoke control (atrium malls) are Assumed; storey heights are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG V Shop (shopping centre, departmental store)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, rows 'Shop' and 'Department store' (5 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "office_building",
+      "label": "Office building",
+      "country": "SG",
+      "place_classes": [
+        "office",
+        "government"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 4,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_office",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 900,
+      "smoke_control": false,
+      "facade_class": "curtain_wall_glass",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 10,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG IV), Table 1.4B, Cl.6.4.1",
+      "source_note": "Occupant factor from the Fire Code. Offices above 24 m habitable height must be sprinklered (Cl.6.4.1); the share of all offices is Assumed. Storey heights are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG IV Office",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Office, Admin/ general' (10 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "hotel",
+      "label": "Hotel",
+      "country": "SG",
+      "place_classes": [
+        "hotel"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 3.5,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_hotel",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 950,
+      "smoke_control": true,
+      "facade_class": "concrete_panel",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 15,
+      "familiarity": "unfamiliar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B, Cl.6.4.1, Cl.7.3",
+      "source_note": "Occupant factor 15 m2/person (min. 2 persons per room). smoke_control true because the Fire Code has a hotel corridor pressurisation clause (7.3); sprinkler share Assumed; storey heights are planning value carried from WS9 spec section 5.19 (not stated by any source).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII Place of public resort (hotel)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Hotel, Boarding house, Serviced apartment...' (15 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.3 Pressurisation of Internal Corridors In Hotels (clause title)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "public_housing_block",
+      "label": "Public housing block (HDB)",
+      "country": "SG",
+      "place_classes": [
+        "apartments"
+      ],
+      "building_tags": [],
+      "priority": 10,
+      "storey_height_m": 2.8,
+      "basement_storey_height_m": 2.8,
+      "contents_key": "contents_residential",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 50,
+      "smoke_control": false,
+      "facade_class": "concrete_panel",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 15,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG II), Table 1.4B, Cl.6.4.1 (PG I and II exempted from the 24 m sprinkler rule)",
+      "source_note": "PG II residential is exempt from the 24 m sprinkler trigger, so most blocks are unsprinklered; the 50 permille share is Assumed. Occupant factor from the Fire Code (spec planning value was 25). Priority 10 makes HDB the default for 'apartments' in SG.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG II Other residential (flat, apartment, maisonette)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Apartment, residential' (15 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "condominium",
+      "label": "Private condominium",
+      "country": "SG",
+      "place_classes": [
+        "apartments"
+      ],
+      "building_tags": [],
+      "priority": 20,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
+      "contents_key": "contents_residential",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 300,
+      "smoke_control": false,
+      "facade_class": "concrete_panel",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 15,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG II), Table 1.4B, Cl.6.4.1",
+      "source_note": "Same purpose group and occupant factor as HDB; reached only by trainer's choice because HDB has the lower priority. Sprinkler share 300 is Assumed (basement car parks and mixed-use towers are sprinklered, flats are not).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG II Other residential (condominium)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Apartment, residential' (15 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "house",
+      "label": "House",
+      "country": "SG",
+      "place_classes": [
+        "house"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
+      "contents_key": "contents_residential",
+      "frame_key": "frame_masonry",
+      "sprinklered_permille": 0,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 30,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG I), Cl.6.4.1",
+      "source_note": "PG I is outside the sprinkler trigger; Table 1.4B has no factor for a house, so 30 m2/person is Assumed (planning value carried from WS9 spec section 5.19 (not stated by any source)).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG I Small residential (bungalow, detached, semi-detached, terrace)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "occupant_m2_per_person",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "hospital",
+      "label": "Hospital",
+      "country": "SG",
+      "place_classes": [
+        "hospital",
+        "clinic"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 4.5,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 1000,
+      "smoke_control": true,
+      "facade_class": "concrete_panel",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 10,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG III), Table 1.4B, Cl.6.4.1",
+      "source_note": "Ward factor from the Fire Code. Review: Table 1.4A puts outpatient clinics and polyclinics in PG V (shop), so mapping the 'clinic' class here may be wrong. Sprinkler share and smoke control are Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III Institutional (hospital, community hospital, nursing home)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, rows 'Patient accommodation, ward' and 'room' (10 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "school",
+      "label": "School or university",
+      "country": "SG",
+      "place_classes": [
+        "school",
+        "university"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 3.5,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_office",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 300,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG III), Table 1.4B, Cl.6.4.1",
+      "source_note": "Classroom factor from the Fire Code (spec planning value was 2). Sprinkler share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III Institutional (educational/ training: school, polytechnic, university)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Classroom, Others' (1.5 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "rail_station",
+      "label": "MRT or rail station",
+      "country": "SG",
+      "place_classes": [
+        "transit_station"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 6,
+      "contents_key": "contents_transit",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 1000,
+      "smoke_control": true,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "cpfprts",
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Cl.1.1.1a (stations follow CPFPRTS), Table 1.4A, Table 1.4B",
+      "source_note": "Stations are governed by the CPFPRTS, which was not accessed; sprinkler and smoke values are Assumed. Design factor 1.5 m2/person from the Fire Code; the spec's 0.5 'at peak' is an operational crowding figure for the reviewer to decide.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (transportation: train station)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Passenger arrival/ departure areas' (1.5 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.1a Rapid Transit System",
+            "quoted_phrase": "Transit stations and trainways shall comply with the Code of Practice for Fire Precautions in Rapid Transit Systems (CPFPRTS)."
+          },
+          {
+            "source_key": "cpfprts",
+            "locator": "Whole code (not accessed)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "bus_interchange",
+      "label": "Bus interchange",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_transit",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 500,
+      "smoke_control": false,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B",
+      "source_note": "Trainer's choice only (no place class). Occupant factor from the Fire Code (spec planning value was 1); sprinkler share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (transportation: bus terminal)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Foyer Bus/ Airport/ Ferry terminal or station' (1.5 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "airport_terminal",
+      "label": "Airport terminal",
+      "country": "SG",
+      "place_classes": [
+        "airport"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 8,
+      "basement_storey_height_m": 5,
+      "contents_key": "contents_transit",
+      "frame_key": "frame_steel",
+      "sprinklered_permille": 1000,
+      "smoke_control": true,
+      "facade_class": "curtain_wall_glass",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "unfamiliar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B, Cl.6.4.1, Cl.7.4.1",
+      "source_note": "Occupant factor from the Fire Code (spec planning value was 5). Airside fuel systems are out of scope (not a building item).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (transportation: airport terminal)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Passenger arrival/ departure areas' (1.5 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Provision (sprinkler triggers)",
+            "quoted_phrase": "Every storey of buildings of more than 24m in habitable height, except for PG I and II"
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.7.4.1 Provision (engineered smoke control)",
+            "quoted_phrase": "An engineered smoke control system as specified in Cl.7.4.5 shall be provided where"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "car_park_building",
+      "label": "Multi-storey car park",
+      "country": "SG",
+      "place_classes": [
+        "car_park"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 3,
+      "basement_storey_height_m": 3,
+      "contents_key": "contents_car_park",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 300,
+      "smoke_control": false,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 30,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VIII), Table 1.4B, Cl.6.4.5",
+      "source_note": "Occupant factor from the Fire Code. Basement car parks are sprinklered under the Code; open-sided above-ground decks generally not, so the 300 share is Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VIII Storage (vehicle park)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Car parking area' (30 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.5 Car park (clause title)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "food_centre",
+      "label": "Hawker centre or food court",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 0,
+      "smoke_control": false,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "scdf-fire-code-2023-cl10-1"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B, Cl.10.1",
+      "source_note": "Trainer's choice only. Hawker dining factor from the Fire Code. Sprinkler share 0 Assumed for open-sided centres.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (F&B: hawker centre, food court, coffee shop)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Dining area, Hawker centre' (1.5 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023-cl10-1",
+            "locator": "Cl.10.1.1a (scope: eating outlets using LPG)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "stadium_venue",
+      "label": "Stadium or event venue",
+      "country": "SG",
+      "place_classes": [
+        "stadium"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_steel",
+      "sprinklered_permille": 500,
+      "smoke_control": false,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "unfamiliar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B",
+      "source_note": "Design seating factor 1.5 m2/person from the Fire Code; the spec's 0.5 'at events' (standing crowds) is for the reviewer. Concert-venue pyrotechnics are not seeded (see README).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (recreational: stadium; entertainment: concert hall, theatre)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Grandstand/ seating area' (1.5 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "place_of_worship",
+      "label": "Place of worship",
+      "country": "SG",
+      "place_classes": [
+        "place_of_worship"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 200,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 1.5,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII), Table 1.4B",
+      "source_note": "Prayer hall factor from the Fire Code (spec planning value was 1). Sprinkler share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (religious: church, mosque, temple)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Prayer hall' (1.5 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "community_centre",
+      "label": "Community centre",
+      "country": "SG",
+      "place_classes": [
+        "community_centre"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 4,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_office",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 300,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 3,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VII)",
+      "source_note": "Table 1.4B has no 'community centre' row (function rooms are 1.5, offices 10); 3 m2/person is Assumed (planning value carried from WS9 spec section 5.19 (not stated by any source)).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VII (social: community centre)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "occupant_m2_per_person",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "warehouse_logistics",
+      "label": "Warehouse or logistics centre",
+      "country": "SG",
+      "place_classes": [
+        "warehouse"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 10,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_industrial",
+      "frame_key": "frame_steel",
+      "sprinklered_permille": 800,
+      "smoke_control": false,
+      "facade_class": "metal_cladding",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 30,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VIII), Table 1.4B, Cl.6.4.1 explanation",
+      "source_note": "High-bay warehouses must be sprinklered; small low-rise ones may not be (Cl.6.4.1 explanation lists the exemption limits). Share 800 Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VIII Storage (godown, store, warehouse, coldroom)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, rows 'General storage' and 'Goods storage' (30 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation (factory or warehouse: high bay storage)",
+            "quoted_phrase": "The provision of automatic sprinkler system is required in factory or warehouse under the following conditions"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "light_industry",
+      "label": "Factory, light industry",
+      "country": "SG",
+      "place_classes": [
+        "industrial"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_industrial",
+      "frame_key": "frame_steel",
+      "sprinklered_permille": 600,
+      "smoke_control": false,
+      "facade_class": "metal_cladding",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 10,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VI), Table 1.4B, Cl.6.4.1 explanation",
+      "source_note": "Production-area factor from the Fire Code (spec planning value was 15). Sprinkler share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VI Factory",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Production area' (10 m2/person)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.4.1 Explanation (factory or warehouse)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "chemical_process_plant",
+      "label": "Chemical or petrochemical process plant (generic)",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 8,
+      "basement_storey_height_m": 4,
+      "contents_key": "contents_industrial",
+      "frame_key": "frame_steel",
+      "sprinklered_permille": 500,
+      "smoke_control": false,
+      "facade_class": "open",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": null,
+      "familiarity": "familiar",
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023",
+        "sg-wsh-mhi-regs-2017"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VI), Cl.1.1.6 (SS 634); WSH (MHI) Regulations 2017 First Schedule",
+      "source_note": "Category level only (WS9 9.8): restricted_generic, trainer's choice, no inventories. Occupancy left null (open plant, no factor). No document about any named plant or island was used.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VI Factory (chemicals, oil refinery)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.1.1.6 Fire safety requirements for open plant processing structure",
+            "quoted_phrase": "The design of open plant processing facilities in the oil, chemical and process industries shall comply with SS 634."
+          },
+          {
+            "source_key": "sg-wsh-mhi-regs-2017",
+            "locator": "First Schedule, Part 1 (named dangerous substances and threshold quantities)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "occupant_m2_per_person",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "data_centre",
+      "label": "Data centre",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 5,
+      "basement_storey_height_m": 4,
+      "contents_key": "fuel_electrical",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 1000,
+      "smoke_control": false,
+      "facade_class": "concrete_panel",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 30,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VI lists data/server centre), Table 1.4B",
+      "source_note": "The Fire Code classes data centres as PG VI. Server-room factor 30 (spec planning value was 50). Sprinkler share (often pre-action or gas) Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VI Factory (data/ server centre)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Server room' (30 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "electrical_substation",
+      "label": "Electrical substation building",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 6,
+      "basement_storey_height_m": 4,
+      "contents_key": "fuel_electrical",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 0,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 200,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG VI), Cl.6.2 small-building note",
+      "source_note": "22 kV and lower substations are treated as small standalone buildings in the Fire Code. Occupancy 200 m2/person and sprinkler share 0 are Assumed (planning value carried from WS9 spec section 5.19 (not stated by any source)).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG VI Factory (electrical switching/ transmitting)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Cl.6.2 explanation: small buildings (22kV and lower electrical substations)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "occupant_m2_per_person",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "military_camp",
+      "label": "Military camp or base (generic)",
+      "country": "SG",
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 4,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 300,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 20,
+      "familiarity": "familiar",
+      "sensitivity": "restricted_generic",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4A (PG III lists military camp)",
+      "source_note": "Category level only (WS9 9.8): restricted_generic, trainer's choice only. Only the Fire Code's public purpose-group listing is used; every other value is Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups, PG III Institutional (educational/ training: military camp)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "occupant_m2_per_person",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "police_or_fire_station",
+      "label": "Police or fire station",
+      "country": "SG",
+      "place_classes": [
+        "police",
+        "fire_station"
+      ],
+      "building_tags": [],
+      "priority": 100,
+      "storey_height_m": 4,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_office",
+      "frame_key": "frame_reinforced_concrete",
+      "sprinklered_permille": 500,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 10,
+      "familiarity": "familiar",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4B (office factor applied)",
+      "source_note": "No explicit purpose-group row; office factor 10 applied (spec planning value was 15). Sprinkler share Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups (no explicit row; office-type use assumed PG IV)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Office, Admin/ general' (10 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    },
+    {
+      "type_key": "generic_building",
+      "label": "Building, type not known",
+      "country": null,
+      "place_classes": [],
+      "building_tags": [],
+      "priority": 1000,
+      "storey_height_m": 4,
+      "basement_storey_height_m": 3.5,
+      "contents_key": "contents_generic",
+      "frame_key": "frame_unknown",
+      "sprinklered_permille": 500,
+      "smoke_control": false,
+      "facade_class": "masonry",
+      "external_spread_permille": 0,
+      "occupant_m2_per_person": 10,
+      "familiarity": "mixed",
+      "sensitivity": "public",
+      "source_keys": [
+        "scdf-fire-code-2023"
+      ],
+      "source_ref": "SCDF Fire Code 2023 Table 1.4B (office factor as a neutral default)",
+      "source_note": "Fallback row labelled Assumed wherever used (WS9 6.21). Every value except the occupant factor is Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "8b6a903f-4b01-52ef-acfb-e95876934d23",
+        "sources": [
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4A Designation of Purpose Groups (fallback when no purpose group is known)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf-fire-code-2023",
+            "locator": "Table 1.4B Occupant Load Factors, row 'Business centre/ office' (10 m2/person)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "basement_storey_height_m",
+          "contents_key",
+          "external_spread_permille",
+          "facade_class",
+          "familiarity",
+          "frame_key",
+          "smoke_control",
+          "sprinklered_permille",
+          "storey_height_m"
+        ]
+      }
+    }
+  ]
+}

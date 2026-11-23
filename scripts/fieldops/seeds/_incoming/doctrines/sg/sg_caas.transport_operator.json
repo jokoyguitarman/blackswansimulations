@@ -1,0 +1,157 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "transport_operator",
+  "title": "CAAS: Transport Operator response",
+  "applies_to": [
+    "aircraft_impact"
+  ],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Civil Aviation Authority of Singapore",
+  "agency_key": "sg_caas",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_caas",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Civil Aviation Authority of Singapore Act 2009",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CAASA2009",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 7(1)(a), (b), (g), (ga)",
+        "quoted_phrase": "to provide or coordinate search and rescue services to aircraft in distress within the Singapore Search and Rescue Region"
+      },
+      {
+        "title": "Airports and aerodrome safety",
+        "publisher": "Civil Aviation Authority of Singapore",
+        "url": "https://www.caas.gov.sg/industry/airports-and-aerodrome-safety/",
+        "published": "2026-05-16",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Aerodrome safety",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Airport Safety & Security",
+        "publisher": "Changi Airport Group",
+        "url": "https://www.changiairport.com/en/corporate/about-us/business-expertise/airport-safety-and-security.html",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Airport Emergency Plan",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window",
+      "hand_offs.ho_aes00001.when",
+      "archetype_key (Assumed)"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_sar000001",
+          "st_tsib00001"
+        ],
+        "source_index": 0,
+        "locator": "s. 7(1)(a), (b), (g), (ga)"
+      },
+      {
+        "ids": [
+          "st_oversee01"
+        ],
+        "source_index": 1,
+        "locator": "Aerodrome safety"
+      },
+      {
+        "ids": [
+          "ho_aes00001"
+        ],
+        "source_index": 2,
+        "locator": "Airport Emergency Plan"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Regulate safety in civil aviation and the operation of airports, provide air navigation services, and provide or coordinate search and rescue for aircraft in distress within the Singapore Search and Rescue Region.",
+    "sequence": [
+      {
+        "id": "st_sar000001",
+        "window": null,
+        "label": "Search and rescue",
+        "action": "Provide or coordinate search and rescue services for an aircraft in distress within the Singapore Search and Rescue Region."
+      },
+      {
+        "id": "st_tsib00001",
+        "window": null,
+        "label": "Investigation",
+        "action": "Cooperate with the Transport Safety Investigation Bureau in its investigation of the occurrence."
+      },
+      {
+        "id": "st_oversee01",
+        "window": null,
+        "label": "Oversight",
+        "action": "Exercise safety oversight of the aerodrome operator, including its rescue and firefighting services and emergency plan."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_aes00001",
+        "to_archetype": "fire_rescue",
+        "to_label": "Changi AES",
+        "when": "The aircraft in distress is at or near Changi aerodrome."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": "",
+    "legal_authorities": [
+      {
+        "id": "la_caas0007",
+        "instrument": "Civil Aviation Authority of Singapore Act 2009",
+        "provision": "s. 7(1)",
+        "power": "CAAS regulates civil aviation safety and airport operation, provides air navigation services, provides or coordinates search and rescue for aircraft in distress, and cooperates with the Transport Safety Investigation Bureau.",
+        "jurisdiction": null
+      }
+    ]
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Archetype transport_operator is Assumed. The search-and-rescue procedure itself is not public; the step restates the statutory function only. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

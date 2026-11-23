@@ -1,0 +1,1277 @@
+{
+  "file": "exposure-reference.pending.json",
+  "schema_version": 1,
+  "library": "spread",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "movement_parameter",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "merge": "reference_only: values with no column in migrations 250/251/258; WS9 to decide a home (engine constants or new columns)",
+  "rows": [
+    {
+      "ref_key": "iso13571_fed_co_ct",
+      "topic": "toxic_gas",
+      "value": 35000,
+      "unit": "ppm.min",
+      "note": "FED term for CO: phi_CO * dt / 35000 (dt in min). Uncertainty +/-35 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.1.2, Eq. 2 and Note 2",
+            "quoted_phrase": "35 000 corresponds to the incapacitating dose, (C⋅t), for CO"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fed_hcn_term",
+      "topic": "toxic_gas",
+      "value": "exp(phi_HCN/43)/220 * dt",
+      "unit": "per min",
+      "note": "HCN term of Eq. 2 (fire-gas use only; HCN is not a release agent here).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.1.2, Eq. 2 and Note 3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_co2_factor",
+      "topic": "toxic_gas",
+      "value": "exp(phi_CO2/5), phi in vol %",
+      "unit": "multiplier",
+      "note": "Applied to the CO and HCN terms when CO2 exceeds 2 %. Accuracy +/-20 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.1.3, Eq. 3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_o2_note",
+      "topic": "toxic_gas",
+      "value": 13,
+      "unit": "vol %",
+      "note": "O2 vitiation need not be considered while O2 stays at or above 13 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.1.2, Note 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_threshold_example",
+      "topic": "toxic_gas",
+      "value": 0.3,
+      "unit": "FED/FEC",
+      "note": "Example threshold; at 0.3, 11.4 % of the population is more susceptible. Same threshold must be used for FED and FEC.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "5.4 and A.5.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_hcl",
+      "topic": "irritant_gas",
+      "value": 1000,
+      "unit": "ppm",
+      "note": "F value for HCL in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_hbr",
+      "topic": "irritant_gas",
+      "value": 1000,
+      "unit": "ppm",
+      "note": "F value for HBR in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_hf",
+      "topic": "irritant_gas",
+      "value": 500,
+      "unit": "ppm",
+      "note": "F value for HF in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_so2",
+      "topic": "irritant_gas",
+      "value": 150,
+      "unit": "ppm",
+      "note": "F value for SO2 in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_no2",
+      "topic": "irritant_gas",
+      "value": 250,
+      "unit": "ppm",
+      "note": "F value for NO2 in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_acrolein",
+      "topic": "irritant_gas",
+      "value": 30,
+      "unit": "ppm",
+      "note": "F value for ACROLEIN in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_fec_f_formaldehyde",
+      "topic": "irritant_gas",
+      "value": 250,
+      "unit": "ppm",
+      "note": "F value for FORMALDEHYDE in FEC = sum(phi/F); uncertainty +/-50 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "6.2.1, Eq. 4",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "irritants page, ISO 13571 section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_t_rad_burn",
+      "topic": "heat",
+      "value": "t = 6.9 * q^-1.56 (min, q kW/m2)",
+      "unit": "min",
+      "note": "Time to 2nd-degree skin burn above 2.5 kW/m2; +/-25 %.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "8.2, Eq. 7",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_t_rad_pain",
+      "topic": "heat",
+      "value": "t = 4.2 * q^-1.9 (min)",
+      "unit": "min",
+      "note": "Time to pain from radiant heat.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "8.2, Eq. 8",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_t_conv_clothed",
+      "topic": "heat",
+      "value": "t = 4.1e8 * T^-3.61 (min, T in C)",
+      "unit": "min",
+      "note": "Convected heat, clothed subjects.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "8.3.1, Eq. 9",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_t_conv_light",
+      "topic": "heat",
+      "value": "t = 5e7 * T^-3.4 (min)",
+      "unit": "min",
+      "note": "Convected heat, unclothed or lightly clothed; ~120 C limit for skin within minutes.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "8.3.2, Eq. 10 and Note",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_smoke_mlc_wellvent",
+      "topic": "smoke",
+      "value": 20,
+      "unit": "g/m3 fuel mass loss",
+      "note": "Incapacitating smoke for well-ventilated fires (10 under-ventilated; 15 and 7 for susceptible); +/- factor 2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "9, Note 4 and Note 5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iso13571_smoke_aerosol_arm_length",
+      "topic": "smoke",
+      "value": 0.8,
+      "unit": "g/m3 aerosol",
+      "note": "Cannot see beyond about 0.5 m at 0.8 g/m3 aerosol (OD 1.7 over 0.5 m).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "iso_13571_2012",
+            "locator": "9, Note 1 and Note 3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_tenability_height",
+      "topic": "smoke",
+      "value": 2,
+      "unit": "m",
+      "note": "Tenability (FED CO, FED thermal, visibility) assessed at 2.0 m above floor.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.1.6.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_post_flashover_co_yield",
+      "topic": "fire_growth",
+      "value": 0.4,
+      "unit": "kg/kg",
+      "note": "After flashover or when ventilation-limited; soot rises to 0.14 kg/kg. No migration 250 column holds it.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.3.3.4",
+            "quoted_phrase": "YCO = 0.40 kg/kgfuel"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_post_flashover_soot_yield",
+      "topic": "fire_growth",
+      "value": 0.14,
+      "unit": "kg/kg",
+      "note": "See above.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.3.3.4",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_radiative_fraction",
+      "topic": "fire_growth",
+      "value": 0.35,
+      "unit": "ratio",
+      "note": "Implies a convective fraction of 0.65; WS9 6.23.2 assumes 0.70.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_sprinkler_qr",
+      "topic": "sprinkler",
+      "value": "RTI 50 m^0.5 s^0.5, C 0.65 (m/s)^0.5, Tact 68 C, radial 3.25 m",
+      "unit": "-",
+      "note": "Quick-response sprinkler design values; a higher Tact from the chosen standard applies.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 3.2.2.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_sprinkler_sr",
+      "topic": "sprinkler",
+      "value": "RTI 135 m^0.5 s^0.5, C 0.85 (m/s)^0.5, Tact 68 C, radial 3.25 m",
+      "unit": "-",
+      "note": "Standard-response sprinkler.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 3.2.2.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_sprinkler_effect",
+      "topic": "sprinkler",
+      "value": "constant HRR after activation",
+      "unit": "-",
+      "note": "For life-safety ASET the fire is controlled at constant HRR after activation (matches WS9 W29).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.3.2.2 Comment",
+            "quoted_phrase": "the fire is assumed to be controlled (with a constant HRR) after the sprinkler activates"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_heat_detector",
+      "topic": "sprinkler",
+      "value": "RTI 30, Tact 57 C, radial 4.2 m",
+      "unit": "-",
+      "note": "Heat detector design values.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 3.2.2.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_smoke_detector_od",
+      "topic": "smoke",
+      "value": 0.097,
+      "unit": "per m (OD)",
+      "note": "Optical density at alarm for spot smoke detectors.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 3.2.2.2",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "cvm2_alpha_fast",
+      "topic": "fire_growth",
+      "value": 0.0469,
+      "unit": "kW/s2",
+      "note": "All buildings (fast); car parks 0.0117; storage 3-5 m 0.188.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "en1991_t_alpha",
+      "topic": "fire_growth",
+      "value": "slow 600 s, medium 300 s, fast 150 s, ultra-fast 75 s to 1 MW",
+      "unit": "s",
+      "note": "Q = 1e6 (t/t_alpha)^2 W. Equivalent alpha (derived 1000/t_alpha^2): 0.00278, 0.0111, 0.0444, 0.178 kW/s2; NFPA's to-1055-kW alphas 0.00293/0.01172/0.0469/0.1876 are not re-read here.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "E.4 (1), Eq. E.5; Table E.5; E.4 (4)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "derived alpha"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "en1991_fire_load_density",
+      "topic": "fire_growth",
+      "value": "avg/80%: dwelling 780/948; hospital room 230/280; hotel room 310/377; library 1500/1824; office 420/511; classroom 285/347; shopping centre 600/730; theatre 300/365; transport public space 100/122",
+      "unit": "MJ/m2",
+      "note": "Could set burn_duration_s via fire load / HRRPUA; decay starts at 70 % consumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Table E.4; E.4 (6)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "en1991_other_occupancies",
+      "topic": "fire_growth",
+      "value": "hospital room medium 250; library fast 500; classroom medium 250; theatre fast 500",
+      "unit": "kW/m2",
+      "note": "No WS9 contents key yet.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Table E.5",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "nfpa92_plume_axisymmetric",
+      "topic": "smoke",
+      "value": "zl = 0.166 Qc^(2/5); z > zl: m = 0.071 Qc^(1/3) z^(5/3) + 0.0018 Qc; z <= zl: m = 0.032 Qc^(3/5) z (kg/s, kW, m)",
+      "unit": "-",
+      "note": "Not valid when plume temperature rise is under 2.2 C.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nfpa_92",
+            "locator": "5.5.1.1d-f, 5.5.1.2",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "chow_2010_smoke_filling",
+            "locator": "equations section",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "nfpa92_layer_steady",
+      "topic": "smoke",
+      "value": "z/H = 1.11 - 0.28 ln[(t Q^(1/3) / H^(4/3)) / (A/H^2)]",
+      "unit": "-",
+      "note": "First indication of smoke, steady fire, no exhaust; uniform section, A/H2 0.9-14, z/H > 0.2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nfpa_92",
+            "locator": "5.4.2.1, Eq. 5.4.2.1b",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "chow_2010_smoke_filling",
+            "locator": "Eq. for Zf",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "nfpa92_layer_t2",
+      "topic": "smoke",
+      "value": "z/H = 0.91 [t tg^(-2/5) H^(-4/5) (A/H^2)^(-3/5)]^(-1.45)",
+      "unit": "-",
+      "note": "t-squared fire, no exhaust; A/H2 0.9-23, z/H > 0.2.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nfpa_92",
+            "locator": "5.4.2.2, Eq. 5.4.2.2b",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "jin_speed_nonirritant_fit",
+      "topic": "movement_smoke",
+      "value": "v = 1.0573 - 0.4326 K (m/s, K 1/m)",
+      "unit": "m/s",
+      "note": "Purser's fit to Jin, K 0.2-1.13; R2 0.27.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "walking-speed page, Purser and McAllister ch. 70 p. 2285",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "jin_speed_irritant_fit",
+      "topic": "movement_smoke",
+      "value": "v = 1.1517 - 0.9578 K",
+      "unit": "m/s",
+      "note": "Irritant (wood crib) smoke, K 0.32-0.5; R2 0.035 (explains little).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "walking-speed page",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "frantzich_nilsson_speed",
+      "topic": "movement_smoke",
+      "value": "v = 0.706 - 0.057 K",
+      "unit": "m/s",
+      "note": "Dense artificial smoke, K 1.9-7.4.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "pyfds_evac_docs",
+            "locator": "walking-speed page, Frantzich-Nilsson Eq. 3",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "fruin_los_walkway_flows",
+      "topic": "crowd",
+      "value": "A <23; B 23-33; C 33-49; D 49-66; E 66-82; F >82",
+      "unit": "p/m/min",
+      "note": "Walkway flows by LOS.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "fruin_los_stair_flows",
+      "topic": "crowd",
+      "value": "A <16; B 16-23; C 23-33; D 33-43; E 43-56; F >56",
+      "unit": "p/m/min",
+      "note": "Stairway flows by LOS.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "metrolinx_ds12",
+            "locator": "Table 4",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "tobler_hiking_function",
+      "topic": "crowd",
+      "value": "W = 6 exp(-3.5 |S + 0.05|) km/h, S = slope dh/dx",
+      "unit": "km/h",
+      "note": "Slope effect on walking speed; recalled, not re-read in this run (Unverified). Tobler (1993) NCGIA Technical Report 93-1.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "Inclined areas (qualitative: 12 % gradient doubles energy use)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "whole formula (not re-read)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "zalosh_c_table_basis",
+      "topic": "gas_explosion",
+      "value": "tests 0.18-82.3 m3; propane most likely ~1/3 of 0.17",
+      "unit": "-",
+      "note": "Recommended C values are upper bounds.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "zalosh_2002_sfpe",
+            "locator": "p. 3-416",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gap_compression_exposure_row",
+      "topic": "exposure",
+      "value": null,
+      "unit": "-",
+      "note": "GAP: no public source located for compression dose thresholds or shares (light/serious/fatal/trapped). Fruin gives forces (>4500 N) and pile loads only.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "fruin_1993_crowd",
+            "locator": "'Force'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "all fields"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gap_impact_exposure_row",
+      "topic": "exposure",
+      "value": null,
+      "unit": "-",
+      "note": "GAP: Tefft gives risk by speed (threat-profiles), not WS9's dose bands and shares; mapping is a modelling choice for the reviewer.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "tefft_2013",
+            "locator": "Results",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "all fields"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [],
+  "refused": []
+}

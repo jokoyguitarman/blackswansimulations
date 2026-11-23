@@ -1,0 +1,327 @@
+{
+  "file": "unit-equipment.json",
+  "schema_version": 1,
+  "library": "responder_equipment",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
+  "note": "fieldops_unit_equipment rows: kind_key, equipment_key, quantity. Sources are on the equipment rows.",
+  "rows": [
+    {
+      "kind_key": "sg_scdf_pump_ladder",
+      "equipment_key": "sg_scdf_pump_ladder_water",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_pump_ladder",
+      "equipment_key": "sg_scdf_pump_ladder_foam",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_pump_ladder",
+      "equipment_key": "sg_scdf_pump_ladder_pump",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_electric_pump_ladder",
+      "equipment_key": "sg_scdf_electric_pump_ladder_water",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_electric_pump_ladder",
+      "equipment_key": "sg_scdf_electric_pump_ladder_foam",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_lfav_5g",
+      "equipment_key": "sg_scdf_lfav_5g_foam",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_lfav_5g",
+      "equipment_key": "sg_scdf_lfav_5g_pump",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_scdf_fire_medical_vehicle_water",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_scdf_fire_medical_vehicle_foam",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_scdf_fire_medical_vehicle_pump",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_scdf_fire_medical_vehicle_stretchers",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_scdf_fire_medical_vehicle_seats",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_cpl34",
+      "equipment_key": "sg_scdf_cpl34_reach",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_cpl60",
+      "equipment_key": "sg_scdf_cpl60_reach",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_cpl60",
+      "equipment_key": "sg_scdf_cpl60_monitor",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_al56",
+      "equipment_key": "sg_scdf_al56_reach",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_hla90",
+      "equipment_key": "sg_scdf_hla90_reach",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_hla90",
+      "equipment_key": "sg_scdf_hla90_monitor",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_mass_decon_vehicle",
+      "equipment_key": "sg_scdf_mass_decon_vehicle_pax",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_mass_decon_vehicle",
+      "equipment_key": "sg_scdf_mass_decon_vehicle_decon",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_heavy_fire_vessel",
+      "equipment_key": "sg_scdf_heavy_fire_vessel_monitors",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_heavy_fire_vessel",
+      "equipment_key": "sg_scdf_heavy_fire_vessel_pax",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_heavy_rescue_vessel",
+      "equipment_key": "sg_scdf_heavy_rescue_vessel_pax",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_marine_rescue_vessel",
+      "equipment_key": "sg_scdf_marine_rescue_vessel_pax",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_rapid_response_fire_vessel",
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_pump",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_rapid_response_fire_vessel",
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_monitors",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_rapid_response_fire_vessel",
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_foam",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_bike",
+      "equipment_key": "sg_caf_backpack",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_fire_medical_vehicle",
+      "equipment_key": "sg_caf_backpack",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_lfav_6g",
+      "equipment_key": "sg_caf_trolley",
+      "quantity": 2
+    },
+    {
+      "kind_key": "sg_scdf_hazmat_control_vehicle",
+      "equipment_key": "sg_hcv_standoff_detector",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_pod_carrier",
+      "equipment_key": "sg_motfs",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_large_monitor_vehicle",
+      "equipment_key": "sg_large_monitor_2000gpm",
+      "quantity": 1
+    },
+    {
+      "kind_key": "sg_scdf_large_monitor_vehicle",
+      "equipment_key": "sg_large_monitor_6000gpm",
+      "quantity": 1
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_scdf_pump_ladder/sg_scdf_pump_ladder_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pump_ladder/sg_scdf_pump_ladder_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pump_ladder/sg_scdf_pump_ladder_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_electric_pump_ladder/sg_scdf_electric_pump_ladder_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_electric_pump_ladder/sg_scdf_electric_pump_ladder_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_5g/sg_scdf_lfav_5g_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_5g/sg_scdf_lfav_5g_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_scdf_fire_medical_vehicle_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_scdf_fire_medical_vehicle_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_scdf_fire_medical_vehicle_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_scdf_fire_medical_vehicle_stretchers": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_scdf_fire_medical_vehicle_seats": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl34/sg_scdf_cpl34_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl60/sg_scdf_cpl60_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl60/sg_scdf_cpl60_monitor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_al56/sg_scdf_al56_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hla90/sg_scdf_hla90_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hla90/sg_scdf_hla90_monitor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_mass_decon_vehicle/sg_scdf_mass_decon_vehicle_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_mass_decon_vehicle/sg_scdf_mass_decon_vehicle_decon": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_fire_vessel/sg_scdf_heavy_fire_vessel_monitors": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_fire_vessel/sg_scdf_heavy_fire_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_rescue_vessel/sg_scdf_heavy_rescue_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_marine_rescue_vessel/sg_scdf_marine_rescue_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel/sg_scdf_rapid_response_fire_vessel_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel/sg_scdf_rapid_response_fire_vessel_monitors": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel/sg_scdf_rapid_response_fire_vessel_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_bike/sg_caf_backpack": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle/sg_caf_backpack": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_6g/sg_caf_trolley": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hazmat_control_vehicle/sg_hcv_standoff_detector": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pod_carrier/sg_motfs": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_large_monitor_vehicle/sg_large_monitor_2000gpm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_large_monitor_vehicle/sg_large_monitor_6000gpm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

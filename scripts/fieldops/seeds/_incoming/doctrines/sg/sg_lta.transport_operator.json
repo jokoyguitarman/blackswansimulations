@@ -1,0 +1,134 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "transport_operator",
+  "title": "LTA: Transport Operator response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Land Transport Authority",
+  "agency_key": "sg_lta",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_lta",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "New Rail Financing Framework",
+        "publisher": "Land Transport Authority",
+        "url": "https://www.lta.gov.sg/content/ltagov/en/who_we_are/our_work/public_transport_system/rail/new_rail_financing_framework.html",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "Regulatory Framework, incident management bullet",
+        "quoted_phrase": "LTA's Crisis Management Team will provide prompt assistance during service disruptions by enhancing bus services, managing traffic for the better movement of buses"
+      },
+      {
+        "title": "Joint Exercise by LTA and Public Transport Operators to Ensure Operational Readiness in Managing Rail Incidents",
+        "publisher": "Land Transport Authority",
+        "url": "https://www.lta.gov.sg/content/ltagov/en/newsroom/2026/1/news-releases/joint-exercise-by-lta-and-public-transport-operators-to-ensure-o.html",
+        "published": "2026-01-24",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 4 to 6",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "high",
+    "assumed_fields": [
+      "hand_offs",
+      "never",
+      "good_looks_like",
+      "sequence.*.window"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_ltacmt01",
+          "st_traffic01",
+          "st_agencies1"
+        ],
+        "source_index": 0,
+        "locator": "incident management bullet"
+      },
+      {
+        "ids": [
+          "st_bridging",
+          "st_commuter1"
+        ],
+        "source_index": 1,
+        "locator": "paras 4 and 5"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Lead incident management for major train service disruptions with the rail operators, within the Land Transport Emergency Plan.",
+    "sequence": [
+      {
+        "id": "st_ltacmt01",
+        "window": null,
+        "label": "Crisis team",
+        "action": "Activate LTA's Crisis Management Team to assist during the disruption."
+      },
+      {
+        "id": "st_bridging",
+        "window": null,
+        "label": "Bridging buses",
+        "action": "Have the rail operator activate its incident management plan, including free bridging bus services between affected stations."
+      },
+      {
+        "id": "st_commuter1",
+        "window": null,
+        "label": "Direct commuters",
+        "action": "Deploy staff to direct commuters to unaffected lines and bridging bus points, and make station and in-train announcements."
+      },
+      {
+        "id": "st_traffic01",
+        "window": null,
+        "label": "Bus traffic",
+        "action": "Enhance bus services and manage traffic for the better movement of buses."
+      },
+      {
+        "id": "st_agencies1",
+        "window": null,
+        "label": "Coordinate agencies",
+        "action": "Coordinate the response across government agencies."
+      }
+    ],
+    "never": [],
+    "hand_offs": [],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "Disruption (rail_incident, phase 2) rather than attack response; applies_to left empty because phase 2 keys are not live. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

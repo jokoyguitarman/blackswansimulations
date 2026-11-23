@@ -1,0 +1,721 @@
+{
+  "file": "explosive-materials.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": "fieldops_explosive_materials",
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "migration": "239 (spec 07 5.8)",
+  "rows": [
+    {
+      "material_key": "anfo",
+      "label": "ANFO",
+      "aliases": [
+        "anfo",
+        "ammonium nitrate fuel oil"
+      ],
+      "tnt_eq_pressure": 0.82,
+      "tnt_eq_impulse": 0.82,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 10,
+      "source_ref": "IATG 01.80 (2021) Table 10, from AASTP-1 Table 5-2",
+      "valid_pressure_range_mpa": [
+        0.007,
+        0.7
+      ],
+      "note": "Wikipedia's demolition RE factor (0.74) is lower; non-ideal explosive, large scatter with charge size.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'ANFO'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "tnt",
+      "label": "TNT",
+      "aliases": [
+        "tnt",
+        "trinitrotoluene"
+      ],
+      "tnt_eq_pressure": 1,
+      "tnt_eq_impulse": 1,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 20,
+      "source_ref": "Reference material, factor 1 by definition; IATG 01.80 Table 10",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'TNT'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "rdx_c4",
+      "label": "RDX / C-4",
+      "aliases": [
+        "rdx",
+        "c-4",
+        "c4",
+        "composition c-4",
+        "plastic explosive"
+      ],
+      "tnt_eq_pressure": 1.37,
+      "tnt_eq_impulse": 1.19,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 30,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), Composition C4 row; RDX row 1.14/1.09",
+      "valid_pressure_range_mpa": [
+        0.07,
+        0.7
+      ],
+      "note": "The mockup option joins two materials. AASTP-1 gives RDX 1.14 (pressure) / 1.09 (impulse) and C-4 1.37 / 1.19; reviewer may split the row.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'Composition C4'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'RDX'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "choice of the Composition C4 factors for the combined option",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). split per 07 §5.7"
+      }
+    },
+    {
+      "material_key": "rdx",
+      "label": "RDX",
+      "aliases": [
+        "rdx"
+      ],
+      "tnt_eq_pressure": 1.14,
+      "tnt_eq_impulse": 1.09,
+      "is_unknown_default": false,
+      "sort_order": 30,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), Composition C4 row; RDX row 1.14/1.09",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'Composition C4'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'RDX'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      }
+    },
+    {
+      "material_key": "c4",
+      "label": "C-4",
+      "aliases": [
+        "c-4",
+        "c4",
+        "composition c-4",
+        "plastic explosive"
+      ],
+      "tnt_eq_pressure": 1.37,
+      "tnt_eq_impulse": 1.19,
+      "is_unknown_default": false,
+      "sort_order": 31,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), Composition C4 row; RDX row 1.14/1.09",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'Composition C4'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'RDX'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      }
+    },
+    {
+      "material_key": "petn_semtex",
+      "label": "PETN / Semtex",
+      "aliases": [
+        "petn",
+        "semtex",
+        "pentrite"
+      ],
+      "tnt_eq_pressure": 1.27,
+      "tnt_eq_impulse": 1.11,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 40,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), PETN row; Semtex not listed",
+      "valid_pressure_range_mpa": [
+        0.035,
+        0.7
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'PETN'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, Semtex 1A row (RE 1.35)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "Semtex taken equal to PETN",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": [
+          "a published blast TNT-equivalence for Semtex"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). split per 07 §5.7"
+      }
+    },
+    {
+      "material_key": "petn",
+      "label": "PETN",
+      "aliases": [
+        "petn",
+        "pentrite"
+      ],
+      "tnt_eq_pressure": 1.27,
+      "tnt_eq_impulse": 1.11,
+      "is_unknown_default": false,
+      "sort_order": 40,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), PETN row; Semtex not listed",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'PETN'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, Semtex 1A row (RE 1.35)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "a published blast TNT-equivalence for Semtex"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      }
+    },
+    {
+      "material_key": "semtex",
+      "label": "Semtex",
+      "aliases": [
+        "semtex"
+      ],
+      "tnt_eq_pressure": 1.27,
+      "tnt_eq_impulse": 1.11,
+      "is_unknown_default": false,
+      "sort_order": 41,
+      "source_ref": "IATG 01.80 (2021) Table 10 (AASTP-1 Table 5-2), PETN row; Semtex not listed",
+      "provenance": {
+        "drafted_by": "person",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'PETN'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          },
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, Semtex 1A row (RE 1.35)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_pressure",
+          "tnt_eq_impulse"
+        ],
+        "to_verify": [
+          "a published blast TNT-equivalence for Semtex"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6)."
+      },
+      "note": "Semtex takes PETN's factors (07 §5.7)."
+    },
+    {
+      "material_key": "tatp",
+      "label": "TATP",
+      "aliases": [
+        "tatp",
+        "acetone peroxide"
+      ],
+      "tnt_eq_pressure": 0.8,
+      "tnt_eq_impulse": 0.8,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 50,
+      "source_ref": "Wikipedia 'TNT equivalent', RE factor table (demolition RE, not airblast); no AASTP-1 or UFC value found",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, TATP row (RE 0.80)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_impulse set equal to tnt_eq_pressure",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": [
+          "airblast TNT-equivalence from a reviewed forensic or test source"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "black_powder",
+      "label": "Black powder",
+      "aliases": [
+        "black powder",
+        "gunpowder"
+      ],
+      "tnt_eq_pressure": 0.55,
+      "tnt_eq_impulse": 0.55,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 60,
+      "source_ref": "Wikipedia 'TNT equivalent', RE factor table (demolition RE); no AASTP-1 or UFC value found",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, black powder row (RE 0.55)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_impulse set equal to tnt_eq_pressure",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": [
+          "a deflagrating low explosive has no stable blast equivalence; reviewer to confirm or set a band"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "smokeless_powder",
+      "label": "Smokeless powder",
+      "aliases": [
+        "smokeless powder",
+        "propellant powder"
+      ],
+      "tnt_eq_pressure": null,
+      "tnt_eq_impulse": null,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 70,
+      "source_ref": "No public blast TNT-equivalence found in the sources read",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "RE table has nitrocellulose (1.10) but no smokeless-powder row",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_pressure",
+          "tnt_eq_impulse",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": [
+          "value required before import: tnt_eq_* are NOT NULL in migration 239"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "rejected",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A6). no published factor, 07 §5.7"
+      }
+    },
+    {
+      "material_key": "dynamite",
+      "label": "Dynamite",
+      "aliases": [
+        "dynamite"
+      ],
+      "tnt_eq_pressure": 1.25,
+      "tnt_eq_impulse": 1.25,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": false,
+      "sort_order": 80,
+      "source_ref": "Wikipedia 'TNT equivalent', RE factor table, Nobel's dynamite row (demolition RE)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "wikipedia_tnt_equivalent",
+            "locator": "Relative effectiveness factor table, dynamite row (RE 1.25)",
+            "quoted_phrase": "The table below should be taken as an example and not as a precise source of data."
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "Table 2-1 Heat of Detonation, NG row 2.22E+06 ft-lb/lb vs TNT 1.97E+06 (ratio 1.13)",
+            "quoted_phrase": "Table 2-1 Heat of Detonation and Heat of Combustion"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "tnt_eq_impulse set equal to tnt_eq_pressure",
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": [
+          "commercial dynamites vary widely by grade"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "unknown",
+      "label": "Other / unknown",
+      "aliases": [
+        "unknown",
+        "other"
+      ],
+      "tnt_eq_pressure": 1,
+      "tnt_eq_impulse": 1,
+      "gurney_velocity_m_s": null,
+      "is_unknown_default": true,
+      "sort_order": 1000,
+      "source_ref": "Spec 07 5.7: the unknown row uses TNT itself until the reviewer chooses otherwise",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 10 TNT Equivalence (from AASTP-1 Table 5-2), row 'TNT'",
+            "quoted_phrase": "To provide a standardized approach, TNT-equivalents for several types of explosives are tabulated below (table 10), taken from AASTP 1, Table 5-2."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "gurney_velocity_m_s"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "reference_rows": [
+    {
+      "ref_key": "ufc_heat_of_detonation_equivalence",
+      "topic": "tnt_equivalence",
+      "value": [
+        {
+          "material": "Baratol",
+          "heat_of_detonation_ft_lb_per_lb_e6": 1.04,
+          "ratio_to_tnt": 0.53
+        },
+        {
+          "material": "Composition B",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.15,
+          "ratio_to_tnt": 1.09
+        },
+        {
+          "material": "Composition C-4",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.22,
+          "ratio_to_tnt": 1.13
+        },
+        {
+          "material": "HMX",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.27,
+          "ratio_to_tnt": 1.15
+        },
+        {
+          "material": "Pentolite 50/50",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.14,
+          "ratio_to_tnt": 1.09
+        },
+        {
+          "material": "PETN",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.31,
+          "ratio_to_tnt": 1.17
+        },
+        {
+          "material": "RDX",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.27,
+          "ratio_to_tnt": 1.15
+        },
+        {
+          "material": "Tetryl",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.11,
+          "ratio_to_tnt": 1.07
+        },
+        {
+          "material": "TNT",
+          "heat_of_detonation_ft_lb_per_lb_e6": 1.97,
+          "ratio_to_tnt": 1
+        },
+        {
+          "material": "NQ",
+          "heat_of_detonation_ft_lb_per_lb_e6": 1.49,
+          "ratio_to_tnt": 0.76
+        },
+        {
+          "material": "NG",
+          "heat_of_detonation_ft_lb_per_lb_e6": 2.22,
+          "ratio_to_tnt": 1.13
+        }
+      ],
+      "unit": "ratio",
+      "note": "UFC 3-340-02 eq. 2-1: W_E = (H_d,exp / H_d,TNT) * W_exp. Shows how much equivalence depends on method (C-4 1.13 here vs 1.37 pressure in AASTP-1).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.1.5, Table 11 TNT Equivalence (data taken from UFC-3-340-02, Table 2-1)",
+            "quoted_phrase": "A TNT-equivalent based on tabulated heats of detonation is provided in UFC-3-340-02, Table 2-1."
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "2-9, eq. 2-1 and Table 2-1",
+            "quoted_phrase": "Table 2-1 Heat of Detonation and Heat of Combustion"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "smokeless powder blast equivalence",
+      "sources_checked": [
+        "iatg_0180_2021",
+        "ufc_3_340_02",
+        "wikipedia_tnt_equivalent"
+      ],
+      "why": "No public value found; row left null so import fails until filled."
+    },
+    {
+      "subject": "TATP, black powder, dynamite from an authoritative airblast source",
+      "sources_checked": [
+        "iatg_0180_2021",
+        "ufc_3_340_02"
+      ],
+      "why": "Only Wikipedia's demolition RE factors were found; low confidence."
+    }
+  ],
+  "refused": [
+    {
+      "subject": "gurney_velocity_m_s for every material",
+      "why": "Not transcribed. Gurney constants with casing-to-charge mass ratios predict fragment launch speed from device construction; the brief allows only general public safety-distance data for fragments. See the fragments file and the README spec corrections."
+    },
+    {
+      "subject": "compositions in labels",
+      "why": "Labels carry names only (spec 07 5.7); no proportions are recorded."
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_2dae900e2236": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_d6a875a86101": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_ba170465694c": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_93c4dafb0f4b": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

@@ -1,0 +1,405 @@
+{
+  "file": "threat-profiles.pending.json",
+  "schema_version": 1,
+  "library": "threats",
+  "target_table": "fieldops_threat_profiles",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "threat_profile",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "rows": [
+    {
+      "threat_key": "toxic_release_outdoor",
+      "label": "Outdoor toxic release (neutral or light gas)",
+      "category": "toxic_release",
+      "model": "gaussian_plume",
+      "parameters": {
+        "sigma_form": "sigma = a * x * (1 + b * x)^c, x downwind distance in m (Briggs urban)",
+        "sy_ab_a": 0.32,
+        "sy_ab_b": 0.0004,
+        "sy_ab_c": -0.5,
+        "sz_ab_a": 0.24,
+        "sz_ab_b": 0.001,
+        "sz_ab_c": 0.5,
+        "sy_c_a": 0.22,
+        "sy_c_b": 0.0004,
+        "sy_c_c": -0.5,
+        "sz_c_a": 0.2,
+        "sz_c_b": 0,
+        "sz_c_c": 0,
+        "sy_d_a": 0.16,
+        "sy_d_b": 0.0004,
+        "sy_d_c": -0.5,
+        "sz_d_a": 0.14,
+        "sz_d_b": 0.0003,
+        "sz_d_c": -0.5,
+        "sy_ef_a": 0.11,
+        "sy_ef_b": 0.0004,
+        "sy_ef_c": -0.5,
+        "sz_ef_a": 0.08,
+        "sz_ef_b": 0.00015,
+        "sz_ef_c": -0.5,
+        "stab_columns": "day strong|moderate|slight insolation; night thin overcast >=4/8 low cloud|<=3/8 cloud",
+        "stab_wind_lt2_day": "A|A-B|B",
+        "stab_wind_2_3_day": "A-B|B|C",
+        "stab_wind_3_5_day": "B|B-C|C",
+        "stab_wind_5_6_day": "C|C-D|D",
+        "stab_wind_gt6_day": "C|D|D",
+        "stab_wind_lt2_night": "not given by Turner",
+        "stab_wind_2_3_night": "E|F",
+        "stab_wind_3_5_night": "D|E",
+        "stab_wind_5_6_night": "D|D",
+        "stab_wind_gt6_night": "D|D",
+        "stab_overcast": "D"
+      },
+      "environment": [],
+      "source_keys": [
+        "briggs_1973_urban_sigmas",
+        "turner_1970_workbook"
+      ],
+      "source_ref": "Briggs (1973) urban sigmas as tabulated in CCST (2015) Table 1.B-1 and Atmos. Sci. Lett. (2005) Table II; Turner (1970) Workbook Table 1",
+      "source_note": "Urban dispersion coefficients per stability class and the Pasquill-Turner stability table. Turner warns the table is less reliable over cities (urban nights near-neutral). Dense-gas switch (1.15) is WS9's and not sourced here.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "briggs_1973_urban_sigmas",
+            "locator": "CCST Appendix 1.B, Table 1.B-1 'Urban Conditions'; asl.94 Table II",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "turner_1970_workbook",
+            "locator": "Table 1, Key to stability categories, and the note below it",
+            "quoted_phrase": "The neutral class, D, should be assumed for overcast conditions during day or night."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "dense_gas_density_ratio",
+          "release rate by hole class"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threat_key": "vented_deflagration_room",
+      "label": "Vented gas deflagration in a room (accidental leak)",
+      "category": "explosion",
+      "model": "vented_deflagration",
+      "parameters": {
+        "equation_low_strength": "Av = C * As / sqrt(Pred), As internal surface area",
+        "c_psi_ammonia": 0.05,
+        "c_psi_methane": 0.14,
+        "c_psi_gas_su_lt_60": 0.17,
+        "c_bar_ammonia": 0.013,
+        "c_bar_methane": 0.037,
+        "c_bar_gas_su_lt_60": 0.045,
+        "c_note": "Highest values inferred from tests in 18 references (0.18 to 82.3 m3); most likely propane value about one third of 0.17",
+        "low_strength_pred_max_psi_handbook": 1.5,
+        "valid_pred_min_psi_handbook": 0.35,
+        "max_l_over_d": 3,
+        "nfpa68_2023_low_pred_limit_barg": 0.5,
+        "glass_failure_psig": 0.15,
+        "house_partial_demolition_psig": 1
+      },
+      "environment": [],
+      "source_keys": [
+        "zalosh_2002_sfpe",
+        "nfpa_68_2023",
+        "nureg_1805"
+      ],
+      "source_ref": "Zalosh (2002) SFPE Handbook 3rd ed. pp. 3-414 to 3-416 (Swift-Epstein low-strength equation and C table); NFPA 68 (2023) 7.2.1; NUREG-1805 damage thresholds",
+      "source_note": "Room-scale planning values for accidental gas leaks. The 2023 NFPA 68 replaces the C table with a burning-velocity form (7.2.1.1) not captured cleanly here. Glass and house thresholds seen only via a secondary citing NUREG-1805 (Unverified).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "zalosh_2002_sfpe",
+            "locator": "p. 3-416, table of constant C (via Fire Safety Academy wiki, refs [3],[4])",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nfpa_68_2023",
+            "locator": "7.2.1 Low Inertia Vent Closure Equations for Low Pred",
+            "quoted_phrase": "When Pred ≤ 0.5 bar-g, the minimum required vent area"
+          },
+          {
+            "source_key": "nureg_1805",
+            "locator": "damage thresholds as cited by the wiki refs [15],[16]; page Unverified",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "glass_failure_psig",
+          "house_partial_demolition_psig",
+          "NFPA 68 (2023) Eq. 7.2.1.1 form"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threat_key": "crowd_crush",
+      "label": "Crowd crush (compression)",
+      "category": "crowd_crush",
+      "model": "crowd_pressure",
+      "parameters": {
+        "fluid_mass_density_p_m2": 7,
+        "observed_crowd_force_n_min": 4500,
+        "pile_3m_chest_force_n_low": 3600,
+        "pile_3m_chest_force_n_high": 4000,
+        "guardrail_3_person_lean_n": 792,
+        "guardrail_3_person_push_n": 609,
+        "guardrail_5_person_panic_n": 3430,
+        "exit_flow_level_p_m_min": 82,
+        "exit_flow_stepped_p_m_min": 66,
+        "bidirectional_capacity_loss_pct_low": 4,
+        "bidirectional_capacity_loss_pct_high": 14.5
+      },
+      "environment": [],
+      "source_keys": [
+        "fruin_1993_crowd",
+        "sgsa_green_guide_egress",
+        "buchmueller_weidmann_2006"
+      ],
+      "source_ref": "Fruin (1993, rev. 2002) The causes and prevention of crowd disasters, sections 'The view from the crowd' and 'Force'; SGSA Egress (Green Guide ch. 10); Buchmüller and Weidmann (2006) bidirectional flows",
+      "source_note": "Fruin: near-fluid crowd at about 7 p/m2, forces over 4500 N from bent railings, pile chest loads, guardrail tests. Green Guide maximum egress rates. Weidmann: 4 to 14.5 % capacity loss in counterflow. WS9's crush_density 5.0, onset and fatal times are not confirmed here.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "fruin_1993_crowd",
+            "locator": "'The view from the crowd' para.",
+            "quoted_phrase": "At occupancies of about 7 persons per square meter the crowd becomes almost a fluid mass."
+          },
+          {
+            "source_key": "fruin_1993_crowd",
+            "locator": "'Force' para.",
+            "quoted_phrase": "forces of more than 4500 N (1,000 lbs.) occurred"
+          },
+          {
+            "source_key": "sgsa_green_guide_egress",
+            "locator": "'Egress flow rate calculations'",
+            "quoted_phrase": "82 persons per metre width per minute on a level surface"
+          },
+          {
+            "source_key": "buchmueller_weidmann_2006",
+            "locator": "Bi-directional flows, Fig. 25 text and Table 15",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "crush_density",
+          "crush_onset_s",
+          "compression_fatal_s",
+          "compression_rate_per_p_m2",
+          "flee_speed",
+          "perception_m",
+          "counterflow_factor"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threat_key": "vehicle_ramming_generic",
+      "label": "Vehicle strikes pedestrians (injury-risk curve)",
+      "category": "ramming",
+      "model": "ramming_path",
+      "parameters": {
+        "curve_basis": "average adult pedestrian struck by a car or light truck, US 2007-2009 standardised",
+        "severe_p10_mph": 16,
+        "severe_p25_mph": 23,
+        "severe_p50_mph": 31,
+        "severe_p75_mph": 39,
+        "severe_p90_mph": 46,
+        "death_p10_mph": 23,
+        "death_p25_mph": 32,
+        "death_p50_mph": 42,
+        "death_p75_mph": 50,
+        "death_p90_mph": 58,
+        "age_note": "risk at 25 mph for a 70-year-old is similar to a 30-year-old at 35 mph"
+      },
+      "environment": [],
+      "source_keys": [
+        "tefft_2013"
+      ],
+      "source_ref": "Tefft (2013) Accident Analysis and Prevention 50, 871-878; AAA Foundation (2011) report abstract; NHTSA DOT HS 812 059 Table 1",
+      "source_note": "Risk of severe injury and of death against impact speed, stored in the source's mph (conversion is code's job). Bands only: WS9 6.27.10 offers no exact speed. Vehicle class masses and barrier classes not confirmed here.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "tefft_2013",
+            "locator": "Abstract / Results",
+            "quoted_phrase": "the average risk of death for a pedestrian reaches 10% at an impact speed of 23 mph"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "vehicle class masses",
+          "barrier rating classes",
+          "person_mass_kg",
+          "slight-injury curve"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threat_key": "aircraft_impact_generic",
+      "label": "Aircraft impact into a building (public-report planning values)",
+      "category": "aircraft_impact",
+      "model": "aircraft_impact",
+      "parameters": {
+        "fuel_fraction_internal_spray_burn_max": 0.15,
+        "fuel_fraction_external_fireball_ncstar1": "roughly comparable to the internal spray burn (under 0.15)",
+        "fuel_fraction_fireball_fema": 0.25,
+        "fuel_fraction_down_shafts_fema": 0.25,
+        "fuel_fraction_burned_early_fema": 0.5,
+        "early_burn_window_min_low": 5,
+        "early_burn_window_min_high": 8,
+        "fireproofing_note": "insulation widely dislodged in the impact zone; NIST found the towers would have stood without dislodged fireproofing and multi-floor fires"
+      },
+      "environment": [],
+      "source_keys": [
+        "nist_ncstar1_2005",
+        "fema_403_2002",
+        "nrc_canada_wtc_fire_resistance"
+      ],
+      "source_ref": "NIST NCSTAR 1 (2005) ch. 2 and executive summary; FEMA 403 (2002) ch. 8 8.2.2.1(c); NRC Canada, Role of fire resistance issues (restating FEMA 403 and Rehm et al. 2002)",
+      "source_note": "How fuel splits between fireball, shafts and early burning, and the role of dislodged fireproofing, at public-report level. Two estimates disagree (NIST under 15 % each; FEMA 25 %): reviewer picks. No class masses, swath, penetration or approach data.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nist_ncstar1_2005",
+            "locator": "Chapter 2, WTC 1 impact account",
+            "quoted_phrase": "Less than 15 percent of the jet fuel burned in the spray cloud inside the building."
+          },
+          {
+            "source_key": "nist_ncstar1_2005",
+            "locator": "Executive summary findings",
+            "quoted_phrase": "would have remained standing were it not for the dislodged insulation (fireproofing)"
+          },
+          {
+            "source_key": "nrc_canada_wtc_fire_resistance",
+            "locator": "section 'Jet fuel'",
+            "quoted_phrase": "About 25 percent of this quantity was consumed in the initial blast and resulting fireball."
+          },
+          {
+            "source_key": "fema_403_2002",
+            "locator": "ch. 8, 8.2.2.1 c",
+            "quoted_phrase": "A significant portion of this fuel was consumed immediately in the ensuing fireballs."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "span_storeys",
+          "swath_m",
+          "penetration_m",
+          "fire_resistance_factor",
+          "shaft_fuel_storeys",
+          "pool_depth_mm",
+          "class mass and fuel bands"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "dense_gas_plume (Britter and McQuaid tables)",
+      "sources_checked": [],
+      "why": "Workbook tables not fetched in this run."
+    },
+    {
+      "subject": "aircraft class bands (mass, fuel, wingspan), swath, penetration, fire_resistance_factor",
+      "sources_checked": [
+        "nist_ncstar1_2005",
+        "fema_403_2002"
+      ],
+      "why": "Class bands need ICAO / manufacturer airport-planning documents (not read). NIST/FEMA give no generic swath or penetration factor; deriving one from a single event would be inventing a value."
+    },
+    {
+      "subject": "jet fuel properties; ICAO open-ground critical area",
+      "sources_checked": [],
+      "why": "ASTM D1655 and ICAO Airport Services Manual Part 1 not read in this run."
+    },
+    {
+      "subject": "vehicle class masses (IWA 14-1 / PAS 68), barrier classes, Rosén and Sander curve",
+      "sources_checked": [
+        "tefft_2013"
+      ],
+      "why": "Not read in this run; WS9 6.27.3 values stay Unverified."
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_3358655151d2": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_12a1740085a7": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_8f71d1240df9": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_be8160949cf7": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

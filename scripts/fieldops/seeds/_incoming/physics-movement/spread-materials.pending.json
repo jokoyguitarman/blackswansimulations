@@ -1,0 +1,422 @@
+{
+  "file": "spread-materials.pending.json",
+  "schema_version": 1,
+  "library": "spread",
+  "target_table": "fieldops_spread_materials",
+  "prepared_by": "research agent (Cursor cloud agent bc-84b1690f-a7f4-5728-bdd7-c084b3f8a26b), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": null,
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the W24 reviewer approves it."
+  },
+  "merge": "patch_existing_rows: only the design-fire columns added by the amended migration 250; null columns keep WS9 5.12.2 values",
+  "rows": [
+    {
+      "material_key": "contents_office",
+      "material_role": "contents",
+      "label": "Office furniture and paper",
+      "hrrpua_kw_m2": 250,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "medium",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2:2002 Annex E Table E.5 (Office); NZ C/VM2 2nd ed. (2025) Table 2.3.2.1 pre-flashover yields",
+      "source_note": "Growth medium (t_alpha 300 s to 1 MW) and RHRf 250 kW/m2 from EN Table E.5; yields and heat of combustion are C/VM2's generic pre-flashover values, not office-specific.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex E, Table E.5, row 'Office'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_retail",
+      "material_role": "contents",
+      "label": "Shop stock and fittings",
+      "hrrpua_kw_m2": 250,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "fast",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2:2002 Annex E Table E.5 (Shopping centre); NZ C/VM2 2nd ed. (2025) Table 2.3.2.1 pre-flashover yields",
+      "source_note": "EN Table E.5 gives shopping centre fast growth, RHRf 250 kW/m2. WS9 5.19 holds 550 kW/m2 from BS PD 7974-1, not checked in this run: reviewer to choose. Yields from C/VM2 generic.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex E, Table E.5, row 'Shopping centre'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_transit",
+      "material_role": "contents",
+      "label": "Station concourse",
+      "hrrpua_kw_m2": 250,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "slow",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2:2002 Annex E Table E.5 (Transport (public space)); NZ C/VM2 2nd ed. (2025) Table 2.3.2.1 pre-flashover yields",
+      "source_note": "EN Table E.5: transport public space slow growth (t_alpha 600 s), RHRf 250 kW/m2; average fire load only 100 MJ/m2 (Table E.4). Yields from C/VM2 generic.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex E, Table E.5, row 'Transport (public space)'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_residential",
+      "material_role": "contents",
+      "label": "Household furnishings",
+      "hrrpua_kw_m2": 250,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "medium",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2:2002 Annex E Table E.5 (Dwelling); NZ C/VM2 2nd ed. (2025) Table 2.3.2.1 pre-flashover yields",
+      "source_note": "EN Table E.5: dwelling medium growth, RHRf 250 kW/m2. Yields from C/VM2 generic.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex E, Table E.5, row 'Dwelling'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_hotel",
+      "material_role": "contents",
+      "label": "Hotel rooms and corridors",
+      "hrrpua_kw_m2": 250,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "medium",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "EN 1991-1-2:2002 Annex E Table E.5 (Hotel (room)); NZ C/VM2 2nd ed. (2025) Table 2.3.2.1 pre-flashover yields",
+      "source_note": "EN Table E.5: hotel room medium growth, RHRf 250 kW/m2; corridors not covered by the table (Assumed same). Yields from C/VM2 generic.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "en_1991_1_2_2002",
+            "locator": "Annex E, Table E.5, row 'Hotel (room)'",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min",
+          "hrrpua_kw_m2 for corridors"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_generic",
+      "material_role": "contents",
+      "label": "Furnished space",
+      "hrrpua_kw_m2": 500,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "fast",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "NZ C/VM2 2nd ed. (2025) Table 2.3.2.1, row 'All buildings' (0.0469 t^2, 500 to 1000 kW/m2)",
+      "source_note": "C/VM2 design fire for all buildings: fast t-squared (0.0469 kW/s2), HRR per area 500 to 1000 kW/m2; the lower bound 500 is chosen here (Assumed). WS9 5.19 holds 400.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1 Pre-flashover design fire characteristics",
+            "quoted_phrase": "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg"
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1, growth-rate and peak HRR columns, row 'All buildings'",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min",
+          "hrrpua_kw_m2 (choice within 500-1000)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "material_key": "contents_car_park",
+      "material_role": "contents",
+      "label": "Parked vehicles",
+      "hrrpua_kw_m2": null,
+      "heat_of_combustion_mj_kg": 20,
+      "soot_yield": 0.07,
+      "co_yield": 0.04,
+      "heat_release": "medium",
+      "flame_spread_m_min": null,
+      "burn_duration_s": null,
+      "extinguish_s": null,
+      "source_keys": [
+        "nz_cvm2_2025"
+      ],
+      "source_ref": "NZ C/VM2 2nd ed. (2025) Table 2.3.2.1, row 'Carparks (no stacking)' (0.0117 t^2)",
+      "source_note": "C/VM2 car parks without stacking: medium t-squared growth 0.0117 kW/s2, generic yields. Peak HRR per area for this row was ambiguous in extraction: hrrpua left null (gap).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "Table 2.3.2.1, row 'Carparks (no stacking)'",
+            "quoted_phrase": "Carparks (no stacking) 0.0117t"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "flame_spread_m_min",
+          "burn_duration_s",
+          "extinguish_s",
+          "smoke_yield",
+          "burn_through_s",
+          "creep_per_min",
+          "hrrpua_kw_m2"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "contents_industrial, fuel_combustible, fuel_flammable_liquid, fuel_chemical, fuel_electrical, inert_debris",
+      "sources_checked": [
+        "en_1991_1_2_2002",
+        "nz_cvm2_2025"
+      ],
+      "why": "No occupancy row in EN Table E.5; C/VM2 storage rows give growth by stack height (0.188 t^2 for 3-5 m) but not yields per fuel. Tewarson's per-material yields (SFPE Handbook) not re-read in this run. Keep WS9 5.19 values, labelled Unverified."
+    },
+    {
+      "subject": "Post-flashover / under-ventilated yields",
+      "sources_checked": [
+        "nz_cvm2_2025"
+      ],
+      "why": "Covered in exposure-reference.pending.json (CO 0.40, soot 0.14): migration 250 has one yield column per material, so no column holds the post-flashover value. Schema question for WS9."
+    },
+    {
+      "subject": "Hospital, library, school classroom, theatre contents rows",
+      "sources_checked": [
+        "en_1991_1_2_2002"
+      ],
+      "why": "EN Table E.5 covers them (hospital/school medium 250; library and theatre fast 500) but WS9 has no contents keys for them; listed in exposure-reference for a reviewer to decide."
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_e5355d6cad8e": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_460a279bc322": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_83ea7f5d06e5": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

@@ -1,0 +1,1168 @@
+{
+  "file": "equipment.json",
+  "schema_version": 1,
+  "library": "responder_equipment",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
+  "note": "fieldops_equipment rows (T9.50): one capacity per row. Rows hold the columns of migration 254 (amended, 11-living-world.md) without status, row_version or updated_at, plus 'provenance' (SeedProvenance, section 5.18) and '_review' (evidence for the reviewer; the importer drops it). A capacity no source states has no row; see README.md, Gaps.",
+  "rows": [
+    {
+      "equipment_key": "sg_scdf_pump_ladder_water",
+      "label": "Pump Ladder: water tank",
+      "category": "water_tank",
+      "capacity": 2400,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "water_l 2400 at p.17, Compressed Air Foam Pump Ladder, Tank Capacity",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Compressed Air Foam Pump Ladder, Tank Capacity",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_pump_ladder_foam",
+      "label": "Pump Ladder: foam concentrate tank",
+      "category": "foam",
+      "capacity": 1200,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "foam_concentrate_l 1200 at p.17, Compressed Air Foam Pump Ladder, Tank Capacity",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Compressed Air Foam Pump Ladder, Tank Capacity",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_pump_ladder_pump",
+      "label": "Pump Ladder: pump",
+      "category": "pump",
+      "capacity": 4000,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "pump_lpm 4000 at p.17, Compressed Air Foam Pump Ladder, Pump Capacity",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.17, Compressed Air Foam Pump Ladder, Pump Capacity",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_electric_pump_ladder_water",
+      "label": "Electric Pump Ladder: water tank",
+      "category": "water_tank",
+      "capacity": 2000,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "reaction_2024_epl"
+      ],
+      "source_ref": "Singapore Civil Defence Force (SGFPC REaction): REaction Nov 2024: Smart and Sustainable Pump Ladder",
+      "source_note": "water_l 2000 at Smart and Sustainable Pump Ladder, KEY CAPABILITY",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "reaction_2024_epl",
+            "locator": "Smart and Sustainable Pump Ladder, KEY CAPABILITY",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_electric_pump_ladder_foam",
+      "label": "Electric Pump Ladder: foam concentrate tank",
+      "category": "foam",
+      "capacity": 400,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "reaction_2024_epl"
+      ],
+      "source_ref": "Singapore Civil Defence Force (SGFPC REaction): REaction Nov 2024: Smart and Sustainable Pump Ladder",
+      "source_note": "foam_concentrate_l 400 at Smart and Sustainable Pump Ladder, KEY CAPABILITY",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "reaction_2024_epl",
+            "locator": "Smart and Sustainable Pump Ladder, KEY CAPABILITY",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_lfav_5g_foam",
+      "label": "Light Fire Attack Vehicle, 5th generation: foam concentrate tank",
+      "category": "foam",
+      "capacity": 100,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "foam_concentrate_l 100 at p.16, Tank Capacity 100L Foam Concentrate Tank",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Tank Capacity 100L Foam Concentrate Tank",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_lfav_5g_pump",
+      "label": "Light Fire Attack Vehicle, 5th generation: pump",
+      "category": "pump",
+      "capacity": 2000,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "pump_lpm 2000 at p.16, Pump Capacity 2000L per minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.16, Pump Capacity 2000L per minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_fire_medical_vehicle_water",
+      "label": "Fire Medical Vehicle: water tank",
+      "category": "water_tank",
+      "capacity": 600,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "water_l 600 at p.5, Fire-Medical Vehicle, Tank Capacity",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Fire-Medical Vehicle, Tank Capacity",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_fire_medical_vehicle_foam",
+      "label": "Fire Medical Vehicle: foam concentrate tank",
+      "category": "foam",
+      "capacity": 150,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "foam_concentrate_l 150 at p.5, Tank Capacity 150L Foam Concentrate",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Tank Capacity 150L Foam Concentrate",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_fire_medical_vehicle_pump",
+      "label": "Fire Medical Vehicle: pump",
+      "category": "pump",
+      "capacity": 2000,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "pump_lpm 2000 at p.5, Pump Capacity 2000L per minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, Pump Capacity 2000L per minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_fire_medical_vehicle_stretchers",
+      "label": "Fire Medical Vehicle: stretchers (lying patients)",
+      "category": "stretcher",
+      "capacity": 2,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "patients_lying 2 at p.5, up to three seated patients or two lying patients",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, up to three seated patients or two lying patients",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_fire_medical_vehicle_seats",
+      "label": "Fire Medical Vehicle: seated patients",
+      "category": "patient_capacity",
+      "capacity": 3,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "patients_seated 3 at p.5, up to three seated patients or two lying patients",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.5, up to three seated patients or two lying patients",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_cpl34_reach",
+      "label": "Combined Platform Ladder 34 m: aerial reach",
+      "category": "aerial_platform",
+      "capacity": 34,
+      "unit": "m",
+      "consumable": false,
+      "source_keys": [
+        "scdf_ar_2022"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023",
+      "source_note": "reach_m 34 at HLA90 paragraph: Combined Platform Ladders (34 metres and 60 metres)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: Combined Platform Ladders (34 metres and 60 metres)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_cpl60_reach",
+      "label": "Combined Platform Ladder 60 m: aerial reach",
+      "category": "aerial_platform",
+      "capacity": 60,
+      "unit": "m",
+      "consumable": false,
+      "source_keys": [
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "reach_m 60 at #4 CPL60: maximum height of 60m",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: maximum height of 60m",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_cpl60_monitor",
+      "label": "Combined Platform Ladder 60 m: platform monitor",
+      "category": "pump",
+      "capacity": 3800,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "monitor_lpm 3800 at #4 CPL60: 3,800 litres per minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#4 CPL60: 3,800 litres per minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_al56_reach",
+      "label": "Aerial Ladder 56 m: aerial reach",
+      "category": "ladder",
+      "capacity": 56,
+      "unit": "m",
+      "consumable": false,
+      "source_keys": [
+        "scdf_ar_2022"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023",
+      "source_note": "reach_m 56 at HLA90 paragraph: Aerial Ladders (56 metres)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: Aerial Ladders (56 metres)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_hla90_reach",
+      "label": "High-Level Articulated Appliance 90 m: aerial reach",
+      "category": "aerial_platform",
+      "capacity": 90,
+      "unit": "m",
+      "consumable": false,
+      "source_keys": [
+        "scdf_ar_2022"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2022/2023",
+      "source_note": "reach_m 90 at HLA90 paragraph: capable of reaching 90 metres",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2022",
+            "locator": "HLA90 paragraph: capable of reaching 90 metres",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_hla90_monitor",
+      "label": "High-Level Articulated Appliance 90 m: platform monitor",
+      "category": "pump",
+      "capacity": 3800,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "st_hla90_2022"
+      ],
+      "source_ref": "The Straits Times: SCDF to deploy 90m-tall emergency vehicles for firefighting, rescue in early 2023",
+      "source_note": "monitor_lpm 3800 at water monitor discharging 3,800 litres a minute, fed from hydrants (Unverified: news or builder only). Matches bronto_fhla F90HLA table.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "st_hla90_2022",
+            "locator": "water monitor discharging 3,800 litres a minute, fed from hydrants",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "monitor_lpm"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_mass_decon_vehicle_pax",
+      "label": "Mass Decontamination Vehicle: walking casualties carried",
+      "category": "patient_capacity",
+      "capacity": 24,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "cna_sru_2022"
+      ],
+      "source_ref": "CNA: The heroes who help the heroes: SCDF's Special Response Unit does more than firefighting",
+      "source_note": "walking_casualties_carried 24 at CUSTOMISED VEHICLES: transport up to 24 walking casualties (Unverified: news or builder only)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: transport up to 24 walking casualties",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "walking_casualties_carried"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_mass_decon_vehicle_decon",
+      "label": "Mass Decontamination Vehicle: decontamination, walking casualties",
+      "category": "decontamination",
+      "capacity": 80,
+      "unit": "p_h",
+      "consumable": false,
+      "source_keys": [
+        "cna_sru_2022"
+      ],
+      "source_ref": "CNA: The heroes who help the heroes: SCDF's Special Response Unit does more than firefighting",
+      "source_note": "decon_walking_per_h 80 at CUSTOMISED VEHICLES: 80 to 120 walking casualties per hour (Unverified: news or builder only). Low end of the reported 80 to 120 band.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_sru_2022",
+            "locator": "CUSTOMISED VEHICLES: 80 to 120 walking casualties per hour",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "decon_walking_per_h"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_heavy_fire_vessel_monitors",
+      "label": "Heavy Fire Vessel: monitors (total)",
+      "category": "pump",
+      "capacity": 240000,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "scdf_vessels_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: 3 New Commissioned Vessels to Boost SCDF's Marine Firefighting Capability",
+      "source_note": "monitor_total_lpm 240000 at RED SAILFISH: 240,000 litres of seawater in a minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 240,000 litres of seawater in a minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_heavy_fire_vessel_pax",
+      "label": "Heavy Fire Vessel: rescued passengers",
+      "category": "patient_capacity",
+      "capacity": 30,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "stengg_hfv"
+      ],
+      "source_ref": "ST Engineering (builder): Heavy Fire Vessel HFV: Red Sailfish (product sheet)",
+      "source_note": "rescued_passengers 30 at STANDBY RESCUE: RESCUED PASSENGERS ROOM - 30 PAX (Unverified: news or builder only)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "stengg_hfv",
+            "locator": "STANDBY RESCUE: RESCUED PASSENGERS ROOM - 30 PAX",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "rescued_passengers"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_heavy_rescue_vessel_pax",
+      "label": "Heavy Rescue Vessel: passengers carried",
+      "category": "patient_capacity",
+      "capacity": 300,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "scdf_vessels_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: 3 New Commissioned Vessels to Boost SCDF's Marine Firefighting Capability",
+      "source_note": "passengers 300 at RED MANTA: carrying capacity of 300 passengers",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: carrying capacity of 300 passengers",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_marine_rescue_vessel_pax",
+      "label": "Marine Rescue Vessel: survivors carried",
+      "category": "patient_capacity",
+      "capacity": 30,
+      "unit": "count",
+      "consumable": false,
+      "source_keys": [
+        "penguin_vessels"
+      ],
+      "source_ref": "Penguin International (builder): Vessel specs: Heavy Rescue Vessel (Red Manta); Marine Rescue Vessel (Red Dolphin)",
+      "source_note": "survivors 30 at MRV classification: standby rescue vessel (30 survivors) (Unverified: news or builder only)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "penguin_vessels",
+            "locator": "MRV classification: standby rescue vessel (30 survivors)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "survivors"
+        ],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_pump",
+      "label": "Rapid Response Fire Vessel: pump",
+      "category": "pump",
+      "capacity": 7083,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "pump_lpm 7083 at p.6, Fire Pump Capacity 7,083L per minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Fire Pump Capacity 7,083L per minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_monitors",
+      "label": "Rapid Response Fire Vessel: monitors (total)",
+      "category": "pump",
+      "capacity": 5000,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "scdf_ar_2017"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF Annual Report FY2017/2018",
+      "source_note": "monitor_total_lpm 5000 at Rapid Response Fire Vessels: two water monitors, 5,000 litres a minute",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_ar_2017",
+            "locator": "Rapid Response Fire Vessels: two water monitors, 5,000 litres a minute",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_scdf_rapid_response_fire_vessel_foam",
+      "label": "Rapid Response Fire Vessel: foam concentrate tank",
+      "category": "foam",
+      "capacity": 1365,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "nas_ndp2017_d3"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017",
+      "source_note": "foam_concentrate_l 1365 at p.6, Tank Capacity 1,365L Foam Concentrate",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Tank Capacity 1,365L Foam Concentrate",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      }
+    },
+    {
+      "equipment_key": "sg_caf_backpack",
+      "label": "Compressed air foam backpack",
+      "category": "foam",
+      "capacity": 9,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "hope_lf6g_2022",
+        "scdf_firebikes_2021"
+      ],
+      "source_ref": "HOPE Technik (builder): Latest generation of Red Rhino unveiled; Singapore Civil Defence Force: Lifesavers on Bikes",
+      "source_note": "foam_l 9 at 9 litres of foam that a firefighter carries in his backpack (Unverified). Role: Back-carried compressed air foam unit used by fire bikers on small household and vehicle fires.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "hope_lf6g_2022",
+            "locator": "9 litres of foam that a firefighter carries in his backpack",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "st_firebikers_2018",
+            "locator": "a 25kg compressed air foam system",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_firebikes_2021",
+            "locator": "para 1: putting out fires with compressed air-foam backpacks",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "foam_l",
+          "mass_kg"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Back-carried compressed air foam unit used by fire bikers on small household and vehicle fires.",
+        "notes": [
+          "Carried by the FMV per reaction_2018 equipment box; carriage on the PL is Assumed."
+        ]
+      }
+    },
+    {
+      "equipment_key": "sg_caf_trolley",
+      "label": "Compressed air foam trolley (LF6G)",
+      "category": "foam",
+      "capacity": 25,
+      "unit": "l",
+      "consumable": true,
+      "source_keys": [
+        "bh_lf6g_2022",
+        "htx_lf6g_2022"
+      ],
+      "source_ref": "Berita Harian (Malay; quotes SCDF): Red Rhino SCDF terkini dilengkapi robot kendali kebakaran; Home Team Science and Technology Agency (HTX): Technology boost for the LF6G 6th Generation Light Fire Attack Vehicle",
+      "source_note": "foam_l_each 25 at para 5: dua tangki buih udara mampat seberat 25 liter setiap satu (Unverified). Role: Wheeled compressed air foam units carried on the 6th-generation Red Rhino.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "htx_lf6g_2022",
+            "locator": "LF6G design journey: two CAF trolleys",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "bh_lf6g_2022",
+            "locator": "para 5: dua tangki buih udara mampat seberat 25 liter setiap satu",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "htx_lf6g_2022",
+            "locator": "LF6G design journey: two compressed air foam (CAF) trolleys",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "foam_l_each"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Wheeled compressed air foam units carried on the 6th-generation Red Rhino.",
+        "notes": []
+      }
+    },
+    {
+      "equipment_key": "sg_hcv_standoff_detector",
+      "label": "Chemical stand-off detector (HCV)",
+      "category": "gas_detector",
+      "capacity": 5000,
+      "unit": "m",
+      "consumable": false,
+      "source_keys": [
+        "cna_hcv_drv_2018"
+      ],
+      "source_ref": "CNA (TODAY): SCDF unveils 2 new vehicles to boost response to chemical leaks, rescue missions",
+      "source_note": "range_m 5000 at para 3: from up to 5km away (Unverified). Role: Roof-mounted detector that monitors a chemical release at a distance.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "para 3: from up to 5km away",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "cna_hcv_drv_2018",
+            "locator": "para 3: detect and monitor chemical release from up to 5km away",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [],
+        "unverified_fields": [
+          "range_m"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Roof-mounted detector that monitors a chemical release at a distance.",
+        "notes": []
+      }
+    },
+    {
+      "equipment_key": "sg_motfs",
+      "label": "Modular Oil Tank Fire-Fighting System (MOTFS)",
+      "category": "foam",
+      "capacity": 100000,
+      "unit": "l_min",
+      "consumable": true,
+      "source_keys": [
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "foam_discharge_lpm 100000 at #1 MOTFS: up to 100,000 litres per minute (Sourced). Role: Modular foam system for large oil tank fires, able to draft water from the sea or vessels.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#1 MOTFS: up to 100,000 litres per minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#1 Modular Oil Tank Fire-Fighting System (MOTFS)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Modular foam system for large oil tank fires, able to draft water from the sea or vessels.",
+        "notes": [
+          "Carriage by pod carriers is Assumed from the station appliance lists (Pod Carrier, Foam Pods); sg_scdf_pod_carrier has no unit row yet."
+        ]
+      }
+    },
+    {
+      "equipment_key": "sg_large_monitor_2000gpm",
+      "label": "Large monitor, 2,000 GPM (Large Monitor Vehicle)",
+      "category": "pump",
+      "capacity": 7571,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "flow_lpm 7571 (Assumed). Converted assuming US gallons.. Role: Large-flow water or foam monitor for industrial fires.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Large Monitor Vehicle: One 2,000 GPM monitor",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Jurong Island Fire Station: one 2,000 GPM monitor",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "flow_lpm"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Large-flow water or foam monitor for industrial fires.",
+        "notes": []
+      }
+    },
+    {
+      "equipment_key": "sg_large_monitor_6000gpm",
+      "label": "Large monitor, 6,000 GPM (Large Monitor Vehicle)",
+      "category": "pump",
+      "capacity": 22712,
+      "unit": "l_min",
+      "consumable": false,
+      "source_keys": [
+        "scdf_units_page"
+      ],
+      "source_ref": "Singapore Civil Defence Force: Departments & Units (division and fire station appliance lists)",
+      "source_note": "flow_lpm 22712 (Assumed). Converted assuming US gallons.. Role: Large-flow water or foam monitor for industrial fires.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Large Monitor Vehicle: one 6,000 GPM monitor",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_units_page",
+            "locator": "Jurong Island Fire Station: one 6,000 GPM monitor",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "flow_lpm"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Large-flow water or foam monitor for industrial fires.",
+        "notes": []
+      }
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_scdf_pump_ladder_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pump_ladder_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_pump_ladder_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_electric_pump_ladder_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_electric_pump_ladder_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_5g_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_lfav_5g_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle_water": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle_stretchers": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_fire_medical_vehicle_seats": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl34_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl60_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_cpl60_monitor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_al56_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hla90_reach": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_hla90_monitor": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_mass_decon_vehicle_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_mass_decon_vehicle_decon": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_fire_vessel_monitors": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_fire_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_rescue_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_marine_rescue_vessel_pax": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel_pump": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel_monitors": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel_foam": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_caf_backpack": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_caf_trolley": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_hcv_standoff_detector": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_motfs": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_large_monitor_2000gpm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_large_monitor_6000gpm": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

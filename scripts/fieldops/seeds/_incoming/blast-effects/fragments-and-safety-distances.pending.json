@@ -1,0 +1,646 @@
+{
+  "file": "fragments-and-safety-distances.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: fragment band criteria and public safety distances (spec 07 O3 oracles, fragments.json shielding notes)",
+  "rows": [
+    {
+      "ref_key": "dhs_doj_bomb_threat_standoff",
+      "topic": "public_safety_distance",
+      "value": [
+        {
+          "class_key": "pipe_bomb",
+          "label": "Pipe Bomb",
+          "explosives_capacity_lb": 5,
+          "explosives_capacity_kg": 2.3,
+          "mandatory_evacuation_ft": 70,
+          "mandatory_evacuation_m": 21.3,
+          "shelter_in_place_ft": [
+            71,
+            1199
+          ],
+          "preferred_evacuation_ft": 1200,
+          "preferred_evacuation_m": 365.8
+        },
+        {
+          "class_key": "suicide_bomber",
+          "label": "Suicide Bomber",
+          "explosives_capacity_lb": 20,
+          "explosives_capacity_kg": 9.1,
+          "mandatory_evacuation_ft": 110,
+          "mandatory_evacuation_m": 33.5,
+          "shelter_in_place_ft": [
+            111,
+            1699
+          ],
+          "preferred_evacuation_ft": 1700,
+          "preferred_evacuation_m": 518.2
+        },
+        {
+          "class_key": "briefcase_suitcase",
+          "label": "Briefcase/Suitcase",
+          "explosives_capacity_lb": 50,
+          "explosives_capacity_kg": 22.7,
+          "mandatory_evacuation_ft": 150,
+          "mandatory_evacuation_m": 45.7,
+          "shelter_in_place_ft": [
+            151,
+            1849
+          ],
+          "preferred_evacuation_ft": 1850,
+          "preferred_evacuation_m": 563.9
+        },
+        {
+          "class_key": "car",
+          "label": "Car",
+          "explosives_capacity_lb": 500,
+          "explosives_capacity_kg": 226.8,
+          "mandatory_evacuation_ft": 320,
+          "mandatory_evacuation_m": 97.5,
+          "shelter_in_place_ft": [
+            321,
+            1899
+          ],
+          "preferred_evacuation_ft": 1900,
+          "preferred_evacuation_m": 579.1
+        },
+        {
+          "class_key": "suv_van",
+          "label": "SUV/Van",
+          "explosives_capacity_lb": 1000,
+          "explosives_capacity_kg": 453.6,
+          "mandatory_evacuation_ft": 400,
+          "mandatory_evacuation_m": 121.9,
+          "shelter_in_place_ft": [
+            401,
+            2399
+          ],
+          "preferred_evacuation_ft": 2400,
+          "preferred_evacuation_m": 731.5
+        },
+        {
+          "class_key": "small_delivery_truck",
+          "label": "Small Delivery Truck",
+          "explosives_capacity_lb": 4000,
+          "explosives_capacity_kg": 1814.4,
+          "mandatory_evacuation_ft": 640,
+          "mandatory_evacuation_m": 195.1,
+          "shelter_in_place_ft": [
+            641,
+            3799
+          ],
+          "preferred_evacuation_ft": 3800,
+          "preferred_evacuation_m": 1158.2
+        },
+        {
+          "class_key": "container_water_truck",
+          "label": "Container/Water Truck",
+          "explosives_capacity_lb": 10000,
+          "explosives_capacity_kg": 4535.9,
+          "mandatory_evacuation_ft": 860,
+          "mandatory_evacuation_m": 262.1,
+          "shelter_in_place_ft": [
+            861,
+            5099
+          ],
+          "preferred_evacuation_ft": 5100,
+          "preferred_evacuation_m": 1554.5
+        },
+        {
+          "class_key": "semi_trailer",
+          "label": "Semi-Trailer",
+          "explosives_capacity_lb": 60000,
+          "explosives_capacity_kg": 27215.5,
+          "mandatory_evacuation_ft": 1570,
+          "mandatory_evacuation_m": 478.5,
+          "shelter_in_place_ft": [
+            1571,
+            9299
+          ],
+          "preferred_evacuation_ft": 9300,
+          "preferred_evacuation_m": 2834.6
+        }
+      ],
+      "unit": "lb, ft (m derived)",
+      "note": "Public stand-off card. Mandatory: everyone evacuates (inside and out). Shelter-in-place zone: get inside away from windows and exterior walls. Preferred: evacuation for people in buildings, mandatory for people outdoors. Use for O3 sanity oracles and default bands; capacities are not TNT-equivalent.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "cisa_standoff_card_2025",
+            "locator": "Card table (As of Aug 2025)",
+            "quoted_phrase": "Pipe Bomb | 5 lbs 70 ft 71-1199 ft +1200 ft"
+          },
+          {
+            "source_key": "cisa_standoff_card_2025",
+            "locator": "Card table",
+            "quoted_phrase": "Semi-Trailer | 60,000 lbs 1570 ft +9300 ft 1571-9299 ft"
+          },
+          {
+            "source_key": "cisa_standoff_card_2025",
+            "locator": "Card footer",
+            "quoted_phrase": "Recommended stand-off data should be used in conjunction with your emergency evacuation plan"
+          },
+          {
+            "source_key": "nctc_ct_guide",
+            "locator": "Explosives, mandatory distances in m",
+            "quoted_phrase": "Pipe Bomb | 70 ft/21 m"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "capacity treated as TNT-equivalent mass when used as an oracle"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "nctc_zone_definitions",
+      "topic": "public_safety_distance",
+      "value": {
+        "mandatory": "All personnel must evacuate (inside of buildings and out)",
+        "preferred": "Preferred area for evacuation of people in buildings and mandatory for people outdoors",
+        "shelter_in_place": "Seek shelter immediately inside a building away from windows and exterior walls"
+      },
+      "unit": "text",
+      "note": "Zone meanings for the stand-off rows.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "nctc_ct_guide",
+            "locator": "Bomb threat stand-off, zone legend",
+            "quoted_phrase": "All personnel must evacuate (inside of buildings and out)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iatg_range_safety_distances",
+      "topic": "public_safety_distance",
+      "value": {
+        "fragmenting_public_access_m": "634 * AUW^(1/6)",
+        "bare_explosive_m": "130 * AUW^(1/3)",
+        "multi_item_alternative_m": "370 * AUW^(1/5)",
+        "AUW": "all-up weight, kg"
+      },
+      "unit": "m",
+      "note": "Demolition-range danger areas: the distance beyond which no more than one fragment is expected. Not absolutely safe.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.1.1, Tables 36-37 Simple Range Safety Distances",
+            "quoted_phrase": "that distance outside which no more than one fragment would be expected to fly. They are NOT absolutely safe."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "formula/row alignment in Tables 36-37 is flattened in the extracted text; confirm against GICHD TNMA 10.20/01"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "iatg_noise_140db",
+      "topic": "public_safety_distance",
+      "value": "D = 215 * M^(1/3)",
+      "unit": "m (M kg explosive)",
+      "note": "Distance at which 140 dB impulse noise is expected (critical level for impulse noise).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.1.3, Table 39 Simple Noise Prediction",
+            "quoted_phrase": "D = 215 (Mexp) 1/3"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "hazardous_fragment_density",
+      "topic": "fragments",
+      "value": {
+        "energy_j": 79,
+        "density_per_m2": 0.017857142857142856,
+        "person_area_m2": 0.56,
+        "hit_probability": "Pf = 1 - exp(-q * AT)"
+      },
+      "unit": "J, pieces/m2, m2",
+      "note": "Hazardous fragment: 79 J. Hazardous density: one per 56 m2. Hit probability for a person of presented area 0.56 m2 at fragment density q.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.5.5.1, text after Table 27",
+            "quoted_phrase": "the barricade reduces the density of critical fragments (NATO criterion 79J; critical density is 1 piece/56m²)"
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "6.3.3, Table 55",
+            "quoted_phrase": "AT=target area (e.g. 0,56m² for a person)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "ufc_skin_penetration_table_1_2",
+      "topic": "fragments",
+      "value": [
+        {
+          "area_over_weight_ft2_lb": 0.03,
+          "velocity_fps": 100,
+          "energy_ft_lb": 5
+        },
+        {
+          "area_over_weight_ft2_lb": 0.1,
+          "velocity_fps": 165,
+          "energy_ft_lb": 14
+        },
+        {
+          "area_over_weight_ft2_lb": 0.2,
+          "velocity_fps": 250,
+          "energy_ft_lb": 32
+        },
+        {
+          "area_over_weight_ft2_lb": 0.3,
+          "velocity_fps": 335,
+          "energy_ft_lb": 58
+        },
+        {
+          "area_over_weight_ft2_lb": 0.4,
+          "velocity_fps": 425,
+          "energy_ft_lb": 93
+        }
+      ],
+      "unit": "ft2/lb, fps, ft-lb",
+      "note": "50 % probability of a fragment penetrating skin (fragment weight 0.033 lb).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11, Table 1-2",
+            "quoted_phrase": "Table 1-2 50 Percent Probability Of Penetrating Human Skin"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "ufc_serious_injury_table_1_3",
+      "topic": "fragments",
+      "value": [
+        {
+          "organ": "thorax",
+          "rows": [
+            [
+              ">2.5",
+              10,
+              4
+            ],
+            [
+              0.1,
+              80,
+              10
+            ],
+            [
+              0.001,
+              400,
+              2.5
+            ]
+          ]
+        },
+        {
+          "organ": "abdomen_and_limbs",
+          "rows": [
+            [
+              ">6.0",
+              10,
+              9
+            ],
+            [
+              0.1,
+              75,
+              9
+            ],
+            [
+              0.001,
+              550,
+              5
+            ]
+          ]
+        },
+        {
+          "organ": "head",
+          "rows": [
+            [
+              ">8.0",
+              10,
+              12
+            ],
+            [
+              0.1,
+              100,
+              16
+            ],
+            [
+              0.001,
+              450,
+              3
+            ]
+          ]
+        }
+      ],
+      "unit": "rows: [weight lb, velocity fps, energy ft-lb]",
+      "note": "Threshold of serious injury from fragment impact.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11, Table 1-3",
+            "quoted_phrase": "Table 1-3 Threshold Of Serious Injury To Personnel Due To Fragment Impact"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_fragment_lethality_probits",
+      "topic": "fragments",
+      "value": {
+        "mass_gt_4_5kg": "Pr = -13.19 + 10.54 ln(v0)",
+        "mass_0_1_to_4_5kg": "Pr = -17.56 + 5.30 ln(S), S = 0.5 m v0^2",
+        "mass_0_001_to_0_1kg": "Pr = -29.15 + 2.10 ln(S), S = m v0^5.115",
+        "units": "m kg, v0 m/s at impact"
+      },
+      "unit": "probit",
+      "note": "Lethality from a fragment or debris hit, given its impact speed. The engine must supply impact speeds; this file does not.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.3, eq. (26)-(30), p. 27",
+            "quoted_phrase": "The probit functions for the determination of the probability of survival, for secondary effects, are as follows"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "death-versus-survival wording as for the blast probits"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_skin_penetration_v50",
+      "topic": "fragments",
+      "value": "v50 = 1247.1 * A/m + 22.03",
+      "unit": "m/s (A m2, m kg)",
+      "note": "Impact speed at which 50 % of fragments penetrate skin, by area-to-mass ratio.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.1, eq. (23) and Fig. 13, p. 24",
+            "quoted_phrase": "Fig. 13: Impact velocity at which 50% penetration occurs, as function of surface area-mass ratio"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_glass_skull_v50",
+      "topic": "glass",
+      "value": [
+        {
+          "mass_kg": 0.001,
+          "angle_deg": 45,
+          "v50_m_s": 39.9
+        },
+        {
+          "mass_kg": 0.01,
+          "angle_deg": 180,
+          "v50_m_s": 36.3
+        },
+        {
+          "mass_kg": 0.01,
+          "angle_deg": 90,
+          "v50_m_s": 14.7
+        },
+        {
+          "mass_kg": 0.01,
+          "angle_deg": 45,
+          "v50_m_s": 10.8
+        },
+        {
+          "mass_kg": 0.1,
+          "angle_deg": 90,
+          "v50_m_s": 4.7
+        },
+        {
+          "mass_kg": 0.1,
+          "angle_deg": 45,
+          "v50_m_s": 2.7
+        }
+      ],
+      "unit": "kg, deg, m/s",
+      "note": "Skull fracture by glass fragments, 50 % velocity.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.1, Table III, p. 25",
+            "quoted_phrase": "Table III: v50 values for skull fracture by to glass fragments."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "gb_heavy_debris_skull",
+      "topic": "fragments",
+      "value": {
+        "mass_kg": 4.5,
+        "safe_m_s": 3,
+        "lower_limit_m_s": 4.5,
+        "near_100_m_s": 7
+      },
+      "unit": "m/s",
+      "note": "Skull impact by a 4.5 kg piece of debris.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.2, Table IV, p. 26",
+            "quoted_phrase": "Table IV: Critical velocity for the impact of a piece of debris weighing 4.5 kg against the skull."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "DESR 6055.09 hazardous fragment distance tables",
+      "sources_checked": [],
+      "why": "Not read in this run (DTIC/DDESB access); IATG and the stand-off card cover the public safety use."
+    }
+  ],
+  "refused": [
+    {
+      "subject": "Gurney constants, casing-to-charge models, fragment launch velocities, Mott fragment-mass distributions, fragment count or mass per device",
+      "why": "These relate device construction to fragment lethality; the brief allows only general public safety-distance data. Fragment hazard is expressed instead by public distances (stand-off card, IATG range formulas) and injury criteria per hit (79 J, probits)."
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_60c454090c05": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "r_20be0065e747": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

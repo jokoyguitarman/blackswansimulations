@@ -1,0 +1,819 @@
+{
+  "file": "tenability-response.pending.json",
+  "schema_version": 1,
+  "library": "movement",
+  "target_table": null,
+  "prepared_by": "research agent (Cursor cloud agent bc-f053248e-fcdd-571e-8c24-5eefd7303c53), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+    "brief_key": "fire_smoke_tenability",
+    "note": "Drafted offline from public sources; nothing here is reviewed. importApproved must skip this file while review_status is pending."
+  },
+  "merge": "reference_only: engine constants and tables with no column in migrations 250/258; WS9 to decide a home",
+  "rows": [
+    {
+      "ref_key": "purser_fed_co",
+      "topic": "toxic_gas",
+      "value": "FED_CO = integral 2.764e-5 C_CO^1.036 dt (C ppm, t min)",
+      "unit": "dose",
+      "note": "Purser form (FDS). Alternative to ISO 13571's C t/35000 already seeded; pick one per engine. Activity light work.",
+      "extends": "exposure-reference iso13571_fed_co_ct",
+      "worked_example": {
+        "inputs": {
+          "CO_ppm": 1000,
+          "minutes": 10,
+          "CO2_pct": 4
+        },
+        "expected": {
+          "FED_CO": 0.3544,
+          "HV_CO2": 2.229,
+          "FED_CO_x_HV": 0.79,
+          "ISO13571_FED_CO_for_comparison": 0.2857
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.6, Eq. 22.43",
+            "quoted_phrase": "The Fractional Effective Dose index (FED), developed by Purser [81], is a commonly used measure of human incapacitation due to the combustion gases."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "purser_fed_hcn_nox_o2",
+      "topic": "toxic_gas",
+      "value": {
+        "HCN": "integral (exp(C_CN/43)/220 - 0.0045) dt, C_CN = C_HCN - C_NO2 - C_NO",
+        "NOx": "integral C_NOx/1500 dt",
+        "O2": "integral dt/exp(8.13 - 0.54 (20.9 - %O2))",
+        "total": "(FED_CO + FED_CN + FED_NOx + FLD_irr) x HV_CO2 + FED_O2"
+      },
+      "unit": "dose",
+      "note": "Minutes and ppm.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.6, Eq. 22.42-22.48",
+            "quoted_phrase": "CCN is the concentration (ppm) of HCN corrected for the protective effect of NO2"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "purser_co2_hyperventilation",
+      "topic": "toxic_gas",
+      "value": "HV_CO2 = exp(0.1903 %CO2 + 2.0004)/7.1",
+      "unit": "multiplier",
+      "note": "Multiplies the CO, CN, NOx and irritant terms.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.6, Eq. 22.49",
+            "quoted_phrase": "The hyperventilation factor induced by carbon dioxide is calculated as"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "purser_irritants_fic_fld",
+      "topic": "irritant_gas",
+      "value": {
+        "HCl": [
+          900,
+          114000
+        ],
+        "HBr": [
+          900,
+          114000
+        ],
+        "HF": [
+          900,
+          87000
+        ],
+        "SO2": [
+          120,
+          12000
+        ],
+        "NO2": [
+          350,
+          1900
+        ],
+        "acrolein": [
+          20,
+          4500
+        ],
+        "formaldehyde": [
+          30,
+          22500
+        ]
+      },
+      "unit": "[F_FIC ppm, F_FLD ppm min]",
+      "note": "FIC: incapacitation in half the population (instantaneous); FLD: lethal dose for half. These differ from ISO 13571's F values already seeded (e.g. HCl 1000, SO2 150); keep one set per engine.",
+      "extends": "exposure-reference iso13571_fec_f_*",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fds_ug_6",
+            "locator": "s. 22.10.6, Table 22.3",
+            "quoted_phrase": "the denominators are the concentrations of respective irritants expected to cause incapacitation in half the population."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "nz_tenability_limits",
+      "topic": "tenability",
+      "value": {
+        "FED_CO_max": 0.3,
+        "FED_thermal_max": 0.3,
+        "visibility_min_m": 10,
+        "visibility_min_small_room_m": 5,
+        "small_room_m2": 100,
+        "measured_at_m": 2,
+        "high_rise_sleeping_stair_visibility_m": 5
+      },
+      "unit": "-",
+      "note": "Life-safety limits of the NZ Building Code (C4.3) used by C/VM2. Use as the 'untenable' class on the map; reroute and posture thresholds stay behavioural (Jin, Bryan).",
+      "spec_ref": "crouch_visibility_m 5 (PD 7974-6)",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nz_cvm2_a7",
+            "locator": "Part 3 table 'What you must satisfy', C4.3",
+            "quoted_phrase": "visibility is less than 10 m except in rooms of less than 100 m 2 where the visibility may fall to 5 m"
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "2.1.6.1",
+            "quoted_phrase": "The tenability parameters measured at a height of 2.0 m above floor level"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "heat_exposure_effects_cibse",
+      "topic": "heat",
+      "value": {
+        "radiation_severe_pain_C": 185,
+        "conduction_metal_1s_burns_C": 60,
+        "convection_30min_hyperthermia_C": 100,
+        "convection_lt_5min_burns_C": 120,
+        "convection_lt_1min_burns_C": 190
+      },
+      "unit": "C",
+      "note": "Air at 60 C is not a burn threshold in this table (60 C is for touching metal). The spec's tenable_temp_head_c 60 C needs its own source (PD 7974-6 not read); 120 C for under 5 min is the CIBSE air limit.",
+      "spec_ref": "tenable_temp_head_c 60 C",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 2, Table 2-2 (p. 2-7)",
+            "quoted_phrase": "Critical Temperatures for Different Exposure Conditions and Effects on Humans [Chartered Institution of Building Services Engineers (CIBSE) Guide E.]"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "radiant_pain_time_cvm2",
+      "topic": "heat",
+      "value": "t_pain = (35/q)^1.33",
+      "unit": "s",
+      "note": "q incident radiation kW/m2. Exposure counts where q >= 2.5 kW/m2; nobody may be exposed above 10 kW/m2. Compare ISO 13571 Eq. 8 (seeded).",
+      "worked_example": {
+        "inputs": {
+          "Q_kw": 2000,
+          "chi_r": 0.35,
+          "R_m": 4
+        },
+        "expected": {
+          "q_kw_m2": 3.482,
+          "t_pain_s_cvm2": 21.5,
+          "t_pain_min_iso": 0.39
+        },
+        "tolerance": "1 %"
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nz_cvm2_a7",
+            "locator": "3.6.2, Eq. 3.5",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "3.7.1.2 b)",
+            "quoted_phrase": "the maximum allowable radiation level that an occupant can be exposed to is 10 kW/m 2"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "radiant_burn_endpoint_epa",
+      "topic": "heat",
+      "value": {
+        "flux_kw_m2": 5,
+        "duration_s": 40,
+        "dose_kw_s_m2": 200
+      },
+      "unit": "-",
+      "note": "Second-degree burns at minimum for skin exposed outdoors. For other durations use the equivalent dose (EPA); for a thermal dose convention (q^(4/3) t) see review note.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "epa_whmhh",
+            "locator": "Box: radiant heat endpoint",
+            "quoted_phrase": "Human skin exposure to radiant heat of this intensity for more than 40 seconds causes second degree burns or blisters, at a minimum."
+          },
+          {
+            "source_key": "cfr_40_68_22",
+            "locator": "68.22(a)(2)(ii)",
+            "quoted_phrase": "A radiant heat of 5 kw/m 2 for 40 seconds."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": [
+          "dose form for other durations (EPA says 'equivalent exposure' without an exponent)"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "jin_tenable_smoke_density",
+      "topic": "behaviour_smoke",
+      "value": {
+        "unfamiliar_K_per_m": 0.15,
+        "unfamiliar_visibility_m": 13,
+        "familiar_K_per_m": 0.5,
+        "familiar_visibility_m": 4
+      },
+      "unit": "-",
+      "note": "Smoke density at which escape becomes difficult. Jin's visibilities imply K = 2, so store the extinction coefficient and convert with the engine's own K. Suggest: crouch/hesitate threshold 0.15/m for visitors, 0.5/m for staff and residents.",
+      "spec_ref": "crouch_visibility_m, reroute_visibility_m",
+      "worked_example": {
+        "inputs": {
+          "Cs_unfamiliar": 0.15,
+          "S_unfamiliar_m": 13,
+          "Cs_familiar": 0.5,
+          "S_familiar_m": 4
+        },
+        "expected": {
+          "implied_K_unfamiliar": 1.95,
+          "implied_K_familiar": 2
+        },
+        "note": "Jin's Table 1 visibilities imply K = 2, not 3 or 8; convert thresholds as extinction coefficients, not metres."
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "jin_1997",
+            "locator": "s. 2.1 and Table 1",
+            "quoted_phrase": "those who know the inside geometry of the building on fire need a visibility of 4 meters for safe escape"
+          },
+          {
+            "source_key": "nureg_1805",
+            "locator": "Ch. 18, p. 18-3",
+            "quoted_phrase": "For low-density smoke, however, the walking speeds in irritating smoke were about the same as those in non-irritating smoke."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "jin_corridor_turn_back",
+      "topic": "behaviour_smoke",
+      "value": {
+        "K_per_m": 0.92,
+        "K_sd": 0.21,
+        "subjects": 31,
+        "reached_end": 17,
+        "turned_back": 14,
+        "share": 0.45,
+        "corridor_m": 12
+      },
+      "unit": "-",
+      "note": "Experimental turn-back share in dense irritant smoke (reflective visibility about 3.3 m).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "jin_1997",
+            "locator": "s. 2.3, Fig. 7-8",
+            "quoted_phrase": "17 subjects (male 6, female 11) could reach the deepest A-point, and other 14subjects"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "section number"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "bryan_wood_smoke_movement",
+      "topic": "behaviour_smoke",
+      "value": {
+        "bryan_moved_through_smoke": 0.627,
+        "bryan_turned_back_of_movers": 0.299,
+        "bryan_turnback_visibility_le_2yd": 0.541,
+        "bryan_turnback_visibility_le_10yd": 0.94,
+        "bryan_moved_further_than_visibility": 0.46,
+        "wood_moved_through_smoke": 0.6,
+        "wood_turned_back_of_movers": 0.26,
+        "wood_turnback_visibility_le_2yd": 0.66,
+        "wood_turnback_visibility_le_10yd": 0.88,
+        "wood_moved_10yd_or_more": 0.5
+      },
+      "unit": "share",
+      "note": "Survey data. Turn-back visibility: median below 2 yd (1.8 m), 90 % below 10 yd (9.1 m). Supports turn_back_permille 300 (Bryan 299, Wood 260) and a reroute threshold of about 2-3 m.",
+      "spec_ref": "turn_back_permille 300, reroute_visibility_m 3",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "brennan_1997",
+            "locator": "s. 6, Table 6",
+            "quoted_phrase": "46% moved for a distance greater than the visibility distance."
+          },
+          {
+            "source_key": "wood_1972",
+            "locator": "Summary, movement through smoke (1)",
+            "quoted_phrase": "In incidents where smoke was present, 60% of the people attempted to move through it. Nearly 50% of these people moved 10 yards or more."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "fridolf_tunnel_speed",
+      "topic": "movement_smoke",
+      "value": {
+        "K_mean_per_m": 2.2,
+        "mean_speed_m_s": 0.9,
+        "n": 100
+      },
+      "unit": "-",
+      "note": "Unfamiliar participants, artificial semi-irritant smoke; validation point for the smoke speed factor (Frantzich-Nilsson at K 2.2 gives 0.58 m/s).",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "fridolf_2013_fsj",
+            "locator": "Abstract",
+            "quoted_phrase": "The average movement speed was found to be approximately 0.9 m/s, independent of tunnel floor material examined."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "Fire Safety Journal 59 (2013) is Fridolf, Ronchi, Nilsson, Frantzich; spec cites Fire Technology 49"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "crouch_speed_factor_gap",
+      "topic": "movement_posture",
+      "value": null,
+      "unit": "-",
+      "note": "Gap: no measured crouch/stoop speed with a matched walking baseline was located (Kamon et al. 1983 mine escape measured stooped and duck walking but the speeds were not readable). Spec's 0.6 stays Assumed.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "pmc_crawl_2015",
+            "locator": "Introduction (review of Kamon 1983)",
+            "quoted_phrase": "upright walk with the head bent for 940 m, duck walk for 150 m, crawl for 365 m"
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "value"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "pretravel_cvm2",
+      "topic": "premovement",
+      "value": {
+        "awake_familiar": [
+          30,
+          60
+        ],
+        "awake_unfamiliar_standard_alarm": [
+          60,
+          120
+        ],
+        "awake_unfamiliar_voice_alarm": [
+          30,
+          60
+        ],
+        "sleeping_familiar_standard": [
+          60,
+          300
+        ],
+        "sleeping_unfamiliar_standard": [
+          60,
+          600
+        ],
+        "sleeping_unfamiliar_voice": [
+          60,
+          300
+        ],
+        "awake_care_trained_staff": [
+          60,
+          120
+        ],
+        "focused_activity_cinema_stadium": [
+          0,
+          null
+        ]
+      },
+      "unit": "[s in room of origin, s remote]",
+      "note": "Deterministic design values. Spec 6.7.6 waits (30 s near, 120 s elsewhere) match the awake rows.",
+      "spec_ref": "6.7.6 wait, 6.30.2",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "nz_cvm2_2025",
+            "locator": "3.4.1.1, Table 3.4.1.1",
+            "quoted_phrase": "Pre-travel activity times shall be determined using the values in Table 3.4.1.1."
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "pretravel_pd7974_percentiles",
+      "topic": "premovement",
+      "value": {
+        "A_awake_familiar": {
+          "M1": [
+            0.5,
+            1.5
+          ],
+          "M2": [
+            1,
+            3
+          ],
+          "M3": [
+            15,
+            30
+          ]
+        },
+        "B_awake_unfamiliar": {
+          "M1": [
+            0.5,
+            2.5
+          ],
+          "M2": [
+            1,
+            4
+          ],
+          "M3": [
+            15,
+            30
+          ]
+        },
+        "Ci_sleeping_familiar_dwelling": {
+          "M2": [
+            5,
+            10
+          ],
+          "M3": [
+            10,
+            40
+          ]
+        },
+        "Cii_managed_residential": {
+          "M1": [
+            10,
+            30
+          ],
+          "M2": [
+            15,
+            40
+          ],
+          "M3": [
+            20,
+            40
+          ]
+        },
+        "Ciii_hotel": {
+          "M1": [
+            15,
+            30
+          ],
+          "M2": [
+            20,
+            40
+          ],
+          "M3": [
+            20,
+            40
+          ]
+        },
+        "D_medical_awake": {
+          "M1": [
+            0.5,
+            2.5
+          ],
+          "M2": [
+            1,
+            4
+          ],
+          "M3": [
+            15,
+            30
+          ]
+        }
+      },
+      "unit": "[1st, 99th percentile, min]",
+      "note": "M1-M3 = fire safety management level; M3 values are lower bounds ('>'). Add 0.5-1.0 min for wayfinding in complex (B2/B3) buildings. Distribution between the percentiles approximately lognormal.",
+      "worked_example": {
+        "inputs": {
+          "scenario": "B awake unfamiliar, M1",
+          "t1_min": 0.5,
+          "t99_min": 2.5
+        },
+        "expected": {
+          "mu_ln_min": 0.1116,
+          "sigma_ln": 0.3459,
+          "median_min": 1.118
+        },
+        "tolerance": "1e-3",
+        "note": "Assumed fitting: lognormal through the 1st and 99th percentiles (z = 2.3263)."
+      },
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "pd_7974_6_2019_sample",
+            "locator": "Annex E, Table E.2",
+            "quoted_phrase": "suggested default values for pre-travel activity time 1st and 99th percentiles for different design behavioural scenarios are presented in Table E.2"
+          },
+          {
+            "source_key": "pd_7974_6_2019_sample",
+            "locator": "E.1",
+            "quoted_phrase": "Once the first few occupants begin to move, pre-travel distributions tend to follow approximately log normal distributions"
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "read from a publisher's sample; confirm against a licensed copy"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "ref_key": "pretravel_measured_store",
+      "topic": "premovement",
+      "value": {
+        "department_store_unannounced_min": {
+          "min": 0.2,
+          "q1": 0.3,
+          "median": 0.5,
+          "q3": 0.9,
+          "mean": 0.4
+        },
+        "n": 95
+      },
+      "unit": "min",
+      "note": "Shields and Boyce (2000) via PD 7974-6 Table E.1: trained staff, unannounced drill. Calibration case for a mall.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "c5e39fd8-acfd-5eb9-8a63-41d97cc2d703",
+        "sources": [
+          {
+            "source_key": "pd_7974_6_2019_sample",
+            "locator": "Annex E, Table E.1",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [],
+        "to_verify": [
+          "column alignment in the sample text"
+        ]
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [
+    {
+      "subject": "crouch speed factor"
+    },
+    {
+      "subject": "60 C head-height limit (PD 7974-6 full text)"
+    },
+    {
+      "subject": "Bryan's distance-moved distribution by visibility"
+    }
+  ],
+  "refused": [],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "u_a7e7bc4ee18a": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_91cc8a8d5517": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "u_04007b28684e": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}

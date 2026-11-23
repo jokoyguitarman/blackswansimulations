@@ -1,0 +1,456 @@
+{
+  "file": "injury-thresholds.pending.json",
+  "schema_version": 1,
+  "library": "physics",
+  "target_table": "fieldops_injury_thresholds",
+  "prepared_by": "research agent (Cursor cloud agent bc-3d7dc4e8-9982-5bb8-a7cd-4429a2ab29e7), offline knowledge run",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "provenance": {
+    "drafted_by": "agent",
+    "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+    "brief_key": "device_material",
+    "note": "Drafted offline from public sources; nothing here is reviewed. Every row stays Unverified until the D22/W24 reviewer approves it. importApproved must skip this file while review_status is pending."
+  },
+  "migration": "240 (spec 07 5.8)",
+  "rows": [
+    {
+      "threshold_key": "lethal_onset",
+      "effect_class": "injury",
+      "band": "lethal",
+      "metric": "effective_overpressure_kpa",
+      "value": 690,
+      "applies_to": "all",
+      "label": "Lethality threshold, primary blast (lung)",
+      "source_ref": "UFC 3-340-02 1-11.1 Table 1-1: lethality threshold 100-120 psi maximum effective pressure, 3-5 ms",
+      "note": "Metric is MAXIMUM EFFECTIVE pressure (incident, incident + dynamic, or reflected, whichever is highest), not incident. For a person standing in the open use Ps + q; against a wall use Pr. For long durations (gas explosions) UFC says lung thresholds fall to about one third.",
+      "alternatives": [
+        {
+          "value_kpa": 896,
+          "basis": "UFC Table 1-1 lethality 50 % (130 psi lower end)"
+        },
+        {
+          "value_kpa": 20,
+          "basis": "IOGP 434-14 offshore consensus: fatality threshold about 0.2 bar when debris, impact and structures dominate"
+        },
+        {
+          "value_kpa": 35,
+          "basis": "IOGP 434-14: UK HSE probit gives 1 % lethality at about 0.35 bar (long-duration blasts)"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 and Table 1-1, row 'Lethality / Threshold 100-120'",
+            "quoted_phrase": "Table 1-1 Blast Effects In Man Applicable To Fast-Rising Air Blasts Of Short Duration (3-5 ms)"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "Table 1-1 footnote",
+            "quoted_phrase": "Maximum effective pressure is the highest of incident pressure, incident pressure plus dynamic pressure, or reflected pressure."
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 paragraph 2",
+            "quoted_phrase": "the threshold for lethality due to lung damage is approximately 100 to 120 psi"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
+      }
+    },
+    {
+      "threshold_key": "serious_injury_onset",
+      "effect_class": "injury",
+      "band": "serious",
+      "metric": "effective_overpressure_kpa",
+      "value": 207,
+      "applies_to": "all",
+      "label": "Lung damage threshold, primary blast",
+      "source_ref": "UFC 3-340-02 1-11.1 Table 1-1: lung damage threshold 30-40 psi maximum effective pressure",
+      "note": "Effective pressure as for lethal_onset.",
+      "alternatives": [
+        {
+          "value_kpa": 69,
+          "basis": "UFC 1-11.1: petechial haemorrhage for long-duration loads may start at 10-15 psi"
+        },
+        {
+          "value_kpa": 82.7,
+          "basis": "LaChance et al. (2009) Table 6: threshold for lung haemorrhage 82.7-103.4 kPa"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 and Table 1-1, row 'Lung Damage / Threshold 30-40'",
+            "quoted_phrase": "Table 1-1 Blast Effects In Man Applicable To Fast-Rising Air Blasts Of Short Duration (3-5 ms)"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "Table 1-1 footnote",
+            "quoted_phrase": "Maximum effective pressure is the highest of incident pressure, incident pressure plus dynamic pressure, or reflected pressure."
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 paragraph 2",
+            "quoted_phrase": "The threshold and severe lung-hemorrhage pressure levels are 30 to 40 psi and above 80 psi"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
+      }
+    },
+    {
+      "threshold_key": "minor_injury_onset",
+      "effect_class": "injury",
+      "band": "minor",
+      "metric": "effective_overpressure_kpa",
+      "value": 34.5,
+      "applies_to": "all",
+      "label": "Eardrum rupture threshold",
+      "source_ref": "UFC 3-340-02 1-11.1 Table 1-1: eardrum rupture threshold 5 psi",
+      "note": "Green Book eardrum probit (human-vulnerability file) gives 1 % at about 17 kPa and 50 % at about 103 kPa.",
+      "alternatives": [
+        {
+          "value_kpa": 13.8,
+          "basis": "LaChance et al. (2009) Table 6: threshold for eardrum rupture 13.8 kPa"
+        },
+        {
+          "value_kpa": 15.9,
+          "basis": "UFC 1-11.1: tolerable level so people in the open are not thrown off balance, 2.3 psi"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 and Table 1-1, row 'Eardrum Rupture / Threshold 5'",
+            "quoted_phrase": "Table 1-1 Blast Effects In Man Applicable To Fast-Rising Air Blasts Of Short Duration (3-5 ms)"
+          },
+          {
+            "source_key": "ufc_3_340_02",
+            "locator": "1-11.1 paragraph 3",
+            "quoted_phrase": "the threshold of eardrums rupture for fast rising pressure is 5 psi"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "amended",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Assumed default, spec section 2.4 (A5)."
+      }
+    },
+    {
+      "threshold_key": "glass_injury",
+      "effect_class": "injury",
+      "band": "minor",
+      "metric": "peak_overpressure_kpa",
+      "value": 6.9,
+      "applies_to": "glazed_only",
+      "label": "Flying-glass laceration endpoint",
+      "source_ref": "US EPA RMP OCA guidance (1999) Appendix D.5: 1 psi endpoint, shattering of glass and skin laceration",
+      "note": null,
+      "alternatives": [
+        {
+          "value_kpa": 5,
+          "basis": "Green Book ch. 2, 6: about 50 % of modern window panes broken at 5 kPa"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.5",
+            "quoted_phrase": "The endpoint for the vapor cloud explosion analysis, 1 psi, is reported to cause damage such as shattering of glass windows"
+          },
+          {
+            "source_key": "epa_rmp_oca_appendices_1999",
+            "locator": "Appendix D, D.5",
+            "quoted_phrase": "Skin laceration from flying glass also is reported."
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "using a breakage endpoint as an injury onset"
+        ],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threshold_key": "glass_breakage",
+      "effect_class": "damage",
+      "band": "structural",
+      "metric": "peak_overpressure_kpa",
+      "value": 2,
+      "applies_to": "all",
+      "label": "Window breakage onset (modern glazing)",
+      "source_ref": "TNO Green Book (1992) ch. 2, 6: lowest limit 2 kPa, average 5 kPa for panes in recent buildings",
+      "note": null,
+      "alternatives": [
+        {
+          "value_kpa": 1,
+          "basis": "Green Book: lowest limit 1 kPa for older panes"
+        },
+        {
+          "value_kpa": 1.03,
+          "basis": "Clancey (1972) via IOGP 434-15: typical pressure for glass breakage"
+        },
+        {
+          "value_kpa": 5,
+          "basis": "Green Book: 50 % of modern panes broken"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, section 6 Glass, paragraph 3",
+            "quoted_phrase": "The lowest limit is then taken as 2 kPa and the average value is 5 kPa."
+          },
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "Table 2.8 (Clancey 1972), 0.3 psi row",
+            "quoted_phrase": "10% window glass broken"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threshold_key": "structural_light",
+      "effect_class": "damage",
+      "band": "structural",
+      "metric": "peak_overpressure_kpa",
+      "value": 3.5,
+      "applies_to": "all",
+      "label": "Minor damage to buildings (zone D)",
+      "source_ref": "TNO Green Book (1992) ch. 2, 7.1 Table 4, zone D minor damage >3.5 kPa",
+      "note": null,
+      "alternatives": [
+        {
+          "value_kpa": 4.8,
+          "basis": "Clancey: minor damage to house structures"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.1 Table 4 Damage Levels (A >83, B >35, C >17, D >3.5 kPa)",
+            "quoted_phrase": "Table 4. Damage Levels."
+          },
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "Table 2.8 (Clancey 1972), 0.4 psi row",
+            "quoted_phrase": "Limited minor structural damage"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threshold_key": "structural_moderate",
+      "effect_class": "damage",
+      "band": "structural",
+      "metric": "peak_overpressure_kpa",
+      "value": 17,
+      "applies_to": "all",
+      "label": "Moderate damage to buildings (zone C)",
+      "source_ref": "TNO Green Book (1992) ch. 2, 7.1 Table 4, zone C moderate damage >17 kPa",
+      "note": null,
+      "alternatives": [
+        {
+          "value_kpa": 15.8,
+          "basis": "Clancey: lower limit of serious structural damage"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.1 Table 4 Damage Levels (A >83, B >35, C >17, D >3.5 kPa)",
+            "quoted_phrase": "Table 4. Damage Levels."
+          },
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "Table 2.8 (Clancey 1972), 2.5 psi row",
+            "quoted_phrase": "50% destruction of brickwork of houses"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threshold_key": "structural_severe",
+      "effect_class": "damage",
+      "band": "structural",
+      "metric": "peak_overpressure_kpa",
+      "value": 35,
+      "applies_to": "all",
+      "label": "Heavy damage to buildings (zone B)",
+      "source_ref": "TNO Green Book (1992) ch. 2, 7.1 Table 4, zone B heavy damage >35 kPa",
+      "note": null,
+      "alternatives": [
+        {
+          "value_kpa": 83,
+          "basis": "Green Book zone A total destruction"
+        },
+        {
+          "value_kpa": 68.9,
+          "basis": "Clancey: probable total destruction of buildings"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 2, 7.1 Table 4 Damage Levels (A >83, B >35, C >17, D >3.5 kPa)",
+            "quoted_phrase": "Table 4. Damage Levels."
+          },
+          {
+            "source_key": "iogp_434_15_2010",
+            "locator": "Table 2.8 (Clancey 1972), 5.0-7.0 psi row",
+            "quoted_phrase": "Nearly complete destruction of houses"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    },
+    {
+      "threshold_key": "fragment_hazard",
+      "effect_class": "fragment",
+      "band": "fragment",
+      "metric": "kinetic_energy_j",
+      "value": 79,
+      "applies_to": "all",
+      "label": "Hazardous fragment (79 J)",
+      "source_ref": "TNO Green Book (1992) ch. 3, 4.2; IATG 01.80 5.5.5 (NATO criterion 79 J)",
+      "note": null,
+      "alternatives": [
+        {
+          "value_j": 78.6364,
+          "basis": "58 ft-lb is the same criterion in US units (UFC Table 1-2 lists 58 ft-lb at 50 % skin penetration for one area ratio)"
+        }
+      ],
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": "73b1c15c-d486-4372-8f01-2a191f7c57b5",
+        "sources": [
+          {
+            "source_key": "tno_green_book_1992",
+            "locator": "Chapter 3, 4.2 Debris",
+            "quoted_phrase": "a piece of debris can be considered as dangerous its kinetic energy is equal to 79 joules (or higher)"
+          },
+          {
+            "source_key": "iatg_0180_2021",
+            "locator": "5.5.5.1, text after Table 27",
+            "quoted_phrase": "the barricade reduces the density of critical fragments (NATO criterion 79J; critical density is 1 piece/56m²)"
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [],
+        "to_verify": []
+      },
+      "review": {
+        "state": "reviewed",
+        "decision": "approved",
+        "reviewer_name": "Jokoy Tabbada",
+        "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+        "decided_on": "2026-11-22",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  ],
+  "uncovered": [],
+  "refused": []
+}

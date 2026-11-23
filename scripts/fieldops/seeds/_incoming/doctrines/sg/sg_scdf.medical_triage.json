@@ -1,0 +1,145 @@
+{
+  "format": "fieldops_doctrine_seed_v1",
+  "archetype_key": "medical_triage",
+  "title": "SCDF: Medical Triage response",
+  "applies_to": [],
+  "source": "seeded",
+  "country": "SG",
+  "agency_name": "Singapore Civil Defence Force",
+  "agency_key": "sg_scdf",
+  "provenance": {
+    "kind": "official_public_source",
+    "ref": "sea/SG/agencies.json#sg_scdf",
+    "extracted_by": "research agent (Cursor cloud agent bc-506688cd-4130-594d-bd1d-025e3166eb27)",
+    "extracted_at": "2026-11-22",
+    "sources": [
+      {
+        "title": "Civil Defence Act 1986 (2020 Revised Edition)",
+        "publisher": "Attorney-General's Chambers of Singapore (Singapore Statutes Online)",
+        "url": "https://sso.agc.gov.sg/Act/CDA1986",
+        "published": "2021-12-31",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm Singapore Statutes Online terms of use allow restating provisions (open question 12).",
+        "locator": "s. 4(2)(b) and (k)",
+        "quoted_phrase": null
+      },
+      {
+        "title": "Improvised First Aid Skills (IFAS) Plus",
+        "publisher": "Singapore Civil Defence Force",
+        "url": "https://www.scdf.gov.sg/docs/default-source/media-room-(publications)/posters--leaflets--booklets/2026-collaterals/improvised-first-aid-skills-(ifas)-plus.pdf?sfvrsn=d908c2b0_1",
+        "published": "2026",
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "PRESS TIE TELL panel",
+        "quoted_phrase": "TELL the SCDF Emergency Responders about the injury and the time when you tied the wound."
+      },
+      {
+        "title": "Ambulance Diversion",
+        "publisher": "Ministry of Health",
+        "url": "https://www.moh.gov.sg/newsroom/ambulance-diversion/",
+        "published": null,
+        "accessed_at": "2026-11-22",
+        "language": "en",
+        "terms_note": "Not checked by the agent. Reviewer to confirm the publisher's terms of use allow restating this page (open question 12).",
+        "locator": "paras 1 and 2",
+        "quoted_phrase": null
+      }
+    ],
+    "country_basis": null,
+    "drafted_by": "agent",
+    "run_id": "ff05c013-b19a-4637-9e2d-3a120a489e9f",
+    "confidence": "medium",
+    "assumed_fields": [
+      "never",
+      "good_looks_like",
+      "sequence.*.window",
+      "triage categories (not in a located source)"
+    ],
+    "claims": [
+      {
+        "ids": [
+          "mission",
+          "st_firstaid2",
+          "st_ambul0001"
+        ],
+        "source_index": 0,
+        "locator": "s. 4(2)(b), (k)"
+      },
+      {
+        "ids": [
+          "st_ifastell"
+        ],
+        "source_index": 1,
+        "locator": "TELL"
+      },
+      {
+        "ids": [
+          "ho_hospit01"
+        ],
+        "source_index": 2,
+        "locator": "para 2"
+      }
+    ]
+  },
+  "content": {
+    "schema_version": 1,
+    "mission": "Provide first aid to casualties, remove them for medical treatment or to safety, and provide and maintain an adequate emergency ambulance service.",
+    "sequence": [
+      {
+        "id": "st_firstaid2",
+        "window": null,
+        "label": "First aid",
+        "action": "Provide first aid to casualties and remove them for medical treatment or to areas of safety."
+      },
+      {
+        "id": "st_ifastell",
+        "window": null,
+        "label": "Take the handover",
+        "action": "Ask members of the public who applied improvised first aid what the injury was and when any tie was applied above the wound."
+      },
+      {
+        "id": "st_ambul0001",
+        "window": null,
+        "label": "Ambulance",
+        "action": "Move casualties by the emergency ambulance service."
+      }
+    ],
+    "never": [],
+    "hand_offs": [
+      {
+        "id": "ho_hospit01",
+        "to_archetype": "hospital_ed",
+        "to_label": "Public hospital ED",
+        "when": "A hospital ED facing a spike from a major incident activates ambulance diversion; the hospital works with the ambulance crew."
+      }
+    ],
+    "good_looks_like": [],
+    "standards": [],
+    "workflow": {
+      "endgame": null,
+      "personnel_ratios": {},
+      "sop_checklist": []
+    },
+    "scoring_rubric": ""
+  },
+  "review": {
+    "status": "approved_for_import",
+    "reviewer": "Jokoy Tabbada",
+    "reviewed_at": "2026-11-22",
+    "reviewer_role": "country",
+    "required_reviewer_roles": [
+      "country"
+    ],
+    "notes": "No located official source states SCDF's field triage categories or response-time targets; responder-units/response-standards.sg.json may hold targets. Clinical content withheld. Owner approval and verification of 22 Nov 2026; stands for the free-text required roles.",
+    "history": [
+      {
+        "date": "2026-11-22",
+        "reviewer": "Jokoy Tabbada",
+        "reviewer_role": "country",
+        "decision": "approved_for_import"
+      }
+    ]
+  }
+}

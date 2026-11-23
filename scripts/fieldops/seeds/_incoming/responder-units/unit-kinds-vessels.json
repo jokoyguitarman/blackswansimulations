@@ -1,0 +1,689 @@
+{
+  "file": "unit-kinds-vessels.json",
+  "schema_version": 1,
+  "library": "responder_units",
+  "format": "fieldops_responder_seed_v0 (proposed; see README.md, section Format)",
+  "country": "SG",
+  "prepared_by": "research agent (Cursor cloud agent bc-3f384388-df90-5e5a-b997-d94d793da8a7), offline run, no pipeline run id",
+  "prepared_on": "2026-11-22",
+  "review_status": "reviewed",
+  "seed_status": "REVIEWED",
+  "note": "SCDF Marine Division vessels in the fieldops_unit_kinds shape. mode 'vessel' FAILS migration 254's CHECK (mode IN ('vehicle','foot')): not importable until the owner adds a water mode. Rows hold the columns of migration 254 (amended, 11-living-world.md) without status, row_version or updated_at, plus 'provenance' (SeedProvenance, section 5.18) and '_review' (evidence for the reviewer; the importer drops it).",
+  "rows": [
+    {
+      "kind_key": "sg_scdf_heavy_fire_vessel",
+      "label": "Heavy Fire Vessel (Red Sailfish)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vessel",
+      "crew": 12,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue",
+        "decon"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_vessels_2019",
+        "stengg_hfv"
+      ],
+      "source_ref": "Singapore Civil Defence Force: 3 New Commissioned Vessels to Boost SCDF's Marine Firefighting Capability; ST Engineering (builder): Heavy Fire Vessel HFV: Red Sailfish (product sheet)",
+      "source_note": "Taken: monitor_total_lpm 240000, monitors 12, monitor_throw_m 200, decon_cubicles 6, crew 12 (Unverified), rescued_passengers 30 (Unverified), max_speed_kn 20 (Unverified), cruise_speed_kn 15 (Unverified). Assumed: asset_type, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 240,000 litres of seawater in a minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 12 water and foam onboard monitors",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: up to a distance of 200 metres",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 6 automated decontamination shower cubicles",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "stengg_hfv",
+            "locator": "ACCOMMODATION: CREW SIZE 12",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "stengg_hfv",
+            "locator": "STANDBY RESCUE: RESCUED PASSENGERS ROOM - 30 PAX",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "stengg_hfv",
+            "locator": "SPEED AND PERFORMANCE: MAX SPEED 20 KNOTS",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "stengg_hfv",
+            "locator": "SPEED AND PERFORMANCE: CRUISING SPEED 15 KNOTS",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "default_count",
+          "observes_m",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "crew",
+          "cruise_speed_kn",
+          "max_speed_kn",
+          "rescued_passengers"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Marine firefighting vessel with FiFi Class 3 output for ship and port fires.",
+        "role_source": {
+          "source_key": "scdf_vessels_2019",
+          "locator": "RED SAILFISH"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "fire_vessel",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 12,
+            "status": "unverified",
+            "source_key": "stengg_hfv",
+            "locator": "ACCOMMODATION: CREW SIZE 12"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "monitors",
+            "value": 12,
+            "unit": "monitors",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 12 water and foam onboard monitors"
+          },
+          {
+            "param": "monitor_throw_m",
+            "value": 200,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: up to a distance of 200 metres"
+          },
+          {
+            "param": "decon_cubicles",
+            "value": 6,
+            "unit": "cubicles",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED SAILFISH: 6 automated decontamination shower cubicles"
+          },
+          {
+            "param": "max_speed_kn",
+            "value": 20,
+            "unit": "kn",
+            "status": "unverified",
+            "source_key": "stengg_hfv",
+            "locator": "SPEED AND PERFORMANCE: MAX SPEED 20 KNOTS"
+          },
+          {
+            "param": "cruise_speed_kn",
+            "value": 15,
+            "unit": "kn",
+            "status": "unverified",
+            "source_key": "stengg_hfv",
+            "locator": "SPEED AND PERFORMANCE: CRUISING SPEED 15 KNOTS"
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_heavy_rescue_vessel",
+      "label": "Heavy Rescue Vessel (Red Manta)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vessel",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "rescue",
+        "decon",
+        "command_post",
+        "transport"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_vessels_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: 3 New Commissioned Vessels to Boost SCDF's Marine Firefighting Capability",
+      "source_note": "Taken: passengers 300, max_speed_kn 35, decon_cubicles 12. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: carrying capacity of 300 passengers",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: top speed of 35 knots during operations",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: 12 automated decontamination shower cubicles",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Marine tactical headquarters and mass-evacuation vessel for incidents with many casualties.",
+        "role_source": {
+          "source_key": "scdf_vessels_2019",
+          "locator": "RED MANTA"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "rescue_vessel",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "max_speed_kn",
+            "value": 35,
+            "unit": "kn",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: top speed of 35 knots during operations"
+          },
+          {
+            "param": "decon_cubicles",
+            "value": 12,
+            "unit": "cubicles",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED MANTA: 12 automated decontamination shower cubicles"
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_marine_rescue_vessel",
+      "label": "Marine Rescue Vessel (Red Dolphin)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vessel",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_vessels_2019",
+        "penguin_vessels"
+      ],
+      "source_ref": "Singapore Civil Defence Force: 3 New Commissioned Vessels to Boost SCDF's Marine Firefighting Capability; Penguin International (builder): Vessel specs: Heavy Rescue Vessel (Red Manta); Marine Rescue Vessel (Red Dolphin)",
+      "source_note": "Taken: max_speed_kn 30, survivors 30 (Unverified). Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED DOLPHIN: top speed of 30 knots during operations",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "penguin_vessels",
+            "locator": "MRV classification: standby rescue vessel (30 survivors)",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED DOLPHIN",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "medium",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "turnout_s"
+        ],
+        "unverified_fields": [
+          "survivors"
+        ],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Marine firefighting and rescue vessel with CBR filtration and decontamination cubicles.",
+        "role_source": {
+          "source_key": "scdf_vessels_2019",
+          "locator": "RED DOLPHIN"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "fire_vessel",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "max_speed_kn",
+            "value": 30,
+            "unit": "kn",
+            "status": "sourced",
+            "source_key": "scdf_vessels_2019",
+            "locator": "RED DOLPHIN: top speed of 30 knots during operations"
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_rapid_response_fire_vessel",
+      "label": "Rapid Response Fire Vessel (Red Swordfish, Blue Swordfish)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vessel",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "suppress",
+        "rescue",
+        "transport"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "nas_ndp2017_d3",
+        "scdf_ar_2017"
+      ],
+      "source_ref": "NDP 2017 organisers, held by the National Archives of Singapore: Fact Sheet: Dynamic Defence Display (D3) Assets, NDP 2017; Singapore Civil Defence Force: SCDF Annual Report FY2017/2018",
+      "source_note": "Taken: max_speed_kn 40, pump_lpm 7083, monitor_total_lpm 5000, foam_concentrate_l 1365, draft_m 1, length_m 20. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Top Speed 40knots",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Fire Pump Capacity 7,083L per minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "scdf_ar_2017",
+            "locator": "Rapid Response Fire Vessels: two water monitors, 5,000 litres a minute",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Tank Capacity 1,365L Foam Concentrate",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, low draft of one metre",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Dimensions 20m x 4.8m x 8.5m",
+            "quoted_phrase": null
+          },
+          {
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Rapid Response Fire Vessel (RFV)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "high",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "observes_m",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Fast, shallow-draft marine counterpart of the Red Rhino, able to take lying casualties.",
+        "role_source": {
+          "source_key": "nas_ndp2017_d3",
+          "locator": "p.6, Rapid Response Fire Vessel (RFV)"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "fire_vessel",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "max_speed_kn",
+            "value": 40,
+            "unit": "kn",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Top Speed 40knots"
+          },
+          {
+            "param": "draft_m",
+            "value": 1,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, low draft of one metre"
+          },
+          {
+            "param": "length_m",
+            "value": 20,
+            "unit": "m",
+            "status": "sourced",
+            "source_key": "nas_ndp2017_d3",
+            "locator": "p.6, Dimensions 20m x 4.8m x 8.5m"
+          }
+        ],
+        "notes": []
+      }
+    },
+    {
+      "kind_key": "sg_scdf_rescue_jet_ski",
+      "label": "Rescue Jet Ski (Marine Division)",
+      "country": "SG",
+      "archetype_key": "fire_rescue",
+      "mode": "vessel",
+      "crew": 4,
+      "default_count": 0,
+      "turnout_s": 60,
+      "observes_m": 60,
+      "asset_type": "firefighter_post",
+      "tasks": [
+        "rescue"
+      ],
+      "starts_from": [
+        "fire_station"
+      ],
+      "source_keys": [
+        "scdf_wps_2019"
+      ],
+      "source_ref": "Singapore Civil Defence Force: SCDF's Latest Initiatives As Unveiled at the SCDF Workplan Seminar 2019",
+      "source_note": "Taken: the public role only. Assumed: asset_type, crew, default_count, observes_m, turnout_s.",
+      "provenance": {
+        "drafted_by": "agent",
+        "run_id": null,
+        "sources": [
+          {
+            "source_key": "scdf_wps_2019",
+            "locator": "#5 Marine Division's Rescue Jet Ski (RJ)",
+            "quoted_phrase": null
+          }
+        ],
+        "confidence": "low",
+        "assumed_fields": [
+          "asset_type",
+          "crew",
+          "default_count",
+          "max_speed_kn",
+          "observes_m",
+          "turnout_s"
+        ],
+        "unverified_fields": [],
+        "withheld_fields": []
+      },
+      "_review": {
+        "public_role": "Shallow-water rescue craft with a towing sled.",
+        "role_source": {
+          "source_key": "scdf_wps_2019",
+          "locator": "#5 Marine Division's Rescue Jet Ski (RJ)"
+        },
+        "catalogue_kind": null,
+        "proposed_kind": "rescue_vessel",
+        "column_evidence": [
+          {
+            "column": "crew",
+            "value": 4,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "default_count",
+            "value": 0,
+            "status": "assumed",
+            "basis": "0 until reviewed, so a kind the catalogue lacks fields no unit by default"
+          },
+          {
+            "column": "turnout_s",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "observes_m",
+            "value": 60,
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine (section 5.10.1, D33)"
+          },
+          {
+            "column": "asset_type",
+            "value": "firefighter_post",
+            "status": "assumed",
+            "basis": "UNIT_CATALOGUE.fire_engine"
+          }
+        ],
+        "context_values": [
+          {
+            "param": "max_speed_kn",
+            "value": null,
+            "unit": "kn",
+            "status": "gap"
+          }
+        ],
+        "notes": []
+      }
+    }
+  ],
+  "review": {
+    "reviewer_name": "Jokoy Tabbada",
+    "reviewer_qualification": "Project owner (Prophyion); reviewed and approved all knowledge research seed files",
+    "reviewed_on": "2026-11-22",
+    "row_decisions": {
+      "sg_scdf_heavy_fire_vessel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_heavy_rescue_vessel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_marine_rescue_vessel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rapid_response_fire_vessel": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      },
+      "sg_scdf_rescue_jet_ski": {
+        "decision": "approved",
+        "notes": "Owner approval of 22 Nov 2026."
+      }
+    }
+  }
+}
