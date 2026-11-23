@@ -50,3 +50,30 @@ export const DEFAULT_POLYGON_CONFIG: Omit<PolygonSimConfig, 'vertices'> = {
   panicFactor: 0,
   dt: 1 / 60,
 };
+
+export type EvacState =
+  | 'idle'
+  | 'reacting'
+  | 'evacuating'
+  | 'outside'
+  | 'arrived'
+  | 'left_map'
+  | 'down';
+
+export type ZoneKind = 'assembly' | 'safe' | 'convening';
+
+export interface ShowcaseZone {
+  id: string;
+  pos: Vec2;
+  radius: number;
+  label: string;
+  kind: ZoneKind;
+}
+
+export interface EvacShowcaseOptions {
+  afterExit: 'zone' | 'disperse' | 'mixed';
+  zones: ShowcaseZone[];
+  seed?: number;
+  /** Above-ground building height. The SCDF distance is max(this, 20 m). */
+  buildingHeightM?: number;
+}

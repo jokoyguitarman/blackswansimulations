@@ -1,5 +1,8 @@
-import type { Vec2, ExitDef } from '../evacuation/types';
+import type { Vec2, ExitDef, ShowcaseZone } from '../evacuation/types';
 import type { PedSnapshot } from '../evacuation/engine';
+import { SHOWCASE } from '../evacuation/showcaseConstants';
+import { explosionFxFrame } from '../evacuation/showcase';
+import { headSmoke } from '../evacuation/hazardSensing';
 import type {
   RTSUnit,
   RTSEquipment,
@@ -12,7 +15,7 @@ import type {
 } from './types';
 import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
-import { polygonBounds } from '../evacuation/geometry';
+import { isInsidePolygon, polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
 import { getIcon, preloadIcons, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
 
@@ -21,6 +24,18 @@ export interface RenderContext {
   bounds: Bounds;
   padX: number;
   padY: number;
+}
+
+export interface ShowcaseRenderFx {
+  hazardStuds: Array<{ id: string; simPos: Vec2 }>;
+  effectStates: Map<string, { smoke: number; fire: { state: string } }> | null;
+  cellM: number;
+  explosion: { pos: Vec2; radiusM: number; ageS: number; reducedMotion: boolean } | null;
+  injuryRings: { pos: Vec2; radiusM: number } | null;
+  zones: ShowcaseZone[];
+  zoneCounts: Record<string, number>;
+  /** Metres. Drawn around the outline during setup. */
+  assemblyRingM?: number | null;
 }
 
 function toCanvas(mx: number, my: number, rc: RenderContext) {
@@ -108,9 +123,22 @@ export function renderRTS(
   showBlastZone?: boolean,
   showOperatingZones?: boolean,
   highlightedStudIds?: Set<string> | null,
+  showcaseFx?: ShowcaseRenderFx | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
+  const fxFrame = showcaseFx?.explosion
+    ? explosionFxFrame(
+        showcaseFx.explosion.ageS,
+        showcaseFx.explosion.radiusM,
+        showcaseFx.explosion.reducedMotion,
+      )
+    : null;
+  const shake = fxFrame != null && fxFrame.shakePx > 0;
+  if (shake && fxFrame) {
+    ctx.save();
+    ctx.translate((Math.random() * 2 - 1) * fxFrame.shakePx, (Math.random() * 2 - 1) * fxFrame.shakePx);
+  }
 
   if (!transparentBg) {
     ctx.fillStyle = '#0a0a0a';
@@ -126,13 +154,22 @@ export function renderRTS(
     if (showOperatingZones && gameZones && gameZones.length > 0) {
       drawGameZones(ctx, blastSite, gameZones, rc);
     }
-    if (showBlastZone) {
+    if (showBlastZone && !showcaseFx?.injuryRings) {
       drawBlastRadius(ctx, blastSite, rc, blastRadius);
     }
     drawBlastSite(ctx, blastSite, rc);
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
+
+  if (showcaseFx) {
+    drawHazardField(ctx, rc, showcaseFx);
+    if (showcaseFx.assemblyRingM && showcaseFx.assemblyRingM > 0) {
+      drawAssemblyRing(ctx, buildingVerts, showcaseFx.assemblyRingM, rc);
+    }
+    if (showcaseFx.injuryRings) drawShowcaseInjuryRings(ctx, showcaseFx.injuryRings, rc);
+    if (showcaseFx.zones.length > 0) drawShowcaseZones(ctx, showcaseFx.zones, showcaseFx.zoneCounts, rc);
+  }
 
   if (interiorWalls && interiorWalls.length > 0) {
     for (const wall of interiorWalls) drawInteriorWall(ctx, wall, rc);
@@ -178,7 +215,8 @@ export function renderRTS(
   }
 
   for (const ped of pedestrians) {
-    if (ped.evacuated) continue;
+    if (ped.state === 'left_map') continue;
+    if (ped.evacuated && ped.state !== 'outside' && ped.state !== 'arrived') continue;
     drawPedestrian(ctx, ped, rc);
   }
 
@@ -203,6 +241,13 @@ export function renderRTS(
   if (trainerGps) {
     drawTrainerGps(ctx, trainerGps.pos, trainerGps.accuracy, rc);
   }
+
+  if (showcaseFx && fxFrame && showcaseFx.explosion) {
+    drawExplosionFx(ctx, w, h, rc, showcaseFx.explosion.pos, fxFrame);
+  }
+  if (showcaseFx) drawShowcaseLegend(ctx, h);
+
+  if (shake) ctx.restore();
 }
 
 // ── Stud Grid ────────────────────────────────────────────────────────────
@@ -417,12 +462,304 @@ function drawExits(
 // ── Pedestrian ──────────────────────────────────────────────────────────
 function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: RenderContext) {
   const p = toCanvas(ped.x, ped.y, rc);
-  const r = mToCanvas(0.25, rc);
+  const base = Math.max(mToCanvas(0.25, rc), 2);
+  if (!ped.state) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, base, 0, Math.PI * 2);
+    ctx.fillStyle = pedColor(ped.speed);
+    ctx.fill();
+    return;
+  }
+
+  if (ped.state === 'down') {
+    const arm = base * 2;
+    ctx.strokeStyle = ped.injury === 'lethal' ? '#000000' : '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.cx - arm, p.cy - arm);
+    ctx.lineTo(p.cx + arm, p.cy + arm);
+    ctx.moveTo(p.cx + arm, p.cy - arm);
+    ctx.lineTo(p.cx - arm, p.cy + arm);
+    ctx.stroke();
+    if (ped.familiarity === 'staff') {
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, Math.max(1.5, base * 0.28), 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+    return;
+  }
+
+  let r = base;
+  let fill = pedColor(ped.speed);
+  let ring = false;
+  if (ped.state === 'idle') fill = '#cbd5e1';
+  else if (ped.state === 'reacting') fill = '#facc15';
+  else if (ped.state === 'outside') fill = '#22d3ee';
+  else if (ped.state === 'arrived') {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (ped.familiarity === 'staff') {
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, Math.max(1.5, r * 0.35), 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+    return;
+  } else if (ped.state === 'evacuating' && ped.posture === 'crouch') {
+    r = base * 0.85;
+    fill = '#c084fc';
+  } else if (ped.state === 'evacuating' && ped.posture === 'crawl') {
+    r = base * 0.7;
+    fill = '#a855f7';
+    ring = true;
+  }
 
   ctx.beginPath();
-  ctx.arc(p.cx, p.cy, Math.max(r, 2), 0, Math.PI * 2);
-  ctx.fillStyle = pedColor(ped.speed);
+  ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
   ctx.fill();
+  if (ring) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  if (ped.injury === 'minor') {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 1.5, 0, Math.PI * 2);
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  if (ped.familiarity === 'staff') {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, Math.max(1.5, r * 0.35), 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+}
+
+function drawHazardField(
+  ctx: CanvasRenderingContext2D,
+  rc: RenderContext,
+  fx: ShowcaseRenderFx,
+) {
+  const states = fx.effectStates;
+  if (!states) return;
+  const size = mToCanvas(fx.cellM, rc);
+  for (const stud of fx.hazardStuds) {
+    const st = states.get(stud.id);
+    if (!st) continue;
+    const c = toCanvas(stud.simPos.x, stud.simPos.y, rc);
+    const d = st.smoke ?? 0;
+    if (d >= 0.05) {
+      ctx.fillStyle = `rgba(90, 90, 100, ${0.15 + 0.65 * headSmoke(d)})`;
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+    }
+    const fire = st.fire?.state;
+    if (fire === 'burning') {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+      ctx.fillRect(c.cx - size * 0.3, c.cy - size * 0.3, size * 0.6, size * 0.6);
+    } else if (fire === 'heating') {
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+    } else if (fire === 'burnt_out') {
+      ctx.fillStyle = 'rgba(60, 60, 60, 0.5)';
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+    }
+  }
+}
+
+function drawShowcaseZones(
+  ctx: CanvasRenderingContext2D,
+  zones: ShowcaseZone[],
+  counts: Record<string, number>,
+  rc: RenderContext,
+) {
+  const colors: Record<ShowcaseZone['kind'], string> = {
+    assembly: '#22c55e',
+    safe: '#38bdf8',
+    convening: '#a78bfa',
+  };
+  for (const zone of zones) {
+    const p = toCanvas(zone.pos.x, zone.pos.y, rc);
+    const r = mToCanvas(zone.radius, rc);
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = colors[zone.kind];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = colors[zone.kind];
+    ctx.font = '11px monospace';
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillText(`${zone.label} · ${counts[zone.id] ?? 0}`, p.cx + 4, p.cy - r - 4);
+    ctx.restore();
+  }
+}
+
+function drawShowcaseInjuryRings(
+  ctx: CanvasRenderingContext2D,
+  rings: { pos: Vec2; radiusM: number },
+  rc: RenderContext,
+) {
+  const p = toCanvas(rings.pos.x, rings.pos.y, rc);
+  const bands = [
+    { frac: SHOWCASE.MINOR_RING_FRACTION, stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.06)', label: 'MINOR' },
+    { frac: SHOWCASE.SERIOUS_RING_FRACTION, stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.08)', label: 'SERIOUS' },
+    { frac: SHOWCASE.LETHAL_RING_FRACTION, stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.12)', label: 'LETHAL' },
+  ];
+  let outer = 0;
+  for (const band of bands) {
+    const r = mToCanvas(rings.radiusM * band.frac, rc);
+    if (r < 3) continue;
+    outer = Math.max(outer, r);
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = band.fill;
+    ctx.fill();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = band.stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = band.stroke;
+    ctx.font = '11px monospace';
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillText(band.label, p.cx + 4, p.cy - r + 12);
+    ctx.restore();
+  }
+  if (outer > 0) {
+    ctx.save();
+    ctx.fillStyle = '#fde68a';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('Injury rings scaled from the slider radius; walls not modelled', p.cx + 6, p.cy - outer - 6);
+    ctx.restore();
+  }
+}
+
+function drawAssemblyRing(ctx: CanvasRenderingContext2D, verts: Vec2[], distM: number, rc: RenderContext) {
+  const ring = offsetOutline(verts, distM);
+  if (ring.length < 3) return;
+  ctx.beginPath();
+  const first = toCanvas(ring[0].x, ring[0].y, rc);
+  ctx.moveTo(first.cx, first.cy);
+  for (let i = 1; i < ring.length; i++) {
+    const p = toCanvas(ring[i].x, ring[i].y, rc);
+    ctx.lineTo(p.cx, p.cy);
+  }
+  ctx.closePath();
+  ctx.setLineDash([4, 6]);
+  ctx.strokeStyle = '#86efac';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.save();
+  ctx.fillStyle = '#86efac';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Assembly distance ≥ ${distM} m`, first.cx, first.cy - 6);
+  ctx.restore();
+}
+
+function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
+  const n = verts.length;
+  if (n < 3) return verts;
+  const normals: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    const mx = (a.x + b.x) / 2 + nx;
+    const my = (a.y + b.y) / 2 + ny;
+    if (isInsidePolygon(mx, my, verts)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    normals.push({ x: nx, y: ny });
+  }
+  const out: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const n0 = normals[(i + n - 1) % n];
+    const n1 = normals[i];
+    let bx = n0.x + n1.x;
+    let by = n0.y + n1.y;
+    const bl = Math.hypot(bx, by);
+    if (bl < 1e-6) {
+      bx = n1.x;
+      by = n1.y;
+    } else {
+      bx /= bl;
+      by /= bl;
+    }
+    const denom = bx * n1.x + by * n1.y;
+    const scale = Math.abs(denom) > 0.25 ? dist / denom : dist;
+    out.push({ x: verts[i].x + bx * scale, y: verts[i].y + by * scale });
+  }
+  return out;
+}
+
+function drawExplosionFx(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  rc: RenderContext,
+  pos: Vec2,
+  frame: ReturnType<typeof explosionFxFrame>,
+) {
+  const p = toCanvas(pos.x, pos.y, rc);
+  const fr = Math.max(1, mToCanvas(frame.fireballRadiusM, rc));
+  const g = ctx.createRadialGradient(p.cx, p.cy, 0, p.cx, p.cy, fr);
+  g.addColorStop(0, `rgba(255,255,255,${frame.fireballAlpha})`);
+  g.addColorStop(0.45, `rgba(249,115,22,${frame.fireballAlpha})`);
+  g.addColorStop(1, 'rgba(249,115,22,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, fr, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, Math.max(1, mToCanvas(frame.ringRadiusM, rc)), 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(255,255,255,${frame.ringAlpha})`;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  if (frame.flashAlpha > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${frame.flashAlpha})`;
+    ctx.fillRect(-40, -40, w + 80, h + 80);
+  }
+}
+
+function drawShowcaseLegend(ctx: CanvasRenderingContext2D, h: number) {
+  ctx.save();
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const line1 =
+    'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable';
+  const line2 =
+    'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre';
+  const pad = 8;
+  const boxW = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + pad * 2;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+  ctx.fillRect(8, h - 46, boxW, 36);
+  ctx.fillStyle = '#e2e8f0';
+  ctx.fillText(line1, 8 + pad, h - 30);
+  ctx.fillText(line2, 8 + pad, h - 16);
+  ctx.restore();
 }
 
 function pedColor(speedMs: number): string {
@@ -891,10 +1228,11 @@ function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc:
 
 // ── Hazard zones ────────────────────────────────────────────────────────
 function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: RenderContext) {
+  const def = HAZARD_DEFS[hz.hazardType];
+  if (!def) return;
   const p = toCanvas(hz.pos.x, hz.pos.y, rc);
   const r = mToCanvas(hz.radius, rc);
   const drawR = Math.max(r, 10);
-  const def = HAZARD_DEFS[hz.hazardType];
 
   const alpha = hz.severity === 'high' ? '40' : hz.severity === 'medium' ? '25' : '15';
   ctx.beginPath();

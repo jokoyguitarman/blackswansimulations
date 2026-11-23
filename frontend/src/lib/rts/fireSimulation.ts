@@ -11,6 +11,9 @@ export interface FireParams {
   heatTransferRate: number;
   wallResistance: Record<string, number>;
   hazardAcceleration: Record<string, number>;
+  /** Showcase only. Unset keeps today's spread (hazard zones only). */
+  ambientSpread?: boolean;
+  ambientHeatSec?: number;
 }
 
 export interface FireStudState {
@@ -227,6 +230,8 @@ export class FireSimulation {
             const accel = this.getHazardAcceleration(dest.simPos, hazards);
             if (accel > 0) {
               toHeat.push({ id: nId, accel });
+            } else if (this.params.ambientSpread && dest.spatialContext === 'inside_building') {
+              toHeat.push({ id: nId, accel: 0 });
             }
           }
         }
@@ -242,6 +247,12 @@ export class FireSimulation {
     for (const { id, accel } of toHeat) {
       const nState = this.states.get(id);
       if (!nState || nState.state !== 'none') continue;
+      if (accel === 0) {
+        nState.state = 'heating';
+        nState.timer = this.params.ambientHeatSec ?? 30;
+        nState.fuelFactor = 1;
+        continue;
+      }
       nState.state = 'heating';
       const effectiveAccel = Math.max(1, accel);
       nState.timer = this.params.heatTransferRate / effectiveAccel;
