@@ -602,9 +602,20 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
     return;
   }
 
+  if (ped.state !== 'down') {
+    const dose = Math.max(ped.fumeFed ?? 0, ped.fumeFec ?? 0);
+    if (dose > 0.02) {
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, base + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(217, 119, 6, ${0.35 + 0.65 * Math.min(1, dose)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
   if (ped.state === 'down') {
     const arm = base * 2;
-    ctx.strokeStyle = ped.injury === 'lethal' ? '#000000' : '#ef4444';
+    ctx.strokeStyle = ped.fumeDown ? '#d97706' : ped.injury === 'lethal' ? '#000000' : '#ef4444';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(p.cx - arm, p.cy - arm);

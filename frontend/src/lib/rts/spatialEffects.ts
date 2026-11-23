@@ -11,6 +11,7 @@ import type { FuelCell } from './flameFront';
 import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
+import { addFumeGrams, fumesPpm, type FumeGrams } from './toxicDose';
 
 // ── Effect types ─────────────────────────────────────────────────────────
 
@@ -48,6 +49,11 @@ export interface StudEffectState {
   smoke: number;
   /** True once an open spray can reach this stud. */
   wet?: boolean;
+  /**
+   * ppm of the gases whose smoke has reached this stud. Absent is clean air.
+   * It follows what is burning now, scaled by the smoke already stored here.
+   */
+  fumes?: FumeGrams;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -264,6 +270,10 @@ export class SpatialEffectsEngine {
     return this.fireSim.fuelReleaseKw(id);
   }
 
+  fumeSources() {
+    return this.fireSim.fumeSources();
+  }
+
   isJetting(id: string): boolean {
     return this.fireSim.isJetting(id);
   }
@@ -304,6 +314,7 @@ export class SpatialEffectsEngine {
     this.stepFlood(simDt, walls);
     this.stepStructural(simDt);
     this.stepSmoke(simDt, walls);
+    this.stepFumes(walls);
   }
 
   private processHazardEvents(hazards: HazardZone[], walls: InteriorWall[]) {
@@ -618,6 +629,71 @@ export class SpatialEffectsEngine {
     for (const { id, amount } of toSpread) {
       const s = this.studStates.get(id);
       if (s) s.smoke = Math.min(1, s.smoke + amount);
+    }
+  }
+
+  /**
+   * Split the smoke already on each stud across the gases of the fires whose
+   * smoke has reached it. A solid wall stops the walk. A door gap does not.
+   * Another storey is reached only up a shaft, and only where smoke has risen.
+   * Nothing burning clears the split, including a jet or an arc on its own.
+   */
+  private stepFumes(walls: InteriorWall[]) {
+    for (const state of this.studStates.values()) state.fumes = undefined;
+    const sources = this.fireSim.fumeSources();
+    if (sources.length === 0) return;
+
+    const upward = new Map<string, string[]>();
+    for (const pair of this.verticalPairs) {
+      const list = upward.get(pair.lower);
+      if (list) list.push(pair.upper);
+      else upward.set(pair.lower, [pair.upper]);
+    }
+
+    const totals = new Map<string, FumeGrams>();
+    for (const source of sources) {
+      const seen = new Set<string>();
+      const stack = [source.id];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (id == null || seen.has(id)) continue;
+        seen.add(id);
+        const state = this.studStates.get(id);
+        const from = this.studIndex.get(id);
+        if (!state || !from) continue;
+        const origin = id === source.id;
+        if (!origin && !(state.smoke > 0.02)) continue;
+        const bucket = totals.get(id);
+        if (bucket) addFumeGrams(bucket, source.gramsPerS);
+        else {
+          const fresh: FumeGrams = {};
+          addFumeGrams(fresh, source.gramsPerS);
+          totals.set(id, fresh);
+        }
+        for (const nextId of this.neighborCache.get(id) ?? []) {
+          if (seen.has(nextId)) continue;
+          const dest = this.studIndex.get(nextId);
+          const next = this.studStates.get(nextId);
+          if (!dest || !next || !(next.smoke > 0.02)) continue;
+          if (isWallBlocked(from.simPos, dest.simPos, walls, levelOf(from))) continue;
+          stack.push(nextId);
+        }
+        for (const upperId of upward.get(id) ?? []) {
+          const upper = this.studStates.get(upperId);
+          if (upper && upper.smoke > 0.02) stack.push(upperId);
+        }
+      }
+    }
+
+    for (const [id, grams] of totals) {
+      const state = this.studStates.get(id);
+      if (!state || !(state.smoke > 0)) continue;
+      const ppm = fumesPpm(grams, state.smoke);
+      let any = false;
+      for (const value of Object.values(ppm)) {
+        if (value != null && value > 0) any = true;
+      }
+      if (any) state.fumes = ppm;
     }
   }
 

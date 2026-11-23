@@ -26,6 +26,12 @@
  * The dose holds when q falls back under CHF. It does not decay.
  */
 
+/** Gases a confirmed material can put into the smoke. The trainer does not pick these. */
+export const TOXIC_PRODUCTS = ['CO', 'HCN', 'HCl', 'acrolein'] as const;
+export type ToxicProduct = (typeof TOXIC_PRODUCTS)[number];
+/** Grams of gas per gram of fuel burned. Every library value is assumed. */
+export type ToxicYields = Partial<Record<ToxicProduct, number>>;
+
 export interface FuelCell {
   category: 'light' | 'heavy';
   chfKwM2: number;
@@ -36,6 +42,12 @@ export interface FuelCell {
   liquidPool: boolean;
   /** Liquid surface, m². Absent on a solid. */
   poolAreaM2?: number;
+  /**
+   * Grams of each gas per gram burned. Copied from the confirmed entry.
+   * Absent on a cell that has no yield. The fire reads this only while the
+   * cell is burning.
+   */
+  toxicYieldGPerG?: ToxicYields;
 }
 
 /** C/VM2 radiative fraction for building contents. */

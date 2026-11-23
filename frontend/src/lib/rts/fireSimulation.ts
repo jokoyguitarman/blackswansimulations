@@ -44,6 +44,7 @@ import {
   suppressedHeatKw,
   type FuelCell,
 } from './flameFront';
+import { fumesPresent, speciesProductionGPerS, type FumeGrams } from './toxicDose';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -592,6 +593,25 @@ export class FireSimulation {
     const meta = this.burn.get(id);
     if (!meta) return null;
     return this.releaseKw(this.burningCell(id), meta);
+  }
+
+  /**
+   * Grams per second each burning cell is putting into the smoke. Heating,
+   * burnt-out, a jet, and an arc are absent. The release is the decayed one.
+   */
+  fumeSources(): Array<{ id: string; pos: Vec2; level: string; gramsPerS: FumeGrams }> {
+    const sources: Array<{ id: string; pos: Vec2; level: string; gramsPerS: FumeGrams }> = [];
+    for (const fire of this.liveFires()) {
+      const gramsPerS = speciesProductionGPerS(fire.cell, this.releaseKw(fire.cell, fire.meta));
+      if (!fumesPresent(gramsPerS)) continue;
+      sources.push({
+        id: fire.id,
+        pos: { x: fire.stud.simPos.x, y: fire.stud.simPos.y },
+        level: levelOf(fire.stud),
+        gramsPerS,
+      });
+    }
+    return sources;
   }
 
   /**

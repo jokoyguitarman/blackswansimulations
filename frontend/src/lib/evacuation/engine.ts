@@ -58,6 +58,7 @@ import {
 } from '../rts/blast/blastModel';
 import { LEVEL } from './levelConstants';
 import { WET_FLOOR_SPEED } from '../rts/flameFront';
+import { advanceFed, doseIncapacitates, fecOf } from '../rts/toxicDose';
 import {
   levelCategories,
   levelIndex,
@@ -92,6 +93,12 @@ export interface PedSnapshot {
   posture?: Posture;
   familiarity?: Familiarity;
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  /** ISO 13571 asphyxiant dose. Stays once accumulated. */
+  fumeFed?: number;
+  /** ISO 13571 irritant fraction at the last breath. */
+  fumeFec?: number;
+  /** Down because the fume dose reached 1, not because of the blast. */
+  fumeDown?: boolean;
   zoneId?: string | null;
   /** Effective pressure for someone inside the minor ring, in kPa. */
   blastKpa?: number;
@@ -112,6 +119,8 @@ export interface ShowcaseMetrics {
   arrived: Record<string, number>;
   leftMap: number;
   down: { lethal: number; serious: number };
+  /** People the fume dose has put down. They are also counted in `down`. */
+  fumeDown: number;
   minorInjured: number;
   reroutes: number;
   /** Set when every zone was unsafe and people were sent to the farthest one. */
@@ -140,6 +149,12 @@ interface PedLabel {
   posture?: Posture;
   familiarity?: Familiarity;
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  /** Asphyxiant dose so far. It does not fall when the person walks clear. */
+  fed?: number;
+  /** Irritant fraction of the smoke they are in now. */
+  fec?: number;
+  /** True when fumes, not the blast, put them down. */
+  fumeDown?: boolean;
   reactAt?: number;
   exitCost?: number;
   nextCheckAt?: number;
@@ -537,6 +552,14 @@ export class PolygonEvacuationEngine {
   step() {
     this.motionSerial++;
     this.prepareStaticBodies();
+    const breathDt = this.config.dt;
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'down' || ped.state === 'left_map') continue;
+      if (!this.breathe(ped, body.position.x, body.position.y, breathDt)) continue;
+      Matter.Body.setStatic(body, true);
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    }
     if (this.showcase) {
       this.stepShowcase();
       return;
@@ -548,7 +571,7 @@ export class PolygonEvacuationEngine {
 
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
-      if (ped.evacuated) continue;
+      if (ped.evacuated || ped.state === 'down' || ped.state === 'left_map') continue;
       if (this.levelPlan && ped.level) {
         this.stepPlainLevel(body, ped, targetSpeed, dt, tau);
         continue;
@@ -2169,6 +2192,9 @@ export class PolygonEvacuationEngine {
       snap.posture = ped.posture;
       snap.familiarity = ped.familiarity;
       snap.injury = ped.injury;
+      if (ped.fed != null && ped.fed > 0) snap.fumeFed = ped.fed;
+      if (ped.fec != null && ped.fec > 0) snap.fumeFec = ped.fec;
+      if (ped.fumeDown) snap.fumeDown = true;
       snap.zoneId = ped.zoneId ?? null;
       if (ped.blastKpa != null) {
         snap.blastKpa = ped.blastKpa;
@@ -2217,6 +2243,7 @@ export class PolygonEvacuationEngine {
     let minorInjured = 0;
     let lethal = 0;
     let serious = 0;
+    let fumeDown = 0;
     for (const s of snaps) {
       if (s.state === 'idle') idle++;
       else if (s.state === 'reacting') reacting++;
@@ -2227,6 +2254,7 @@ export class PolygonEvacuationEngine {
       if (s.injury === 'minor') minorInjured++;
       if (s.state === 'down' && s.injury === 'lethal') lethal++;
       if (s.state === 'down' && s.injury === 'serious') serious++;
+      if (s.fumeDown) fumeDown++;
     }
     const arrived: Record<string, number> = {};
     for (const [id, n] of this.arrivedCounts) arrived[id] = n;
@@ -2241,6 +2269,7 @@ export class PolygonEvacuationEngine {
       arrived,
       leftMap: this.leftMapCount,
       down: { lethal, serious },
+      fumeDown,
       minorInjured,
       reroutes: this.rerouteCount,
       unsafeZoneNote: this.unsafeZoneNote,
@@ -2521,8 +2550,35 @@ export class PolygonEvacuationEngine {
 
   private tickStairs(dt: number) {
     if (!this.levelPlan) return;
+    const collapsed: StairOccupant[] = [];
+    for (const occ of this.stairPeople) {
+      const stair = this.stairById(occ.stairId);
+      if (!stair) continue;
+      if (this.breathe(occ.label, stair.pos.x, stair.pos.y, dt)) collapsed.push(occ);
+    }
+    for (const occ of collapsed) {
+      occ.toLevel = occ.fromLevel;
+      this.arriveFromStair(occ);
+    }
     this.advanceStairs();
     this.releaseStairs(dt);
+  }
+
+  /**
+   * One breath of the smoke on the nearest stud. Walking speed is unchanged.
+   * At dose 1 the person goes down and stays down.
+   */
+  private breathe(ped: PedLabel, x: number, y: number, dt: number): boolean {
+    if (ped.state === 'down' || ped.state === 'left_map') return false;
+    const fumes = this.field(ped.level).sample(x, y).fumes;
+    ped.fed = advanceFed(ped.fed ?? 0, fumes, dt);
+    ped.fec = fecOf(fumes);
+    if (!doseIncapacitates(ped.fed, ped.fec)) return false;
+    ped.state = 'down';
+    ped.injury = 'serious';
+    ped.fumeDown = true;
+    ped.evacuated = false;
+    return true;
   }
 
   private advanceStairs() {
@@ -2608,13 +2664,20 @@ export class PolygonEvacuationEngine {
     });
     body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
     const ped = occ.label;
+    const fumeDown = ped.fumeDown === true;
     ped.level = occ.toLevel;
     ped.targetStairId = null;
     ped.targetExitId = '';
     ped.nextCheckAt = 0;
     ped.evacuated = false;
     ped.waypoints = [];
-    if (this.showcase) ped.state = 'evacuating';
+    if (this.showcase && !fumeDown) ped.state = 'evacuating';
+    if (fumeDown) {
+      ped.state = 'down';
+      ped.injury = 'serious';
+      Matter.Body.setStatic(body, true);
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    }
     (body as Matter.Body & { __ped: PedLabel }).__ped = ped;
     this.pedestrians.push(body);
     Matter.Composite.add(this.engine.world, body);

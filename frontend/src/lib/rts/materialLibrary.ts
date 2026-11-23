@@ -3,15 +3,25 @@
  *
  * The trainer never picks a fuel category. They describe the object, the
  * keyword list matches library entries, and they confirm the names. After
- * confirm, the fire sim reads the category and that entry's ignition numbers.
- * Toxic yields stay stored and unread.
+ * confirm, the fire sim reads the category, that entry's ignition numbers,
+ * and that entry's toxic yields. The trainer does not pick a gas.
  *
  * Light-fuel CHF 10 kW/m² and TRP 134 are the red-oak row, used as the stand-in
  * for ordinary wood. Heavy-fuel CHF, the shorter TRP, both room-scale speeds,
  * both fuel loads, the 0.3 m² pan, and every yield are assumed.
  */
 
-import { FRYER_POOL_AREA_M2, HOOD_HEIGHT_M, SPRINKLER_CEILING_M, type FuelCell } from './flameFront';
+import {
+  FRYER_POOL_AREA_M2,
+  HOOD_HEIGHT_M,
+  SPRINKLER_CEILING_M,
+  TOXIC_PRODUCTS,
+  type FuelCell,
+  type ToxicProduct,
+  type ToxicYields,
+} from './flameFront';
+
+export type { ToxicProduct };
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -19,8 +29,6 @@ export type MaterialBehaviour = 'none' | 'pressurised_gas' | 'suppression' | 'el
 
 /** Sprinkler and kitchen hood share the wet-zone behaviour. The RTI differs. */
 export type SuppressionKind = 'sprinkler' | 'wet_chemical';
-
-export type ToxicProduct = 'CO' | 'HCN' | 'HCl' | 'acrolein';
 
 export interface MaterialEntry {
   id: string;
@@ -31,10 +39,10 @@ export interface MaterialEntry {
   behaviour: MaterialBehaviour;
   /** Set on a suppression entry. Absent on everything else. */
   suppression?: SuppressionKind;
-  /** Stored for a later phase. The fire sim does not read this. */
+  /** Gases this entry emits while it burns. A label, not a measurement. */
   toxicProducts: readonly ToxicProduct[];
-  /** Grams of gas per gram burned. Assumed. The fire sim does not read this. */
-  toxicYieldGPerG: Partial<Record<ToxicProduct, number>>;
+  /** Grams of gas per gram burned. Assumed on every row. */
+  toxicYieldGPerG: ToxicYields;
   /** kW/m². Null does not ignite. */
   chfKwM2: number | null;
   /** Thermal response parameter. Null does not ignite. */
@@ -298,6 +306,11 @@ export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
   ) {
     return null;
   }
+  const toxicYieldGPerG: ToxicYields = {};
+  for (const gas of TOXIC_PRODUCTS) {
+    const yieldG = entry.toxicYieldGPerG[gas];
+    if (yieldG != null && yieldG > 0) toxicYieldGPerG[gas] = yieldG;
+  }
   return {
     category: entry.fuel,
     chfKwM2: entry.chfKwM2,
@@ -307,6 +320,7 @@ export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
     fuelLoadKgM2: entry.fuelLoadKgM2,
     liquidPool: entry.liquidPool,
     ...(entry.liquidPool ? { poolAreaM2: FRYER_POOL_AREA_M2 } : {}),
+    ...(Object.keys(toxicYieldGPerG).length > 0 ? { toxicYieldGPerG } : {}),
   };
 }
 
