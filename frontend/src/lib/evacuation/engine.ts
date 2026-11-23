@@ -691,12 +691,19 @@ export class PolygonEvacuationEngine {
         const dist = Math.hypot(dx, dy);
         let band: ReturnType<typeof blastInjuryBand>;
         if (pressure) {
+          // interiorWalls and this.exits hold every storey. A wall on another
+          // floor must not raise the pressure on this one.
+          const storeyWalls =
+            this.wallsByLevel.get(this.blastLevel ?? '') ?? this.interiorWalls;
+          const storeyExits = this.blastLevel
+            ? this.exits.filter((exit) => levelOf(exit) === this.blastLevel)
+            : this.exits;
           const near = isNearWallBehind(
             { x: body.position.x, y: body.position.y },
             site,
-            this.interiorWalls,
+            storeyWalls,
             this.config.vertices,
-            this.exits,
+            storeyExits,
           );
           const felt = blastPressureAt(pressure.spec, Math.hypot(dx, dy, h), near);
           band = bandForEffectiveKpa(felt.effectiveKpa);

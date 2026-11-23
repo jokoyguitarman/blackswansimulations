@@ -22,6 +22,7 @@ import {
   normaliseStairwell,
 } from '../src/lib/rts/levels.ts';
 import { generateSceneStuds } from '../src/lib/rts/sceneStuds.ts';
+import { defaultCharge } from '../src/lib/rts/blast/blastModel.ts';
 import type { InteriorWall, LevelDef, Stairwell } from '../src/lib/rts/types.ts';
 
 const NEIGHBOR_RADIUS = 8;
@@ -513,6 +514,50 @@ describe('rts levels', () => {
     assert.equal(byLevel.get('G')?.state, 'down');
     assert.equal(byLevel.get('L1')?.state, 'reacting');
     assert.equal(byLevel.get('L1')?.injury, 'none');
+    eng.destroy();
+  });
+
+  it('a wall on another storey does not raise blast pressure', () => {
+    const behind = {
+      startX: 8,
+      startY: 0,
+      endX: 8,
+      endY: 20,
+      hasDoor: false,
+      doorWidth: 0,
+      doorPosition: 0.5,
+    };
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 0 },
+      [],
+      [behind],
+      [],
+      { afterExit: 'zone', zones: [], seed: 1 },
+      {
+        ids: ['G', 'L1'],
+        exitsByLevel: { G: [exitOn('out', 'G')], L1: [exitOn('up', 'L1')] },
+        wallsByLevel: { G: [], L1: [behind] },
+        stairs: [],
+        counts: { G: 1, L1: 0 },
+        heights: { G: 4, L1: 4 },
+      },
+    );
+    eng.setBlastLevel('G');
+    eng.setInteriorWalls([behind]);
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    Matter.Body.setPosition(body, { x: 7, y: 10 });
+    eng.triggerBlast({ x: 0, y: 10 }, { mode: 'pressure', spec: defaultCharge(), heightM: 0 });
+    const ped = (body as Matter.Body & {
+      __ped: { level: string; state: string; injury: string; nearWall?: boolean; blastKpa?: number };
+    }).__ped;
+    assert.equal(ped.level, 'G');
+    assert.equal(ped.nearWall, false);
+    assert.equal(ped.injury, 'minor');
+    assert.equal(ped.state, 'reacting');
+    assert.ok(
+      ped.blastKpa != null && Math.abs(ped.blastKpa - 128) < 2,
+      `pressure ${ped.blastKpa}`,
+    );
     eng.destroy();
   });
 
