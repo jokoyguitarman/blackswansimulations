@@ -90,7 +90,8 @@ const DEFAULT_WALL_RESISTANCE: Record<string, number> = {
 const DEFAULT_HAZARD_ACCELERATION: Record<string, number> = {
   combustible: 3,
   ignitable: 5,
-  chemical: 4,
+  // A chemical circle does not speed the fire. Suppression is a placed head.
+  chemical: 1,
   electrical: 2,
   debris_risk: 1,
   falling_object: 1,

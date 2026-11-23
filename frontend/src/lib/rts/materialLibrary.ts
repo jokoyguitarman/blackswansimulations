@@ -11,11 +11,14 @@
  * both fuel loads, the 0.3 m² pan, and every yield are assumed.
  */
 
-import { FRYER_POOL_AREA_M2, type FuelCell } from './flameFront';
+import { FRYER_POOL_AREA_M2, HOOD_HEIGHT_M, SPRINKLER_CEILING_M, type FuelCell } from './flameFront';
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
 export type MaterialBehaviour = 'none' | 'pressurised_gas' | 'suppression' | 'electrical';
+
+/** Sprinkler and kitchen hood share the wet-zone behaviour. The RTI differs. */
+export type SuppressionKind = 'sprinkler' | 'wet_chemical';
 
 export type ToxicProduct = 'CO' | 'HCN' | 'HCl' | 'acrolein';
 
@@ -26,6 +29,8 @@ export interface MaterialEntry {
   keywords: readonly string[];
   fuel: FuelCategory;
   behaviour: MaterialBehaviour;
+  /** Set on a suppression entry. Absent on everything else. */
+  suppression?: SuppressionKind;
   /** Stored for a later phase. The fire sim does not read this. */
   toxicProducts: readonly ToxicProduct[];
   /** Grams of gas per gram burned. Assumed. The fire sim does not read this. */
@@ -78,6 +83,20 @@ export interface GasLinePlacement {
   pos: { x: number; y: number };
   level: string;
   autoShutoffSec: number | null;
+}
+
+/**
+ * A confirmed sprinkler or wet-chemical head. It does not burn.
+ * For a sprinkler, `ceilingM` is the storey height when the building has
+ * one, else the worked-example 3 m. For a wet-chemical hood it is the
+ * assumed link height over the appliance, not the storey height.
+ */
+export interface SuppressionPlacement {
+  id: string;
+  pos: { x: number; y: number };
+  level: string;
+  kind: SuppressionKind;
+  ceilingM: number;
 }
 
 /** A confirmed electrical object, or an electrical hazard circle. */
@@ -222,8 +241,19 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
   {
     id: 'wet_chemical',
     label: 'Wet-chemical system',
-    keywords: ['wet chemical', 'sprinkler', 'suppression', 'extinguisher'],
+    keywords: ['wet chemical', 'wet-chemical', 'ansul'],
     behaviour: 'suppression',
+    suppression: 'wet_chemical',
+    toxicProducts: [],
+    toxicYieldGPerG: {},
+    ...INERT,
+  },
+  {
+    id: 'sprinkler',
+    label: 'Sprinklers',
+    keywords: ['sprinkler', 'sprinklers'],
+    behaviour: 'suppression',
+    suppression: 'sprinkler',
     toxicProducts: [],
     toxicYieldGPerG: {},
     ...INERT,
@@ -245,6 +275,7 @@ export const COMMON_PICKS: readonly CommonPick[] = [
   { label: 'Gas line', entryId: 'gas_line' },
   { label: 'Ceramic tile', entryId: 'ceramic_tile' },
   { label: 'Wet-chemical system', entryId: 'wet_chemical' },
+  { label: 'Sprinklers', entryId: 'sprinkler' },
 ];
 
 export function entryById(id: string): MaterialEntry | undefined {
@@ -458,6 +489,37 @@ export function confirmedElectricalSources(
     });
   }
   return sources;
+}
+
+/**
+ * Confirmed suppression heads. A chemical circle is not one of these, and
+ * an unconfirmed object is not either. The head sits on the marker.
+ */
+export function confirmedSuppression(
+  objects: readonly PlacedObject[],
+  ceilingByLevel: Readonly<Record<string, number>> = {},
+): SuppressionPlacement[] {
+  const heads: SuppressionPlacement[] = [];
+  for (const obj of objects) {
+    if (!obj.confirmed) continue;
+    const match = obj.matches.find((item) => item.behaviour === 'suppression');
+    if (!match) continue;
+    const entry = entryById(match.entryId);
+    const kind = entry?.suppression ?? 'wet_chemical';
+    const level = obj.level || 'G';
+    const stored = ceilingByLevel[level];
+    const storey = stored != null && Number.isFinite(stored) && stored > 0 ? stored : SPRINKLER_CEILING_M;
+    // A hood link hangs over the pan. The storey height is the sprinkler ceiling.
+    const ceilingM = kind === 'wet_chemical' ? HOOD_HEIGHT_M : storey;
+    heads.push({
+      id: obj.id,
+      pos: { x: obj.pos.x, y: obj.pos.y },
+      level,
+      kind,
+      ceilingM,
+    });
+  }
+  return heads;
 }
 
 /** Stud ids from `confirmedFuelCells`. */

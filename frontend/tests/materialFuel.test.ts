@@ -290,7 +290,7 @@ describe('legacy circles become objects', () => {
       foodCourtPlacedObjects(),
       studs.map((stud) => ({ id: stud.id, simPos: stud.simPos, level: stud.floor })),
     );
-    assert.equal(placed.length, 14);
+    assert.equal(placed.length, 19);
     assert.equal(placed.every((obj) => obj.confirmed && obj.studId), true);
     const fuel = confirmedFuelStudIds(
       placed,
@@ -355,6 +355,23 @@ describe('legacy circles become objects', () => {
     assert.ok(pizzaGap > 2.5 && pizzaGap < 3.5, `pizza table is ${pizzaGap} m from the gas line`);
     const pizzaFridge = placed.find((obj) => obj.id === 'elec-pizza');
     assert.ok(pizzaFridge && pizzaFridge.studId !== pizzaTable.studId);
+    const hoods = placed.filter((obj) => obj.id.startsWith('hood-'));
+    assert.equal(hoods.length, 5);
+    const pizzaHood = placed.find((obj) => obj.id === 'hood-pizza');
+    const fryerHood = placed.find((obj) => obj.id === 'hood-fryer');
+    const fryerGas = placed.find((obj) => obj.id === 'legacy-hz-gas-fryer');
+    assert.ok(pizzaHood && pizzaTable && pizzaGas && fryerHood && fryerGas);
+    assert.notEqual(pizzaHood.studId, pizzaTable.studId);
+    assert.equal(pizzaHood.studId, pizzaGas.studId);
+    assert.equal(fuel.has(pizzaHood.studId), false);
+    assert.equal(fryerHood.studId, fryerGas.studId);
+    assert.equal(fuel.has(fryerHood.studId), true);
+    for (const hood of hoods) {
+      assert.equal(hood.confirmed, true);
+      assert.ok(hood.matches.every((match) => match.behaviour === 'suppression'));
+      assert.ok(hood.matches.every((match) => match.fuel === 'non_combustible'));
+      if (hood.id !== 'hood-fryer') assert.equal(fuel.has(hood.studId), false);
+    }
   });
 });
 

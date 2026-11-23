@@ -990,7 +990,7 @@ function defaultFireParams(): CalibratedFireParams {
       metal: 1800,
       '': 900,
     },
-    hazardAcceleration: { combustible: 3, ignitable: 5, chemical: 4, electrical: 2 },
+    hazardAcceleration: { combustible: 3, ignitable: 5, chemical: 1, electrical: 2 },
     reasoning: 'Default parameters — AI calibration unavailable.',
   };
 }

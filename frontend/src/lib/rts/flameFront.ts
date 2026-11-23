@@ -12,8 +12,11 @@
  *
  * Growth is Q = α t² (seed `t2_alpha_classes`). A solid, light or heavy,
  * then stops at 250 kW/m² of contents. A liquid caps at the pool fire on
- * its pan, NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). Suppression does not
- * cut Q yet.
+ * its pan, NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). After a spray opens
+ * on solid fuel it can reach, that release decays as
+ * Q(t) = Q(t_act) exp(−(t − t_act) / τ) (seed `sprinkler_suppression_decay`).
+ * A pressurised gas jet is not decayed. A water sprinkler does not decay
+ * cooking oil. Wet chemical on oil uses the same τ, and that use is assumed.
  *
  * The visible front is the room-scale speed on the entry, in metres per
  * minute (seed `flame_spread_rates`). Surface spread of a thick solid is the
@@ -337,6 +340,209 @@ export function electricalHeatReleaseKw(
 ): number {
   if (!(fluxKwM2 > 0) || !(standoffM > 0)) return 0;
   return (fluxKwM2 * 4 * Math.PI * standoffM * standoffM) / RADIATIVE_FRACTION;
+}
+
+/**
+ * Sprinkler and kitchen-hood links. One behaviour, two parameter sets.
+ *
+ * The ceiling jet is Alpert's dimensional correlation, NUREG-1805 Eq. 10-3
+ * to 10-6 (seed `alpert_ceiling_jet_dimensional`). Q is kW, H is metres
+ * from the fire to the ceiling, r is metres along the ceiling. The fit was
+ * made on fires from 668 kW to 98 MW. A smaller fire still uses the same
+ * equations; that is outside the fit.
+ *
+ * The link is the RTI equation, CFAST Eq. 6.1 and the steady form NUREG-1805
+ * Eq. 10-2 (seed `sprinkler_activation`):
+ * dT_L/dt = √u / RTI · (T_g − T_L). The C-factor is ignored, as in the
+ * worked example. Ambient is 20 °C. A sprinkler opens at 68 °C, the
+ * temperature in that example. A hood's 68 °C is assumed.
+ *
+ * A ceiling sprinkler uses RTI 50 (m·s)^½, the C/VM2 quick-response value
+ * in the worked example. A kitchen wet-chemical head uses RTI 135, the
+ * C/VM2 standard-response value named next to it in `sprinkler_rti_generic`.
+ * The seeds have no hood-link temperature. 68 °C on a hood is assumed.
+ *
+ * A sprinkler link sits in the ceiling jet. H is the storey height, or 3 m
+ * when the building does not say. A hood link sits over the appliance, so
+ * its H is an assumed 1.1 m and not the storey height. r is the plan
+ * distance. A hood on the appliance stud is the r = 0 branch.
+ *
+ * Decay uses the NIST IR 5254 bound, τ = 435 s, for solid fuel. The crib
+ * fit at 0.07 mm/s is 410 s; 435 s is the bound the spec quotes. A gas jet
+ * keeps burning at the release its supply feeds until the valve closes.
+ * NIST IR 5254 does not describe that jet, and it does not describe water
+ * on a deep-fat fryer. Wet chemical on oil still uses τ, as an assumed
+ * stand-in: the agent saponifies the oil, and the seeds have no oil row.
+ *
+ * NFPA 17A and NFPA 96 require a cooking-equipment extinguishing system, on
+ * discharge, to shut off the fuel and the electric power that heat the
+ * equipment it protects. The fittings inside this head's throw are that
+ * set. The throw itself is assumed. A sprinkler does not shut them off.
+ *
+ * The throw, 4.5 m, is assumed. A 6 m stall's corner is 4.24 m from its
+ * centre, so a head on a stud in the stall reaches that stall and not the
+ * next stall's centre. A wall still blocks the spray.
+ *
+ * Wet footing is assumed. The movement seeds have no wet-floor speed.
+ * Walking speed on a sprayed stud is multiplied by 0.75.
+ *
+ * While a spray is open, the flux used for t_ig on a stud it reaches is
+ * held at that stud's critical flux, so the dose does not advance. Holding
+ * it exactly at the critical flux is assumed. The decay formula is the
+ * sourced part.
+ */
+
+/** C/VM2 quick-response RTI, the worked example. (m·s)^½. */
+export const SPRINKLER_RTI = 50;
+
+/** C/VM2 standard-response RTI, from the note on `sprinkler_rti_generic`. */
+export const WET_CHEMICAL_RTI = 135;
+
+/** Link opens at this gas temperature. The worked example, °C. */
+export const SPRINKLER_ACT_C = 68;
+
+/**
+ * Assumed hood-link temperature, °C. The seeds have no fusible-link rating
+ * for a kitchen hood, so this reuses the sprinkler example and is labelled
+ * assumed. It is not a measured hood link.
+ */
+export const HOOD_LINK_C = 68;
+
+/** Room temperature in the worked example, °C. */
+export const SPRINKLER_AMBIENT_C = 20;
+
+/**
+ * NIST IR 5254 bound on the heat-release decay of solid fuel, seconds.
+ * Q(t) = Q(t_act) exp(−(t − t_act) / τ). The crib value at 0.07 mm/s is
+ * about 410 s. Using this τ for cooking oil under wet chemical is assumed.
+ */
+export const SUPPRESSION_TAU_S = 435;
+
+/**
+ * Assumed spray radius, metres. Covers a 6 m stall from a head inside it
+ * and stops short of the next stall's centre. A wall blocks it anyway.
+ */
+export const SUPPRESSION_REACH_M = 4.5;
+
+/**
+ * Assumed ceiling height when the storey does not say. The worked example
+ * is 3 m. A saved storey height is used instead, as fire-to-ceiling.
+ * A wet-chemical hood does not use this. Its link is HOOD_HEIGHT_M.
+ */
+export const SPRINKLER_CEILING_M = 3;
+
+/**
+ * Assumed height of a wet-chemical link above the cooking surface, metres.
+ * A hood's detectors sit about a metre over the appliance, not at the
+ * storey ceiling. 1.1 m is that assumption. The plan distance is still r,
+ * so a hood on the appliance stud uses Alpert's r = 0 branch.
+ */
+export const HOOD_HEIGHT_M = 1.1;
+
+/**
+ * Assumed walking-speed factor on a floor the spray has wetted.
+ * No wet-floor row exists in the movement seeds.
+ */
+export const WET_FLOOR_SPEED = 0.75;
+
+/**
+ * Link samples of a growing fire, seconds. The steady equation is exact
+ * for a constant jet, so the step size does not matter then. A growing
+ * fire is sampled on this grid, and a short remainder uses the same
+ * equation, so 0.1 s and 1 s steps agree.
+ */
+export const LINK_QUANTUM_S = 0.1;
+
+export interface CeilingJet {
+  /** Temperature rise of the jet above ambient, K. */
+  riseK: number;
+  /** Ceiling-jet speed, m/s. */
+  speedMps: number;
+}
+
+/** Alpert, NUREG-1805 Eq. 10-3 to 10-6. Zero when there is no fire. */
+export function ceilingJet(heatKw: number, ceilingM: number, radiusM: number): CeilingJet {
+  if (!(heatKw > 0) || !(ceilingM > 0)) return { riseK: 0, speedMps: 0 };
+  const r = Math.max(0, radiusM);
+  const rOverH = r / ceilingM;
+  const q23 = heatKw ** (2 / 3);
+  const q13 = heatKw ** (1 / 3);
+  const riseK =
+    rOverH <= 0.18
+      ? (16.9 * q23) / ceilingM ** (5 / 3)
+      : (5.38 * (heatKw / Math.max(r, 1e-6)) ** (2 / 3)) / ceilingM;
+  const speedMps =
+    rOverH <= 0.15
+      ? 0.96 * (heatKw / ceilingM) ** (1 / 3)
+      : (0.195 * q13 * Math.sqrt(ceilingM)) / Math.max(r, 1e-6) ** (5 / 6);
+  return {
+    riseK: Number.isFinite(riseK) && riseK > 0 ? riseK : 0,
+    speedMps: Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 0,
+  };
+}
+
+/**
+ * One step of the RTI equation. Exact while the jet temperature and speed
+ * stay constant through `dt`. A still jet (u = 0) does not move the link.
+ */
+export function linkTemperatureC(
+  linkC: number,
+  gasC: number,
+  speedMps: number,
+  rti: number,
+  dt: number,
+): number {
+  if (!(dt > 0) || !(rti > 0) || !(speedMps > 0)) return linkC;
+  const k = Math.sqrt(speedMps) / rti;
+  return gasC - (gasC - linkC) * Math.exp(-k * dt);
+}
+
+/**
+ * Seconds for a steady jet to bring the link from `linkC` to `actC`.
+ * Null when the jet is cooler than the link's opening temperature, or still.
+ * NUREG-1805 Eq. 10-2.
+ */
+export function steadyActivationSec(
+  linkC: number,
+  gasC: number,
+  speedMps: number,
+  rti: number,
+  actC = SPRINKLER_ACT_C,
+): number | null {
+  if (!(rti > 0) || !(speedMps > 0) || !(gasC > actC)) return null;
+  const span = gasC - linkC;
+  const remain = gasC - actC;
+  if (!(span > 0) || !(remain > 0)) return 0;
+  if (span <= remain) return 0;
+  return (rti / Math.sqrt(speedMps)) * Math.log(span / remain);
+}
+
+/**
+ * One slice of the link. Exact for a constant jet over `dt`. `openedAt` is
+ * seconds into the slice when the link reaches 68 °C, or null when it does
+ * not open in this slice. A still jet leaves the link where it is.
+ */
+export function advanceSprinklerLink(
+  linkC: number,
+  gasC: number,
+  speedMps: number,
+  rti: number,
+  dt: number,
+  actC = SPRINKLER_ACT_C,
+): { linkC: number; openedAt: number | null } {
+  if (!(dt > 0) || !(rti > 0) || !(speedMps > 0)) return { linkC, openedAt: null };
+  const hit = steadyActivationSec(linkC, gasC, speedMps, rti, actC);
+  if (hit != null && hit <= dt + 1e-9) {
+    return { linkC: actC, openedAt: Math.max(0, Math.min(hit, dt)) };
+  }
+  return { linkC: linkTemperatureC(linkC, gasC, speedMps, rti, dt), openedAt: null };
+}
+
+/** Q(t_act) exp(−age / τ). Age 0 is the release at the moment the spray opens. */
+export function suppressedHeatKw(qActKw: number, ageSec: number, tauS = SUPPRESSION_TAU_S): number {
+  if (!(qActKw > 0)) return 0;
+  if (!(ageSec > 0) || !(tauS > 0)) return qActKw;
+  return qActKw * Math.exp(-ageSec / tauS);
 }
 
 /** Red-oak flux that finishes t_ig in one fireball pulse. */

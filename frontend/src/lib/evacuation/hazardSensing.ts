@@ -13,6 +13,8 @@ export type Posture = 'stand' | 'crouch' | 'crawl';
 export interface HazardSample {
   smoke: number;
   fire: FireCell;
+  /** True when an open spray has wetted the nearest stud. Absent means dry. */
+  wet: boolean;
 }
 
 export interface HazardStud {
@@ -24,6 +26,7 @@ export interface HazardStud {
 interface StudStateLike {
   smoke: number;
   fire: { state: string };
+  wet?: boolean;
 }
 
 function asFireCell(state: string | undefined): FireCell {
@@ -55,9 +58,9 @@ export class HazardField {
   /** Nearest stud within 1.5 × cellM, else { smoke: 0, fire: 'none' }. */
   sample(x: number, y: number): HazardSample {
     const nearest = this.nearest(x, y, 1.5 * this.cellM);
-    if (!nearest) return { smoke: 0, fire: 'none' };
+    if (!nearest) return { smoke: 0, fire: 'none', wet: false };
     const st = this.states?.get(nearest.id);
-    return { smoke: st?.smoke ?? 0, fire: asFireCell(st?.fire.state) };
+    return { smoke: st?.smoke ?? 0, fire: asFireCell(st?.fire.state), wet: st?.wet === true };
   }
 
   /** Burning and heating studs within radius, for repulsion. */
