@@ -65,6 +65,26 @@ export interface PlacedObject {
   coverRadiusM?: number;
   /** Centre of that circle. Snap moves `pos` onto a stud and leaves this. */
   coverCenter?: { x: number; y: number };
+  /**
+   * Seconds a ruptured gas jet burns before an automatic valve closes.
+   * Absent, or not a positive number, means it stays open until someone shuts it off.
+   */
+  valveSec?: number | null;
+}
+
+/** A confirmed pressurised-gas object, at the marker the trainer sees. */
+export interface GasLinePlacement {
+  id: string;
+  pos: { x: number; y: number };
+  level: string;
+  autoShutoffSec: number | null;
+}
+
+/** A confirmed electrical object, or an electrical hazard circle. */
+export interface ElectricalPlacement {
+  id: string;
+  pos: { x: number; y: number };
+  level: string;
 }
 
 export interface CommonPick {
@@ -383,6 +403,61 @@ export function confirmedFuelCells(
     if (obj.studId) add(obj.studId, cell);
   }
   return cells;
+}
+
+function positiveSeconds(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || !(value > 0)) return null;
+  return value;
+}
+
+/**
+ * Confirmed gas lines. One per object whose matches include pressurised gas,
+ * including a fryer that is also fuel. Unconfirmed objects are skipped.
+ * The jet sits on the marker (`pos`), which snap has put on a stud.
+ */
+export function confirmedGasLines(objects: readonly PlacedObject[]): GasLinePlacement[] {
+  const lines: GasLinePlacement[] = [];
+  for (const obj of objects) {
+    if (!obj.confirmed) continue;
+    if (!obj.matches.some((match) => match.behaviour === 'pressurised_gas')) continue;
+    lines.push({
+      id: obj.id,
+      pos: { x: obj.pos.x, y: obj.pos.y },
+      level: obj.level || 'G',
+      autoShutoffSec: positiveSeconds(obj.valveSec),
+    });
+  }
+  return lines;
+}
+
+/**
+ * Confirmed electrical objects, then electrical hazard circles that are not
+ * already one of those objects. An arc is an ignition source. It is not fuel.
+ */
+export function confirmedElectricalSources(
+  objects: readonly PlacedObject[],
+  zones: readonly { id: string; pos: { x: number; y: number }; hazardType: string; level?: string }[] = [],
+): ElectricalPlacement[] {
+  const sources: ElectricalPlacement[] = [];
+  for (const obj of objects) {
+    if (!obj.confirmed) continue;
+    if (!obj.matches.some((match) => match.behaviour === 'electrical')) continue;
+    sources.push({
+      id: obj.id,
+      pos: { x: obj.pos.x, y: obj.pos.y },
+      level: obj.level || 'G',
+    });
+  }
+  for (const zone of zones) {
+    if (zone.hazardType !== 'electrical') continue;
+    if (sources.some((source) => source.id === zone.id)) continue;
+    sources.push({
+      id: zone.id,
+      pos: { x: zone.pos.x, y: zone.pos.y },
+      level: zone.level || 'G',
+    });
+  }
+  return sources;
 }
 
 /** Stud ids from `confirmedFuelCells`. */

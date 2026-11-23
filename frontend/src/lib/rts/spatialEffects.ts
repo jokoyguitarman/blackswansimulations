@@ -5,8 +5,11 @@ import {
   type FireSimStud,
   type FireStudState,
   type FireParams,
+  type GasJet,
 } from './fireSimulation';
 import type { FuelCell } from './flameFront';
+import type { ChargeSpec } from './blast/blastModel';
+import type { ElectricalPlacement, GasLinePlacement } from './materialLibrary';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -205,6 +208,51 @@ export class SpatialEffectsEngine {
     this.fireSim.setFuelCells(cells);
   }
 
+  /** The charge a blast event uses for rupture. It does not change the drawn fireball. */
+  setBlastCharge(spec: ChargeSpec | null) {
+    this.fireSim.setBlastCharge(spec);
+  }
+
+  /** Confirmed gas lines. Safe to call every frame: rupture and shutoff stay on the id. */
+  setGasLines(lines: readonly GasLinePlacement[]) {
+    this.fireSim.setGasLines(lines);
+  }
+
+  /** Arcs. They are not inferred from the hazard list passed to step. */
+  setElectricalSources(sources: readonly ElectricalPlacement[]) {
+    this.fireSim.setElectricalSources(sources);
+  }
+
+  /** Close one jet, or every jet when the id is omitted. */
+  shutOffGas(id?: string) {
+    this.fireSim.shutOffGas(id);
+  }
+
+  /** Kill one arc, or every arc when the id is omitted. */
+  shutOffPower(id?: string) {
+    this.fireSim.shutOffPower(id);
+  }
+
+  gasJets(): GasJet[] {
+    return this.fireSim.gasJets();
+  }
+
+  electricalArcs() {
+    return this.fireSim.electricalArcs();
+  }
+
+  isJetting(id: string): boolean {
+    return this.fireSim.isJetting(id);
+  }
+
+  isArcing(id: string): boolean {
+    return this.fireSim.isArcing(id);
+  }
+
+  gasLineState(id: string) {
+    return this.fireSim.gasLineState(id);
+  }
+
   registerHazard(
     hazardId: string,
     events: HazardEvent[],
@@ -227,7 +275,7 @@ export class SpatialEffectsEngine {
     const simDt = dt * this.timeScale;
     this.elapsed += simDt;
 
-    this.processHazardEvents(hazards);
+    this.processHazardEvents(hazards, walls);
     this.stepFire(simDt, walls, hazards);
     this.stepGas(simDt, walls);
     this.stepFlood(simDt, walls);
@@ -235,7 +283,7 @@ export class SpatialEffectsEngine {
     this.stepSmoke(simDt, walls);
   }
 
-  private processHazardEvents(hazards: HazardZone[]) {
+  private processHazardEvents(hazards: HazardZone[], walls: InteriorWall[]) {
     for (const [, hs] of this.hazardStates) {
       while (hs.nextEventIdx < hs.events.length) {
         const event = hs.events[hs.nextEventIdx];
@@ -264,6 +312,7 @@ export class SpatialEffectsEngine {
 
           if (event.spreadType === 'fire') {
             this.fireSim.igniteRadius(origin, event.spreadRadius, hazard?.level);
+            this.fireSim.applyBlast(origin, event.spreadRadius, hazard?.level, walls);
           }
         }
       }

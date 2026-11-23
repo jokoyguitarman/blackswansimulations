@@ -256,6 +256,89 @@ export function fireballFluxKwM2(distanceM: number, radiusM: number): number {
   return edge * (radiusM / r) ** 2;
 }
 
+/**
+ * Overpressure that opens a pressurised-gas object.
+ *
+ * Clancey (1972), as tabulated in IOGP Report 434-15 Table 2.8
+ * (seed `clancey_damage_table`): 20.7–27.6 kPa is "Frameless, self-framing
+ * steel panel building demolished; rupture of oil storage tanks". The onset
+ * of that band is 20.7 kPa. The seed lists the table as incident overpressure.
+ *
+ * That row is a storage tank, not a building gas pipe. The seeds have no
+ * pipe-failure pressure, so this onset is the cited figure applied to a
+ * confirmed gas line. Compare it with incident overpressure (`psKpa`), the
+ * measure the table is written in. Reflected pressure is for injuries.
+ */
+export const GAS_RUPTURE_KPA = 20.7;
+
+/**
+ * Assumed cap for one open building gas supply after the line ruptures.
+ * It does not grow with time. The jet only heats nearby fuel through the
+ * point-source flux, and it is not added to the room-heat sum.
+ *
+ * An orifice estimate for a full-bore break of a low-pressure natural-gas
+ * service (about 2 kPa gauge) is roughly 0.8 MW at 25 mm and 3 MW at 50 mm.
+ * Medium-pressure supplies can reach 10 MW. 8000 kW is the upper end of that
+ * span, kept so one stud of light fuel still sits above its critical flux.
+ *
+ * The flux uses the shared radiative fraction 0.35. A natural-gas jet flame
+ * is nearer 0.2, so this flux is about one and a half times a jet-specific
+ * fraction. The jet stays on the same fraction as the flame front.
+ *
+ * Kept out of the room sum on purpose. Counting 8 MW against the 1 MW
+ * flashover floor would light the stall in one step and skip the flux path.
+ * An open stall front about 6 m by 2.5 m can vent on the order of 18 MW
+ * (750·A₀·√H₀), so this jet would not flash that opening. One kitchen door
+ * is nearer 1.9 MW and would. Rooms have no vent-based flashover threshold
+ * yet, so the jet stays a local flux only.
+ *
+ * At 3 m, one stud away, the flux is about 25 kW/m², so red oak reaches
+ * t_ig in about 65 s. At 6 m the flux is under the 10 kW/m² critical flux,
+ * so the jet does not cross the court.
+ */
+export const GAS_JET_KW = 8000;
+
+/**
+ * How far a jet or an arc is worth scanning. Past this, the capped jet is
+ * far under the critical flux, so a stud cannot ignite from it.
+ */
+export const GAS_JET_REACH_M = 12;
+
+/**
+ * Assumed arc flux at the flame standoff. 20 kW/m² is the NUREG red-oak
+ * worked example, t_ig 141 s. There is no arc-flux row. The equivalent
+ * point source is that flux at FLAME_STANDOFF_M. At 3 m the flux is under
+ * the critical flux, so an arc does not spread across a stud.
+ */
+export const ELECTRICAL_ARC_FLUX_KW_M2 = 20;
+
+/** One stud. An arc lights a ruptured line this close, and not the next one. */
+export const ELECTRICAL_IGNITE_M = 3;
+
+/**
+ * Assumed incident overpressure that faults an appliance so it arcs.
+ * There is no equipment-damage row. It is not the 20.7 kPa tank figure.
+ * An appliance inside the fireball radius is also faulted, below this
+ * pressure. A working fitting does not arc.
+ */
+export const ELECTRICAL_DAMAGE_KPA = 30;
+
+/**
+ * Assumed time a faulted arc burns unless someone shuts the power off
+ * sooner. Longer than the 141 s red-oak t_ig at the standoff, so fuel on
+ * the appliance's own stud can still catch.
+ */
+export const ELECTRICAL_ARC_SEC = 180;
+
+/** Point-source heat release that delivers the arc flux at the standoff. */
+export function electricalHeatReleaseKw(
+  fluxKwM2 = ELECTRICAL_ARC_FLUX_KW_M2,
+  standoffM = FLAME_STANDOFF_M,
+): number {
+  if (!(fluxKwM2 > 0) || !(standoffM > 0)) return 0;
+  return (fluxKwM2 * 4 * Math.PI * standoffM * standoffM) / RADIATIVE_FRACTION;
+}
+
 /** Red-oak flux that finishes t_ig in one fireball pulse. */
 export function fireballEdgeFluxKwM2(
   chfKwM2 = 10,

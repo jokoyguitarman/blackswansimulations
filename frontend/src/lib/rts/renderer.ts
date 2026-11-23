@@ -155,6 +155,8 @@ export function renderRTS(
   showcaseFx?: ShowcaseRenderFx | null,
   levelView?: LevelView | null,
   placedObjects?: PlacedObjectDraw[] | null,
+  gasJets?: Array<{ pos: Vec2; level?: string }> | null,
+  electricalArcs?: Array<{ pos: Vec2; level?: string }> | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
@@ -263,6 +265,20 @@ export function renderRTS(
   }
   if (objectsToDraw && objectsToDraw.length > 0) {
     for (const obj of objectsToDraw) drawPlacedObject(ctx, obj, rc);
+  }
+  if (electricalArcs && electricalArcs.length > 0) {
+    drawElectricalArcs(
+      ctx,
+      rc,
+      levelView ? electricalArcs.filter((arc) => onActive(arc.level)) : electricalArcs,
+    );
+  }
+  if (gasJets && gasJets.length > 0) {
+    drawGasJets(
+      ctx,
+      rc,
+      levelView ? gasJets.filter((jet) => onActive(jet.level)) : gasJets,
+    );
   }
   if (stairsToDraw && stairsToDraw.length > 0) {
     for (const sw of stairsToDraw) {
@@ -1435,6 +1451,68 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
 
   const iconKey = HAZARD_ICON_KEY[hz.hazardType] || 'hazard_generic';
   drawSvgIcon(ctx, iconKey, p.cx, p.cy, Math.min(drawR * 0.6, scaledR(10, rc)));
+}
+
+/**
+ * A faulted appliance. The mark is the picture of an arc at that point.
+ * It is not the flux radius, and it does not mark the stud as burning.
+ */
+function drawElectricalArcs(
+  ctx: CanvasRenderingContext2D,
+  rc: RenderContext,
+  arcs: Array<{ pos: Vec2; level?: string }>,
+) {
+  const flicker = 0.75 + 0.25 * Math.sin(performance.now() / 50);
+  for (const arc of arcs) {
+    const p = toCanvas(arc.pos.x, arc.pos.y, rc);
+    const radius = Math.max(mToCanvas(0.9, rc), 8);
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(186, 230, 253, ${0.85 * flicker})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(14, 165, 233, ${0.95 * flicker})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.font = scaledFont(11, rc);
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.strokeText('Arc', p.cx, p.cy - radius - 4);
+    ctx.fillStyle = '#e0f2fe';
+    ctx.fillText('Arc', p.cx, p.cy - radius - 4);
+  }
+}
+
+/**
+ * The jet at a ruptured line. The disc is the picture of a flame at that
+ * point. It is not the flux radius, and it does not mark the stud as burning.
+ */
+function drawGasJets(
+  ctx: CanvasRenderingContext2D,
+  rc: RenderContext,
+  jets: Array<{ pos: Vec2; level?: string }>,
+) {
+  const flicker = 0.85 + 0.15 * Math.sin(performance.now() / 90);
+  for (const jet of jets) {
+    const p = toCanvas(jet.pos.x, jet.pos.y, rc);
+    const radius = Math.max(mToCanvas(1.8, rc), 14);
+    const glow = ctx.createRadialGradient(p.cx, p.cy, radius * 0.08, p.cx, p.cy, radius);
+    glow.addColorStop(0, `rgba(255, 250, 230, ${0.95 * flicker})`);
+    glow.addColorStop(0.35, `rgba(255, 150, 30, ${0.9 * flicker})`);
+    glow.addColorStop(0.72, `rgba(210, 40, 8, ${0.55 * flicker})`);
+    glow.addColorStop(1, 'rgba(80, 0, 0, 0)');
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+    ctx.font = scaledFont(11, rc);
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.strokeText('Jet', p.cx, p.cy - radius - 4);
+    ctx.fillStyle = '#fff7ed';
+    ctx.fillText('Jet', p.cx, p.cy - radius - 4);
+  }
 }
 
 function drawPlacedObject(ctx: CanvasRenderingContext2D, obj: PlacedObjectDraw, rc: RenderContext) {
