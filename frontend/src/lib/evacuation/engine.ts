@@ -1571,13 +1571,16 @@ export class PolygonEvacuationEngine {
       if (count && changed) this.rerouteCount++;
       return;
     }
+    const wasForcedExit = ped.forcedCrawl === true && !ped.sheltering;
     const changed = choice.id !== ped.targetExitId;
     ped.targetExitId = choice.id;
     ped.exitCost = choice.cost;
     ped.sheltering = false;
     ped.forcedCrawl = choice.forced;
     if (choice.forced) ped.posture = 'crawl';
-    if (count && changed) this.rerouteCount++;
+    // Hopping from one forced crawl to another is the threshold fallback
+    // settling, not a decision to leave a usable exit.
+    if (count && changed && !(wasForcedExit && choice.forced)) this.rerouteCount++;
   }
 
   private stepOutside(body: Matter.Body, ped: PedLabel, density: number) {

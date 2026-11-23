@@ -39,7 +39,7 @@ export interface PlacedObjectDraw {
 
 export interface ShowcaseRenderFx {
   hazardStuds: Array<{ id: string; simPos: Vec2 }>;
-  effectStates: Map<string, { smoke: number; fire: { state: string } }> | null;
+  effectStates: Map<string, { smoke: number; fire: { state: string; approach?: number } }> | null;
   cellM: number;
   explosion: { pos: Vec2; radiusM: number; ageS: number; reducedMotion: boolean } | null;
   injuryRings: {
@@ -321,6 +321,7 @@ export function renderRTS(
   if (hazardAnimated && showcaseFx?.hazardFx) {
     showcaseFx.hazardFx.renderer.drawAbove(ctx, rc, showcaseFx.hazardFx.ctx);
   }
+  if (showcaseFx) drawFlameFront(ctx, rc, showcaseFx);
 
   for (const unit of state.units) {
     drawUnit(ctx, unit, rc);
@@ -663,6 +664,36 @@ function drawGhostPerson(
   ctx.fillRect(p.cx, p.cy, 1, 1);
 }
 
+/**
+ * The partner view draws the front as a disc that grows across the next stud.
+ * The radius is that stud's share of the gap, not a second fire on the tile.
+ */
+function drawFlameFront(
+  ctx: CanvasRenderingContext2D,
+  rc: RenderContext,
+  fx: ShowcaseRenderFx,
+) {
+  const states = fx.effectStates;
+  if (!states) return;
+  const cell = mToCanvas(fx.cellM, rc);
+  for (const stud of fx.hazardStuds) {
+    const fire = states.get(stud.id)?.fire;
+    if (!fire || fire.state !== 'heating') continue;
+    const approach = fire.approach ?? 0;
+    if (!(approach > 0)) continue;
+    const grown = Math.max(0.08, Math.min(1, approach));
+    const c = toCanvas(stud.simPos.x, stud.simPos.y, rc);
+    const radius = (cell / 2) * grown;
+    ctx.beginPath();
+    ctx.arc(c.cx, c.cy, Math.max(1.5, radius), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(251, 146, 60, ${0.35 + 0.5 * grown})`;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, cell * 0.06);
+    ctx.strokeStyle = 'rgba(254, 240, 138, 0.9)';
+    ctx.stroke();
+  }
+}
+
 function drawHazardField(
   ctx: CanvasRenderingContext2D,
   rc: RenderContext,
@@ -687,8 +718,12 @@ function drawHazardField(
       ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
       ctx.fillRect(c.cx - size * 0.3, c.cy - size * 0.3, size * 0.6, size * 0.6);
     } else if (fire === 'heating') {
-      ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
-      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+      const approach = st.fire?.approach ?? 1;
+      const grown = Math.max(0.12, Math.min(1, approach));
+      ctx.fillStyle = `rgba(251, 146, 60, ${0.25 + 0.55 * grown})`;
+      ctx.beginPath();
+      ctx.arc(c.cx, c.cy, (size / 2) * grown, 0, Math.PI * 2);
+      ctx.fill();
     } else if (fire === 'burnt_out') {
       ctx.fillStyle = 'rgba(60, 60, 60, 0.5)';
       ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);

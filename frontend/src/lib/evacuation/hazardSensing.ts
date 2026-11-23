@@ -272,14 +272,22 @@ export function exitApproachInside(exit: ExitDef, verts: Vec2[], offset = 2): Ve
   return { x: exit.center.x - nx * offset, y: exit.center.y - ny * offset };
 }
 
-export function isExitUsable(exit: ExitDef, verts: Vec2[], field: HazardField): boolean {
+export function isExitUsable(
+  exit: ExitDef,
+  verts: Vec2[],
+  field: HazardField,
+  recover = false,
+): boolean {
   if (exit.exitType === 'service') return false;
   if (exit.status === 'blocked') return false;
   const approach = exitApproachInside(exit, verts);
   const s = field.sample(approach.x, approach.y);
   if (s.fire === 'burning') return false;
-  // Inclusive at the threshold: K 1.5 is still usable, 1.51 is not (showcase oracle).
-  if (extinctionK(s.smoke) > SHOWCASE.REROUTE_EXTINCTION) return false;
+  const k = extinctionK(s.smoke);
+  // Inclusive at the open threshold: K 1.5 is still usable, 1.51 is not
+  // (showcase oracle). Once an exit has gone unusable, it is usable again
+  // only below 1.3, so a value sitting between the two does not flip.
+  if (recover ? k >= SHOWCASE.REROUTE_RECOVER : k > SHOWCASE.REROUTE_EXTINCTION) return false;
   return true;
 }
 
@@ -312,8 +320,9 @@ export function exitCost(
   field: HazardField,
   walls?: WallLike[],
   blockedDoors?: readonly WallLike[],
+  recover = false,
 ): number {
-  if (!isExitUsable(exit, verts, field)) return Infinity;
+  if (!isExitUsable(exit, verts, field, recover)) return Infinity;
   const approach = exitApproachInside(exit, verts);
   if (
     blockedDoors &&
@@ -397,18 +406,47 @@ export function chooseExit(
 ): ExitChoice | null {
   const avoided = new Set(options?.avoidIds ?? []);
   const pool = exits.filter((e) => e.id !== options?.excludeId && !avoided.has(e.id));
+  // The exit someone is already on stays usable up to 1.5. Every other exit,
+  // and a current exit that has already gone unusable, needs to be back under
+  // 1.3 before it can be chosen.
+  const heldUsable = current != null && current.cost < Infinity;
+  const costOf = (e: ExitDef) =>
+    exitCost(
+      pos,
+      e,
+      verts,
+      field,
+      options?.walls,
+      options?.blockedDoors,
+      current != null && !(heldUsable && e.id === current.id),
+    );
   const ranked = pool
-    .map((e) => ({
-      id: e.id,
-      cost: exitCost(pos, e, verts, field, options?.walls, options?.blockedDoors),
-    }))
+    .map((e) => ({ id: e.id, cost: costOf(e) }))
     .sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id));
   const best = ranked.find((r) => r.cost < Infinity);
 
   if (!best) {
-    // §2.6: every exit costs Infinity, so crawl to the nearest non-blocked exit.
-    // Avoid lists and the exclude id do not apply here — a sticky turn-back must
-    // not force someone past a nearer door onto a farther one.
+    // §2.6: every exit costs Infinity. Keep the current door while it is
+    // still a door, so a check that sits on the smoke threshold does not
+    // hop to whichever exit is nearest this frame. The nearest-exit crawl
+    // is only for someone with no open current door. Avoid lists and the
+    // exclude id do not apply to that crawl — a sticky turn-back must not
+    // force someone past a nearer door onto a farther one.
+    const held = current != null ? exits.find((e) => e.id === current.id) : undefined;
+    const doorBlocked =
+      held != null &&
+      options?.blockedDoors != null &&
+      options.blockedDoors.length > 0 &&
+      routeCrossesBlockedDoor(pos, held, verts, options.walls, options.blockedDoors);
+    if (
+      held &&
+      held.id !== options?.excludeId &&
+      held.exitType !== 'service' &&
+      held.status !== 'blocked' &&
+      !doorBlocked
+    ) {
+      return { id: held.id, cost: Infinity, forced: true };
+    }
     let nearest: ExitDef | null = null;
     let nearestD = Infinity;
     for (const e of exits) {
@@ -430,14 +468,7 @@ export function chooseExit(
     !options?.ignoreHysteresis &&
     pool.some((e) => e.id === current.id);
   if (stay && current) {
-    const now = exitCost(
-      pos,
-      pool.find((e) => e.id === current.id) as ExitDef,
-      verts,
-      field,
-      options?.walls,
-      options?.blockedDoors,
-    );
+    const now = costOf(pool.find((e) => e.id === current.id) as ExitDef);
     // A blocked or burning exit is abandoned on this check, not one check later.
     if (now < Infinity && !(best.cost < now * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
       return { id: current.id, cost: now, forced: false };
@@ -470,6 +501,13 @@ export interface WallLike {
   doorPosition: number;
 }
 
+/**
+ * A crossing this close to a wall end still counts. The old 1% of the wall
+ * length missed a joint, so a route looked clear while the wall body held
+ * the person there. Five centimetres is shorter than a body.
+ */
+const WALL_END_TOL_M = 0.05;
+
 function segmentsHitT(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): number | null {
   const d1x = p2.x - p1.x;
   const d1y = p2.y - p1.y;
@@ -479,7 +517,10 @@ function segmentsHitT(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): number | null {
   if (Math.abs(denom) < 1e-10) return null;
   const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
   const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
-  if (t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99) return t;
+  if (!(t > 0.01 && t < 0.99)) return null;
+  const wallLen = Math.hypot(d2x, d2y);
+  const along = u * wallLen;
+  if (along >= -WALL_END_TOL_M && along <= wallLen + WALL_END_TOL_M) return t;
   return null;
 }
 

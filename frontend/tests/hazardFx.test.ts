@@ -205,6 +205,7 @@ function pageLoopUntil(frameMs: number, target: number) {
     evacuated: metrics.outside + arrived + metrics.leftMap,
     crawling: metrics.crawling,
     arrived,
+    arrivedBy: { ...metrics.arrived },
     down: `${metrics.down.lethal}/${metrics.down.serious}`,
     reroutes: metrics.reroutes,
     burning: effects.getStats().fire.burning,
@@ -516,15 +517,41 @@ describe('hazard fx', () => {
     }
   });
 
-  test('page loop at 16.7ms and 64ms matches when it stops at 10800 steps', () => {
+  test('page loop at 16.7, 33, 64 and 100ms stays within the AC5 tolerance', () => {
     const target = Math.round(180 / FX.FIXED_DT);
-    const run = (frameMs: number) => pageLoopUntil(frameMs, target);
-    const fine = run(1000 / 60);
-    const coarse = run(64);
+    const frames = [1000 / 60, 33, 64, 100];
+    const runs = frames.map((frameMs) => ({ frameMs, ...pageLoopUntil(frameMs, target) }));
+    const fine = runs[0];
     assert.equal(fine.evacSteps, target);
-    assert.equal(coarse.evacSteps, target);
-    assert.equal(fine.effectSteps, coarse.effectSteps);
-    assert.deepEqual(coarse.counters, fine.counters);
+    for (const coarse of runs.slice(1)) {
+      // 64 ms is about ×4 a 16.7 ms frame. AC5 allows ±1, and ±2 under that throttle.
+      const tol = coarse.frameMs >= 64 ? 2 : 1;
+      assert.equal(coarse.evacSteps, target, `${coarse.frameMs} ms steps`);
+      assert.equal(coarse.effectSteps, fine.effectSteps, `${coarse.frameMs} ms effects`);
+      assert.ok(
+        Math.abs(coarse.counters.smoke - fine.counters.smoke) <= 0.01,
+        `${coarse.frameMs} ms smoke ${coarse.counters.smoke} vs ${fine.counters.smoke}`,
+      );
+      for (const key of ['evacuated', 'crawling', 'burning', 'reroutes'] as const) {
+        assert.ok(
+          Math.abs(coarse.counters[key] - fine.counters[key]) <= tol,
+          `${coarse.frameMs} ms ${key} ${coarse.counters[key]} vs ${fine.counters[key]} (±${tol})`,
+        );
+      }
+      const [fineLethal, fineSerious] = fine.counters.down.split('/').map(Number);
+      const [coarseLethal, coarseSerious] = coarse.counters.down.split('/').map(Number);
+      assert.ok(Math.abs(coarseLethal - fineLethal) <= tol, `${coarse.frameMs} ms down lethal`);
+      assert.ok(Math.abs(coarseSerious - fineSerious) <= tol, `${coarse.frameMs} ms down serious`);
+      const zones = new Set([
+        ...Object.keys(fine.counters.arrivedBy),
+        ...Object.keys(coarse.counters.arrivedBy),
+      ]);
+      for (const zone of zones) {
+        const a = fine.counters.arrivedBy[zone] ?? 0;
+        const b = coarse.counters.arrivedBy[zone] ?? 0;
+        assert.ok(Math.abs(a - b) <= tol, `${coarse.frameMs} ms arrived ${zone} ${b} vs ${a}`);
+      }
+    }
   });
 
   test('noise is deterministic and tiles within one pixel', () => {

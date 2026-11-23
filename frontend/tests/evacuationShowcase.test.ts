@@ -334,6 +334,39 @@ describe('evacuation showcase', () => {
     const blockedA = { ...smoky, status: 'blocked' as const };
     const blockedB = { ...clear, status: 'blocked' as const };
     assert.equal(chooseExit({ x: 0, y: 20 }, [blockedA, blockedB], box, field([]), null), null);
+
+    const keepFar = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, bothBurn, {
+      id: 'far',
+      cost: Infinity,
+    });
+    assert.equal(keepFar?.forced, true);
+    assert.equal(keepFar?.id, 'far');
+    const blockedFar = { ...clear, status: 'blocked' as const };
+    const dropBlocked = chooseExit({ x: 0, y: 20 }, [smoky, blockedFar], box, bothBurn, {
+      id: 'far',
+      cost: Infinity,
+    });
+    assert.equal(dropBlocked?.id, 'near');
+
+    // K 1.4 sits between 1.3 and 1.5. A held usable exit stays; a nearer new one does not.
+    const closeSmoky = exit({ id: 'near', center: { x: 40, y: 20 }, edgeIndex: 1 });
+    const bandApproach = exitApproachInside(closeSmoky, box);
+    const band = field([{ id: 's', simPos: bandApproach, indoor: true }], {
+      s: { smoke: 0.44, fire: 'none' },
+    });
+    assert.ok(exitCost({ x: 0, y: 20 }, closeSmoky, box, band) < Infinity);
+    assert.equal(exitCost({ x: 0, y: 20 }, closeSmoky, box, band, undefined, undefined, true), Infinity);
+    const held = chooseExit({ x: 0, y: 20 }, [closeSmoky, clear], box, band, { id: 'far', cost: 200 });
+    assert.equal(held?.id, 'far');
+    const recovered = field([{ id: 's', simPos: bandApproach, indoor: true }], {
+      s: { smoke: 0.42, fire: 'none' },
+    });
+    const back = chooseExit({ x: 0, y: 20 }, [closeSmoky, clear], box, recovered, {
+      id: 'near',
+      cost: Infinity,
+    });
+    assert.equal(back?.id, 'near');
+    assert.equal(back?.forced, false);
   });
 
   test('8 nextIndoorWaypoint', () => {
@@ -372,6 +405,7 @@ describe('evacuation showcase', () => {
 
   test('10 blast timing', () => {
     assert.equal(blastEffectsTriggerSec(0.5), 30);
+    assert.equal(blastEffectsTriggerSec(1), 60);
     const input = [{ triggerTimeSec: 4, eventType: 'explode' }];
     const shifted = shiftEvents(input, 30);
     assert.notEqual(shifted[0], input[0]);
@@ -392,19 +426,12 @@ describe('evacuation showcase', () => {
     assert.equal(reduced.shakePx, 0);
   });
 
-  test('12 ambient fire spread stays indoors', () => {
+  test('12 flame front stays on indoor fuel', () => {
     const studs = [
       { id: 'a', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
       { id: 'b', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
       { id: 'c', simPos: { x: 0, y: 3 }, spatialContext: 'open_air' },
     ];
-    const plain = new FireSimulation();
-    plain.init(studs);
-    plain.ignite(['a']);
-    for (let i = 0; i < 60; i++) plain.step(1, [], []);
-    assert.equal(plain.states.get('b')?.state, 'none');
-    assert.equal(plain.states.get('c')?.state, 'none');
-
     const spread = new FireSimulation({
       baseSpreadRate: 30,
       burnDuration: 300,
@@ -418,8 +445,12 @@ describe('evacuation showcase', () => {
     spread.ignite(['a']);
     spread.step(1, [], []);
     assert.equal(spread.states.get('b')?.state, 'heating');
+    assert.notEqual(spread.states.get('b')?.state, 'burning');
     assert.equal(spread.states.get('c')?.state, 'none');
     for (let i = 0; i < 30; i++) spread.step(1, [], []);
+    assert.equal(spread.states.get('b')?.state, 'heating');
+    assert.equal(spread.states.get('c')?.state, 'none');
+    for (let i = 0; i < 330; i++) spread.step(1, [], []);
     assert.equal(spread.states.get('b')?.state, 'burning');
     assert.equal(spread.states.get('c')?.state, 'none');
   });
@@ -903,6 +934,22 @@ test('a downed body moves the steering aim off to one side', () => {
   const ahead = steerPastBodies({ x: 0, y: 0 }, { x: 10, y: 0 }, [{ x: 3, y: 0 }]);
   assert.ok(Math.abs(ahead.y) > 0.5, `still aimed through the body at y ${ahead.y}`);
   assert.ok(ahead.x > 1, `aim did not move toward the exit, x ${ahead.x}`);
+});
+
+test('a route across a wall joint is sent to the door', () => {
+  const walls = [
+    { startX: 40, startY: 0, endX: 40, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+  ];
+  const target = { x: 60, y: 12 };
+  const via = nextIndoorWaypoint({ x: 39.3, y: 5.8 }, target, walls);
+  assert.notEqual(via.x, target.x);
+  assert.ok(Math.abs(via.x - 40) < 0.2, `waypoint x ${via.x}`);
+  const clear = nextIndoorWaypoint({ x: 30, y: 20 }, { x: 50, y: 20 }, [
+    { startX: 40, startY: 0, endX: 40, endY: 40, hasDoor: true, doorWidth: 4, doorPosition: 0.5 },
+  ]);
+  assert.equal(clear.x, 50);
+  assert.equal(clear.y, 20);
 });
 
 test('a blocked exit is left on the next step', () => {

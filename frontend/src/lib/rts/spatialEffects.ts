@@ -6,6 +6,7 @@ import {
   type FireStudState,
   type FireParams,
 } from './fireSimulation';
+import type { FuelCell } from './flameFront';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -139,7 +140,12 @@ export class SpatialEffectsEngine {
   hazardStates: Map<string, HazardRuntimeState> = new Map();
   activeEffects: ActiveEffect[] = [];
   elapsed = 0;
-  timeScale = 0.5;
+  /**
+   * Sim seconds per game second. Fire growth, the front, ignition time,
+   * smoke and gas are all in physical seconds, so this is 1. It used to be
+   * 0.5, which ran that whole clock at half the showcase time.
+   */
+  timeScale = 1;
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
@@ -148,7 +154,7 @@ export class SpatialEffectsEngine {
   /** Null keeps blast smoke on every affected stud. A set limits that source to fuel. */
   private fuelGate: Set<string> | null = null;
 
-  constructor(fireParams?: FireParams, timeScale = 0.5) {
+  constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
     this.fireSim = new FireSimulation(fireParams);
   }
@@ -187,10 +193,16 @@ export class SpatialEffectsEngine {
     this.fireSim.setShaftPairs(this.verticalPairs);
   }
 
-  /** Confirmed light and heavy studs. Null keeps the old indoor rule. */
+  /** Confirmed studs, with light wood assumed where no category was stored. Null is the indoor stand-in. */
   setFuelStuds(ids: ReadonlySet<string> | null) {
     this.fuelGate = ids == null ? null : new Set(ids);
     this.fireSim.setFuelStuds(this.fuelGate);
+  }
+
+  /** Per-stud category. An empty map burns nothing. Null is the indoor stand-in. */
+  setFuelCells(cells: ReadonlyMap<string, FuelCell> | null) {
+    this.fuelGate = cells == null ? null : new Set(cells.keys());
+    this.fireSim.setFuelCells(cells);
   }
 
   registerHazard(
