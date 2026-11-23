@@ -26,6 +26,8 @@ import {
   extinctionK,
   mulberry32,
   isNearWallBehind,
+  steerPastBodies,
+  DOWNED_AVOID_M,
   steerToTarget,
   nextPosture,
   outdoorSpeed,
@@ -135,6 +137,8 @@ interface PedLabel {
   jitterUntil?: number;
   disperse?: boolean;
   lastDir?: Vec2 | null;
+  /** Storey id when a scene has more than one. Unset on the single floor. */
+  level?: string;
 }
 
 export interface ObstaclePoint {
@@ -434,8 +438,13 @@ export class PolygonEvacuationEngine {
       const exit = this.exits.find((e) => e.id === ped.targetExitId);
       if (!exit) continue;
 
-      const dx = exit.center.x - body.position.x;
-      const dy = exit.center.y - body.position.y;
+      const around = steerPastBodies(
+        { x: body.position.x, y: body.position.y },
+        exit.center,
+        this.staticBodiesNear(body),
+      );
+      const dx = around.x - body.position.x;
+      const dy = around.y - body.position.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < 0.01) continue;
@@ -446,19 +455,17 @@ export class PolygonEvacuationEngine {
       const vDesX = nx * targetSpeed * dt;
       const vDesY = ny * targetSpeed * dt;
 
-      // Repulsion from obstacles (hazards, casualties)
+      // Repulsion from obstacles (hazards, casualties) and static bodies.
       let repX = 0;
       let repY = 0;
       for (const obs of this.obstacles) {
-        const odx = body.position.x - obs.x;
-        const ody = body.position.y - obs.y;
-        const oDist = Math.hypot(odx, ody);
-        if (oDist < obs.radius && oDist > 0.01) {
-          const strength = ((obs.radius - oDist) / obs.radius) * targetSpeed * dt * 2;
-          repX += (odx / oDist) * strength;
-          repY += (ody / oDist) * strength;
-        }
+        const push = this.obstaclePush(body, obs.x, obs.y, obs.radius, targetSpeed, dt);
+        repX += push.x;
+        repY += push.y;
       }
+      const bodies = this.staticBodyPush(body, targetSpeed, dt);
+      repX += bodies.x;
+      repY += bodies.y;
 
       const blend = Math.min(1, dt / tau);
       const newVx = body.velocity.x + (vDesX + repX - body.velocity.x) * blend;
@@ -814,7 +821,10 @@ export class PolygonEvacuationEngine {
       }
     }
 
-    if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
+    // A blocked exit is dropped on this step. Waiting out the 0.5 s
+    // re-check lands one frame late on the page clock.
+    const routed = this.exits.find((e) => e.id === ped.targetExitId);
+    if (routed?.status === 'blocked' || this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
       this.pruneAvoid(ped, pos);
       const choice = chooseExit(
         pos,
@@ -1352,6 +1362,47 @@ export class PolygonEvacuationEngine {
     return n / Math.PI;
   }
 
+  /** Downed people, and any other static body on this floor. */
+  private staticBodiesNear(self: Matter.Body): Array<{ x: number; y: number }> {
+    const ped = this.pedOf(self);
+    const out: Array<{ x: number; y: number }> = [];
+    for (const body of this.pedestrians) {
+      if (body === self) continue;
+      const other = this.pedOf(body);
+      if (other.state !== 'down' && !body.isStatic) continue;
+      if ((ped.level ?? '') !== (other.level ?? '')) continue;
+      out.push({ x: body.position.x, y: body.position.y });
+    }
+    return out;
+  }
+
+  private obstaclePush(
+    body: Matter.Body,
+    x: number,
+    y: number,
+    radius: number,
+    targetSpeed: number,
+    dt: number,
+  ): Vec2 {
+    const odx = body.position.x - x;
+    const ody = body.position.y - y;
+    const oDist = Math.hypot(odx, ody);
+    if (oDist >= radius || oDist <= 0.01) return { x: 0, y: 0 };
+    const strength = ((radius - oDist) / radius) * targetSpeed * dt * 2;
+    return { x: (odx / oDist) * strength, y: (ody / oDist) * strength };
+  }
+
+  private staticBodyPush(body: Matter.Body, targetSpeed: number, dt: number): Vec2 {
+    let x = 0;
+    let y = 0;
+    for (const other of this.staticBodiesNear(body)) {
+      const push = this.obstaclePush(body, other.x, other.y, DOWNED_AVOID_M, targetSpeed, dt);
+      x += push.x;
+      y += push.y;
+    }
+    return { x, y };
+  }
+
   private steer(
     body: Matter.Body,
     target: Vec2,
@@ -1360,8 +1411,13 @@ export class PolygonEvacuationEngine {
     keepForward = false,
   ) {
     const dt = this.config.dt;
-    const dx = target.x - body.position.x;
-    const dy = target.y - body.position.y;
+    const aim = steerPastBodies(
+      { x: body.position.x, y: body.position.y },
+      target,
+      this.staticBodiesNear(body),
+    );
+    const dx = aim.x - body.position.x;
+    const dy = aim.y - body.position.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.01) {
       Matter.Body.setVelocity(body, { x: 0, y: 0 });
@@ -1372,14 +1428,9 @@ export class PolygonEvacuationEngine {
     let repX = 0;
     let repY = 0;
     for (const obs of this.obstacles) {
-      const odx = body.position.x - obs.x;
-      const ody = body.position.y - obs.y;
-      const oDist = Math.hypot(odx, ody);
-      if (oDist < obs.radius && oDist > 0.01) {
-        const strength = ((obs.radius - oDist) / obs.radius) * targetSpeed * dt * 2;
-        repX += (odx / oDist) * strength;
-        repY += (ody / oDist) * strength;
-      }
+      const push = this.obstaclePush(body, obs.x, obs.y, obs.radius, targetSpeed, dt);
+      repX += push.x;
+      repY += push.y;
     }
     // A forced crawl, or a person the cap has released, is committed to the
     // opening. The radiant push is exactly what held that crowd on the shell.
@@ -1402,6 +1453,11 @@ export class PolygonEvacuationEngine {
         repY -= ny * back;
       }
     }
+    // A downed body still pushes, including backwards. Stripping that is
+    // what walks people into the body they are trying to pass.
+    const bodies = this.staticBodyPush(body, targetSpeed, dt);
+    repX += bodies.x;
+    repY += bodies.y;
     // The 0.4 s blend never catches the air drag, so a crawler held on a
     // shell creeps. A released crossing takes the step it was given.
     const blend = keepForward ? 1 : Math.min(1, dt / 0.4);

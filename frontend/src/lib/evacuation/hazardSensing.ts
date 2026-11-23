@@ -702,6 +702,70 @@ function doorInApproach(pos: Vec2, target: Vec2, walls: WallLike[]): WallLike | 
   return best;
 }
 
+/**
+ * Stay about this far from a downed or static body. Two body radii are 0.5 m,
+ * so 0.8 m leaves a gap and still lets people slip past.
+ */
+export const DOWNED_AVOID_M = 0.8;
+
+/**
+ * Move the steering target off a downed or static body that stands on the way.
+ * A head-on repulsion stops on the body; this puts the aim on one side of it.
+ */
+export function steerPastBodies(
+  pos: Vec2,
+  target: Vec2,
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  radius = DOWNED_AVOID_M,
+): Vec2 {
+  let aimX = target.x;
+  let aimY = target.y;
+  const skipped = new Set<number>();
+  for (let pass = 0; pass < 4; pass++) {
+    const dx = aimX - pos.x;
+    const dy = aimY - pos.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.05) break;
+    const ux = dx / len;
+    const uy = dy / len;
+    let bestI = -1;
+    let bestAlong = Infinity;
+    let bestVx = 0;
+    let bestVy = 0;
+    for (let i = 0; i < bodies.length; i++) {
+      if (skipped.has(i)) continue;
+      const vx = bodies[i].x - pos.x;
+      const vy = bodies[i].y - pos.y;
+      const along = vx * ux + vy * uy;
+      const lat = Math.abs(ux * vy - uy * vx);
+      const dist = Math.hypot(vx, vy);
+      const onTheWay = along > -radius * 0.25 && along < len && lat < radius;
+      const overlapping = dist < radius && along > -radius * 0.5;
+      if (!onTheWay && !overlapping) continue;
+      if (along < bestAlong) {
+        bestAlong = along;
+        bestI = i;
+        bestVx = vx;
+        bestVy = vy;
+      }
+    }
+    if (bestI < 0) break;
+    skipped.add(bestI);
+    const cross = ux * bestVy - uy * bestVx;
+    // Positive cross means the body is to the left. Step the other way.
+    const side =
+      Math.abs(cross) > 0.02
+        ? -Math.sign(cross)
+        : ((Math.round(pos.x * 8) + Math.round(pos.y * 8)) & 1) === 0
+          ? 1
+          : -1;
+    const past = Math.min(len, Math.max(bestAlong, 0) + radius);
+    aimX = pos.x + ux * past - uy * side * radius;
+    aimY = pos.y + uy * past + ux * side * radius;
+  }
+  return { x: aimX, y: aimY };
+}
+
 export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[], hold = false): Vec2 {
   let wall = nearestBlockingWall(pos, target, walls);
   if (hold) {

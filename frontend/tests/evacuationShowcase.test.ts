@@ -20,6 +20,7 @@ import {
   nextPosture,
   openingFlowPerS,
   separateFromWalls,
+  steerPastBodies,
   steerToTarget,
   WALL_FACE_CLEAR_M,
   distanceToOutline,
@@ -890,7 +891,62 @@ test('a door crowd takes a slot each, and the flow cap is the seeded specific fl
   assert.equal(openingFlowPerS(0.2), 0);
 });
 
-test('no hazards: at least 90% of people who can leave are out within 120s', () => {
+test('a downed body moves the steering aim off to one side', () => {
+  const clear = steerPastBodies({ x: 0, y: 0 }, { x: 10, y: 0 }, []);
+  assert.deepEqual(clear, { x: 10, y: 0 });
+  const wide = steerPastBodies({ x: 0, y: 0 }, { x: 10, y: 0 }, [{ x: 3, y: 3 }]);
+  assert.deepEqual(wide, { x: 10, y: 0 });
+  const behind = steerPastBodies({ x: 5, y: 0 }, { x: 10, y: 0 }, [{ x: 1, y: 0 }]);
+  assert.deepEqual(behind, { x: 10, y: 0 });
+  const ahead = steerPastBodies({ x: 0, y: 0 }, { x: 10, y: 0 }, [{ x: 3, y: 0 }]);
+  assert.ok(Math.abs(ahead.y) > 0.5, `still aimed through the body at y ${ahead.y}`);
+  assert.ok(ahead.x > 1, `aim did not move toward the exit, x ${ahead.x}`);
+});
+
+test('a blocked exit is left on the next step', () => {
+  const eng = showcaseEngine(1);
+  const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+  Matter.Body.setPosition(body, { x: 20, y: 10 });
+  const ped = (body as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  ped.state = 'evacuating';
+  ped.targetExitId = 'east';
+  ped.exitCost = 10;
+  ped.nextCheckAt = 1e9;
+  ped.posture = 'stand';
+  eng.syncExits([
+    exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+    exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4, status: 'blocked' }),
+  ]);
+  eng.step();
+  assert.equal(ped.targetExitId, 'west');
+  eng.destroy();
+});
+
+test('a walker steers past a static body instead of stopping on it', () => {
+  const eng = showcaseEngine(2);
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const blocker = bodies[0];
+  const walker = bodies[1];
+  Matter.Body.setPosition(blocker, { x: 10, y: 10 });
+  Matter.Body.setStatic(blocker, true);
+  (blocker as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  Matter.Body.setPosition(walker, { x: 4, y: 10 });
+  const ped = (walker as Matter.Body & {
+    __ped: { state: string; targetExitId: string; exitCost: number; nextCheckAt: number; posture: string };
+  }).__ped;
+  ped.state = 'evacuating';
+  ped.targetExitId = 'east';
+  ped.exitCost = 10;
+  ped.nextCheckAt = 1e9;
+  ped.posture = 'stand';
+  for (let i = 0; i < 45 * 60; i++) eng.step();
+  assert.ok(walker.position.x > 12, `still short of the body at x ${walker.position.x.toFixed(2)}`);
+  eng.destroy();
+});
+
+function leaveShare(blast: Vec2, blastR: number): { eligible: number; within: number; down: number; fired: boolean } {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
     { x: 60, y: 0 },
@@ -930,14 +986,13 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
   const startEv = new Map<number, number>();
   const outAt = new Map<number, number>();
   let fired = false;
-  let down = 0;
   const dt = 1 / 60;
   const horizon = SHOWCASE.BLAST_AT_GAME_S + SHOWCASE.PREMOVE_MAX_S + 120;
   while (rts.state.clock.elapsed < horizon) {
     rts.tick(dt);
     if (!fired && isBlastDue(rts.state.clock.elapsed, fired)) {
       fired = true;
-      eng.triggerBlast({ x: -30, y: -30 }, 1);
+      eng.triggerBlast(blast, blastR);
     }
     if (!rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
       eng.syncExits(exits);
@@ -951,7 +1006,6 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
       const ped = (body as Matter.Body & {
         __ped: { pedId: number; state: string; spawn: { x: number; y: number } };
       }).__ped;
-      if (ped.state === 'down') down++;
       if (sealed(ped.spawn)) continue;
       if (ped.state === 'evacuating' && !startEv.has(ped.pedId)) startEv.set(ped.pedId, t);
       if (
@@ -966,10 +1020,12 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
   }
   let eligible = 0;
   let within = 0;
+  let down = 0;
   for (const body of bodies) {
     const ped = (body as Matter.Body & {
       __ped: { pedId: number; state: string; spawn: { x: number; y: number } };
     }).__ped;
+    if (ped.state === 'down') down++;
     if (sealed(ped.spawn) || ped.state === 'down') continue;
     eligible++;
     const t0 = startEv.get(ped.pedId);
@@ -977,11 +1033,26 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
     if (t0 != null && t1 != null && t1 - t0 <= 120) within++;
   }
   eng.destroy();
-  assert.equal(fired, true);
-  assert.equal(down, 0);
+  return { eligible, within, down, fired };
+}
+
+test('no hazards: at least 90% of people who can leave are out within 120s', () => {
+  const result = leaveShare({ x: -30, y: -30 }, 1);
+  assert.equal(result.fired, true);
+  assert.equal(result.down, 0);
   assert.ok(
-    eligible > 0 && within >= 0.9 * eligible,
-    `out within 120s of starting ${within} of ${eligible} who were not sealed in`,
+    result.eligible > 0 && result.within >= 0.9 * result.eligible,
+    `out within 120s of starting ${result.within} of ${result.eligible} who were not sealed in`,
+  );
+});
+
+test('no hazards, normal blast: at least 90% of people who can leave are out within 120s', () => {
+  const result = leaveShare({ x: 10, y: 20 }, 15);
+  assert.equal(result.fired, true);
+  assert.ok(result.down > 0, 'the blast downed nobody');
+  assert.ok(
+    result.eligible > 0 && result.within >= 0.9 * result.eligible,
+    `out within 120s of starting ${result.within} of ${result.eligible} who were not sealed in`,
   );
 });
 
