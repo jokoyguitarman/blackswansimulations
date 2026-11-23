@@ -6,7 +6,8 @@ import { blastEffectsTriggerSec } from '../src/lib/evacuation/showcase';
 import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import type { InteriorWall } from '../src/lib/rts/types';
 import { SpatialEffectsEngine, blastSmokeStudIds } from '../src/lib/rts/spatialEffects';
-import { confirmedFuelStudIds } from '../src/lib/rts/materialLibrary';
+import { confirmedFuelCells } from '../src/lib/rts/materialLibrary';
+import type { FuelCell } from '../src/lib/rts/flameFront';
 import { harbourHouseFuelObjects } from '../src/lib/rts/harbourHouseShowcase';
 
 /**
@@ -76,7 +77,7 @@ const BLAST = { x: 10, y: 20 };
 const BLAST_R = 15;
 const MARKS = [90, 180, 300];
 
-function runShowcase(fuel: Set<string> | null) {
+function runShowcase(fuel: ReadonlyMap<string, FuelCell> | null) {
   const studs = harnessStuds();
   const engine = new SpatialEffectsEngine({
     ...DEFAULT_FIRE_PARAMS,
@@ -84,7 +85,7 @@ function runShowcase(fuel: Set<string> | null) {
     ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
   });
   engine.init(studs);
-  if (fuel) engine.setFuelStuds(fuel);
+  if (fuel) engine.setFuelCells(fuel);
   const inRadius = studs
     .filter((stud) => Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R)
     .map((stud) => stud.id);
@@ -100,7 +101,7 @@ function runShowcase(fuel: Set<string> | null) {
         description: 'Direct blast ignition',
         severity: 'critical',
         smokeGeneration: 'heavy',
-        affectedStuds: blastSmokeStudIds(inRadius, fuel),
+        affectedStuds: blastSmokeStudIds(inRadius, fuel ? new Set(fuel.keys()) : null),
       },
     ],
     { initial: 'a', triggered: 'b', worsening: 'c', critical: 'd' },
@@ -130,42 +131,65 @@ function runShowcase(fuel: Set<string> | null) {
 }
 
 describe('Harbour House showcase fuel', () => {
-  test('confirmed furnishings burn again and bare ground stays dark', () => {
+  test('the mall burns where the fuel is, and the open room then flashes over', () => {
     const studs = harnessStuds();
-    const fuel = confirmedFuelStudIds(harbourHouseFuelObjects(studs));
+    const objects = harbourHouseFuelObjects(studs);
+    const fuel = confirmedFuelCells(objects, studs);
     const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
-    assert.equal(fuel.size, indoor.length);
-    assert.ok(indoor.length > 100);
+    assert.ok(fuel.size > 0 && fuel.size < indoor.length);
 
-    const oldRule = runShowcase(null);
-    const empty = runShowcase(new Set());
+    const entry = (id: string) => objects.find((obj) => obj.studId === id)?.matches[0]?.entryId;
+    const gas = objects.filter((obj) => obj.matches[0]?.entryId === 'gas_line');
+    const shops = objects.filter((obj) => obj.matches[0]?.entryId === 'shop_contents');
+    assert.ok(gas.length > 0);
+    assert.ok(shops.length > 50);
+    for (const obj of gas) assert.equal(fuel.has(obj.studId), false);
+    for (const obj of objects) {
+      if (obj.matches[0]?.entryId === 'ceramic_tile' || obj.matches[0]?.entryId === 'concrete') {
+        assert.equal(fuel.has(obj.studId), false);
+      }
+    }
+
+    const inBlast = studs.filter(
+      (stud) => fuel.has(stud.id) && Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R,
+    );
+    const beyond = studs.filter(
+      (stud) => fuel.has(stud.id) && Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) > BLAST_R + 6,
+    );
+    assert.ok(beyond.length > 0);
+
+    const standIn = runShowcase(null);
+    const empty = runShowcase(new Map());
     const furnished = runShowcase(fuel);
 
-    const disk = studs.filter(
-      (stud) =>
-        stud.spatialContext === 'inside_building' &&
-        Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R,
-    ).length;
-    assert.ok(disk > 0 && disk < 80);
+    // Master, wood on every indoor stud and the 8 m / 30 s rule, was 74 / 126 / 192.
+    // No named fuel still stands in as light wood and flashes the whole indoor floor.
+    // The mall is 70 at T+1:30 (the fuel the blast lit) and then every fuelled stud.
     assert.deepEqual(empty.burning, [0, 0, 0]);
-    assert.deepEqual(oldRule.burning, [disk, disk, disk]);
-    assert.deepEqual(furnished.burning, [disk, disk, disk]);
+    assert.deepEqual(standIn.burning, [74, 268, 268]);
+    assert.deepEqual(furnished.burning, [inBlast.length, fuel.size, fuel.size]);
+    assert.deepEqual(furnished.burning, [70, 164, 164]);
 
     const outside = 's_-3_18';
     assert.equal(studs.find((stud) => stud.id === outside)?.spatialContext, 'open_air');
-    assert.equal(oldRule.engine.studStates.get(outside)?.fire.state, 'none');
     assert.equal(furnished.engine.studStates.get(outside)?.fire.state, 'none');
 
-    const inside = 's_9_18';
-    assert.equal(furnished.engine.studStates.get(inside)?.fire.state, 'burning');
-    assert.equal(empty.engine.studStates.get(inside)?.fire.state, 'none');
+    const shop = shops.find((obj) => Math.hypot(
+      (studs.find((stud) => stud.id === obj.studId)?.simPos.x ?? 0) - BLAST.x,
+      (studs.find((stud) => stud.id === obj.studId)?.simPos.y ?? 0) - BLAST.y,
+    ) > BLAST_R + 6);
+    assert.ok(shop);
+    assert.equal(furnished.engine.studStates.get(shop.studId)?.fire.state, 'burning');
+    assert.equal(entry('s_9_18'), 'shop_contents');
+    assert.equal(furnished.engine.studStates.get('s_9_18')?.fire.state, 'burning');
+    assert.equal(empty.engine.studStates.get('s_9_18')?.fire.state, 'none');
 
-    const crossing = furnished.studs.find((stud) => {
-      if (stud.spatialContext !== 'inside_building') return false;
-      if (Math.hypot(stud.simPos.x - BLAST.x, stud.simPos.y - BLAST.y) <= BLAST_R) return false;
-      const fire = furnished.engine.studStates.get(stud.id)?.fire;
-      return fire?.state === 'heating' && (fire.approach ?? 0) > 0 && (fire.approach ?? 0) < 1;
-    });
-    assert.ok(crossing, 'the front should be crossing the next fuel stud, not jumping it');
+    const sealed = objects.find((obj) => obj.matches[0]?.entryId === 'concrete');
+    assert.ok(sealed);
+    assert.equal(furnished.engine.studStates.get(sealed.studId)?.fire.state, 'none');
+    for (const obj of gas) assert.equal(furnished.engine.studStates.get(obj.studId)?.fire.state, 'none');
+    const tile = objects.find((obj) => obj.matches[0]?.entryId === 'ceramic_tile');
+    assert.ok(tile);
+    assert.equal(furnished.engine.studStates.get(tile.studId)?.fire.state, 'none');
   });
 });

@@ -1,15 +1,19 @@
 /**
  * Harbour House is the evacuation showcase floor: 60 m by 40 m, three exits,
  * two drywall partitions, and a sealed concrete room. The repo had no scene
- * under this name. This is that floor, with confirmed wood on every indoor
- * stud so the house burns again and a stud with no object stays dark.
+ * under this name. This is that floor dressed as a mall.
  *
- * Local metres match the editor: origin at the building centre, +x east, +y south.
- * The review harness used the same plan with its origin at the south-west corner
- * and +y north. Distances match after that mirror.
+ * Shops carry upholstery, stock and fittings (heavy, solid). The south-west
+ * kitchen is cooking oil, with gas lines that do not burn. Corridors and the
+ * atrium are ceramic tile, with a few wooden benches and a kiosk. The sealed
+ * room is concrete. An empty outdoor stud stays dark.
+ *
+ * Plan metres start at the south-west corner, +x east, +y north. The editor
+ * frame is the centroid, +y south. The review harness is the plan frame.
+ * Which one a stud list uses is read from where the indoor studs sit.
  */
 
-import { entryById, matchFromEntry, type PlacedObject } from './materialLibrary';
+import { entryById, matchFromEntry, type MaterialEntry, type PlacedObject } from './materialLibrary';
 
 export interface FurnishingStud {
   id: string;
@@ -18,20 +22,87 @@ export interface FurnishingStud {
   level?: string;
 }
 
+type MallKind = 'shop' | 'oil' | 'gas' | 'bench' | 'kiosk' | 'tile' | 'concrete';
+
+const MALL_TEXT: Record<MallKind, { entryId: string; description: string }> = {
+  shop: { entryId: 'shop_contents', description: 'Upholstery, stock and fittings' },
+  oil: { entryId: 'cooking_oil', description: 'Cooking oil' },
+  gas: { entryId: 'gas_line', description: 'Gas line' },
+  bench: { entryId: 'wood', description: 'Wooden bench' },
+  kiosk: { entryId: 'wood', description: 'Wooden kiosk' },
+  tile: { entryId: 'ceramic_tile', description: 'Ceramic tile' },
+  concrete: { entryId: 'concrete', description: 'Concrete' },
+};
+
+/** Benches and the kiosk, in plan metres. One stud on either grid. */
+const LIGHT_SPOTS: Array<{ x: number; y: number; kind: 'bench' | 'kiosk' }> = [
+  { x: 30.5, y: 12.5, kind: 'bench' },
+  { x: 30.5, y: 21.5, kind: 'bench' },
+  { x: 30.5, y: 30.5, kind: 'bench' },
+  { x: 33.5, y: 21.5, kind: 'kiosk' },
+];
+
+/**
+ * West wing shop, south-west kitchen, central tile mall, east shop.
+ * The concrete box is the south-east corner. Gas sits in the kitchen,
+ * inside the usual blast, and does not spread.
+ */
+function mallKind(x: number, y: number): MallKind {
+  if (x >= 46 && y <= 8) return 'concrete';
+  if (x < 22 && y <= 8) {
+    if (x >= 8 && x <= 14 && y >= 5) return 'gas';
+    return 'oil';
+  }
+  if (x < 22 && y < 34) return 'shop';
+  if (x >= 40 && y > 8) return 'shop';
+  for (const spot of LIGHT_SPOTS) {
+    if (Math.hypot(spot.x - x, spot.y - y) <= 1.6) return spot.kind;
+  }
+  return 'tile';
+}
+
+function planMetres(
+  stud: FurnishingStud,
+  editorFrame: boolean,
+): { x: number; y: number } {
+  if (editorFrame) return { x: stud.simPos.x + 30, y: 20 - stud.simPos.y };
+  return { x: stud.simPos.x, y: stud.simPos.y };
+}
+
 export function harbourHouseFuelObjects(studs: readonly FurnishingStud[]): PlacedObject[] {
-  const wood = entryById('wood');
-  if (!wood) return [];
-  return studs
-    .filter((stud) => stud.spatialContext === 'inside_building')
-    .map((stud) => ({
-      id: `hh-${stud.id}`,
-      studId: stud.id,
-      pos: { x: stud.simPos.x, y: stud.simPos.y },
-      level: stud.level ?? 'G',
-      description: 'Wooden furnishings',
-      matches: [matchFromEntry(wood, 'keyword')],
-      confirmed: true,
-    }));
+  const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
+  if (indoor.length === 0) return [];
+  let cx = 0;
+  let cy = 0;
+  for (const stud of indoor) {
+    cx += stud.simPos.x;
+    cy += stud.simPos.y;
+  }
+  cx /= indoor.length;
+  cy /= indoor.length;
+  const editorFrame = Math.hypot(cx, cy) < 15;
+  const objects: PlacedObject[] = [];
+  for (const stud of indoor) {
+    const plan = planMetres(stud, editorFrame);
+    const kind = mallKind(plan.x, plan.y);
+    const spec = MALL_TEXT[kind];
+    const entry = entryById(spec.entryId);
+    if (!entry) continue;
+    objects.push(mallObject(stud, entry, spec.description));
+  }
+  return objects;
+}
+
+function mallObject(stud: FurnishingStud, entry: MaterialEntry, description: string): PlacedObject {
+  return {
+    id: `hh-${stud.id}`,
+    studId: stud.id,
+    pos: { x: stud.simPos.x, y: stud.simPos.y },
+    level: stud.level ?? 'G',
+    description,
+    matches: [matchFromEntry(entry, 'keyword')],
+    confirmed: true,
+  };
 }
 
 function rectanglePolygon(
@@ -63,7 +134,7 @@ export const harbourHouseSample = {
     centerLat: CENTER_LAT,
     centerLng: CENTER_LNG,
     locationDescription:
-      'Harbour House showcase floor. Confirmed wooden furnishings cover the indoor studs. A stud with no object, including the ground outside, stays dark.',
+      'Harbour House showcase floor, dressed as a mall. Shops are upholstery, stock and fittings. The kitchen is cooking oil. Gas lines do not burn. Corridors are tile, with a few benches. The sealed room is concrete.',
     pedestrianCount: 120,
     levels: [
       {

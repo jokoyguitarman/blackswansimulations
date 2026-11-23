@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  CONTENTS_HRRPUA_KW_M2,
   FIREBALL_PULSE_S,
+  FLASHOVER_ROOM_KW,
+  FRYER_POOL_AREA_M2,
+  STUD_AREA_M2,
   addIgnitionDose,
   fireballFluxKwM2,
   flashoverAgeSec,
+  heatReleaseKw,
   ignitionTimeSec,
   pointSourceFluxKwM2,
+  poolFireKw,
   poolFireKwFromDiameter,
   tSquaredKw,
+  type FuelCell,
 } from '../src/lib/rts/flameFront';
 import { FireSimulation } from '../src/lib/rts/fireSimulation';
 import { defaultLightFuel, entryById, fuelCellFromEntry } from '../src/lib/rts/materialLibrary';
@@ -19,11 +26,20 @@ function close(actual: number, expected: number, label: string) {
   assert.ok(Math.abs(actual - expected) <= tol, `${label}: ${actual} vs ${expected}`);
 }
 
-function pair(category: 'light' | 'heavy' = 'light') {
-  const light = defaultLightFuel();
-  const heavy = fuelCellFromEntry(entryById('cooking_oil')!);
-  assert.ok(heavy);
-  const cell = category === 'heavy' ? heavy : light;
+/** Heavy solid. One pan of oil never reaches the 1 MW room floor, so the wall tests use this. */
+function heavySolid(): FuelCell {
+  return {
+    ...defaultLightFuel(),
+    category: 'heavy',
+    trp: 80,
+    alphaKwS2: 0.0469,
+    spreadMPerMin: 4,
+    fuelLoadKgM2: 30,
+    liquidPool: false,
+  };
+}
+
+function pair(cell: FuelCell = defaultLightFuel()) {
   const sim = new FireSimulation();
   sim.init([
     { id: 'a', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
@@ -37,6 +53,13 @@ function pair(category: 'light' | 'heavy' = 'light') {
   );
   sim.ignite(['a']);
   return sim;
+}
+
+function firstAgeAt(cell: FuelCell, heatKw: number): number {
+  for (let age = 1; age <= 5000; age++) {
+    if (heatReleaseKw(cell, age) >= heatKw) return age;
+  }
+  return -1;
 }
 
 function wall(material: string, door: boolean): InteriorWall {
@@ -70,6 +93,17 @@ describe('flame front formulas', () => {
     close(tSquaredKw(0.0469, 120), 675.4, 'fast t-squared');
     close(poolFireKwFromDiameter(3, 0.055, 43700, 2.1), 16958, 'gasoline pool');
 
+    const light = defaultLightFuel();
+    const oil = fuelCellFromEntry(entryById('cooking_oil')!);
+    assert.ok(oil);
+    assert.equal(heatReleaseKw(light, 2000), CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
+    assert.ok(tSquaredKw(light.alphaKwS2, 2000) > CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
+    close(heatReleaseKw(oil, 10000), poolFireKw(FRYER_POOL_AREA_M2), 'fryer pan');
+    assert.ok(poolFireKw(FRYER_POOL_AREA_M2) < FLASHOVER_ROOM_KW);
+    const alone = flashoverAgeSec(light);
+    assert.ok(alone != null && alone > 250, `one light stud reaches 1 MW at ${alone}`);
+    assert.equal(flashoverAgeSec(oil), null);
+
     let dose = 0;
     for (let i = 0; i < 141; i++) dose = addIgnitionDose(dose, 20, 10, 134, 1);
     assert.ok(dose >= 0.99 && dose <= 1.02, `dose ${dose}`);
@@ -83,9 +117,14 @@ describe('flame front formulas', () => {
 });
 
 describe('flame front movement', () => {
-  test('light fuel crosses 3 m at 0.5 m/min and does not jump a gap', () => {
-    const sim = pair('light');
-    assert.equal(firstBurn(sim, [], 400), 360);
+  test('light fuel crosses a door at 0.5 m/min, and an open room flashes first', () => {
+    const throughDoor = pair();
+    assert.equal(firstBurn(throughDoor, [wall('drywall', true)], 400), 360);
+
+    const open = pair();
+    const flash = firstAgeAt(defaultLightFuel(), FLASHOVER_ROOM_KW);
+    assert.equal(firstBurn(open, [], 400), flash);
+    assert.ok(flash < 360);
 
     const gapped = new FireSimulation();
     gapped.init([
@@ -101,29 +140,61 @@ describe('flame front movement', () => {
       ]),
     );
     gapped.ignite(['a']);
-    for (let i = 0; i < 800; i++) gapped.step(1, [], []);
+    for (let i = 0; i < 250; i++) gapped.step(1, [], []);
     assert.equal(gapped.states.get('tile')?.state, 'none');
     assert.equal(gapped.states.get('c')?.state, 'none');
+    for (let i = 0; i < 150; i++) gapped.step(1, [], []);
+    assert.equal(gapped.states.get('tile')?.state, 'none');
+    assert.equal(gapped.states.get('c')?.state, 'burning');
   });
 
-  test('heavy fuel is faster, and a wall holds the front until flashover plus its rating', () => {
-    const open = pair('heavy');
-    assert.equal(firstBurn(open, [], 80), 45);
+  test('a small light fire does not start a drywall timer, and the room then lights its own fuel', () => {
+    const light = defaultLightFuel();
+    const sim = new FireSimulation();
+    sim.init([
+      { id: 'a', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
+      { id: 'near', simPos: { x: 0, y: 3 }, spatialContext: 'inside_building' },
+      { id: 'far', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
+    ]);
+    sim.setFuelCells(
+      new Map([
+        ['a', light],
+        ['near', light],
+        ['far', light],
+      ]),
+    );
+    sim.ignite(['a']);
+    const drywall = wall('drywall', false);
+    for (let i = 0; i < 250; i++) sim.step(1, [drywall], []);
+    assert.equal(sim.wallBreachTimers.size, 0);
+    assert.notEqual(sim.states.get('near')?.state, 'burning');
+    assert.equal(sim.states.get('far')?.state, 'none');
+
+    const flash = firstAgeAt(light, FLASHOVER_ROOM_KW);
+    for (let i = 250; i < flash; i++) sim.step(1, [drywall], []);
+    assert.equal(sim.states.get('near')?.state, 'burning');
+    assert.equal(sim.states.get('far')?.state, 'none');
+    assert.ok((sim.wallBreachTimers.get('a->far') ?? 0) > 0);
+    assert.ok((sim.wallBreachTimers.get('a->far') ?? 0) < 5);
+  });
+
+  test('heavy fuel crosses a door at 4 m/min, and a wall waits for the room', () => {
+    const solid = heavySolid();
+    const door = pair(solid);
+    assert.equal(firstBurn(door, [wall('glass', true)], 80), 45);
+
+    const concrete = pair(solid);
+    assert.equal(firstBurn(concrete, [wall('concrete', false)], 400), -1);
+
+    const glass = pair(solid);
+    const flash = firstAgeAt(solid, FLASHOVER_ROOM_KW);
+    const opened = firstBurn(glass, [wall('glass', false)], 400);
+    assert.equal(opened, flash + 119);
 
     const oil = fuelCellFromEntry(entryById('cooking_oil')!);
     assert.ok(oil);
-    const flash = flashoverAgeSec(oil);
-    assert.ok(flash != null && flash > 45, `flashover ${flash} should be after the 45 s front`);
-
-    const concrete = pair('heavy');
-    assert.equal(firstBurn(concrete, [wall('concrete', false)], 250), -1);
-
-    const glass = pair('heavy');
-    const opened = firstBurn(glass, [wall('glass', false)], 400);
-    assert.ok(opened > flash + 120 - 1, `glass opened at ${opened}, flashover ${flash}`);
-    assert.ok(opened < flash + 120 + 3, `glass opened at ${opened}, flashover ${flash}`);
-
-    const door = pair('heavy');
-    assert.equal(firstBurn(door, [wall('glass', true)], 80), 45);
+    const pan = pair(oil);
+    assert.equal(firstBurn(pan, [wall('glass', false)], 400), -1);
+    assert.equal(pan.wallBreachTimers.size, 0);
   });
 });

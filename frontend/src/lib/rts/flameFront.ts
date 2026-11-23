@@ -10,9 +10,9 @@
  * q = χ_r Q / (4 π R²). χ_r is 0.35, the C/VM2 radiative fraction for
  * building contents. Worked example: Q 2000 kW at 4 m is 3.482 kW/m².
  *
- * Growth is Q = α t² (seed `t2_alpha_classes`). A liquid caps that at the
- * pool fire, NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). Suppression does not
- * cut Q yet.
+ * Growth is Q = α t² (seed `t2_alpha_classes`). Light fuel then stops at
+ * 250 kW/m² of contents. A liquid caps at the pool fire on its pan,
+ * NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). Suppression does not cut Q yet.
  *
  * The visible front is the room-scale speed on the entry, in metres per
  * minute (seed `flame_spread_rates`). Surface spread of a thick solid is the
@@ -30,6 +30,8 @@ export interface FuelCell {
   spreadMPerMin: number;
   fuelLoadKgM2: number;
   liquidPool: boolean;
+  /** Liquid surface, m². Absent on a solid. */
+  poolAreaM2?: number;
 }
 
 /** C/VM2 radiative fraction for building contents. */
@@ -42,18 +44,40 @@ export const RADIATIVE_FRACTION = 0.35;
 export const FLAME_STANDOFF_M = 0.5;
 
 /**
- * Floor flux at flashover. Peacock and others, 1999, the criterion noted in
- * the living-world fire section. Assumed choice: the spread seed says the
- * wall timer starts at flashover and does not give this threshold. The seed's
- * t_e scaling is not used.
+ * Heat release per unit area for ordinary contents. EN 1991-1-2:2002 Annex E
+ * Table E.5, the 250 kW/m² the spread seed stores for office, retail, and the
+ * other contents rows. Light fuel does not grow past this times the stud area.
  */
-export const FLASHOVER_KW_M2 = 20;
+export const CONTENTS_HRRPUA_KW_M2 = 250;
 
 /**
- * Assumed. One stud on the 3 m grid stands for 9 m² when a fuel load or a
- * pool is turned into a fire on that stud.
+ * Room heat release at which a compartment flashes over.
+ *
+ * Babrauskas, NUREG-1805 Eq. 13-3 (seed `flashover_hrr_babrauskas`):
+ * Q_fo = 750 Ao √Ho. The seed's 0.9 by 2.0 m door in a 4 by 5 by 2.6 m room
+ * is 1909 kW. Thomas, Eq. 13-4 (seed `flashover_hrr_thomas`), is 1625 kW for
+ * that room. MQH, Eq. 13-2 (seed `flashover_hrr_mqh`), is 2366 kW.
+ * Peacock and others, 1999, put flashover at a 20 kW/m² floor flux from the
+ * hot layer. That is not the flux one stud reads off its own flame.
+ *
+ * Assumed floor: 1 MW. The grid has no vent size per room, and a megawatt is
+ * the low end of those worked examples. Sum the burning fuel in the room.
+ * At that sum the room's fuelled studs ignite and the barrier timers start.
+ * The seed's t_e scaling is not used.
+ */
+export const FLASHOVER_ROOM_KW = 1000;
+
+/**
+ * Assumed. One stud on the 3 m grid stands for 9 m² when a fuel load is
+ * turned into a fire on that stud. A liquid does not burn on that whole patch.
  */
 export const STUD_AREA_M2 = 9;
+
+/**
+ * Assumed pan. A fryer's oil surface is well under a square metre, and the
+ * library has no measured area, so each liquid cell burns as 0.3 m².
+ */
+export const FRYER_POOL_AREA_M2 = 0.3;
 
 /**
  * Assumed heat of combustion for light fuel. The pool table has no wood row.
@@ -127,8 +151,8 @@ export function poolFireKwFromDiameter(
   return mFluxKgM2S * dHcKjKg * area * (1 - Math.exp(-kBeta * diameterM));
 }
 
-/** Pool fire on a stud-sized patch. The area is the stud, not a measured pan. */
-export function poolFireKw(areaM2: number = STUD_AREA_M2): number {
+/** Pool fire on `areaM2`. The default is one assumed pan, not the 9 m² stud. */
+export function poolFireKw(areaM2: number = FRYER_POOL_AREA_M2): number {
   if (!(areaM2 > 0)) return 0;
   const diameter = Math.sqrt((4 * areaM2) / Math.PI);
   return poolFireKwFromDiameter(
@@ -139,12 +163,28 @@ export function poolFireKw(areaM2: number = STUD_AREA_M2): number {
   );
 }
 
-/** α t², capped by the pool formula when the entry is a liquid. */
+/**
+ * The highest Q this cell is allowed. Light contents use the 250 kW/m² cap.
+ * A liquid uses its pan. Null means the t-squared curve is not capped.
+ */
+function releaseCapKw(cell: FuelCell, areaM2: number): number | null {
+  let cap: number | null = null;
+  if (cell.category === 'light') {
+    const contents = CONTENTS_HRRPUA_KW_M2 * areaM2;
+    if (contents > 0) cap = contents;
+  }
+  if (cell.liquidPool) {
+    const pool = poolFireKw(cell.poolAreaM2 ?? FRYER_POOL_AREA_M2);
+    if (pool > 0) cap = cap == null ? pool : Math.min(cap, pool);
+  }
+  return cap;
+}
+
+/** α t², then the contents cap or the pan, whichever applies. */
 export function heatReleaseKw(cell: FuelCell, ageSec: number, areaM2: number = STUD_AREA_M2): number {
   const growing = tSquaredKw(cell.alphaKwS2, ageSec);
-  if (!cell.liquidPool) return growing;
-  const cap = poolFireKw(areaM2);
-  if (!(cap > 0)) return growing;
+  const cap = releaseCapKw(cell, areaM2);
+  if (cap == null || !(cap > 0)) return growing;
   return Math.min(growing, cap);
 }
 
@@ -159,25 +199,23 @@ export function burnoutSec(cell: FuelCell, areaM2: number = STUD_AREA_M2): numbe
   const alpha = cell.alphaKwS2;
   if (!(energyKj > 0) || !(alpha > 0)) return 300;
   const uncapped = Math.cbrt((3 * energyKj) / alpha);
-  if (!cell.liquidPool) return uncapped;
-  const cap = poolFireKw(areaM2);
-  if (!(cap > 0)) return uncapped;
+  const cap = releaseCapKw(cell, areaM2);
+  if (cap == null || !(cap > 0)) return uncapped;
   const tCap = Math.sqrt(cap / alpha);
   const energyAtCap = (alpha * tCap ** 3) / 3;
   if (energyAtCap >= energyKj) return uncapped;
   return tCap + (energyKj - energyAtCap) / cap;
 }
 
-/** Age at which the stud's own flux reaches the flashover criterion. */
+/**
+ * Age at which one cell, alone, reaches the room flashover floor.
+ * Null when its cap stays under that floor, so one pan never flashes a room.
+ */
 export function flashoverAgeSec(cell: FuelCell, areaM2: number = STUD_AREA_M2): number | null {
-  const heatNeeded =
-    (FLASHOVER_KW_M2 * 4 * Math.PI * FLAME_STANDOFF_M ** 2) / RADIATIVE_FRACTION;
-  if (!(cell.alphaKwS2 > 0) || !(heatNeeded > 0)) return null;
-  if (cell.liquidPool) {
-    const cap = poolFireKw(areaM2);
-    if (cap > 0 && heatNeeded > cap) return null;
-  }
-  return Math.sqrt(heatNeeded / cell.alphaKwS2);
+  if (!(cell.alphaKwS2 > 0) || !(FLASHOVER_ROOM_KW > 0)) return null;
+  const cap = releaseCapKw(cell, areaM2);
+  if (cap != null && cap < FLASHOVER_ROOM_KW) return null;
+  return Math.sqrt(FLASHOVER_ROOM_KW / cell.alphaKwS2);
 }
 
 /** Metres per second from the entry's room-scale speed. */

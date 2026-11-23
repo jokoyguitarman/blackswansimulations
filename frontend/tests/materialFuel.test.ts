@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { flashoverAgeSec } from '../src/lib/rts/flameFront';
 import { FireSimulation, DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import {
   COMMON_PICKS,
   absorbLegacyFuelCircles,
   confirmedFuelStudIds,
+  defaultLightFuel,
   entryById,
   matchMaterials,
   snapObjectsToStuds,
@@ -112,6 +114,10 @@ describe('material library', () => {
     assert.equal(oil?.alphaKwS2, 0.0469);
     assert.equal(oil?.spreadMPerMin, 4);
     assert.equal(oil?.liquidPool, true);
+    const shop = entryById('shop_contents');
+    assert.equal(shop?.fuel, 'heavy');
+    assert.equal(shop?.liquidPool, false);
+    assert.equal(shop?.spreadMPerMin, 4);
     assert.deepEqual(oil?.toxicProducts, ['acrolein']);
   });
 });
@@ -259,15 +265,17 @@ describe('legacy circles become objects', () => {
       { confirmed: true },
     );
     const studs = [
-      { id: 'c', simPos: { x: 0, y: 0 }, level: 'G' },
-      { id: 'e', simPos: { x: 3, y: 0 }, level: 'G' },
-      { id: 'far', simPos: { x: 6, y: 0 }, level: 'G' },
-      { id: 'up', simPos: { x: 0, y: 0 }, level: 'L1' },
-      { id: 'gas', simPos: { x: 20, y: 0 }, level: 'G' },
+      { id: 'c', simPos: { x: 0, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
+      { id: 'e', simPos: { x: 3, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
+      { id: 'yard', simPos: { x: 0, y: 2 }, level: 'G', spatialContext: 'open_air' as const },
+      { id: 'far', simPos: { x: 6, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
+      { id: 'up', simPos: { x: 0, y: 0 }, level: 'L1', spatialContext: 'inside_building' as const },
+      { id: 'gas', simPos: { x: 20, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
     ];
     const fuel = confirmedFuelStudIds(absorbed.objects, studs);
     assert.equal(fuel.has('c'), true);
     assert.equal(fuel.has('e'), true);
+    assert.equal(fuel.has('yard'), false);
     assert.equal(fuel.has('far'), false);
     assert.equal(fuel.has('up'), false);
     assert.equal(fuel.has('gas'), false);
@@ -286,7 +294,12 @@ describe('legacy circles become objects', () => {
     assert.equal(placed.every((obj) => obj.confirmed && obj.studId), true);
     const fuel = confirmedFuelStudIds(
       placed,
-      studs.map((stud) => ({ id: stud.id, simPos: stud.simPos, level: stud.floor })),
+      studs.map((stud) => ({
+        id: stud.id,
+        simPos: stud.simPos,
+        level: stud.floor,
+        spatialContext: stud.spatialContext,
+      })),
     );
     const fryer = placed.find((obj) => obj.id === 'legacy-hz-gas-fryer');
     const noodle = placed.find((obj) => obj.id === 'legacy-hz-gas-noodle');
@@ -300,8 +313,12 @@ describe('legacy circles become objects', () => {
         Math.hypot(stud.simPos.x - table.coverCenter.x, stud.simPos.y - table.coverCenter.y) <=
           table.coverRadiusM + 1e-6,
     );
-    assert.ok(tableStuds.length >= 1);
-    for (const stud of tableStuds) assert.equal(fuel.has(stud.id), true);
+    const indoorTable = tableStuds.filter((stud) => stud.spatialContext === 'inside_building');
+    assert.ok(indoorTable.length >= 1);
+    for (const stud of indoorTable) assert.equal(fuel.has(stud.id), true);
+    for (const stud of tableStuds) {
+      if (stud.spatialContext !== 'inside_building') assert.equal(fuel.has(stud.id), false);
+    }
     assert.ok(noodle && noodle.coverCenter && noodle.coverRadiusM === 2);
     const noodleStuds = studs.filter(
       (stud) =>
@@ -346,7 +363,7 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'none');
   });
 
-  test('a blast lights a confirmed table and the front then crosses to the next fuel stud', () => {
+  test('a blast lights a confirmed table, and the room then flashes onto the next fuel stud', () => {
     const { engine, zone } = blastEngine(new Set(['table', 'next']));
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
@@ -359,7 +376,9 @@ describe('confirmed fuel gate', () => {
       engine.step(1, [], [zone]);
       seconds += 1;
     }
-    assert.ok(seconds > 350 && seconds < 370, `front arrived in ${seconds}s`);
+    const flash = flashoverAgeSec(defaultLightFuel());
+    assert.ok(flash != null);
+    assert.ok(seconds > flash && seconds < flash + 2, `room lit the next stud at ${seconds}s`);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
     assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });

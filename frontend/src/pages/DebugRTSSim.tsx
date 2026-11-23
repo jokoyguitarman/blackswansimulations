@@ -301,6 +301,7 @@ function fuelCellsFor(objects: readonly PlacedObject[], studs: readonly SimStud[
       id: stud.id,
       simPos: stud.simPos,
       level: storeyId(stud.floor),
+      spatialContext: stud.spatialContext,
     })),
   );
 }
@@ -333,9 +334,9 @@ function placedObjectDraws(objects: readonly PlacedObject[]): PlacedObjectDraw[]
         : obj.description || 'Unconfirmed',
     }),
   );
-  const furnished = draws.filter((draw) => draw.confirmed && draw.burns).length;
-  if (furnished <= 40) return draws;
-  return draws.map((draw) => (draw.confirmed && draw.burns ? { ...draw, label: '' } : draw));
+  const confirmed = draws.filter((draw) => draw.confirmed).length;
+  if (confirmed <= 40) return draws;
+  return draws.map((draw) => (draw.confirmed ? { ...draw, label: '' } : draw));
 }
 interface GridItem {
   buildingIndex: number;

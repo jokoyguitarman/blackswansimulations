@@ -6,7 +6,7 @@ import { defaultLightFuel } from './materialLibrary';
 import {
   FIREBALL_PULSE_S,
   FLAME_STANDOFF_M,
-  FLASHOVER_KW_M2,
+  FLASHOVER_ROOM_KW,
   addIgnitionDose,
   burnoutSec,
   fireballFluxKwM2,
@@ -168,9 +168,20 @@ export class FireSimulation {
    */
   private fuelStuds: Set<string> | null = null;
   private fuelCells: Map<string, FuelCell> | null = null;
-  private burn = new Map<string, { age: number; flashed: boolean }>();
+  private burn = new Map<string, { age: number }>();
   /** Wall timers already advanced during this step. */
   private wallTick = new Set<string>();
+  /**
+   * Indoor studs on one storey that you can walk between without crossing a
+   * wall. The door gap stays part of the wall for this split, so two rooms
+   * stay two rooms. The gap still lets the front through. Outdoor studs are
+   * not a path around a wall.
+   */
+  private compartmentOf = new Map<string, string>();
+  private rooms = new Map<string, string[]>();
+  private compartmentKey = '';
+  /** Studs whose room has already flashed over. The latch does not clear. */
+  private flashedStuds = new Set<string>();
 
   constructor(params?: FireParams) {
     this.params = params ?? { ...DEFAULT_FIRE_PARAMS };
@@ -185,6 +196,10 @@ export class FireSimulation {
     this.shaftBurn.clear();
     this.burn.clear();
     this.wallTick.clear();
+    this.compartmentOf.clear();
+    this.rooms.clear();
+    this.compartmentKey = '';
+    this.flashedStuds.clear();
     this.elapsed = 0;
 
     for (const s of studs) {
@@ -250,7 +265,7 @@ export class FireSimulation {
     state.fuelFactor = 1;
     state.approach = 1;
     state.dose = 1;
-    if (!this.burn.has(id)) this.burn.set(id, { age: 0, flashed: false });
+    if (!this.burn.has(id)) this.burn.set(id, { age: 0 });
   }
 
   ignite(studIds: string[]) {
@@ -286,6 +301,7 @@ export class FireSimulation {
     if (dt <= 0) return;
     this.elapsed += dt;
     this.wallTick.clear();
+    this.ensureCompartments(walls);
 
     const burning: Array<{
       id: string;
@@ -293,21 +309,20 @@ export class FireSimulation {
       cell: FuelCell;
       heatKw: number;
       reachM: number;
-      flashed: boolean;
     }> = [];
+    const roomHeat = new Map<string, number>();
 
     for (const [id, fState] of this.states) {
       if (fState.state !== 'burning') continue;
       const stud = this.studIndex.get(id);
       if (!stud) continue;
-      const meta = this.burn.get(id) ?? { age: 0, flashed: false };
+      const meta = this.burn.get(id) ?? { age: 0 };
       meta.age += dt;
       const cell = this.burningCell(id);
       const heatKw = heatReleaseKw(cell, meta.age);
-      if (!meta.flashed && pointSourceFluxKwM2(heatKw, FLAME_STANDOFF_M) >= FLASHOVER_KW_M2) {
-        meta.flashed = true;
-      }
       this.burn.set(id, meta);
+      const room = this.compartmentOf.get(id);
+      if (room) roomHeat.set(room, (roomHeat.get(room) ?? 0) + heatKw);
       fState.timer -= dt;
       fState.approach = 1;
       if (fState.timer <= 0) {
@@ -322,9 +337,10 @@ export class FireSimulation {
         cell,
         heatKw,
         reachM: meta.age * frontSpeedMps(cell.spreadMPerMin),
-        flashed: meta.flashed,
       });
     }
+
+    this.applyFlashover(roomHeat);
 
     const incoming = new Map<string, { flux: number; approach: number }>();
     for (const src of burning) {
@@ -337,7 +353,7 @@ export class FireSimulation {
         if (!this.acceptsFuel(nId)) continue;
         const dist = Math.hypot(dest.simPos.x - src.stud.simPos.x, dest.simPos.y - src.stud.simPos.y);
         if (!(dist > 0) || dist > FRONT_LINK_M) continue;
-        if (!this.crossingOpen(src.stud, dest, walls, src.flashed, dt)) continue;
+        if (!this.crossingOpen(src.stud, dest, walls, dt)) continue;
         const slot = incoming.get(nId) ?? { flux: 0, approach: 0 };
         slot.flux += pointSourceFluxKwM2(src.heatKw, Math.max(dist, FLAME_STANDOFF_M));
         const along = src.reachM / dist;
@@ -388,7 +404,73 @@ export class FireSimulation {
   }
 
   /**
-   * A door gap is open. A solid barrier stays shut until the source has
+   * Indoor studs joined by a walk that does not cross a wall, door included.
+   * Rebuilt when the wall geometry changes.
+   */
+  private ensureCompartments(walls: InteriorWall[]) {
+    let key = String(this.studIndex.size);
+    for (const wall of walls) {
+      key += `|${levelOf(wall)}:${wall.start.x},${wall.start.y}:${wall.end.x},${wall.end.y}`;
+    }
+    if (key === this.compartmentKey) return;
+    this.compartmentKey = key;
+    this.compartmentOf.clear();
+    this.rooms.clear();
+
+    const seen = new Set<string>();
+    for (const start of this.studIndex.values()) {
+      if (start.spatialContext !== 'inside_building' || seen.has(start.id)) continue;
+      const members: string[] = [];
+      const stack = [start.id];
+      seen.add(start.id);
+      while (stack.length > 0) {
+        const id = stack.pop() as string;
+        members.push(id);
+        const stud = this.studIndex.get(id);
+        if (!stud) continue;
+        const level = levelOf(stud);
+        for (const nId of this.neighborCache.get(id) ?? []) {
+          if (seen.has(nId)) continue;
+          const dest = this.studIndex.get(nId);
+          if (!dest || dest.spatialContext !== 'inside_building' || levelOf(dest) !== level) continue;
+          let separated = false;
+          for (const wall of walls) {
+            if (levelOf(wall) !== level) continue;
+            if (segmentsIntersect(stud.simPos, dest.simPos, wall.start, wall.end)) {
+              separated = true;
+              break;
+            }
+          }
+          if (separated) continue;
+          seen.add(nId);
+          stack.push(nId);
+        }
+      }
+      const roomId = members.reduce((best, id) => (id < best ? id : best));
+      this.rooms.set(roomId, members);
+      for (const id of members) this.compartmentOf.set(id, roomId);
+    }
+  }
+
+  /**
+   * A room flashes over when the burning fuel in it sums to about 1 MW.
+   * Every fuelled stud in that room ignites, and the latch stays so the
+   * barrier timers keep running after the heat drops.
+   */
+  private applyFlashover(roomHeat: Map<string, number>) {
+    for (const [room, members] of this.rooms) {
+      const hot = (roomHeat.get(room) ?? 0) >= FLASHOVER_ROOM_KW;
+      const latched = members.some((id) => this.flashedStuds.has(id));
+      if (!hot && !latched) continue;
+      for (const id of members) {
+        this.flashedStuds.add(id);
+        if (this.acceptsFuel(id)) this.catchFire(id);
+      }
+    }
+  }
+
+  /**
+   * A door gap is open. A solid barrier stays shut until the source room has
    * flashed over, then for its rating. Concrete and the other infinite
    * ratings never open. The timer does not run before flashover.
    */
@@ -396,14 +478,13 @@ export class FireSimulation {
     src: FireSimStud,
     dest: FireSimStud,
     walls: InteriorWall[],
-    flashed: boolean,
     dt: number,
   ): boolean {
     const srcLevel = levelOf(src);
     for (const wall of walls) {
       if (levelOf(wall) !== srcLevel) continue;
       if (!wallBlocksFire(src.simPos, dest.simPos, wall)) continue;
-      if (!flashed) return false;
+      if (!this.flashedStuds.has(src.id)) return false;
       const resistance = this.lookupResistance(getWallMaterial(wall));
       if (resistance === Infinity) return false;
       const key = `${src.id}->${dest.id}`;

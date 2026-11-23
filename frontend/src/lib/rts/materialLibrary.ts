@@ -8,10 +8,10 @@
  *
  * Light-fuel CHF 10 kW/m² and TRP 134 are the red-oak row, used as the stand-in
  * for ordinary wood. Heavy-fuel CHF, the shorter TRP, both room-scale speeds,
- * both fuel loads, and every yield are assumed.
+ * both fuel loads, the 0.3 m² pan, and every yield are assumed.
  */
 
-import type { FuelCell } from './flameFront';
+import { FRYER_POOL_AREA_M2, type FuelCell } from './flameFront';
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -95,6 +95,9 @@ const HEAVY_ASSUMED = {
   liquidPool: true,
 };
 
+/** Same heavy numbers as a liquid, without a pan. Shop goods are solid. */
+const HEAVY_SOLID = { ...HEAVY_ASSUMED, liquidPool: false };
+
 const INERT = {
   fuel: 'non_combustible' as const,
   chfKwM2: null,
@@ -141,6 +144,15 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     toxicProducts: ['HCl', 'CO'],
     toxicYieldGPerG: { HCl: 0.2, CO: 0.1 },
     ...LIGHT_ASSUMED,
+  },
+  {
+    id: 'shop_contents',
+    label: 'Shop stock and fittings',
+    keywords: ['shop stock', 'merchandise', 'retail stock', 'shop fittings'],
+    behaviour: 'none',
+    toxicProducts: ['CO', 'HCN'],
+    toxicYieldGPerG: { CO: 0.1, HCN: 0.01 },
+    ...HEAVY_SOLID,
   },
   {
     id: 'cooking_oil',
@@ -243,6 +255,7 @@ export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
     spreadMPerMin: entry.spreadMPerMin,
     fuelLoadKgM2: entry.fuelLoadKgM2,
     liquidPool: entry.liquidPool,
+    ...(entry.liquidPool ? { poolAreaM2: FRYER_POOL_AREA_M2 } : {}),
   };
 }
 
@@ -337,9 +350,10 @@ export function matchMaterials(
 
 /**
  * Confirmed light or heavy fuel, one cell per stud. Heavy wins when two
- * objects cover the same stud. A legacy circle covers every stud inside its
- * old radius; pass the stud list or that circle falls back to its own stud.
- * Unconfirmed objects are skipped.
+ * objects cover the same stud. A legacy circle covers every indoor stud
+ * inside its old radius. A stud with no spatial context still counts; outdoor
+ * and road studs do not. Without the stud list the circle falls back to its
+ * own stud. Unconfirmed objects are skipped.
  */
 export function confirmedFuelCells(
   objects: readonly PlacedObject[],
@@ -360,6 +374,7 @@ export function confirmedFuelCells(
       const level = obj.level || 'G';
       for (const stud of studs) {
         if ((stud.level || 'G') !== level) continue;
+        if (stud.spatialContext != null && stud.spatialContext !== 'inside_building') continue;
         const dist = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
         if (dist <= obj.coverRadiusM + 1e-6) add(stud.id, cell);
       }
@@ -439,6 +454,8 @@ export interface SnapStud {
   id: string;
   simPos: { x: number; y: number };
   level?: string;
+  /** Outdoor and road studs are left out of a legacy circle. Absent still counts. */
+  spatialContext?: string | null;
 }
 
 /** Move an object onto the stud under it. The editor snaps within 8 m. */
