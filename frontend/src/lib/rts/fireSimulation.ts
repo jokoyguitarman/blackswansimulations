@@ -20,9 +20,13 @@ import {
   GAS_JET_KW,
   GAS_JET_REACH_M,
   GAS_RUPTURE_KPA,
+  HOOD_HEIGHT_M,
+  HOOD_LINK_C,
   LINK_QUANTUM_S,
   LOCAL_FLASHOVER_RADIUS_M,
+  SPRINKLER_ACT_C,
   SPRINKLER_AMBIENT_C,
+  SPRINKLER_CEILING_M,
   SPRINKLER_RTI,
   STUD_AREA_M2,
   SUPPRESSION_REACH_M,
@@ -99,7 +103,7 @@ export interface GasLineState {
   jetting: boolean;
   shutoff: boolean;
   age: number;
-  /** kW while the jet burns. Falls after a spray reaches it. */
+  /** kW while the valve is open. A spray does not reduce it. */
   heatKw: number;
 }
 
@@ -119,9 +123,12 @@ interface GasRuntime {
   jetting: boolean;
   shutoff: boolean;
   age: number;
-  /** Release at the moment a spray first reached this jet. Null until then. */
-  qAct: number | null;
-  suppressAge: number;
+  /**
+   * Seconds into the current step when a wet-chemical interlock closed this
+   * line. Null when the valve was not closed during this step. The jet still
+   * heats for that prefix, then stops. It is not persisted.
+   */
+  closedAt: number | null;
 }
 
 interface ArcRuntime {
@@ -145,8 +152,12 @@ interface SuppressionRuntime {
   id: string;
   pos: Vec2;
   level: string;
+  kind: SuppressionPlacement['kind'];
+  /** Fire-to-link distance. Storey height for a sprinkler, hood height for wet chemical. */
   ceilingM: number;
   rti: number;
+  /** Temperature that opens this link, °C. */
+  actC: number;
   linkC: number;
   open: boolean;
   /** Seconds since the link opened. */
@@ -451,8 +462,7 @@ export class FireSimulation {
         jetting: prev?.jetting ?? false,
         shutoff: prev?.shutoff ?? false,
         age: prev?.age ?? 0,
-        qAct: prev?.qAct ?? null,
-        suppressAge: prev?.suppressAge ?? 0,
+        closedAt: null,
       });
     }
     this.gasRuntime = next;
@@ -468,14 +478,17 @@ export class FireSimulation {
     const next = new Map<string, SuppressionRuntime>();
     for (const head of heads) {
       const prev = this.suppressionRuntime.get(head.id);
-      const ceiling =
-        Number.isFinite(head.ceilingM) && head.ceilingM > 0 ? head.ceilingM : 3;
+      const wet = head.kind === 'wet_chemical';
+      const storey =
+        Number.isFinite(head.ceilingM) && head.ceilingM > 0 ? head.ceilingM : SPRINKLER_CEILING_M;
       next.set(head.id, {
         id: head.id,
         pos: { x: head.pos.x, y: head.pos.y },
         level: head.level || 'G',
-        ceilingM: ceiling,
-        rti: head.kind === 'wet_chemical' ? WET_CHEMICAL_RTI : SPRINKLER_RTI,
+        kind: wet ? 'wet_chemical' : 'sprinkler',
+        ceilingM: wet ? HOOD_HEIGHT_M : storey,
+        rti: wet ? WET_CHEMICAL_RTI : SPRINKLER_RTI,
+        actC: wet ? HOOD_LINK_C : SPRINKLER_ACT_C,
         linkC: prev?.linkC ?? SPRINKLER_AMBIENT_C,
         open: prev?.open ?? false,
         age: prev?.age ?? 0,
@@ -603,12 +616,7 @@ export class FireSimulation {
   gasLineState(id: string): GasLineState | null {
     const line = this.gasRuntime.get(id);
     if (!line) return null;
-    const heatKw =
-      line.jetting && !line.shutoff
-        ? line.qAct != null
-          ? suppressedHeatKw(line.qAct, line.suppressAge)
-          : GAS_JET_KW
-        : 0;
+    const heatKw = line.jetting && !line.shutoff ? GAS_JET_KW : 0;
     return {
       ruptured: line.ruptured,
       jetting: line.jetting,
@@ -754,9 +762,14 @@ export class FireSimulation {
     }
 
     for (const line of this.gasRuntime.values()) {
-      if (!line.jetting || line.shutoff) continue;
+      const closedAt = line.closedAt;
+      line.closedAt = null;
+      if (closedAt == null && (!line.jetting || line.shutoff)) continue;
       let seconds = dt;
-      if (line.autoShutoffSec != null) {
+      if (closedAt != null) {
+        seconds = Math.min(dt, Math.max(0, closedAt));
+        line.age += seconds;
+      } else if (line.autoShutoffSec != null) {
         const room = Math.max(0, line.autoShutoffSec - line.age);
         seconds = Math.min(dt, room);
         line.age += seconds;
@@ -768,8 +781,7 @@ export class FireSimulation {
         line.age += dt;
       }
       if (!(seconds > 0)) continue;
-      const jetKw = line.qAct != null ? suppressedHeatKw(line.qAct, line.suppressAge) : GAS_JET_KW;
-      this.addSourceFlux(line.pos, line.level, jetKw, walls, seconds, dt, slotFor);
+      this.addSourceFlux(line.pos, line.level, GAS_JET_KW, walls, seconds, dt, slotFor);
     }
     const arcKw = electricalHeatReleaseKw();
     for (const arc of this.arcRuntime.values()) {
@@ -889,10 +901,11 @@ export class FireSimulation {
   }
 
   /**
-   * Warm every link on the 0.1 s grid, open it when the RTI equation says
-   * so, and remember the release of each fuel and jet the spray can reach.
-   * A second head does not start a second decay. The first one to reach
-   * that fuel owns Q(t_act).
+   * Warm every link on the 0.1 s grid and open it when the RTI equation says
+   * so. Solid fuel the spray can reach keeps Q(t_act) from the first head.
+   * A second head does not start a second decay. A water sprinkler does not
+   * decay a liquid pool. A gas jet is never decayed. A wet-chemical head
+   * that opens shuts off the gas and power inside its throw.
    */
   private integrateSuppression(
     dt: number,
@@ -904,37 +917,34 @@ export class FireSimulation {
     for (const fire of fires) {
       if (fire.meta.qAct != null) heldFuel.add(fire.id);
     }
-    const heldJet = new Set<string>();
-    for (const line of this.gasRuntime.values()) {
-      if (line.qAct != null) heldJet.add(line.id);
-    }
     const openedFuel = new Map<string, number>();
-    const openedJet = new Map<string, number>();
     const openedHead = new Map<string, number>();
 
     for (const head of this.suppressionRuntime.values()) {
       if (!head.open) continue;
       this.markCover(head, walls, 0);
-      this.snapshotReached(head, fires, 0, walls, heldFuel, heldJet, openedFuel, openedJet);
+      this.snapshotReached(head, fires, 0, walls, heldFuel, openedFuel);
+      this.applyInterlock(head, walls, 0);
     }
 
     let cursor = 0;
     while (cursor < dt - 1e-12) {
       const slice = Math.min(LINK_QUANTUM_S, dt - cursor);
-      const plumes = this.plumesAt(fires, cursor, openedFuel, openedJet);
+      const plumes = this.plumesAt(fires, cursor, openedFuel);
       for (const head of this.suppressionRuntime.values()) {
         if (head.open) continue;
         const jet = this.strongestCeiling(head, plumes, walls);
         if (!jet || !(jet.speedMps > 0)) continue;
         const gasC = SPRINKLER_AMBIENT_C + jet.riseK;
-        const step = advanceSprinklerLink(head.linkC, gasC, jet.speedMps, head.rti, slice);
+        const step = advanceSprinklerLink(head.linkC, gasC, jet.speedMps, head.rti, slice, head.actC);
         head.linkC = step.linkC;
         if (step.openedAt != null) {
           const tOpen = cursor + step.openedAt;
           head.open = true;
           openedHead.set(head.id, tOpen);
           this.markCover(head, walls, tOpen);
-          this.snapshotReached(head, fires, tOpen, walls, heldFuel, heldJet, openedFuel, openedJet);
+          this.snapshotReached(head, fires, tOpen, walls, heldFuel, openedFuel);
+          this.applyInterlock(head, walls, tOpen);
         }
       }
       cursor += slice;
@@ -944,11 +954,6 @@ export class FireSimulation {
       const tOpen = openedFuel.get(fire.id);
       if (tOpen != null) fire.meta.suppressAge = Math.max(0, dt - tOpen);
       else if (fire.meta.qAct != null) fire.meta.suppressAge += dt;
-    }
-    for (const line of this.gasRuntime.values()) {
-      const tOpen = openedJet.get(line.id);
-      if (tOpen != null) line.suppressAge = Math.max(0, dt - tOpen);
-      else if (line.qAct != null) line.suppressAge += dt;
     }
     for (const head of this.suppressionRuntime.values()) {
       const tOpen = openedHead.get(head.id);
@@ -961,7 +966,6 @@ export class FireSimulation {
     fires: Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }>,
     cursor: number,
     openedFuel: Map<string, number>,
-    openedJet: Map<string, number>,
   ): Array<{ pos: Vec2; level: string; heatKw: number }> {
     const plumes: Array<{ pos: Vec2; level: string; heatKw: number }> = [];
     for (const fire of fires) {
@@ -978,13 +982,7 @@ export class FireSimulation {
     }
     for (const line of this.gasRuntime.values()) {
       if (!line.jetting || line.shutoff) continue;
-      const tOpen = openedJet.get(line.id);
-      let heat = GAS_JET_KW;
-      if (line.qAct != null && tOpen == null) heat = suppressedHeatKw(line.qAct, line.suppressAge + cursor);
-      else if (tOpen != null && cursor + 1e-9 >= tOpen) {
-        heat = suppressedHeatKw(line.qAct ?? 0, Math.max(0, cursor - tOpen));
-      }
-      if (heat > 0) plumes.push({ pos: line.pos, level: line.level, heatKw: heat });
+      plumes.push({ pos: line.pos, level: line.level, heatKw: GAS_JET_KW });
     }
     return plumes;
   }
@@ -1015,8 +1013,11 @@ export class FireSimulation {
   }
 
   /**
-   * Freeze Q(t_act) for fuel and jets this head can wet. The earliest open
-   * wins. A fuel that was already decaying is left on its first snapshot.
+   * Freeze Q(t_act) for solid fuel this head can wet, and for cooking oil
+   * under wet chemical. A water sprinkler leaves a liquid pool on its own
+   * curve. The earliest open wins. Fuel that was already decaying stays on
+   * its first snapshot. A gas jet is not snapshotted: it stays at the
+   * supply rate until a valve or the wet-chemical interlock closes it.
    */
   private snapshotReached(
     head: SuppressionRuntime,
@@ -1024,26 +1025,39 @@ export class FireSimulation {
     tOpen: number,
     walls: InteriorWall[],
     heldFuel: Set<string>,
-    heldJet: Set<string>,
     openedFuel: Map<string, number>,
-    openedJet: Map<string, number>,
   ) {
     for (const fire of fires) {
       if (heldFuel.has(fire.id)) continue;
+      if (head.kind === 'sprinkler' && fire.cell.liquidPool) continue;
       if (!this.headReaches(head, fire.stud.simPos, levelOf(fire.stud), walls)) continue;
       const prev = openedFuel.get(fire.id);
       if (prev != null && prev <= tOpen + 1e-9) continue;
       openedFuel.set(fire.id, tOpen);
       fire.meta.qAct = heatReleaseKw(fire.cell, fire.meta.age + tOpen);
     }
+  }
+
+  /**
+   * NFPA 17A and NFPA 96: a wet-chemical discharge shuts off fuel and power
+   * to the equipment it protects. The protected set is whatever this head's
+   * throw reaches. A sprinkler does not. A jet that was burning keeps heating
+   * until `tOpen`, then the valve is shut.
+   */
+  private applyInterlock(head: SuppressionRuntime, walls: InteriorWall[], tOpen: number) {
+    if (head.kind !== 'wet_chemical') return;
     for (const line of this.gasRuntime.values()) {
-      if (!line.jetting || line.shutoff) continue;
-      if (heldJet.has(line.id)) continue;
+      if (line.shutoff) continue;
       if (!this.headReaches(head, line.pos, line.level, walls)) continue;
-      const prev = openedJet.get(line.id);
-      if (prev != null && prev <= tOpen + 1e-9) continue;
-      openedJet.set(line.id, tOpen);
-      line.qAct = GAS_JET_KW;
+      if (line.jetting && (line.closedAt == null || tOpen < line.closedAt)) line.closedAt = tOpen;
+      line.shutoff = true;
+      line.jetting = false;
+    }
+    for (const arc of this.arcRuntime.values()) {
+      if (arc.shutoff) continue;
+      if (!this.headReaches(head, arc.pos, arc.level, walls)) continue;
+      arc.shutoff = true;
+      arc.arcing = false;
     }
   }
 

@@ -358,15 +358,19 @@ describe('legacy circles become objects', () => {
     const hoods = placed.filter((obj) => obj.id.startsWith('hood-'));
     assert.equal(hoods.length, 5);
     const pizzaHood = placed.find((obj) => obj.id === 'hood-pizza');
-    assert.ok(pizzaHood && pizzaTable && pizzaGas);
+    const fryerHood = placed.find((obj) => obj.id === 'hood-fryer');
+    const fryerGas = placed.find((obj) => obj.id === 'legacy-hz-gas-fryer');
+    assert.ok(pizzaHood && pizzaTable && pizzaGas && fryerHood && fryerGas);
     assert.notEqual(pizzaHood.studId, pizzaTable.studId);
-    assert.notEqual(pizzaHood.studId, pizzaGas.studId);
+    assert.equal(pizzaHood.studId, pizzaGas.studId);
     assert.equal(fuel.has(pizzaHood.studId), false);
+    assert.equal(fryerHood.studId, fryerGas.studId);
+    assert.equal(fuel.has(fryerHood.studId), true);
     for (const hood of hoods) {
       assert.equal(hood.confirmed, true);
       assert.ok(hood.matches.every((match) => match.behaviour === 'suppression'));
       assert.ok(hood.matches.every((match) => match.fuel === 'non_combustible'));
-      assert.equal(fuel.has(hood.studId), false);
+      if (hood.id !== 'hood-fryer') assert.equal(fuel.has(hood.studId), false);
     }
   });
 });

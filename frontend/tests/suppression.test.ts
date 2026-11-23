@@ -8,6 +8,8 @@ import { blastPressureAt, type ChargeSpec } from '../src/lib/rts/blast/blastMode
 import {
   GAS_JET_KW,
   GAS_RUPTURE_KPA,
+  HOOD_HEIGHT_M,
+  HOOD_LINK_C,
   LINK_QUANTUM_S,
   SPRINKLER_ACT_C,
   SPRINKLER_AMBIENT_C,
@@ -26,8 +28,11 @@ import {
 import { DEFAULT_FIRE_PARAMS, FireSimulation, type FireSimStud } from '../src/lib/rts/fireSimulation';
 import {
   confirmedFuelCells,
+  confirmedGasLines,
   confirmedSuppression,
   defaultLightFuel,
+  entryById,
+  fuelCellFromEntry,
   matchMaterials,
   snapObjectsToStuds,
   type PlacedObject,
@@ -283,24 +288,47 @@ describe('what the spray does and does not reach', () => {
     assert.equal(upstairs.wetStuds([]).some((item) => item.id === 'up'), false);
   });
 
-  test('a jet under an open spray decays from its full release, and an arc does not open a head', () => {
-    const sim = fuelSim([stud('a', 0, 0), stud('b', 2, 0)], [], [head('h', 0, 0)]);
-    lightJet(sim, 'near', 0, 0);
-    const opened = run(sim, [], 30, 0.1, () => sim.suppressionState('h')?.open === true);
-    assert.ok(opened < 5, `head opened at ${opened}`);
-    sim.setGasLines([
+  test('a spray leaves an open gas jet at its supply rate, and only wet chemical shuts it off', () => {
+    const sprinkler = fuelSim([stud('a', 0, 0)], [], [head('h', 0, 0, 'sprinkler')]);
+    lightJet(sprinkler, 'pipe', 0, 0);
+    const sprinklerOpen = run(sprinkler, [], 30, 0.1, () => sprinkler.suppressionState('h')?.open === true);
+    assert.ok(sprinklerOpen < 5, `sprinkler opened at ${sprinklerOpen}`);
+    run(sprinkler, [], 100, 1);
+    assert.equal(sprinkler.isJetting('pipe'), true);
+    assert.equal(sprinkler.gasLineState('pipe')?.shutoff, false);
+    assert.equal(sprinkler.gasLineState('pipe')?.heatKw, GAS_JET_KW);
+
+    const kitchen = fuelSim([stud('a', 0, 0)], [], [head('h', 0, 0, 'wet_chemical', 4)]);
+    lightJet(kitchen, 'near', 0, 0);
+    const opened = run(kitchen, [], 30, 0.1, () => kitchen.suppressionState('h')?.open === true);
+    assert.ok(opened < 5, `hood opened at ${opened}`);
+    assert.equal(kitchen.isJetting('near'), false);
+    assert.equal(kitchen.gasLineState('near')?.shutoff, true);
+    assert.equal(kitchen.gasLineState('near')?.heatKw, 0);
+    kitchen.setGasLines([
       { id: 'near', pos: { x: 0, y: 0 }, level: 'G', autoShutoffSec: null },
-      { id: 'late', pos: { x: 2, y: 0 }, level: 'G', autoShutoffSec: null },
+      { id: 'far', pos: { x: 9, y: 0 }, level: 'G', autoShutoffSec: null },
     ]);
-    sim.setBlastCharge(CHARGE);
-    sim.applyBlast({ x: 2, y: 0 }, 0.4, 'G', []);
-    assert.equal(sim.isJetting('late'), true);
-    assert.equal(sim.gasLineState('late')?.heatKw, GAS_JET_KW);
-    run(sim, [], 100, 1);
-    const late = sim.gasLineState('late')?.heatKw ?? 0;
-    const expected = suppressedHeatKw(GAS_JET_KW, 100);
-    assert.ok(Math.abs(late - expected) / expected < 0.02, `late jet ${late}, expected ${expected}`);
-    assert.ok(late < GAS_JET_KW * 0.9);
+    kitchen.setBlastCharge(CHARGE);
+    kitchen.applyBlast({ x: 9, y: 0 }, 0.4, 'G', []);
+    assert.equal(kitchen.isJetting('far'), true);
+    assert.equal(kitchen.isJetting('near'), false);
+    run(kitchen, [], 30, 1);
+    assert.equal(kitchen.gasLineState('far')?.heatKw, GAS_JET_KW);
+    assert.equal(kitchen.gasLineState('far')?.shutoff, false);
+
+    const blocked = fuelSim([stud('a', 0, 0)], ['a'], [head('h', 0, 0, 'wet_chemical')]);
+    blocked.setGasLines([{ id: 'pipe', pos: { x: 3, y: 0 }, level: 'G', autoShutoffSec: null }]);
+    blocked.setBlastCharge(CHARGE);
+    blocked.ignite(['a']);
+    const barrier = wall(1.5, -5, 1.5, 5);
+    blocked.applyBlast({ x: 3, y: 0 }, 0.4, 'G', barrier);
+    assert.equal(blocked.isJetting('pipe'), true);
+    const blockedOpen = run(blocked, [barrier], 250, 1, () => blocked.suppressionState('h')?.open === true);
+    assert.ok(blockedOpen < 250, 'the wood fire never opened the hood');
+    assert.equal(blocked.isJetting('pipe'), true);
+    assert.equal(blocked.gasLineState('pipe')?.heatKw, GAS_JET_KW);
+    assert.equal(blocked.gasLineState('pipe')?.shutoff, false);
 
     const arc = new FireSimulation();
     arc.init([stud('a', 0, 0)]);
@@ -314,6 +342,58 @@ describe('what the spray does and does not reach', () => {
     assert.equal(arc.suppressionState('h')?.open, false);
     assert.equal(arc.suppressionState('h')?.linkC, SPRINKLER_AMBIENT_C);
     assert.equal(arc.sprays().length, 0);
+    assert.equal(arc.isArcing('fit'), true);
+
+    const arcHood = new FireSimulation();
+    arcHood.init([stud('a', 0, 0), stud('b', 9, 0)]);
+    arcHood.setFuelCells(new Map([['a', WOOD]]));
+    arcHood.setSuppression([head('h', 0, 0, 'wet_chemical')]);
+    arcHood.setBlastCharge(CHARGE);
+    arcHood.setElectricalSources([
+      { id: 'near', pos: { x: 0, y: 0 }, level: 'G' },
+      { id: 'far', pos: { x: 9, y: 0 }, level: 'G' },
+    ]);
+    arcHood.ignite(['a']);
+    arcHood.applyBlast({ x: 0, y: 0 }, 1, 'G', []);
+    arcHood.applyBlast({ x: 9, y: 0 }, 1, 'G', []);
+    assert.equal(arcHood.isArcing('near'), true);
+    assert.equal(arcHood.isArcing('far'), true);
+    const arcOpen = run(arcHood, [], 250, 1, () => arcHood.suppressionState('h')?.open === true);
+    assert.ok(arcOpen < 250);
+    assert.equal(arcHood.isArcing('near'), false);
+    assert.equal(arcHood.isArcing('far'), true);
+  });
+
+  test('a water sprinkler does not decay cooking oil, and wet chemical does', () => {
+    const entry = entryById('cooking_oil');
+    const oil = entry ? fuelCellFromEntry(entry) : null;
+    assert.ok(oil?.liquidPool);
+    const cell = oil;
+    const make = (kind: SuppressionPlacement['kind'] | null) => {
+      const sim = new FireSimulation();
+      sim.init([stud('a', 0, 0)]);
+      sim.setFuelCells(new Map([['a', cell!]]));
+      if (kind) sim.setSuppression([head('h', 0, 0, kind, 4)]);
+      sim.ignite(['a']);
+      return sim;
+    };
+    const water = make('sprinkler');
+    const chem = make('wet_chemical');
+    const waterOpen = run(water, [], 180, 1, () => water.suppressionState('h')?.open === true);
+    assert.ok(waterOpen < 180, `sprinkler opened at ${waterOpen}`);
+    run(water, [], 120, 1);
+    const waterBare = heatReleaseKw(cell!, waterOpen + 120);
+    const waterQ = water.fuelReleaseKw('a') ?? 0;
+    assert.ok(Math.abs(waterQ - waterBare) / waterBare < 0.01, `water ${waterQ}, bare ${waterBare}`);
+    const chemOpen = run(chem, [], 180, 1, () => chem.suppressionState('h')?.open === true);
+    assert.ok(chemOpen < waterOpen, `hood ${chemOpen}, sprinkler ${waterOpen}`);
+    run(chem, [], 120, 1);
+    const chemBare = heatReleaseKw(cell!, chemOpen + 120);
+    const chemQ = chem.fuelReleaseKw('a') ?? 0;
+    assert.equal(chem.states.get('a')?.state, 'burning');
+    assert.ok(chemQ < chemBare * 0.8, `wet chemical ${chemQ}, bare ${chemBare}`);
+    assert.equal(HOOD_LINK_C, 68);
+    assert.equal(HOOD_HEIGHT_M, 1.1);
   });
 
   test('once the spray is open, a stud it covers stops heating and one it misses does not', () => {
@@ -342,17 +422,15 @@ describe('what the spray does and does not reach', () => {
     assert.ok(Math.hypot(9, 0) > SUPPRESSION_REACH_M);
   });
 
-  test('a wet-chemical head is the same spray with the slower link', () => {
-    const openAt = (kind: SuppressionPlacement['kind']) => {
-      const sim = fuelSim([stud('a', 0, 0)], [], [head('h', 0, 0, kind)]);
-      lightJet(sim, 'pipe', 0, 0);
-      return run(sim, [], 60, 0.1, () => sim.suppressionState('h')?.open === true);
-    };
-    const quick = openAt('sprinkler');
-    const kitchen = openAt('wet_chemical');
-    assert.ok(quick < 10 && kitchen > quick * 2, `quick ${quick}, kitchen ${kitchen}`);
+  test('the hood link is the slower RTI, at an assumed temperature', () => {
+    const jet = ceilingJet(8000, 3, 0);
+    const gas = SPRINKLER_AMBIENT_C + jet.riseK;
+    const quick = steadyActivationSec(SPRINKLER_AMBIENT_C, gas, jet.speedMps, SPRINKLER_RTI, SPRINKLER_ACT_C);
+    const hood = steadyActivationSec(SPRINKLER_AMBIENT_C, gas, jet.speedMps, WET_CHEMICAL_RTI, HOOD_LINK_C);
+    assert.ok(quick != null && hood != null && hood > quick * 2, `quick ${quick}, hood ${hood}`);
     assert.equal(SPRINKLER_RTI, 50);
     assert.equal(WET_CHEMICAL_RTI, 135);
+    assert.equal(HOOD_LINK_C, 68);
   });
 });
 
@@ -422,9 +500,32 @@ describe('nothing sprays without a fire', () => {
     );
     const heads = confirmedSuppression(placed, { G: 4 });
     assert.equal(heads.length, 5);
-    assert.ok(heads.every((item) => item.kind === 'wet_chemical' && item.ceilingM === 4));
+    assert.ok(heads.every((item) => item.kind === 'wet_chemical' && item.ceilingM === HOOD_HEIGHT_M));
     const bare = confirmedSuppression(placed, {});
-    assert.ok(bare.every((item) => item.ceilingM === SPRINKLER_CEILING_M));
+    assert.ok(bare.every((item) => item.ceilingM === HOOD_HEIGHT_M));
+    const sprinkler = confirmedSuppression(
+      [
+        {
+          id: 'sp',
+          studId: 'x',
+          pos: { x: 0, y: 0 },
+          level: 'G',
+          description: 'Ceiling sprinkler',
+          confirmed: true,
+          matches: [
+            {
+              entryId: 'sprinkler',
+              label: 'Sprinklers',
+              fuel: 'non_combustible',
+              behaviour: 'suppression',
+              source: 'chosen',
+            },
+          ],
+        },
+      ],
+      { G: 4 },
+    );
+    assert.equal(sprinkler[0]?.ceilingM, 4);
 
     const asFire = studs.map((item) => ({
       id: item.id,
@@ -450,6 +551,51 @@ describe('nothing sprays without a fire', () => {
     assert.equal(sim.wetStuds(walls).length, 0);
     assert.equal(sim.states.get(table.studId)?.state, 'none');
     for (const item of heads) assert.equal(sim.suppressionState(item.id)?.open, false);
+  });
+
+  test('a fryer fire opens the hood over the pan, and the oil then decays', () => {
+    const polygon = foodCourtSample.scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const studs = projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']));
+    const placed = snapObjectsToStuds(
+      foodCourtPlacedObjects(),
+      studs.map((item) => ({ id: item.id, simPos: item.simPos, level: item.floor })),
+    );
+    const asFire = studs.map((item) => ({
+      id: item.id,
+      simPos: item.simPos,
+      spatialContext: item.spatialContext,
+      level: item.floor === 'Ground' ? 'G' : item.floor,
+    }));
+    const fuel = confirmedFuelCells(placed, asFire);
+    const walls = foodCourtSample.scene.interiorWalls as unknown as InteriorWall[];
+    const fryerHood = placed.find((obj) => obj.id === 'hood-fryer');
+    const fryerGas = placed.find((obj) => obj.id === 'legacy-hz-gas-fryer');
+    const noodleGas = placed.find((obj) => obj.id === 'legacy-hz-gas-noodle');
+    assert.ok(fryerHood && fryerGas && noodleGas);
+    assert.equal(fryerHood.studId, fryerGas.studId);
+    const oil = fuel.get(fryerHood.studId);
+    assert.ok(oil?.liquidPool);
+    const heads = confirmedSuppression(placed, { G: 4 });
+    assert.equal(heads.find((item) => item.id === 'hood-fryer')?.ceilingM, HOOD_HEIGHT_M);
+    const sim = new FireSimulation();
+    sim.init(asFire);
+    sim.setFuelCells(fuel);
+    sim.setGasLines(confirmedGasLines(placed));
+    sim.setSuppression(heads);
+    sim.ignite([fryerHood.studId]);
+    const opened = run(sim, walls, 180, 0.1, () => sim.suppressionState('hood-fryer')?.open === true);
+    assert.ok(opened < 60, `hood-fryer opened at ${opened}`);
+    assert.equal(sim.states.get(fryerHood.studId)?.state, 'burning');
+    assert.equal(sim.gasLineState(fryerGas.id)?.shutoff, true);
+    assert.equal(sim.gasLineState(noodleGas.id)?.shutoff, false);
+    const atOpen = sim.fuelReleaseKw(fryerHood.studId) ?? 0;
+    run(sim, walls, 120, 1);
+    const later = sim.fuelReleaseKw(fryerHood.studId) ?? 0;
+    const bare = heatReleaseKw(oil!, opened + 120);
+    assert.equal(sim.states.get(fryerHood.studId)?.state, 'burning');
+    assert.ok(later < atOpen, `oil did not fall (${atOpen} to ${later})`);
+    assert.ok(later < bare * 0.8, `oil ${later}, unsprayed ${bare}`);
+    assert.equal(sim.suppressionState('hood-noodle')?.open, false);
   });
 });
 

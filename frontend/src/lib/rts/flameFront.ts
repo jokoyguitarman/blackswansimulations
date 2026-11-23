@@ -13,8 +13,10 @@
  * Growth is Q = α t² (seed `t2_alpha_classes`). A solid, light or heavy,
  * then stops at 250 kW/m² of contents. A liquid caps at the pool fire on
  * its pan, NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). After a spray opens
- * on fuel it can reach, that release decays as
+ * on solid fuel it can reach, that release decays as
  * Q(t) = Q(t_act) exp(−(t − t_act) / τ) (seed `sprinkler_suppression_decay`).
+ * A pressurised gas jet is not decayed. A water sprinkler does not decay
+ * cooking oil. Wet chemical on oil uses the same τ, and that use is assumed.
  *
  * The visible front is the room-scale speed on the entry, in metres per
  * minute (seed `flame_spread_rates`). Surface spread of a thick solid is the
@@ -352,22 +354,34 @@ export function electricalHeatReleaseKw(
  * The link is the RTI equation, CFAST Eq. 6.1 and the steady form NUREG-1805
  * Eq. 10-2 (seed `sprinkler_activation`):
  * dT_L/dt = √u / RTI · (T_g − T_L). The C-factor is ignored, as in the
- * worked example. Ambient is 20 °C and the link opens at 68 °C, the
- * temperatures in that example.
+ * worked example. Ambient is 20 °C. A sprinkler opens at 68 °C, the
+ * temperature in that example. A hood's 68 °C is assumed.
  *
  * A ceiling sprinkler uses RTI 50 (m·s)^½, the C/VM2 quick-response value
  * in the worked example. A kitchen wet-chemical head uses RTI 135, the
  * C/VM2 standard-response value named next to it in `sprinkler_rti_generic`.
- * The seeds have no separate hood-link temperature, so both open at 68 °C.
+ * The seeds have no hood-link temperature. 68 °C on a hood is assumed.
  *
- * Decay uses the NIST IR 5254 bound, τ = 435 s. The crib fit at 0.07 mm/s
- * is 410 s; 435 s is the bound the spec quotes for that spray density.
+ * A sprinkler link sits in the ceiling jet. H is the storey height, or 3 m
+ * when the building does not say. A hood link sits over the appliance, so
+ * its H is an assumed 1.1 m and not the storey height. r is the plan
+ * distance. A hood on the appliance stud is the r = 0 branch.
+ *
+ * Decay uses the NIST IR 5254 bound, τ = 435 s, for solid fuel. The crib
+ * fit at 0.07 mm/s is 410 s; 435 s is the bound the spec quotes. A gas jet
+ * keeps burning at the release its supply feeds until the valve closes.
+ * NIST IR 5254 does not describe that jet, and it does not describe water
+ * on a deep-fat fryer. Wet chemical on oil still uses τ, as an assumed
+ * stand-in: the agent saponifies the oil, and the seeds have no oil row.
+ *
+ * NFPA 17A and NFPA 96 require a cooking-equipment extinguishing system, on
+ * discharge, to shut off the fuel and the electric power that heat the
+ * equipment it protects. The fittings inside this head's throw are that
+ * set. The throw itself is assumed. A sprinkler does not shut them off.
  *
  * The throw, 4.5 m, is assumed. A 6 m stall's corner is 4.24 m from its
  * centre, so a head on a stud in the stall reaches that stall and not the
- * next stall's centre. A wall still blocks the spray. The storey height is
- * the fire-to-ceiling distance when the building has one. When it does not,
- * H is 3 m, the worked example.
+ * next stall's centre. A wall still blocks the spray.
  *
  * Wet footing is assumed. The movement seeds have no wet-floor speed.
  * Walking speed on a sprayed stud is multiplied by 0.75.
@@ -387,12 +401,20 @@ export const WET_CHEMICAL_RTI = 135;
 /** Link opens at this gas temperature. The worked example, °C. */
 export const SPRINKLER_ACT_C = 68;
 
+/**
+ * Assumed hood-link temperature, °C. The seeds have no fusible-link rating
+ * for a kitchen hood, so this reuses the sprinkler example and is labelled
+ * assumed. It is not a measured hood link.
+ */
+export const HOOD_LINK_C = 68;
+
 /** Room temperature in the worked example, °C. */
 export const SPRINKLER_AMBIENT_C = 20;
 
 /**
- * NIST IR 5254 bound on the heat-release decay, seconds. Q(t) = Q(t_act)
- * exp(−(t − t_act) / τ). The crib value at 0.07 mm/s is about 410 s.
+ * NIST IR 5254 bound on the heat-release decay of solid fuel, seconds.
+ * Q(t) = Q(t_act) exp(−(t − t_act) / τ). The crib value at 0.07 mm/s is
+ * about 410 s. Using this τ for cooking oil under wet chemical is assumed.
  */
 export const SUPPRESSION_TAU_S = 435;
 
@@ -405,8 +427,17 @@ export const SUPPRESSION_REACH_M = 4.5;
 /**
  * Assumed ceiling height when the storey does not say. The worked example
  * is 3 m. A saved storey height is used instead, as fire-to-ceiling.
+ * A wet-chemical hood does not use this. Its link is HOOD_HEIGHT_M.
  */
 export const SPRINKLER_CEILING_M = 3;
+
+/**
+ * Assumed height of a wet-chemical link above the cooking surface, metres.
+ * A hood's detectors sit about a metre over the appliance, not at the
+ * storey ceiling. 1.1 m is that assumption. The plan distance is still r,
+ * so a hood on the appliance stud uses Alpert's r = 0 branch.
+ */
+export const HOOD_HEIGHT_M = 1.1;
 
 /**
  * Assumed walking-speed factor on a floor the spray has wetted.
@@ -497,11 +528,12 @@ export function advanceSprinklerLink(
   speedMps: number,
   rti: number,
   dt: number,
+  actC = SPRINKLER_ACT_C,
 ): { linkC: number; openedAt: number | null } {
   if (!(dt > 0) || !(rti > 0) || !(speedMps > 0)) return { linkC, openedAt: null };
-  const hit = steadyActivationSec(linkC, gasC, speedMps, rti);
+  const hit = steadyActivationSec(linkC, gasC, speedMps, rti, actC);
   if (hit != null && hit <= dt + 1e-9) {
-    return { linkC: SPRINKLER_ACT_C, openedAt: Math.max(0, Math.min(hit, dt)) };
+    return { linkC: actC, openedAt: Math.max(0, Math.min(hit, dt)) };
   }
   return { linkC: linkTemperatureC(linkC, gasC, speedMps, rti, dt), openedAt: null };
 }

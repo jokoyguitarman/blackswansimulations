@@ -11,7 +11,7 @@
  * both fuel loads, the 0.3 m² pan, and every yield are assumed.
  */
 
-import { FRYER_POOL_AREA_M2, SPRINKLER_CEILING_M, type FuelCell } from './flameFront';
+import { FRYER_POOL_AREA_M2, HOOD_HEIGHT_M, SPRINKLER_CEILING_M, type FuelCell } from './flameFront';
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -87,8 +87,9 @@ export interface GasLinePlacement {
 
 /**
  * A confirmed sprinkler or wet-chemical head. It does not burn.
- * `ceilingM` is the storey height when the building has one, else the
- * worked-example 3 m.
+ * For a sprinkler, `ceilingM` is the storey height when the building has
+ * one, else the worked-example 3 m. For a wet-chemical hood it is the
+ * assumed link height over the appliance, not the storey height.
  */
 export interface SuppressionPlacement {
   id: string;
@@ -507,7 +508,9 @@ export function confirmedSuppression(
     const kind = entry?.suppression ?? 'wet_chemical';
     const level = obj.level || 'G';
     const stored = ceilingByLevel[level];
-    const ceilingM = stored != null && Number.isFinite(stored) && stored > 0 ? stored : SPRINKLER_CEILING_M;
+    const storey = stored != null && Number.isFinite(stored) && stored > 0 ? stored : SPRINKLER_CEILING_M;
+    // A hood link hangs over the pan. The storey height is the sprinkler ceiling.
+    const ceilingM = kind === 'wet_chemical' ? HOOD_HEIGHT_M : storey;
     heads.push({
       id: obj.id,
       pos: { x: obj.pos.x, y: obj.pos.y },
