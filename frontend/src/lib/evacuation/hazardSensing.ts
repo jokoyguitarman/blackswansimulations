@@ -470,6 +470,13 @@ export interface WallLike {
   doorPosition: number;
 }
 
+/**
+ * A crossing this close to a wall end still counts. The old 1% of the wall
+ * length missed a joint, so a route looked clear while the wall body held
+ * the person there. Five centimetres is shorter than a body.
+ */
+const WALL_END_TOL_M = 0.05;
+
 function segmentsHitT(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): number | null {
   const d1x = p2.x - p1.x;
   const d1y = p2.y - p1.y;
@@ -479,7 +486,10 @@ function segmentsHitT(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): number | null {
   if (Math.abs(denom) < 1e-10) return null;
   const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
   const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
-  if (t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99) return t;
+  if (!(t > 0.01 && t < 0.99)) return null;
+  const wallLen = Math.hypot(d2x, d2y);
+  const along = u * wallLen;
+  if (along >= -WALL_END_TOL_M && along <= wallLen + WALL_END_TOL_M) return t;
   return null;
 }
 

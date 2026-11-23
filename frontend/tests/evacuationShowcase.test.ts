@@ -372,6 +372,7 @@ describe('evacuation showcase', () => {
 
   test('10 blast timing', () => {
     assert.equal(blastEffectsTriggerSec(0.5), 30);
+    assert.equal(blastEffectsTriggerSec(1), 60);
     const input = [{ triggerTimeSec: 4, eventType: 'explode' }];
     const shifted = shiftEvents(input, 30);
     assert.notEqual(shifted[0], input[0]);
@@ -900,6 +901,22 @@ test('a downed body moves the steering aim off to one side', () => {
   const ahead = steerPastBodies({ x: 0, y: 0 }, { x: 10, y: 0 }, [{ x: 3, y: 0 }]);
   assert.ok(Math.abs(ahead.y) > 0.5, `still aimed through the body at y ${ahead.y}`);
   assert.ok(ahead.x > 1, `aim did not move toward the exit, x ${ahead.x}`);
+});
+
+test('a route across a wall joint is sent to the door', () => {
+  const walls = [
+    { startX: 40, startY: 0, endX: 40, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+  ];
+  const target = { x: 60, y: 12 };
+  const via = nextIndoorWaypoint({ x: 39.3, y: 5.8 }, target, walls);
+  assert.notEqual(via.x, target.x);
+  assert.ok(Math.abs(via.x - 40) < 0.2, `waypoint x ${via.x}`);
+  const clear = nextIndoorWaypoint({ x: 30, y: 20 }, { x: 50, y: 20 }, [
+    { startX: 40, startY: 0, endX: 40, endY: 40, hasDoor: true, doorWidth: 4, doorPosition: 0.5 },
+  ]);
+  assert.equal(clear.x, 50);
+  assert.equal(clear.y, 20);
 });
 
 test('a blocked exit is left on the next step', () => {

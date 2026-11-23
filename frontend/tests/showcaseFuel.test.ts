@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { isInsidePolygon } from '../src/lib/evacuation/geometry';
 import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
 import { blastEffectsTriggerSec } from '../src/lib/evacuation/showcase';
-import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
+import { DEFAULT_FIRE_PARAMS, FireSimulation } from '../src/lib/rts/fireSimulation';
 import type { InteriorWall } from '../src/lib/rts/types';
 import { SpatialEffectsEngine, blastSmokeStudIds } from '../src/lib/rts/spatialEffects';
 import { confirmedFuelCells } from '../src/lib/rts/materialLibrary';
@@ -103,6 +103,47 @@ function runShowcase(fuel: ReadonlyMap<string, FuelCell> | null) {
 }
 
 describe('Harbour House showcase fuel', () => {
+  test('the west shop, the mall, the east shop and the kitchen are separate rooms', () => {
+    const studs = harnessStuds();
+    const sim = new FireSimulation();
+    sim.init(studs);
+    const rooms = sim.compartmentIds(WALLS);
+    const room = (x: number, y: number) => rooms.get(`s_${x}_${y}`);
+    const west = room(9, 18);
+    const kitchen = room(9, 3);
+    const mall = room(30, 18);
+    const east = room(42, 18);
+    assert.ok(west && kitchen && mall && east);
+    assert.equal(new Set([west, kitchen, mall, east]).size, 4);
+    assert.notEqual(room(48, 3), mall);
+    const sizes = new Map<string, number>();
+    for (const id of rooms.values()) sizes.set(id, (sizes.get(id) ?? 0) + 1);
+    assert.ok((sizes.get(west) ?? 0) > 50);
+    assert.ok((sizes.get(east) ?? 0) > 50);
+    assert.ok((sizes.get(kitchen) ?? 0) < 40);
+  });
+
+  test('joined wall ends still split the studs on either side', () => {
+    const sim = new FireSimulation();
+    sim.init([
+      { id: 'west', simPos: { x: 21.5, y: 33.5 }, spatialContext: 'inside_building' },
+      { id: 'east', simPos: { x: 24.5, y: 36.5 }, spatialContext: 'inside_building' },
+    ]);
+    const piece = (id: string, y0: number, y1: number): InteriorWall => ({
+      id,
+      start: { x: 22, y: y0 },
+      end: { x: 22, y: y1 },
+      hasDoor: false,
+      doorWidth: 1.6,
+      doorPosition: 0.5,
+      description: id,
+      material: 'drywall',
+      photos: [],
+    });
+    const rooms = sim.compartmentIds([piece('a', 0, 34), piece('b', 34, 40)]);
+    assert.notEqual(rooms.get('west'), rooms.get('east'));
+  });
+
   test('the west shop burns through, and the east shop stays dark', () => {
     const studs = harnessStuds();
     const objects = harbourHouseFuelObjects(studs);
@@ -135,13 +176,14 @@ describe('Harbour House showcase fuel', () => {
     const furnished = runShowcase(fuel);
 
     // Master, wood on every indoor stud and the 8 m / 30 s rule, was 74 / 126 / 192.
-    // No named fuel still stands in as light wood. The floor is larger than 500 m²,
-    // so it does not flash over, and the light front does not cross a stud by T+5:00.
-    // The mall is 70 at T+1:30 (the fuel the blast lit), then the heavy front
-    // carries it through the west shop: 79 at T+3:00 and 94 at T+5:00.
+    // The blast lights 70, including 67 of the 72 west-shop studs. By T+3:00 the
+    // front has lit the other 5 and the kitchen has flashed, and that is still
+    // the count at T+5:00. The east shop stays dark.
+    // No named fuel stands in as light wood. The mall is too big to flash, so
+    // the count stays 74 until the kitchen, which is under 500 m², flashes.
     assert.deepEqual(empty.burning, [0, 0, 0]);
-    assert.deepEqual(standIn.burning, [74, 74, 74]);
-    assert.deepEqual(furnished.burning, [70, 79, 94]);
+    assert.deepEqual(standIn.burning, [74, 74, 93]);
+    assert.deepEqual(furnished.burning, [70, 94, 94]);
     assert.equal(furnished.burning[0], inBlast.length);
     assert.ok(furnished.burning[2] < fuel.size);
 

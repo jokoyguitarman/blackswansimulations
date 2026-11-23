@@ -93,6 +93,13 @@ export const DEFAULT_FIRE_PARAMS: FireParams = {
 
 // ── Geometry helpers ─────────────────────────────────────────────────────
 
+/**
+ * A crossing this close to a wall end still counts. The old 1% of the wall
+ * length left a gap at a joint, so two collinear walls did not split a room.
+ * Five centimetres is shorter than a body and far shorter than a door.
+ */
+const WALL_END_TOL_M = 0.05;
+
 function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
   const d1x = p2.x - p1.x;
   const d1y = p2.y - p1.y;
@@ -104,8 +111,11 @@ function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
 
   const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
   const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (!(t > 0.01 && t < 0.99)) return false;
 
-  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+  const wallLen = Math.hypot(d2x, d2y);
+  const along = u * wallLen;
+  return along >= -WALL_END_TOL_M && along <= wallLen + WALL_END_TOL_M;
 }
 
 function wallBlocksFire(from: Vec2, to: Vec2, wall: InteriorWall): boolean {
@@ -458,6 +468,12 @@ export class FireSimulation {
       this.rooms.set(roomId, members);
       for (const id of members) this.compartmentOf.set(id, roomId);
     }
+  }
+
+  /** Indoor stud → room, after the wall split. The door counts as wall. */
+  compartmentIds(walls: InteriorWall[]): Map<string, string> {
+    this.ensureCompartments(walls);
+    return new Map(this.compartmentOf);
   }
 
   /**

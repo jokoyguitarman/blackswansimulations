@@ -9,11 +9,12 @@
  * atrium are ceramic tile, with a few wooden benches and a kiosk. The sealed
  * room is concrete. An empty outdoor stud stays dark.
  *
- * The west shop front closes the north end of the wall at plan x = 22, and
- * the east shop front closes the south end of the wall at plan x = 40. The
- * kitchen partition is at plan y = 8. Each has a door. The door gap splits
- * the flood fill, so each shop is its own room, and the gap still lets the
- * front through. A room larger than 500 m² does not flash over as a whole.
+ * The west wall is one piece at plan x = 22, from y = 0 to y = 40, with one
+ * door. The east wall is one piece at plan x = 40, the same way. A joint in
+ * the middle used to leak the room split. The kitchen partition is at plan
+ * y = 8, with a door, and the west wall runs through that junction. The door
+ * gap splits the flood fill, so each shop is its own room, and the gap still
+ * lets the front through. A room larger than 500 m² does not flash over.
  *
  * Plan metres start at the south-west corner, +x east, +y north. The editor
  * frame is the centroid, +y south. The review harness is the plan frame.
@@ -145,44 +146,26 @@ interface PlanWall {
 }
 
 /**
- * Plan metres, south-west origin, +y north. Shop fronts close the old gaps
- * and the kitchen wall is at y = 8. Each shop front and the kitchen wall
- * has a door. The concrete room has none.
+ * Plan metres, south-west origin, +y north. Each shop wall is one segment
+ * with one door. The kitchen wall is at y = 8, also with a door. The
+ * concrete room has none.
  */
 const PLAN_WALLS: PlanWall[] = [
   {
     id: 'w1',
     start: { x: 22, y: 0 },
-    end: { x: 22, y: 34 },
+    end: { x: 22, y: 40 },
     hasDoor: true,
     doorPosition: 0.5,
     description: 'West shop wall.',
     material: 'drywall',
   },
   {
-    id: 'w1-north',
-    start: { x: 22, y: 34 },
-    end: { x: 22, y: 40 },
-    hasDoor: true,
-    doorPosition: 0.5,
-    description: 'West shop front.',
-    material: 'drywall',
-  },
-  {
-    id: 'w2-south',
-    start: { x: 40, y: 0 },
-    end: { x: 40, y: 6 },
-    hasDoor: true,
-    doorPosition: 0.5,
-    description: 'East shop front.',
-    material: 'drywall',
-  },
-  {
     id: 'w2',
-    start: { x: 40, y: 6 },
+    start: { x: 40, y: 0 },
     end: { x: 40, y: 40 },
     hasDoor: true,
-    doorPosition: 0.4,
+    doorPosition: 0.5,
     description: 'East shop wall.',
     material: 'drywall',
   },
