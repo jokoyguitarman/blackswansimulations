@@ -547,6 +547,16 @@ export interface CasualtyPin {
   studId?: string;
   insideBuilding?: boolean;
   spatialContext?: 'inside_building' | 'road' | 'open_air';
+  level?: string;
+}
+
+export interface LevelDef {
+  id: string;
+  name: string;
+  index: number;
+  heightM: number;
+  designed: boolean;
+  pedestrianCount: number;
 }
 
 // ── Game zones (hot/warm/cold operational zones) ──────────────────────
@@ -581,6 +591,7 @@ export interface InteriorWall {
   studId?: string;
   insideBuilding?: boolean;
   spatialContext?: 'inside_building' | 'road' | 'open_air';
+  level?: string;
 }
 
 export type HazardType =
@@ -603,7 +614,10 @@ export interface HazardZone {
   studId?: string;
   insideBuilding?: boolean;
   spatialContext?: 'inside_building' | 'road' | 'open_air';
+  level?: string;
 }
+
+export type VerticalLinkKind = 'stair' | 'lift';
 
 export interface Stairwell {
   id: string;
@@ -611,6 +625,9 @@ export interface Stairwell {
   connectsFloors: [number, number];
   blocked: boolean;
   label: string;
+  kind?: VerticalLinkKind;
+  widthM?: number;
+  levels?: { from: string; to: string };
   studId?: string;
   insideBuilding?: boolean;
   spatialContext?: 'inside_building' | 'road' | 'open_air';

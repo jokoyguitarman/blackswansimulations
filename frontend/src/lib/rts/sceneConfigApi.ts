@@ -45,6 +45,7 @@ export interface SceneConfigFull {
   wall_photo_urls: Record<string, string>;
   casualty_image_urls: Record<string, string>;
   pedestrian_count: number;
+  levels: unknown[];
   enrichment_result: unknown | null;
   created_by: string;
   created_at: string;
@@ -67,6 +68,7 @@ export async function createSceneConfig(config: {
   plantedItems?: unknown[];
   wallInspectionPoints?: unknown[];
   pedestrianCount?: number;
+  levels?: unknown[];
 }): Promise<{ id: string }> {
   const headers = await getHeaders();
   const resp = await fetch(apiUrl('/api/rts-scenes'), {

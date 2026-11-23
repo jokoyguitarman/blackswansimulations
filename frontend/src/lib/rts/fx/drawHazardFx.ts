@@ -112,6 +112,8 @@ export class HazardFxRenderer {
   private readonly dirtyFire: DirtyBox = { minC: 0, minR: 0, maxC: -1, maxR: -1, any: false };
   private phi = new Float32Array(0);
   private bound: RasterLayout | null = null;
+  /** The next upload replaces the whole raster. Set when the storey layout changes. */
+  private forceUpload = false;
   private cols = 0;
   private rows = 0;
   private lastNowMs = -1;
@@ -154,6 +156,10 @@ export class HazardFxRenderer {
     }
     const layout = fx.layout;
     const states = fx.states;
+    if (layout && this.bound && this.bound !== layout) {
+      this.pool.alive.fill(0);
+      this.pool.aliveCount = 0;
+    }
     this.advanceEmbers(fx, layout, states);
     const cover = { smoke: 0, fire: 0 };
     if (layout && states && layout.cols > 0 && layout.rows > 0) {
@@ -223,11 +229,17 @@ export class HazardFxRenderer {
     const same =
       this.bound === layout && this.cols === layout.cols && this.rows === layout.rows;
     if (same) return;
+    const switched = this.bound != null && this.bound !== layout;
     this.bound = layout;
     const n = layout.studIds.length;
     if (this.phi.length < n) this.phi = new Float32Array(n);
     for (let i = 0; i < n; i++) this.phi[i] = hashStud(layout.studIds[i]);
     this.ensureSize(layout.cols, layout.rows);
+    if (switched) {
+      this.smokeImage.data.fill(0);
+      this.fireImage.data.fill(0);
+      this.forceUpload = true;
+    }
   }
 
   private ensureSize(cols: number, rows: number): void {
@@ -270,6 +282,7 @@ export class HazardFxRenderer {
     const fireChanged = writeFireRGBA(layout, states, this.fireImage.data, this.dirtyFire, cover);
     this.upload(this.smokeCanvas, this.smokeImage, this.dirtySmoke, smokeChanged, layout.cols, layout.rows, 1);
     this.upload(this.fireCanvas, this.fireImage, this.dirtyFire, fireChanged, layout.cols, layout.rows, 0);
+    this.forceUpload = false;
   }
 
   private upload(
@@ -281,11 +294,12 @@ export class HazardFxRenderer {
     rows: number,
     pad: number,
   ): void {
-    if (changed <= 0) return;
+    const full = this.forceUpload;
+    if (changed <= 0 && !full) return;
     const g = canvas.getContext('2d');
     if (!g) return;
     const cells = cols * rows;
-    if (!dirty.any || changed > cells * 0.25) {
+    if (full || !dirty.any || changed > cells * 0.25) {
       g.putImageData(image, 0, 0);
       return;
     }

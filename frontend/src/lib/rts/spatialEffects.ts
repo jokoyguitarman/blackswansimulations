@@ -6,6 +6,7 @@ import {
   type FireStudState,
   type FireParams,
 } from './fireSimulation';
+import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 
 // ── Effect types ─────────────────────────────────────────────────────────
 
@@ -103,8 +104,9 @@ function wallBlocksPath(from: Vec2, to: Vec2, wall: InteriorWall): boolean {
   return segmentsIntersect(from, to, wall.start, wall.end);
 }
 
-function isWallBlocked(from: Vec2, to: Vec2, walls: InteriorWall[]): boolean {
+function isWallBlocked(from: Vec2, to: Vec2, walls: InteriorWall[], level?: string): boolean {
   for (const w of walls) {
+    if (level && levelOf(w) !== level) continue;
     if (wallBlocksPath(from, to, w)) return true;
   }
   return false;
@@ -128,6 +130,7 @@ export class SpatialEffectsEngine {
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
+  private verticalPairs: ShaftPair[] = [];
   private fireSim: FireSimulation;
 
   constructor(fireParams?: FireParams, timeScale = 0.5) {
@@ -139,6 +142,7 @@ export class SpatialEffectsEngine {
     this.studIndex.clear();
     this.studStates.clear();
     this.neighborCache.clear();
+    this.verticalPairs = [];
     this.activeEffects = [];
     this.elapsed = 0;
 
@@ -153,20 +157,19 @@ export class SpatialEffectsEngine {
       });
     }
 
-    for (const s of studs) {
-      const neighbors: string[] = [];
-      for (const other of studs) {
-        if (other.id === s.id) continue;
-        if (
-          Math.hypot(other.simPos.x - s.simPos.x, other.simPos.y - s.simPos.y) <= NEIGHBOR_RADIUS
-        ) {
-          neighbors.push(other.id);
-        }
-      }
-      this.neighborCache.set(s.id, neighbors);
-    }
+    const built = neighborIdsByLevel(studs, NEIGHBOR_RADIUS);
+    for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
 
     this.fireSim.init(studs);
+  }
+
+  /**
+   * Shaft pairs for stairs and lifts. `widthM` and `heightByLevel` are optional;
+   * omitted values use the 1.2 m stair and the 4 m storey.
+   */
+  setVerticalLinks(links: ShaftLink[]) {
+    this.verticalPairs = shaftPairs([...this.studIndex.values()], links);
+    this.fireSim.setShaftPairs(this.verticalPairs);
   }
 
   registerHazard(
@@ -227,7 +230,7 @@ export class SpatialEffectsEngine {
           hs.activeEffectIds.push(effectId);
 
           if (event.spreadType === 'fire') {
-            this.fireSim.igniteRadius(origin, event.spreadRadius);
+            this.fireSim.igniteRadius(origin, event.spreadRadius, hazard?.level);
           }
         }
       }
@@ -303,7 +306,7 @@ export class SpatialEffectsEngine {
           if (!nState || !dest) continue;
           if (nState.gas >= state.gas) continue;
 
-          const blocked = isWallBlocked(src.simPos, dest.simPos, walls);
+          const blocked = isWallBlocked(src.simPos, dest.simPos, walls, levelOf(src));
           const transfer = blocked ? spreadAmount * 0.1 : spreadAmount;
           const diff = (state.gas - nState.gas) * transfer;
           if (diff > 0.001) {
@@ -479,7 +482,7 @@ export class SpatialEffectsEngine {
           if (!nState || !dest) continue;
           if (nState.smoke >= state.smoke) continue;
 
-          const blocked = isWallBlocked(src.simPos, dest.simPos, walls);
+          const blocked = isWallBlocked(src.simPos, dest.simPos, walls, levelOf(src));
           const transfer = blocked ? spreadAmount * 0.05 : spreadAmount;
           const diff = (state.smoke - nState.smoke) * transfer;
           if (diff > 0.001) {
@@ -494,6 +497,14 @@ export class SpatialEffectsEngine {
           state.smoke = Math.max(0, state.smoke - decayRate * 4);
         }
       }
+    }
+
+    for (const pair of this.verticalPairs) {
+      const lower = this.studStates.get(pair.lower);
+      const upper = this.studStates.get(pair.upper);
+      if (!lower || !upper || !(lower.smoke > upper.smoke)) continue;
+      const amount = (lower.smoke - upper.smoke) * Math.min(0.5, pair.coeffPerS * dt);
+      if (amount > 0) toSpread.push({ id: pair.upper, amount });
     }
 
     for (const { id, amount } of toSpread) {

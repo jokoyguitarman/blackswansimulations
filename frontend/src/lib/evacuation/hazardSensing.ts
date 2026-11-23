@@ -2,6 +2,8 @@ import type { ExitDef, Vec2 } from './types';
 import { isInsidePolygon } from './geometry';
 import { SHOWCASE } from './showcaseConstants';
 import { BLAST_CONSTANTS } from '../rts/blast/blastModel';
+import type { LevelDef, Stairwell } from '../rts/types';
+import { levelIndex, levelOf, linkLevels, stairFlowPerS, stairTravelS } from '../rts/levels';
 
 export type HeadSmokeClass = 'clear' | 'light' | 'thick' | 'untenable';
 export type FireCell = 'none' | 'heating' | 'burning' | 'burnt_out';
@@ -1217,4 +1219,227 @@ export function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+export interface RouteChoice {
+  kind: 'exit' | 'stair';
+  id: string;
+  cost: number;
+  dir?: 'up' | 'down';
+  toLevel?: string;
+}
+
+function routePointCost(a: Vec2, b: Vec2, field: HazardField | undefined): number {
+  let extra = 0;
+  if (field) {
+    for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
+      const s = field.sample(p.x, p.y);
+      if (s.fire === 'burning') return Infinity;
+      extra += extinctionK(s.smoke) * SHOWCASE.SMOKE_COST_M_PER_K;
+    }
+  }
+  return Math.hypot(b.x - a.x, b.y - a.y) + extra;
+}
+
+/**
+ * Next hop toward the cheapest usable exit, possibly via stairs.
+ * Lifts are not used. Returns null when no stair or exit can be reached.
+ */
+export function chooseRoute(
+  pos: Vec2,
+  level: string,
+  exits: ExitDef[],
+  stairs: Stairwell[],
+  levels: LevelDef[],
+  fields: ReadonlyMap<string, HazardField>,
+  verts: Vec2[],
+  queues?: ReadonlyMap<string, { up: number; down: number }>,
+  current?: { id: string; cost: number } | null,
+): RouteChoice | null {
+  const fieldOf = (id: string) => fields.get(id);
+  interface Node {
+    key: string;
+    level: string;
+    pos: Vec2;
+    kind: 'person' | 'exit' | 'stair';
+    id: string;
+  }
+  const nodes = new Map<string, Node>();
+  nodes.set('person', { key: 'person', level, pos, kind: 'person', id: '' });
+
+  for (const sw of stairs) {
+    if (sw.blocked || sw.kind === 'lift') continue;
+    const span = linkLevels(sw, levels);
+    for (let i = 0; i < span.length; i++) {
+      const key = `stair:${sw.id}:${span[i]}`;
+      nodes.set(key, { key, level: span[i], pos: sw.pos, kind: 'stair', id: sw.id });
+    }
+  }
+  for (const exit of exits) {
+    const exitLevel = levelOf(exit);
+    const field = fieldOf(exitLevel);
+    if (field && !isExitUsable(exit, verts, field)) continue;
+    if (!field && (exit.exitType === 'service' || exit.status === 'blocked')) continue;
+    const key = `exit:${exit.id}`;
+    nodes.set(key, { key, level: exitLevel, pos: exit.center, kind: 'exit', id: exit.id });
+  }
+
+  const edges = new Map<string, Array<{ to: string; cost: number }>>();
+  const add = (from: string, to: string, cost: number) => {
+    if (!(cost < Infinity)) return;
+    const list = edges.get(from);
+    if (list) list.push({ to, cost });
+    else edges.set(from, [{ to, cost }]);
+  };
+
+  const byLevel = new Map<string, Node[]>();
+  for (const node of nodes.values()) {
+    if (node.kind === 'person') continue;
+    const list = byLevel.get(node.level);
+    if (list) list.push(node);
+    else byLevel.set(node.level, [node]);
+  }
+  const linkCost = (a: Node, b: Node): number => {
+    const field = fieldOf(a.level);
+    if (b.kind === 'exit') {
+      const exit = exits.find((e) => e.id === b.id);
+      if (!exit) return Infinity;
+      if (!field) return Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
+      return exitCost(a.pos, exit, verts, field);
+    }
+    return routePointCost(a.pos, b.pos, field);
+  };
+  for (const [lvl, group] of byLevel) {
+    if (lvl === level) {
+      const person = nodes.get('person')!;
+      for (const node of group) add('person', node.key, linkCost(person, node));
+    }
+    for (const a of group) {
+      for (const b of group) {
+        if (a.key === b.key) continue;
+        add(a.key, b.key, linkCost(a, b));
+      }
+    }
+  }
+  for (const sw of stairs) {
+    if (sw.blocked || sw.kind === 'lift') continue;
+    const span = linkLevels(sw, levels);
+    const flow = stairFlowPerS(sw);
+    const q = queues?.get(sw.id) ?? { up: 0, down: 0 };
+    for (let i = 0; i < span.length - 1; i++) {
+      const lowerId = span[i];
+      const upperId = span[i + 1];
+      if (levelIndex(upperId) !== levelIndex(lowerId) + 1) continue;
+      const lower = levels.find((l) => l.id === lowerId);
+      const upper = levels.find((l) => l.id === upperId);
+      if (!lower || !upper) continue;
+      const upM =
+        stairTravelS(lower, 'up') * SHOWCASE.FREE_WALK_SPEED +
+        (q.up / flow) * SHOWCASE.FREE_WALK_SPEED;
+      const downM =
+        stairTravelS(upper, 'down') * SHOWCASE.FREE_WALK_SPEED +
+        (q.down / flow) * SHOWCASE.FREE_WALK_SPEED;
+      add(`stair:${sw.id}:${lowerId}`, `stair:${sw.id}:${upperId}`, upM);
+      add(`stair:${sw.id}:${upperId}`, `stair:${sw.id}:${lowerId}`, downM);
+    }
+  }
+
+  const dist = new Map<string, number>([['person', 0]]);
+  const prev = new Map<string, string>();
+  const seen = new Set<string>();
+  while (seen.size < nodes.size) {
+    let bestKey: string | null = null;
+    let bestD = Infinity;
+    for (const key of nodes.keys()) {
+      if (seen.has(key)) continue;
+      const d = dist.get(key) ?? Infinity;
+      if (d < bestD) {
+        bestD = d;
+        bestKey = key;
+      }
+    }
+    if (!bestKey || !(bestD < Infinity)) break;
+    seen.add(bestKey);
+    for (const edge of edges.get(bestKey) ?? []) {
+      const next = bestD + edge.cost;
+      if (next < (dist.get(edge.to) ?? Infinity)) {
+        dist.set(edge.to, next);
+        prev.set(edge.to, bestKey);
+      }
+    }
+  }
+
+  let bestExit: Node | null = null;
+  let bestCost = Infinity;
+  for (const node of nodes.values()) {
+    if (node.kind !== 'exit') continue;
+    const cost = dist.get(node.key) ?? Infinity;
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestExit = node;
+    }
+  }
+  if (!bestExit || !(bestCost < Infinity)) return null;
+
+  const pathTo = (exitKey: string): string[] => {
+    const path = [exitKey];
+    let cursor = exitKey;
+    while (prev.get(cursor) && prev.get(cursor) !== 'person') {
+      cursor = prev.get(cursor)!;
+      path.push(cursor);
+    }
+    path.push('person');
+    path.reverse();
+    return path;
+  };
+  const choiceFrom = (path: string[], cost: number): RouteChoice | null => {
+    const hop = nodes.get(path[1] ?? '');
+    if (!hop) return null;
+    if (hop.kind === 'exit') return { kind: 'exit', id: hop.id, cost };
+    const next = nodes.get(path[2] ?? '');
+    let dir: 'up' | 'down' = 'down';
+    let toLevel = hop.level;
+    if (next && next.kind === 'stair' && next.id === hop.id && next.level !== hop.level) {
+      dir = levelIndex(next.level) > levelIndex(hop.level) ? 'up' : 'down';
+      toLevel = next.level;
+    }
+    return { kind: 'stair', id: hop.id, cost, dir, toLevel };
+  };
+
+  const best = choiceFrom(pathTo(bestExit.key), bestCost);
+  if (!best) return null;
+
+  if (current) {
+    let stayCost = Infinity;
+    let stay: RouteChoice | null = null;
+    for (const node of nodes.values()) {
+      if (node.kind !== 'exit') continue;
+      const cost = dist.get(node.key) ?? Infinity;
+      if (!(cost < stayCost)) continue;
+      const choice = choiceFrom(pathTo(node.key), cost);
+      if (choice?.id !== current.id) continue;
+      stayCost = cost;
+      stay = choice;
+    }
+    if (stay && stayCost < Infinity && !(best.cost < stayCost * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
+      return stay;
+    }
+  }
+
+  if (best.kind === 'exit') {
+    const local = exits.filter((e) => levelOf(e) === level);
+    if (local.some((e) => e.id === best.id)) {
+      const field = fieldOf(level) ?? new HazardField([]);
+      const picked = chooseExit(
+        pos,
+        local,
+        verts,
+        field,
+        current && local.some((e) => e.id === current.id) ? current : null,
+      );
+      if (!picked) return null;
+      return { kind: 'exit', id: picked.id, cost: picked.cost };
+    }
+  }
+  return best;
 }

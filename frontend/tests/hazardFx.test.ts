@@ -13,7 +13,9 @@ import { FX, noteDowngradeFrom, shouldAutoDowngrade } from '../src/lib/rts/fx/fx
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import type { HazardZone } from '../src/lib/rts/types';
 import {
+  activeRasterLayout,
   buildRasterLayout,
+  createRasterLayoutCache,
   dilateEmpty,
   frontCells,
   pulseCells,
@@ -245,6 +247,45 @@ describe('hazard fx', () => {
     assert.equal(clash.collisions, 1);
     assert.ok(clash.index[0] >= 0);
     assert.equal(clash.index[1], -1);
+  });
+
+  test('G fire draws on G and not on L1', () => {
+    const studs = [
+      { id: 'l1', floor: 'L1', simPos: { x: 6, y: 9 } },
+      { id: 'g', floor: 'G', simPos: { x: 6, y: 9 } },
+    ];
+    const cache = createRasterLayoutCache();
+    const ground = activeRasterLayout(cache, studs, 3, true, 'G');
+    const groundAgain = activeRasterLayout(cache, studs, 3, true, 'G');
+    const upper = activeRasterLayout(cache, studs, 3, true, 'L1');
+    assert.ok(ground);
+    assert.equal(groundAgain, ground);
+    assert.ok(upper);
+    assert.notEqual(upper, ground);
+    assert.equal(ground.collisions, 0);
+    assert.equal(upper.collisions, 0);
+    assert.deepEqual([...ground.studIds], ['g']);
+    assert.deepEqual([...upper.studIds], ['l1']);
+
+    const states = new Map([
+      ['g', { fire: { state: 'burning' } }],
+      ['l1', { fire: { state: 'none' } }],
+    ]);
+    const groundPx = new Uint8ClampedArray(ground.cols * ground.rows * 4);
+    const upperPx = new Uint8ClampedArray(upper.cols * upper.rows * 4);
+    writeFireRGBA(ground, states, groundPx);
+    writeFireRGBA(upper, states, upperPx);
+    const gAt = ground.index[0] * 4;
+    const lAt = upper.index[0] * 4;
+    assert.equal(groundPx[gAt], 245);
+    assert.equal(groundPx[gAt + 3], 191);
+    assert.equal(upperPx[lAt], 0);
+    assert.equal(upperPx[lAt + 3], 0);
+
+    const single = createRasterLayoutCache();
+    const flat = activeRasterLayout(single, studs, 3, false, 'G');
+    assert.equal(flat?.collisions, 1);
+    assert.equal(flat?.index[1], -1);
   });
 
   test('smoke alpha follows the head-height curve', () => {
