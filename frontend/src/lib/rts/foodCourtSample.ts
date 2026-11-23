@@ -33,7 +33,7 @@ export const foodCourtSample = {
     ],
     "centerLat": 1.3,
     "centerLng": 103.8,
-    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Tables and the fryer oil are confirmed objects. Gas lines are confirmed and do not burn until a blast opens one. Each stall has an electrical appliance. It is not fuel, and it does not arc until a blast faults it. A wooden table sits one stud from the noodle gas line, and another one stud from the pizza gas line. The pizza fridge is the next stud, not under that table.",
+    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Tables and the fryer oil are confirmed objects. Gas lines are confirmed and do not burn until a blast opens one. Each stall has an electrical appliance. It is not fuel, and it does not arc until a blast faults it. A wooden table sits one stud from the noodle gas line, and another one stud from the pizza gas line. The pizza fridge is the next stud, not under that table. Each stall has a wet-chemical system. It does not discharge until a fire heats its link, and the floor under an open spray is wet.",
     "pedestrianCount": 0,
     "levels": [
       {
@@ -485,6 +485,9 @@ function confirmedPoint(
  * The pizza fridge is the next stud east of that table, not on it, so the
  * jet can light the table on its own. The drinks text does not say "gas
  * line": that appliance is electrical only, so it is not a pipe.
+ * Each stall also has a wet-chemical head on a free stud. The pizza head is
+ * not on the table and not on the gas line. A head does not discharge until
+ * a fire heats its link.
  */
 export function foodCourtPlacedObjects(): PlacedObject[] {
   return [
@@ -502,5 +505,10 @@ export function foodCourtPlacedObjects(): PlacedObject[] {
       'electrical',
       'Drinks stall. Fridges and a hot-water urn.',
     ),
+    confirmedPoint('hood-noodle', -9.5, -11.5, 'wet_chemical', 'Wet-chemical system over the noodle stall.'),
+    confirmedPoint('hood-grill', -3.5, -11.5, 'wet_chemical', 'Wet-chemical system over the grill stall.'),
+    confirmedPoint('hood-fryer', 2.5, -8.5, 'wet_chemical', 'Wet-chemical system over the fryer stall.'),
+    confirmedPoint('hood-pizza', 8.5, -11.5, 'wet_chemical', 'Wet-chemical system over the pizza stall.'),
+    confirmedPoint('hood-drinks', 11.5, -11.5, 'wet_chemical', 'Wet-chemical system over the drinks stall.'),
   ];
 }

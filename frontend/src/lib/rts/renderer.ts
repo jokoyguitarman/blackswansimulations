@@ -39,7 +39,10 @@ export interface PlacedObjectDraw {
 
 export interface ShowcaseRenderFx {
   hazardStuds: Array<{ id: string; simPos: Vec2 }>;
-  effectStates: Map<string, { smoke: number; fire: { state: string; approach?: number } }> | null;
+  effectStates: Map<
+    string,
+    { smoke: number; wet?: boolean; fire: { state: string; approach?: number; output?: number } }
+  > | null;
   cellM: number;
   explosion: { pos: Vec2; radiusM: number; ageS: number; reducedMotion: boolean } | null;
   injuryRings: {
@@ -157,6 +160,7 @@ export function renderRTS(
   placedObjects?: PlacedObjectDraw[] | null,
   gasJets?: Array<{ pos: Vec2; level?: string }> | null,
   electricalArcs?: Array<{ pos: Vec2; level?: string }> | null,
+  suppressionSprays?: Array<{ pos: Vec2; level?: string }> | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
@@ -278,6 +282,13 @@ export function renderRTS(
       ctx,
       rc,
       levelView ? gasJets.filter((jet) => onActive(jet.level)) : gasJets,
+    );
+  }
+  if (suppressionSprays && suppressionSprays.length > 0) {
+    drawSuppressionSprays(
+      ctx,
+      rc,
+      levelView ? suppressionSprays.filter((spray) => onActive(spray.level)) : suppressionSprays,
     );
   }
   if (stairsToDraw && stairsToDraw.length > 0) {
@@ -727,12 +738,20 @@ function drawHazardField(
       ctx.fillStyle = `rgba(90, 90, 100, ${0.15 + 0.65 * headSmoke(d)})`;
       ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
     }
+    if (st.wet) {
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+    }
     const fire = st.fire?.state;
     if (fire === 'burning') {
+      const output = st.fire?.output;
+      let scale = output != null && output < 0.98 ? Math.max(0.28, output) : 1;
+      if (st.wet) scale = Math.min(scale, 0.72);
+      const side = size * scale;
       ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
-      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+      ctx.fillRect(c.cx - side / 2, c.cy - side / 2, side, side);
       ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
-      ctx.fillRect(c.cx - size * 0.3, c.cy - size * 0.3, size * 0.6, size * 0.6);
+      ctx.fillRect(c.cx - side * 0.3, c.cy - side * 0.3, side * 0.6, side * 0.6);
     } else if (fire === 'heating') {
       const approach = st.fire?.approach ?? 1;
       const grown = Math.max(0.12, Math.min(1, approach));
@@ -1512,6 +1531,31 @@ function drawGasJets(
     ctx.strokeText('Jet', p.cx, p.cy - radius - 4);
     ctx.fillStyle = '#fff7ed';
     ctx.fillText('Jet', p.cx, p.cy - radius - 4);
+  }
+}
+
+function drawSuppressionSprays(
+  ctx: CanvasRenderingContext2D,
+  rc: RenderContext,
+  sprays: Array<{ pos: Vec2; level?: string }>,
+) {
+  for (const spray of sprays) {
+    const p = toCanvas(spray.pos.x, spray.pos.y, rc);
+    const radius = Math.max(mToCanvas(1.1, rc), 10);
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.95)';
+    ctx.stroke();
+    ctx.font = scaledFont(11, rc);
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.strokeText('Spray', p.cx, p.cy - radius - 4);
+    ctx.fillStyle = '#e0f2fe';
+    ctx.fillText('Spray', p.cx, p.cy - radius - 4);
   }
 }
 

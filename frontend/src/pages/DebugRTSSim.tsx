@@ -91,6 +91,7 @@ import {
   confirmedElectricalSources,
   confirmedFuelCells,
   confirmedGasLines,
+  confirmedSuppression,
   entryById,
   entryCanBurn,
   matchFromEntry,
@@ -308,16 +309,22 @@ function fuelCellsFor(objects: readonly PlacedObject[], studs: readonly SimStud[
   );
 }
 
-/** Charge, gas lines, and arcs. Called every effects step so a shut valve is not cleared. */
+/** Charge, gas lines, arcs, and suppression heads. Called every effects step. */
 function syncIgnition(
   engine: SpatialEffectsEngine,
   objects: readonly PlacedObject[],
   zones: readonly HazardZone[],
   charge: ChargeSpec,
+  levels: readonly { id: string; heightM?: number }[],
 ) {
   engine.setBlastCharge(charge);
   engine.setGasLines(confirmedGasLines(objects));
   engine.setElectricalSources(confirmedElectricalSources(objects, zones));
+  const ceilings: Record<string, number> = {};
+  for (const level of levels) {
+    if (typeof level.heightM === 'number' && level.heightM > 0) ceilings[level.id] = level.heightM;
+  }
+  engine.setSuppression(confirmedSuppression(objects, ceilings));
 }
 
 function objectsOnStuds(
@@ -713,6 +720,7 @@ export function DebugRTSSim() {
   const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
   const [gasJetCount, setGasJetCount] = useState(0);
   const [arcCount, setArcCount] = useState(0);
+  const [sprayCount, setSprayCount] = useState(0);
   const [placingObject, setPlacingObject] = useState(false);
   const [objectNotice, setObjectNotice] = useState<string | null>(null);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
@@ -1263,6 +1271,7 @@ export function DebugRTSSim() {
     setEffectStates(null);
     setGasJetCount(0);
     setArcCount(0);
+    setSprayCount(0);
     rtsRef.current = new RTSEngine();
     setPedestrians([]);
     setWallPoints([]);
@@ -1639,6 +1648,7 @@ export function DebugRTSSim() {
     setEffectStates(null);
     setGasJetCount(0);
     setArcCount(0);
+    setSprayCount(0);
     const verts = projectPolygon(polygon);
     rtsRef.current = new RTSEngine();
     rtsRef.current.setBuildingVertices(verts);
@@ -2077,6 +2087,7 @@ export function DebugRTSSim() {
             placedObjectsRef.current,
             hazardZonesRef.current,
             chargeRef.current,
+            levelsRef.current,
           );
           for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
           effectDt = effectSteps * FX.EFFECTS_DT;
@@ -2088,6 +2099,7 @@ export function DebugRTSSim() {
             placedObjectsRef.current,
             hazardZonesRef.current,
             chargeRef.current,
+            levelsRef.current,
           );
           effectsEng.step(
             effectDt,
@@ -2100,6 +2112,8 @@ export function DebugRTSSim() {
         setGasJetCount((prev) => (prev === jetCount ? prev : jetCount));
         const liveArcs = effectsEng.electricalArcs().length;
         setArcCount((prev) => (prev === liveArcs ? prev : liveArcs));
+        const liveSprays = effectsEng.sprays().length;
+        setSprayCount((prev) => (prev === liveSprays ? prev : liveSprays));
 
         // Casualty deterioration based on spatial effects
         const eStates = effectsEng.studStates;
@@ -2284,6 +2298,7 @@ export function DebugRTSSim() {
             placedObjectDraws(placedObjectsRef.current),
             effectsEngineRef.current?.gasJets() ?? null,
             effectsEngineRef.current?.electricalArcs() ?? null,
+            effectsEngineRef.current?.sprays() ?? null,
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -3734,6 +3749,7 @@ export function DebugRTSSim() {
     explosionStartRef.current = null;
     setGasJetCount(0);
     setArcCount(0);
+    setSprayCount(0);
     setBanner(null);
     setShowcaseHud(null);
     hudAtRef.current = 0;
@@ -6012,6 +6028,12 @@ export function DebugRTSSim() {
               </div>
             )}
 
+            {sprayCount > 0 && (
+              <div className="bg-gray-900 border border-sky-400 rounded p-3">
+                <div className="text-xs text-sky-100">Sprays {sprayCount}</div>
+              </div>
+            )}
+
             {arcCount > 0 && (
               <div className="bg-gray-900 border border-sky-500 rounded p-3 space-y-2">
                 <div className="text-xs text-sky-200">Arcs {arcCount}</div>
@@ -6802,7 +6824,7 @@ export function DebugRTSSim() {
                           }
 
                           preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
-                          syncIgnition(preview, placedObjects, hazardZones, charge);
+                          syncIgnition(preview, placedObjects, hazardZones, charge, levels);
                           preview.runPreview(
                             effectPreviewTime,
                             interiorWalls,

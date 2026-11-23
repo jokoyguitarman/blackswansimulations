@@ -9,7 +9,7 @@ import {
 } from './fireSimulation';
 import type { FuelCell } from './flameFront';
 import type { ChargeSpec } from './blast/blastModel';
-import type { ElectricalPlacement, GasLinePlacement } from './materialLibrary';
+import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -46,6 +46,8 @@ export interface StudEffectState {
   flood: number;
   structural: number;
   smoke: number;
+  /** True once an open spray can reach this stud. */
+  wet?: boolean;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -223,6 +225,11 @@ export class SpatialEffectsEngine {
     this.fireSim.setElectricalSources(sources);
   }
 
+  /** Confirmed sprinkler and wet-chemical heads. A chemical circle is not a head. */
+  setSuppression(heads: readonly SuppressionPlacement[]) {
+    this.fireSim.setSuppression(heads);
+  }
+
   /** Close one jet, or every jet when the id is omitted. */
   shutOffGas(id?: string) {
     this.fireSim.shutOffGas(id);
@@ -239,6 +246,22 @@ export class SpatialEffectsEngine {
 
   electricalArcs() {
     return this.fireSim.electricalArcs();
+  }
+
+  sprays() {
+    return this.fireSim.sprays();
+  }
+
+  wetStuds(walls: InteriorWall[]) {
+    return this.fireSim.wetStuds(walls);
+  }
+
+  suppressionState(id: string) {
+    return this.fireSim.suppressionState(id);
+  }
+
+  fuelReleaseKw(id: string) {
+    return this.fireSim.fuelReleaseKw(id);
   }
 
   isJetting(id: string): boolean {
@@ -350,10 +373,12 @@ export class SpatialEffectsEngine {
   private stepFire(dt: number, walls: InteriorWall[], hazards: HazardZone[]) {
     this.fireSim.step(dt, walls, hazards);
 
+    const wet = new Set(this.fireSim.wetStuds(walls).map((stud) => stud.id));
     for (const [id, fs] of this.fireSim.states) {
       const state = this.studStates.get(id);
       if (state) {
         state.fire = { ...fs };
+        state.wet = wet.has(id);
       }
     }
   }

@@ -57,6 +57,7 @@ import {
   type ChargeSpec,
 } from '../rts/blast/blastModel';
 import { LEVEL } from './levelConstants';
+import { WET_FLOOR_SPEED } from '../rts/flameFront';
 import {
   levelCategories,
   levelIndex,
@@ -912,7 +913,10 @@ export class PolygonEvacuationEngine {
       ped.posture = 'crawl';
     }
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
-    const speed = walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor);
+    const footing = sample.wet ? WET_FLOOR_SPEED : 1;
+    const speed =
+      walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor) *
+      footing;
 
     const blockedDoors = this.blockedDoorsFor(ped);
     const exit = this.exits.find((e) => e.id === ped.targetExitId);
@@ -2397,7 +2401,10 @@ export class PolygonEvacuationEngine {
     if (!ped.forcedCrawl && !ped.sheltering) ped.posture = nextPosture(ped.posture ?? 'stand', sample.smoke, fam);
     else ped.posture = 'crawl';
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
-    const speed = walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor);
+    const footing = sample.wet ? WET_FLOOR_SPEED : 1;
+    const speed =
+      walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor) *
+      footing;
     if (
       this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) ||
       (!ped.targetStairId && !ped.targetExitId) ||

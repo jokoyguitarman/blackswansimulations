@@ -2,7 +2,12 @@ import type { Vec2 } from '../evacuation/types';
 import { LEVEL } from '../evacuation/levelConstants';
 import type { InteriorWall, HazardZone } from './types';
 import { levelOf, neighborIdsByLevel, type ShaftPair } from './levels';
-import { defaultLightFuel, type ElectricalPlacement, type GasLinePlacement } from './materialLibrary';
+import {
+  defaultLightFuel,
+  type ElectricalPlacement,
+  type GasLinePlacement,
+  type SuppressionPlacement,
+} from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
 import {
   ELECTRICAL_ARC_SEC,
@@ -15,16 +20,24 @@ import {
   GAS_JET_KW,
   GAS_JET_REACH_M,
   GAS_RUPTURE_KPA,
+  LINK_QUANTUM_S,
   LOCAL_FLASHOVER_RADIUS_M,
+  SPRINKLER_AMBIENT_C,
+  SPRINKLER_RTI,
   STUD_AREA_M2,
+  SUPPRESSION_REACH_M,
+  WET_CHEMICAL_RTI,
   addIgnitionDose,
   burnoutSec,
+  advanceSprinklerLink,
+  ceilingJet,
   electricalHeatReleaseKw,
   fireballFluxKwM2,
   frontSpeedMps,
   heatReleaseKw,
   ignitionTimeSec,
   pointSourceFluxKwM2,
+  suppressedHeatKw,
   type FuelCell,
 } from './flameFront';
 
@@ -41,7 +54,10 @@ export interface FireParams {
   heatTransferRate: number;
   /** Seconds a barrier resists after the source side has flashed over. */
   wallResistance: Record<string, number>;
-  /** Unused. A hazard circle does not speed the front. */
+  /**
+   * Unused by the flame front. A chemical circle is 1: it does not speed
+   * ignition. Suppression is a placed head, not this multiplier.
+   */
   hazardAcceleration: Record<string, number>;
   /** Unused. The 8 m neighbour rule is gone. */
   ambientSpread?: boolean;
@@ -57,6 +73,11 @@ export interface FireStudState {
   approach?: number;
   /** Accumulated Σ dt / t_ig. Holds when the flux drops below CHF. */
   dose?: number;
+  /**
+   * Burning release divided by the unsprayed release. 1 until a spray
+   * opens on this stud, then it falls with the decay.
+   */
+  output?: number;
 }
 
 export interface FireSimStud {
@@ -78,6 +99,8 @@ export interface GasLineState {
   jetting: boolean;
   shutoff: boolean;
   age: number;
+  /** kW while the jet burns. Falls after a spray reaches it. */
+  heatKw: number;
 }
 
 /** An arc that is burning right now, for the picture on the plan. */
@@ -96,6 +119,9 @@ interface GasRuntime {
   jetting: boolean;
   shutoff: boolean;
   age: number;
+  /** Release at the moment a spray first reached this jet. Null until then. */
+  qAct: number | null;
+  suppressAge: number;
 }
 
 interface ArcRuntime {
@@ -106,6 +132,31 @@ interface ArcRuntime {
   arcing: boolean;
   shutoff: boolean;
   age: number;
+}
+
+/** A head that is discharging, for the picture on the plan. */
+export interface SuppressionSpray {
+  id: string;
+  pos: Vec2;
+  level: string;
+}
+
+interface SuppressionRuntime {
+  id: string;
+  pos: Vec2;
+  level: string;
+  ceilingM: number;
+  rti: number;
+  linkC: number;
+  open: boolean;
+  /** Seconds since the link opened. */
+  age: number;
+}
+
+interface BurnRuntime {
+  age: number;
+  qAct: number | null;
+  suppressAge: number;
 }
 
 interface HeatSlot {
@@ -140,7 +191,7 @@ export const DEFAULT_FIRE_PARAMS: FireParams = {
   hazardAcceleration: {
     combustible: 3,
     ignitable: 5,
-    chemical: 4,
+    chemical: 1, // a chemical circle does not speed ignition
     electrical: 2,
     debris_risk: 1,
     falling_object: 1,
@@ -237,7 +288,7 @@ export class FireSimulation {
    */
   private fuelStuds: Set<string> | null = null;
   private fuelCells: Map<string, FuelCell> | null = null;
-  private burn = new Map<string, { age: number }>();
+  private burn = new Map<string, BurnRuntime>();
   /** Wall timers already advanced during this step. */
   private wallTick = new Set<string>();
   /**
@@ -260,6 +311,12 @@ export class FireSimulation {
   private gasRuntime = new Map<string, GasRuntime>();
   /** Survives setElectricalSources, so a shut supply stays shut. */
   private arcRuntime = new Map<string, ArcRuntime>();
+  /** Survives setSuppression, so a link that is already warming is not reset. */
+  private suppressionRuntime = new Map<string, SuppressionRuntime>();
+  /** Seconds into the current step when a spray first covers a stud. */
+  private coverFrom = new Map<string, number>();
+  /** Walls from the latest step, so a fireball respects an open spray. */
+  private sceneWalls: InteriorWall[] = [];
   private charge: ChargeSpec | null = null;
 
   constructor(params?: FireParams) {
@@ -281,6 +338,7 @@ export class FireSimulation {
     this.flashedStuds.clear();
     this.gasRuntime.clear();
     this.arcRuntime.clear();
+    this.suppressionRuntime.clear();
     this.charge = null;
     this.elapsed = 0;
 
@@ -347,7 +405,7 @@ export class FireSimulation {
     state.fuelFactor = 1;
     state.approach = 1;
     state.dose = 1;
-    if (!this.burn.has(id)) this.burn.set(id, { age: 0 });
+    if (!this.burn.has(id)) this.burn.set(id, { age: 0, qAct: null, suppressAge: 0 });
   }
 
   ignite(studIds: string[]) {
@@ -393,9 +451,37 @@ export class FireSimulation {
         jetting: prev?.jetting ?? false,
         shutoff: prev?.shutoff ?? false,
         age: prev?.age ?? 0,
+        qAct: prev?.qAct ?? null,
+        suppressAge: prev?.suppressAge ?? 0,
       });
     }
     this.gasRuntime = next;
+  }
+
+  /**
+   * Confirmed sprinkler and wet-chemical heads. The link temperature and
+   * whether it has opened stay with the id, so calling this every frame
+   * does not cool a link or close a head. A head that disappeared is dropped.
+   * Nothing here opens a head: only the ceiling jet does that.
+   */
+  setSuppression(heads: readonly SuppressionPlacement[]) {
+    const next = new Map<string, SuppressionRuntime>();
+    for (const head of heads) {
+      const prev = this.suppressionRuntime.get(head.id);
+      const ceiling =
+        Number.isFinite(head.ceilingM) && head.ceilingM > 0 ? head.ceilingM : 3;
+      next.set(head.id, {
+        id: head.id,
+        pos: { x: head.pos.x, y: head.pos.y },
+        level: head.level || 'G',
+        ceilingM: ceiling,
+        rti: head.kind === 'wet_chemical' ? WET_CHEMICAL_RTI : SPRINKLER_RTI,
+        linkC: prev?.linkC ?? SPRINKLER_AMBIENT_C,
+        open: prev?.open ?? false,
+        age: prev?.age ?? 0,
+      });
+    }
+    this.suppressionRuntime = next;
   }
 
   /**
@@ -470,6 +556,45 @@ export class FireSimulation {
     return arcs;
   }
 
+  sprays(): SuppressionSpray[] {
+    const sprays: SuppressionSpray[] = [];
+    for (const head of this.suppressionRuntime.values()) {
+      if (!head.open) continue;
+      sprays.push({ id: head.id, pos: { x: head.pos.x, y: head.pos.y }, level: head.level });
+    }
+    return sprays;
+  }
+
+  /** Link temperature and whether the head is open. Null when there is no such head. */
+  suppressionState(id: string): { linkC: number; open: boolean; age: number } | null {
+    const head = this.suppressionRuntime.get(id);
+    if (!head) return null;
+    return { linkC: head.linkC, open: head.open, age: head.age };
+  }
+
+  /** Release of a burning stud after suppression, or null when it is not burning. */
+  fuelReleaseKw(id: string): number | null {
+    const state = this.states.get(id);
+    if (!state || state.state !== 'burning') return null;
+    const meta = this.burn.get(id);
+    if (!meta) return null;
+    return this.releaseKw(this.burningCell(id), meta);
+  }
+
+  /**
+   * Studs whose floor is wet. A head wets them only after it has opened,
+   * and only where the spray can reach: same storey, inside the throw,
+   * and not behind a solid wall.
+   */
+  wetStuds(walls: InteriorWall[]): Array<{ id: string; pos: Vec2; level: string }> {
+    const wet: Array<{ id: string; pos: Vec2; level: string }> = [];
+    for (const [id, stud] of this.studIndex) {
+      if (!this.sprayed(stud, walls)) continue;
+      wet.push({ id, pos: { x: stud.simPos.x, y: stud.simPos.y }, level: levelOf(stud) });
+    }
+    return wet;
+  }
+
   isArcing(id: string): boolean {
     const arc = this.arcRuntime.get(id);
     return !!arc && arc.arcing && !arc.shutoff;
@@ -478,7 +603,19 @@ export class FireSimulation {
   gasLineState(id: string): GasLineState | null {
     const line = this.gasRuntime.get(id);
     if (!line) return null;
-    return { ruptured: line.ruptured, jetting: line.jetting, shutoff: line.shutoff, age: line.age };
+    const heatKw =
+      line.jetting && !line.shutoff
+        ? line.qAct != null
+          ? suppressedHeatKw(line.qAct, line.suppressAge)
+          : GAS_JET_KW
+        : 0;
+    return {
+      ruptured: line.ruptured,
+      jetting: line.jetting,
+      shutoff: line.shutoff,
+      age: line.age,
+      heatKw,
+    };
   }
 
   /**
@@ -531,7 +668,7 @@ export class FireSimulation {
       const tig = ignitionTimeSec(flux, cell.chfKwM2, cell.trp);
       const dose = tig == null ? state.dose ?? 0 : (state.dose ?? 0) + FIREBALL_PULSE_S / tig;
       state.dose = dose;
-      if (dose >= 1 - 1e-6) this.catchFire(id);
+      if (dose >= 1 - 1e-6 && !this.sprayed(stud, this.sceneWalls)) this.catchFire(id);
       else if (dose > 0) {
         state.state = 'heating';
         state.approach = Math.min(1, dose);
@@ -541,6 +678,7 @@ export class FireSimulation {
 
   step(dt: number, walls: InteriorWall[], _hazards: HazardZone[]) {
     if (dt <= 0) return;
+    this.sceneWalls = walls;
     this.elapsed += dt;
     this.wallTick.clear();
     this.ensureCompartments(walls);
@@ -554,15 +692,18 @@ export class FireSimulation {
     }> = [];
     const roomHeat = new Map<string, number>();
 
-    for (const [id, fState] of this.states) {
-      if (fState.state !== 'burning') continue;
-      const stud = this.studIndex.get(id);
-      if (!stud) continue;
-      const meta = this.burn.get(id) ?? { age: 0 };
+    this.refreshJets(walls);
+    const live = this.liveFires();
+    this.integrateSuppression(dt, walls, live);
+
+    for (const fire of live) {
+      const { id, stud, cell, meta } = fire;
+      const fState = this.states.get(id);
+      if (!fState || fState.state !== 'burning') continue;
       meta.age += dt;
-      const cell = this.burningCell(id);
-      const heatKw = heatReleaseKw(cell, meta.age);
-      this.burn.set(id, meta);
+      const heatKw = this.releaseKw(cell, meta);
+      const bare = heatReleaseKw(cell, meta.age);
+      fState.output = bare > 0 ? Math.min(1, heatKw / bare) : 1;
       const room = this.compartmentOf.get(id);
       if (room) roomHeat.set(room, (roomHeat.get(room) ?? 0) + heatKw);
       fState.timer -= dt;
@@ -571,6 +712,7 @@ export class FireSimulation {
         fState.state = 'burnt_out';
         fState.timer = 0;
         fState.approach = 0;
+        fState.output = 0;
         continue;
       }
       burning.push({
@@ -611,7 +753,6 @@ export class FireSimulation {
       }
     }
 
-    this.refreshJets(walls);
     for (const line of this.gasRuntime.values()) {
       if (!line.jetting || line.shutoff) continue;
       let seconds = dt;
@@ -627,7 +768,8 @@ export class FireSimulation {
         line.age += dt;
       }
       if (!(seconds > 0)) continue;
-      this.addSourceFlux(line.pos, line.level, GAS_JET_KW, walls, seconds, dt, slotFor);
+      const jetKw = line.qAct != null ? suppressedHeatKw(line.qAct, line.suppressAge) : GAS_JET_KW;
+      this.addSourceFlux(line.pos, line.level, jetKw, walls, seconds, dt, slotFor);
     }
     const arcKw = electricalHeatReleaseKw();
     for (const arc of this.arcRuntime.values()) {
@@ -654,9 +796,18 @@ export class FireSimulation {
       const fState = this.states.get(id);
       const cell = this.cellFor(id);
       if (!fState || !cell || fState.state === 'burning' || fState.state === 'burnt_out') continue;
-      const dose = this.accrueDose(fState.dose ?? 0, cell, slot, dt);
+      const cover = this.coverFrom.get(id);
+      if (cover != null && cover <= 1e-9) {
+        if ((fState.dose ?? 0) > 0) {
+          fState.state = 'heating';
+          fState.approach = Math.min(1, fState.dose ?? 0);
+        }
+        continue;
+      }
+      const window = cover != null ? Math.min(dt, cover) : dt;
+      const dose = this.accrueDose(fState.dose ?? 0, cell, slot, window);
       fState.dose = dose;
-      if (dose >= 1 || slot.approach >= 1) {
+      if (dose >= 1 || (cover == null && slot.approach >= 1)) {
         this.catchFire(id);
         continue;
       }
@@ -675,6 +826,7 @@ export class FireSimulation {
       this.shaftBurn.set(key, burned);
       if (burned + 1e-9 < LEVEL.STAIR_FIRE_HEAT_S) continue;
       if (!this.acceptsFuel(pair.upper)) continue;
+      if (this.coverFrom.has(pair.upper)) continue;
       const upper = this.states.get(pair.upper);
       if (!upper || upper.state !== 'none') continue;
       this.catchFire(pair.upper);
@@ -710,6 +862,203 @@ export class FireSimulation {
       if (dist > FRONT_LINK_M) continue;
       if (this.lineBlocked(stud.simPos, line.pos, line.level, walls)) continue;
       return true;
+    }
+    return false;
+  }
+
+  private liveFires(): Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }> {
+    const fires: Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }> = [];
+    for (const [id, state] of this.states) {
+      if (state.state !== 'burning') continue;
+      const stud = this.studIndex.get(id);
+      if (!stud) continue;
+      let meta = this.burn.get(id);
+      if (!meta) {
+        meta = { age: 0, qAct: null, suppressAge: 0 };
+        this.burn.set(id, meta);
+      }
+      fires.push({ id, stud, cell: this.burningCell(id), meta });
+    }
+    return fires;
+  }
+
+  /** Suppressed release when a spray has reached this fuel, otherwise α t². */
+  private releaseKw(cell: FuelCell, meta: BurnRuntime): number {
+    if (meta.qAct != null) return suppressedHeatKw(meta.qAct, meta.suppressAge);
+    return heatReleaseKw(cell, meta.age);
+  }
+
+  /**
+   * Warm every link on the 0.1 s grid, open it when the RTI equation says
+   * so, and remember the release of each fuel and jet the spray can reach.
+   * A second head does not start a second decay. The first one to reach
+   * that fuel owns Q(t_act).
+   */
+  private integrateSuppression(
+    dt: number,
+    walls: InteriorWall[],
+    fires: Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }>,
+  ) {
+    this.coverFrom.clear();
+    const heldFuel = new Set<string>();
+    for (const fire of fires) {
+      if (fire.meta.qAct != null) heldFuel.add(fire.id);
+    }
+    const heldJet = new Set<string>();
+    for (const line of this.gasRuntime.values()) {
+      if (line.qAct != null) heldJet.add(line.id);
+    }
+    const openedFuel = new Map<string, number>();
+    const openedJet = new Map<string, number>();
+    const openedHead = new Map<string, number>();
+
+    for (const head of this.suppressionRuntime.values()) {
+      if (!head.open) continue;
+      this.markCover(head, walls, 0);
+      this.snapshotReached(head, fires, 0, walls, heldFuel, heldJet, openedFuel, openedJet);
+    }
+
+    let cursor = 0;
+    while (cursor < dt - 1e-12) {
+      const slice = Math.min(LINK_QUANTUM_S, dt - cursor);
+      const plumes = this.plumesAt(fires, cursor, openedFuel, openedJet);
+      for (const head of this.suppressionRuntime.values()) {
+        if (head.open) continue;
+        const jet = this.strongestCeiling(head, plumes, walls);
+        if (!jet || !(jet.speedMps > 0)) continue;
+        const gasC = SPRINKLER_AMBIENT_C + jet.riseK;
+        const step = advanceSprinklerLink(head.linkC, gasC, jet.speedMps, head.rti, slice);
+        head.linkC = step.linkC;
+        if (step.openedAt != null) {
+          const tOpen = cursor + step.openedAt;
+          head.open = true;
+          openedHead.set(head.id, tOpen);
+          this.markCover(head, walls, tOpen);
+          this.snapshotReached(head, fires, tOpen, walls, heldFuel, heldJet, openedFuel, openedJet);
+        }
+      }
+      cursor += slice;
+    }
+
+    for (const fire of fires) {
+      const tOpen = openedFuel.get(fire.id);
+      if (tOpen != null) fire.meta.suppressAge = Math.max(0, dt - tOpen);
+      else if (fire.meta.qAct != null) fire.meta.suppressAge += dt;
+    }
+    for (const line of this.gasRuntime.values()) {
+      const tOpen = openedJet.get(line.id);
+      if (tOpen != null) line.suppressAge = Math.max(0, dt - tOpen);
+      else if (line.qAct != null) line.suppressAge += dt;
+    }
+    for (const head of this.suppressionRuntime.values()) {
+      const tOpen = openedHead.get(head.id);
+      if (tOpen != null) head.age = Math.max(0, dt - tOpen);
+      else if (head.open) head.age += dt;
+    }
+  }
+
+  private plumesAt(
+    fires: Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }>,
+    cursor: number,
+    openedFuel: Map<string, number>,
+    openedJet: Map<string, number>,
+  ): Array<{ pos: Vec2; level: string; heatKw: number }> {
+    const plumes: Array<{ pos: Vec2; level: string; heatKw: number }> = [];
+    for (const fire of fires) {
+      const tOpen = openedFuel.get(fire.id);
+      let heat = 0;
+      if (fire.meta.qAct != null && tOpen == null) {
+        heat = suppressedHeatKw(fire.meta.qAct, fire.meta.suppressAge + cursor);
+      } else if (tOpen != null && cursor + 1e-9 >= tOpen) {
+        heat = suppressedHeatKw(fire.meta.qAct ?? 0, Math.max(0, cursor - tOpen));
+      } else {
+        heat = heatReleaseKw(fire.cell, fire.meta.age + cursor);
+      }
+      if (heat > 0) plumes.push({ pos: fire.stud.simPos, level: levelOf(fire.stud), heatKw: heat });
+    }
+    for (const line of this.gasRuntime.values()) {
+      if (!line.jetting || line.shutoff) continue;
+      const tOpen = openedJet.get(line.id);
+      let heat = GAS_JET_KW;
+      if (line.qAct != null && tOpen == null) heat = suppressedHeatKw(line.qAct, line.suppressAge + cursor);
+      else if (tOpen != null && cursor + 1e-9 >= tOpen) {
+        heat = suppressedHeatKw(line.qAct ?? 0, Math.max(0, cursor - tOpen));
+      }
+      if (heat > 0) plumes.push({ pos: line.pos, level: line.level, heatKw: heat });
+    }
+    return plumes;
+  }
+
+  /** The hottest ceiling jet at this head. Fires are not added together. */
+  private strongestCeiling(
+    head: SuppressionRuntime,
+    plumes: Array<{ pos: Vec2; level: string; heatKw: number }>,
+    walls: InteriorWall[],
+  ): { riseK: number; speedMps: number } | null {
+    let best: { riseK: number; speedMps: number } | null = null;
+    for (const plume of plumes) {
+      if (plume.level !== head.level) continue;
+      if (this.lineBlocked(plume.pos, head.pos, head.level, walls)) continue;
+      const dist = Math.hypot(plume.pos.x - head.pos.x, plume.pos.y - head.pos.y);
+      const jet = ceilingJet(plume.heatKw, head.ceilingM, dist);
+      if (!best || jet.riseK > best.riseK) best = jet;
+    }
+    return best;
+  }
+
+  private markCover(head: SuppressionRuntime, walls: InteriorWall[], tOpen: number) {
+    for (const [id, stud] of this.studIndex) {
+      if (!this.headReaches(head, stud.simPos, levelOf(stud), walls)) continue;
+      const prev = this.coverFrom.get(id);
+      if (prev == null || tOpen < prev) this.coverFrom.set(id, tOpen);
+    }
+  }
+
+  /**
+   * Freeze Q(t_act) for fuel and jets this head can wet. The earliest open
+   * wins. A fuel that was already decaying is left on its first snapshot.
+   */
+  private snapshotReached(
+    head: SuppressionRuntime,
+    fires: Array<{ id: string; stud: FireSimStud; cell: FuelCell; meta: BurnRuntime }>,
+    tOpen: number,
+    walls: InteriorWall[],
+    heldFuel: Set<string>,
+    heldJet: Set<string>,
+    openedFuel: Map<string, number>,
+    openedJet: Map<string, number>,
+  ) {
+    for (const fire of fires) {
+      if (heldFuel.has(fire.id)) continue;
+      if (!this.headReaches(head, fire.stud.simPos, levelOf(fire.stud), walls)) continue;
+      const prev = openedFuel.get(fire.id);
+      if (prev != null && prev <= tOpen + 1e-9) continue;
+      openedFuel.set(fire.id, tOpen);
+      fire.meta.qAct = heatReleaseKw(fire.cell, fire.meta.age + tOpen);
+    }
+    for (const line of this.gasRuntime.values()) {
+      if (!line.jetting || line.shutoff) continue;
+      if (heldJet.has(line.id)) continue;
+      if (!this.headReaches(head, line.pos, line.level, walls)) continue;
+      const prev = openedJet.get(line.id);
+      if (prev != null && prev <= tOpen + 1e-9) continue;
+      openedJet.set(line.id, tOpen);
+      line.qAct = GAS_JET_KW;
+    }
+  }
+
+  private headReaches(head: SuppressionRuntime, pos: Vec2, level: string, walls: InteriorWall[]): boolean {
+    if (level !== head.level) return false;
+    const dist = Math.hypot(pos.x - head.pos.x, pos.y - head.pos.y);
+    if (dist > SUPPRESSION_REACH_M + 1e-6) return false;
+    return !this.lineBlocked(head.pos, pos, head.level, walls);
+  }
+
+  private sprayed(stud: FireSimStud, walls: InteriorWall[]): boolean {
+    const level = levelOf(stud);
+    for (const head of this.suppressionRuntime.values()) {
+      if (!head.open) continue;
+      if (this.headReaches(head, stud.simPos, level, walls)) return true;
     }
     return false;
   }
@@ -868,7 +1217,7 @@ export class FireSimulation {
         if (!hot && !latched) continue;
         for (const id of members) {
           this.flashedStuds.add(id);
-          if (this.acceptsFuel(id)) this.catchFire(id);
+          if (this.acceptsFuel(id) && !this.coverFrom.has(id)) this.catchFire(id);
         }
         continue;
       }
