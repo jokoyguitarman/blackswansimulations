@@ -36,7 +36,7 @@ import {
   normaliseStairwell,
   sortLevels,
 } from '../lib/rts/levels';
-import { generateSceneStuds } from '../lib/rts/sceneStuds';
+import { generateSceneStuds, projectSceneStuds } from '../lib/rts/sceneStuds';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { PlacedObjectDraw } from '../lib/rts/renderer';
@@ -87,17 +87,21 @@ import { DEFAULT_FIRE_PARAMS, type FireParams } from '../lib/rts/fireSimulation'
 import {
   COMMON_PICKS,
   MATERIAL_LIBRARY,
+  absorbLegacyFuelCircles,
   confirmedFuelStudIds,
   entryById,
   entryCanBurn,
   matchFromEntry,
   matchMaterials,
+  snapObjectsToStuds,
   suggestLibraryEntry,
   type PlacedObject,
 } from '../lib/rts/materialLibrary';
-import { foodCourtSample } from '../lib/rts/foodCourtSample';
+import { foodCourtPlacedObjects, foodCourtSample } from '../lib/rts/foodCourtSample';
+import { harbourHouseFuelObjects, harbourHouseSample } from '../lib/rts/harbourHouseShowcase';
 import {
   SpatialEffectsEngine,
+  blastSmokeStudIds,
   type StudEffectState,
   type HazardPhase,
   type HazardEvent,
@@ -288,6 +292,39 @@ interface StudPoint {
 }
 interface SimStud extends StudPoint {
   simPos: Vec2;
+}
+
+function objectsOnStuds(
+  polygon: [number, number][],
+  studs: StudPoint[],
+  objects: PlacedObject[],
+): PlacedObject[] {
+  return snapObjectsToStuds(
+    objects,
+    projectSceneStuds(polygon, studs).map((stud) => ({
+      id: stud.id,
+      simPos: stud.simPos,
+      level: stud.floor,
+    })),
+  );
+}
+
+function placedObjectDraws(objects: readonly PlacedObject[]): PlacedObjectDraw[] {
+  const draws = objects.map(
+    (obj): PlacedObjectDraw => ({
+      id: obj.id,
+      pos: obj.pos,
+      level: obj.level,
+      confirmed: obj.confirmed,
+      burns: obj.confirmed && obj.matches.some((match) => entryCanBurn(match.fuel)),
+      label: obj.confirmed
+        ? obj.matches.map((match) => match.label).join(', ') || 'Object'
+        : obj.description || 'Unconfirmed',
+    }),
+  );
+  const furnished = draws.filter((draw) => draw.confirmed && draw.burns).length;
+  if (furnished <= 40) return draws;
+  return draws.map((draw) => (draw.confirmed && draw.burns ? { ...draw, label: '' } : draw));
 }
 interface GridItem {
   buildingIndex: number;
@@ -1402,8 +1439,12 @@ export function DebugRTSSim() {
       setSelectedGridIdx(0);
       setExits(sc.exits as ExitDef[]);
       setInteriorWalls(sc.interior_walls as InteriorWall[]);
-      setHazardZones(sc.hazard_zones as HazardZone[]);
-      setPlacedObjects(Array.isArray(sc.placed_objects) ? (sc.placed_objects as PlacedObject[]) : []);
+      const loadedObjects = Array.isArray(sc.placed_objects)
+        ? (sc.placed_objects as PlacedObject[])
+        : [];
+      const absorbed = absorbLegacyFuelCircles(sc.hazard_zones as HazardZone[], loadedObjects);
+      setHazardZones(absorbed.zones);
+      setPlacedObjects(objectsOnStuds(sc.building_polygon, grid.studs, absorbed.objects));
       setActiveObjectId(null);
       setPlacingObject(false);
       setStairwells(sc.stairwells as Stairwell[]);
@@ -1542,7 +1583,7 @@ export function DebugRTSSim() {
       })) as InteriorWall[],
     );
     setHazardZones([]);
-    setPlacedObjects([]);
+    setPlacedObjects(objectsOnStuds(polygon, grid.studs, foodCourtPlacedObjects()));
     setActiveObjectId(null);
     setPlacingObject(false);
     setObjectNotice(null);
@@ -1560,6 +1601,85 @@ export function DebugRTSSim() {
       setBlastLevel(typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G');
       setManualRadius(true);
       setBlastRadius(storedBlast.radiusM ?? 8);
+    }
+    setShowcase(true);
+    const verts = projectPolygon(polygon);
+    rtsRef.current = new RTSEngine();
+    rtsRef.current.setBuildingVertices(verts);
+    rtsRef.current.setExits(scene.exits as unknown as ExitDef[]);
+    setWallPoints(generateWallPoints(polygon, verts));
+    setPhase('rts');
+  }, []);
+
+  const handleLoadHarbourHouse = useCallback(() => {
+    const scene = harbourHouseSample.scene;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const savedLevels = scene.levels.map((level) => ({ ...level }));
+    const levelIds = savedLevels.map((level) => level.id);
+    const grid: GridItem = {
+      buildingIndex: 0,
+      buildingName: scene.buildingName,
+      polygon,
+      floors: levelIds,
+      spacingM: 3,
+      studs: generateSceneStuds(polygon, 0, levelIds),
+    };
+    setUserGeoPos({ lat: scene.centerLat, lng: scene.centerLng });
+    setLat(String(scene.centerLat));
+    setLng(String(scene.centerLng));
+    setFetchResult({
+      grids: [grid],
+      buildings: [
+        {
+          name: scene.buildingName,
+          lat: scene.centerLat,
+          lng: scene.centerLng,
+          levels: 1,
+          use: 'house',
+          polygonPoints: polygon.length,
+        },
+      ],
+    });
+    setSelectedGridIdx(0);
+    setSceneConfigId(null);
+    setExits(scene.exits.map((exit) => ({ ...exit, photos: [...exit.photos] })) as ExitDef[]);
+    setInteriorWalls(
+      scene.interiorWalls.map((wall) => ({
+        ...wall,
+        photos: [...wall.photos],
+        start: { ...wall.start },
+        end: { ...wall.end },
+      })) as InteriorWall[],
+    );
+    setHazardZones([]);
+    const projected = projectSceneStuds(polygon, grid.studs);
+    setPlacedObjects(
+      harbourHouseFuelObjects(
+        projected.map((stud) => ({
+          id: stud.id,
+          simPos: stud.simPos,
+          spatialContext: stud.spatialContext,
+          level: stud.floor,
+        })),
+      ),
+    );
+    setActiveObjectId(null);
+    setPlacingObject(false);
+    setObjectNotice(null);
+    setStairwells([]);
+    setCasualtyPins([]);
+    setPlantedItems([]);
+    setPedestrianCount(scene.pedestrianCount);
+    setLevels(savedLevels.length > 0 ? (savedLevels as LevelDef[]) : defaultLevels(['G']));
+    setActiveLevel('G');
+    setSelectedStairId(null);
+    const storedBlast = readStoredBlast(scene.blastSite);
+    if (storedBlast) {
+      blastRecordRef.current = storedBlast.record;
+      setBlastSite(storedBlast.pos);
+      setBlastLevel(typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G');
+      setManualRadius(true);
+      setBlastRadius(storedBlast.radiusM ?? 15);
     }
     setShowcase(true);
     const verts = projectPolygon(polygon);
@@ -2109,18 +2229,7 @@ export function DebugRTSSim() {
                   showGhostPeople: true,
                 }
               : null,
-            placedObjectsRef.current.map(
-              (obj): PlacedObjectDraw => ({
-                id: obj.id,
-                pos: obj.pos,
-                level: obj.level,
-                confirmed: obj.confirmed,
-                burns: obj.confirmed && obj.matches.some((match) => entryCanBurn(match.fuel)),
-                label: obj.confirmed
-                  ? obj.matches.map((match) => match.label).join(', ') || 'Object'
-                  : obj.description || 'Unconfirmed',
-              }),
-            ),
+            placedObjectDraws(placedObjectsRef.current),
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -3406,7 +3515,8 @@ export function DebugRTSSim() {
       });
       engine.init(asFireStuds);
       attachShafts(engine);
-      engine.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
+      const fuelIds = confirmedFuelStudIds(placedObjectsRef.current);
+      engine.setFuelStuds(fuelIds);
       const t0 = blastEffectsTriggerSec(engine.timeScale);
       if (enrichResult?.hazardAnalysis) {
         for (const ha of enrichResult.hazardAnalysis) {
@@ -3424,13 +3534,16 @@ export function DebugRTSSim() {
           }
         }
       }
-      const affectedStuds = asFireStuds
-        .filter(
-          (s) =>
-            (!multi || s.level === bLevel) &&
-            Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= affectRadius,
-        )
-        .map((s) => s.id);
+      const affectedStuds = blastSmokeStudIds(
+        asFireStuds
+          .filter(
+            (s) =>
+              (!multi || s.level === bLevel) &&
+              Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= affectRadius,
+          )
+          .map((s) => s.id),
+        fuelIds,
+      );
       engine.registerHazard(
         'blast-direct',
         [
@@ -5147,13 +5260,20 @@ export function DebugRTSSim() {
             </div>
 
             <div className="bg-gray-900 border border-amber-800 rounded p-3">
-              <h2 className="text-sm text-amber-400 mb-2">Food court</h2>
+              <h2 className="text-sm text-amber-400 mb-2">Sample scenes</h2>
               <button
                 type="button"
                 onClick={handleLoadFoodCourt}
                 className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-700 text-amber-200 hover:border-amber-400"
               >
                 Load food court
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadHarbourHouse}
+                className="w-full text-xs text-left px-2 py-1.5 mt-1 rounded border border-amber-700 text-amber-200 hover:border-amber-400"
+              >
+                Load Harbour House
               </button>
               <p className="text-xs text-amber-800 mt-2">
                 Opens the plan in this browser. It does not save to the database.
@@ -5343,7 +5463,7 @@ export function DebugRTSSim() {
               </button>
               {objectNotice && <div className="text-xs text-amber-500">{objectNotice}</div>}
               {placedObjects.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-40 overflow-y-auto">
                   {placedObjects
                     .filter((obj) => (obj.level ?? 'G') === activeLevel)
                     .map((obj) => (

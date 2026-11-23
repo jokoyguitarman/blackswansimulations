@@ -1,7 +1,8 @@
+import { absorbLegacyFuelCircles, type PlacedObject } from './materialLibrary';
+
 /** Food-court plan from the approved environment note.
- * Walls, exits, and the blast marker only. The old hazard circles were stand-ins
- * for fuel the editor could not name. This sample leaves them out so a blast on
- * the tile has no confirmed fuel until a trainer places an object.
+ * Walls, exits, and the blast marker. The old combustible and ignitable circles
+ * ship as confirmed objects (see foodCourtPlacedObjects). Bare tile has none.
  */
 export const foodCourtSample = {
   "scene": {
@@ -27,7 +28,7 @@ export const foodCourtSample = {
     ],
     "centerLat": 1.3,
     "centerLng": 103.8,
-    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Furniture is placed as objects, not hazard circles.",
+    "locationDescription": "Single-storey food court. North side is five kitchen stalls and a concrete service corridor. The open court to the south is bare tile. The blast marker sits on that tile. Tables and the fryer oil are confirmed objects. Gas lines are confirmed and do not burn.",
     "pedestrianCount": 0,
     "levels": [
       {
@@ -375,3 +376,85 @@ export const foodCourtSample = {
     "wallInspectionPoints": []
   }
 } as const;
+
+/** Combustible and ignitable circles from the drawn food court, before they became objects. */
+export const foodCourtLegacyCircles = [
+  {
+    id: 'hz-gas-noodle',
+    pos: { x: -11.5, y: -11.5 },
+    radius: 2,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Ignitable',
+    description:
+      'Noodle stall. Gas line and gas hob against the back wall. The editor can only store this as a circle, not a pipe.',
+    level: 'G',
+  },
+  {
+    id: 'hz-gas-grill',
+    pos: { x: -5.5, y: -11.5 },
+    radius: 2,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Ignitable',
+    description: 'Grill stall. Gas line and chargrill.',
+    level: 'G',
+  },
+  {
+    id: 'hz-gas-fryer',
+    pos: { x: 0.5, y: -11.5 },
+    radius: 2,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Ignitable',
+    description:
+      'Fryer stall. Gas line and hot cooking oil. Oil is fuel. There is no fryer object, so the oil is named in this circle.',
+    level: 'G',
+  },
+  {
+    id: 'hz-gas-pizza',
+    pos: { x: 6.5, y: -11.5 },
+    radius: 2,
+    hazardType: 'ignitable',
+    severity: 'high',
+    label: 'Ignitable',
+    description: 'Pizza stall. Gas line and gas deck oven.',
+    level: 'G',
+  },
+  {
+    id: 'hz-tables-west',
+    pos: { x: -8.5, y: -2.5 },
+    radius: 3,
+    hazardType: 'combustible',
+    severity: 'medium',
+    label: 'Combustible',
+    description:
+      'Seating. Wooden table tops can burn. Frames are steel and cannot. The editor has no table, so this circle stands in for the tops. People can still walk through it.',
+    level: 'G',
+  },
+  {
+    id: 'hz-tables-mid',
+    pos: { x: 0.5, y: 0.5 },
+    radius: 3,
+    hazardType: 'combustible',
+    severity: 'medium',
+    label: 'Combustible',
+    description: 'Seating. Wooden table tops, steel frames. Same stand-in as the other table circles.',
+    level: 'G',
+  },
+  {
+    id: 'hz-tables-east',
+    pos: { x: 9.5, y: -2.5 },
+    radius: 3,
+    hazardType: 'combustible',
+    severity: 'medium',
+    label: 'Combustible',
+    description: 'Seating. Wooden table tops, steel frames.',
+    level: 'G',
+  },
+] as const;
+
+/** Those circles, already confirmed, so the stalls and tables burn and the tile does not. */
+export function foodCourtPlacedObjects(): PlacedObject[] {
+  return absorbLegacyFuelCircles(foodCourtLegacyCircles, [], { confirmed: true }).objects;
+}

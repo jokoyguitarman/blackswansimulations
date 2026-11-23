@@ -84,6 +84,31 @@ export function generateSceneStuds(
   return studs;
 }
 
+/** Same metre frame as the editor: origin at the polygon centroid, +x east, +y south. */
+export function projectSceneStuds<T extends { lat: number; lng: number }>(
+  polygon: [number, number][],
+  studs: readonly T[],
+): Array<T & { simPos: { x: number; y: number } }> {
+  if (polygon.length === 0) return [];
+  let sumLat = 0;
+  let sumLng = 0;
+  for (const [lat, lng] of polygon) {
+    sumLat += lat;
+    sumLng += lng;
+  }
+  const refLat = sumLat / polygon.length;
+  const refLng = sumLng / polygon.length;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+  return studs.map((stud) => ({
+    ...stud,
+    simPos: {
+      x: (stud.lng - refLng) * mPerDegLng,
+      y: (refLat - stud.lat) * mPerDegLat,
+    },
+  }));
+}
+
 function pointInPolygonLatLng(lat: number, lng: number, polygon: [number, number][]): boolean {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {

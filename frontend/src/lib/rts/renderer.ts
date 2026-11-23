@@ -1426,6 +1426,7 @@ function drawPlacedObject(ctx: CanvasRenderingContext2D, obj: PlacedObjectDraw, 
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
+  if (!obj.label) return;
   const label = obj.label.length > 28 ? `${obj.label.slice(0, 27)}…` : obj.label;
   ctx.font = '11px monospace';
   ctx.fillStyle = '#f8fafc';

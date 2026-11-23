@@ -241,10 +241,21 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/** Plural of one word. "gas" stays matchable as "gas"; "gases" is extra. */
+function pluralWord(word: string): string {
+  if (/(?:s|x|z|ch|sh)$/.test(word)) return `${word}es`;
+  if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
+  return `${word}s`;
+}
+
 function keywordHits(haystack: string, keyword: string): boolean {
   const needle = normalize(keyword);
   if (!needle) return false;
-  return ` ${haystack} `.includes(` ${needle} `);
+  const padded = ` ${haystack} `;
+  if (padded.includes(` ${needle} `)) return true;
+  const parts = needle.split(' ');
+  const plural = [...parts.slice(0, -1), pluralWord(parts[parts.length - 1] ?? '')].join(' ');
+  return plural !== needle && padded.includes(` ${plural} `);
 }
 
 export function matchMaterials(
@@ -280,4 +291,88 @@ export function confirmedFuelStudIds(objects: readonly PlacedObject[]): Set<stri
     if (obj.matches.some((match) => entryCanBurn(match.fuel))) ids.add(obj.studId);
   }
   return ids;
+}
+
+const LEGACY_FUEL_CIRCLES = new Set(['combustible', 'ignitable']);
+
+export interface LegacyFuelCircle {
+  id: string;
+  pos: { x: number; y: number };
+  hazardType: string;
+  label?: string;
+  description?: string;
+  studId?: string;
+  level?: string;
+}
+
+/**
+ * Combustible and ignitable circles become placed objects. The blast marker
+ * and every other hazard type stay circles. A description with no library
+ * word guesses wood, which can catch fire once the trainer confirms it.
+ */
+export function absorbLegacyFuelCircles<T extends LegacyFuelCircle>(
+  zones: readonly T[],
+  existing: readonly PlacedObject[] = [],
+  options?: { confirmed?: boolean },
+): { zones: T[]; objects: PlacedObject[] } {
+  const taken = new Set(existing.map((obj) => obj.id));
+  const kept: T[] = [];
+  const created: PlacedObject[] = [];
+  for (const zone of zones) {
+    if (zone.id === 'blast-direct' || !LEGACY_FUEL_CIRCLES.has(zone.hazardType)) {
+      kept.push(zone);
+      continue;
+    }
+    const id = `legacy-${zone.id}`;
+    if (taken.has(id)) continue;
+    const text = `${zone.description ?? ''} ${zone.label ?? ''}`.trim();
+    let matches = matchMaterials(text);
+    if (matches.length === 0) {
+      const wood = entryById('wood');
+      if (wood) matches = [matchFromEntry(wood, 'keyword')];
+    }
+    created.push({
+      id,
+      studId: zone.studId ?? '',
+      pos: { x: zone.pos.x, y: zone.pos.y },
+      level: zone.level ?? 'G',
+      description: zone.description?.trim() || zone.label?.trim() || 'Furnishing',
+      matches,
+      confirmed: options?.confirmed ?? false,
+    });
+    taken.add(id);
+  }
+  return { zones: kept, objects: [...existing, ...created] };
+}
+
+export interface SnapStud {
+  id: string;
+  simPos: { x: number; y: number };
+  level?: string;
+}
+
+/** Move an object onto the stud under it. The editor snaps within 8 m. */
+export function snapObjectsToStuds(
+  objects: readonly PlacedObject[],
+  studs: readonly SnapStud[],
+): PlacedObject[] {
+  return objects.map((obj) => {
+    const level = obj.level || 'G';
+    let best: SnapStud | null = null;
+    let bestDist = Infinity;
+    for (const stud of studs) {
+      if ((stud.level || 'G') !== level) continue;
+      const dist = Math.hypot(stud.simPos.x - obj.pos.x, stud.simPos.y - obj.pos.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = stud;
+      }
+    }
+    if (!best || bestDist >= 8) return obj;
+    return {
+      ...obj,
+      studId: best.id,
+      pos: { x: best.simPos.x, y: best.simPos.y },
+    };
+  });
 }

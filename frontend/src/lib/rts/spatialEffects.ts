@@ -119,6 +119,19 @@ function isWallBlockedIgnoringDoors(from: Vec2, to: Vec2, walls: InteriorWall[])
   return false;
 }
 
+/**
+ * Studs a blast may keep feeding smoke. A null fuel set is the old rule
+ * (every affected stud). A set, even an empty one, keeps only fuel studs,
+ * so open tile gets the fireball and then nothing more from the blast.
+ */
+export function blastSmokeStudIds(
+  studIds: readonly string[],
+  fuel: ReadonlySet<string> | null,
+): string[] {
+  if (fuel == null) return [...studIds];
+  return studIds.filter((id) => fuel.has(id));
+}
+
 // ── Main engine ──────────────────────────────────────────────────────────
 
 export class SpatialEffectsEngine {
@@ -132,6 +145,8 @@ export class SpatialEffectsEngine {
   private neighborCache: Map<string, string[]> = new Map();
   private verticalPairs: ShaftPair[] = [];
   private fireSim: FireSimulation;
+  /** Null keeps blast smoke on every affected stud. A set limits that source to fuel. */
+  private fuelGate: Set<string> | null = null;
 
   constructor(fireParams?: FireParams, timeScale = 0.5) {
     this.timeScale = timeScale;
@@ -174,7 +189,8 @@ export class SpatialEffectsEngine {
 
   /** Confirmed light and heavy studs. Null keeps the old indoor rule. */
   setFuelStuds(ids: ReadonlySet<string> | null) {
-    this.fireSim.setFuelStuds(ids);
+    this.fuelGate = ids == null ? null : new Set(ids);
+    this.fireSim.setFuelStuds(this.fuelGate);
   }
 
   registerHazard(
@@ -464,6 +480,7 @@ export class SpatialEffectsEngine {
 
         if (event.affectedStuds?.length) {
           for (const sId of event.affectedStuds) {
+            if (this.fuelGate && !this.fuelGate.has(sId)) continue;
             const s = this.studStates.get(sId);
             if (s) s.smoke = Math.min(1, s.smoke + dt * rate * 0.02);
           }
