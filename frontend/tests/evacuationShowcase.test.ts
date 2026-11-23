@@ -20,6 +20,8 @@ import {
   nextPosture,
   openingFlowPerS,
   separateFromWalls,
+  doorBlockedByBodies,
+  doorSqueezeAim,
   steerPastBodies,
   steerToTarget,
   WALL_FACE_CLEAR_M,
@@ -924,6 +926,23 @@ test('a blocked exit is left on the next step', () => {
   eng.destroy();
 });
 
+test('a centred body leaves a lane in a 1.6 m door and closes a 1.0 m door', () => {
+  const wall = {
+    startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5,
+  };
+  const body = [{ x: 22, y: 17 }];
+  assert.equal(doorBlockedByBodies(wall, body), false);
+  assert.equal(doorBlockedByBodies({ ...wall, doorWidth: 1 }, body), true);
+  assert.equal(doorBlockedByBodies(wall, []), false);
+  const squeeze = doorSqueezeAim({ x: 26, y: 17 }, { x: 0, y: 17 }, [wall], body);
+  assert.ok(squeeze, 'the 1.6 m door should still be a way through');
+  assert.ok(squeeze.aim.x < 22, `aim did not pass through the door, x ${squeeze.aim.x}`);
+  const t = (26 - 22) / (26 - squeeze.aim.x);
+  const y = 17 + (squeeze.aim.y - 17) * t;
+  assert.ok(Math.abs(y - 17) >= 0.5, `lane crosses the body at ${y}`);
+  assert.ok(Math.abs(y - 17) <= 0.55, `lane misses the opening at ${y}`);
+});
+
 test('a walker steers past a static body instead of stopping on it', () => {
   const eng = showcaseEngine(2);
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
@@ -943,6 +962,181 @@ test('a walker steers past a static body instead of stopping on it', () => {
   ped.posture = 'stand';
   for (let i = 0; i < 45 * 60; i++) eng.step();
   assert.ok(walker.position.x > 12, `still short of the body at x ${walker.position.x.toFixed(2)}`);
+  eng.destroy();
+});
+
+test('a body in a 1.6 m door is not a wall: the ten walkers are through within 90s', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 11,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [exit({ id: 'W', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 })],
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: 1 },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const blocker = bodies[0];
+  Matter.Body.setPosition(blocker, { x: 22, y: 17 });
+  Matter.Body.setStatic(blocker, true);
+  (blocker as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  const walkers = bodies.slice(1);
+  walkers.forEach((body, i) => {
+    Matter.Body.setPosition(body, { x: 26 + (i % 5), y: 15 + Math.floor(i / 5) * 3 });
+    Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+      state: 'evacuating',
+      targetExitId: 'W',
+      exitCost: 30,
+      nextCheckAt: 0,
+      posture: 'stand',
+    });
+  });
+  let minD = Infinity;
+  for (let i = 0; i < 90 * 60; i++) {
+    eng.step();
+    for (const body of walkers) {
+      minD = Math.min(minD, Math.hypot(body.position.x - 22, body.position.y - 17));
+    }
+  }
+  const stuck = walkers.filter((body) => {
+    const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+    return body.position.x >= 21 && ped.state === 'evacuating';
+  });
+  assert.equal(stuck.length, 0, `${stuck.length} still east of the door, closest approach ${minD.toFixed(3)} m`);
+  assert.ok(minD >= 0.45, `walked through the body, closest approach ${minD.toFixed(3)} m`);
+  eng.destroy();
+});
+
+test('a body that fills a door sends people to the other exit', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const walls = [
+    { startX: 20, startY: 0, endX: 20, endY: 20, hasDoor: true, doorWidth: 1, doorPosition: 0.5 },
+  ];
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 4,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [
+      exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+      exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 }),
+    ],
+    walls,
+    [],
+    { afterExit: 'disperse', zones: [], seed: 1 },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const blocker = bodies[0];
+  Matter.Body.setPosition(blocker, { x: 20, y: 10 });
+  Matter.Body.setStatic(blocker, true);
+  (blocker as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  const walkers = bodies.slice(1);
+  walkers.forEach((body, i) => {
+    Matter.Body.setPosition(body, { x: 26, y: 8 + i * 2 });
+    Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+      state: 'evacuating',
+      targetExitId: 'west',
+      exitCost: 30,
+      nextCheckAt: 1e9,
+      posture: 'stand',
+    });
+  });
+  eng.step();
+  for (const body of walkers) {
+    const ped = (body as Matter.Body & { __ped: { targetExitId: string } }).__ped;
+    assert.equal(ped.targetExitId, 'east');
+  }
+  for (let i = 0; i < 90 * 60; i++) eng.step();
+  const stuck = walkers.filter((body) => {
+    const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+    return ped.state === 'evacuating' && body.position.x < 30;
+  });
+  assert.equal(stuck.length, 0, `${stuck.length} still short of the east exit`);
+  eng.destroy();
+});
+
+test('a downed body on another storey does not close this storey\'s door', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const door = {
+    startX: 20, startY: 0, endX: 20, endY: 20, hasDoor: true, doorWidth: 1, doorPosition: 0.5,
+  };
+  const eng = new PolygonEvacuationEngine(
+    {
+      vertices: verts,
+      pedestrianCount: 0,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
+    [],
+    [],
+    [],
+    { afterExit: 'disperse', zones: [], seed: 1 },
+    {
+      ids: ['G', 'L1'],
+      exitsByLevel: {
+        G: [
+          exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+          exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 }),
+        ],
+        L1: [],
+      },
+      wallsByLevel: { G: [door], L1: [] },
+      stairs: [],
+      counts: { G: 1, L1: 1 },
+    },
+  );
+  const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  const byLevel = (level: string) =>
+    bodies.find((body) => (body as Matter.Body & { __ped: { level?: string } }).__ped.level === level);
+  const walker = byLevel('G');
+  const blocker = byLevel('L1');
+  assert.ok(walker && blocker);
+  Matter.Body.setPosition(blocker, { x: 20, y: 10 });
+  Matter.Body.setStatic(blocker, true);
+  (blocker as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+  Matter.Body.setPosition(walker, { x: 26, y: 10 });
+  Object.assign((walker as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+    state: 'evacuating',
+    targetExitId: 'west',
+    exitCost: 20,
+    nextCheckAt: 1e9,
+    posture: 'stand',
+  });
+  eng.step();
+  assert.equal((walker as Matter.Body & { __ped: { targetExitId: string } }).__ped.targetExitId, 'west');
+  for (let i = 0; i < 40 * 60; i++) eng.step();
+  assert.equal((walker as Matter.Body & { __ped: { targetExitId: string } }).__ped.targetExitId, 'west');
+  assert.ok(walker.position.x < 16, `other-storey body held them at x ${walker.position.x.toFixed(2)}`);
   eng.destroy();
 });
 

@@ -28,6 +28,12 @@ import {
   isNearWallBehind,
   steerPastBodies,
   DOWNED_AVOID_M,
+  DOWNED_CONTACT_M,
+  doorBlockedByBodies,
+  doorMouthIndices,
+  doorSqueezeAim,
+  routeCrossesBlockedDoor,
+  segmentHitsBlockedDoor,
   steerToTarget,
   nextPosture,
   outdoorSpeed,
@@ -40,6 +46,7 @@ import {
   type ExitChoice,
   type Familiarity,
   type Posture,
+  type WallLike,
 } from './hazardSensing';
 import { SHOWCASE } from './showcaseConstants';
 import { blastInjuryBand } from './showcase';
@@ -66,6 +73,36 @@ export type { Posture } from './hazardSensing';
 const WALL_THICKNESS = 0.8;
 const PED_CATEGORY = 0x0001;
 const WALL_CATEGORY = 0x0002;
+const STATIC_CELL_M = 2;
+
+/** Cells the segment touches, plus one cell of padding so a 0.8 m keep-out is never missed. */
+function cellKeysAlong(ax: number, ay: number, bx: number, by: number): string[] {
+  const x0 = Math.floor(ax / STATIC_CELL_M);
+  const y0 = Math.floor(ay / STATIC_CELL_M);
+  const x1 = Math.floor(bx / STATIC_CELL_M);
+  const y1 = Math.floor(by / STATIC_CELL_M);
+  const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (cx: number, cy: number) => {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${cx + dx},${cy + dy}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(key);
+      }
+    }
+  };
+  if (steps === 0) {
+    add(x0, y0);
+    return out;
+  }
+  for (let i = 0; i <= steps; i++) {
+    add(Math.round(x0 + ((x1 - x0) * i) / steps), Math.round(y0 + ((y1 - y0) * i) / steps));
+  }
+  return out;
+}
 
 export interface PedSnapshot {
   id: number;
@@ -237,6 +274,10 @@ export class PolygonEvacuationEngine {
   private hazardFields = new Map<string, HazardField>();
   private blastLevel: string | null = null;
   private wallsByLevel = new Map<string, InteriorWallDef[]>();
+  private motionSerial = 0;
+  private staticIndexSerial = -1;
+  private staticCells = new Map<string, Array<{ x: number; y: number; body: Matter.Body }>>();
+  private blockedDoorsByLevel = new Map<string, WallLike[]>();
 
   constructor(
     config: PolygonSimConfig,
@@ -490,6 +531,8 @@ export class PolygonEvacuationEngine {
   }
 
   step() {
+    this.motionSerial++;
+    this.prepareStaticBodies();
     if (this.showcase) {
       this.stepShowcase();
       return;
@@ -510,13 +553,9 @@ export class PolygonEvacuationEngine {
       const exit = this.exits.find((e) => e.id === ped.targetExitId);
       if (!exit) continue;
 
-      const around = steerPastBodies(
-        { x: body.position.x, y: body.position.y },
-        exit.center,
-        this.staticBodiesNear(body),
-      );
-      const dx = around.x - body.position.x;
-      const dy = around.y - body.position.y;
+      const steered = this.aimAroundBodies(body, exit.center);
+      const dx = steered.aim.x - body.position.x;
+      const dy = steered.aim.y - body.position.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < 0.01) continue;
@@ -535,7 +574,7 @@ export class PolygonEvacuationEngine {
         repX += push.x;
         repY += push.y;
       }
-      const bodies = this.staticBodyPush(body, targetSpeed, dt);
+      const bodies = this.pushFromBodies(body, steered.near, steered.mouth, targetSpeed, dt);
       repX += bodies.x;
       repY += bodies.y;
 
@@ -871,6 +910,7 @@ export class PolygonEvacuationEngine {
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
     const speed = walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor);
 
+    const blockedDoors = this.blockedDoorsFor(ped);
     const exit = this.exits.find((e) => e.id === ped.targetExitId);
     const provisional = ped.sheltering && ped.shelterTarget
       ? ped.shelterTarget
@@ -894,6 +934,7 @@ export class PolygonEvacuationEngine {
         excludeId: fromId,
         avoidIds: ped.avoidExitIds,
         walls: this.interiorWalls,
+        blockedDoors,
       };
       if (burningAhead) {
         const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), exitOpts);
@@ -926,10 +967,13 @@ export class PolygonEvacuationEngine {
       }
     }
 
-    // A blocked exit is dropped on this step. Waiting out the 0.5 s
-    // re-check lands one frame late on the page clock.
+    // A blocked exit, or a door a body has closed, is dropped on this step.
+    // Waiting out the 0.5 s re-check lands one frame late on the page clock.
     const routed = this.exits.find((e) => e.id === ped.targetExitId);
-    if (routed?.status === 'blocked' || this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
+    const doorBlocked =
+      routed != null &&
+      routeCrossesBlockedDoor(pos, routed, this.config.vertices, this.interiorWalls, blockedDoors);
+    if (routed?.status === 'blocked' || doorBlocked || this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
       this.pruneAvoid(ped, pos);
       const choice = chooseExit(
         pos,
@@ -937,7 +981,7 @@ export class PolygonEvacuationEngine {
         this.config.vertices,
         field,
         ped.targetExitId ? this.currentChoice(ped) : null,
-        { avoidIds: ped.avoidExitIds, walls: this.interiorWalls },
+        { avoidIds: ped.avoidExitIds, walls: this.interiorWalls, blockedDoors },
       );
       ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
       this.assignChoice(ped, pos, choice, true);
@@ -1262,6 +1306,7 @@ export class PolygonEvacuationEngine {
   private pickInitialExit(pos: Vec2): ExitChoice | null {
     return chooseExit(pos, this.exits, this.config.vertices, this.field(), null, {
       walls: this.interiorWalls,
+      blockedDoors: this.blockedDoorsByLevel.get('') ?? [],
     });
   }
 
@@ -1498,18 +1543,106 @@ export class PolygonEvacuationEngine {
     return n / Math.PI;
   }
 
-  /** Downed people, and any other static body on this floor. */
-  private staticBodiesNear(self: Matter.Body): Array<{ x: number; y: number }> {
+  /**
+   * Downed people, and any other static body on this floor, along the way to
+   * `toward`. Built once per step into cells, so a step does not compare every
+   * pair. Another storey is a different cell key.
+   */
+  private staticBodiesNear(self: Matter.Body, toward: Vec2): Array<{ x: number; y: number }> {
+    this.prepareStaticBodies();
     const ped = this.pedOf(self);
+    return this.staticNear(ped.level ?? '', self.position.x, self.position.y, toward.x, toward.y, self);
+  }
+
+  private staticNear(
+    level: string,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    self?: Matter.Body,
+  ): Array<{ x: number; y: number }> {
     const out: Array<{ x: number; y: number }> = [];
-    for (const body of this.pedestrians) {
-      if (body === self) continue;
-      const other = this.pedOf(body);
-      if (other.state !== 'down' && !body.isStatic) continue;
-      if ((ped.level ?? '') !== (other.level ?? '')) continue;
-      out.push({ x: body.position.x, y: body.position.y });
+    for (const cell of cellKeysAlong(ax, ay, bx, by)) {
+      const list = this.staticCells.get(`${level}\0${cell}`);
+      if (!list) continue;
+      for (const hit of list) {
+        if (self && hit.body === self) continue;
+        out.push({ x: hit.x, y: hit.y });
+      }
     }
     return out;
+  }
+
+  /** One grid per storey, then the doors whose openings those bodies have closed. */
+  private prepareStaticBodies() {
+    if (this.staticIndexSerial === this.motionSerial) return;
+    this.staticIndexSerial = this.motionSerial;
+    this.staticCells.clear();
+    for (const body of this.pedestrians) {
+      const other = this.pedOf(body);
+      if (other.state !== 'down' && !body.isStatic) continue;
+      const level = other.level ?? '';
+      const cx = Math.floor(body.position.x / STATIC_CELL_M);
+      const cy = Math.floor(body.position.y / STATIC_CELL_M);
+      const key = `${level}\0${cx},${cy}`;
+      let list = this.staticCells.get(key);
+      if (!list) {
+        list = [];
+        this.staticCells.set(key, list);
+      }
+      list.push({ x: body.position.x, y: body.position.y, body });
+      // A slipping walker drops their own category. A downed body keeps the
+      // wall bit of its storey, which that mask still includes, so people
+      // squeeze past it instead of walking through it. Other storeys use
+      // other bits and do not collide.
+      const bits = this.collisionBits(other);
+      body.collisionFilter.category = bits.wall;
+      body.collisionFilter.mask = bits.ped;
+    }
+    this.blockedDoorsByLevel.clear();
+    const groups: Array<[string, InteriorWallDef[]]> =
+      this.wallsByLevel.size > 0
+        ? [...this.wallsByLevel.entries()]
+        : [['', this.interiorWalls]];
+    for (const [level, walls] of groups) {
+      const blocked: WallLike[] = [];
+      for (const wall of walls) {
+        if (!wall.hasDoor || !(wall.doorWidth > 0)) continue;
+        const bodies = this.staticNear(level, wall.startX, wall.startY, wall.endX, wall.endY);
+        if (doorBlockedByBodies(wall, bodies)) blocked.push(wall);
+      }
+      if (blocked.length > 0) this.blockedDoorsByLevel.set(level, blocked);
+    }
+  }
+
+  private collisionBits(ped: PedLabel): { ped: number; wall: number } {
+    if (this.levelPlan && ped.level) {
+      const slot = this.levelDefs.findIndex((l) => l.id === ped.level);
+      if (slot >= 0) return levelCategories(slot);
+    }
+    return { ped: PED_CATEGORY, wall: WALL_CATEGORY };
+  }
+
+  private blockedDoorsFor(ped: PedLabel): readonly WallLike[] {
+    return this.blockedDoorsByLevel.get(ped.level ?? '') ?? [];
+  }
+
+  private levelRouteBlocked(ped: PedLabel, pos: Vec2): boolean {
+    const doors = this.blockedDoorsFor(ped);
+    if (doors.length === 0) return false;
+    if (ped.targetExitId) {
+      const exit = this.exits.find((e) => e.id === ped.targetExitId);
+      if (!exit) return false;
+      const walls = this.wallsByLevel.get(ped.level ?? '') ?? this.interiorWalls;
+      return routeCrossesBlockedDoor(pos, exit, this.config.vertices, walls, doors);
+    }
+    if (ped.targetStairId) {
+      const stair = this.stairById(ped.targetStairId);
+      if (!stair) return false;
+      return segmentHitsBlockedDoor(pos, stair.pos, doors);
+    }
+    return false;
   }
 
   private obstaclePush(
@@ -1528,15 +1661,51 @@ export class PolygonEvacuationEngine {
     return { x: (odx / oDist) * strength, y: (ody / oDist) * strength };
   }
 
-  private staticBodyPush(body: Matter.Body, targetSpeed: number, dt: number): Vec2 {
+  private pushFromBodies(
+    body: Matter.Body,
+    near: ReadonlyArray<{ x: number; y: number }>,
+    mouth: ReadonlySet<number>,
+    targetSpeed: number,
+    dt: number,
+  ): Vec2 {
     let x = 0;
     let y = 0;
-    for (const other of this.staticBodiesNear(body)) {
-      const push = this.obstaclePush(body, other.x, other.y, DOWNED_AVOID_M, targetSpeed, dt);
+    for (let i = 0; i < near.length; i++) {
+      const radius = mouth.has(i) ? DOWNED_CONTACT_M : DOWNED_AVOID_M;
+      const push = this.obstaclePush(body, near[i].x, near[i].y, radius, targetSpeed, dt);
       x += push.x;
       y += push.y;
     }
     return { x, y };
+  }
+
+  /**
+   * Open floor keeps the 0.8 m sidestep. A body in a door is contact distance,
+   * and a passable door is aimed through the free lane so that sidestep does
+   * not throw the line into the jamb.
+   */
+  private aimAroundBodies(body: Matter.Body, target: Vec2): {
+    aim: Vec2;
+    near: Array<{ x: number; y: number }>;
+    mouth: Set<number>;
+  } {
+    const ped = this.pedOf(body);
+    const pos = { x: body.position.x, y: body.position.y };
+    const near = this.staticBodiesNear(body, target);
+    const walls = this.wallsNear(ped);
+    const squeeze = doorSqueezeAim(pos, target, walls, near);
+    const mouth = new Set<number>(doorMouthIndices(walls, near));
+    const tuned = near.map((b, i) => ({
+      x: b.x,
+      y: b.y,
+      radius: mouth.has(i) ? DOWNED_CONTACT_M : undefined,
+    }));
+    const forSteer = squeeze ? tuned.filter((_, i) => !squeeze.mouth.includes(i)) : tuned;
+    return {
+      aim: steerPastBodies(pos, squeeze?.aim ?? target, forSteer),
+      near,
+      mouth,
+    };
   }
 
   private steer(
@@ -1547,11 +1716,8 @@ export class PolygonEvacuationEngine {
     keepForward = false,
   ) {
     const dt = this.config.dt;
-    const aim = steerPastBodies(
-      { x: body.position.x, y: body.position.y },
-      target,
-      this.staticBodiesNear(body),
-    );
+    const steered = this.aimAroundBodies(body, target);
+    const aim = steered.aim;
     const dx = aim.x - body.position.x;
     const dy = aim.y - body.position.y;
     const dist = Math.hypot(dx, dy);
@@ -1591,7 +1757,7 @@ export class PolygonEvacuationEngine {
     }
     // A downed body still pushes, including backwards. Stripping that is
     // what walks people into the body they are trying to pass.
-    const bodies = this.staticBodyPush(body, targetSpeed, dt);
+    const bodies = this.pushFromBodies(body, steered.near, steered.mouth, targetSpeed, dt);
     repX += bodies.x;
     repY += bodies.y;
     // The 0.4 s blend never catches the air drag, so a crawler held on a
@@ -1843,7 +2009,7 @@ export class PolygonEvacuationEngine {
 
   private stepPlainLevel(body: Matter.Body, ped: PedLabel, targetSpeed: number, dt: number, tau: number) {
     const pos = this.posOf(body);
-    if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
+    if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) || this.levelRouteBlocked(ped, pos)) {
       this.applyRoute(ped, pos, false);
       ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
     }
@@ -1873,7 +2039,11 @@ export class PolygonEvacuationEngine {
     else ped.posture = 'crawl';
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
     const speed = walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor);
-    if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) || (!ped.targetStairId && !ped.targetExitId)) {
+    if (
+      this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) ||
+      (!ped.targetStairId && !ped.targetExitId) ||
+      this.levelRouteBlocked(ped, pos)
+    ) {
       this.applyRoute(ped, pos, true);
       ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
     }
@@ -1944,6 +2114,8 @@ export class PolygonEvacuationEngine {
       this.config.vertices,
       this.queueLengths(),
       current,
+      this.blockedDoorsByLevel,
+      this.wallsByLevel,
     );
     if (!choice) {
       ped.targetStairId = null;
