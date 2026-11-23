@@ -311,9 +311,17 @@ export function exitCost(
   verts: Vec2[],
   field: HazardField,
   walls?: WallLike[],
+  blockedDoors?: readonly WallLike[],
 ): number {
   if (!isExitUsable(exit, verts, field)) return Infinity;
   const approach = exitApproachInside(exit, verts);
+  if (
+    blockedDoors &&
+    blockedDoors.length > 0 &&
+    routeCrossesBlockedDoor(pos, exit, verts, walls, blockedDoors)
+  ) {
+    return Infinity;
+  }
   let extra = exit.status === 'congested' ? SHOWCASE.CONGESTED_PENALTY_M : 0;
   for (const [a, b] of routeLegs(pos, approach, walls)) {
     for (const p of sampleSegment(a, b, SHOWCASE.SAMPLE_STEP_M)) {
@@ -384,12 +392,16 @@ export function chooseExit(
     excludeId?: string;
     avoidIds?: string[];
     walls?: WallLike[];
+    blockedDoors?: readonly WallLike[];
   },
 ): ExitChoice | null {
   const avoided = new Set(options?.avoidIds ?? []);
   const pool = exits.filter((e) => e.id !== options?.excludeId && !avoided.has(e.id));
   const ranked = pool
-    .map((e) => ({ id: e.id, cost: exitCost(pos, e, verts, field, options?.walls) }))
+    .map((e) => ({
+      id: e.id,
+      cost: exitCost(pos, e, verts, field, options?.walls, options?.blockedDoors),
+    }))
     .sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id));
   const best = ranked.find((r) => r.cost < Infinity);
 
@@ -424,6 +436,7 @@ export function chooseExit(
       verts,
       field,
       options?.walls,
+      options?.blockedDoors,
     );
     // A blocked or burning exit is abandoned on this check, not one check later.
     if (now < Infinity && !(best.cost < now * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
@@ -705,19 +718,253 @@ function doorInApproach(pos: Vec2, target: Vec2, walls: WallLike[]): WallLike | 
 }
 
 /**
- * Stay about this far from a downed or static body. Two body radii are 0.5 m,
- * so 0.8 m leaves a gap and still lets people slip past.
+ * Stay about this far from a downed or static body in open space. Two body
+ * radii are 0.5 m, so 0.8 m leaves a gap and still lets people slip past.
+ * A door mouth is narrower than that gap: there the keep-out shrinks to
+ * contact distance, DOWNED_CONTACT_M.
  */
 export const DOWNED_AVOID_M = 0.8;
+
+/** Centre-to-centre distance at which two pedestrians touch. */
+export const DOWNED_CONTACT_M = BODY_RADIUS_M * 2;
+
+interface DoorFrame {
+  ux: number;
+  uy: number;
+  nx: number;
+  ny: number;
+  len: number;
+}
+
+function doorFrame(wall: WallLike): DoorFrame {
+  const { ux, uy, len } = wallFrame(wall);
+  return { ux, uy, nx: -uy, ny: ux, len };
+}
+
+/** Walker-centre span of a door, metres from the wall start. Null when the opening is narrower than a body. */
+function usableAlong(wall: WallLike): { lo: number; hi: number } | null {
+  if (!wall.hasDoor || !(wall.doorWidth > 0)) return null;
+  const { len } = wallFrame(wall);
+  const centre = wall.doorPosition * len;
+  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
+  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  if (!(hi > lo + 1e-3)) return null;
+  return { lo, hi };
+}
+
+interface BodyOnDoor {
+  index: number;
+  along: number;
+  off: number;
+}
+
+function bodiesOnDoor(
+  wall: WallLike,
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  contact: number,
+): BodyOnDoor[] {
+  const frame = doorFrame(wall);
+  const centre = wall.doorPosition * frame.len;
+  const half = wall.doorWidth / 2 + contact;
+  const out: BodyOnDoor[] = [];
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    const dx = b.x - wall.startX;
+    const dy = b.y - wall.startY;
+    const along = dx * frame.ux + dy * frame.uy;
+    const off = dx * frame.nx + dy * frame.ny;
+    if (Math.abs(off) >= contact) continue;
+    if (along < centre - half || along > centre + half) continue;
+    out.push({ index: i, along, off });
+  }
+  return out;
+}
+
+/**
+ * Centre-line intervals a walker can still use, metres from the wall start.
+ * Null when no body reaches the opening. Empty when bodies cover every usable point.
+ */
+function doorFreeLanes(
+  wall: WallLike,
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  contact = DOWNED_CONTACT_M,
+): Array<[number, number]> | null {
+  const span = usableAlong(wall);
+  if (!span) return null;
+  const onDoor = bodiesOnDoor(wall, bodies, contact);
+  if (onDoor.length === 0) return null;
+  const cuts: Array<[number, number]> = [];
+  for (const b of onDoor) {
+    const reachSq = contact * contact - b.off * b.off;
+    if (!(reachSq > 0)) continue;
+    const reach = Math.sqrt(reachSq);
+    const a = Math.max(span.lo, b.along - reach);
+    const c = Math.min(span.hi, b.along + reach);
+    if (c > a) cuts.push([a, c]);
+  }
+  if (cuts.length === 0) return null;
+  cuts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const free: Array<[number, number]> = [];
+  let cursor = span.lo;
+  for (const [a, c] of cuts) {
+    if (a > cursor + 1e-3) free.push([cursor, a]);
+    if (c > cursor) cursor = c;
+  }
+  if (span.hi > cursor + 1e-3) free.push([cursor, span.hi]);
+  return free;
+}
+
+/** True when bodies cover every point a walker centre could occupy in the opening. */
+export function doorBlockedByBodies(
+  wall: WallLike,
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  contact = DOWNED_CONTACT_M,
+): boolean {
+  const lanes = doorFreeLanes(wall, bodies, contact);
+  return lanes != null && lanes.length === 0;
+}
+
+/** Indices of bodies standing in a door opening. The keep-out for these shrinks to contact. */
+export function doorMouthIndices(
+  walls: readonly WallLike[],
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  contact = DOWNED_CONTACT_M,
+): number[] {
+  const ids = new Set<number>();
+  for (const wall of walls) {
+    if (!wall.hasDoor || !(wall.doorWidth > 0)) continue;
+    for (const b of bodiesOnDoor(wall, bodies, contact)) ids.add(b.index);
+  }
+  return [...ids];
+}
+
+/** Where the segment crosses a door opening, as a fraction along a→b. */
+function openingCrossT(a: Vec2, b: Vec2, wall: WallLike): number | null {
+  if (!wall.hasDoor || !(wall.doorWidth > 0)) return null;
+  const frame = doorFrame(wall);
+  const ax = a.x - wall.startX;
+  const ay = a.y - wall.startY;
+  const bx = b.x - wall.startX;
+  const by = b.y - wall.startY;
+  const offA = ax * frame.nx + ay * frame.ny;
+  const offB = bx * frame.nx + by * frame.ny;
+  if (offA * offB > 1e-4 && Math.min(Math.abs(offA), Math.abs(offB)) > 0.35) return null;
+  const denom = offA - offB;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = offA / denom;
+  if (t < -0.02 || t > 1.02) return null;
+  const clamped = Math.max(0, Math.min(1, t));
+  const along = (ax + (bx - ax) * clamped) * frame.ux + (ay + (by - ay) * clamped) * frame.uy;
+  const centre = wall.doorPosition * frame.len;
+  const half = wall.doorWidth / 2;
+  if (along < centre - half - 0.05 || along > centre + half + 0.05) return null;
+  return Math.max(0, Math.min(1, t));
+}
+
+export function segmentHitsBlockedDoor(a: Vec2, b: Vec2, doors: readonly WallLike[]): boolean {
+  for (const wall of doors) {
+    if (openingCrossT(a, b, wall) != null) return true;
+  }
+  return false;
+}
+
+/** The walked route to this exit goes through a door bodies have closed. */
+export function routeCrossesBlockedDoor(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+  walls: WallLike[] | undefined,
+  blockedDoors: readonly WallLike[],
+): boolean {
+  if (blockedDoors.length === 0) return false;
+  const approach = exitApproachInside(exit, verts);
+  for (const [a, b] of routeLegs(pos, approach, walls)) {
+    if (segmentHitsBlockedDoor(a, b, blockedDoors)) return true;
+  }
+  return false;
+}
+
+/**
+ * Aim through the free part of a door a body is standing in.
+ * The point is past the opening, on a line that clears the body by contact
+ * distance, so the open-floor sidestep does not throw the aim into the jamb.
+ * Null when no passable door on the way has a body in it.
+ */
+export function doorSqueezeAim(
+  pos: Vec2,
+  target: Vec2,
+  walls: readonly WallLike[],
+  bodies: ReadonlyArray<{ x: number; y: number }>,
+  contact = DOWNED_CONTACT_M,
+): { aim: Vec2; mouth: number[] } | null {
+  let bestWall: WallLike | null = null;
+  let bestT = Infinity;
+  let bestLanes: Array<[number, number]> | null = null;
+  for (const wall of walls) {
+    const lanes = doorFreeLanes(wall, bodies, contact);
+    if (!lanes || lanes.length === 0) continue;
+    const t = openingCrossT(pos, target, wall);
+    if (t == null || t >= bestT) continue;
+    bestT = t;
+    bestWall = wall;
+    bestLanes = lanes;
+  }
+  if (!bestWall || !bestLanes) return null;
+  const frame = doorFrame(bestWall);
+  const along = (pos.x - bestWall.startX) * frame.ux + (pos.y - bestWall.startY) * frame.uy;
+  const onDoor = bodiesOnDoor(bestWall, bodies, contact);
+  let lane = bestLanes[0];
+  let laneDist = Infinity;
+  for (const iv of bestLanes) {
+    const mid = (iv[0] + iv[1]) / 2;
+    const d = Math.abs(mid - along);
+    if (d < laneDist) {
+      laneDist = d;
+      lane = iv;
+    }
+  }
+  const inset = Math.min(0.01, (lane[1] - lane[0]) * 0.25);
+  const ends = [lane[0] + inset, lane[1] - inset];
+  const clearOf = (at: number) => {
+    let best = Infinity;
+    for (const b of onDoor) best = Math.min(best, Math.hypot(at - b.along, b.off));
+    return best;
+  };
+  const at = clearOf(ends[0]) >= clearOf(ends[1]) ? ends[0] : ends[1];
+  const onLine = {
+    x: bestWall.startX + frame.ux * at,
+    y: bestWall.startY + frame.uy * at,
+  };
+  let nx = frame.nx;
+  let ny = frame.ny;
+  if ((target.x - onLine.x) * nx + (target.y - onLine.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const mouth = onDoor.map((b) => b.index);
+  // Once the centre is through the slot, keep going the way the target lies.
+  // Extending the approach line past that point turns around and pins them on the body.
+  const progress = (pos.x - onLine.x) * nx + (pos.y - onLine.y) * ny;
+  if (progress > 0.4) return { aim: target, mouth };
+  if (progress > 0) return { aim: { x: onLine.x + nx * 1.5, y: onLine.y + ny * 1.5 }, mouth };
+  const vx = onLine.x - pos.x;
+  const vy = onLine.y - pos.y;
+  const dist = Math.hypot(vx, vy) || 1;
+  return {
+    aim: { x: onLine.x + (vx / dist) * 1.2, y: onLine.y + (vy / dist) * 1.2 },
+    mouth,
+  };
+}
 
 /**
  * Move the steering target off a downed or static body that stands on the way.
  * A head-on repulsion stops on the body; this puts the aim on one side of it.
+ * A body may carry its own radius. Door mouths pass contact distance; open floor stays at 0.8 m.
  */
 export function steerPastBodies(
   pos: Vec2,
   target: Vec2,
-  bodies: ReadonlyArray<{ x: number; y: number }>,
+  bodies: ReadonlyArray<{ x: number; y: number; radius?: number }>,
   radius = DOWNED_AVOID_M,
 ): Vec2 {
   let aimX = target.x;
@@ -734,21 +981,24 @@ export function steerPastBodies(
     let bestAlong = Infinity;
     let bestVx = 0;
     let bestVy = 0;
+    let bestAvoid = radius;
     for (let i = 0; i < bodies.length; i++) {
       if (skipped.has(i)) continue;
+      const avoid = bodies[i].radius ?? radius;
       const vx = bodies[i].x - pos.x;
       const vy = bodies[i].y - pos.y;
       const along = vx * ux + vy * uy;
       const lat = Math.abs(ux * vy - uy * vx);
       const dist = Math.hypot(vx, vy);
-      const onTheWay = along > -radius * 0.25 && along < len && lat < radius;
-      const overlapping = dist < radius && along > -radius * 0.5;
+      const onTheWay = along > -avoid * 0.25 && along < len && lat < avoid;
+      const overlapping = dist < avoid && along > -avoid * 0.5;
       if (!onTheWay && !overlapping) continue;
       if (along < bestAlong) {
         bestAlong = along;
         bestI = i;
         bestVx = vx;
         bestVy = vy;
+        bestAvoid = avoid;
       }
     }
     if (bestI < 0) break;
@@ -761,9 +1011,9 @@ export function steerPastBodies(
         : ((Math.round(pos.x * 8) + Math.round(pos.y * 8)) & 1) === 0
           ? 1
           : -1;
-    const past = Math.min(len, Math.max(bestAlong, 0) + radius);
-    aimX = pos.x + ux * past - uy * side * radius;
-    aimY = pos.y + uy * past + ux * side * radius;
+    const past = Math.min(len, Math.max(bestAlong, 0) + bestAvoid);
+    aimX = pos.x + ux * past - uy * side * bestAvoid;
+    aimY = pos.y + uy * past + ux * side * bestAvoid;
   }
   return { x: aimX, y: aimY };
 }
@@ -1255,6 +1505,8 @@ export function chooseRoute(
   verts: Vec2[],
   queues?: ReadonlyMap<string, { up: number; down: number }>,
   current?: { id: string; cost: number } | null,
+  blockedDoors?: ReadonlyMap<string, readonly WallLike[]>,
+  wallsByLevel?: ReadonlyMap<string, readonly WallLike[]>,
 ): RouteChoice | null {
   const fieldOf = (id: string) => fields.get(id);
   interface Node {
@@ -1301,11 +1553,19 @@ export function chooseRoute(
   }
   const linkCost = (a: Node, b: Node): number => {
     const field = fieldOf(a.level);
+    const doors = blockedDoors?.get(a.level);
+    const walls = wallsByLevel?.get(a.level) as WallLike[] | undefined;
+    if (doors && doors.length > 0 && segmentHitsBlockedDoor(a.pos, b.pos, doors)) return Infinity;
     if (b.kind === 'exit') {
       const exit = exits.find((e) => e.id === b.id);
       if (!exit) return Infinity;
-      if (!field) return Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
-      return exitCost(a.pos, exit, verts, field);
+      if (!field) {
+        if (doors && doors.length > 0 && routeCrossesBlockedDoor(a.pos, exit, verts, walls, doors)) {
+          return Infinity;
+        }
+        return Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
+      }
+      return exitCost(a.pos, exit, verts, field, walls, doors);
     }
     return routePointCost(a.pos, b.pos, field);
   };
@@ -1436,6 +1696,10 @@ export function chooseRoute(
         verts,
         field,
         current && local.some((e) => e.id === current.id) ? current : null,
+        {
+          walls: wallsByLevel?.get(level) as WallLike[] | undefined,
+          blockedDoors: blockedDoors?.get(level),
+        },
       );
       if (!picked) return null;
       return { kind: 'exit', id: picked.id, cost: picked.cost };
