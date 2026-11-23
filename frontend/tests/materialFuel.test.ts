@@ -290,7 +290,7 @@ describe('legacy circles become objects', () => {
       foodCourtPlacedObjects(),
       studs.map((stud) => ({ id: stud.id, simPos: stud.simPos, level: stud.floor })),
     );
-    assert.equal(placed.length, 7);
+    assert.equal(placed.length, 14);
     assert.equal(placed.every((obj) => obj.confirmed && obj.studId), true);
     const fuel = confirmedFuelStudIds(
       placed,
@@ -335,6 +335,24 @@ describe('legacy circles become objects', () => {
     assert.ok(tile);
     assert.equal(fuel.has(tile.id), false);
     assert.equal(tile.spatialContext, 'inside_building');
+    const drinks = placed.find((obj) => obj.id === 'elec-drinks');
+    const stallTable = placed.find((obj) => obj.id === 'noodle-table');
+    const pizzaTable = placed.find((obj) => obj.id === 'pizza-table');
+    const pizzaGas = placed.find((obj) => obj.id === 'legacy-hz-gas-pizza');
+    assert.ok(drinks);
+    assert.deepEqual(
+      drinks.matches.map((match) => match.entryId),
+      ['electrical'],
+    );
+    assert.equal(fuel.has(drinks.studId), false);
+    assert.equal(drinks.description.toLowerCase().includes('gas line'), false);
+    assert.ok(stallTable && fuel.has(stallTable.studId));
+    assert.ok(noodle);
+    const stallGap = Math.hypot(stallTable.pos.x - noodle.pos.x, stallTable.pos.y - noodle.pos.y);
+    assert.ok(stallGap > 2.5 && stallGap < 3.5, `noodle table is ${stallGap} m from the gas line`);
+    assert.ok(pizzaTable && pizzaGas && fuel.has(pizzaTable.studId));
+    const pizzaGap = Math.hypot(pizzaTable.pos.x - pizzaGas.pos.x, pizzaTable.pos.y - pizzaGas.pos.y);
+    assert.ok(pizzaGap > 2.5 && pizzaGap < 3.5, `pizza table is ${pizzaGap} m from the gas line`);
   });
 });
 

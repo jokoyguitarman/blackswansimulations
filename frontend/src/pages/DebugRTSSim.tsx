@@ -88,7 +88,9 @@ import {
   COMMON_PICKS,
   MATERIAL_LIBRARY,
   absorbLegacyFuelCircles,
+  confirmedElectricalSources,
   confirmedFuelCells,
+  confirmedGasLines,
   entryById,
   entryCanBurn,
   matchFromEntry,
@@ -304,6 +306,18 @@ function fuelCellsFor(objects: readonly PlacedObject[], studs: readonly SimStud[
       spatialContext: stud.spatialContext,
     })),
   );
+}
+
+/** Charge, gas lines, and arcs. Called every effects step so a shut valve is not cleared. */
+function syncIgnition(
+  engine: SpatialEffectsEngine,
+  objects: readonly PlacedObject[],
+  zones: readonly HazardZone[],
+  charge: ChargeSpec,
+) {
+  engine.setBlastCharge(charge);
+  engine.setGasLines(confirmedGasLines(objects));
+  engine.setElectricalSources(confirmedElectricalSources(objects, zones));
 }
 
 function objectsOnStuds(
@@ -697,6 +711,7 @@ export function DebugRTSSim() {
   const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
   const [placedObjects, setPlacedObjects] = useState<PlacedObject[]>([]);
   const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
+  const [gasJetCount, setGasJetCount] = useState(0);
   const [placingObject, setPlacingObject] = useState(false);
   const [objectNotice, setObjectNotice] = useState<string | null>(null);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
@@ -1243,6 +1258,9 @@ export function DebugRTSSim() {
     cancelAnimationFrame(rafRef.current);
     evacEngRef.current?.destroy();
     evacEngRef.current = null;
+    effectsEngineRef.current = null;
+    setEffectStates(null);
+    setGasJetCount(0);
     rtsRef.current = new RTSEngine();
     setPedestrians([]);
     setWallPoints([]);
@@ -1615,6 +1633,9 @@ export function DebugRTSSim() {
       setBlastRadius(storedBlast.radiusM ?? 8);
     }
     setShowcase(true);
+    effectsEngineRef.current = null;
+    setEffectStates(null);
+    setGasJetCount(0);
     const verts = projectPolygon(polygon);
     rtsRef.current = new RTSEngine();
     rtsRef.current.setBuildingVertices(verts);
@@ -2048,11 +2069,23 @@ export function DebugRTSSim() {
           const walls = interiorWallsRef.current;
           const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
           effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
+          syncIgnition(
+            effectsEng,
+            placedObjectsRef.current,
+            hazardZonesRef.current,
+            chargeRef.current,
+          );
           for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
           effectDt = effectSteps * FX.EFFECTS_DT;
         } else {
           effectDt = dt * rts.state.clock.speed;
           effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
+          syncIgnition(
+            effectsEng,
+            placedObjectsRef.current,
+            hazardZonesRef.current,
+            chargeRef.current,
+          );
           effectsEng.step(
             effectDt,
             interiorWallsRef.current,
@@ -2060,6 +2093,8 @@ export function DebugRTSSim() {
           );
         }
         effectStatesRef.current = new Map(effectsEng.studStates);
+        const jetCount = effectsEng.gasJets().length;
+        setGasJetCount((prev) => (prev === jetCount ? prev : jetCount));
 
         // Casualty deterioration based on spatial effects
         const eStates = effectsEng.studStates;
@@ -2242,6 +2277,7 @@ export function DebugRTSSim() {
                 }
               : null,
             placedObjectDraws(placedObjectsRef.current),
+            effectsEngineRef.current?.gasJets() ?? null,
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -2802,6 +2838,15 @@ export function DebugRTSSim() {
               Math.hypot(obj.pos.x - sim.x, obj.pos.y - sim.y) < 2.5,
           );
           if (hitObj) {
+            if (
+              rts.state.clock.phase !== 'setup' &&
+              hitObj.confirmed &&
+              hitObj.matches.some((match) => match.behaviour === 'pressurised_gas') &&
+              effectsEngineRef.current?.isJetting(hitObj.id)
+            ) {
+              effectsEngineRef.current.shutOffGas(hitObj.id);
+              setGasJetCount(effectsEngineRef.current.gasJets().length);
+            }
             setActiveObjectId(hitObj.id);
             rts.state.selection.selectionBox = null;
             dragStartRef.current = null;
@@ -3672,6 +3717,7 @@ export function DebugRTSSim() {
 
     blastFiredRef.current = false;
     explosionStartRef.current = null;
+    setGasJetCount(0);
     setBanner(null);
     setShowcaseHud(null);
     hudAtRef.current = 0;
@@ -5489,6 +5535,9 @@ export function DebugRTSSim() {
                         {obj.confirmed
                           ? obj.matches.map((match) => match.label).join(', ') || 'Confirmed'
                           : obj.description || 'Unconfirmed'}
+                        {obj.confirmed && obj.description
+                          ? ` · ${obj.description.slice(0, 42)}`
+                          : ''}
                         {obj.confirmed ? '' : ' · not confirmed'}
                       </button>
                     ))}
@@ -5629,6 +5678,69 @@ export function DebugRTSSim() {
                         ? 'Confirmed. Only a match that can catch fire will burn.'
                         : 'Not confirmed. This object does nothing.'}
                     </div>
+                    {active.confirmed &&
+                      active.matches.some((match) => match.behaviour === 'pressurised_gas') && (
+                        <div className="space-y-1.5 border-t border-gray-800 pt-1.5">
+                          <label className="block text-xs text-gray-400">
+                            Automatic valve (seconds)
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={
+                                active.valveSec != null && Number.isFinite(active.valveSec)
+                                  ? active.valveSec
+                                  : ''
+                              }
+                              placeholder="stays open"
+                              onChange={(e) => {
+                                const raw = e.target.value.trim();
+                                const parsed = raw === '' ? null : Number(raw);
+                                const valveSec =
+                                  parsed != null && Number.isFinite(parsed) && parsed > 0
+                                    ? parsed
+                                    : null;
+                                setPlacedObjects((prev) =>
+                                  prev.map((obj) =>
+                                    obj.id === active.id ? { ...obj, valveSec } : obj,
+                                  ),
+                                );
+                              }}
+                              className="mt-1 w-full bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 text-xs rounded"
+                            />
+                          </label>
+                          <p className="text-xs text-gray-500">
+                            Blank leaves the jet on until someone shuts it off. A time closes it
+                            on its own.
+                          </p>
+                          {gameState.clock.phase === 'setup' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBlastSite({ x: active.pos.x, y: active.pos.y });
+                                setBlastLevel(active.level || 'G');
+                                setManualRadius(true);
+                                setBlastRadius(1);
+                              }}
+                              className="w-full text-xs px-2 py-1.5 rounded border border-orange-700 text-orange-200 hover:border-orange-400"
+                            >
+                              Blast at this line
+                            </button>
+                          )}
+                          {effectsEngineRef.current?.isJetting(active.id) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                effectsEngineRef.current?.shutOffGas(active.id);
+                                setGasJetCount(effectsEngineRef.current?.gasJets().length ?? 0);
+                              }}
+                              className="w-full text-xs px-2 py-1.5 rounded border border-orange-400 bg-orange-900/50 text-orange-100"
+                            >
+                              Shut off this line
+                            </button>
+                          )}
+                        </div>
+                      )}
                   </div>
                 );
               })()}
@@ -5851,6 +5963,22 @@ export function DebugRTSSim() {
                 <div>Reroutes {showcaseHud.metrics.reroutes}</div>
                 <div>Burning studs {showcaseHud.burning}</div>
                 <div>Smoke-affected studs {showcaseHud.smoke}</div>
+              </div>
+            )}
+
+            {gasJetCount > 0 && (
+              <div className="bg-gray-900 border border-orange-600 rounded p-3 space-y-2">
+                <div className="text-xs text-orange-200">Gas jets {gasJetCount}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    effectsEngineRef.current?.shutOffGas();
+                    setGasJetCount(0);
+                  }}
+                  className="w-full text-xs px-2 py-1.5 rounded border border-orange-400 bg-orange-800 text-orange-50 font-bold"
+                >
+                  Shut off gas
+                </button>
               </div>
             )}
 
@@ -6274,8 +6402,9 @@ export function DebugRTSSim() {
                               const amountKg = e.target.value === '' ? Number.NaN : Number(e.target.value);
                               setCharge((prev) => ({ ...prev, amountKg }));
                             }}
-                            onBlur={() => {
-                              const result = clampCharge(charge);
+                            onBlur={(e) => {
+                              const amountKg = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              const result = clampCharge({ ...charge, amountKg });
                               setCharge(result.spec);
                               setChargeNote(result.notes[0] ?? null);
                             }}
@@ -6365,9 +6494,26 @@ export function DebugRTSSim() {
                           Manual override
                         </label>
                       </div>
+                      <label className="flex items-center gap-2 text-xs text-amber-400">
+                        Fireball
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          step={0.5}
+                          value={blastRadius}
+                          disabled={!manualRadius}
+                          onChange={(e) => {
+                            const next = Number(e.target.value);
+                            if (Number.isFinite(next)) setBlastRadius(Math.min(100, Math.max(1, next)));
+                          }}
+                          className="w-16 bg-gray-800 border border-amber-900 text-amber-100 text-xs rounded px-1 py-0.5 disabled:opacity-40"
+                        />
+                        <span>m</span>
+                      </label>
                       <input
                         type="range"
-                        min={5}
+                        min={1}
                         max={100}
                         step={1}
                         value={blastRadius}
@@ -6610,6 +6756,7 @@ export function DebugRTSSim() {
                           }
 
                           preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
+                          syncIgnition(preview, placedObjects, hazardZones, charge);
                           preview.runPreview(
                             effectPreviewTime,
                             interiorWalls,
