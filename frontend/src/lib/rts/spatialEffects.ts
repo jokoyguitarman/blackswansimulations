@@ -172,6 +172,11 @@ export class SpatialEffectsEngine {
     this.fireSim.setShaftPairs(this.verticalPairs);
   }
 
+  /** Confirmed light and heavy studs. Null keeps the old indoor rule. */
+  setFuelStuds(ids: ReadonlySet<string> | null) {
+    this.fireSim.setFuelStuds(ids);
+  }
+
   registerHazard(
     hazardId: string,
     events: HazardEvent[],

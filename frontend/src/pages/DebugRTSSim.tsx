@@ -39,6 +39,7 @@ import {
 import { generateSceneStuds } from '../lib/rts/sceneStuds';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
+import type { PlacedObjectDraw } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
 import { BLAST_DATASET } from '../lib/rts/blast/blastDataset';
 import {
@@ -83,6 +84,18 @@ import {
 } from '../lib/rts/wallInspection';
 import { generateSingleCasualty } from '../lib/rts/casualtyPresets';
 import { DEFAULT_FIRE_PARAMS, type FireParams } from '../lib/rts/fireSimulation';
+import {
+  COMMON_PICKS,
+  MATERIAL_LIBRARY,
+  confirmedFuelStudIds,
+  entryById,
+  entryCanBurn,
+  matchFromEntry,
+  matchMaterials,
+  suggestLibraryEntry,
+  type PlacedObject,
+} from '../lib/rts/materialLibrary';
+import { foodCourtSample } from '../lib/rts/foodCourtSample';
 import {
   SpatialEffectsEngine,
   type StudEffectState,
@@ -633,6 +646,10 @@ export function DebugRTSSim() {
   // ── Interior elements ─────────────────────────────────────────────────
   const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
   const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
+  const [placedObjects, setPlacedObjects] = useState<PlacedObject[]>([]);
+  const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
+  const [placingObject, setPlacingObject] = useState(false);
+  const [objectNotice, setObjectNotice] = useState<string | null>(null);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
   const [levels, setLevels] = useState<LevelDef[]>([makeLevel('G', 120)]);
   const [activeLevel, setActiveLevel] = useState('G');
@@ -724,6 +741,9 @@ export function DebugRTSSim() {
   }, [manualRadius, rings.minorM]);
   const [zoneKinds, setZoneKinds] = useState<Record<string, ZoneKind>>({});
   const blastFiredRef = useRef(false);
+  const placedObjectsRef = useRef<PlacedObject[]>([]);
+  const placeObjectRef = useRef(false);
+  const objectIdRef = useRef(0);
   const explosionStartRef = useRef<number | null>(null);
   const [banner, setBanner] = useState<{ until: number; text: string } | null>(null);
   const hazardFieldRef = useRef<HazardField | null>(null);
@@ -1213,6 +1233,7 @@ export function DebugRTSSim() {
         stairwells,
         blastSite: nextBlast ? { ...nextBlast, level: blastLevel } : null,
         levels,
+        placedObjects,
         casualtyPins,
         plantedItems,
         wallInspectionPoints: wallPoints,
@@ -1242,6 +1263,7 @@ export function DebugRTSSim() {
     blastRadius,
     blastLevel,
     levels,
+    placedObjects,
     casualtyPins,
     plantedItems,
     wallPoints,
@@ -1381,6 +1403,9 @@ export function DebugRTSSim() {
       setExits(sc.exits as ExitDef[]);
       setInteriorWalls(sc.interior_walls as InteriorWall[]);
       setHazardZones(sc.hazard_zones as HazardZone[]);
+      setPlacedObjects(Array.isArray(sc.placed_objects) ? (sc.placed_objects as PlacedObject[]) : []);
+      setActiveObjectId(null);
+      setPlacingObject(false);
       setStairwells(sc.stairwells as Stairwell[]);
       const storedBlast = readStoredBlast(sc.blast_site);
       if (storedBlast) {
@@ -1474,6 +1499,75 @@ export function DebugRTSSim() {
     } catch (err) {
       console.error('Failed to load scene:', err);
     }
+  }, []);
+
+  const handleLoadFoodCourt = useCallback(() => {
+    const scene = foodCourtSample.scene;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const savedLevels = scene.levels.map((level) => ({ ...level }));
+    const levelIds = savedLevels.map((level) => level.id);
+    const grid: GridItem = {
+      buildingIndex: 0,
+      buildingName: scene.buildingName,
+      polygon,
+      floors: levelIds,
+      spacingM: 3,
+      studs: generateSceneStuds(polygon, 0, levelIds),
+    };
+    setUserGeoPos({ lat: scene.centerLat, lng: scene.centerLng });
+    setLat(String(scene.centerLat));
+    setLng(String(scene.centerLng));
+    setFetchResult({
+      grids: [grid],
+      buildings: [
+        {
+          name: scene.buildingName,
+          lat: scene.centerLat,
+          lng: scene.centerLng,
+          levels: 1,
+          use: 'food court',
+          polygonPoints: polygon.length,
+        },
+      ],
+    });
+    setSelectedGridIdx(0);
+    setSceneConfigId(null);
+    setExits(scene.exits.map((exit) => ({ ...exit, photos: [...exit.photos] })) as ExitDef[]);
+    setInteriorWalls(
+      scene.interiorWalls.map((wall) => ({
+        ...wall,
+        photos: [...wall.photos],
+        start: { ...wall.start },
+        end: { ...wall.end },
+      })) as InteriorWall[],
+    );
+    setHazardZones([]);
+    setPlacedObjects([]);
+    setActiveObjectId(null);
+    setPlacingObject(false);
+    setObjectNotice(null);
+    setStairwells([]);
+    setCasualtyPins([]);
+    setPlantedItems([]);
+    setPedestrianCount(scene.pedestrianCount);
+    setLevels(savedLevels.length > 0 ? (savedLevels as LevelDef[]) : defaultLevels(['G']));
+    setActiveLevel('G');
+    setSelectedStairId(null);
+    const storedBlast = readStoredBlast(scene.blastSite);
+    if (storedBlast) {
+      blastRecordRef.current = storedBlast.record;
+      setBlastSite(storedBlast.pos);
+      setBlastLevel(typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G');
+      setManualRadius(true);
+      setBlastRadius(storedBlast.radiusM ?? 8);
+    }
+    setShowcase(true);
+    const verts = projectPolygon(polygon);
+    rtsRef.current = new RTSEngine();
+    rtsRef.current.setBuildingVertices(verts);
+    rtsRef.current.setExits(scene.exits as unknown as ExitDef[]);
+    setWallPoints(generateWallPoints(polygon, verts));
+    setPhase('rts');
   }, []);
 
   const handleLoadDbSceneList = useCallback(async () => {
@@ -1617,6 +1711,12 @@ export function DebugRTSSim() {
       if (phase !== 'rts') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Escape' && placeObjectRef.current) {
+        e.preventDefault();
+        placeObjectRef.current = false;
+        setPlacingObject(false);
+        return;
+      }
       if (e.key === 'Escape' && rtsRef.current.state.interactionMode.type === 'place_stairwell') {
         e.preventDefault();
         rtsRef.current.setInteractionMode({ type: 'select' });
@@ -1656,6 +1756,8 @@ export function DebugRTSSim() {
   // ── Refs for animation loop (avoid stale closures & constant recreation) ──
   const exitsRef = useRef(exits);
   exitsRef.current = exits;
+  placedObjectsRef.current = placedObjects;
+  placeObjectRef.current = placingObject;
   const projectedVertsRef = useRef(projectedVerts);
   projectedVertsRef.current = projectedVerts;
   const wallPointsRef = useRef(wallPoints);
@@ -1813,10 +1915,12 @@ export function DebugRTSSim() {
           );
           const walls = interiorWallsRef.current;
           const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
+          effectsEng.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
           for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
           effectDt = effectSteps * FX.EFFECTS_DT;
         } else {
           effectDt = dt * rts.state.clock.speed;
+          effectsEng.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
           effectsEng.step(
             effectDt,
             interiorWallsRef.current,
@@ -2005,6 +2109,18 @@ export function DebugRTSSim() {
                   showGhostPeople: true,
                 }
               : null,
+            placedObjectsRef.current.map(
+              (obj): PlacedObjectDraw => ({
+                id: obj.id,
+                pos: obj.pos,
+                level: obj.level,
+                confirmed: obj.confirmed,
+                burns: obj.confirmed && obj.matches.some((match) => entryCanBurn(match.fuel)),
+                label: obj.confirmed
+                  ? obj.matches.map((match) => match.label).join(', ') || 'Object'
+                  : obj.description || 'Unconfirmed',
+              }),
+            ),
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -2364,11 +2480,13 @@ export function DebugRTSSim() {
       const mode = rts.state.interactionMode;
 
       // Middle mouse button = pan map
-      if (e.button === 1) {
+            if (e.button === 1) {
         e.preventDefault();
         mapPanRef.current = { startX: e.clientX, startY: e.clientY };
         return;
       }
+
+      if (placeObjectRef.current && e.button === 0) return;
 
       if (mode.type === 'select') {
         if (e.button === 2) {
@@ -2455,6 +2573,33 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
+      if (placeObjectRef.current && e.button === 0) {
+        const snapped = snapToStud(sim);
+        if (!snapped.stud) {
+          setObjectNotice('Click a stud.');
+          return;
+        }
+        const id = `obj-${++objectIdRef.current}`;
+        const stud = snapped.stud;
+        setPlacedObjects((prev) => [
+          ...prev,
+          {
+            id,
+            studId: stud.id,
+            pos: snapped.pos,
+            level: activeLevelRef.current,
+            description: '',
+            matches: [],
+            confirmed: false,
+          },
+        ]);
+        setActiveObjectId(id);
+        setPlacingObject(false);
+        placeObjectRef.current = false;
+        setObjectNotice(null);
+        return;
+      }
+
       // Stud inspect mode
       if (studInspectMode) {
         const studs = simStudsRef.current;
@@ -2524,6 +2669,19 @@ export function DebugRTSSim() {
           );
           if (hitCas) {
             handleCasualtyPinClick(hitCas);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
+          const hitObj = placedObjectsRef.current.find(
+            (obj) =>
+              (obj.level ?? 'G') === activeLevelRef.current &&
+              Math.hypot(obj.pos.x - sim.x, obj.pos.y - sim.y) < 2.5,
+          );
+          if (hitObj) {
+            setActiveObjectId(hitObj.id);
             rts.state.selection.selectionBox = null;
             dragStartRef.current = null;
             isDraggingRef.current = false;
@@ -3248,6 +3406,7 @@ export function DebugRTSSim() {
       });
       engine.init(asFireStuds);
       attachShafts(engine);
+      engine.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
       const t0 = blastEffectsTriggerSec(engine.timeScale);
       if (enrichResult?.hazardAnalysis) {
         for (const ha of enrichResult.hazardAnalysis) {
@@ -3321,6 +3480,7 @@ export function DebugRTSSim() {
     const engine = new SpatialEffectsEngine(fireParams ?? undefined);
     engine.init(asFireStuds);
     attachShafts(engine);
+    engine.setFuelStuds(confirmedFuelStudIds(placedObjectsRef.current));
 
     if (enrichResult?.hazardAnalysis) {
       for (const ha of enrichResult.hazardAnalysis) {
@@ -4986,6 +5146,20 @@ export function DebugRTSSim() {
               )}
             </div>
 
+            <div className="bg-gray-900 border border-amber-800 rounded p-3">
+              <h2 className="text-sm text-amber-400 mb-2">Food court</h2>
+              <button
+                type="button"
+                onClick={handleLoadFoodCourt}
+                className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-700 text-amber-200 hover:border-amber-400"
+              >
+                Load food court
+              </button>
+              <p className="text-xs text-amber-800 mt-2">
+                Opens the plan in this browser. It does not save to the database.
+              </p>
+            </div>
+
             {/* Saved Scenes (DB) */}
             <div className="bg-gray-900 border border-blue-800 rounded p-3">
               <div className="flex items-center justify-between mb-2">
@@ -5141,6 +5315,194 @@ export function DebugRTSSim() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="space-y-1.5 border border-amber-900 rounded p-2">
+              <div className="text-xs text-amber-400">Objects on studs</div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !placingObject;
+                  setPlacingObject(next);
+                  placeObjectRef.current = next;
+                  if (next) {
+                    rts.setInteractionMode({ type: 'select' });
+                    setObjectNotice('Click a stud.');
+                  } else {
+                    setObjectNotice(null);
+                  }
+                  rerender();
+                }}
+                className={`w-full text-xs text-left px-2 py-1.5 rounded border ${
+                  placingObject
+                    ? 'border-amber-400 bg-amber-900/30 text-amber-200'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Place object {placingObject ? '(click a stud)' : ''}
+              </button>
+              {objectNotice && <div className="text-xs text-amber-500">{objectNotice}</div>}
+              {placedObjects.length > 0 && (
+                <div className="space-y-1">
+                  {placedObjects
+                    .filter((obj) => (obj.level ?? 'G') === activeLevel)
+                    .map((obj) => (
+                      <button
+                        key={obj.id}
+                        type="button"
+                        onClick={() => setActiveObjectId(obj.id)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded border ${
+                          obj.id === activeObjectId
+                            ? 'border-amber-400 text-amber-200'
+                            : 'border-gray-800 text-gray-400'
+                        }`}
+                      >
+                        {obj.confirmed
+                          ? obj.matches.map((match) => match.label).join(', ') || 'Confirmed'
+                          : obj.description || 'Unconfirmed'}
+                        {obj.confirmed ? '' : ' · not confirmed'}
+                      </button>
+                    ))}
+                </div>
+              )}
+              {(() => {
+                const active = placedObjects.find((obj) => obj.id === activeObjectId);
+                if (!active) return null;
+                return (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs text-gray-400">
+                      Describe it
+                      <input
+                        value={active.description}
+                        onChange={(e) => {
+                          const description = e.target.value;
+                          const matches = matchMaterials(
+                            description,
+                            ENABLE_AI_ENRICHMENT
+                              ? { suggest: suggestLibraryEntry }
+                              : undefined,
+                          );
+                          setPlacedObjects((prev) =>
+                            prev.map((obj) =>
+                              obj.id === active.id
+                                ? { ...obj, description, matches, confirmed: false }
+                                : obj,
+                            ),
+                          );
+                        }}
+                        placeholder="wooden table, steel legs"
+                        className="mt-1 w-full bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 text-xs rounded"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {COMMON_PICKS.map((pick) => (
+                        <button
+                          key={pick.entryId}
+                          type="button"
+                          onClick={() => {
+                            const entry = entryById(pick.entryId);
+                            if (!entry) return;
+                            setPlacedObjects((prev) =>
+                              prev.map((obj) =>
+                                obj.id === active.id
+                                  ? {
+                                      ...obj,
+                                      description: pick.label,
+                                      matches: [matchFromEntry(entry, 'common')],
+                                      confirmed: false,
+                                    }
+                                  : obj,
+                              ),
+                            );
+                          }}
+                          className="text-xs px-1.5 py-1 rounded border border-gray-700 text-gray-300 hover:border-amber-600"
+                        >
+                          {pick.label}
+                        </button>
+                      ))}
+                    </div>
+                    {active.matches.length === 0 ? (
+                      <div className="text-xs text-gray-500">
+                        No library match yet. Pick a common item or choose one.
+                      </div>
+                    ) : (
+                      <ul className="text-xs text-gray-300 space-y-0.5">
+                        {active.matches.map((match) => (
+                          <li key={match.entryId}>
+                            {match.label} —{' '}
+                            {entryCanBurn(match.fuel)
+                              ? 'can catch fire'
+                              : 'does not catch fire'}
+                            {match.source === 'ai' ? ' · suggestion, confirm it' : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <label className="block text-xs text-gray-500">
+                      Choose another
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const entry = entryById(e.target.value);
+                          if (!entry) return;
+                          setPlacedObjects((prev) =>
+                            prev.map((obj) =>
+                              obj.id === active.id
+                                ? {
+                                    ...obj,
+                                    matches: [matchFromEntry(entry, 'chosen')],
+                                    confirmed: false,
+                                  }
+                                : obj,
+                            ),
+                          );
+                        }}
+                        className="mt-1 w-full bg-gray-800 border border-gray-700 text-gray-200 px-1 py-1 text-xs rounded"
+                      >
+                        <option value="">Library entry…</option>
+                        {MATERIAL_LIBRARY.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={active.matches.length === 0 || active.confirmed}
+                        onClick={() => {
+                          setPlacedObjects((prev) =>
+                            prev.map((obj) =>
+                              obj.id === active.id ? { ...obj, confirmed: true } : obj,
+                            ),
+                          );
+                        }}
+                        className="flex-1 text-xs px-2 py-1.5 rounded border border-amber-600 text-amber-100 bg-amber-900/40 disabled:opacity-30"
+                      >
+                        {active.confirmed ? 'Confirmed' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlacedObjects((prev) =>
+                            prev.filter((obj) => obj.id !== active.id),
+                          );
+                          setActiveObjectId(null);
+                        }}
+                        className="text-xs px-2 py-1.5 rounded border border-red-900 text-red-400"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {active.confirmed
+                        ? 'Confirmed. Only a match that can catch fire will burn.'
+                        : 'Not confirmed. This object does nothing.'}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="bg-gray-900 border border-green-800 rounded p-3 space-y-2">
@@ -5642,8 +6004,8 @@ export function DebugRTSSim() {
                     );
                   })()}
                   <div className="text-xs text-green-700">
-                    Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Stairs:{' '}
-                    {stairwells.length}
+                    Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Objects:{' '}
+                    {placedObjects.length} · Stairs: {stairwells.length}
                   </div>
                 </div>
 
@@ -6116,6 +6478,7 @@ export function DebugRTSSim() {
                             );
                           }
 
+                          preview.setFuelStuds(confirmedFuelStudIds(placedObjects));
                           preview.runPreview(
                             effectPreviewTime,
                             interiorWalls,

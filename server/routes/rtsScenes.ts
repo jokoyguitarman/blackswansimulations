@@ -27,6 +27,7 @@ router.post('/', requireAuth, requireStaff, json(), async (req: AuthenticatedReq
       plantedItems,
       wallInspectionPoints,
       pedestrianCount,
+      placedObjects,
     } = req.body;
 
     if (!buildingPolygon || !Array.isArray(buildingPolygon) || buildingPolygon.length < 3) {
@@ -53,6 +54,7 @@ router.post('/', requireAuth, requireStaff, json(), async (req: AuthenticatedReq
         casualty_clusters: casualtyClusters || [],
         planted_items: plantedItems || [],
         wall_inspection_points: wallInspectionPoints || [],
+        placed_objects: placedObjects || [],
         pedestrian_count: pedestrianCount || 120,
         created_by: user.id,
       })
@@ -148,6 +150,7 @@ router.patch('/:id', requireAuth, requireStaff, json(), async (req: Authenticate
       'pedestrian_count',
       'enrichment_result',
       'levels',
+      'placed_objects',
     ];
 
     const fieldMap: Record<string, string> = {
@@ -166,6 +169,7 @@ router.patch('/:id', requireAuth, requireStaff, json(), async (req: Authenticate
       casualtyImageUrls: 'casualty_image_urls',
       pedestrianCount: 'pedestrian_count',
       enrichmentResult: 'enrichment_result',
+      placedObjects: 'placed_objects',
     };
 
     for (const [key, value] of Object.entries(req.body)) {

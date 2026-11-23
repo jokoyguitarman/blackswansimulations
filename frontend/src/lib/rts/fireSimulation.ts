@@ -129,6 +129,12 @@ export class FireSimulation {
   private neighborCache: Map<string, string[]> = new Map();
   private shaftPairs: ShaftPair[] = [];
   private shaftBurn = new Map<string, number>();
+  /**
+   * Null keeps today's rule: a blast radius and indoor ambient spread treat
+   * every stud as fuel. A set, including an empty one, is the library: only
+   * those studs ignite.
+   */
+  private fuelStuds: Set<string> | null = null;
 
   constructor(params?: FireParams) {
     this.params = params ?? { ...DEFAULT_FIRE_PARAMS };
@@ -161,6 +167,15 @@ export class FireSimulation {
     this.shaftBurn.clear();
   }
 
+  /** Pass null to restore the old indoor rule. The set survives init. */
+  setFuelStuds(ids: ReadonlySet<string> | null) {
+    this.fuelStuds = ids == null ? null : new Set(ids);
+  }
+
+  private acceptsFuel(id: string): boolean {
+    return this.fuelStuds == null || this.fuelStuds.has(id);
+  }
+
   ignite(studIds: string[]) {
     for (const id of studIds) {
       const state = this.states.get(id);
@@ -176,7 +191,7 @@ export class FireSimulation {
     for (const [id, stud] of this.studIndex) {
       if (level && (stud.level ?? 'G') !== level) continue;
       const d = Math.hypot(stud.simPos.x - center.x, stud.simPos.y - center.y);
-      if (d <= radius) {
+      if (d <= radius && this.acceptsFuel(id)) {
         ids.push(id);
       }
     }
@@ -233,6 +248,7 @@ export class FireSimulation {
           }
 
           if (!blocked) {
+            if (!this.acceptsFuel(nId)) continue;
             const accel = this.getHazardAcceleration(
               dest.simPos,
               hazards.filter((h) => levelOf(h) === levelOf(dest)),
@@ -276,6 +292,7 @@ export class FireSimulation {
       const burned = (this.shaftBurn.get(key) ?? 0) + dt;
       this.shaftBurn.set(key, burned);
       if (burned + 1e-9 < LEVEL.STAIR_FIRE_HEAT_S) continue;
+      if (!this.acceptsFuel(pair.upper)) continue;
       const upper = this.states.get(pair.upper);
       if (!upper || upper.state !== 'none') continue;
       upper.fuelFactor = 1;

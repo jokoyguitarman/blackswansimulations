@@ -28,6 +28,15 @@ export interface RenderContext {
   padY: number;
 }
 
+export interface PlacedObjectDraw {
+  id: string;
+  pos: Vec2;
+  level?: string;
+  label: string;
+  confirmed: boolean;
+  burns: boolean;
+}
+
 export interface ShowcaseRenderFx {
   hazardStuds: Array<{ id: string; simPos: Vec2 }>;
   effectStates: Map<string, { smoke: number; fire: { state: string } }> | null;
@@ -145,6 +154,7 @@ export function renderRTS(
   highlightedStudIds?: Set<string> | null,
   showcaseFx?: ShowcaseRenderFx | null,
   levelView?: LevelView | null,
+  placedObjects?: PlacedObjectDraw[] | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
@@ -204,6 +214,9 @@ export function renderRTS(
   const wallsToDraw = levelView ? interiorWalls?.filter((w) => onActive(w.level)) : interiorWalls;
   const exitsToDraw = levelView ? exits.filter((e) => onActive(e.level)) : exits;
   const hazardsToDraw = levelView ? hazardZones?.filter((hz) => onActive(hz.level)) : hazardZones;
+  const objectsToDraw = levelView
+    ? placedObjects?.filter((obj) => onActive(obj.level))
+    : placedObjects;
   const stairsToDraw = levelView ? stairwells?.filter(stairHere) : stairwells;
   const pinsToDraw = levelView ? casualtyPinsParam?.filter((pin) => onActive(pin.level)) : casualtyPinsParam;
 
@@ -247,6 +260,9 @@ export function renderRTS(
   }
   if (hazardsToDraw && hazardsToDraw.length > 0) {
     for (const hz of hazardsToDraw) drawHazardZone(ctx, hz, rc);
+  }
+  if (objectsToDraw && objectsToDraw.length > 0) {
+    for (const obj of objectsToDraw) drawPlacedObject(ctx, obj, rc);
   }
   if (stairsToDraw && stairsToDraw.length > 0) {
     for (const sw of stairsToDraw) {
@@ -1384,6 +1400,37 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
 
   const iconKey = HAZARD_ICON_KEY[hz.hazardType] || 'hazard_generic';
   drawSvgIcon(ctx, iconKey, p.cx, p.cy, Math.min(drawR * 0.6, scaledR(10, rc)));
+}
+
+function drawPlacedObject(ctx: CanvasRenderingContext2D, obj: PlacedObjectDraw, rc: RenderContext) {
+  const p = toCanvas(obj.pos.x, obj.pos.y, rc);
+  const r = 7;
+  ctx.beginPath();
+  ctx.rect(p.cx - r, p.cy - r, r * 2, r * 2);
+  if (!obj.confirmed) {
+    ctx.setLineDash([3, 2]);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (obj.burns) {
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+    ctx.fill();
+    ctx.strokeStyle = '#fde68a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = 'rgba(71, 85, 105, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  const label = obj.label.length > 28 ? `${obj.label.slice(0, 27)}…` : obj.label;
+  ctx.font = '11px monospace';
+  ctx.fillStyle = '#f8fafc';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, p.cx, p.cy - r - 4);
 }
 
 // ── Stairwells ──────────────────────────────────────────────────────────
