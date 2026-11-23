@@ -231,6 +231,8 @@ export class PolygonEvacuationEngine {
   private mouthWait = new Set<number>();
   /** People the flow cap has released into the opening. */
   private mouthGrant = new Set<number>();
+  /** Walkers who were stacked on one point in a door. They collide until they leave it. */
+  private stackedPair = new Set<number>();
   private flowAcc = new Map<string, number>();
   private zones: ShowcaseZone[] = [];
   private blast: { site: Vec2; radius: number; glassInjuryM?: number } | null = null;
@@ -1069,9 +1071,13 @@ export class PolygonEvacuationEngine {
    * with other people while they finish the crossing. Everyone still waiting
    * keeps colliding. The overlap on the way through is a visual artefact of
    * that slip; the release cap is what limits the flow.
+   * Two centres on one point never get a contact normal, so they stay stacked
+   * on the body. Those two are eased apart and collide again. Ending the slip
+   * for everyone past the line jams the rest of the crowd in the opening.
    */
   private slipThroughOpenings() {
     const slipping = new Set<Matter.Body>();
+    const doorMouth: Matter.Body[] = [];
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state !== 'evacuating') continue;
@@ -1084,6 +1090,7 @@ export class PolygonEvacuationEngine {
         const mouth = mouthProgress(pos, wall, goal);
         if (mouth && mouth.dist <= 1.05 && mouth.through < 0.55 && mouth.through > -1.05) {
           inMouth = true;
+          doorMouth.push(body);
           break;
         }
       }
@@ -1118,6 +1125,7 @@ export class PolygonEvacuationEngine {
       }
       if (inMouth && (released || pastLine)) slipping.add(body);
     }
+    this.separateSameSpot(doorMouth, slipping);
     for (const body of this.pedestrians) {
       const saved = this.restMask.get(body);
       const rest = saved ?? body.collisionFilter.mask ?? 0;
@@ -1125,6 +1133,71 @@ export class PolygonEvacuationEngine {
       const category = body.collisionFilter.category ?? 0;
       body.collisionFilter.mask = slipping.has(body) ? rest & ~category : rest;
     }
+  }
+
+  /**
+   * Two centres on one point never get a contact normal, so they stay stacked
+   * inside a body in the doorway. Swing them to opposite sides of that body
+   * and keep person-to-person collisions on until they leave the opening.
+   * Everyone else keeps the slip, which is what lets the rest of the crowd through.
+   */
+  private separateSameSpot(bodies: Matter.Body[], slipping: Set<Matter.Body>) {
+    const still = new Set<number>();
+    for (const body of bodies) still.add(this.pedOf(body).pedId);
+    for (const id of this.stackedPair) {
+      if (!still.has(id)) this.stackedPair.delete(id);
+    }
+    for (let i = 0; i < bodies.length; i++) {
+      for (let j = i + 1; j < bodies.length; j++) {
+        const a = bodies[i];
+        const b = bodies[j];
+        if (!slipping.has(a) || !slipping.has(b)) continue;
+        if (Math.hypot(b.position.x - a.position.x, b.position.y - a.position.y) >= 0.08) continue;
+        this.stackedPair.add(this.pedOf(a).pedId);
+        this.stackedPair.add(this.pedOf(b).pedId);
+        this.orbitApart(a, b);
+      }
+    }
+    for (const body of bodies) {
+      if (this.stackedPair.has(this.pedOf(body).pedId)) slipping.delete(body);
+    }
+  }
+
+  /** Place a stacked pair on opposite sides of the nearest downed body. */
+  private orbitApart(a: Matter.Body, b: Matter.Body) {
+    const mx = (a.position.x + b.position.x) / 2;
+    const my = (a.position.y + b.position.y) / 2;
+    let sx = mx;
+    let sy = my - 1;
+    let best = 1.2;
+    for (const other of this.pedestrians) {
+      if (other === a || other === b) continue;
+      const ped = this.pedOf(other);
+      if (ped.state !== 'down' && !other.isStatic) continue;
+      const d = Math.hypot(other.position.x - mx, other.position.y - my);
+      if (d < best) {
+        best = d;
+        sx = other.position.x;
+        sy = other.position.y;
+      }
+    }
+    let rx = mx - sx;
+    let ry = my - sy;
+    const rl = Math.hypot(rx, ry);
+    if (rl < 1e-3) {
+      rx = 0;
+      ry = 1;
+    } else {
+      rx /= rl;
+      ry /= rl;
+    }
+    const arm = 0.45;
+    const tx = -ry;
+    const ty = rx;
+    Matter.Body.setPosition(a, { x: mx - tx * arm, y: my - ty * arm });
+    Matter.Body.setPosition(b, { x: mx + tx * arm, y: my + ty * arm });
+    Matter.Body.setVelocity(a, { x: 0, y: 0 });
+    Matter.Body.setVelocity(b, { x: 0, y: 0 });
   }
 
   private wallsNear(ped: PedLabel): InteriorWallDef[] {

@@ -1036,6 +1036,73 @@ test('a body in a 1.6 m door is not a wall: the ten walkers are through within 9
   eng.destroy();
 });
 
+test('a jamb lane does not leave a pair stuck in the doorway', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const walls = [
+    { startX: 22, startY: 0, endX: 22, endY: 34, hasDoor: true, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 40, startY: 6, endX: 40, endY: 40, hasDoor: true, doorWidth: 1.6, doorPosition: 0.4 },
+    { startX: 46, startY: 0, endX: 46, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 46, startY: 8, endX: 60, endY: 8, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  // 0.80 m lane beside one body, and a 0.53 m lane against the jamb between two bodies.
+  const lanes: Array<Array<[number, number]>> = [
+    [[22, 16.75]],
+    [[22, 16.98], [22, 17.55]],
+  ];
+  for (const blockers of lanes) {
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: blockers.length + 10,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      [
+        exit({ id: 'W', center: { x: 0, y: 20 }, edgeIndex: 3, width: 2 }),
+        exit({ id: 'N', center: { x: 30, y: 40 }, edgeIndex: 2, width: 2 }),
+      ],
+      walls,
+      [],
+      { afterExit: 'disperse', zones: [], seed: 1337 },
+    );
+    const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+    blockers.forEach(([x, y], i) => {
+      Matter.Body.setPosition(bodies[i], { x, y });
+      Matter.Body.setStatic(bodies[i], true);
+      (bodies[i] as Matter.Body & { __ped: { state: string } }).__ped.state = 'down';
+    });
+    const walkers = bodies.slice(blockers.length);
+    walkers.forEach((body, i) => {
+      Matter.Body.setPosition(body, { x: 26 + (i % 5), y: 15 + Math.floor(i / 5) * 3 });
+      Object.assign((body as Matter.Body & { __ped: Record<string, unknown> }).__ped, {
+        state: 'evacuating',
+        targetExitId: 'W',
+        exitCost: 30,
+        nextCheckAt: 0,
+        posture: 'stand',
+      });
+    });
+    for (let i = 0; i < 90 * 60; i++) eng.step();
+    const stuck = walkers.filter((body) => {
+      const ped = (body as Matter.Body & { __ped: { state: string } }).__ped;
+      return ped.state === 'evacuating' && body.position.x > 19 && body.position.x < 24 && body.position.y > 15 && body.position.y < 19;
+    });
+    assert.equal(
+      stuck.length,
+      0,
+      `${stuck.length} still in the doorway at ${stuck.map((body) => `${body.position.x.toFixed(2)},${body.position.y.toFixed(2)}`).join(' ')}`,
+    );
+    eng.destroy();
+  }
+});
+
 test('a 0.6 m gap between two bodies sends people to the other exit', () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
