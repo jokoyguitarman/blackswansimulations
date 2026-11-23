@@ -334,6 +334,39 @@ describe('evacuation showcase', () => {
     const blockedA = { ...smoky, status: 'blocked' as const };
     const blockedB = { ...clear, status: 'blocked' as const };
     assert.equal(chooseExit({ x: 0, y: 20 }, [blockedA, blockedB], box, field([]), null), null);
+
+    const keepFar = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, bothBurn, {
+      id: 'far',
+      cost: Infinity,
+    });
+    assert.equal(keepFar?.forced, true);
+    assert.equal(keepFar?.id, 'far');
+    const blockedFar = { ...clear, status: 'blocked' as const };
+    const dropBlocked = chooseExit({ x: 0, y: 20 }, [smoky, blockedFar], box, bothBurn, {
+      id: 'far',
+      cost: Infinity,
+    });
+    assert.equal(dropBlocked?.id, 'near');
+
+    // K 1.4 sits between 1.3 and 1.5. A held usable exit stays; a nearer new one does not.
+    const closeSmoky = exit({ id: 'near', center: { x: 40, y: 20 }, edgeIndex: 1 });
+    const bandApproach = exitApproachInside(closeSmoky, box);
+    const band = field([{ id: 's', simPos: bandApproach, indoor: true }], {
+      s: { smoke: 0.44, fire: 'none' },
+    });
+    assert.ok(exitCost({ x: 0, y: 20 }, closeSmoky, box, band) < Infinity);
+    assert.equal(exitCost({ x: 0, y: 20 }, closeSmoky, box, band, undefined, undefined, true), Infinity);
+    const held = chooseExit({ x: 0, y: 20 }, [closeSmoky, clear], box, band, { id: 'far', cost: 200 });
+    assert.equal(held?.id, 'far');
+    const recovered = field([{ id: 's', simPos: bandApproach, indoor: true }], {
+      s: { smoke: 0.42, fire: 'none' },
+    });
+    const back = chooseExit({ x: 0, y: 20 }, [closeSmoky, clear], box, recovered, {
+      id: 'near',
+      cost: Infinity,
+    });
+    assert.equal(back?.id, 'near');
+    assert.equal(back?.forced, false);
   });
 
   test('8 nextIndoorWaypoint', () => {

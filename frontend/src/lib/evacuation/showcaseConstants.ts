@@ -36,6 +36,8 @@ export const SHOWCASE = {
   CROUCH_EXTINCTION_STAFF: 0.5,
   LAYER_STEP_D: 0.2,
   REROUTE_EXTINCTION: 1.5,
+  /** An exit that has gone unusable is usable again only below this. */
+  REROUTE_RECOVER: 1.3,
   REROUTE_COST_RATIO: 1.5,
   LOOKAHEAD_SAMPLES_M: [3, 6, 9],
   CROUCH_SPEED_FACTOR: 0.6,
@@ -163,6 +165,7 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
     status: 'seed_pending',
     ref: 'knowledge-seeds/fire-smoke-tenability/tenability-response.pending.json#bryan_wood_smoke_movement',
   },
+  REROUTE_RECOVER: { status: 'assumed', ref: 'assumed: numerical hysteresis' },
   REROUTE_COST_RATIO: { status: 'assumed', ref: 'assumed: PR #23 §6.30 main-game rule' },
   LOOKAHEAD_SAMPLES_M: { status: 'assumed', ref: 'assumed: PR #23 §6.30 next three route studs' },
   CROUCH_SPEED_FACTOR: {
