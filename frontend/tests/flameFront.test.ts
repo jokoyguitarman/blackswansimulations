@@ -3,8 +3,10 @@ import { describe, test } from 'node:test';
 import {
   CONTENTS_HRRPUA_KW_M2,
   FIREBALL_PULSE_S,
+  FLASHOVER_MAX_AREA_M2,
   FLASHOVER_ROOM_KW,
   FRYER_POOL_AREA_M2,
+  LOCAL_FLASHOVER_RADIUS_M,
   STUD_AREA_M2,
   addIgnitionDose,
   fireballFluxKwM2,
@@ -94,11 +96,18 @@ describe('flame front formulas', () => {
     close(poolFireKwFromDiameter(3, 0.055, 43700, 2.1), 16958, 'gasoline pool');
 
     const light = defaultLightFuel();
+    const solid = heavySolid();
+    const shop = fuelCellFromEntry(entryById('shop_contents')!);
     const oil = fuelCellFromEntry(entryById('cooking_oil')!);
     assert.ok(oil);
+    assert.ok(shop);
     assert.equal(heatReleaseKw(light, 2000), CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
+    assert.equal(heatReleaseKw(solid, 2000), CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
+    assert.equal(heatReleaseKw(shop, 600), CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
     assert.ok(tSquaredKw(light.alphaKwS2, 2000) > CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
+    assert.ok(tSquaredKw(shop.alphaKwS2, 600) > CONTENTS_HRRPUA_KW_M2 * STUD_AREA_M2);
     close(heatReleaseKw(oil, 10000), poolFireKw(FRYER_POOL_AREA_M2), 'fryer pan');
+    close(LOCAL_FLASHOVER_RADIUS_M, 12.6, '500 m² disc');
     assert.ok(poolFireKw(FRYER_POOL_AREA_M2) < FLASHOVER_ROOM_KW);
     const alone = flashoverAgeSec(light);
     assert.ok(alone != null && alone > 250, `one light stud reaches 1 MW at ${alone}`);
@@ -196,5 +205,88 @@ describe('flame front movement', () => {
     const pan = pair(oil);
     assert.equal(firstBurn(pan, [wall('glass', false)], 400), -1);
     assert.equal(pan.wallBreachTimers.size, 0);
+  });
+
+  test('a 2400 m² room does not flash over, and the barrier waits for the local disc', () => {
+    const cols = 20;
+    const rows = 14;
+    const sim = new FireSimulation();
+    const studs = [];
+    for (let ix = 0; ix < cols; ix++) {
+      for (let iy = 0; iy < rows; iy++) {
+        studs.push({
+          id: `s${ix}_${iy}`,
+          simPos: { x: ix * 3, y: iy * 3 },
+          spatialContext: 'inside_building' as const,
+        });
+      }
+    }
+    studs.push({ id: 'out', simPos: { x: -3, y: 0 }, spatialContext: 'inside_building' as const });
+    sim.init(studs);
+    const solid = heavySolid();
+    assert.ok((cols * rows) * STUD_AREA_M2 > 2400);
+    assert.ok((cols * rows) * STUD_AREA_M2 > FLASHOVER_MAX_AREA_M2);
+    // Tile fills the floor. Only the source, one far shop stud, and the stud
+    // beyond the wall are fuel, so a whole-room flash would light the far stud.
+    sim.setFuelCells(new Map([
+      ['s0_0', solid],
+      ['s19_13', solid],
+      ['out', solid],
+    ]));
+    sim.ignite(['s0_0']);
+    const barrier = wall('drywall', false);
+    barrier.start = { x: -1.5, y: -6 };
+    barrier.end = { x: -1.5, y: 48 };
+    const flash = firstAgeAt(solid, FLASHOVER_ROOM_KW);
+    for (let i = 0; i < flash - 1; i++) sim.step(1, [barrier], []);
+    assert.equal(sim.wallBreachTimers.size, 0);
+    sim.step(1, [barrier], []);
+    assert.ok((sim.wallBreachTimers.get('s0_0->out') ?? 0) > 0);
+    assert.ok((sim.wallBreachTimers.get('s0_0->out') ?? 0) < 5);
+    assert.equal(sim.states.get('out')?.state, 'none');
+    assert.equal(sim.states.get('s19_13')?.state, 'none');
+    assert.equal(sim.states.get('s0_0')?.state, 'burning');
+  });
+
+  test('a 9-stud shop flashes over at 1 MW, and the far shop stays dark', () => {
+    const sim = new FireSimulation();
+    const studs: { id: string; simPos: { x: number; y: number }; spatialContext: 'inside_building' }[] = [];
+    const fuel: string[] = [];
+    for (let ix = 0; ix < 3; ix++) {
+      for (let iy = 0; iy < 3; iy++) {
+        const near = `near_${ix}_${iy}`;
+        const far = `far_${ix}_${iy}`;
+        studs.push({ id: near, simPos: { x: ix * 3, y: iy * 3 }, spatialContext: 'inside_building' });
+        studs.push({ id: far, simPos: { x: 21 + ix * 3, y: iy * 3 }, spatialContext: 'inside_building' });
+        fuel.push(near, far);
+      }
+    }
+    for (const x of [12, 15]) {
+      for (let iy = 0; iy < 3; iy++) {
+        studs.push({
+          id: `tile_${x}_${iy}`,
+          simPos: { x, y: iy * 3 },
+          spatialContext: 'inside_building',
+        });
+      }
+    }
+    sim.init(studs);
+    const solid = heavySolid();
+    sim.setFuelCells(new Map(fuel.map((id) => [id, solid])));
+    sim.ignite(['near_0_0']);
+    const door = wall('drywall', true);
+    door.start = { x: 7.5, y: -3 };
+    door.end = { x: 7.5, y: 9 };
+    const flash = firstAgeAt(solid, FLASHOVER_ROOM_KW);
+    for (let i = 0; i < flash; i++) sim.step(1, [door], []);
+    for (let ix = 0; ix < 3; ix++) {
+      for (let iy = 0; iy < 3; iy++) {
+        assert.equal(sim.states.get(`near_${ix}_${iy}`)?.state, 'burning');
+        assert.equal(sim.states.get(`far_${ix}_${iy}`)?.state, 'none');
+      }
+    }
+    for (let i = 0; i < 200; i++) sim.step(1, [door], []);
+    assert.equal(sim.states.get('far_1_1')?.state, 'none');
+    assert.equal(sim.states.get('tile_12_1')?.state, 'none');
   });
 });

@@ -10,9 +10,10 @@
  * q = χ_r Q / (4 π R²). χ_r is 0.35, the C/VM2 radiative fraction for
  * building contents. Worked example: Q 2000 kW at 4 m is 3.482 kW/m².
  *
- * Growth is Q = α t² (seed `t2_alpha_classes`). Light fuel then stops at
- * 250 kW/m² of contents. A liquid caps at the pool fire on its pan,
- * NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). Suppression does not cut Q yet.
+ * Growth is Q = α t² (seed `t2_alpha_classes`). A solid, light or heavy,
+ * then stops at 250 kW/m² of contents. A liquid caps at the pool fire on
+ * its pan, NUREG-1805 Eq. 3-2 (seed `pool_fire_hrr`). Suppression does not
+ * cut Q yet.
  *
  * The visible front is the room-scale speed on the entry, in metres per
  * minute (seed `flame_spread_rates`). Surface spread of a thick solid is the
@@ -45,8 +46,10 @@ export const FLAME_STANDOFF_M = 0.5;
 
 /**
  * Heat release per unit area for ordinary contents. EN 1991-1-2:2002 Annex E
- * Table E.5, the 250 kW/m² the spread seed stores for office, retail, and the
- * other contents rows. Light fuel does not grow past this times the stud area.
+ * Table E.5 gives 250 kW/m² for office, retail, and shopping centres, and
+ * that is the figure the spread seed stores. A solid, light or heavy, does
+ * not grow past this times the stud area. Shopping centres in that table
+ * are also the fast t-squared class, which is the heavy α already in use.
  */
 export const CONTENTS_HRRPUA_KW_M2 = 250;
 
@@ -62,10 +65,27 @@ export const CONTENTS_HRRPUA_KW_M2 = 250;
  *
  * Assumed floor: 1 MW. The grid has no vent size per room, and a megawatt is
  * the low end of those worked examples. Sum the burning fuel in the room.
- * At that sum the room's fuelled studs ignite and the barrier timers start.
- * The seed's t_e scaling is not used.
+ * At that sum a room of at most FLASHOVER_MAX_AREA_M2 ignites its fuelled
+ * studs, and the barrier timers start. The seed's t_e scaling is not used.
  */
 export const FLASHOVER_ROOM_KW = 1000;
+
+/**
+ * EN 1991-1-2:2002 Annex A limits a parametric compartment fire to 500 m²
+ * of floor and 4 m of height. Above that, the space is a travelling fire
+ * (Stern-Gottfried and Rein, 2012): the front and the flux carry it, and
+ * the whole floor does not ignite in one step. Floor area here is the
+ * stud count times STUD_AREA_M2.
+ */
+export const FLASHOVER_MAX_AREA_M2 = 500;
+
+/**
+ * Radius of a 500 m² disc, about 12.6 m. Assumed. In a room above the area
+ * limit, a barrier starts its rating when the burning fuel within this
+ * distance of the source stud sums to the 1 MW floor. The grid has no
+ * resolved hot layer, so the disc stands in for that local region.
+ */
+export const LOCAL_FLASHOVER_RADIUS_M = Math.sqrt(FLASHOVER_MAX_AREA_M2 / Math.PI);
 
 /**
  * Assumed. One stud on the 3 m grid stands for 9 m² when a fuel load is
@@ -164,12 +184,13 @@ export function poolFireKw(areaM2: number = FRYER_POOL_AREA_M2): number {
 }
 
 /**
- * The highest Q this cell is allowed. Light contents use the 250 kW/m² cap.
- * A liquid uses its pan. Null means the t-squared curve is not capped.
+ * The highest Q this cell is allowed. A solid uses the 250 kW/m² contents
+ * cap, light or heavy. A liquid uses its pan. Null means the t-squared
+ * curve is not capped.
  */
 function releaseCapKw(cell: FuelCell, areaM2: number): number | null {
   let cap: number | null = null;
-  if (cell.category === 'light') {
+  if (!cell.liquidPool) {
     const contents = CONTENTS_HRRPUA_KW_M2 * areaM2;
     if (contents > 0) cap = contents;
   }
@@ -189,8 +210,8 @@ export function heatReleaseKw(cell: FuelCell, ageSec: number, areaM2: number = S
 }
 
 /**
- * Seconds until the fuel load is spent. Light fuel integrates α t².
- * A liquid integrates α t² until the pool cap, then holds that cap.
+ * Seconds until the fuel load is spent. A solid integrates α t² until the
+ * contents cap, then holds that cap. A liquid does the same up to its pan.
  * The heat of combustion is the wood stand-in or the transformer-oil row.
  */
 export function burnoutSec(cell: FuelCell, areaM2: number = STUD_AREA_M2): number {

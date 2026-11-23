@@ -6,7 +6,10 @@ import { defaultLightFuel } from './materialLibrary';
 import {
   FIREBALL_PULSE_S,
   FLAME_STANDOFF_M,
+  FLASHOVER_MAX_AREA_M2,
   FLASHOVER_ROOM_KW,
+  LOCAL_FLASHOVER_RADIUS_M,
+  STUD_AREA_M2,
   addIgnitionDose,
   burnoutSec,
   fireballFluxKwM2,
@@ -180,7 +183,12 @@ export class FireSimulation {
   private compartmentOf = new Map<string, string>();
   private rooms = new Map<string, string[]>();
   private compartmentKey = '';
-  /** Studs whose room has already flashed over. The latch does not clear. */
+  /**
+   * Studs that have met the flashover rule. In a room of at most 500 m²
+   * that is every stud in the room. In a larger room it is a stud whose
+   * burning neighbours, within the 12.6 m disc, sum to 1 MW. The latch
+   * does not clear, so a barrier timer keeps running after the heat drops.
+   */
   private flashedStuds = new Set<string>();
 
   constructor(params?: FireParams) {
@@ -340,7 +348,7 @@ export class FireSimulation {
       });
     }
 
-    this.applyFlashover(roomHeat);
+    this.applyFlashover(roomHeat, burning);
 
     const incoming = new Map<string, { flux: number; approach: number }>();
     for (const src of burning) {
@@ -453,26 +461,57 @@ export class FireSimulation {
   }
 
   /**
-   * A room flashes over when the burning fuel in it sums to about 1 MW.
-   * Every fuelled stud in that room ignites, and the latch stays so the
-   * barrier timers keep running after the heat drops.
+   * A room of at most 500 m² flashes over when the burning fuel in it sums
+   * to about 1 MW. Every fuelled stud in that room ignites. A larger room
+   * does not. There the fire travels by the front and the flux, and a stud
+   * latches when the burning fuel within about 12.6 m of it sums to 1 MW,
+   * which is what starts a barrier timer. The latch stays after the heat drops.
    */
-  private applyFlashover(roomHeat: Map<string, number>) {
+  private applyFlashover(
+    roomHeat: Map<string, number>,
+    burning: Array<{ id: string; stud: FireSimStud; heatKw: number }>,
+  ) {
+    const heatOf = new Map<string, number>();
+    for (const src of burning) heatOf.set(src.id, src.heatKw);
+
     for (const [room, members] of this.rooms) {
-      const hot = (roomHeat.get(room) ?? 0) >= FLASHOVER_ROOM_KW;
-      const latched = members.some((id) => this.flashedStuds.has(id));
-      if (!hot && !latched) continue;
+      const area = members.length * STUD_AREA_M2;
+      if (area <= FLASHOVER_MAX_AREA_M2) {
+        const hot = (roomHeat.get(room) ?? 0) >= FLASHOVER_ROOM_KW;
+        const latched = members.some((id) => this.flashedStuds.has(id));
+        if (!hot && !latched) continue;
+        for (const id of members) {
+          this.flashedStuds.add(id);
+          if (this.acceptsFuel(id)) this.catchFire(id);
+        }
+        continue;
+      }
+
+      const local: Array<{ id: string; x: number; y: number; heat: number }> = [];
       for (const id of members) {
-        this.flashedStuds.add(id);
-        if (this.acceptsFuel(id)) this.catchFire(id);
+        const heat = heatOf.get(id);
+        const stud = this.studIndex.get(id);
+        if (heat == null || !stud) continue;
+        local.push({ id, x: stud.simPos.x, y: stud.simPos.y, heat });
+      }
+      for (const src of local) {
+        if (this.flashedStuds.has(src.id)) continue;
+        let sum = 0;
+        for (const other of local) {
+          const dist = Math.hypot(other.x - src.x, other.y - src.y);
+          if (dist <= LOCAL_FLASHOVER_RADIUS_M + 1e-6) sum += other.heat;
+        }
+        if (sum >= FLASHOVER_ROOM_KW) this.flashedStuds.add(src.id);
       }
     }
   }
 
   /**
-   * A door gap is open. A solid barrier stays shut until the source room has
-   * flashed over, then for its rating. Concrete and the other infinite
-   * ratings never open. The timer does not run before flashover.
+   * A door gap is open. A solid barrier stays shut until the source has
+   * flashed over, then for its rating. In a room of at most 500 m² that is
+   * the whole room. In a larger room it is the 12.6 m disc around this stud.
+   * Concrete and the other infinite ratings never open. The timer does not
+   * run before that criterion.
    */
   private crossingOpen(
     src: FireSimStud,

@@ -1,12 +1,19 @@
 /**
  * Harbour House is the evacuation showcase floor: 60 m by 40 m, three exits,
- * two drywall partitions, and a sealed concrete room. The repo had no scene
- * under this name. This is that floor dressed as a mall.
+ * shop-front walls with doors, a kitchen partition, and a sealed concrete
+ * room. The repo had no scene under this name. This is that floor dressed
+ * as a mall.
  *
  * Shops carry upholstery, stock and fittings (heavy, solid). The south-west
  * kitchen is cooking oil, with gas lines that do not burn. Corridors and the
  * atrium are ceramic tile, with a few wooden benches and a kiosk. The sealed
  * room is concrete. An empty outdoor stud stays dark.
+ *
+ * The west shop front closes the north end of the wall at plan x = 22, and
+ * the east shop front closes the south end of the wall at plan x = 40. The
+ * kitchen partition is at plan y = 8. Each has a door. The door gap splits
+ * the flood fill, so each shop is its own room, and the gap still lets the
+ * front through. A room larger than 500 m² does not flash over as a whole.
  *
  * Plan metres start at the south-west corner, +x east, +y north. The editor
  * frame is the centroid, +y south. The review harness is the plan frame.
@@ -14,6 +21,7 @@
  */
 
 import { entryById, matchFromEntry, type MaterialEntry, type PlacedObject } from './materialLibrary';
+import type { InteriorWall } from './types';
 
 export interface FurnishingStud {
   id: string;
@@ -126,6 +134,107 @@ function rectanglePolygon(
 const CENTER_LAT = 1.302;
 const CENTER_LNG = 103.8;
 
+interface PlanWall {
+  id: string;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  hasDoor: boolean;
+  doorPosition: number;
+  description: string;
+  material: string;
+}
+
+/**
+ * Plan metres, south-west origin, +y north. Shop fronts close the old gaps
+ * and the kitchen wall is at y = 8. Each shop front and the kitchen wall
+ * has a door. The concrete room has none.
+ */
+const PLAN_WALLS: PlanWall[] = [
+  {
+    id: 'w1',
+    start: { x: 22, y: 0 },
+    end: { x: 22, y: 34 },
+    hasDoor: true,
+    doorPosition: 0.5,
+    description: 'West shop wall.',
+    material: 'drywall',
+  },
+  {
+    id: 'w1-north',
+    start: { x: 22, y: 34 },
+    end: { x: 22, y: 40 },
+    hasDoor: true,
+    doorPosition: 0.5,
+    description: 'West shop front.',
+    material: 'drywall',
+  },
+  {
+    id: 'w2-south',
+    start: { x: 40, y: 0 },
+    end: { x: 40, y: 6 },
+    hasDoor: true,
+    doorPosition: 0.5,
+    description: 'East shop front.',
+    material: 'drywall',
+  },
+  {
+    id: 'w2',
+    start: { x: 40, y: 6 },
+    end: { x: 40, y: 40 },
+    hasDoor: true,
+    doorPosition: 0.4,
+    description: 'East shop wall.',
+    material: 'drywall',
+  },
+  {
+    id: 'w-kitchen',
+    start: { x: 0, y: 8 },
+    end: { x: 22, y: 8 },
+    hasDoor: true,
+    doorPosition: 0.5,
+    description: 'Kitchen partition.',
+    material: 'drywall',
+  },
+  {
+    id: 'w3',
+    start: { x: 46, y: 0 },
+    end: { x: 46, y: 8 },
+    hasDoor: false,
+    doorPosition: 0.5,
+    description: 'Sealed concrete room, west wall.',
+    material: 'concrete',
+  },
+  {
+    id: 'w4',
+    start: { x: 46, y: 8 },
+    end: { x: 60, y: 8 },
+    hasDoor: false,
+    doorPosition: 0.5,
+    description: 'Sealed concrete room, north wall.',
+    material: 'concrete',
+  },
+];
+
+/** Editor metres are the centroid, +y south. Plan metres are the review harness. */
+export function harbourHouseWalls(frame: 'plan' | 'editor' = 'editor'): InteriorWall[] {
+  const place = (point: { x: number; y: number }) =>
+    frame === 'plan' ? { x: point.x, y: point.y } : { x: point.x - 30, y: 20 - point.y };
+  return PLAN_WALLS.map((wall) => ({
+    id: wall.id,
+    start: place(wall.start),
+    end: place(wall.end),
+    hasDoor: wall.hasDoor,
+    doorWidth: 1.6,
+    doorPosition: wall.doorPosition,
+    description: wall.description,
+    material: wall.material,
+    photos: [],
+    insideBuilding: true,
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  }));
+}
+
 export const harbourHouseSample = {
   scene: {
     name: 'Harbour House',
@@ -134,7 +243,7 @@ export const harbourHouseSample = {
     centerLat: CENTER_LAT,
     centerLng: CENTER_LNG,
     locationDescription:
-      'Harbour House showcase floor, dressed as a mall. Shops are upholstery, stock and fittings. The kitchen is cooking oil. Gas lines do not burn. Corridors are tile, with a few benches. The sealed room is concrete.',
+      'Harbour House showcase floor, dressed as a mall. Each shop is its own room, with a door onto the tile mall. The kitchen is a room of cooking oil. Gas lines do not burn. Corridors are tile, with a few benches. The sealed room is concrete.',
     pedestrianCount: 120,
     levels: [
       {
@@ -181,64 +290,7 @@ export const harbourHouseSample = {
         exitType: 'public',
       },
     ],
-    interiorWalls: [
-      {
-        id: 'w1',
-        start: { x: -8, y: 20 },
-        end: { x: -8, y: -14 },
-        hasDoor: true,
-        doorWidth: 1.6,
-        doorPosition: 0.5,
-        description: 'Drywall partition.',
-        material: 'drywall',
-        photos: [],
-        insideBuilding: true,
-        spatialContext: 'inside_building',
-        level: 'G',
-      },
-      {
-        id: 'w2',
-        start: { x: 10, y: 14 },
-        end: { x: 10, y: -20 },
-        hasDoor: true,
-        doorWidth: 1.6,
-        doorPosition: 0.4,
-        description: 'Drywall partition.',
-        material: 'drywall',
-        photos: [],
-        insideBuilding: true,
-        spatialContext: 'inside_building',
-        level: 'G',
-      },
-      {
-        id: 'w3',
-        start: { x: 16, y: 20 },
-        end: { x: 16, y: 12 },
-        hasDoor: false,
-        doorWidth: 1.6,
-        doorPosition: 0.5,
-        description: 'Sealed concrete room, west wall.',
-        material: 'concrete',
-        photos: [],
-        insideBuilding: true,
-        spatialContext: 'inside_building',
-        level: 'G',
-      },
-      {
-        id: 'w4',
-        start: { x: 16, y: 12 },
-        end: { x: 30, y: 12 },
-        hasDoor: false,
-        doorWidth: 1.6,
-        doorPosition: 0.5,
-        description: 'Sealed concrete room, north wall.',
-        material: 'concrete',
-        photos: [],
-        insideBuilding: true,
-        spatialContext: 'inside_building',
-        level: 'G',
-      },
-    ],
+    interiorWalls: harbourHouseWalls('editor'),
     hazardZones: [],
     stairwells: [],
     blastSite: {
