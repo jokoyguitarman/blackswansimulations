@@ -162,7 +162,8 @@ psql "$KNOWLEDGE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f <file>
 12. `261_fieldops_units_hospitals_library.sql`
 13. `262_fieldops_knowledge_staging.sql`
 14. `263_fieldops_library_row_history.sql`
+15. `264_revoke_pr23_rls_table_grants.sql`
 
-Files 221–224, 239, 240, 242, 250 and 257–259 are PR #23's blocks, copied byte-for-byte. 261, 262 and 263 are new. Migration 254's D54/D56 knowledge tables (unit kinds, equipment, unit equipment, response standards, hospitals, hospital specialties and capacity aggregates) are created here by `261_fieldops_units_hospitals_library.sql`, because 254 refuses to apply until 252 exists. 261's statements are `IF NOT EXISTS`, so applying 254 later leaves those tables as they are. Re-apply 263 after 254 so history triggers attach to any library table 254 creates.
+Files 221–224, 239, 240, 242, 250 and 257–259 are PR #23's blocks, copied byte-for-byte. 261, 262 and 263 are new. 264 revokes `PUBLIC`, `anon` and `authenticated` on the twelve tables from 221, 222, 223, 239, 240 and 242 that enabled row security without a revoke. `service_role` keeps its grants. Migration 254's D54/D56 knowledge tables (unit kinds, equipment, unit equipment, response standards, hospitals, hospital specialties and capacity aggregates) are created here by `261_fieldops_units_hospitals_library.sql`, because 254 refuses to apply until 252 exists. 261's statements are `IF NOT EXISTS`, so applying 254 later leaves those tables as they are. Re-apply 263 after 254 so history triggers attach to any library table 254 creates.
 
 Rollback statements are in each file's header. Run them in reverse order, on a branch or a local database only, never on the shared project.
