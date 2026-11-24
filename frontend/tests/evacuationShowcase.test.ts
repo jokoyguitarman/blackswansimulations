@@ -952,6 +952,18 @@ test('a route across a wall joint is sent to the door', () => {
   assert.equal(clear.y, 20);
 });
 
+test('a door-less counter is walked around its nearer end', () => {
+  const counter = {
+    startX: 0, startY: 0, endX: 10, endY: 0, hasDoor: false, doorWidth: 0, doorPosition: 0.5,
+  };
+  const beside = nextIndoorWaypoint({ x: 2, y: 2 }, { x: 2, y: -4 }, [counter]);
+  assert.ok(beside.y > 0.5, `still beside the counter, the aim crossed early at y ${beside.y}`);
+  assert.ok(beside.x < -0.5, `the aim did not pass the nearer end, x ${beside.x}`);
+  const parked = steerToTarget({ x: -1.2, y: 0.9 }, { x: 2, y: -4 }, [counter]);
+  assert.ok(parked.y < -0.5, `past the end, the aim stayed on the near side at y ${parked.y}`);
+  assert.ok(parked.x < -0.5, `past the end, the aim came back onto the slab at x ${parked.x}`);
+});
+
 test('a blocked exit is left on the next step', () => {
   const eng = showcaseEngine(1);
   const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];

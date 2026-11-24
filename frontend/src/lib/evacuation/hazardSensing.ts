@@ -609,14 +609,14 @@ export function pointOnDoorGap(wall: WallLike, lane: number): Vec2 {
 
 /**
  * Next point toward `target`. When the segment crosses a door wall, the point
- * is on that door's gap. `lane` in [0, 1] spreads people across the opening;
+ * is on that door's gap. A door-less wall, such as a counter, is walked around
+ * at its nearer end. `lane` in [0, 1] spreads people across a door opening;
  * omit it to keep the door centre.
  */
 export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], lane?: number): Vec2 {
   let bestT = Infinity;
   let best: WallLike | null = null;
   for (const wall of walls) {
-    if (!wall.hasDoor) continue;
     let hitT = Infinity;
     for (const [a, b] of solidParts(wall)) {
       const t = segmentsHitT(pos, target, a, b);
@@ -628,6 +628,12 @@ export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], l
     }
   }
   if (!best) return target;
+  if (!best.hasDoor) {
+    const end = nearerEndPoint(pos, best, target);
+    const door = endJoined(best, end.x, end.y, walls) ? continuingDoor(best, end, walls) : null;
+    if (!door) return aroundSolid(pos, best, target, walls);
+    best = door;
+  }
   if (lane == null) {
     return {
       x: best.startX + (best.endX - best.startX) * best.doorPosition,
@@ -635,6 +641,46 @@ export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], l
     };
   }
   return pointOnDoorGap(best, lane);
+}
+
+function segmentDistance(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  const t =
+    lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+/** An end that meets another wall is a joint, not a place to walk around. */
+function endJoined(wall: WallLike, x: number, y: number, walls: readonly WallLike[]): boolean {
+  for (const other of walls) {
+    if (other === wall) continue;
+    if (segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) <= 0.08) return true;
+  }
+  return false;
+}
+
+function nearerEndPoint(pos: Vec2, wall: WallLike, target: Vec2): { x: number; y: number } {
+  const viaStart =
+    Math.hypot(wall.startX - pos.x, wall.startY - pos.y) +
+    Math.hypot(target.x - wall.startX, target.y - wall.startY);
+  const viaEnd =
+    Math.hypot(wall.endX - pos.x, wall.endY - pos.y) +
+    Math.hypot(target.x - wall.endX, target.y - wall.endY);
+  return viaEnd < viaStart
+    ? { x: wall.endX, y: wall.endY }
+    : { x: wall.startX, y: wall.startY };
+}
+
+function continuingDoor(wall: WallLike, end: Vec2, walls: readonly WallLike[]): WallLike | null {
+  for (const other of walls) {
+    if (other === wall || !other.hasDoor) continue;
+    if (segmentDistance(end.x, end.y, other.startX, other.startY, other.endX, other.endY) <= 0.08) {
+      return other;
+    }
+  }
+  return null;
 }
 
 function wallFrame(wall: WallLike): { ux: number; uy: number; len: number } {
@@ -731,38 +777,77 @@ function projectOnto(pos: Vec2, ax: number, ay: number, bx: number, by: number):
   return { slot, clamped: raw < 0 || raw > len, dist, nx, ny };
 }
 
-function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2): Vec2 {
-  const ends = [
-    { x: wall.startX, y: wall.startY },
-    { x: wall.endX, y: wall.endY },
-  ];
-  let best = ends[0];
-  let bestLen = Infinity;
-  for (const end of ends) {
-    const len =
-      Math.hypot(end.x - pos.x, end.y - pos.y) + Math.hypot(target.x - end.x, target.y - end.y);
-    if (len < bestLen) {
-      bestLen = len;
-      best = end;
+/**
+ * How far past a wall end the body walks before crossing to the other side.
+ * A point only just past the end still sees the exit through the slab, so
+ * the next aim is the corner the body already occupies and it stays there.
+ */
+const END_PASS_M = 1.3;
+
+function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2, walls?: readonly WallLike[]): Vec2 {
+  const { ux, uy, len } = wallFrame(wall);
+  const alongPos = (pos.x - wall.startX) * ux + (pos.y - wall.startY) * uy;
+  const pastStart = alongPos < -0.2;
+  const pastEnd = alongPos > len + 0.2;
+  let endX = wall.startX;
+  let endY = wall.startY;
+  let along = -1;
+  if (pastStart) {
+    along = -1;
+  } else if (pastEnd) {
+    endX = wall.endX;
+    endY = wall.endY;
+    along = 1;
+  } else {
+    const viaEnd =
+      Math.hypot(wall.endX - pos.x, wall.endY - pos.y) +
+      Math.hypot(target.x - wall.endX, target.y - wall.endY) <
+      Math.hypot(wall.startX - pos.x, wall.startY - pos.y) +
+        Math.hypot(target.x - wall.startX, target.y - wall.startY);
+    if (viaEnd) {
+      endX = wall.endX;
+      endY = wall.endY;
+      along = 1;
     }
   }
-  const { ux, uy } = wallFrame(wall);
-  const midX = (wall.startX + wall.endX) / 2;
-  const midY = (wall.startY + wall.endY) / 2;
-  const along = Math.sign((best.x - midX) * ux + (best.y - midY) * uy) || 1;
-  let nx = -uy;
-  let ny = ux;
-  // The person's own side. A waypoint on the target's side cuts the corner
-  // and leaves the body pinned on the slab.
-  if ((pos.x - best.x) * nx + (pos.y - best.y) * ny < 0) {
-    nx = -nx;
-    ny = -ny;
-  }
   const clear = GAP_CLEAR_M + 0.2;
-  return {
-    x: best.x + ux * along * clear + nx * clear,
-    y: best.y + uy * along * clear + ny * clear,
+  const aimFor = (ex: number, ey: number, dir: number) => {
+    let nx = -uy;
+    let ny = ux;
+    // The person's own side while they are still beside the slab. A waypoint
+    // on the target's side from there cuts the corner and pins the body.
+    if ((pos.x - ex) * nx + (pos.y - ey) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    // nx points at the person. Cross only once the body is past the slab.
+    const targetSide = Math.sign((target.x - ex) * nx + (target.y - ey) * ny) || 1;
+    const side = pastStart || pastEnd ? targetSide : 1;
+    return {
+      x: ex + ux * dir * END_PASS_M + nx * side * clear,
+      y: ey + uy * dir * END_PASS_M + ny * side * clear,
+    };
   };
+  let aim = aimFor(endX, endY, along);
+  // A fin on the far side of this end still leaves this side open. Only give
+  // up the nearer end when the clearance point itself sits in another wall.
+  if (walls && !pastStart && !pastEnd && aimBlocked(aim.x, aim.y, wall, walls)) {
+    const otherX = along < 0 ? wall.endX : wall.startX;
+    const otherY = along < 0 ? wall.endY : wall.startY;
+    const other = aimFor(otherX, otherY, -along);
+    if (!aimBlocked(other.x, other.y, wall, walls)) aim = other;
+  }
+  return aim;
+}
+
+function aimBlocked(x: number, y: number, wall: WallLike, walls: readonly WallLike[]): boolean {
+  for (const other of walls) {
+    if (other === wall) continue;
+    if (segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) < WALL_FACE_CLEAR_M) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1172,8 +1257,12 @@ export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[], hold =
   let aim = target;
   if (wall) {
     if (!wall.hasDoor) {
-      aim = aroundSolid(pos, wall, target);
-    } else {
+      const end = nearerEndPoint(pos, wall, target);
+      const door = endJoined(wall, end.x, end.y, walls) ? continuingDoor(wall, end, walls) : null;
+      if (door) wall = door;
+      else aim = aroundSolid(pos, wall, target, walls);
+    }
+    if (wall.hasDoor) {
       const gap = usableGap(wall);
       const opening = gapSpan(wall, 0);
       if (gap && opening) {
