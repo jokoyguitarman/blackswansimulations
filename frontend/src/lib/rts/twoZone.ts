@@ -24,14 +24,18 @@
  * that cutoff is assumed.
  *
  * The steady temperature is compared with the MQH correlation,
- * NUREG-1805 Eq. 2-1, ΔT = 6.85 [Q² / (Ao √Ho · AT hk)]^(1/3). The
- * correlation was fit to the total heat release, so the energy balance puts
- * all of Q into the layer. Only the convective part, (1 − χ) Q, entrains.
- * χ is the contents radiative fraction already used for the point source.
+ * NUREG-1805 Eq. 2-1, ΔT = 6.85 [Q² / (Ao √Ho · AT hk)]^(1/3). CFAST
+ * Technical Reference Eq. 3.9–3.10 split the fire into χQ radiated to the
+ * surfaces and (1 − χ)Q convected into the gas. The radiated part is shared
+ * across the boundaries by area. It does not heat the gas. Only the
+ * convected part entrains. χ is the contents radiative fraction already
+ * used for the point source. The gas-to-surface radiation still treats the
+ * gas as black; a clear layer would radiate less, and that is not in this step.
  */
 
 import { LEVEL } from '../evacuation/levelConstants';
 import { CONTENTS_HRRPUA_KW_M2, RADIATIVE_FRACTION, STUD_AREA_M2 } from './flameFront';
+import { layerLiningFor, type WallMaterial } from './materialLibrary';
 
 /** 20 °C, the ambient the sprinkler link and the gas molar volume already use. */
 export const AMBIENT_K = 293;
@@ -94,52 +98,30 @@ export interface Lining {
 }
 
 /**
- * NUREG-1805 lining table (seed `lining_thermal_properties`). k, c, and
- * kρc are the table. Density is kρc / (k c), so the three columns agree.
- * Thickness is not in the table: 150 mm for concrete and brick, 16 mm for
- * one gypsum board. Those thicknesses are assumed.
- *
- * `WALL_MATERIALS` is the wall table this should read, once that table is
- * on master. It is not on this branch. The thicknesses there are that
- * table's own assumed values, not these 150 / 150 / 16 mm, so this copy
- * stays until the reader can switch without inventing a second set.
+ * The layer's copy of a wall row. `WALL_MATERIALS` stores W/m·K and J/kg·K.
+ * hk is in kW, so both are divided by 1000. Thickness and the concrete
+ * fallback for glass and steel stay in `layerLiningFor`.
  */
+function liningOf(row: WallMaterial): Lining {
+  return {
+    name: row.id,
+    kKwMK: row.conductivityWMK / 1000,
+    rhoKgM3: row.densityKgM3,
+    cKjKgK: row.specificHeatJKgK / 1000,
+    thicknessM: row.thicknessM,
+  };
+}
+
+/** Concrete, brick, and gypsum, as `layerLiningFor` names them. */
 export const LINING = {
-  concrete: {
-    name: 'concrete',
-    kKwMK: 0.0016,
-    rhoKgM3: 2.9 / (0.0016 * 0.75),
-    cKjKgK: 0.75,
-    thicknessM: 0.15,
-  },
-  brick: {
-    name: 'brick',
-    kKwMK: 0.00073,
-    rhoKgM3: 1.2 / (0.00073 * 0.84),
-    cKjKgK: 0.84,
-    thicknessM: 0.15,
-  },
-  gypsum: {
-    name: 'gypsum',
-    kKwMK: 0.00017,
-    rhoKgM3: 0.18 / (0.00017 * 1.1),
-    cKjKgK: 1.1,
-    thicknessM: 0.016,
-  },
+  concrete: liningOf(layerLiningFor('concrete')),
+  brick: liningOf(layerLiningFor('brick')),
+  gypsum: liningOf(layerLiningFor('gypsum')),
 } as const satisfies Record<string, Lining>;
 
-/**
- * Anything the NUREG table does not name, including glass and steel, uses
- * the concrete row. Assumed: the structure behind the finish is concrete.
- */
+/** The lining a named wall conducts into. Glass and steel come back as concrete. */
 export function liningForMaterial(material: string): Lining {
-  const name = material.toLowerCase();
-  if (name.includes('gypsum') || name.includes('drywall') || name.includes('plaster')) {
-    return LINING.gypsum;
-  }
-  if (name.includes('brick') || name.includes('masonry') || name.includes('block')) return LINING.brick;
-  if (name.includes('concrete') || name.includes('reinforced')) return LINING.concrete;
-  return LINING.concrete;
+  return liningOf(layerLiningFor(material));
 }
 
 export function thermalInertia(lining: Lining): number {
@@ -176,49 +158,51 @@ export const SURFACE_CONVECTION_C_W = 1.31;
 
 /**
  * Assumed. CFAST treats a surface as grey and notes that ordinary finishes
- * sit in a narrow band. 0.9 is that band, not a measured lining.
+ * sit in a narrow band. 0.9 is that band, not a measured lining. The gas is
+ * taken as black, so a thin or clear layer radiates as much as a smoky one.
  */
 export const SURFACE_EMISSIVITY = 0.9;
 
 /**
- * Heat flux into a lining, kW/m². Convection and radiation reach the surface
- * (CFAST TRG Eq. 5.23 and the grey exchange σ(Tg⁴ − Ts⁴)); conduction from
- * that surface back to ambient is the MQH hk. The two are in series, so the
- * surface temperature is whatever makes them equal. Applying hk to the gas
- * temperature skips the film and dumps most of the fire into the wall.
+ * Heat the gas gives a lining, kW/m². The fire's χQ arrives at the surface
+ * as `radInKwM2` and does not pass through the gas. Convection and the grey
+ * exchange then run between the gas and that surface, in series with hk
+ * back to ambient. The returned flux is only the film, so the gas is not
+ * charged for radiation that never entered it.
  */
-function surfaceFluxKwM2(hk: number, gasK: number): number {
-  if (!(hk > 0) || !(gasK > AMBIENT_K + 0.05)) return 0;
-  const residual = (surfaceK: number) => {
-    const acrossFilm = gasK - surfaceK;
-    if (!(acrossFilm > 0)) return -hk * (surfaceK - AMBIENT_K);
-    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(acrossFilm, 1 / 3);
+function surfaceFluxKwM2(hk: number, gasK: number, radInKwM2: number): number {
+  if (!(hk > 0)) return 0;
+  if (!(gasK > AMBIENT_K + 0.05) && !(radInKwM2 > 0)) return 0;
+  const film = (surfaceK: number) => {
+    const across = gasK - surfaceK;
+    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
     const hRad =
       SURFACE_EMISSIVITY *
       SIGMA_KW_M2K4 *
       (gasK * gasK + surfaceK * surfaceK) *
       (gasK + surfaceK);
-    return (hConv + hRad) * acrossFilm - hk * (surfaceK - AMBIENT_K);
+    return (hConv + hRad) * across;
   };
+  const residual = (surfaceK: number) => film(surfaceK) + radInKwM2 - hk * (surfaceK - AMBIENT_K);
   let lo = AMBIENT_K;
-  let hi = gasK;
-  for (let i = 0; i < 16; i++) {
+  let hi = Math.max(gasK, AMBIENT_K) + 2000;
+  for (let i = 0; i < 32; i++) {
     const mid = 0.5 * (lo + hi);
     if (residual(mid) > 0) lo = mid;
     else hi = mid;
   }
-  return hk * (0.5 * (lo + hi) - AMBIENT_K);
+  return film(0.5 * (lo + hi));
 }
 
 const FLUX_TABLE_N = 96;
 const FLUX_T_MAX = 1500;
 
-/** One lining at one age. The balance samples the same slab dozens of times. */
-function fluxTable(hk: number): (gasK: number) => number {
+/** One lining at one age and one fire flux. The balance samples it dozens of times. */
+function fluxTable(hk: number, radInKwM2: number): (gasK: number) => number {
   const ys = new Array<number>(FLUX_TABLE_N + 1);
   for (let i = 0; i <= FLUX_TABLE_N; i++) {
     const gas = AMBIENT_K + ((FLUX_T_MAX - AMBIENT_K) * i) / FLUX_TABLE_N;
-    ys[i] = surfaceFluxKwM2(hk, gas);
+    ys[i] = surfaceFluxKwM2(hk, gas, radInKwM2);
   }
   const span = (FLUX_T_MAX - AMBIENT_K) / FLUX_TABLE_N;
   return (gasK: number) => {
@@ -233,15 +217,19 @@ function fluxTable(hk: number): (gasK: number) => number {
 }
 
 let fluxMemo: Map<string, (gasK: number) => number> | null = null;
+/** χQ / AT for the fire currently being solved, kW/m². Zero outside a balance. */
+let fireRadiantKwM2 = 0;
 
 export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number {
   const hk = effectiveHeatLossKwM2K(lining, tS);
-  if (!(hk > 0) || !(gasK > AMBIENT_K + 0.05)) return 0;
-  if (!fluxMemo) return surfaceFluxKwM2(hk, gasK);
-  const key = `${lining.name}|${hk.toExponential(5)}`;
+  const radIn = fireRadiantKwM2;
+  if (!(hk > 0)) return 0;
+  if (!(gasK > AMBIENT_K + 0.05) && !(radIn > 0)) return 0;
+  if (!fluxMemo) return surfaceFluxKwM2(hk, gasK, radIn);
+  const key = `${lining.name}|${hk.toExponential(5)}|${radIn.toExponential(5)}`;
   let at = fluxMemo.get(key);
   if (!at) {
-    at = fluxTable(hk);
+    at = fluxTable(hk, radIn);
     fluxMemo.set(key, at);
   }
   return at(gasK);
@@ -249,11 +237,14 @@ export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number
 
 function withFluxMemo<T>(body: () => T): T {
   const prev = fluxMemo;
+  const prevRad = fireRadiantKwM2;
   fluxMemo = new Map();
+  fireRadiantKwM2 = 0;
   try {
     return body();
   } finally {
     fluxMemo = prev;
+    fireRadiantKwM2 = prevRad;
   }
 }
 
@@ -365,10 +356,19 @@ export function freshLayer(ceilingM: number): ZoneState {
   };
 }
 
-function heatKw(spec: LayerSpec): number {
-  let q = 0;
-  for (const fire of spec.fires) if (fire.heatKw > 0) q += fire.heatKw;
-  return q;
+/**
+ * CFAST Eq. 3.9–3.10. χQ is laid on the boundaries by area and (1 − χ)Q is
+ * what the gas receives. The by-area share is the surface part of that
+ * split; the layer itself does not absorb any of the fire's radiation.
+ */
+function fireSplit(spec: LayerSpec): { totalKw: number; convectedKw: number } {
+  let total = 0;
+  for (const fire of spec.fires) if (fire.heatKw > 0) total += fire.heatKw;
+  let at = 0;
+  for (const boundary of spec.boundaries) if (boundary.areaM2 > 0) at += boundary.areaM2;
+  const chi = chiOf(spec);
+  fireRadiantKwM2 = at > 0 && total > 0 ? (chi * total) / at : 0;
+  return { totalKw: total, convectedKw: Math.max(0, (1 - chi) * total) };
 }
 
 function chiOf(spec: LayerSpec): number {
@@ -572,7 +572,7 @@ function energyKw(spec: LayerSpec, tS: number, plumeKgS: number, riseK: number):
 
 export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Balance {
   const plume = plumeKgS(spec, interfaceM);
-  const q = heatKw(spec);
+  const q = fireSplit(spec).convectedKw;
   // Loss rises with temperature, so the rise that spends the fire is unique.
   let lo = 0;
   let hi = 20;
@@ -598,7 +598,7 @@ export function steadyLayer(spec: LayerSpec, tS: number): SteadyLayer | null {
 }
 
 function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
-  const q = heatKw(spec);
+  const q = fireSplit(spec).totalKw;
   if (!(q > MIN_LAYER_FIRE_KW) || !(spec.areaM2 > 0) || !(spec.ceilingM > 0.5)) return null;
   const zMin = 0.08;
   const zMax = spec.ceilingM - 0.02;
@@ -674,10 +674,11 @@ function stepZoneNow(
   let vented = 0;
   let outByVent = spec.vents.map(() => 0);
   let left = Math.max(0, dt);
-  const q = heatKw(spec);
+  const split = fireSplit(spec);
+  const q = split.convectedKw;
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
-    if (q > MIN_LAYER_FIRE_KW) age += slice;
+    if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
     const depth = Math.max(0.02, spec.ceilingM - z);
     const mass = densityKgM3(temp) * spec.areaM2 * depth;
     let plume = plumeKgS(spec, z);
@@ -753,6 +754,8 @@ export interface Enclosure {
 
 const FACE_MIN_M = 2;
 const FACE_MAX_M = 3.4;
+/** One diagonal of the 3 m stud grid is 4.24 m. Assumed. A longer link is not a face. */
+const DIAGONAL_FACE_MAX_M = 4.5;
 
 /** Where the stud link crosses the wall, 0–1 along the wall. Null when it misses. */
 function paramAlongWall(ax: number, ay: number, bx: number, by: number, wall: GridWall): number | null {
@@ -764,7 +767,10 @@ function paramAlongWall(ax: number, ay: number, bx: number, by: number, wall: Gr
   if (Math.abs(denom) < 1e-10) return null;
   const t = ((wall.x1 - ax) * d2y - (wall.y1 - ay) * d2x) / denom;
   const u = ((wall.x1 - ax) * d1y - (wall.y1 - ay) * d1x) / denom;
-  if (t <= 0.01 || t >= 0.99 || u <= 0.01 || u >= 0.99) return null;
+  // u includes the wall's ends. A stud row that lands on a junction is still
+  // that wall; leaving the ends out turned the food-court corridor into a
+  // full-height opening.
+  if (t <= 0.01 || t >= 0.99 || u < -0.01 || u > 1.01) return null;
   return u;
 }
 
@@ -786,7 +792,7 @@ function segmentsCross(
   if (Math.abs(denom) < 1e-10) return false;
   const t = ((cx - ax) * d2y - (cy - ay) * d2x) / denom;
   const u = ((cx - ax) * d1y - (cy - ay) * d1x) / denom;
-  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+  return t > 0.01 && t < 0.99 && u >= -0.01 && u <= 1.01;
 }
 
 /**
@@ -826,6 +832,17 @@ export function enclosureFromGrid(
       const other = studs.get(nId);
       if (!other || other.level !== level) continue;
       const reach = Math.hypot(other.x - stud.x, other.y - stud.y);
+      // An exit the orthogonal rows miss. The diagonal still carries its soot.
+      // It is not a wall area: only the exit slot is recorded.
+      if (reach > FACE_MAX_M && reach <= DIAGONAL_FACE_MAX_M) {
+        const diag = facade?.(id, nId) ?? null;
+        if (diag?.kind === 'exit' && diag.exitKey && (diag.widthM ?? 0) > 0) {
+          const slot = exitSlots.get(diag.exitKey) ?? { widthM: diag.widthM ?? 0, receivers: [] };
+          slot.receivers.push(nId);
+          exitSlots.set(diag.exitKey, slot);
+        }
+        continue;
+      }
       if (reach < FACE_MIN_M || reach > FACE_MAX_M) continue;
       const pair = id < nId ? `${id}|${nId}` : `${nId}|${id}`;
       if (seenPairs.has(pair)) continue;
@@ -913,16 +930,19 @@ export function enclosureFromGrid(
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (!(length > 0)) continue;
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
-    const doorWidth = wall.hasDoor ? Math.min(length, wall.doorWidth > 0 ? wall.doorWidth : 0.9) : 0;
+    // A door belongs to the room whose links cross its gap. The same wall
+    // can bound a room further along, and that room does not get the door.
+    const across = wall.hasDoor ? receiversForDoor(wall) : [];
+    const doorWidth = across.length > 0 ? Math.min(length, wall.doorWidth > 0 ? wall.doorWidth : 0.9) : 0;
     const lining = liningForMaterial(wall.material);
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
       vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
-      ventReceivers.push(receiversForDoor(wall));
+      ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
       if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
     } else if (doorWidth > 0) {
       spillWidth += doorWidth;
-      spillReceivers.push(...receiversForDoor(wall));
+      spillReceivers.push(...across);
       const wallArea = Math.max(0, (length - doorWidth) * ceilingM);
       if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
     } else {

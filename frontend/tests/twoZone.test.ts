@@ -149,13 +149,23 @@ test('Steckler center door reports the coupled flow', () => {
   const doorW = 0.74;
   const doorH = 1.83;
   const walls = 2 * (width + width) * height - doorW * doorH;
+  // CFAST's guide records the floor as 19 mm calcium silicate on plywood.
+  // The plywood is not a second layer. k, ρ and c are assumed handbook
+  // values, not the Armstrong report. Walls and ceiling stay the blanket.
+  const calciumSilicate: Lining = {
+    name: 'calcium silicate 19 mm',
+    kKwMK: 0.00012,
+    rhoKgM3: 720,
+    cKjKgK: 0.84,
+    thicknessM: 0.019,
+  };
   const spec: LayerSpec = {
     areaM2: floor,
     ceilingM: height,
     chi: 0.2,
     vents: [{ widthM: doorW, sillM: 0, soffitM: doorH }],
     boundaries: [
-      { areaM2: floor, lining: CERAMIC_FIBRE },
+      { areaM2: floor, lining: calciumSilicate },
       { areaM2: floor, lining: CERAMIC_FIBRE },
       { areaM2: walls, lining: CERAMIC_FIBRE },
     ],
@@ -177,11 +187,11 @@ test('Steckler center door reports the coupled flow', () => {
     `interface ${state.interfaceM.toFixed(3)} m, measured ${measuredZ} ± ${zTol.toFixed(3)}`,
   );
   assert.ok(Math.abs((steady?.interfaceM ?? 0) - measuredZ) <= zTol, `steady interface ${steady?.interfaceM}`);
-  // The series film on this thin board leaves the layer about 21% hot.
-  // That is outside the 20% band, and it is not adjusted to land inside it.
+  // χQ goes to the surfaces, so the rise is inside 20%. The emissivity
+  // is not adjusted to put it there.
   const riseRatio = rise / measuredRise;
   assert.ok(
-    riseRatio > 1.2 && riseRatio < 1.3,
+    Math.abs(riseRatio - 1) <= 0.2,
     `rise ${rise.toFixed(1)} K is ${riseRatio.toFixed(3)} of the measured ${measuredRise.toFixed(1)} K`,
   );
   // The model's own doorway flow. Heskestad at the measured height entrains
@@ -320,6 +330,148 @@ test('the building outline is a wall except at an exit', () => {
     4,
   );
   assert.deepEqual(through?.ventReceivers, [['gap']]);
+});
+
+test('the food-court corridor is a wall, including at its junctions', () => {
+  // The service-corridor segments end on the stud rows. A link through
+  // that junction used to miss the wall and open a full-height side.
+  const corridor = (id: string, y0: number, y1: number, door: boolean) => ({
+    id,
+    x1: -14.5,
+    y1: y0,
+    x2: -14.5,
+    y2: y1,
+    hasDoor: door,
+    doorWidth: 1.5,
+    doorPosition: 0.5,
+    material: 'concrete',
+    level: 'G',
+  });
+  const ys = [-11.5, -8.5, -5.5, -2.5, 0.5, 3.5, 6.5, 9.5, 12.5];
+  const studs = new Map<string, { id: string; x: number; y: number; level: string }>();
+  const neighbors = new Map<string, readonly string[]>();
+  const members: string[] = [];
+  for (const y of ys) {
+    const court = `c${y}`;
+    const service = `s${y}`;
+    studs.set(court, { id: court, x: -13, y, level: 'G' });
+    studs.set(service, { id: service, x: -16, y, level: 'G' });
+    neighbors.set(court, [service]);
+    neighbors.set(service, [court]);
+    members.push(court);
+  }
+  const enc = enclosureFromGrid(
+    members,
+    studs,
+    neighbors,
+    [
+      corridor('kitchen', -11.5, -5.5, true),
+      corridor('seating', -5.5, 3.5, false),
+      corridor('tile', 3.5, 12.5, true),
+    ],
+    4,
+  );
+  assert.ok(enc);
+  const fullHeight = enc?.spec.vents.filter((vent) => vent.soffitM > 3.9) ?? [];
+  assert.equal(fullHeight.length, 0, `full-height width ${fullHeight.map((vent) => vent.widthM).join(',')}`);
+  const doors = enc?.spec.vents.filter((vent) => Math.abs(vent.widthM - 1.5) < 0.05) ?? [];
+  assert.equal(doors.length, 2);
+  assert.ok(doors.every((vent) => vent.soffitM === DOOR_SOFFIT_M));
+});
+
+test("Harbour's kitchen keeps its own door and the west shop keeps its exit", () => {
+  const shopDoor = {
+    id: 'w1',
+    x1: 22,
+    y1: 0,
+    x2: 22,
+    y2: 40,
+    hasDoor: true,
+    doorWidth: 1.6,
+    doorPosition: 0.5,
+    material: 'drywall',
+    level: 'G',
+  };
+  const kitchenDoor = {
+    id: 'w-kitchen',
+    x1: 0,
+    y1: 8,
+    x2: 22,
+    y2: 8,
+    hasDoor: true,
+    doorWidth: 1.6,
+    doorPosition: 0.5,
+    material: 'drywall',
+    level: 'G',
+  };
+  const kitchen = enclosureFromGrid(
+    ['near', 'byDoor'],
+    new Map([
+      ['near', { id: 'near', x: 19.5, y: 3, level: 'G' }],
+      ['mall', { id: 'mall', x: 22.5, y: 3, level: 'G' }],
+      ['byDoor', { id: 'byDoor', x: 11, y: 6.5, level: 'G' }],
+      ['past', { id: 'past', x: 11, y: 9.5, level: 'G' }],
+    ]),
+    new Map<string, readonly string[]>([
+      ['near', ['mall']],
+      ['mall', ['near']],
+      ['byDoor', ['past']],
+      ['past', ['byDoor']],
+    ]),
+    [shopDoor, kitchenDoor],
+    4,
+  );
+  assert.equal(kitchen?.spec.vents.length, 1);
+  assert.equal(kitchen?.spec.vents[0]?.widthM, 1.6);
+  assert.deepEqual(kitchen?.ventReceivers, [['past']]);
+
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  const at = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  engine.init([
+    at('shopA', 0.5, 18.5),
+    at('shopB', 0.5, 21.5),
+    at('outA', -2.5, 18.5, false),
+    at('outB', -2.5, 21.5, false),
+    at('outWall', -2.5, 27, false),
+  ]);
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 40 },
+    { x: 0, y: 40 },
+  ];
+  const west: ExitDef = {
+    id: 'E1-west',
+    center: { x: 0, y: 20 },
+    width: 2,
+    edgeIndex: 3,
+    description: 'west',
+    status: 'open',
+    photos: [],
+    level: 'G',
+  };
+  engine.setBuildingEnvelope(verts, [west]);
+  const shop = (
+    engine as unknown as {
+      enclosureOf: (room: string, members: string[], walls: InteriorWall[], ceiling: number) => {
+        spec: { vents: { widthM: number; soffitM: number }[] };
+        ventReceivers: string[][];
+      } | null;
+    }
+  ).enclosureOf('shopA', ['shopA', 'shopB'], [], 4);
+  assert.ok(shop);
+  const exits = shop?.spec.vents.filter((vent) => Math.abs(vent.widthM - 2) < 0.05) ?? [];
+  assert.equal(exits.length, 1);
+  assert.equal(exits[0]?.soffitM, DOOR_SOFFIT_M);
+  const receivers = shop?.ventReceivers[shop.spec.vents.indexOf(exits[0]!)] ?? [];
+  assert.ok(receivers.includes('outA') && receivers.includes('outB'), `receivers ${receivers.join(',')}`);
+  assert.ok(!receivers.includes('outWall'));
+  assert.equal(shop?.spec.vents.some((vent) => vent.soffitM > 3.9), false);
 });
 
 test('the smoke step layers a closed room and leaves an open side alone', () => {

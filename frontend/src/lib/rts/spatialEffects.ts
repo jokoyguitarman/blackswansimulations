@@ -227,15 +227,19 @@ function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): Sh
     if (len < 0.01) continue;
     const half = exit.width / 2;
     const tCenter = ((exit.center.x - start.x) * dx + (exit.center.y - start.y) * dy) / (len * len);
-    const t0 = Math.max(0, tCenter - half / len);
-    const t1 = Math.min(1, tCenter + half / len);
+    // A stud row just off the doorway still crosses it. 0.75 m is assumed:
+    // enough for a row 0.5 m outside a 2 m door, and short of the next row.
+    // The vent width stays the exit's width. The pad is only the hit test.
+    const pad = (half + 0.75) / len;
+    const t0 = Math.max(0, tCenter - pad);
+    const t1 = Math.min(1, tCenter + pad);
     if (!(t1 > t0)) continue;
     openings.push({
       key: exit.id,
       a: { x: start.x + dx * t0, y: start.y + dy * t0 },
       b: { x: start.x + dx * t1, y: start.y + dy * t1 },
       level: exit.level ?? 'G',
-      widthM: (t1 - t0) * len,
+      widthM: exit.width,
     });
   }
   return openings;
