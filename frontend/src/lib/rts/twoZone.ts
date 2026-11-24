@@ -319,6 +319,232 @@ export type HoodFanWhen = 'discharge' | 'appliances';
 /** The unsettled default. A scene may set the other value. */
 export const HOOD_FAN_WHEN: HoodFanWhen = 'discharge';
 
+/**
+ * Ambient oxygen, as a mass fraction. CFAST Technical Reference (NIST TN
+ * 1889v1 §2.2): 23% by mass, which is 21% by volume. Nitrogen makes up the
+ * rest. Water vapour is not split out.
+ */
+export const O2_AMBIENT_MASS = 0.23;
+
+/**
+ * Lower oxygen limit, mass fraction. CFAST TN 1889v1 §3.2, the default
+ * Y_O2,l. Below it a flame in that layer does not burn. It is not a
+ * function of temperature.
+ */
+export const O2_LIMIT_MASS = 0.15;
+
+/**
+ * Heat released per kilogram of oxygen consumed, kJ/kg. Huggett, Fire and
+ * Materials 4 (1980), the value CFAST TN 1889v1 §3.2 footnote 1 uses for a
+ * typical hydrocarbon. 13.1 MJ/kg.
+ */
+export const DELTA_H_O2_KJ_PER_KG = 13100;
+
+/**
+ * Ventilation-limited heat release, kW per m²√m. Kawagoe's 0.5 A√H kg/s of
+ * air, times the ambient oxygen mass fraction, times Huggett's heat, is
+ * 0.5 × 0.23 × 13100 = 1506.5. The rounded correlation used with that
+ * derivation is 1500 A√H. NUREG-1805 writes the same cap. It is not fitted.
+ */
+export const KAWAGOE_KW = 1500;
+
+/** CFAST TN 1889v1 §2.2 takes the mixture as air, 29 g/mol. */
+export const AIR_MOLAR_MASS_G = 29;
+export const O2_MOLAR_MASS_G = 32;
+
+export function oxygenMassFraction(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return O2_AMBIENT_MASS;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+/**
+ * CFAST Eq. 3.14. The burning fraction falls from 1 to 0 across a few
+ * thousandths of mass fraction at the lower oxygen limit. The 800 and the
+ * 4 are the published smoothing, not a fit to a scene.
+ */
+export function lowerOxygenCoefficient(yO2: number): number {
+  if (!(yO2 > 0)) return 0;
+  const x = 800 * (yO2 - O2_LIMIT_MASS) - 4;
+  return (Math.tanh(x) + 1) / 2;
+}
+
+/** kW the oxygen in this entrainment stream can support, after the cutoff. */
+export function oxygenCapacityKw(entrainmentKgS: number, yO2: number): number {
+  if (!(entrainmentKgS > 0) || !(yO2 > 0)) return 0;
+  return entrainmentKgS * yO2 * lowerOxygenCoefficient(yO2) * DELTA_H_O2_KJ_PER_KG;
+}
+
+/** kW the same stream could support if the cutoff were not applied. The equivalence ratio uses this. */
+export function oxygenSupplyKw(entrainmentKgS: number, yO2: number): number {
+  if (!(entrainmentKgS > 0) || !(yO2 > 0)) return 0;
+  return entrainmentKgS * yO2 * DELTA_H_O2_KJ_PER_KG;
+}
+
+/**
+ * Global equivalence ratio. CFAST TN 1889v3: fuel mass flux over oxygen
+ * mass flux, divided by the stoichiometric ratio. Stoichiometry here is
+ * Huggett's heat, so φ = Q_prescribed / (ṁ_O2 ΔH_O2).
+ */
+export function equivalenceRatio(prescribedKw: number, supplyKw: number): number {
+  if (!(prescribedKw > 0)) return 0;
+  if (!(supplyKw > 0)) return Number.POSITIVE_INFINITY;
+  return prescribedKw / supplyKw;
+}
+
+/** 1500 A√H, kW. A is the vent area, m², and H is the vent height, m. */
+export function ventilationLimitedKw(areaM2: number, heightM: number): number {
+  if (!(areaM2 > 0) || !(heightM > 0)) return 0;
+  return KAWAGOE_KW * areaM2 * Math.sqrt(heightM);
+}
+
+export interface LayerBurn {
+  prescribedKw: number;
+  burnedKw: number;
+  /**
+   * Prescribed release over the fresh-air oxygen supply, before the cutoff.
+   * Fresh air is the lower-layer stream. Recirculated upper-layer gas is
+   * not in it.
+   */
+  phi: number;
+  /** Burned over prescribed. 1 when the plume can still feed the fire. */
+  fraction: number;
+  /** Lower-layer air the plumes were allowed to entrain, kg/s. */
+  lowerAirKgS: number;
+  oxygenLowerKgS: number;
+  oxygenUpperKgS: number;
+}
+
+interface PlumeAir {
+  heatKw: number;
+  eLower: number;
+  eUpper: number;
+}
+
+/**
+ * CFAST Eq. 3.13 for every plume in the room. Entrainment up to the flame
+ * tip, from the lower layer below the interface and from the upper layer
+ * above it. The plumes share one lower-layer air supply: `lowerAirCapKgS`
+ * is the door inflow, the fan makeup, and the air the interface can still
+ * give up. A sum of stud plumes cannot burn more than that. The prescribed
+ * release is the pyrolysis the fire is asking for. What burns is the lesser
+ * of that and the oxygen. Unburned fuel is not carried on; this model does
+ * not have that stream, so the heat release itself is the limited one.
+ * φ uses the fresh lower-layer air only. Upper-layer gas is recirculated.
+ */
+export function layerBurn(
+  fires: readonly FirePlume[],
+  interfaceM: number,
+  yLower: number,
+  yUpper: number,
+  chi = RADIATIVE_FRACTION,
+  lowerAirCapKgS = Number.POSITIVE_INFINITY,
+): LayerBurn {
+  const yL = yLower > 0 ? yLower : 0;
+  const yU = yUpper > 0 ? yUpper : 0;
+  const z = interfaceM > 0 ? interfaceM : 0;
+  const pieces: PlumeAir[] = [];
+  let prescribed = 0;
+  let wanted = 0;
+  for (const fire of fires) {
+    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+    prescribed += fire.heatKw;
+    const flame = heskestadFlameHeightM(fire.heatKw, fire.diameterM);
+    const lowerH = Math.min(flame, z);
+    const eLower = heskestadEntrainmentKgS(fire.heatKw, lowerH, fire.diameterM, chi);
+    const eFlame = heskestadEntrainmentKgS(fire.heatKw, flame, fire.diameterM, chi);
+    const eUpper = Math.max(0, eFlame - eLower);
+    pieces.push({ heatKw: fire.heatKw, eLower, eUpper });
+    wanted += eLower;
+  }
+  const cap = Number.isFinite(lowerAirCapKgS) ? Math.max(0, lowerAirCapKgS) : wanted;
+  const scale = wanted > cap ? cap / wanted : 1;
+  const lowerAir = wanted * scale;
+  let fromLowerKw = 0;
+  let fromUpperKw = 0;
+  for (const piece of pieces) {
+    const capL = oxygenCapacityKw(piece.eLower * scale, yL);
+    const capU = oxygenCapacityKw(piece.eUpper, yU);
+    const burned = Math.min(piece.heatKw, capL + capU);
+    const lowerKw = Math.min(burned, capL);
+    fromLowerKw += lowerKw;
+    fromUpperKw += burned - lowerKw;
+  }
+  const burnedKw = fromLowerKw + fromUpperKw;
+  return {
+    prescribedKw: prescribed,
+    burnedKw,
+    phi: equivalenceRatio(prescribed, oxygenSupplyKw(lowerAir, yL)),
+    fraction: prescribed > 0 ? burnedKw / prescribed : 1,
+    lowerAirKgS: lowerAir,
+    oxygenLowerKgS: DELTA_H_O2_KJ_PER_KG > 0 ? fromLowerKw / DELTA_H_O2_KJ_PER_KG : 0,
+    oxygenUpperKgS: DELTA_H_O2_KJ_PER_KG > 0 ? fromUpperKw / DELTA_H_O2_KJ_PER_KG : 0,
+  };
+}
+
+/** The interface cannot fall through this. The same clamp the stepper uses. */
+const INTERFACE_FLOOR_M = 0.05;
+
+export interface LimitedBurn {
+  burn: LayerBurn;
+  plumeKgS: number;
+  inKgS: number;
+  outKgS: number;
+  outByVentKgS: number[];
+  fanUpperKgS: number;
+  fanLowerKgS: number;
+}
+
+/**
+ * The oxygen limit tied to the vents. Lower-layer air available this step
+ * is the door inflow and fan makeup, plus the air the interface can still
+ * descend through. At the floor only the inflow remains. The plume the
+ * mass balance moves cannot exceed that air, and the burn cannot use more
+ * lower-layer air than that plume moves.
+ */
+export function oxygenLimitedBurn(
+  spec: LayerSpec,
+  interfaceM: number,
+  upperK: number,
+  yLower: number,
+  yUpper: number,
+  dt: number,
+): LimitedBurn {
+  const chi = chiOf(spec);
+  const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
+  const slice = dt > 0 ? dt : SUBSTEP_S;
+  const rho = densityKgM3(AMBIENT_K);
+  const descendKgS = (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
+  let airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
+  let qConv = 0;
+  for (const fire of spec.fires) if (fire.heatKw > 0) qConv += (1 - chi) * fire.heatKw;
+  const riseNow = Math.max(upperK - AMBIENT_K, 1);
+  let burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  let plume = 0;
+  for (let n = 0; n < 4; n++) {
+    const fraction = burn.prescribedKw > 0 ? burn.fraction : 1;
+    const qGas = qConv * fraction;
+    plume = plumeKgS(spec, interfaceM);
+    if (plume > airCap) plume = airCap;
+    const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
+    if (!(qGas > 0)) plume = 0;
+    else if (plume > enthalpyCap) plume = enthalpyCap;
+    if (!(burn.lowerAirKgS > plume + 1e-4)) break;
+    airCap = plume;
+    burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  }
+  return {
+    burn,
+    plumeKgS: plume,
+    inKgS: flows.inKgS,
+    outKgS: flows.outKgS,
+    outByVentKgS: flows.outByVent,
+    fanUpperKgS: flows.fanUpperKgS,
+    fanLowerKgS: flows.fanLowerKgS,
+  };
+}
+
 export interface MechanicalVent {
   /** Nominal extract while the fan is on, m³/s. Positive leaves the room. */
   flowM3PerS: number;
@@ -373,6 +599,10 @@ export interface ZoneState {
   sootG: number;
   /** Seconds the fire has been burning, for the lining loss. */
   ageS: number;
+  /** Oxygen mass fraction in the lower layer. Absent on an old state means ambient. */
+  lowerO2?: number;
+  /** Oxygen mass fraction in the upper layer. Absent on an old state means ambient. */
+  upperO2?: number;
 }
 
 export interface SteadyLayer {
@@ -429,6 +659,8 @@ export function freshLayer(ceilingM: number): ZoneState {
     upperK: AMBIENT_K + 1,
     sootG: 0,
     ageS: HK_FLOOR_S,
+    lowerO2: O2_AMBIENT_MASS,
+    upperO2: O2_AMBIENT_MASS,
   };
 }
 
@@ -454,6 +686,15 @@ function chiOf(spec: LayerSpec): number {
 }
 
 /**
+ * Heskestad mean flame height, metres. CFAST Eq. 3.17 written as
+ * L = 0.235 Q^0.4 − 1.02 D, the form already used for entrainment.
+ */
+export function heskestadFlameHeightM(qKw: number, diameterM: number): number {
+  if (!(qKw > 0) || !(diameterM > 0)) return 0;
+  return Math.max(0.05, 0.235 * Math.pow(qKw, 0.4) - 1.02 * diameterM);
+}
+
+/**
  * Heskestad entrainment at `heightM` above the fuel, kg/s.
  * Below the flame tip the seed scales the tip value by z / L.
  */
@@ -466,7 +707,7 @@ export function heskestadEntrainmentKgS(
   if (!(qKw > 0) || !(heightM > 0) || !(diameterM > 0)) return 0;
   const qPow = Math.pow(qKw, 0.4);
   const z0 = 0.083 * qPow - 1.02 * diameterM;
-  const flame = Math.max(0.05, 0.235 * qPow - 1.02 * diameterM);
+  const flame = heskestadFlameHeightM(qKw, diameterM);
   const qc = Math.max(0, (1 - chi) * qKw);
   const at = (z: number) => {
     const dz = Math.max(z - z0, 0.05);
@@ -795,7 +1036,15 @@ export function stepZone(
   spec: LayerSpec,
   dt: number,
   sootGPerS = 0,
-): { state: ZoneState; ventedSootG: number; outByVentKgS: number[] } {
+): {
+  state: ZoneState;
+  ventedSootG: number;
+  outByVentKgS: number[];
+  /** Share of the prescribed release the oxygen burned on the last substep. */
+  burnedFraction: number;
+  /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
+  phi: number;
+} {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS));
 }
 
@@ -804,30 +1053,43 @@ function stepZoneNow(
   spec: LayerSpec,
   dt: number,
   sootGPerS = 0,
-): { state: ZoneState; ventedSootG: number; outByVentKgS: number[] } {
+) {
   let z = state.interfaceM;
   let temp = state.upperK;
   let soot = state.sootG;
   let age = state.ageS;
+  let yL = oxygenMassFraction(state.lowerO2);
+  let yU = oxygenMassFraction(state.upperO2);
   let vented = 0;
   let outByVent = spec.vents.map(() => 0);
+  let burnedFraction = 1;
+  let phi = 0;
   let left = Math.max(0, dt);
   const split = fireSplit(spec);
   const q = split.convectedKw;
+  const radiantBase = fireRadiantKwM2;
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
     if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
+    const limited = oxygenLimitedBurn(spec, z, temp, yL, yU, slice);
+    const burn = limited.burn;
+    burnedFraction = burn.prescribedKw > 0 ? burn.fraction : 1;
+    phi = burn.phi;
+    const qGas = q * burnedFraction;
+    fireRadiantKwM2 = radiantBase * burnedFraction;
     const depth = Math.max(0.02, spec.ceilingM - z);
     const mass = densityKgM3(temp) * spec.areaM2 * depth;
-    let plume = plumeKgS(spec, z);
-    const riseNow = Math.max(temp - AMBIENT_K, 1);
-    const cap = q > 0 ? q / (CP_KJ_KGK * riseNow) : 0;
-    if (cap > 0 && plume > cap) plume = cap;
-    const flows = balancedFlows(spec.vents, z, temp, spec.fans ?? []);
-    outByVent = flows.outByVent;
+    const plume = limited.plumeKgS;
+    const flows = {
+      inKgS: limited.inKgS,
+      outKgS: limited.outKgS,
+      fanLowerKgS: limited.fanLowerKgS,
+      fanUpperKgS: limited.fanUpperKgS,
+    };
+    outByVent = limited.outByVentKgS;
     const qLoss = lossPowerKw(spec.boundaries, age, temp);
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
-    let dT = (q - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
+    let dT = (qGas - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
@@ -837,6 +1099,20 @@ function stepZoneNow(
     let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
+    const mL = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
+    const slicePlume = plume * slice;
+    const sliceIn = flows.inKgS * slice;
+    const sliceFanL = flows.fanLowerKgS * slice;
+    const sliceOut = flows.outKgS * slice;
+    const sliceFanU = flows.fanUpperKgS * slice;
+    const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
+    const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
+    const o2L = yL * mL - (slicePlume + sliceFanL) * yL + sliceIn * O2_AMBIENT_MASS;
+    const o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
+    const mL2 = mL - slicePlume - sliceFanL + sliceIn;
+    const mU2 = mass - sliceOut - sliceFanU + slicePlume;
+    yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
+    yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
     z = Math.min(spec.ceilingM - 0.02, Math.max(0.05, z + dZ * slice));
     const carried = mass > 1e-6 ? (soot / mass) * flows.outKgS * slice : 0;
@@ -847,9 +1123,11 @@ function stepZoneNow(
     left -= slice;
   }
   return {
-    state: { interfaceM: z, upperK: temp, sootG: soot, ageS: age },
+    state: { interfaceM: z, upperK: temp, sootG: soot, ageS: age, lowerO2: yL, upperO2: yU },
     ventedSootG: vented,
     outByVentKgS: outByVent,
+    burnedFraction,
+    phi,
   };
 }
 

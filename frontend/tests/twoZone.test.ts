@@ -28,6 +28,15 @@ import {
   freshLayer,
   fanVolumeM3PerS,
   heskestadEntrainmentKgS,
+  DELTA_H_O2_KJ_PER_KG,
+  KAWAGOE_KW,
+  O2_AMBIENT_MASS,
+  O2_LIMIT_MASS,
+  equivalenceRatio,
+  layerBurn,
+  lowerOxygenCoefficient,
+  oxygenCapacityKw,
+  ventilationLimitedKw,
   mechanicalExtract,
   mqhFlashoverKw,
   mqhRiseK,
@@ -686,4 +695,79 @@ test('the smoke step layers a closed room and leaves an open side alone', () => 
   assert.equal(layered, true);
   assert.ok(atExit > 0.05, `exit stud K ${atExit}`);
   assert.ok(atWall * 5 < atExit, `wall stud K ${atWall} took a share of the exit's soot`);
+});
+
+test('oxygen limits the fire at the CFAST cutoff, and 1500 A√H is that cap', () => {
+  // CFAST Eq. 3.14. Full burn well above the limit, half on the step, off at the limit.
+  assert.ok(lowerOxygenCoefficient(O2_AMBIENT_MASS) > 0.99);
+  assert.ok(Math.abs(lowerOxygenCoefficient(O2_LIMIT_MASS + 0.005) - 0.5) < 1e-6);
+  assert.ok(lowerOxygenCoefficient(O2_LIMIT_MASS) < 0.01);
+  assert.equal(lowerOxygenCoefficient(0), 0);
+  assert.equal(O2_LIMIT_MASS, 0.15);
+  assert.equal(DELTA_H_O2_KJ_PER_KG, 13100);
+
+  // 0.5 A√H kg/s of air, times 0.23, times 13.1 MJ/kg, against the rounded 1500.
+  const derived = 0.5 * O2_AMBIENT_MASS * DELTA_H_O2_KJ_PER_KG;
+  assert.ok(Math.abs(derived - KAWAGOE_KW) / KAWAGOE_KW < 0.05, `derived ${derived}`);
+  assert.equal(ventilationLimitedKw(0.9, 2), 1500 * 0.9 * Math.sqrt(2));
+  const door = oxygenCapacityKw(0.5 * Math.sqrt(2), O2_AMBIENT_MASS);
+  assert.ok(Math.abs(door - derived * Math.sqrt(2)) / (KAWAGOE_KW * Math.sqrt(2)) < 0.05);
+
+  // A small prescribed fire in fresh air is not cut. φ is the prescribed release over the oxygen supply.
+  const easy = layerBurn([{ heatKw: 62.9, diameterM: 0.3 }], 1.2, O2_AMBIENT_MASS, O2_AMBIENT_MASS);
+  assert.ok(easy.fraction > 0.99, `steckler fraction ${easy.fraction}`);
+  assert.ok(easy.phi < 0.75, `steckler φ ${easy.phi}`);
+  assert.ok(Math.abs(equivalenceRatio(100, 200) - 0.5) < 1e-12);
+  assert.equal(equivalenceRatio(100, 0), Number.POSITIVE_INFINITY);
+
+  // No vent. The upper layer loses oxygen and the fire falls below the prescribed release.
+  const sealed = concreteRoom(2000, diameterForReleaseKw(2000));
+  sealed.vents = [];
+  let state = freshLayer(sealed.ceilingM);
+  let limited = 1;
+  let phiSealed = 0;
+  for (let t = 0; t < 120; t++) {
+    const step = stepZone(state, sealed, 1);
+    state = step.state;
+    limited = step.burnedFraction;
+    phiSealed = step.phi;
+  }
+  assert.ok((state.upperO2 ?? 1) < O2_AMBIENT_MASS, `upper oxygen ${state.upperO2}`);
+  assert.ok(limited < 0.5, `sealed fraction ${limited}, oxygen ${state.upperO2}`);
+  assert.ok(phiSealed > 1, `sealed φ ${phiSealed}`);
+  // An emptied lower layer stays empty. It does not refill with ambient air.
+  state.lowerO2 = 0.05;
+  state.interfaceM = 0.05;
+  const held = stepZone(state, sealed, 1);
+  assert.ok((held.state.lowerO2 ?? 1) <= 0.05, `lower oxygen refilled to ${held.state.lowerO2}`);
+});
+
+test('a single door holds a large fire near 1500 A√H', () => {
+  const width = 0.9;
+  const height = 2;
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  // Ten studs, one door. The sum of the plumes wants more air than the door admits.
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  const burned: number[] = [];
+  const phi: number[] = [];
+  for (let t = 0; t < 600; t++) {
+    const step = stepZone(state, spec, 1);
+    state = step.state;
+    burned.push(step.burnedFraction * prescribed);
+    phi.push(step.phi);
+  }
+  const tail = burned.slice(480);
+  const mean = tail.reduce((sum, value) => sum + value, 0) / tail.length;
+  const meanPhi = phi.slice(480).reduce((sum, value) => sum + value, 0) / tail.length;
+  const cap = ventilationLimitedKw(width * height, height);
+  // The room, not the algebra. The formula itself is within 5%. This is the
+  // doorway the stepper actually runs, averaged over the last two minutes.
+  assert.ok(Math.abs(mean - cap) / cap < 0.15, `mean ${mean.toFixed(0)} kW vs ${cap.toFixed(0)}`);
+  assert.ok(meanPhi > 1, `φ ${meanPhi}`);
+  assert.ok(mean / prescribed < 0.5, `fraction ${mean / prescribed}`);
 });

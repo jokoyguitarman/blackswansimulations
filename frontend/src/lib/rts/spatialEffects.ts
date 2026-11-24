@@ -29,6 +29,8 @@ import {
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
+  oxygenLimitedBurn,
+  oxygenMassFraction,
   steadyLayer,
   stepZone,
   type Enclosure,
@@ -44,7 +46,7 @@ import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { LEVEL } from '../evacuation/levelConstants';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
-import { addFumeGrams, fumesFromSmoke, SOOT_EXTINCTION_M2_PER_G, type FumeGrams } from './toxicDose';
+import { addFumeGrams, fumesFromSmoke, layerBreath, SOOT_EXTINCTION_M2_PER_G, type FumeGrams } from './toxicDose';
 import { extinctionK, smokeFromK } from '../evacuation/hazardSensing';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -88,6 +90,10 @@ export interface StudEffectState {
    * It follows what is burning now, scaled by the smoke already stored here.
    */
   fumes?: FumeGrams;
+  /** Oxygen the head breathes, volume percent. Absent is ambient. */
+  oxygenVolumePercent?: number;
+  /** Carbon dioxide the head breathes, volume percent. Absent is none. */
+  co2VolumePercent?: number;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -994,6 +1000,7 @@ export class SpatialEffectsEngine {
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
+    this.fireSim.clearBurnLimits();
     const rooms = this.fireSim.compartmentIds(walls);
     const groups = new Map<string, string[]>();
     for (const [id, room] of rooms) {
@@ -1060,7 +1067,19 @@ export class SpatialEffectsEngine {
       }
       const spec: LayerSpec = { ...enc.spec, fires, fans };
       const zone = prev?.zone ?? freshLayer(ceiling);
-      const steady = steadyLayer(spec, zone.ageS);
+      const opening = oxygenLimitedBurn(
+        spec,
+        zone.interfaceM,
+        zone.upperK,
+        oxygenMassFraction(zone.lowerO2),
+        oxygenMassFraction(zone.upperO2),
+        dt,
+      ).burn;
+      const limitedFires =
+        opening.prescribedKw > 0 && opening.fraction < 0.999
+          ? fires.map((fire) => ({ ...fire, heatKw: fire.heatKw * opening.fraction }))
+          : fires;
+      const steady = steadyLayer({ ...spec, fires: limitedFires }, zone.ageS);
       const rise = steady ? steady.upperK - AMBIENT_K : 0;
       const depth = steady?.depthM ?? 0;
       const jet = CEILING_JET_DEPTH_FRACTION * ceiling;
@@ -1078,6 +1097,7 @@ export class SpatialEffectsEngine {
           areaM2: spec.areaM2,
           ceilingM: ceiling,
         });
+        if (opening.prescribedKw > 0) this.fireSim.setBurnLimit(members, opening.fraction, opening.phi);
         continue;
       }
       if (prev?.active !== true) {
@@ -1096,6 +1116,7 @@ export class SpatialEffectsEngine {
         ceilingM: ceiling,
       });
       for (const id of members) owned.add(id);
+      this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
       if (stepped.ventedSootG > 0) {
         const shares = stepped.outByVentKgS;
         let totalOut = 0;
@@ -1126,6 +1147,10 @@ export class SpatialEffectsEngine {
 
   /** Write the layer onto heads that have reached it, and hand vented soot to the next stud. */
   private commitLayers(owned: ReadonlySet<string>, kMax: number): void {
+    for (const state of this.studStates.values()) {
+      state.oxygenVolumePercent = undefined;
+      state.co2VolumePercent = undefined;
+    }
     const incoming = new Map<string, number>();
     for (const grant of this.layerGrants) {
       if (grant.receivers.length === 0) continue;
@@ -1152,9 +1177,16 @@ export class SpatialEffectsEngine {
       let k = (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / upper;
       if (k > kMax) k = kMax;
       const atHead = live.zone.interfaceM <= HEAD_HEIGHT_M;
+      const breath = layerBreath(
+        oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
+      );
       for (const id of live.members) {
         if (!owned.has(id)) continue;
         this.sootK.set(id, atHead ? k : 0);
+        const state = this.studStates.get(id);
+        if (!state) continue;
+        state.oxygenVolumePercent = breath.oxygenVolumePercent;
+        state.co2VolumePercent = breath.co2VolumePercent;
       }
     }
   }

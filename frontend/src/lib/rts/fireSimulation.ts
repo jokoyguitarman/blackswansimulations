@@ -320,6 +320,12 @@ export class FireSimulation {
    * does not clear, so a barrier timer keeps running after the heat drops.
    */
   private flashedStuds = new Set<string>();
+  /**
+   * Oxygen limit from the last layer step. `fraction` scales the heat that
+   * spreads and the gas that is made. `phi` is the equivalence ratio the
+   * yields read. A stud with no entry is burning in free air.
+   */
+  private burnLimit = new Map<string, { fraction: number; phi: number }>();
   /** Survives setGasLines, so a shut valve stays shut when the page refreshes the list. */
   private gasRuntime = new Map<string, GasRuntime>();
   /** Survives setElectricalSources, so a shut supply stays shut. */
@@ -349,6 +355,7 @@ export class FireSimulation {
     this.rooms.clear();
     this.compartmentKey = '';
     this.flashedStuds.clear();
+    this.burnLimit.clear();
     this.gasRuntime.clear();
     this.arcRuntime.clear();
     this.suppressionRuntime.clear();
@@ -601,6 +608,48 @@ export class FireSimulation {
     return this.flashedStuds.has(id);
   }
 
+  /** Drop every room's oxygen limit. The layer step puts the current ones back. */
+  clearBurnLimits(): void {
+    this.burnLimit.clear();
+  }
+
+  /**
+   * One room's oxygen limit, on every stud in it. The fraction is the share
+   * of the prescribed release that the oxygen can burn. φ is the equivalence
+   * ratio before the lower-oxygen cutoff.
+   */
+  setBurnLimit(ids: readonly string[], fraction: number, phi: number): void {
+    const kept = fraction > 0 ? Math.min(1, fraction) : 0;
+    const ratio = phi > 0 && Number.isFinite(phi) ? phi : phi === Number.POSITIVE_INFINITY ? Number.POSITIVE_INFINITY : 0;
+    for (const id of ids) this.burnLimit.set(id, { fraction: kept, phi: ratio });
+  }
+
+  /** 1 when this stud is not in a limited room. */
+  burnFraction(id: string): number {
+    return this.burnLimit.get(id)?.fraction ?? 1;
+  }
+
+  /** 0 when this stud has no equivalence ratio. Well-ventilated yields. */
+  burnPhi(id: string): number {
+    return this.burnLimit.get(id)?.phi ?? 0;
+  }
+
+  /** The oxygen limit on the stud nearest this point, for a jet or an arc. */
+  private burnFractionNear(x: number, y: number, level: string): number {
+    let best = 1;
+    let bestD = 2;
+    let found = false;
+    for (const [id, stud] of this.studIndex) {
+      if (levelOf(stud) !== level) continue;
+      const d = Math.hypot(stud.simPos.x - x, stud.simPos.y - y);
+      if (d > bestD) continue;
+      bestD = d;
+      best = this.burnFraction(id);
+      found = true;
+    }
+    return found ? best : 1;
+  }
+
   /**
    * Soot grams per second from each burning cell, yield times mass loss.
    * The release is the decayed one. A cell with no soot yield, a jet, and
@@ -618,8 +667,10 @@ export class FireSimulation {
   /**
    * Grams per second each burning cell is putting into the smoke, and the
    * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
-   * The release is the decayed one. The gas yield is the well-ventilated
-   * set until this stud has flashed.
+   * The release is the prescribed pyrolysis, the fuel the timer is
+   * consuming. The yield follows the stud's equivalence ratio. The oxygen
+   * limit cuts the heat, not this mass. No layer means the well-ventilated
+   * set. The flashover latch does not choose it.
    */
   fumeSources(): Array<{
     id: string;
@@ -637,8 +688,7 @@ export class FireSimulation {
     }> = [];
     for (const fire of this.liveFires()) {
       const release = this.releaseKw(fire.cell, fire.meta);
-      const flashed = this.flashedStuds.has(fire.id);
-      const gramsPerS = speciesProductionGPerS(fire.cell, release, flashed);
+      const gramsPerS = speciesProductionGPerS(fire.cell, release, this.burnPhi(fire.id));
       const sootGPerS = sootProductionGPerS(fire.cell, release);
       if (!fumesPresent(gramsPerS) || !(sootGPerS > 0)) continue;
       sources.push({
@@ -794,7 +844,7 @@ export class FireSimulation {
       const fState = this.states.get(id);
       if (!fState || fState.state !== 'burning') continue;
       meta.age += dt;
-      const heatKw = this.releaseKw(cell, meta);
+      const heatKw = this.releaseKw(cell, meta) * this.burnFraction(id);
       const bare = heatReleaseKw(cell, meta.age);
       fState.output = bare > 0 ? Math.min(1, heatKw / bare) : 1;
       const room = this.compartmentOf.get(id);
@@ -866,7 +916,8 @@ export class FireSimulation {
         line.age += dt;
       }
       if (!(seconds > 0)) continue;
-      this.addSourceFlux(line.pos, line.level, GAS_JET_KW, walls, seconds, dt, slotFor);
+      const jetKw = GAS_JET_KW * this.burnFractionNear(line.pos.x, line.pos.y, line.level);
+      this.addSourceFlux(line.pos, line.level, jetKw, walls, seconds, dt, slotFor);
     }
     const arcKw = electricalHeatReleaseKw();
     for (const arc of this.arcRuntime.values()) {
@@ -876,7 +927,8 @@ export class FireSimulation {
       arc.age += seconds;
       if (arc.age + 1e-9 >= ELECTRICAL_ARC_SEC) arc.arcing = false;
       if (!(seconds > 0)) continue;
-      this.addSourceFlux(arc.pos, arc.level, arcKw, walls, seconds, dt, slotFor);
+      const limitedArc = arcKw * this.burnFractionNear(arc.pos.x, arc.pos.y, arc.level);
+      this.addSourceFlux(arc.pos, arc.level, limitedArc, walls, seconds, dt, slotFor);
     }
 
     for (const [id, fState] of this.states) {
