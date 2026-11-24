@@ -41,6 +41,7 @@ import {
 import { env } from '../env.js';
 import { lookupOsmBuilding, parseOsmObjectId } from '../services/osmBuildingLookup.js';
 import { readLiveOsmBuilding, readSavedOsmBuilding } from '../services/osmBuildingLookupLive.js';
+import { researchHawkerCentre } from '../services/hawkerInteriorResearch.js';
 
 const router = Router();
 
@@ -705,6 +706,24 @@ router.get('/osm-building', async (req, res) => {
   } catch (err) {
     logger.error({ err, osmId }, 'OSM building lookup failed');
     return res.status(502).json({ error: 'Could not read the building footprint' });
+  }
+});
+
+/**
+ * GET /api/debug/building-interior?name=Holland Village Market and Food Centre
+ * Fetches public pages and returns the facts they agree on. Does not write.
+ */
+router.get('/building-interior', async (req, res) => {
+  const name = String(req.query.name ?? '').trim();
+  if (name.length < 3) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  try {
+    const research = await researchHawkerCentre(name);
+    return res.json(research);
+  } catch (err) {
+    logger.error({ err, name }, 'Building interior research failed');
+    return res.status(502).json({ error: 'Could not research the building interior' });
   }
 });
 
