@@ -188,8 +188,8 @@ describe('fumes follow the confirmed material', () => {
     assert.deepEqual(wood.toxicYieldWellVentGPerG, { CO: 0.004 });
     assert.deepEqual(wood.toxicYieldGPerG, { CO: 0.2 });
     assert.equal(foam.sootYieldGPerG, 0.188);
-    assert.deepEqual(foam.toxicYieldWellVentGPerG, { CO: 0.028, HCN: 0.01 });
-    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.2, HCN: 0.01 });
+    assert.deepEqual(foam.toxicYieldWellVentGPerG, { CO: 0.028, HCN: 0.004 });
+    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.28, HCN: 0.009 });
     assert.equal(pvc.sootYieldGPerG, 0.172);
     assert.deepEqual(pvc.toxicYieldWellVentGPerG, { HCl: 0.2, CO: 0.063 });
     assert.deepEqual(pvc.toxicYieldGPerG, { HCl: 0.2, CO: 0.2 });

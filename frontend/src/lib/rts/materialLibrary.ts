@@ -199,6 +199,11 @@ const REF = {
   underVentCo: `Gottuk and Lattimer, SFPE Handbook 3rd ed. Sec. 2 Ch. 5, "Effect of Combustion Conditions on Species Production": CO yield levels off near 0.2 g/g once the equivalence ratio is well past 1 (about 0.1 to 0.25 by fuel). Holds until yields follow the equivalence ratio. The C/VM2 2.3.3.4 design value, 0.40 (seed \`cvm2_post_flashover_co_yield\`), is the conservative alternative and is not used. ${NOT_SEEDED}`,
   underVentSoot:
     'C/VM2 2.3.3.4 design value, 0.14 (seed `cvm2_post_flashover_soot_yield`). No measured under-ventilated soot row was read, so it is a placeholder. The flame front does not read it.',
+  purserPostFlashoverCo: `Purser, Polymers 8 (2016) 330, Table 6: ISO/TS 19700 tube furnace at 850 °C, Φ 1.5 to 2, the post-flashover yields Purser also gives in the SFPE Handbook 5th ed. combustion toxicity chapter. ${NOT_SEEDED}`,
+  blomqvistFoam: `Blomqvist et al., Fire and Materials 31 (2007) 495, tube furnace, hospital-mattress flexible foam, as reviewed by McKenna and Hull, Fire Science Reviews 5 (2016) 3. ${NOT_SEEDED}`,
+  stecNylon: `Stec, Hull, Purser and Purser, Fire Safety Journal 44 (2009) 62, ISO/TS 19700 tube furnace, as stated in Stec and Hull, Energy and Buildings 43 (2011) 498. ${NOT_SEEDED}`,
+  stecGenericCo: `Stec, FIRESEAT 2010, typical CO yield: fuel lean 0.01, fuel rich 0.2. ${NOT_SEEDED}`,
+  woolHcn: `Purser and Purser, Fire Safety Science 9 (2008) 1117, ISO 19700 tube furnace, Eq. 3 and Table 3, with untreated wool fabric at 13.25 % nitrogen (US Bureau of Mines RI 9367, 1991, Table 1). No wool-only tube-furnace row was found. ${NOT_SEEDED}`,
   pool: 'NUREG-1805 Ch. 3 Table 3-2, transformer oil 0.039 kg/m²s, 46,400 kJ/kg, kβ 0.7. Seed `pool_fire_hrr`.',
 } as const;
 
@@ -211,6 +216,9 @@ const WOOD_HEAT_MJ_KG = WOOD_HEAT_KJ_KG / 1000;
 
 /** EN 1991-1-2 Table E.4, shopping centre, mean, MJ/m². The 80 % fractile is 730. */
 const SHOPPING_CENTRE_FIRE_LOAD_MJ_M2 = 600;
+
+/** Untreated wool fabric, mass fraction of nitrogen (US Bureau of Mines RI 9367). */
+const WOOL_NITROGEN = 0.1325;
 
 const LIGHT_FUEL_LOAD_KG_M2 = 10;
 const OIL_FUEL_LOAD_KG_M2 = 30;
@@ -265,38 +273,195 @@ const COOKING_OIL = {
 
 const HEAVY_IGNITION = assumed('CHF 10 kW/m², TRP 80. No row for mixed goods or hot oil.');
 
+/** One measured row a mixed-goods entry is averaged from. */
+interface Measured {
+  value: number;
+  note: SourceNote;
+}
+
+interface MixComponent {
+  label: string;
+  heat: Measured;
+  effectiveHeat: Measured | null;
+  soot: Measured;
+  wellVentCo: Measured;
+  underVentCo: Measured;
+  wellVentHcn: Measured;
+  underVentHcn: Measured;
+}
+
+const NO_FUEL_NITROGEN: Measured = {
+  value: 0,
+  note: derived('No fuel nitrogen, so no HCN.'),
+};
+
+const RED_OAK: MixComponent = {
+  label: 'red oak',
+  heat: { value: 17.5, note: cited(REF.enNetHeat) },
+  effectiveHeat: { value: 12.4, note: cited(REF.tewarson) },
+  soot: { value: 0.015, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.004, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: NO_FUEL_NITROGEN,
+  underVentHcn: NO_FUEL_NITROGEN,
+};
+
+const POLYPROPYLENE: MixComponent = {
+  label: 'polypropylene',
+  heat: { value: 40, note: cited(REF.enNetHeat) },
+  effectiveHeat: { value: 38.6, note: cited(REF.tewarson) },
+  soot: { value: 0.059, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.024, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: NO_FUEL_NITROGEN,
+  underVentHcn: NO_FUEL_NITROGEN,
+};
+
+const FLEXIBLE_PU_FOAM: MixComponent = {
+  label: 'flexible polyurethane foam',
+  heat: { value: 25, note: cited(REF.enNetHeat) },
+  effectiveHeat: null,
+  soot: { value: 0.188, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.028, note: cited(`GM21 to GM27 mean. ${REF.tewarson}`) },
+  underVentCo: { value: 0.28, note: cited(`FPU. ${REF.purserPostFlashoverCo}`) },
+  wellVentHcn: { value: 0.004, note: cited(`ISO 19706 type 2, Φ < 0.75. ${REF.blomqvistFoam}`) },
+  underVentHcn: { value: 0.009, note: cited(`ISO 19706 type 3b, Φ about 2. ${REF.blomqvistFoam}`) },
+};
+
+const NYLON: MixComponent = {
+  label: 'nylon',
+  heat: { value: 30, note: assumed('No polyamide row in Table E.3; the polyester row, 30 MJ/kg.') },
+  effectiveHeat: { value: 27.1, note: cited(REF.tewarson) },
+  soot: { value: 0.075, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.038, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.26, note: cited(`PA6. ${REF.purserPostFlashoverCo}`) },
+  wellVentHcn: {
+    value: 0.001,
+    note: cited(`Polyamide without fire retardant, about 0.001. ${REF.stecNylon}`),
+  },
+  underVentHcn: { value: 0.06, note: cited(`Polyamide, about 0.06. ${REF.stecNylon}`) },
+};
+
+/** HCN = 1.928 × fuel nitrogen × recovery (Purser and Purser Eq. 3). */
+const woolHcn = (recovery: number) => 1.928 * WOOL_NITROGEN * recovery;
+
+const WOOL: MixComponent = {
+  label: 'wool',
+  heat: { value: 20, note: cited(`Wool is in the cellulosic class, 20 MJ/kg. ${REF.enNetHeat}`) },
+  effectiveHeat: null,
+  soot: { value: 0.008, note: cited(REF.sootTable) },
+  wellVentCo: {
+    value: 0.01,
+    note: assumed(`Generic fuel-lean flaming, about 0.01. ${REF.stecGenericCo} No wool row.`),
+  },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: {
+    value: woolHcn(0.01),
+    note: derived(`Recovery 0.010 at low Φ (high-recovery group, k1). ${REF.woolHcn}`),
+  },
+  underVentHcn: {
+    value: woolHcn(0.15),
+    note: derived(`Recovery about 0.15 at Φ ≥ 2, the wool-acrylic bouclé fabric. ${REF.woolHcn}`),
+  },
+};
+
+interface MixPart {
+  component: MixComponent;
+  massFraction: number;
+}
+
 /**
- * Mixed goods: half cellulosic (red oak: card, textiles, wooden fittings and
- * stalls) and half polyolefin (polypropylene: packaging, crates) by mass.
- * Each column is the mass average of the two measured rows. The 50/50 split
- * is assumed. The polyethylene row (CO 0.024, soot 0.060) is within 0.001
- * of polypropylene, so the crate plastic does not change the result.
+ * Mass average of one column. Derived when every part is cited or derived,
+ * assumed when any part is assumed. Null when a part has no value.
  */
-const MIX = 0.5;
-const mixOf = (cellulosic: number, polyolefin: number) => MIX * cellulosic + (1 - MIX) * polyolefin;
-const MIXED_SPLIT = 'Mass average, 50 % red oak and 50 % polypropylene; the split is assumed.';
+function mixColumn(
+  parts: readonly MixPart[],
+  pick: (component: MixComponent) => Measured | null,
+  basis: string,
+): Measured | null {
+  let value = 0;
+  let anyAssumed = false;
+  const terms: string[] = [];
+  for (const { component, massFraction } of parts) {
+    const row = pick(component);
+    if (!row) return null;
+    value += massFraction * row.value;
+    if (row.note.status === 'assumed') anyAssumed = true;
+    terms.push(
+      `${component.label} ${Math.round(massFraction * 100)} %: ${row.value} (${row.note.ref})`,
+    );
+  }
+  const ref = `Mass average. ${terms.join('; ')}. ${basis}`;
+  return { value, note: anyAssumed ? assumed(ref) : derived(ref) };
+}
 
-const MIXED_CONTENTS = {
-  heatOfCombustionMjKg: mixOf(17.5, 40),
-  effectiveHeatOfCombustionMjKg: mixOf(12.4, 38.6),
-  sootYieldGPerG: mixOf(0.015, 0.059),
-  sootYieldUnderVentGPerG: 0.14,
-};
+function mixedGoods(parts: readonly MixPart[], basis: string, withHcn: boolean) {
+  const col = (pick: (component: MixComponent) => Measured | null) => mixColumn(parts, pick, basis);
+  const heat = col((c) => c.heat)!;
+  const effectiveHeat = col((c) => c.effectiveHeat);
+  const soot = col((c) => c.soot)!;
+  const wellVentCo = col((c) => c.wellVentCo)!;
+  const underVentCo = col((c) => c.underVentCo)!;
+  const wellVentHcn = col((c) => c.wellVentHcn)!;
+  const underVentHcn = col((c) => c.underVentHcn)!;
+  const sources: MaterialSources = {
+    heatOfCombustion: heat.note,
+    effectiveHeatOfCombustion:
+      effectiveHeat?.note ??
+      assumed(`No cited chemical heat for every part (foam, wool). Left empty. ${basis}`),
+    sootYield: soot.note,
+    sootYieldUnderVent: assumed(REF.underVentSoot),
+    'wellVent.CO': wellVentCo.note,
+    'underVent.CO': underVentCo.note,
+    ...(withHcn ? { 'wellVent.HCN': wellVentHcn.note, 'underVent.HCN': underVentHcn.note } : {}),
+  };
+  const fields = {
+    heatOfCombustionMjKg: heat.value,
+    effectiveHeatOfCombustionMjKg: effectiveHeat?.value ?? null,
+    sootYieldGPerG: soot.value,
+    sootYieldUnderVentGPerG: 0.14,
+    toxicYieldWellVentGPerG: withHcn
+      ? { CO: wellVentCo.value, HCN: wellVentHcn.value }
+      : { CO: wellVentCo.value },
+    toxicYieldGPerG: withHcn
+      ? { CO: underVentCo.value, HCN: underVentHcn.value }
+      : { CO: underVentCo.value },
+  };
+  return { fields, sources };
+}
 
-const MIXED_WELL_VENT_CO = mixOf(0.004, 0.024);
+/**
+ * Assumed composition of upholstered retail stock, by mass. Basis: an
+ * upholstered piece is mostly a timber or board frame and foam with a
+ * fabric cover, and the shelves around it add cardboard and polyolefin
+ * packaging. Covers are taken as nylon and wool. No measured shop inventory
+ * was read.
+ */
+export const SHOP_STOCK_MIX: readonly MixPart[] = [
+  { component: RED_OAK, massFraction: 0.4 },
+  { component: POLYPROPYLENE, massFraction: 0.25 },
+  { component: FLEXIBLE_PU_FOAM, massFraction: 0.2 },
+  { component: NYLON, massFraction: 0.1 },
+  { component: WOOL, massFraction: 0.05 },
+];
 
-const MIXED_CONTENTS_SOURCES: MaterialSources = {
-  heatOfCombustion: derived(
-    `Wood 17.5 and pure hydrocarbon plastics (PE, PS, PP) 40 MJ/kg. ${REF.enNetHeat} ${MIXED_SPLIT}`,
-  ),
-  effectiveHeatOfCombustion: derived(
-    `ΔHch red oak 12.4 and polypropylene 38.6 MJ/kg. ${REF.tewarson} ${MIXED_SPLIT}`,
-  ),
-  sootYield: derived(`Red oak 0.015 and polypropylene 0.059. ${REF.sootTable} ${MIXED_SPLIT}`),
-  sootYieldUnderVent: assumed(REF.underVentSoot),
-  'wellVent.CO': derived(`Red oak 0.004 and polypropylene 0.024. ${REF.tewarson} ${MIXED_SPLIT}`),
-  'underVent.CO': cited(REF.underVentCo),
-};
+/** Wooden stalls, card and crates. Produce, fish and ice are not fuel. Assumed. */
+export const WET_MARKET_MIX: readonly MixPart[] = [
+  { component: RED_OAK, massFraction: 0.5 },
+  { component: POLYPROPYLENE, massFraction: 0.5 },
+];
+
+const SHOP_STOCK = mixedGoods(
+  SHOP_STOCK_MIX,
+  'Composition assumed: 40 % cellulosic (frames, board, card), 25 % polyolefin packaging, 20 % flexible foam, 10 % nylon and 5 % wool covers, typical of upholstered retail stock.',
+  true,
+);
+
+const WET_MARKET = mixedGoods(
+  WET_MARKET_MIX,
+  'Composition assumed: 50 % cellulosic (stalls, card), 50 % polyolefin crates. The polyethylene row (CO 0.024, soot 0.060) is within 0.001 of polypropylene.',
+  false,
+);
 
 const INERT = {
   fuel: 'non_combustible' as const,
@@ -373,8 +538,14 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     effectiveHeatOfCombustionMjKg: null,
     sootYieldGPerG: 0.188,
     sootYieldUnderVentGPerG: 0.14,
-    toxicYieldWellVentGPerG: { CO: 0.028, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.2, HCN: 0.01 },
+    toxicYieldWellVentGPerG: {
+      CO: FLEXIBLE_PU_FOAM.wellVentCo.value,
+      HCN: FLEXIBLE_PU_FOAM.wellVentHcn.value,
+    },
+    toxicYieldGPerG: {
+      CO: FLEXIBLE_PU_FOAM.underVentCo.value,
+      HCN: FLEXIBLE_PU_FOAM.underVentHcn.value,
+    },
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
@@ -386,8 +557,9 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
       'wellVent.CO': cited(
         `Flexible polyurethane foams GM21 0.010, GM23 0.031, GM25 0.028, GM27 0.042; mean 0.028. ${REF.tewarson}`,
       ),
-      'wellVent.HCN': assumed('0.01. No HCN row was read.'),
-      'underVent.HCN': assumed('0.01, the same label. No under-ventilated HCN row was read.'),
+      'wellVent.HCN': FLEXIBLE_PU_FOAM.wellVentHcn.note,
+      'underVent.CO': FLEXIBLE_PU_FOAM.underVentCo.note,
+      'underVent.HCN': FLEXIBLE_PU_FOAM.underVentHcn.note,
       ignition: assumed('Red-oak CHF and TRP. Table 6-3 has no flexible-foam row.'),
     },
   },
@@ -428,14 +600,10 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['shop stock', 'merchandise', 'retail stock', 'shop fittings'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
-    ...MIXED_CONTENTS,
-    toxicYieldWellVentGPerG: { CO: MIXED_WELL_VENT_CO, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.2, HCN: 0.01 },
+    ...SHOP_STOCK.fields,
     ...HEAVY_SOLID,
     sources: {
-      ...MIXED_CONTENTS_SOURCES,
-      'wellVent.HCN': assumed('0.01. Neither measured row has nitrogen; no HCN row was read.'),
-      'underVent.HCN': assumed('0.01, the same label.'),
+      ...SHOP_STOCK.sources,
       ignition: HEAVY_IGNITION,
       growth: cited(
         `Shopping centre, fast growth (EN 1991-1-2 Table E.5); fast α 0.0469 kW/s². ${REF.alphaClasses}`,
@@ -455,13 +623,11 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['wet market', 'wet-market', 'market produce'],
     behaviour: 'none',
     toxicProducts: ['CO'],
-    ...MIXED_CONTENTS,
-    toxicYieldWellVentGPerG: { CO: MIXED_WELL_VENT_CO },
-    toxicYieldGPerG: { CO: 0.2 },
+    ...WET_MARKET.fields,
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
-      ...MIXED_CONTENTS_SOURCES,
+      ...WET_MARKET.sources,
       ignition: assumed(
         'Red-oak CHF and TRP. No row for market goods. Produce, fish and ice are not fuel.',
       ),

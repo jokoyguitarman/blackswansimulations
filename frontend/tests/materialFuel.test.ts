@@ -6,6 +6,7 @@ import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import {
   COMMON_PICKS,
   MATERIAL_LIBRARY,
+  SHOP_STOCK_MIX,
   WALL_MATERIALS,
   absorbLegacyFuelCircles,
   confirmedFuelStudIds,
@@ -203,17 +204,34 @@ describe('material library', () => {
   });
 
   test('runtime yields are measured rows, not the C/VM2 design values', () => {
-    for (const entry of MATERIAL_LIBRARY) {
-      if (entry.toxicYieldGPerG.CO != null) assert.equal(entry.toxicYieldGPerG.CO, 0.2, entry.id);
+    const near = (actual: number | undefined, expected: number, label: string) =>
+      assert.ok(Math.abs((actual ?? NaN) - expected) < 1e-6, `${label} ${actual} vs ${expected}`);
+    for (const id of ['wood', 'paper', 'pvc', 'wet_market']) {
+      assert.equal(entryById(id)?.toxicYieldGPerG.CO, 0.2, id);
     }
-    for (const id of ['shop_contents', 'wet_market']) {
-      const entry = entryById(id);
-      assert.ok(entry);
-      assert.ok(Math.abs((entry.sootYieldGPerG ?? 0) - 0.037) < 1e-9, id);
-      assert.ok(Math.abs((entry.toxicYieldWellVentGPerG.CO ?? 0) - 0.014) < 1e-9, id);
-      assert.equal(entry.sources.sootYield?.status, 'derived');
-      assert.equal(entry.sources['wellVent.CO']?.status, 'derived');
-    }
+    const foam = entryById('foam');
+    near(foam?.toxicYieldGPerG.CO, 0.28, 'foam under-vent CO');
+    near(foam?.toxicYieldGPerG.HCN, 0.009, 'foam under-vent HCN');
+    near(foam?.toxicYieldWellVentGPerG.HCN, 0.004, 'foam well-vent HCN');
+
+    const market = entryById('wet_market');
+    assert.ok(market);
+    near(market.sootYieldGPerG ?? undefined, 0.037, 'market soot');
+    near(market.toxicYieldWellVentGPerG.CO, 0.014, 'market CO');
+    assert.equal(market.toxicYieldGPerG.HCN, undefined);
+    assert.equal(market.sources.sootYield?.status, 'derived');
+
+    const shop = entryById('shop_contents');
+    assert.ok(shop);
+    assert.equal(SHOP_STOCK_MIX.reduce((sum, part) => sum + part.massFraction, 0), 1);
+    near(shop.sootYieldGPerG ?? undefined, 0.06625, 'shop soot');
+    near(shop.toxicYieldWellVentGPerG.CO, 0.0175, 'shop well-vent CO');
+    near(shop.toxicYieldGPerG.CO, 0.222, 'shop under-vent CO');
+    // 20 % foam at 0.009, 10 % nylon at 0.06, 5 % wool at 1.928 × 0.1325 × 0.15.
+    near(shop.toxicYieldGPerG.HCN, 0.2 * 0.009 + 0.1 * 0.06 + 0.05 * 1.928 * 0.1325 * 0.15, 'shop HCN');
+    near(shop.toxicYieldWellVentGPerG.HCN, 0.2 * 0.004 + 0.1 * 0.001 + 0.05 * 1.928 * 0.1325 * 0.01, 'shop well-vent HCN');
+    assert.equal(shop.sources['underVent.HCN']?.status, 'derived');
+    assert.equal(shop.sources['wellVent.CO']?.status, 'assumed', 'wool CO is a generic figure');
   });
 });
 
