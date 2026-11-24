@@ -1,23 +1,33 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { flashoverAgeSec } from '../src/lib/rts/flameFront';
+import { WOOD_HEAT_KJ_KG, flashoverAgeSec } from '../src/lib/rts/flameFront';
 import { FireSimulation, DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import {
   COMMON_PICKS,
+  MATERIAL_LIBRARY,
+  SHOP_STOCK_MIX,
+  WALL_MATERIALS,
   absorbLegacyFuelCircles,
   confirmedFuelStudIds,
   defaultLightFuel,
   entryById,
   matchMaterials,
   snapObjectsToStuds,
+  layerLiningFor,
+  wallMaterialFor,
+  type MaterialEntry,
+  type MaterialField,
   type PlacedObject,
+  type ToxicProduct,
 } from '../src/lib/rts/materialLibrary';
 import { blastSmokeStudIds } from '../src/lib/rts/spatialEffects';
 import { foodCourtPlacedObjects, foodCourtSample } from '../src/lib/rts/foodCourtSample';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds';
 
-function object(partial: Partial<PlacedObject> & Pick<PlacedObject, 'matches' | 'confirmed'>): PlacedObject {
+function object(
+  partial: Partial<PlacedObject> & Pick<PlacedObject, 'matches' | 'confirmed'>,
+): PlacedObject {
   return {
     id: 'obj-1',
     studId: 'stud-a',
@@ -73,9 +83,8 @@ describe('material library', () => {
     assert.equal(suggested[0]?.source, 'ai');
     assert.equal(suggested[0]?.entryId, 'foam');
     assert.equal(
-      confirmedFuelStudIds([
-        object({ matches: suggested, confirmed: false, studId: 'stud-b' }),
-      ]).size,
+      confirmedFuelStudIds([object({ matches: suggested, confirmed: false, studId: 'stud-b' })])
+        .size,
       0,
     );
   });
@@ -95,10 +104,7 @@ describe('material library', () => {
     const matches = matchMaterials('ceramic tile');
     assert.equal(matches[0]?.entryId, 'ceramic_tile');
     assert.equal(matches[0]?.fuel, 'non_combustible');
-    assert.equal(
-      confirmedFuelStudIds([object({ matches, confirmed: true })]).size,
-      0,
-    );
+    assert.equal(confirmedFuelStudIds([object({ matches, confirmed: true })]).size, 0);
   });
 
   test('stored light and heavy numbers stay on the row', () => {
@@ -119,6 +125,113 @@ describe('material library', () => {
     assert.equal(shop?.liquidPool, false);
     assert.equal(shop?.spreadMPerMin, 4);
     assert.deepEqual(oil?.toxicProducts, ['acrolein']);
+  });
+
+  test('every number on a row carries a source', () => {
+    const has = (entry: MaterialEntry, field: MaterialField) => {
+      const note = entry.sources[field];
+      assert.ok(note && note.ref.trim().length > 0, `${entry.id} ${field} has no source`);
+    };
+    for (const entry of MATERIAL_LIBRARY) {
+      if (entry.heatOfCombustionMjKg != null) has(entry, 'heatOfCombustion');
+      if (entry.effectiveHeatOfCombustionMjKg != null) has(entry, 'effectiveHeatOfCombustion');
+      if (entry.sootYieldGPerG != null) has(entry, 'sootYield');
+      if (entry.sootYieldUnderVentGPerG != null) has(entry, 'sootYieldUnderVent');
+      for (const gas of Object.keys(entry.toxicYieldWellVentGPerG) as ToxicProduct[]) {
+        has(entry, `wellVent.${gas}`);
+      }
+      for (const gas of Object.keys(entry.toxicYieldGPerG) as ToxicProduct[]) {
+        has(entry, `underVent.${gas}`);
+      }
+      if (entry.chfKwM2 != null || entry.trp != null) has(entry, 'ignition');
+      if (entry.alphaKwS2 != null) has(entry, 'growth');
+      if (entry.spreadMPerMin != null) has(entry, 'spread');
+      if (entry.fireLoadMjM2 != null) has(entry, 'fireLoad');
+      if (entry.fuelLoadKgM2 != null) has(entry, 'fuelLoad');
+      if (entry.liquidPool) has(entry, 'pool');
+      if (entry.fuel === 'non_combustible') assert.deepEqual(entry.sources, {}, entry.id);
+    }
+    for (const row of WALL_MATERIALS) {
+      for (const field of ['conductivity', 'density', 'specificHeat', 'thickness'] as const) {
+        assert.ok(row.sources[field]?.ref.trim(), `${row.id} ${field} has no source`);
+      }
+      assert.equal(
+        row.sources.thickness.status,
+        'assumed',
+        `${row.id} thickness is the building's`,
+      );
+    }
+  });
+
+  test('a solid releases its cited fire load at the wood heat the front burns', () => {
+    const shop = entryById('shop_contents');
+    assert.ok(shop?.fuelLoadKgM2 != null && shop.fireLoadMjM2 === 600);
+    assert.ok(Math.abs((shop.fuelLoadKgM2 * WOOD_HEAT_KJ_KG) / 1000 - 600) < 1e-9);
+    assert.ok(Math.abs(shop.fuelLoadKgM2 - 34.29) < 0.01);
+    assert.equal(shop.sources.fireLoad?.status, 'cited');
+    assert.equal(entryById('wood')?.sources.fuelLoad?.status, 'assumed');
+  });
+
+  test('wall rows match the interior-wall materials, and the seeded rows keep their thermal inertia', () => {
+    assert.equal(wallMaterialFor('concrete')?.id, 'concrete');
+    assert.equal(wallMaterialFor('Reinforced concrete')?.id, 'concrete');
+    assert.equal(wallMaterialFor('aerated concrete')?.id, 'aerated_concrete');
+    assert.equal(wallMaterialFor('drywall')?.id, 'gypsum');
+    assert.equal(wallMaterialFor('steel')?.id, 'steel');
+    assert.equal(wallMaterialFor('window')?.id, 'glass');
+    assert.equal(wallMaterialFor(''), null);
+    assert.equal(wallMaterialFor('mystery'), null);
+    const inertia = (id: string) => {
+      const row = WALL_MATERIALS.find((item) => item.id === id);
+      assert.ok(row);
+      return (row.conductivityWMK * row.densityKgM3 * row.specificHeatJKgK) / 1e6;
+    };
+    assert.ok(Math.abs(inertia('concrete') - 2.9) < 1e-9);
+    assert.ok(Math.abs(inertia('brick_block') - 1.2) < 1e-9);
+    assert.ok(Math.abs(inertia('gypsum') - 0.18) < 1e-9);
+    assert.ok(Math.abs(inertia('aerated_concrete') - 0.12) < 1e-9);
+  });
+
+  test('the smoke layer gets 150 mm concrete and brick, 16 mm gypsum, and concrete for anything else', () => {
+    assert.equal(layerLiningFor('concrete').thicknessM, 0.15);
+    assert.equal(layerLiningFor('brick').thicknessM, 0.15);
+    assert.equal(layerLiningFor('concrete block').id, 'brick_block');
+    assert.equal(layerLiningFor('drywall').thicknessM, 0.016);
+    assert.equal(layerLiningFor('plaster').id, 'gypsum');
+    for (const other of ['glass', 'steel', 'timber', 'aerated concrete', '', 'mystery']) {
+      assert.equal(layerLiningFor(other).id, 'concrete', other);
+    }
+  });
+
+  test('runtime yields are measured rows, not the C/VM2 design values', () => {
+    const near = (actual: number | undefined, expected: number, label: string) =>
+      assert.ok(Math.abs((actual ?? NaN) - expected) < 1e-6, `${label} ${actual} vs ${expected}`);
+    for (const id of ['wood', 'paper', 'pvc', 'wet_market']) {
+      assert.equal(entryById(id)?.toxicYieldGPerG.CO, 0.2, id);
+    }
+    const foam = entryById('foam');
+    near(foam?.toxicYieldGPerG.CO, 0.28, 'foam under-vent CO');
+    near(foam?.toxicYieldGPerG.HCN, 0.009, 'foam under-vent HCN');
+    near(foam?.toxicYieldWellVentGPerG.HCN, 0.004, 'foam well-vent HCN');
+
+    const market = entryById('wet_market');
+    assert.ok(market);
+    near(market.sootYieldGPerG ?? undefined, 0.037, 'market soot');
+    near(market.toxicYieldWellVentGPerG.CO, 0.014, 'market CO');
+    assert.equal(market.toxicYieldGPerG.HCN, undefined);
+    assert.equal(market.sources.sootYield?.status, 'derived');
+
+    const shop = entryById('shop_contents');
+    assert.ok(shop);
+    assert.equal(SHOP_STOCK_MIX.reduce((sum, part) => sum + part.massFraction, 0), 1);
+    near(shop.sootYieldGPerG ?? undefined, 0.06625, 'shop soot');
+    near(shop.toxicYieldWellVentGPerG.CO, 0.0175, 'shop well-vent CO');
+    near(shop.toxicYieldGPerG.CO, 0.222, 'shop under-vent CO');
+    // 20 % foam at 0.009, 10 % nylon at 0.06, 5 % wool at 1.928 × 0.1325 × 0.15.
+    near(shop.toxicYieldGPerG.HCN, 0.2 * 0.009 + 0.1 * 0.06 + 0.05 * 1.928 * 0.1325 * 0.15, 'shop HCN');
+    near(shop.toxicYieldWellVentGPerG.HCN, 0.2 * 0.004 + 0.1 * 0.001 + 0.05 * 1.928 * 0.1325 * 0.01, 'shop well-vent HCN');
+    assert.equal(shop.sources['underVent.HCN']?.status, 'derived');
+    assert.equal(shop.sources['wellVent.CO']?.status, 'assumed', 'wool CO is a generic figure');
   });
 });
 
@@ -194,9 +307,7 @@ function smokeBlast(fuel: Set<string> | null): Map<string, number> {
     descriptions,
   );
   engine.step(10, [], []);
-  return new Map(
-    ['tile', 'table'].map((id) => [id, engine.studStates.get(id)?.smoke ?? 0]),
-  );
+  return new Map(['tile', 'table'].map((id) => [id, engine.studStates.get(id)?.smoke ?? 0]));
 }
 
 describe('legacy circles become objects', () => {
@@ -233,13 +344,19 @@ describe('legacy circles become objects', () => {
       ['blast-direct', 'power'],
     );
     assert.equal(absorbed.objects.length, 2);
-    assert.equal(absorbed.objects.every((obj) => obj.confirmed), false);
+    assert.equal(
+      absorbed.objects.every((obj) => obj.confirmed),
+      false,
+    );
     const table = absorbed.objects.find((obj) => obj.id === 'legacy-tables');
     assert.deepEqual(
       table?.matches.map((match) => match.entryId),
       ['wood', 'steel'],
     );
-    assert.equal(absorbed.objects.find((obj) => obj.id === 'legacy-blank')?.matches[0]?.entryId, 'wood');
+    assert.equal(
+      absorbed.objects.find((obj) => obj.id === 'legacy-blank')?.matches[0]?.entryId,
+      'wood',
+    );
     assert.equal(confirmedFuelStudIds(absorbed.objects).size, 0);
   });
 
@@ -270,7 +387,12 @@ describe('legacy circles become objects', () => {
       { id: 'yard', simPos: { x: 0, y: 2 }, level: 'G', spatialContext: 'open_air' as const },
       { id: 'far', simPos: { x: 6, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
       { id: 'up', simPos: { x: 0, y: 0 }, level: 'L1', spatialContext: 'inside_building' as const },
-      { id: 'gas', simPos: { x: 20, y: 0 }, level: 'G', spatialContext: 'inside_building' as const },
+      {
+        id: 'gas',
+        simPos: { x: 20, y: 0 },
+        level: 'G',
+        spatialContext: 'inside_building' as const,
+      },
     ];
     const fuel = confirmedFuelStudIds(absorbed.objects, studs);
     assert.equal(fuel.has('c'), true);
@@ -291,7 +413,10 @@ describe('legacy circles become objects', () => {
       studs.map((stud) => ({ id: stud.id, simPos: stud.simPos, level: stud.floor })),
     );
     assert.equal(placed.length, 19);
-    assert.equal(placed.every((obj) => obj.confirmed && obj.studId), true);
+    assert.equal(
+      placed.every((obj) => obj.confirmed && obj.studId),
+      true,
+    );
     const fuel = confirmedFuelStudIds(
       placed,
       studs.map((stud) => ({
@@ -351,7 +476,10 @@ describe('legacy circles become objects', () => {
     const stallGap = Math.hypot(stallTable.pos.x - noodle.pos.x, stallTable.pos.y - noodle.pos.y);
     assert.ok(stallGap > 2.5 && stallGap < 3.5, `noodle table is ${stallGap} m from the gas line`);
     assert.ok(pizzaTable && pizzaGas && fuel.has(pizzaTable.studId));
-    const pizzaGap = Math.hypot(pizzaTable.pos.x - pizzaGas.pos.x, pizzaTable.pos.y - pizzaGas.pos.y);
+    const pizzaGap = Math.hypot(
+      pizzaTable.pos.x - pizzaGas.pos.x,
+      pizzaTable.pos.y - pizzaGas.pos.y,
+    );
     assert.ok(pizzaGap > 2.5 && pizzaGap < 3.5, `pizza table is ${pizzaGap} m from the gas line`);
     const pizzaFridge = placed.find((obj) => obj.id === 'elec-pizza');
     assert.ok(pizzaFridge && pizzaFridge.studId !== pizzaTable.studId);

@@ -6,23 +6,22 @@
  * confirm, the fire sim reads the category, that entry's ignition numbers,
  * and that entry's toxic yields. The trainer does not pick a gas.
  *
- * Light-fuel CHF 10 kW/m² and TRP 134 are the red-oak row, used as the stand-in
- * for ordinary wood. Heavy-fuel CHF, the shorter TRP, both room-scale speeds,
- * both fuel loads, the 0.3 m² pan, and every yield that is not named below
- * are assumed.
+ * Every number on an entry has a row in its `sources`, keyed by field, and
+ * every wall row the same. A row is `cited` when the number comes from a
+ * named table for that material or occupancy, `derived` when it is arithmetic
+ * on cited numbers, and `assumed` otherwise. A cited number assigned to a
+ * material it was not measured on (red oak for paper, transformer oil for
+ * cooking oil) is assumed. A ref that says "not in the approved seeds" was
+ * read from the handbook, not from `scripts/fieldops/seeds`, and should be
+ * checked before a validation case uses it. Validation cases use cited rows
+ * only.
  *
- * Soot yields are well-ventilated flaming figures, grams per gram. Red oak
- * 0.015, flexible polyurethane foam 0.188 and PVC 0.172 are NUREG-1805
- * Table 18-3 (seed `soot_yield_by_material`). Paper uses the red-oak figure
- * (assumed: no paper row). Shop stock 0.1 and cooking oil 0.02 are assumed.
- *
- * Gas yields before flashover are the well-ventilated set. Wood CO 0.004 is
- * Tewarson's well-ventilated wood, about 0.004 g/g (SFPE Handbook). Paper
- * and shop stock use that figure until the stud flashes (assumed). Foam CO
- * 0.01 and PVC CO 0.06 are assumed. HCN 0.01, HCl 0.2 and acrolein 0.01 have
- * no separate well-ventilated figure in the seeds, so the stored label is
- * used before flashover as well. After the flashover latch the stored
- * `toxicYieldGPerG` is the under-ventilated gas yield.
+ * The flame front reads the category, ignition, growth, front speed, fuel
+ * load, pan and yields. It does not read either heat of combustion, the
+ * under-ventilated soot yield, the fire load in MJ/m², or the wall rows:
+ * burnout and species still use `WOOD_HEAT_KJ_KG` for every solid and the
+ * transformer-oil row for every liquid. Those columns are here for the
+ * layer and the vent cap to read.
  */
 
 import {
@@ -30,12 +29,36 @@ import {
   HOOD_HEIGHT_M,
   SPRINKLER_CEILING_M,
   TOXIC_PRODUCTS,
+  WOOD_HEAT_KJ_KG,
   type FuelCell,
   type ToxicProduct,
   type ToxicYields,
 } from './flameFront';
 
 export type { ToxicProduct };
+
+export type SourceStatus = 'cited' | 'derived' | 'assumed';
+
+export interface SourceNote {
+  status: SourceStatus;
+  ref: string;
+}
+
+export type MaterialField =
+  | 'heatOfCombustion'
+  | 'effectiveHeatOfCombustion'
+  | 'sootYield'
+  | 'sootYieldUnderVent'
+  | `wellVent.${ToxicProduct}`
+  | `underVent.${ToxicProduct}`
+  | 'ignition'
+  | 'growth'
+  | 'spread'
+  | 'fireLoad'
+  | 'fuelLoad'
+  | 'pool';
+
+export type MaterialSources = Partial<Record<MaterialField, SourceNote>>;
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -56,10 +79,20 @@ export interface MaterialEntry {
   /** Gases this entry emits while it burns. A label, not a measurement. */
   toxicProducts: readonly ToxicProduct[];
   /**
-   * Grams of soot per gram burned. Well-ventilated. Null when it does not burn.
-   * Cited rows are named in the file header. The rest are assumed.
+   * Net heat of complete combustion, MJ/kg. The basis EN 1991-1-2 uses to
+   * turn a fuel mass into a fire load. Null when it does not burn.
    */
+  heatOfCombustionMjKg: number | null;
+  /**
+   * Heat released per kilogram lost in a well-ventilated flaming test, MJ/kg
+   * (Tewarson's chemical heat). This is the ΔHc that turns Q into a burning
+   * rate for yields. Null when no figure is cited and none is assumed.
+   */
+  effectiveHeatOfCombustionMjKg: number | null;
+  /** Grams of soot per gram burned. Well-ventilated. Null when it does not burn. */
   sootYieldGPerG: number | null;
+  /** Grams of soot per gram burned after flashover. Not read by the flame front. */
+  sootYieldUnderVentGPerG: number | null;
   /**
    * Grams of gas per gram burned before flashover. Where this matches the
    * stored yield, no separate well-ventilated figure was available.
@@ -75,8 +108,16 @@ export interface MaterialEntry {
   alphaKwS2: number | null;
   /** Room-scale front, metres per minute. */
   spreadMPerMin: number | null;
+  /** Fire load density, MJ/m² of floor. */
+  fireLoadMjM2: number | null;
+  /**
+   * kg/m² the flame front burns. The front multiplies this by
+   * `WOOD_HEAT_KJ_KG` for a solid, so a solid's kg here is wood-equivalent:
+   * the fire load divided by that heat.
+   */
   fuelLoadKgM2: number | null;
   liquidPool: boolean;
+  sources: MaterialSources;
 }
 
 export interface MaterialMatch {
@@ -143,40 +184,301 @@ export interface CommonPick {
   entryId: string;
 }
 
+const NOT_SEEDED =
+  'Not in the approved seeds; check against the table before a validation case uses it.';
+
+const REF = {
+  sootTable:
+    'NUREG-1805 Ch. 18 Table 18-3, small-scale flaming yields (Tewarson, via Klote and Milke 2002). Seed `soot_yield_by_material`.',
+  ignitionTable:
+    'NUREG-1805 Ch. 6 Table 6-3, critical heat flux and TRP (Tewarson 1995). Seed `critical_heat_flux_by_material`.',
+  tewarson: `Tewarson, SFPE Handbook 3rd ed. Sec. 3 Ch. 4, Table 3-4.14, well-ventilated heats and yields. ${NOT_SEEDED}`,
+  enNetHeat: `EN 1991-1-2:2002 Annex E Table E.3, net calorific value Hu. ${NOT_SEEDED}`,
+  enFireLoad: 'EN 1991-1-2:2002 Annex E Table E.4. Seed `en1991_fire_load_density`.',
+  alphaClasses: 'NFPA t-squared classes. Seed `t2_alpha_classes`.',
+  underVentCo: `Gottuk and Lattimer, SFPE Handbook 3rd ed. Sec. 2 Ch. 5, "Effect of Combustion Conditions on Species Production": CO yield levels off near 0.2 g/g once the equivalence ratio is well past 1 (about 0.1 to 0.25 by fuel). Holds until yields follow the equivalence ratio. The C/VM2 2.3.3.4 design value, 0.40 (seed \`cvm2_post_flashover_co_yield\`), is the conservative alternative and is not used. ${NOT_SEEDED}`,
+  underVentSoot:
+    'C/VM2 2.3.3.4 design value, 0.14 (seed `cvm2_post_flashover_soot_yield`). No measured under-ventilated soot row was read, so it is a placeholder. The flame front does not read it.',
+  purserPostFlashoverCo: `Purser, Polymers 8 (2016) 330, Table 6: ISO/TS 19700 tube furnace at 850 °C, Φ 1.5 to 2, the post-flashover yields Purser also gives in the SFPE Handbook 5th ed. combustion toxicity chapter. ${NOT_SEEDED}`,
+  blomqvistFoam: `Blomqvist et al., Fire and Materials 31 (2007) 495, tube furnace, hospital-mattress flexible foam, as reviewed by McKenna and Hull, Fire Science Reviews 5 (2016) 3. ${NOT_SEEDED}`,
+  stecNylon: `Stec, Hull, Purser and Purser, Fire Safety Journal 44 (2009) 62, ISO/TS 19700 tube furnace, as stated in Stec and Hull, Energy and Buildings 43 (2011) 498. ${NOT_SEEDED}`,
+  stecGenericCo: `Stec, FIRESEAT 2010, typical CO yield: fuel lean 0.01, fuel rich 0.2. ${NOT_SEEDED}`,
+  woolHcn: `Purser and Purser, Fire Safety Science 9 (2008) 1117, ISO 19700 tube furnace, Eq. 3 and Table 3, with untreated wool fabric at 13.25 % nitrogen (US Bureau of Mines RI 9367, 1991, Table 1). No wool-only tube-furnace row was found. ${NOT_SEEDED}`,
+  pool: 'NUREG-1805 Ch. 3 Table 3-2, transformer oil 0.039 kg/m²s, 46,400 kJ/kg, kβ 0.7. Seed `pool_fire_hrr`.',
+} as const;
+
+const cited = (ref: string): SourceNote => ({ status: 'cited', ref });
+const derived = (ref: string): SourceNote => ({ status: 'derived', ref });
+const assumed = (ref: string): SourceNote => ({ status: 'assumed', ref });
+
+/** Wood net heat, MJ/kg, the basis the front turns a solid's kg into energy with. */
+const WOOD_HEAT_MJ_KG = WOOD_HEAT_KJ_KG / 1000;
+
+/** EN 1991-1-2 Table E.4, shopping centre, mean, MJ/m². The 80 % fractile is 730. */
+const SHOPPING_CENTRE_FIRE_LOAD_MJ_M2 = 600;
+
+/** Untreated wool fabric, mass fraction of nitrogen (US Bureau of Mines RI 9367). */
+const WOOL_NITROGEN = 0.1325;
+
+const LIGHT_FUEL_LOAD_KG_M2 = 10;
+const OIL_FUEL_LOAD_KG_M2 = 30;
+
 const LIGHT_WOOD = {
   fuel: 'light' as const,
   chfKwM2: 10,
   trp: 134,
   alphaKwS2: 0.01172,
   spreadMPerMin: 0.5,
-  fuelLoadKgM2: 10,
+  fireLoadMjM2: LIGHT_FUEL_LOAD_KG_M2 * WOOD_HEAT_MJ_KG,
+  fuelLoadKgM2: LIGHT_FUEL_LOAD_KG_M2,
   liquidPool: false,
 };
 
-/** Same shape as wood. The assignment to these materials is assumed. */
-const LIGHT_ASSUMED = { ...LIGHT_WOOD };
+/** Rows every light solid shares unless its entry overrides them. */
+const LIGHT_SOURCES: MaterialSources = {
+  ignition: cited(`Red oak, CHF 10 kW/m², TRP 134. ${REF.ignitionTable}`),
+  growth: assumed(
+    `Medium class α 0.01172 kW/s² is cited (${REF.alphaClasses}); its assignment to this material is assumed.`,
+  ),
+  spread: assumed('Room-scale front 0.5 m/min. No row.'),
+  fireLoad: assumed(
+    `${LIGHT_FUEL_LOAD_KG_M2} kg/m² at the wood heat. Table E.4 has occupancies, not loose furniture, and no food centre.`,
+  ),
+  fuelLoad: assumed(`${LIGHT_FUEL_LOAD_KG_M2} kg/m². No row.`),
+  'underVent.CO': cited(REF.underVentCo),
+  sootYieldUnderVent: assumed(REF.underVentSoot),
+};
 
-const HEAVY_ASSUMED = {
+const HEAVY_SOLID = {
   fuel: 'heavy' as const,
   chfKwM2: 10,
   trp: 80,
   alphaKwS2: 0.0469,
   spreadMPerMin: 4,
-  fuelLoadKgM2: 30,
+  fireLoadMjM2: SHOPPING_CENTRE_FIRE_LOAD_MJ_M2,
+  fuelLoadKgM2: SHOPPING_CENTRE_FIRE_LOAD_MJ_M2 / WOOD_HEAT_MJ_KG,
+  liquidPool: false,
+};
+
+const COOKING_OIL = {
+  fuel: 'heavy' as const,
+  chfKwM2: 10,
+  trp: 80,
+  alphaKwS2: 0.0469,
+  spreadMPerMin: 4,
+  fireLoadMjM2: OIL_FUEL_LOAD_KG_M2 * 46.4,
+  fuelLoadKgM2: OIL_FUEL_LOAD_KG_M2,
   liquidPool: true,
 };
 
-/** Same heavy numbers as a liquid, without a pan. Shop goods are solid. */
-const HEAVY_SOLID = { ...HEAVY_ASSUMED, liquidPool: false };
+const HEAVY_IGNITION = assumed('CHF 10 kW/m², TRP 80. No row for mixed goods or hot oil.');
+
+/** One measured row a mixed-goods entry is averaged from. */
+interface Measured {
+  value: number;
+  note: SourceNote;
+}
+
+interface MixComponent {
+  label: string;
+  heat: Measured;
+  effectiveHeat: Measured | null;
+  soot: Measured;
+  wellVentCo: Measured;
+  underVentCo: Measured;
+  wellVentHcn: Measured;
+  underVentHcn: Measured;
+}
+
+const NO_FUEL_NITROGEN: Measured = {
+  value: 0,
+  note: derived('No fuel nitrogen, so no HCN.'),
+};
+
+const RED_OAK: MixComponent = {
+  label: 'red oak',
+  heat: { value: 17.5, note: cited(REF.enNetHeat) },
+  effectiveHeat: { value: 12.4, note: cited(REF.tewarson) },
+  soot: { value: 0.015, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.004, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: NO_FUEL_NITROGEN,
+  underVentHcn: NO_FUEL_NITROGEN,
+};
+
+const POLYPROPYLENE: MixComponent = {
+  label: 'polypropylene',
+  heat: { value: 40, note: cited(REF.enNetHeat) },
+  effectiveHeat: { value: 38.6, note: cited(REF.tewarson) },
+  soot: { value: 0.059, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.024, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: NO_FUEL_NITROGEN,
+  underVentHcn: NO_FUEL_NITROGEN,
+};
+
+const FLEXIBLE_PU_FOAM: MixComponent = {
+  label: 'flexible polyurethane foam',
+  heat: { value: 25, note: cited(REF.enNetHeat) },
+  effectiveHeat: null,
+  soot: { value: 0.188, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.028, note: cited(`GM21 to GM27 mean. ${REF.tewarson}`) },
+  underVentCo: { value: 0.28, note: cited(`FPU. ${REF.purserPostFlashoverCo}`) },
+  wellVentHcn: { value: 0.004, note: cited(`ISO 19706 type 2, Φ < 0.75. ${REF.blomqvistFoam}`) },
+  underVentHcn: { value: 0.009, note: cited(`ISO 19706 type 3b, Φ about 2. ${REF.blomqvistFoam}`) },
+};
+
+const NYLON: MixComponent = {
+  label: 'nylon',
+  heat: { value: 30, note: assumed('No polyamide row in Table E.3; the polyester row, 30 MJ/kg.') },
+  effectiveHeat: { value: 27.1, note: cited(REF.tewarson) },
+  soot: { value: 0.075, note: cited(REF.sootTable) },
+  wellVentCo: { value: 0.038, note: cited(REF.tewarson) },
+  underVentCo: { value: 0.26, note: cited(`PA6. ${REF.purserPostFlashoverCo}`) },
+  wellVentHcn: {
+    value: 0.001,
+    note: cited(`Polyamide without fire retardant, about 0.001. ${REF.stecNylon}`),
+  },
+  underVentHcn: { value: 0.06, note: cited(`Polyamide, about 0.06. ${REF.stecNylon}`) },
+};
+
+/** HCN = 1.928 × fuel nitrogen × recovery (Purser and Purser Eq. 3). */
+const woolHcn = (recovery: number) => 1.928 * WOOL_NITROGEN * recovery;
+
+const WOOL: MixComponent = {
+  label: 'wool',
+  heat: { value: 20, note: cited(`Wool is in the cellulosic class, 20 MJ/kg. ${REF.enNetHeat}`) },
+  effectiveHeat: null,
+  soot: { value: 0.008, note: cited(REF.sootTable) },
+  wellVentCo: {
+    value: 0.01,
+    note: assumed(`Generic fuel-lean flaming, about 0.01. ${REF.stecGenericCo} No wool row.`),
+  },
+  underVentCo: { value: 0.2, note: cited(REF.underVentCo) },
+  wellVentHcn: {
+    value: woolHcn(0.01),
+    note: derived(`Recovery 0.010 at low Φ (high-recovery group, k1). ${REF.woolHcn}`),
+  },
+  underVentHcn: {
+    value: woolHcn(0.15),
+    note: derived(`Recovery about 0.15 at Φ ≥ 2, the wool-acrylic bouclé fabric. ${REF.woolHcn}`),
+  },
+};
+
+interface MixPart {
+  component: MixComponent;
+  massFraction: number;
+}
+
+/**
+ * Mass average of one column. Derived when every part is cited or derived,
+ * assumed when any part is assumed. Null when a part has no value.
+ */
+function mixColumn(
+  parts: readonly MixPart[],
+  pick: (component: MixComponent) => Measured | null,
+  basis: string,
+): Measured | null {
+  let value = 0;
+  let anyAssumed = false;
+  const terms: string[] = [];
+  for (const { component, massFraction } of parts) {
+    const row = pick(component);
+    if (!row) return null;
+    value += massFraction * row.value;
+    if (row.note.status === 'assumed') anyAssumed = true;
+    terms.push(
+      `${component.label} ${Math.round(massFraction * 100)} %: ${row.value} (${row.note.ref})`,
+    );
+  }
+  const ref = `Mass average. ${terms.join('; ')}. ${basis}`;
+  return { value, note: anyAssumed ? assumed(ref) : derived(ref) };
+}
+
+function mixedGoods(parts: readonly MixPart[], basis: string, withHcn: boolean) {
+  const col = (pick: (component: MixComponent) => Measured | null) => mixColumn(parts, pick, basis);
+  const heat = col((c) => c.heat)!;
+  const effectiveHeat = col((c) => c.effectiveHeat);
+  const soot = col((c) => c.soot)!;
+  const wellVentCo = col((c) => c.wellVentCo)!;
+  const underVentCo = col((c) => c.underVentCo)!;
+  const wellVentHcn = col((c) => c.wellVentHcn)!;
+  const underVentHcn = col((c) => c.underVentHcn)!;
+  const sources: MaterialSources = {
+    heatOfCombustion: heat.note,
+    effectiveHeatOfCombustion:
+      effectiveHeat?.note ??
+      assumed(`No cited chemical heat for every part (foam, wool). Left empty. ${basis}`),
+    sootYield: soot.note,
+    sootYieldUnderVent: assumed(REF.underVentSoot),
+    'wellVent.CO': wellVentCo.note,
+    'underVent.CO': underVentCo.note,
+    ...(withHcn ? { 'wellVent.HCN': wellVentHcn.note, 'underVent.HCN': underVentHcn.note } : {}),
+  };
+  const fields = {
+    heatOfCombustionMjKg: heat.value,
+    effectiveHeatOfCombustionMjKg: effectiveHeat?.value ?? null,
+    sootYieldGPerG: soot.value,
+    sootYieldUnderVentGPerG: 0.14,
+    toxicYieldWellVentGPerG: withHcn
+      ? { CO: wellVentCo.value, HCN: wellVentHcn.value }
+      : { CO: wellVentCo.value },
+    toxicYieldGPerG: withHcn
+      ? { CO: underVentCo.value, HCN: underVentHcn.value }
+      : { CO: underVentCo.value },
+  };
+  return { fields, sources };
+}
+
+/**
+ * Assumed composition of upholstered retail stock, by mass. Basis: an
+ * upholstered piece is mostly a timber or board frame and foam with a
+ * fabric cover, and the shelves around it add cardboard and polyolefin
+ * packaging. Covers are taken as nylon and wool. No measured shop inventory
+ * was read.
+ */
+export const SHOP_STOCK_MIX: readonly MixPart[] = [
+  { component: RED_OAK, massFraction: 0.4 },
+  { component: POLYPROPYLENE, massFraction: 0.25 },
+  { component: FLEXIBLE_PU_FOAM, massFraction: 0.2 },
+  { component: NYLON, massFraction: 0.1 },
+  { component: WOOL, massFraction: 0.05 },
+];
+
+/** Wooden stalls, card and crates. Produce, fish and ice are not fuel. Assumed. */
+export const WET_MARKET_MIX: readonly MixPart[] = [
+  { component: RED_OAK, massFraction: 0.5 },
+  { component: POLYPROPYLENE, massFraction: 0.5 },
+];
+
+const SHOP_STOCK = mixedGoods(
+  SHOP_STOCK_MIX,
+  'Composition assumed: 40 % cellulosic (frames, board, card), 25 % polyolefin packaging, 20 % flexible foam, 10 % nylon and 5 % wool covers, typical of upholstered retail stock.',
+  true,
+);
+
+const WET_MARKET = mixedGoods(
+  WET_MARKET_MIX,
+  'Composition assumed: 50 % cellulosic (stalls, card), 50 % polyolefin crates. The polyethylene row (CO 0.024, soot 0.060) is within 0.001 of polypropylene.',
+  false,
+);
 
 const INERT = {
   fuel: 'non_combustible' as const,
+  heatOfCombustionMjKg: null,
+  effectiveHeatOfCombustionMjKg: null,
+  sootYieldGPerG: null,
+  sootYieldUnderVentGPerG: null,
+  toxicYieldWellVentGPerG: {},
+  toxicYieldGPerG: {},
   chfKwM2: null,
   trp: null,
   alphaKwS2: null,
   spreadMPerMin: null,
+  fireLoadMjM2: null,
   fuelLoadKgM2: null,
   liquidPool: false,
+  sources: {},
 };
 
 export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
@@ -186,10 +488,20 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['wood', 'wooden', 'timber', 'plywood', 'oak'],
     behaviour: 'none',
     toxicProducts: ['CO'],
+    heatOfCombustionMjKg: 17.5,
+    effectiveHeatOfCombustionMjKg: 12.4,
     sootYieldGPerG: 0.015,
+    sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { CO: 0.004 },
-    toxicYieldGPerG: { CO: 0.1 },
+    toxicYieldGPerG: { CO: 0.2 },
     ...LIGHT_WOOD,
+    sources: {
+      ...LIGHT_SOURCES,
+      heatOfCombustion: cited(`Wood 17.5 MJ/kg. ${REF.enNetHeat}`),
+      effectiveHeatOfCombustion: cited(`Red oak ΔHch 12.4 MJ/kg. ${REF.tewarson}`),
+      sootYield: cited(`Red oak 0.015. ${REF.sootTable}`),
+      'wellVent.CO': cited(`Red oak 0.004. ${REF.tewarson}`),
+    },
   },
   {
     id: 'paper',
@@ -197,10 +509,24 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['paper', 'cardboard', 'newspaper'],
     behaviour: 'none',
     toxicProducts: ['CO'],
+    heatOfCombustionMjKg: 20,
+    effectiveHeatOfCombustionMjKg: 12.4,
     sootYieldGPerG: 0.015,
+    sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { CO: 0.004 },
-    toxicYieldGPerG: { CO: 0.1 },
-    ...LIGHT_ASSUMED,
+    toxicYieldGPerG: { CO: 0.2 },
+    ...LIGHT_WOOD,
+    trp: 152,
+    sources: {
+      ...LIGHT_SOURCES,
+      heatOfCombustion: cited(
+        `Other cellulosic materials (paper, cardboard) 20 MJ/kg. ${REF.enNetHeat}`,
+      ),
+      effectiveHeatOfCombustion: assumed('Red oak 12.4 MJ/kg. No paper row was read.'),
+      sootYield: assumed(`Red oak 0.015. Table 18-3 has no paper row.`),
+      'wellVent.CO': assumed('Red oak 0.004. No paper row was read.'),
+      ignition: cited(`Corrugated paper (light), CHF 10 kW/m², TRP 152. ${REF.ignitionTable}`),
+    },
   },
   {
     id: 'foam',
@@ -208,10 +534,34 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['foam', 'upholstery', 'polyurethane', 'cushion'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
+    heatOfCombustionMjKg: 25,
+    effectiveHeatOfCombustionMjKg: null,
     sootYieldGPerG: 0.188,
-    toxicYieldWellVentGPerG: { CO: 0.01, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.1, HCN: 0.01 },
-    ...LIGHT_ASSUMED,
+    sootYieldUnderVentGPerG: 0.14,
+    toxicYieldWellVentGPerG: {
+      CO: FLEXIBLE_PU_FOAM.wellVentCo.value,
+      HCN: FLEXIBLE_PU_FOAM.wellVentHcn.value,
+    },
+    toxicYieldGPerG: {
+      CO: FLEXIBLE_PU_FOAM.underVentCo.value,
+      HCN: FLEXIBLE_PU_FOAM.underVentHcn.value,
+    },
+    ...LIGHT_WOOD,
+    sources: {
+      ...LIGHT_SOURCES,
+      heatOfCombustion: cited(`Polyisocyanurate and polyurethane 25 MJ/kg. ${REF.enNetHeat}`),
+      effectiveHeatOfCombustion: assumed(
+        'No chemical heat for flexible foam was read. Left empty.',
+      ),
+      sootYield: cited(`Flexible polyurethane foam 0.188. ${REF.sootTable}`),
+      'wellVent.CO': cited(
+        `Flexible polyurethane foams GM21 0.010, GM23 0.031, GM25 0.028, GM27 0.042; mean 0.028. ${REF.tewarson}`,
+      ),
+      'wellVent.HCN': FLEXIBLE_PU_FOAM.wellVentHcn.note,
+      'underVent.CO': FLEXIBLE_PU_FOAM.underVentCo.note,
+      'underVent.HCN': FLEXIBLE_PU_FOAM.underVentHcn.note,
+      ignition: assumed('Red-oak CHF and TRP. Table 6-3 has no flexible-foam row.'),
+    },
   },
   {
     id: 'pvc',
@@ -219,10 +569,30 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['pvc', 'vinyl'],
     behaviour: 'none',
     toxicProducts: ['HCl', 'CO'],
+    heatOfCombustionMjKg: 20,
+    effectiveHeatOfCombustionMjKg: 5.7,
     sootYieldGPerG: 0.172,
-    toxicYieldWellVentGPerG: { HCl: 0.2, CO: 0.06 },
-    toxicYieldGPerG: { HCl: 0.2, CO: 0.1 },
-    ...LIGHT_ASSUMED,
+    sootYieldUnderVentGPerG: 0.14,
+    toxicYieldWellVentGPerG: { HCl: 0.2, CO: 0.063 },
+    toxicYieldGPerG: { HCl: 0.2, CO: 0.2 },
+    ...LIGHT_WOOD,
+    sources: {
+      ...LIGHT_SOURCES,
+      heatOfCombustion: cited(`Polyvinylchloride 20 MJ/kg. ${REF.enNetHeat}`),
+      effectiveHeatOfCombustion: cited(`PVC ΔHch 5.7 MJ/kg. ${REF.tewarson}`),
+      sootYield: cited(`PVC 0.172. ${REF.sootTable}`),
+      sootYieldUnderVent: assumed(
+        `${REF.underVentSoot} It is below the well-ventilated PVC figure.`,
+      ),
+      'wellVent.CO': cited(`PVC 0.063. ${REF.tewarson}`),
+      'wellVent.HCl': assumed(
+        '0.2. All the chlorine as HCl would be 0.58 (36.46 / 62.50); no measured row was read.',
+      ),
+      'underVent.HCl': assumed('0.2, the same label.'),
+      ignition: assumed(
+        'Red-oak CHF and TRP. Table 6-3 has PVC cable rows, not sheet or flooring.',
+      ),
+    },
   },
   {
     id: 'shop_contents',
@@ -230,10 +600,22 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['shop stock', 'merchandise', 'retail stock', 'shop fittings'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
-    sootYieldGPerG: 0.1,
-    toxicYieldWellVentGPerG: { CO: 0.004, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.1, HCN: 0.01 },
+    ...SHOP_STOCK.fields,
     ...HEAVY_SOLID,
+    sources: {
+      ...SHOP_STOCK.sources,
+      ignition: HEAVY_IGNITION,
+      growth: cited(
+        `Shopping centre, fast growth (EN 1991-1-2 Table E.5); fast α 0.0469 kW/s². ${REF.alphaClasses}`,
+      ),
+      spread: assumed('Room-scale front 4 m/min. No row.'),
+      fireLoad: cited(
+        `Shopping centre mean, ${SHOPPING_CENTRE_FIRE_LOAD_MJ_M2} MJ/m². The 80 % fractile, 730 MJ/m², is the design (characteristic) value and is not used. ${REF.enFireLoad} The table averages over the whole compartment floor, aisles included; it is applied to each stocked stud. Where a scene stocks only part of a room, the per-stud load should be the room total over the stocked area.`,
+      ),
+      fuelLoad: derived(
+        `Fire load ${SHOPPING_CENTRE_FIRE_LOAD_MJ_M2} MJ/m² over the wood heat the front burns solids at, so the front releases the cited energy.`,
+      ),
+    },
   },
   {
     id: 'wet_market',
@@ -241,10 +623,15 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['wet market', 'wet-market', 'market produce'],
     behaviour: 'none',
     toxicProducts: ['CO'],
-    sootYieldGPerG: 0.015,
-    toxicYieldWellVentGPerG: { CO: 0.004 },
-    toxicYieldGPerG: { CO: 0.1 },
-    ...LIGHT_ASSUMED,
+    ...WET_MARKET.fields,
+    ...LIGHT_WOOD,
+    sources: {
+      ...LIGHT_SOURCES,
+      ...WET_MARKET.sources,
+      ignition: assumed(
+        'Red-oak CHF and TRP. No row for market goods. Produce, fish and ice are not fuel.',
+      ),
+    },
   },
   {
     id: 'cooking_oil',
@@ -252,10 +639,32 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['cooking oil', 'deep fryer', 'fryer', 'oil', 'grease'],
     behaviour: 'none',
     toxicProducts: ['acrolein'],
+    heatOfCombustionMjKg: 46.4,
+    effectiveHeatOfCombustionMjKg: 46.4,
     sootYieldGPerG: 0.02,
+    sootYieldUnderVentGPerG: null,
     toxicYieldWellVentGPerG: { acrolein: 0.01 },
     toxicYieldGPerG: { acrolein: 0.01 },
-    ...HEAVY_ASSUMED,
+    ...COOKING_OIL,
+    sources: {
+      heatOfCombustion: assumed(
+        `Transformer oil. ${REF.pool} No vegetable-oil row in Table 3-2 or Table E.3.`,
+      ),
+      effectiveHeatOfCombustion: assumed(
+        `Transformer oil, the ΔHc the pan already burns at. ${REF.pool}`,
+      ),
+      sootYield: assumed('0.02. Table 18-3 has no cooking-oil row.'),
+      'wellVent.acrolein': assumed('0.01. No acrolein row was read.'),
+      'underVent.acrolein': assumed('0.01, the same label.'),
+      ignition: HEAVY_IGNITION,
+      growth: assumed(
+        `Fast class α 0.0469 kW/s² is cited (${REF.alphaClasses}); its assignment to hot oil is assumed.`,
+      ),
+      spread: assumed('Room-scale front 4 m/min. No row.'),
+      fireLoad: assumed(`${OIL_FUEL_LOAD_KG_M2} kg/m² of oil at 46.4 MJ/kg.`),
+      fuelLoad: assumed(`${OIL_FUEL_LOAD_KG_M2} kg/m². No row.`),
+      pool: assumed(`0.3 m² pan, and transformer oil standing in for cooking oil. ${REF.pool}`),
+    },
   },
   {
     id: 'steel',
@@ -263,9 +672,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['steel', 'iron'],
     behaviour: 'none',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -274,9 +680,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['tile', 'ceramic', 'porcelain'],
     behaviour: 'none',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -285,9 +688,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['concrete', 'masonry', 'brick'],
     behaviour: 'none',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -296,9 +696,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['gas line', 'gas', 'hob', 'cylinder', 'propane'],
     behaviour: 'pressurised_gas',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -308,9 +705,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     behaviour: 'suppression',
     suppression: 'wet_chemical',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -320,9 +714,6 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     behaviour: 'suppression',
     suppression: 'sprinkler',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
   {
@@ -331,12 +722,171 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['fridge', 'refrigerator', 'electrical', 'socket', 'cable'],
     behaviour: 'electrical',
     toxicProducts: [],
-    sootYieldGPerG: null,
-    toxicYieldWellVentGPerG: {},
-    toxicYieldGPerG: {},
     ...INERT,
   },
 ];
+
+export type WallField = 'conductivity' | 'density' | 'specificHeat' | 'thickness';
+
+/**
+ * Inert lining for heat loss into a wall. Properties at room temperature.
+ * Thickness is the building's, not the material's, so every thickness is
+ * assumed until a scene stores one. The flame front does not read these.
+ * The smoke layer reads `layerLiningFor`, not this table directly.
+ */
+export interface WallMaterial {
+  id: string;
+  label: string;
+  /** Substrings of an interior wall's `material`, checked in library order. */
+  keywords: readonly string[];
+  conductivityWMK: number;
+  densityKgM3: number;
+  specificHeatJKgK: number;
+  thicknessM: number;
+  sources: Record<WallField, SourceNote>;
+}
+
+const NUREG_LINING =
+  'NUREG-1805 Ch. 2 thermal properties of enclosing surfaces (p. 2-11). Seed `lining_thermal_properties`.';
+const NUREG_LINING_UNSEEDED = `NUREG-1805 Ch. 2 thermal properties of enclosing surfaces (p. 2-11). ${NOT_SEEDED}`;
+
+/** ρ = kρc / (k c), from the seed's k, c and thermal inertia. */
+function densityFromInertia(krhocKw2: number, kWMK: number, cJKgK: number): number {
+  return (krhocKw2 * 1e6) / (kWMK * cJKgK);
+}
+
+function seededLining(
+  krhoc: number,
+  k: number,
+  c: number,
+  thicknessNote: string,
+): Pick<WallMaterial, 'conductivityWMK' | 'densityKgM3' | 'specificHeatJKgK' | 'sources'> {
+  return {
+    conductivityWMK: k,
+    densityKgM3: densityFromInertia(krhoc, k, c),
+    specificHeatJKgK: c,
+    sources: {
+      conductivity: cited(NUREG_LINING),
+      specificHeat: cited(NUREG_LINING),
+      density: derived(`kρc ${krhoc} (kW/m²K)²s over k and c. ${NUREG_LINING}`),
+      thickness: assumed(thicknessNote),
+    },
+  };
+}
+
+export const WALL_MATERIALS: readonly WallMaterial[] = [
+  {
+    id: 'aerated_concrete',
+    label: 'Aerated concrete',
+    keywords: ['aerated', 'aac'],
+    thicknessM: 0.2,
+    ...seededLining(0.12, 0.26, 960, '200 mm block.'),
+  },
+  {
+    id: 'gypsum',
+    label: 'Gypsum board',
+    keywords: ['gypsum', 'drywall', 'plaster'],
+    thicknessM: 0.016,
+    ...seededLining(0.18, 0.17, 1100, 'One 16 mm board. Decision 1.'),
+  },
+  {
+    id: 'brick_block',
+    label: 'Brick or concrete block',
+    keywords: ['brick', 'masonry', 'block'],
+    thicknessM: 0.15,
+    ...seededLining(1.2, 0.73, 840, '150 mm wall. Decision 1.'),
+  },
+  {
+    id: 'concrete',
+    label: 'Concrete',
+    keywords: ['concrete', 'reinforced'],
+    thicknessM: 0.15,
+    ...seededLining(2.9, 1.6, 750, '150 mm wall. Decision 1.'),
+  },
+  {
+    id: 'glass',
+    label: 'Glass',
+    keywords: ['glass', 'window', 'glazing'],
+    conductivityWMK: 0.76,
+    densityKgM3: 2700,
+    specificHeatJKgK: 840,
+    thicknessM: 0.006,
+    sources: {
+      conductivity: cited(`Plate glass. ${NUREG_LINING_UNSEEDED}`),
+      density: cited(`Plate glass. ${NUREG_LINING_UNSEEDED}`),
+      specificHeat: cited(`Plate glass. ${NUREG_LINING_UNSEEDED}`),
+      thickness: assumed('6 mm pane.'),
+    },
+  },
+  {
+    id: 'steel',
+    label: 'Steel',
+    keywords: ['steel', 'metal'],
+    conductivityWMK: 54 - 3.33e-2 * 20,
+    densityKgM3: 7850,
+    specificHeatJKgK: 425 + 7.73e-1 * 20 - 1.69e-3 * 20 ** 2 + 2.22e-6 * 20 ** 3,
+    thicknessM: 0.002,
+    sources: {
+      conductivity: cited(`λ = 54 − 3.33×10⁻² θ at 20 °C. EN 1993-1-2:2005 3.4.1.3. ${NOT_SEEDED}`),
+      density: cited(`7850 kg/m³. EN 1993-1-2:2005 3.2.2. ${NOT_SEEDED}`),
+      specificHeat: cited(
+        `c = 425 + 7.73×10⁻¹ θ − 1.69×10⁻³ θ² + 2.22×10⁻⁶ θ³ at 20 °C. EN 1993-1-2:2005 3.4.1.2. ${NOT_SEEDED}`,
+      ),
+      thickness: assumed('2 mm sheet.'),
+    },
+  },
+  {
+    id: 'aluminium',
+    label: 'Aluminium',
+    keywords: ['aluminium', 'aluminum'],
+    conductivityWMK: 0.07 * 20 + 190,
+    densityKgM3: 2700,
+    specificHeatJKgK: 0.41 * 20 + 903,
+    thicknessM: 0.002,
+    sources: {
+      conductivity: cited(
+        `λ = 0.07 θ + 190 at 20 °C, 3000 and 6000 series. EN 1999-1-2:2007 3.3.1. ${NOT_SEEDED}`,
+      ),
+      density: cited(`2700 kg/m³. EN 1999-1-2:2007 3.3.1. ${NOT_SEEDED}`),
+      specificHeat: cited(`c = 0.41 θ + 903 at 20 °C. EN 1999-1-2:2007 3.3.1. ${NOT_SEEDED}`),
+      thickness: assumed('2 mm sheet.'),
+    },
+  },
+  {
+    id: 'timber',
+    label: 'Timber',
+    keywords: ['wood', 'timber', 'plywood'],
+    conductivityWMK: 0.12,
+    densityKgM3: 420,
+    specificHeatJKgK: 1530,
+    thicknessM: 0.018,
+    sources: {
+      conductivity: cited(`0.12 W/mK at 20 °C. EN 1995-1-2:2004 Annex B. ${NOT_SEEDED}`),
+      density: cited(`C24 mean density 420 kg/m³. EN 338. ${NOT_SEEDED}`),
+      specificHeat: cited(`1530 J/kgK at 20 °C. EN 1995-1-2:2004 Annex B Table B.1. ${NOT_SEEDED}`),
+      thickness: assumed('18 mm board.'),
+    },
+  },
+];
+
+/** The wall row for an interior wall's `material`. Null when nothing matches. */
+export function wallMaterialFor(material: string | null | undefined): WallMaterial | null {
+  const mat = (material ?? '').toLowerCase().trim();
+  if (!mat) return null;
+  return (
+    WALL_MATERIALS.find((row) => row.keywords.some((keyword) => mat.includes(keyword))) ?? null
+  );
+}
+
+/** Decision 1: the layer uses concrete, brick or gypsum, and concrete for anything else. */
+const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum']);
+
+/** The lining the smoke layer conducts into. Never null; glass and steel fall back to concrete. */
+export function layerLiningFor(material: string | null | undefined): WallMaterial {
+  const row = wallMaterialFor(material);
+  if (row && LAYER_LININGS.has(row.id)) return row;
+  return WALL_MATERIALS.find((item) => item.id === 'concrete') as WallMaterial;
+}
 
 export const COMMON_PICKS: readonly CommonPick[] = [
   { label: 'Wooden table', entryId: 'wood' },
