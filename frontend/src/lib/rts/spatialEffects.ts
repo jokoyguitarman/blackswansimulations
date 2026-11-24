@@ -17,6 +17,7 @@ import {
   MIN_LAYER_FIRE_KW,
   diameterForReleaseKw,
   enclosureFromGrid,
+  type FacadeOpening,
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
@@ -198,9 +199,11 @@ function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
 
 /** The cut an exit makes in one edge of the outline. A blocked exit is a wall. */
 interface ShellOpening {
+  key: string;
   a: Vec2;
   b: Vec2;
   level: string;
+  widthM: number;
 }
 
 /**
@@ -228,9 +231,11 @@ function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): Sh
     const t1 = Math.min(1, tCenter + half / len);
     if (!(t1 > t0)) continue;
     openings.push({
+      key: exit.id,
       a: { x: start.x + dx * t0, y: start.y + dy * t0 },
       b: { x: start.x + dx * t1, y: start.y + dy * t1 },
       level: exit.level ?? 'G',
+      widthM: (t1 - t0) * len,
     });
   }
   return openings;
@@ -331,6 +336,7 @@ export class SpatialEffectsEngine {
   private layerWalls: InteriorWall[] | null = null;
   private layerHeightKey = '';
   private layerEnclosures = new Map<string, Enclosure | null>();
+  private layerShellKey = '';
   private layerGridWalls: GridWall[] = [];
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
 
@@ -825,6 +831,30 @@ export class SpatialEffectsEngine {
     return this.shellBlocked.get(id)?.has(neighborId) ?? false;
   }
 
+  /**
+   * The outline between an indoor stud and an outdoor one. The same rule as
+   * the shell: closed except where a link crosses an unblocked exit. Two
+   * indoor studs are not a facade, so an opening inside the floor stays a
+   * full-height side.
+   */
+  private facadeAt(memberId: string, outsideId: string): FacadeOpening | null {
+    const member = this.studIndex.get(memberId);
+    const outside = this.studIndex.get(outsideId);
+    if (!member || !outside) return null;
+    const memberIn = member.spatialContext === 'inside_building';
+    const outsideIn = outside.spatialContext === 'inside_building';
+    if (memberIn === outsideIn) return null;
+    if (this.shellBlocks(memberId, outsideId)) return { kind: 'wall' };
+    const level = levelOf(member);
+    for (const gap of this.shellGaps) {
+      if (gap.level !== level) continue;
+      if (segmentsIntersect(member.simPos, outside.simPos, gap.a, gap.b)) {
+        return { kind: 'exit', exitKey: gap.key, widthM: gap.widthM };
+      }
+    }
+    return { kind: 'wall' };
+  }
+
   /** A solid interior wall, or the outside wall away from an exit. */
   private exchangeBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
     return this.wallBlocked(id, neighborId, walls) || this.shellBlocks(id, neighborId);
@@ -885,9 +915,10 @@ export class SpatialEffectsEngine {
     ceiling: number,
   ): Enclosure | null {
     const heights = [...this.storeyHeights.entries()].map(([id, height]) => `${id}=${height}`).join(',');
-    if (walls !== this.layerWalls || heights !== this.layerHeightKey) {
+    if (walls !== this.layerWalls || heights !== this.layerHeightKey || this.shellKey !== this.layerShellKey) {
       this.layerWalls = walls;
       this.layerHeightKey = heights;
+      this.layerShellKey = this.shellKey;
       this.layerEnclosures.clear();
       this.layerGridWalls = walls.map((wall) => ({
         id: wall.id,
@@ -897,13 +928,21 @@ export class SpatialEffectsEngine {
         y2: wall.end.y,
         hasDoor: wall.hasDoor,
         doorWidth: wall.doorWidth,
+        doorPosition: wall.doorPosition,
         material: wall.material,
         level: levelOf(wall),
       }));
     }
     const key = `${room}@${ceiling}`;
     if (this.layerEnclosures.has(key)) return this.layerEnclosures.get(key) ?? null;
-    const found = enclosureFromGrid(members, this.gridStuds, this.neighborCache, this.layerGridWalls, ceiling);
+    const found = enclosureFromGrid(
+      members,
+      this.gridStuds,
+      this.neighborCache,
+      this.layerGridWalls,
+      ceiling,
+      (memberId, outsideId) => this.facadeAt(memberId, outsideId),
+    );
     this.layerEnclosures.set(key, found);
     return found;
   }
@@ -1032,8 +1071,23 @@ export class SpatialEffectsEngine {
         ceilingM: ceiling,
       });
       for (const id of members) owned.add(id);
-      if (stepped.ventedSootG > 0 && enc.receivers.length > 0) {
-        this.layerGrants.push({ receivers: enc.receivers, grams: stepped.ventedSootG });
+      if (stepped.ventedSootG > 0) {
+        const shares = stepped.outByVentKgS;
+        let totalOut = 0;
+        for (const share of shares) totalOut += share;
+        if (totalOut > 0) {
+          for (let i = 0; i < shares.length; i++) {
+            const share = shares[i] ?? 0;
+            const receivers = enc.ventReceivers[i] ?? [];
+            // No receiver means the soot left through the opening and is
+            // not painted onto the studs along the outside wall.
+            if (!(share > 0) || receivers.length === 0) continue;
+            this.layerGrants.push({
+              receivers,
+              grams: stepped.ventedSootG * (share / totalOut),
+            });
+          }
+        }
       }
     }
 

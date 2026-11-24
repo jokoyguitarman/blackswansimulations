@@ -34,6 +34,7 @@ import {
   SpatialEffectsEngine,
   advanceSootK,
 } from '../src/lib/rts/spatialEffects';
+import { HEAD_HEIGHT_M } from '../src/lib/rts/twoZone';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -451,10 +452,29 @@ describe('smoke carries the gases', () => {
     const meanK = sumK / indoor.length;
     const balancedK = (expected * SOOT_EXTINCTION_M2_PER_G) / (indoor.length * volume);
     const release = engine.fuelReleaseKw(fire.id) ?? 0;
+    // A layer holds its soot above the head, so the column K is clear air.
+    // That mass is still indoors. It is not a leak through the wall.
+    const layers = (
+      engine as unknown as {
+        layerState: Map<string, { active: boolean; zone: { sootG: number; interfaceM: number } }>;
+      }
+    ).layerState;
+    let layerG = 0;
+    let aboveHead = false;
+    for (const row of layers.values()) {
+      if (!row.active) continue;
+      layerG += row.zone.sootG;
+      if (row.zone.interfaceM > HEAD_HEIGHT_M) aboveHead = true;
+    }
     assert.ok(indoor.length > 50, `indoor studs ${indoor.length}`);
     assert.ok(release > 800, `release ${release} kW`);
-    assert.ok(indoorG / made >= 0.6, `indoors ${indoorG} g of ${made} g, outdoors ${outdoorG} g`);
-    assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
+    assert.ok(
+      (indoorG + layerG) / made >= 0.6,
+      `indoors ${indoorG + layerG} g of ${made} g, outdoors ${outdoorG} g`,
+    );
+    if (!aboveHead) {
+      assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
+    }
   });
 
   test('a wall stops the gases and a door gap does not', () => {

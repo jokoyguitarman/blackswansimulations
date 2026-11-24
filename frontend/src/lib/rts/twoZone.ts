@@ -4,8 +4,12 @@
  * The hot layer is the CFAST control volume: plume mass in (Heskestad,
  * CFAST Technical Reference, Eq. 3.15 and 3.17; seed
  * `heskestad_plume_entrainment`), vent mass out (orifice slices, CFAST
- * Eq. 4.1–4.5, C = 0.7; seed `vent_flow_orifice`), and conduction into the
- * linings through NUREG-1805 Eq. 2-2 to 2-5 (seed `mqh_hot_layer_temperature`).
+ * Eq. 4.1–4.5, C = 0.7; seed `vent_flow_orifice`). The linings take heat
+ * through a surface film and then the slab: convection is CFAST Technical
+ * Reference Eq. 5.23, radiation is the grey exchange, and the slab is
+ * NUREG-1805 Eq. 2-2 to 2-5 (seed `mqh_hot_layer_temperature`). The film
+ * and the slab are in series. hk on its own is the conduction coefficient,
+ * not the loss from the gas.
  * The lower layer stays at the ambient 293 K. That is the usual
  * pre-flashover assumption; mixing into the lower layer is not in this step.
  *
@@ -94,6 +98,11 @@ export interface Lining {
  * kρc are the table. Density is kρc / (k c), so the three columns agree.
  * Thickness is not in the table: 150 mm for concrete and brick, 16 mm for
  * one gypsum board. Those thicknesses are assumed.
+ *
+ * `WALL_MATERIALS` is the wall table this should read, once that table is
+ * on master. It is not on this branch. The thicknesses there are that
+ * table's own assumed values, not these 150 / 150 / 16 mm, so this copy
+ * stays until the reader can switch without inventing a second set.
  */
 export const LINING = {
   concrete: {
@@ -144,14 +153,108 @@ export function penetrationTimeS(lining: Lining): number {
 }
 
 /**
- * Effective loss coefficient, kW/m²K. Thick: √(kρc / t). Thin, after the
+ * Conduction coefficient, kW/m²K. Thick: √(kρc / t). Thin, after the
  * penetration time: k / δ. The 1 s floor only keeps the square root finite.
+ * This is the slab, from the surface to ambient. It is not the gas-to-wall loss.
  */
 export function effectiveHeatLossKwM2K(lining: Lining, tS: number): number {
   const t = Math.max(tS, HK_FLOOR_S);
   const thick = Math.sqrt(thermalInertia(lining) / t);
   const thin = lining.kKwMK / lining.thicknessM;
   return t < penetrationTimeS(lining) ? thick : thin;
+}
+
+/** Stefan–Boltzmann, kW/m²K⁴. */
+const SIGMA_KW_M2K4 = 5.67e-11;
+
+/**
+ * CFAST Technical Reference Eq. 5.23, the wall value, in W/m²K per K^{1/3}.
+ * The ceiling and floor use 1.52 in that equation. One coefficient for every
+ * face is assumed.
+ */
+export const SURFACE_CONVECTION_C_W = 1.31;
+
+/**
+ * Assumed. CFAST treats a surface as grey and notes that ordinary finishes
+ * sit in a narrow band. 0.9 is that band, not a measured lining.
+ */
+export const SURFACE_EMISSIVITY = 0.9;
+
+/**
+ * Heat flux into a lining, kW/m². Convection and radiation reach the surface
+ * (CFAST TRG Eq. 5.23 and the grey exchange σ(Tg⁴ − Ts⁴)); conduction from
+ * that surface back to ambient is the MQH hk. The two are in series, so the
+ * surface temperature is whatever makes them equal. Applying hk to the gas
+ * temperature skips the film and dumps most of the fire into the wall.
+ */
+function surfaceFluxKwM2(hk: number, gasK: number): number {
+  if (!(hk > 0) || !(gasK > AMBIENT_K + 0.05)) return 0;
+  const residual = (surfaceK: number) => {
+    const acrossFilm = gasK - surfaceK;
+    if (!(acrossFilm > 0)) return -hk * (surfaceK - AMBIENT_K);
+    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(acrossFilm, 1 / 3);
+    const hRad =
+      SURFACE_EMISSIVITY *
+      SIGMA_KW_M2K4 *
+      (gasK * gasK + surfaceK * surfaceK) *
+      (gasK + surfaceK);
+    return (hConv + hRad) * acrossFilm - hk * (surfaceK - AMBIENT_K);
+  };
+  let lo = AMBIENT_K;
+  let hi = gasK;
+  for (let i = 0; i < 16; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (residual(mid) > 0) lo = mid;
+    else hi = mid;
+  }
+  return hk * (0.5 * (lo + hi) - AMBIENT_K);
+}
+
+const FLUX_TABLE_N = 96;
+const FLUX_T_MAX = 1500;
+
+/** One lining at one age. The balance samples the same slab dozens of times. */
+function fluxTable(hk: number): (gasK: number) => number {
+  const ys = new Array<number>(FLUX_TABLE_N + 1);
+  for (let i = 0; i <= FLUX_TABLE_N; i++) {
+    const gas = AMBIENT_K + ((FLUX_T_MAX - AMBIENT_K) * i) / FLUX_TABLE_N;
+    ys[i] = surfaceFluxKwM2(hk, gas);
+  }
+  const span = (FLUX_T_MAX - AMBIENT_K) / FLUX_TABLE_N;
+  return (gasK: number) => {
+    if (!(gasK > AMBIENT_K + 0.05)) return 0;
+    const x = (Math.min(gasK, FLUX_T_MAX) - AMBIENT_K) / span;
+    const i = Math.min(FLUX_TABLE_N - 1, Math.floor(x));
+    const frac = x - i;
+    const lo = ys[i] ?? 0;
+    const hi = ys[i + 1] ?? lo;
+    return lo + (hi - lo) * frac;
+  };
+}
+
+let fluxMemo: Map<string, (gasK: number) => number> | null = null;
+
+export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number {
+  const hk = effectiveHeatLossKwM2K(lining, tS);
+  if (!(hk > 0) || !(gasK > AMBIENT_K + 0.05)) return 0;
+  if (!fluxMemo) return surfaceFluxKwM2(hk, gasK);
+  const key = `${lining.name}|${hk.toExponential(5)}`;
+  let at = fluxMemo.get(key);
+  if (!at) {
+    at = fluxTable(hk);
+    fluxMemo.set(key, at);
+  }
+  return at(gasK);
+}
+
+function withFluxMemo<T>(body: () => T): T {
+  const prev = fluxMemo;
+  fluxMemo = new Map();
+  try {
+    return body();
+  } finally {
+    fluxMemo = prev;
+  }
 }
 
 /** NUREG Eq. 2-1. Q is kW, areas are m², Ho is m, hk is kW/m²K. */
@@ -312,11 +415,11 @@ function plumeKgS(spec: LayerSpec, interfaceM: number): number {
   return mass;
 }
 
-function lossTimesArea(boundaries: readonly Boundary[], tS: number): number {
+function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number): number {
   let sum = 0;
   for (const boundary of boundaries) {
     if (!(boundary.areaM2 > 0)) continue;
-    sum += boundary.areaM2 * effectiveHeatLossKwM2K(boundary.lining, tS);
+    sum += boundary.areaM2 * liningFluxKwM2(boundary.lining, tS, gasK);
   }
   return sum;
 }
@@ -351,9 +454,14 @@ export function orificeSliceKgS(
   );
 }
 
-interface Flows {
+interface SliceFlows {
   inKgS: number;
   outKgS: number;
+}
+
+interface Flows extends SliceFlows {
+  /** Outflow of each vent, same order as the spec. */
+  outByVent: number[];
 }
 
 function pressureAt(z: number, interfaceM: number, dP0: number, rhoL: number, rhoU: number): number {
@@ -362,24 +470,29 @@ function pressureAt(z: number, interfaceM: number, dP0: number, rhoL: number, rh
 }
 
 function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, dP0: number): Flows {
-  const flows: Flows = { inKgS: 0, outKgS: 0 };
+  const flows: Flows = { inKgS: 0, outKgS: 0, outByVent: vents.map(() => 0) };
   const rhoU = densityKgM3(upperK);
   const rhoL = densityKgM3(AMBIENT_K);
   const rhoA = LEVEL.RHO_AIR;
-  for (const vent of vents) {
+  for (let v = 0; v < vents.length; v++) {
+    const vent = vents[v];
+    if (!vent) continue;
     const sill = Math.min(vent.sillM, vent.soffitM);
     const soffit = Math.max(vent.sillM, vent.soffitM);
     if (!(vent.widthM > 0) || !(soffit > sill)) continue;
     const marks = [sill, soffit];
     if (interfaceM > sill && interfaceM < soffit) marks.push(interfaceM);
     marks.sort((a, b) => a - b);
+    let out = 0;
     for (let i = 0; i < marks.length - 1; i++) {
       const z0 = marks[i] ?? sill;
       const z1 = marks[i + 1] ?? soffit;
       const piece = sliceFlows(z0, z1, interfaceM, dP0, rhoL, rhoU, rhoA, vent.widthM);
       flows.inKgS += piece.inKgS;
-      flows.outKgS += piece.outKgS;
+      out += piece.outKgS;
     }
+    flows.outByVent[v] = out;
+    flows.outKgS += out;
   }
   return flows;
 }
@@ -393,8 +506,8 @@ function sliceFlows(
   rhoU: number,
   rhoA: number,
   widthM: number,
-): Flows {
-  const flows: Flows = { inKgS: 0, outKgS: 0 };
+): SliceFlows {
+  const flows: SliceFlows = { inKgS: 0, outKgS: 0 };
   if (!(z1 > z0 + 1e-6)) return flows;
   const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
   const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
@@ -417,7 +530,7 @@ function sliceFlows(
 }
 
 function balancedFlows(vents: readonly Vent[], interfaceM: number, upperK: number): Flows {
-  if (vents.length === 0) return { inKgS: 0, outKgS: 0 };
+  if (vents.length === 0) return { inKgS: 0, outKgS: 0, outByVent: [] };
   const at = (p: number) => ventFlows(vents, interfaceM, upperK, p);
   const net = (flow: Flows) => flow.inKgS - flow.outKgS;
   let lo = -80;
@@ -452,15 +565,26 @@ interface Balance {
   riseK: number;
 }
 
+function energyKw(spec: LayerSpec, tS: number, plumeKgS: number, riseK: number): number {
+  const gas = AMBIENT_K + Math.max(0, riseK);
+  return plumeKgS * CP_KJ_KGK * Math.max(0, riseK) + lossPowerKw(spec.boundaries, tS, gas);
+}
+
 export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Balance {
   const plume = plumeKgS(spec, interfaceM);
   const q = heatKw(spec);
-  const hkA = lossTimesArea(spec.boundaries, tS);
-  const denom = plume * CP_KJ_KGK + hkA;
-  const rise = denom > 0 ? q / denom : 0;
-  const upper = AMBIENT_K + Math.max(0, rise);
-  const flows = balancedFlows(spec.vents, interfaceM, upper);
-  return { plumeKgS: plume, outKgS: flows.outKgS, inKgS: flows.inKgS, riseK: Math.max(0, rise) };
+  // Loss rises with temperature, so the rise that spends the fire is unique.
+  let lo = 0;
+  let hi = 20;
+  while (energyKw(spec, tS, plume, hi) < q && hi < 4000) hi *= 2;
+  for (let i = 0; i < 32; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (energyKw(spec, tS, plume, mid) < q) lo = mid;
+    else hi = mid;
+  }
+  const rise = 0.5 * (lo + hi);
+  const flows = balancedFlows(spec.vents, interfaceM, AMBIENT_K + rise);
+  return { plumeKgS: plume, outKgS: flows.outKgS, inKgS: flows.inKgS, riseK: rise };
 }
 
 /**
@@ -470,6 +594,10 @@ export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Bala
  * a thin layer, means the smoke never pools.
  */
 export function steadyLayer(spec: LayerSpec, tS: number): SteadyLayer | null {
+  return withFluxMemo(() => steadyLayerNow(spec, tS));
+}
+
+function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
   const q = heatKw(spec);
   if (!(q > MIN_LAYER_FIRE_KW) || !(spec.areaM2 > 0) || !(spec.ceilingM > 0.5)) return null;
   const zMin = 0.08;
@@ -529,12 +657,22 @@ export function stepZone(
   spec: LayerSpec,
   dt: number,
   sootGPerS = 0,
-): { state: ZoneState; ventedSootG: number } {
+): { state: ZoneState; ventedSootG: number; outByVentKgS: number[] } {
+  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS));
+}
+
+function stepZoneNow(
+  state: ZoneState,
+  spec: LayerSpec,
+  dt: number,
+  sootGPerS = 0,
+): { state: ZoneState; ventedSootG: number; outByVentKgS: number[] } {
   let z = state.interfaceM;
   let temp = state.upperK;
   let soot = state.sootG;
   let age = state.ageS;
   let vented = 0;
+  let outByVent = spec.vents.map(() => 0);
   let left = Math.max(0, dt);
   const q = heatKw(spec);
   while (left > 1e-9) {
@@ -547,8 +685,8 @@ export function stepZone(
     const cap = q > 0 ? q / (CP_KJ_KGK * riseNow) : 0;
     if (cap > 0 && plume > cap) plume = cap;
     const flows = balancedFlows(spec.vents, z, temp);
-    const hkA = lossTimesArea(spec.boundaries, age);
-    const qLoss = hkA * (temp - AMBIENT_K);
+    outByVent = flows.outByVent;
+    const qLoss = lossPowerKw(spec.boundaries, age, temp);
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
     let dT = (q - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
     if (dT > 400) dT = 400;
@@ -568,6 +706,7 @@ export function stepZone(
   return {
     state: { interfaceM: z, upperK: temp, sootG: soot, ageS: age },
     ventedSootG: vented,
+    outByVentKgS: outByVent,
   };
 }
 
@@ -586,18 +725,48 @@ export interface GridWall {
   y2: number;
   hasDoor: boolean;
   doorWidth: number;
+  /** 0–1 along the wall. Absent means the middle. */
+  doorPosition?: number;
   material: string;
   level: string;
 }
 
+/** What the building shell does to one indoor–outdoor link. */
+export interface FacadeOpening {
+  /**
+   * A wall has no vent. An exit is one opening: every link that crosses it
+   * shares `exitKey`, and the width is counted once.
+   */
+  kind: 'wall' | 'exit';
+  exitKey?: string;
+  widthM?: number;
+}
+
 export interface Enclosure {
   spec: LayerSpec;
-  /** Studs just outside a vent, in wall-id or spill order, for the soot that leaves. */
-  receivers: string[];
+  /**
+   * Studs just outside each vent, same order as `spec.vents`. Empty means
+   * the soot leaves the building instead of being painted on a stud.
+   */
+  ventReceivers: string[][];
 }
 
 const FACE_MIN_M = 2;
 const FACE_MAX_M = 3.4;
+
+/** Where the stud link crosses the wall, 0–1 along the wall. Null when it misses. */
+function paramAlongWall(ax: number, ay: number, bx: number, by: number, wall: GridWall): number | null {
+  const d1x = bx - ax;
+  const d1y = by - ay;
+  const d2x = wall.x2 - wall.x1;
+  const d2y = wall.y2 - wall.y1;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((wall.x1 - ax) * d2y - (wall.y1 - ay) * d2x) / denom;
+  const u = ((wall.x1 - ax) * d1y - (wall.y1 - ay) * d1x) / denom;
+  if (t <= 0.01 || t >= 0.99 || u <= 0.01 || u >= 0.99) return null;
+  return u;
+}
 
 function segmentsCross(
   ax: number,
@@ -624,8 +793,10 @@ function segmentsCross(
  * The ceiling, the floor, the walls that actually separate this set of
  * studs, and the openings. No boundary at all (a bare grid, nothing
  * modelled around it) is not an enclosure: the caller keeps the travelling
- * front. A link to a stud outside the set, with no wall on it, is a
- * full-height opening, so an open side vents the ceiling jet.
+ * front. A link to a stud outside the set, with no wall and no facade, is
+ * a full-height opening. A facade link is a concrete wall unless it
+ * crosses an exit, which is one vent of that exit's width with its head
+ * at DOOR_SOFFIT_M.
  */
 export function enclosureFromGrid(
   memberIds: readonly string[],
@@ -633,13 +804,17 @@ export function enclosureFromGrid(
   neighbors: ReadonlyMap<string, readonly string[]>,
   walls: readonly GridWall[],
   ceilingM: number,
+  facade?: (memberId: string, outsideId: string) => FacadeOpening | null,
 ): Enclosure | null {
   if (memberIds.length === 0 || !(ceilingM > 0.5)) return null;
   const members = new Set(memberIds);
   const level = studs.get(memberIds[0] ?? '')?.level ?? 'G';
   const seenPairs = new Set<string>();
   const wallHits = new Map<string, GridWall>();
-  const receivers = new Set<string>();
+  const doorLinks = new Map<string, Array<{ id: string; t: number }>>();
+  const spillReceivers: string[] = [];
+  const exitSlots = new Map<string, { widthM: number; receivers: string[] }>();
+  const facadeWalls: number[] = [];
   let spillWidth = 0;
   let boundaryLinks = 0;
 
@@ -666,41 +841,99 @@ export function enclosureFromGrid(
       }
       if (wall) {
         wallHits.set(wall.id, wall);
-        // The stud across a door takes the soot the opening lets out.
-        if (wall.hasDoor) receivers.add(nId);
+        if (wall.hasDoor) {
+          const t = paramAlongWall(stud.x, stud.y, other.x, other.y, wall);
+          if (t != null) {
+            const across = doorLinks.get(wall.id) ?? [];
+            across.push({ id: nId, t });
+            doorLinks.set(wall.id, across);
+          }
+        }
       } else {
-        spillWidth += reach;
-        receivers.add(nId);
+        const face = facade?.(id, nId) ?? null;
+        if (face?.kind === 'wall') {
+          // The outline, away from an exit. Concrete until the wall table
+          // is the reader. The stud outside the wall is not a receiver.
+          facadeWalls.push(reach * ceilingM);
+        } else if (face?.kind === 'exit' && face.exitKey && (face.widthM ?? 0) > 0) {
+          const slot = exitSlots.get(face.exitKey) ?? { widthM: face.widthM ?? 0, receivers: [] };
+          slot.receivers.push(nId);
+          exitSlots.set(face.exitKey, slot);
+        } else {
+          spillWidth += reach;
+          spillReceivers.push(nId);
+        }
       }
     }
   }
   if (boundaryLinks === 0) return null;
 
   const vents: Vent[] = [];
+  const ventReceivers: string[][] = [];
   const boundaries: Boundary[] = [];
   const area = memberIds.length * STUD_AREA_M2;
   // Floor and ceiling. Assumed to be the concrete row: the slab, not the finish.
   boundaries.push({ areaM2: area, lining: LINING.concrete });
   boundaries.push({ areaM2: area, lining: LINING.concrete });
+  for (const wallArea of facadeWalls) {
+    if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining: LINING.concrete });
+  }
+
+  const receiversForDoor = (wall: GridWall): string[] => {
+    const links = doorLinks.get(wall.id) ?? [];
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (!(len > 0)) return [];
+    const doorWidth = wall.doorWidth > 0 ? wall.doorWidth : 0.9;
+    const center = wall.doorPosition ?? 0.5;
+    const half = doorWidth / (2 * len);
+    const inGap = links.filter((link) => Math.abs(link.t - center) <= half + 1e-4);
+    if (inGap.length > 0) return [...new Set(inGap.map((link) => link.id))];
+    // The opening falls between studs. The nearest link within one stud
+    // takes the soot. The rest of the wall does not.
+    let best: { id: string; dist: number } | null = null;
+    for (const link of links) {
+      const dist = Math.abs(link.t - center) * len;
+      if (dist > FACE_MAX_M) continue;
+      if (!best || dist < best.dist) best = { id: link.id, dist };
+    }
+    return best ? [best.id] : [];
+  };
+
+  const pushHead = (widthM: number, receivers: readonly string[]) => {
+    const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
+    if (soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
+      vents.push({ widthM, sillM: 0, soffitM: soffit });
+    } else {
+      vents.push({ widthM, sillM: 0, soffitM: ceilingM });
+    }
+    ventReceivers.push([...new Set(receivers)]);
+  };
 
   for (const wall of wallHits.values()) {
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (!(length > 0)) continue;
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
     const doorWidth = wall.hasDoor ? Math.min(length, wall.doorWidth > 0 ? wall.doorWidth : 0.9) : 0;
+    const lining = liningForMaterial(wall.material);
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
       vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
+      ventReceivers.push(receiversForDoor(wall));
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
-      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining: liningForMaterial(wall.material) });
+      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
     } else if (doorWidth > 0) {
       spillWidth += doorWidth;
+      spillReceivers.push(...receiversForDoor(wall));
       const wallArea = Math.max(0, (length - doorWidth) * ceilingM);
-      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining: liningForMaterial(wall.material) });
+      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
     } else {
-      boundaries.push({ areaM2: length * ceilingM, lining: liningForMaterial(wall.material) });
+      boundaries.push({ areaM2: length * ceilingM, lining });
     }
   }
-  if (spillWidth > 0) vents.push({ widthM: spillWidth, sillM: 0, soffitM: ceilingM });
+  if (spillWidth > 0) {
+    vents.push({ widthM: spillWidth, sillM: 0, soffitM: ceilingM });
+    ventReceivers.push([...new Set(spillReceivers)]);
+  }
+  for (const slot of exitSlots.values()) pushHead(slot.widthM, slot.receivers);
 
   return {
     spec: {
@@ -710,6 +943,6 @@ export function enclosureFromGrid(
       boundaries,
       fires: [],
     },
-    receivers: [...receivers],
+    ventReceivers,
   };
 }
