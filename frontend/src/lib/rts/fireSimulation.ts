@@ -601,6 +601,20 @@ export class FireSimulation {
   }
 
   /**
+   * Soot grams per second from each burning cell, yield times mass loss.
+   * The release is the decayed one. A cell with no soot yield, a jet, and
+   * an arc are absent.
+   */
+  burningSoot(): Array<{ id: string; sootGPerS: number }> {
+    const sources: Array<{ id: string; sootGPerS: number }> = [];
+    for (const fire of this.liveFires()) {
+      const sootGPerS = sootProductionGPerS(fire.cell, this.releaseKw(fire.cell, fire.meta));
+      if (sootGPerS > 0) sources.push({ id: fire.id, sootGPerS });
+    }
+    return sources;
+  }
+
+  /**
    * Grams per second each burning cell is putting into the smoke, and the
    * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
    * The release is the decayed one. The gas yield is the well-ventilated

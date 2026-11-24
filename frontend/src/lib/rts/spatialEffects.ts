@@ -7,11 +7,12 @@ import {
   type FireParams,
   type GasJet,
 } from './fireSimulation';
-import type { FuelCell } from './flameFront';
+import { STUD_AREA_M2, type FuelCell } from './flameFront';
 import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
-import { addFumeGrams, fumesFromSmoke, type FumeGrams } from './toxicDose';
+import { addFumeGrams, fumesFromSmoke, SOOT_EXTINCTION_M2_PER_G, type FumeGrams } from './toxicDose';
+import { extinctionK, smokeFromK } from '../evacuation/hazardSensing';
 
 // ── Effect types ─────────────────────────────────────────────────────────
 
@@ -86,6 +87,77 @@ export interface HazardRuntimeState {
 // ── Gas/Flood spread helpers ─────────────────────────────────────────────
 
 const NEIGHBOR_RADIUS = 8;
+
+/**
+ * Mixed depth of the soot in one stud, assumed. The grid is not a layer
+ * solver, and the orifice in `vent_flow_orifice` needs a neutral plane this
+ * stud does not have, so the soot is mixed through area × this depth.
+ * The visibility table still caps the stored extinction.
+ */
+export const SMOKE_LAYER_DEPTH_M = 0.15;
+
+/**
+ * First-order loss of the stud's soot, assumed, per second. It stands in
+ * for the vent the orifice formula cannot be applied to here. 0.15/s lets
+ * the extinction follow a hood whose fire decays with τ = 435 s. A deeper
+ * layer would still be climbing several minutes after that hood opened.
+ */
+export const SMOKE_VENT_PER_S = 0.15;
+
+/** Open air loses soot at five times the indoor rate, matching the old outdoor decay. */
+export const SMOKE_OUTDOOR_VENT_FACTOR = 5;
+
+/**
+ * Share of the extinction difference a neighbour takes per second, assumed.
+ * The amount added to the neighbour is taken off the source.
+ */
+export const SMOKE_EXCHANGE_PER_S = 0.025;
+
+/** Solid wall. A door gap uses the full exchange. Assumed. */
+export const SMOKE_WALL_LEAK = 0.05;
+
+/**
+ * Exact step of dK/dt = generation − vent·K. The loss is first-order, so a
+ * fixed slice and a longer frame cut into the same slices agree.
+ */
+export function advanceSootK(k: number, generationPerS: number, ventPerS: number, dt: number): number {
+  if (!(dt > 0)) return Math.max(0, k);
+  const gen = generationPerS > 0 ? generationPerS : 0;
+  const vent = ventPerS > 0 ? ventPerS : 0;
+  if (!(vent > 0)) return Math.max(0, k + gen * dt);
+  const decay = Math.exp(-vent * dt);
+  return Math.max(0, k * decay + (gen / vent) * (1 - decay));
+}
+
+function applySmokeMoves(
+  kNow: Map<string, number>,
+  moves: Array<{ from: string; to: string; k: number }>,
+  kMax: number,
+): void {
+  const out = new Map<string, number>();
+  for (const move of moves) out.set(move.from, (out.get(move.from) ?? 0) + move.k);
+  for (const move of moves) {
+    const available = kNow.get(move.from) ?? 0;
+    const total = out.get(move.from) ?? 0;
+    if (total > available && total > 0) move.k *= available / total;
+  }
+  const incoming = new Map<string, number>();
+  for (const move of moves) incoming.set(move.to, (incoming.get(move.to) ?? 0) + move.k);
+  const roomScale = new Map<string, number>();
+  for (const [id, add] of incoming) {
+    const room = kMax - (kNow.get(id) ?? 0);
+    roomScale.set(id, add > room && add > 0 ? Math.max(0, room) / add : 1);
+  }
+  for (const move of moves) {
+    const moved = move.k * (roomScale.get(move.to) ?? 1);
+    if (!(moved > 0)) continue;
+    kNow.set(move.from, (kNow.get(move.from) ?? 0) - moved);
+    kNow.set(move.to, Math.min(kMax, (kNow.get(move.to) ?? 0) + moved));
+  }
+  for (const [id, k] of kNow) {
+    if (!(k > 1e-10)) kNow.set(id, 0);
+  }
+}
 
 function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
   const d1x = p2.x - p1.x;
@@ -164,6 +236,8 @@ export class SpatialEffectsEngine {
   private fireSim: FireSimulation;
   /** Null keeps blast smoke on every affected stud. A set limits that source to fuel. */
   private fuelGate: Set<string> | null = null;
+  /** Extinction from burning soot, kept apart from blast-event smoke. */
+  private sootK = new Map<string, number>();
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -175,6 +249,7 @@ export class SpatialEffectsEngine {
     this.studStates.clear();
     this.neighborCache.clear();
     this.verticalPairs = [];
+    this.sootK.clear();
     this.activeEffects = [];
     this.elapsed = 0;
 
@@ -561,23 +636,20 @@ export class SpatialEffectsEngine {
     toxic: 0.9,
   };
 
-  /**
-   * Smoke added per second by a burning stud at full release. A spray
-   * multiplies this by `FireStudState.output`, the suppressed release
-   * divided by the unsprayed one. That scale is assumed: this field is
-   * not a soot yield. Output is 1 until a spray opens, so an unsprayed
-   * fire keeps this rate.
-   */
-  private static readonly BURN_SMOKE_PER_S = 0.03;
-
   private stepSmoke(dt: number, walls: InteriorWall[]) {
-    // Generate smoke from active fires and smoke-producing events
-    for (const [, state] of this.studStates) {
-      if (state.fire.state === 'burning') {
-        const output = state.fire.output;
-        const scale = output == null || !(output < 1) ? 1 : Math.max(0, output);
-        state.smoke = Math.min(1, state.smoke + dt * SpatialEffectsEngine.BURN_SMOKE_PER_S * scale);
-      }
+    if (!(dt > 0)) return;
+    const kMax = extinctionK(1);
+
+    // Blast smoke stays a smoke number with the old constant loss. It is not
+    // the soot of a burning material, so the soot vent below does not take it.
+    const eventD = new Map<string, number>();
+    for (const [id, state] of this.studStates) {
+      const total = extinctionK(state.smoke);
+      let soot = this.sootK.get(id) ?? 0;
+      if (soot > total) soot = total;
+      if (!(soot > 0)) soot = 0;
+      this.sootK.set(id, soot);
+      eventD.set(id, smokeFromK(Math.max(0, total - soot)));
     }
 
     for (const [, hs] of this.hazardStates) {
@@ -585,62 +657,89 @@ export class SpatialEffectsEngine {
         const event = hs.events[i];
         const rate = SpatialEffectsEngine.SMOKE_RATE[event.smokeGeneration ?? 'none'];
         if (rate <= 0) continue;
-
-        if (event.affectedStuds?.length) {
-          for (const sId of event.affectedStuds) {
-            if (this.fuelGate && !this.fuelGate.has(sId)) continue;
-            const s = this.studStates.get(sId);
-            if (s) s.smoke = Math.min(1, s.smoke + dt * rate * 0.02);
-          }
+        if (!event.affectedStuds?.length) continue;
+        for (const sId of event.affectedStuds) {
+          if (this.fuelGate && !this.fuelGate.has(sId)) continue;
+          if (!eventD.has(sId)) continue;
+          eventD.set(sId, Math.min(1, (eventD.get(sId) ?? 0) + dt * rate * 0.02));
         }
       }
     }
 
-    // Spread smoke between neighbors (passes through doors, partially blocked by solid walls)
-    const spreadAmount = dt * 0.025;
-    const toSpread: Array<{ id: string; amount: number }> = [];
+    // Previous event decay: 0.002 per second, and four times that again outdoors.
+    for (const [id, density] of eventD) {
+      if (!(density > 0.02)) continue;
+      const src = this.studIndex.get(id);
+      let loss = dt * 0.002;
+      if (src && src.spatialContext !== 'inside_building') loss += dt * 0.008;
+      eventD.set(id, Math.max(0, density - loss));
+    }
+
+    // Soot mass becomes extinction in the stud's layer (NUREG-1805 Eq. 18-2,
+    // K = σₘ × soot / volume). The release is the decayed one, so a spray
+    // that has cut the fire cuts the smoke with it.
+    const volume = STUD_AREA_M2 * SMOKE_LAYER_DEPTH_M;
+    const sootById = new Map<string, number>();
+    for (const src of this.fireSim.burningSoot()) sootById.set(src.id, src.sootGPerS);
+    for (const id of this.studStates.keys()) {
+      const generation = ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
+      const src = this.studIndex.get(id);
+      const outdoor = src != null && src.spatialContext !== 'inside_building';
+      const vent = SMOKE_VENT_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);
+      let k = advanceSootK(this.sootK.get(id) ?? 0, generation, vent, dt);
+      if (k > kMax) k = kMax;
+      this.sootK.set(id, k);
+    }
+
+    // What leaves a stud is taken off it, in each reservoir.
+    this.moveSmoke(eventD, 1, dt, walls);
+    this.moveSmoke(this.sootK, kMax, dt, walls);
 
     for (const [id, state] of this.studStates) {
-      if (state.smoke > 0.02) {
-        const src = this.studIndex.get(id);
-        if (!src) continue;
-        const neighbors = this.neighborCache.get(id) ?? [];
+      let soot = this.sootK.get(id) ?? 0;
+      let eventK = extinctionK(eventD.get(id) ?? 0);
+      const sum = soot + eventK;
+      if (sum > kMax && sum > 0) {
+        const scale = kMax / sum;
+        soot *= scale;
+        eventK *= scale;
+        this.sootK.set(id, soot);
+      }
+      state.smoke = smokeFromK(Math.min(kMax, soot + eventK));
+    }
+  }
 
-        for (const nId of neighbors) {
-          const nState = this.studStates.get(nId);
-          const dest = this.studIndex.get(nId);
-          if (!nState || !dest) continue;
-          if (nState.smoke >= state.smoke) continue;
-
-          const blocked = isWallBlocked(src.simPos, dest.simPos, walls, levelOf(src));
-          const transfer = blocked ? spreadAmount * 0.05 : spreadAmount;
-          const diff = (state.smoke - nState.smoke) * transfer;
-          if (diff > 0.001) {
-            toSpread.push({ id: nId, amount: diff });
-          }
-        }
-
-        // Slow decay; faster outdoors where smoke disperses
-        const decayRate = dt * 0.002;
-        state.smoke = Math.max(0, state.smoke - decayRate);
-        if (src.spatialContext !== 'inside_building') {
-          state.smoke = Math.max(0, state.smoke - decayRate * 4);
-        }
+  /** Neighbours and the shaft above. The amount added is the amount removed. */
+  private moveSmoke(
+    field: Map<string, number>,
+    cap: number,
+    dt: number,
+    walls: InteriorWall[],
+  ): void {
+    const moves: Array<{ from: string; to: string; k: number }> = [];
+    for (const [id, value] of field) {
+      if (!(value > 0)) continue;
+      const src = this.studIndex.get(id);
+      if (!src) continue;
+      for (const nId of this.neighborCache.get(id) ?? []) {
+        const dest = this.studIndex.get(nId);
+        if (!dest) continue;
+        const other = field.get(nId) ?? 0;
+        if (!(value > other)) continue;
+        const blocked = isWallBlocked(src.simPos, dest.simPos, walls, levelOf(src));
+        const share = dt * SMOKE_EXCHANGE_PER_S * (blocked ? SMOKE_WALL_LEAK : 1);
+        const moved = (value - other) * share;
+        if (moved > 1e-10) moves.push({ from: id, to: nId, k: moved });
       }
     }
-
     for (const pair of this.verticalPairs) {
-      const lower = this.studStates.get(pair.lower);
-      const upper = this.studStates.get(pair.upper);
-      if (!lower || !upper || !(lower.smoke > upper.smoke)) continue;
-      const amount = (lower.smoke - upper.smoke) * Math.min(0.5, pair.coeffPerS * dt);
-      if (amount > 0) toSpread.push({ id: pair.upper, amount });
+      const lower = field.get(pair.lower) ?? 0;
+      const upper = field.get(pair.upper) ?? 0;
+      if (!(lower > upper) || !field.has(pair.lower) || !field.has(pair.upper)) continue;
+      const moved = (lower - upper) * Math.min(0.5, pair.coeffPerS * dt);
+      if (moved > 1e-10) moves.push({ from: pair.lower, to: pair.upper, k: moved });
     }
-
-    for (const { id, amount } of toSpread) {
-      const s = this.studStates.get(id);
-      if (s) s.smoke = Math.min(1, s.smoke + amount);
-    }
+    applySmokeMoves(field, moves, cap);
   }
 
   /**

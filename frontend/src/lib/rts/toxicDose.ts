@@ -34,8 +34,8 @@
  * factor is not applied. Oxygen is not tracked and stays out of the sum.
  * Irritants (clause 6.2) are ppm / F, instantaneous: hydrogen chloride
  * 1000 ppm, acrolein 30 ppm. FED at 1 puts the person down, and that stays.
- * FEC at 1 stops them while the smoke is that thick, and they move again
- * once it falls below 1. The standard's 0.3 example is not the default.
+ * FEC at 1 makes them crawl while the smoke is that thick, and they walk
+ * again once it falls below 1. The standard's 0.3 example is not the default.
  */
 
 import { extinctionK } from '../evacuation/hazardSensing';
