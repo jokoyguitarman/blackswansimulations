@@ -7,7 +7,29 @@ import {
   type FireParams,
   type GasJet,
 } from './fireSimulation';
-import { STUD_AREA_M2, type FuelCell } from './flameFront';
+import { GAS_JET_KW, STUD_AREA_M2, electricalHeatReleaseKw, type FuelCell } from './flameFront';
+import {
+  AMBIENT_K,
+  CEILING_JET_DEPTH_FRACTION,
+  DISTINCT_LAYER_RISE_K,
+  HEAD_HEIGHT_M,
+  LAYER_OFF_FRACTION,
+  MIN_LAYER_FIRE_KW,
+  diameterForReleaseKw,
+  enclosureFromGrid,
+  type FacadeOpening,
+  formsSustainedLayer,
+  freshLayer,
+  hasSmokeReservoir,
+  steadyLayer,
+  stepZone,
+  type Enclosure,
+  type FirePlume,
+  type GridStud,
+  type GridWall,
+  type LayerSpec,
+  type ZoneState,
+} from './twoZone';
 import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { LEVEL } from '../evacuation/levelConstants';
@@ -177,9 +199,11 @@ function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
 
 /** The cut an exit makes in one edge of the outline. A blocked exit is a wall. */
 interface ShellOpening {
+  key: string;
   a: Vec2;
   b: Vec2;
   level: string;
+  widthM: number;
 }
 
 /**
@@ -203,13 +227,19 @@ function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): Sh
     if (len < 0.01) continue;
     const half = exit.width / 2;
     const tCenter = ((exit.center.x - start.x) * dx + (exit.center.y - start.y) * dy) / (len * len);
-    const t0 = Math.max(0, tCenter - half / len);
-    const t1 = Math.min(1, tCenter + half / len);
+    // A stud row just off the doorway still crosses it. 0.75 m is assumed:
+    // enough for a row 0.5 m outside a 2 m door, and short of the next row.
+    // The vent width stays the exit's width. The pad is only the hit test.
+    const pad = (half + 0.75) / len;
+    const t0 = Math.max(0, tCenter - pad);
+    const t1 = Math.min(1, tCenter + pad);
     if (!(t1 > t0)) continue;
     openings.push({
+      key: exit.id,
       a: { x: start.x + dx * t0, y: start.y + dy * t0 },
       b: { x: start.x + dx * t1, y: start.y + dy * t1 },
       level: exit.level ?? 'G',
+      widthM: exit.width,
     });
   }
   return openings;
@@ -301,6 +331,18 @@ export class SpatialEffectsEngine {
   private shellBlocked = new Map<string, Set<string>>();
   /** Saved storey height, metres. A missing level keeps the default. */
   private storeyHeights = new Map<string, number>();
+  /** Stud positions for the layer enclosure. Built with the stud index. */
+  private gridStuds = new Map<string, GridStud>();
+  private layerState = new Map<
+    string,
+    { active: boolean; zone: ZoneState; members: string[]; areaM2: number; ceilingM: number }
+  >();
+  private layerWalls: InteriorWall[] | null = null;
+  private layerHeightKey = '';
+  private layerEnclosures = new Map<string, Enclosure | null>();
+  private layerShellKey = '';
+  private layerGridWalls: GridWall[] = [];
+  private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -317,11 +359,17 @@ export class SpatialEffectsEngine {
     this.blockedNeighbors.clear();
     this.shellReady = false;
     this.shellBlocked.clear();
+    this.gridStuds.clear();
+    this.layerState.clear();
+    this.layerEnclosures.clear();
+    this.layerWalls = null;
+    this.layerGrants = [];
     this.activeEffects = [];
     this.elapsed = 0;
 
     for (const s of studs) {
       this.studIndex.set(s.id, s);
+      this.gridStuds.set(s.id, { id: s.id, x: s.simPos.x, y: s.simPos.y, level: levelOf(s) });
       this.studStates.set(s.id, {
         fire: { state: 'none', timer: 0, fuelFactor: 1.0 },
         gas: 0,
@@ -787,6 +835,30 @@ export class SpatialEffectsEngine {
     return this.shellBlocked.get(id)?.has(neighborId) ?? false;
   }
 
+  /**
+   * The outline between an indoor stud and an outdoor one. The same rule as
+   * the shell: closed except where a link crosses an unblocked exit. Two
+   * indoor studs are not a facade, so an opening inside the floor stays a
+   * full-height side.
+   */
+  private facadeAt(memberId: string, outsideId: string): FacadeOpening | null {
+    const member = this.studIndex.get(memberId);
+    const outside = this.studIndex.get(outsideId);
+    if (!member || !outside) return null;
+    const memberIn = member.spatialContext === 'inside_building';
+    const outsideIn = outside.spatialContext === 'inside_building';
+    if (memberIn === outsideIn) return null;
+    if (this.shellBlocks(memberId, outsideId)) return { kind: 'wall' };
+    const level = levelOf(member);
+    for (const gap of this.shellGaps) {
+      if (gap.level !== level) continue;
+      if (segmentsIntersect(member.simPos, outside.simPos, gap.a, gap.b)) {
+        return { kind: 'exit', exitKey: gap.key, widthM: gap.widthM };
+      }
+    }
+    return { kind: 'wall' };
+  }
+
   /** A solid interior wall, or the outside wall away from an exit. */
   private exchangeBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
     return this.wallBlocked(id, neighborId, walls) || this.shellBlocks(id, neighborId);
@@ -816,6 +888,254 @@ export class SpatialEffectsEngine {
       this.blockedNeighbors.set(id, blocked);
     }
     return blocked.has(neighborId);
+  }
+
+  /** Metres of the storey. A saved height wins. A basement otherwise uses 3.5 m. */
+  private storeyHeight(level: string): number {
+    const saved = this.storeyHeights.get(level);
+    if (saved != null && saved > 0) return saved;
+    return level.startsWith('B') ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M : LEVEL.DEFAULT_STOREY_HEIGHT_M;
+  }
+
+  /** The stud a jet or an arc sits on. 2 m is assumed: about one stud, not the next. */
+  private nearestStud(x: number, y: number, level: string, maxM: number): string | null {
+    let best: string | null = null;
+    let bestD = maxM;
+    for (const [id, stud] of this.gridStuds) {
+      if (stud.level !== level) continue;
+      const d = Math.hypot(stud.x - x, stud.y - y);
+      if (d > bestD) continue;
+      if (best != null && d === bestD && id > best) continue;
+      bestD = d;
+      best = id;
+    }
+    return best;
+  }
+
+  private enclosureOf(
+    room: string,
+    members: readonly string[],
+    walls: InteriorWall[],
+    ceiling: number,
+  ): Enclosure | null {
+    const heights = [...this.storeyHeights.entries()].map(([id, height]) => `${id}=${height}`).join(',');
+    if (walls !== this.layerWalls || heights !== this.layerHeightKey || this.shellKey !== this.layerShellKey) {
+      this.layerWalls = walls;
+      this.layerHeightKey = heights;
+      this.layerShellKey = this.shellKey;
+      this.layerEnclosures.clear();
+      this.layerGridWalls = walls.map((wall) => ({
+        id: wall.id,
+        x1: wall.start.x,
+        y1: wall.start.y,
+        x2: wall.end.x,
+        y2: wall.end.y,
+        hasDoor: wall.hasDoor,
+        doorWidth: wall.doorWidth,
+        doorPosition: wall.doorPosition,
+        material: wall.material,
+        level: levelOf(wall),
+      }));
+    }
+    const key = `${room}@${ceiling}`;
+    if (this.layerEnclosures.has(key)) return this.layerEnclosures.get(key) ?? null;
+    const found = enclosureFromGrid(
+      members,
+      this.gridStuds,
+      this.neighborCache,
+      this.layerGridWalls,
+      ceiling,
+      (memberId, outsideId) => this.facadeAt(memberId, outsideId),
+    );
+    this.layerEnclosures.set(key, found);
+    return found;
+  }
+
+  /** Put a retiring layer back into the columns, so the soot is not deleted. */
+  private dumpLayer(
+    members: readonly string[],
+    zone: ZoneState,
+    areaM2: number,
+    ceilingM: number,
+    kMax: number,
+  ): void {
+    const volume = Math.max(areaM2 * ceilingM, 1e-6);
+    let k = (SOOT_EXTINCTION_M2_PER_G * zone.sootG) / volume;
+    if (k > kMax) k = kMax;
+    for (const id of members) this.sootK.set(id, k);
+    // The grams now live in the columns. Leaving them on the layer would
+    // add them a second time if the ceiling fills again.
+    zone.sootG = 0;
+  }
+
+  /**
+   * Advance every ceiling that can hold a reservoir. An open side, a bare
+   * grid, and a room with a discharging hood stay on the column. The hood
+   * is still the old per-stud extract; it moves onto the layer later.
+   * Returns the studs the column must not also fill.
+   */
+  private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
+    const owned = new Set<string>();
+    this.layerGrants = [];
+    const rooms = this.fireSim.compartmentIds(walls);
+    const groups = new Map<string, string[]>();
+    for (const [id, room] of rooms) {
+      const list = groups.get(room);
+      if (list) list.push(id);
+      else groups.set(room, [id]);
+    }
+
+    const extra = new Map<string, FirePlume[]>();
+    const addPlume = (studId: string | null, heatKw: number) => {
+      if (!studId || !(heatKw > 0)) return;
+      const room = rooms.get(studId);
+      if (!room) return;
+      const list = extra.get(room) ?? [];
+      list.push({ heatKw, diameterM: diameterForReleaseKw(heatKw) });
+      extra.set(room, list);
+    };
+    for (const jet of this.fireSim.gasJets()) {
+      addPlume(this.nearestStud(jet.pos.x, jet.pos.y, jet.level, 2), GAS_JET_KW);
+    }
+    const arcKw = electricalHeatReleaseKw();
+    for (const arc of this.fireSim.electricalArcs()) {
+      addPlume(this.nearestStud(arc.pos.x, arc.pos.y, arc.level, 2), arcKw);
+    }
+
+    const sootByRoom = new Map<string, number>();
+    for (const src of this.fireSim.burningSoot()) {
+      const room = rooms.get(src.id);
+      if (!room) continue;
+      sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
+    }
+    const hoods = new Set(this.fireSim.hoodColumns());
+    const seen = new Set<string>();
+
+    for (const [room, members] of groups) {
+      seen.add(room);
+      const ceiling = this.storeyHeight(this.gridStuds.get(members[0] ?? '')?.level ?? 'G');
+      const fires: FirePlume[] = [...(extra.get(room) ?? [])];
+      for (const id of members) {
+        const release = this.fireSim.fuelReleaseKw(id);
+        if (release != null && release > 0) fires.push({ heatKw: release, diameterM: diameterForReleaseKw(release) });
+      }
+      let heat = 0;
+      for (const fire of fires) heat += fire.heatKw;
+      const prev = this.layerState.get(room);
+      const hooded = members.some((id) => hoods.has(id));
+      const retire = () => {
+        if (!prev?.active) return;
+        this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
+        prev.active = false;
+      };
+      if (hooded || (heat < MIN_LAYER_FIRE_KW && !prev?.active)) {
+        retire();
+        continue;
+      }
+      const enc = this.enclosureOf(room, members, walls, ceiling);
+      if (!enc || !hasSmokeReservoir(enc.spec.vents, ceiling)) {
+        retire();
+        continue;
+      }
+      const spec: LayerSpec = { ...enc.spec, fires };
+      const zone = prev?.zone ?? freshLayer(ceiling);
+      const steady = steadyLayer(spec, zone.ageS);
+      const rise = steady ? steady.upperK - AMBIENT_K : 0;
+      const depth = steady?.depthM ?? 0;
+      const jet = CEILING_JET_DEPTH_FRACTION * ceiling;
+      const hold =
+        prev?.active === true &&
+        rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+        depth >= jet * LAYER_OFF_FRACTION;
+      const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
+      if (!active) {
+        retire();
+        this.layerState.set(room, {
+          active: false,
+          zone,
+          members,
+          areaM2: spec.areaM2,
+          ceilingM: ceiling,
+        });
+        continue;
+      }
+      if (prev?.active !== true) {
+        let carried = zone.sootG;
+        for (const id of members) {
+          carried += ((this.sootK.get(id) ?? 0) * this.columnVolume(id)) / SOOT_EXTINCTION_M2_PER_G;
+        }
+        zone.sootG = carried;
+      }
+      const stepped = stepZone(zone, spec, dt, sootByRoom.get(room) ?? 0);
+      this.layerState.set(room, {
+        active: true,
+        zone: stepped.state,
+        members,
+        areaM2: spec.areaM2,
+        ceilingM: ceiling,
+      });
+      for (const id of members) owned.add(id);
+      if (stepped.ventedSootG > 0) {
+        const shares = stepped.outByVentKgS;
+        let totalOut = 0;
+        for (const share of shares) totalOut += share;
+        if (totalOut > 0) {
+          for (let i = 0; i < shares.length; i++) {
+            const share = shares[i] ?? 0;
+            const receivers = enc.ventReceivers[i] ?? [];
+            // No receiver means the soot left through the opening and is
+            // not painted onto the studs along the outside wall.
+            if (!(share > 0) || receivers.length === 0) continue;
+            this.layerGrants.push({
+              receivers,
+              grams: stepped.ventedSootG * (share / totalOut),
+            });
+          }
+        }
+      }
+    }
+
+    for (const [room, live] of this.layerState) {
+      if (seen.has(room) || !live.active) continue;
+      this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM, kMax);
+      live.active = false;
+    }
+    return owned;
+  }
+
+  /** Write the layer onto heads that have reached it, and hand vented soot to the next stud. */
+  private commitLayers(owned: ReadonlySet<string>, kMax: number): void {
+    const incoming = new Map<string, number>();
+    for (const grant of this.layerGrants) {
+      if (grant.receivers.length === 0) continue;
+      const each = grant.grams / grant.receivers.length;
+      for (const id of grant.receivers) {
+        if (!this.studStates.has(id)) continue;
+        if (owned.has(id)) {
+          incoming.set(id, (incoming.get(id) ?? 0) + each);
+          continue;
+        }
+        const volume = Math.max(this.columnVolume(id), 1e-6);
+        let k = (this.sootK.get(id) ?? 0) + (SOOT_EXTINCTION_M2_PER_G * each) / volume;
+        if (k > kMax) k = kMax;
+        this.sootK.set(id, k);
+      }
+    }
+    for (const live of this.layerState.values()) {
+      if (!live.active) continue;
+      let extra = 0;
+      for (const id of live.members) extra += incoming.get(id) ?? 0;
+      if (extra > 0) live.zone.sootG += extra;
+      const depth = Math.max(0.02, live.ceilingM - live.zone.interfaceM);
+      const upper = Math.max(live.areaM2 * depth, 1e-6);
+      let k = (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / upper;
+      if (k > kMax) k = kMax;
+      const atHead = live.zone.interfaceM <= HEAD_HEIGHT_M;
+      for (const id of live.members) {
+        if (!owned.has(id)) continue;
+        this.sootK.set(id, atHead ? k : 0);
+      }
+    }
   }
 
   private stepSmoke(dt: number, walls: InteriorWall[]) {
@@ -861,6 +1181,9 @@ export class SpatialEffectsEngine {
     // K = σₘ × soot / volume). Volume is 9 m² times the storey height.
     // The release is the decayed one, so a spray that has cut the fire cuts
     // the smoke with it. An open hood adds its exhaust on its own stud.
+    // A stud inside an active layer is skipped: the layer holds that soot,
+    // and the column must not make a second copy or leak it through the wall.
+    const owned = this.stepLayers(dt, walls, kMax);
     const extractM3 = new Map<string, number>();
     for (const id of this.fireSim.hoodColumns()) {
       extractM3.set(id, (extractM3.get(id) ?? 0) + HOOD_EXTRACT_M3_PER_S);
@@ -868,6 +1191,10 @@ export class SpatialEffectsEngine {
     const sootById = new Map<string, number>();
     for (const src of this.fireSim.burningSoot()) sootById.set(src.id, src.sootGPerS);
     for (const id of this.studStates.keys()) {
+      if (owned.has(id)) {
+        this.sootK.set(id, 0);
+        continue;
+      }
       const volume = this.columnVolume(id);
       const generation = ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
       const src = this.studIndex.get(id);
@@ -882,7 +1209,8 @@ export class SpatialEffectsEngine {
 
     // What leaves a stud is taken off it, in each reservoir.
     this.moveSmoke(eventD, 1, dt, walls);
-    this.moveSmoke(this.sootK, kMax, dt, walls);
+    this.moveSmoke(this.sootK, kMax, dt, walls, owned);
+    this.commitLayers(owned, kMax);
 
     for (const [id, state] of this.studStates) {
       let soot = this.sootK.get(id) ?? 0;
@@ -904,13 +1232,15 @@ export class SpatialEffectsEngine {
     cap: number,
     dt: number,
     walls: InteriorWall[],
+    skip?: ReadonlySet<string>,
   ): void {
     const moves: Array<{ from: string; to: string; k: number }> = [];
     for (const [id, value] of field) {
-      if (!(value > 0)) continue;
+      if (!(value > 0) || skip?.has(id)) continue;
       const src = this.studIndex.get(id);
       if (!src) continue;
       for (const nId of this.neighborCache.get(id) ?? []) {
+        if (skip?.has(nId)) continue;
         const dest = this.studIndex.get(nId);
         if (!dest) continue;
         const other = field.get(nId) ?? 0;
@@ -922,6 +1252,7 @@ export class SpatialEffectsEngine {
       }
     }
     for (const pair of this.verticalPairs) {
+      if (skip?.has(pair.lower) || skip?.has(pair.upper)) continue;
       const lower = field.get(pair.lower) ?? 0;
       const upper = field.get(pair.upper) ?? 0;
       if (!(lower > upper) || !field.has(pair.lower) || !field.has(pair.upper)) continue;
