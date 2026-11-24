@@ -157,6 +157,22 @@ export function extinctionK(d: number): number {
   return pts[pts.length - 1][1];
 }
 
+/** Smoke number whose extinction is `k`. Inverse of `extinctionK`, clamped to the table. */
+export function smokeFromK(k: number): number {
+  const pts = SHOWCASE.D_TO_K_POINTS;
+  if (!(k > 0)) return 0;
+  if (k >= pts[pts.length - 1][1]) return pts[pts.length - 1][0];
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    if (k <= y1) {
+      const t = y1 === y0 ? 0 : (k - y0) / (y1 - y0);
+      return x0 + t * (x1 - x0);
+    }
+  }
+  return pts[pts.length - 1][0];
+}
+
 /** Visibility in metres. Reports 30 m when K < 0.1. C defaults to the reflective constant. */
 export function visibilityM(K: number, C: number = SHOWCASE.VIS_K_REFLECTIVE): number {
   if (K < 0.1) return 30;

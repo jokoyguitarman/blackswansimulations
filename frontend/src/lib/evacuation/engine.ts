@@ -215,8 +215,10 @@ interface StairOccupant {
   enqueuedAt: number;
   travelStart: number;
   travelDuration: number;
-  /** The remaining stair time was stretched to the crawl factor for irritant smoke. */
+  /** The remaining stair time was stretched for irritant smoke. */
   fumeStretched?: boolean;
+  /** Factor applied to the remaining time while the irritant crawl is on. */
+  fumeStretch?: number;
 }
 
 export interface ObstaclePoint {
@@ -580,9 +582,11 @@ export class PolygonEvacuationEngine {
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
       if (ped.evacuated || ped.state === 'down' || ped.state === 'left_map') continue;
-      // FEC at 1 is the seeded crawl toward the exit, not a stop. The
-      // choice of that pace, with no further fraction, is assumed.
-      const pace = ped.fumeHeld ? SHOWCASE.CRAWL_SPEED : targetSpeed;
+      // FEC at 1 is the seeded crawl toward the exit, not a stop. Injury
+      // and a wet floor slow that crawl the same way they slow a walk.
+      const pace = ped.fumeHeld
+        ? SHOWCASE.CRAWL_SPEED * this.irritantFooting(ped, body.position.x, body.position.y, ped.level)
+        : targetSpeed;
       if (ped.fumeHeld) ped.posture = 'crawl';
       if (this.levelPlan && ped.level) {
         this.stepPlainLevel(body, ped, pace, dt, tau);
@@ -818,6 +822,17 @@ export class PolygonEvacuationEngine {
     return (body as Matter.Body & { __ped: PedLabel }).__ped;
   }
 
+  /**
+   * Injury and a wet floor on the irritant crawl. A minor injury is the
+   * seeded 0.6, and a wet stud is the 0.75 floor factor. Serious injury is
+   * already down, so it is not a crawl.
+   */
+  private irritantFooting(ped: PedLabel, x: number, y: number, level?: string): number {
+    const injury = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
+    const wet = this.field(level).sample(x, y).wet ? WET_FLOOR_SPEED : 1;
+    return injury * wet;
+  }
+
   private field(level?: string): HazardField {
     if (level) {
       const own = this.hazardFields.get(level);
@@ -947,8 +962,8 @@ export class PolygonEvacuationEngine {
     } else {
       ped.posture = 'crawl';
     }
-    // FEC at 1 forces the seeded crawl toward the current exit. Assumed:
-    // that pace, with no further fraction, is the impaired movement.
+    // FEC at 1 forces the seeded crawl. The pace below includes the injury
+    // factor inside walkingSpeed and the wet-floor factor on the footing.
     if (ped.fumeHeld) ped.posture = 'crawl';
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
     const footing = sample.wet ? WET_FLOOR_SPEED : 1;
@@ -2585,14 +2600,19 @@ export class PolygonEvacuationEngine {
       if (occ.label.fumeHeld && !occ.fumeStretched && occ.label.posture !== 'crawl') {
         const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
         const remain = Math.max(0, occ.travelDuration - done);
-        occ.travelDuration = done + remain / LEVEL.STAIR_CRAWL_FACTOR;
+        const stair = this.stairById(occ.stairId);
+        const pos = stair?.pos ?? { x: 0, y: 0 };
+        const slow = LEVEL.STAIR_CRAWL_FACTOR * this.irritantFooting(occ.label, pos.x, pos.y, occ.fromLevel);
+        occ.travelDuration = done + remain / slow;
+        occ.fumeStretch = slow;
         occ.label.posture = 'crawl';
         occ.fumeStretched = true;
       } else if (!occ.label.fumeHeld && occ.fumeStretched) {
         const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
         const remain = Math.max(0, occ.travelDuration - done);
-        occ.travelDuration = done + remain * LEVEL.STAIR_CRAWL_FACTOR;
+        occ.travelDuration = done + remain * (occ.fumeStretch ?? LEVEL.STAIR_CRAWL_FACTOR);
         occ.fumeStretched = false;
+        occ.fumeStretch = undefined;
       }
     }
     this.advanceStairs();
@@ -2669,12 +2689,21 @@ export class PolygonEvacuationEngine {
   private beginTravel(occ: StairOccupant) {
     const from = this.levelDefs.find((l) => l.id === occ.fromLevel);
     if (occ.label.fumeHeld) occ.label.posture = 'crawl';
-    const factor = occ.label.posture === 'crawl'
+    const stair = this.stairById(occ.stairId);
+    const pos = stair?.pos ?? { x: 0, y: 0 };
+    const footing = occ.label.fumeHeld
+      ? this.irritantFooting(occ.label, pos.x, pos.y, occ.fromLevel)
+      : 1;
+    const postureFactor = occ.label.posture === 'crawl'
       ? LEVEL.STAIR_CRAWL_FACTOR
       : occ.label.posture === 'crouch'
         ? LEVEL.CROUCH_SPEED_FACTOR
         : 1;
-    occ.fumeStretched = false;
+    const factor = postureFactor * footing;
+    // The irritant crawl can clear on the stair. Remember the slowdown so
+    // the remaining time returns to the pace they had without it.
+    occ.fumeStretched = occ.label.fumeHeld === true;
+    occ.fumeStretch = occ.label.fumeHeld ? factor : undefined;
     occ.phase = 'travel';
     occ.travelStart = this.elapsed;
     occ.travelDuration = from ? stairTravelS(from, occ.dir) / factor : 1;

@@ -601,6 +601,20 @@ export class FireSimulation {
   }
 
   /**
+   * Soot grams per second from each burning cell, yield times mass loss.
+   * The release is the decayed one. A cell with no soot yield, a jet, and
+   * an arc are absent.
+   */
+  burningSoot(): Array<{ id: string; sootGPerS: number }> {
+    const sources: Array<{ id: string; sootGPerS: number }> = [];
+    for (const fire of this.liveFires()) {
+      const sootGPerS = sootProductionGPerS(fire.cell, this.releaseKw(fire.cell, fire.meta));
+      if (sootGPerS > 0) sources.push({ id: fire.id, sootGPerS });
+    }
+    return sources;
+  }
+
+  /**
    * Grams per second each burning cell is putting into the smoke, and the
    * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
    * The release is the decayed one. The gas yield is the well-ventilated
@@ -649,6 +663,30 @@ export class FireSimulation {
       wet.push({ id, pos: { x: stud.simPos.x, y: stud.simPos.y }, level: levelOf(stud) });
     }
     return wet;
+  }
+
+  /**
+   * The stud a discharging wet-chemical hood is mounted on, one entry per
+   * hood. Half a stud (1.5 m) is the mount. The spray throw is wider and is
+   * not the exhaust. A sprinkler is not a hood.
+   */
+  hoodColumns(): string[] {
+    const ids: string[] = [];
+    for (const head of this.suppressionRuntime.values()) {
+      if (!head.open || head.kind !== 'wet_chemical') continue;
+      let best: string | null = null;
+      let bestD = 1.5;
+      for (const [id, stud] of this.studIndex) {
+        if (levelOf(stud) !== head.level) continue;
+        const d = Math.hypot(stud.simPos.x - head.pos.x, stud.simPos.y - head.pos.y);
+        if (d > bestD) continue;
+        if (best != null && d === bestD && id > best) continue;
+        bestD = d;
+        best = id;
+      }
+      if (best != null) ids.push(best);
+    }
+    return ids;
   }
 
   isArcing(id: string): boolean {

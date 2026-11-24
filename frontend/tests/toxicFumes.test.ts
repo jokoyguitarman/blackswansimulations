@@ -4,7 +4,12 @@ import Matter from 'matter-js';
 import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
 import { HazardField, type Posture } from '../src/lib/evacuation/hazardSensing';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
-import { GAS_JET_KW, WOOD_HEAT_KJ_KG } from '../src/lib/rts/flameFront';
+import { projectPolygon } from '../src/lib/evacuation/geometry';
+import { GAS_JET_KW, STUD_AREA_M2, WET_FLOOR_SPEED, WOOD_HEAT_KJ_KG } from '../src/lib/rts/flameFront';
+import { LEVEL } from '../src/lib/evacuation/levelConstants';
+import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
+import { stairTravelS } from '../src/lib/rts/levels';
+import type { LevelDef, Stairwell } from '../src/lib/rts/types';
 import { FireSimulation, type FireSimStud } from '../src/lib/rts/fireSimulation';
 import {
   confirmedFuelCells,
@@ -19,7 +24,7 @@ import {
 } from '../src/lib/rts/materialLibrary';
 import { foodCourtPlacedObjects, foodCourtSample } from '../src/lib/rts/foodCourtSample';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds';
-import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
+import { SMOKE_LEAK_PER_S, SpatialEffectsEngine, advanceSootK } from '../src/lib/rts/spatialEffects';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -259,7 +264,11 @@ describe('smoke carries the gases', () => {
     engine.init([stud('a', 0, 0), stud('far', 3, 0)]);
     engine.setFuelCells(new Map([['a', WOOD]]));
     (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
-    for (let i = 0; i < 400; i++) engine.step(0.1, [], []);
+    let t = 0;
+    while ((engine.studStates.get('far')?.smoke ?? 0) <= 0.02 && t < 300) {
+      engine.step(0.1, [], []);
+      t += 0.1;
+    }
     const state = engine.studStates.get('a');
     const far = engine.studStates.get('far');
     const source = engine.fumeSources()[0];
@@ -268,11 +277,173 @@ describe('smoke carries the gases', () => {
     const expected = fumesFromSmoke(state.smoke ?? 0, source.gramsPerS, source.sootGPerS);
     assert.ok(Math.abs((state.fumes?.CO ?? 0) - (expected.CO ?? 0)) < 1e-6);
     assert.ok((state.fumes?.CO ?? 0) < 250, `source CO ${state.fumes?.CO}`);
+    assert.ok(t < 300, 'smoke did not reach the far stud');
+    assert.ok((far.smoke ?? 0) > 0.02);
     const farExpected = fumesFromSmoke(far.smoke ?? 0, source.gramsPerS, source.sootGPerS);
     assert.ok(Math.abs((far.fumes?.CO ?? 0) - (farExpected.CO ?? 0)) < 1e-6);
-    if ((far.smoke ?? 0) < (state.smoke ?? 0)) {
-      assert.ok((far.fumes?.CO ?? 0) < (state.fumes?.CO ?? 0));
+    assert.ok((far.fumes?.CO ?? 0) > 0);
+    assert.ok((far.fumes?.CO ?? 0) < (state.fumes?.CO ?? 0));
+  });
+
+  test('a sustained fire fills its room and reaches a stud 10 m away', () => {
+    const studs: FireSimStud[] = [];
+    for (let x = 0; x <= 12; x += 3) {
+      for (let y = 0; y <= 12; y += 3) {
+        studs.push(stud(`s_${x}_${y}`, x, y));
+      }
     }
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init(studs);
+    engine.setFuelCells(new Map([['s_0_0', WOOD]]));
+    (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['s_0_0']);
+    for (let i = 0; i < 3000; i++) engine.step(0.1, [], []);
+    let sum = 0;
+    for (const state of engine.studStates.values()) sum += extinctionK(state.smoke ?? 0);
+    const mean = sum / engine.studStates.size;
+    const farK = extinctionK(engine.studStates.get('s_12_0')?.smoke ?? 0);
+    assert.ok(mean > 0.3, `mean K ${mean}`);
+    assert.ok(farK >= 0.15, `K at 12 m is ${farK}`);
+  });
+
+  test('a taller saved storey holds the same soot at a lower extinction', () => {
+    const run = (height: number | null) => {
+      const engine = new SpatialEffectsEngine(undefined, 1);
+      engine.init([stud('a', 0, 0)]);
+      if (height != null) engine.setStoreyHeights({ G: height });
+      engine.setFuelCells(new Map([['a', WOOD]]));
+      (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
+      for (let i = 0; i < 300; i++) engine.step(0.1, [], []);
+      return extinctionK(engine.studStates.get('a')?.smoke ?? 0);
+    };
+    const base = run(null);
+    const tall = run(LEVEL.DEFAULT_STOREY_HEIGHT_M * 2);
+    assert.ok(base > 0, 'the fire made no smoke');
+    assert.ok(Math.abs(tall / base - 0.5) < 1e-6, `tall ${tall}, storey ${base}`);
+  });
+
+  test('smoke leaves through an exit and not through the outside wall', () => {
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 9, y: 0 },
+      { x: 9, y: 9 },
+      { x: 0, y: 9 },
+    ];
+    const opening: ExitDef = {
+      id: 'west',
+      center: { x: 0, y: 4.5 },
+      width: 3,
+      edgeIndex: 3,
+      description: '',
+      status: 'open',
+      photos: [],
+      level: 'G',
+    };
+    const run = (exits: ExitDef[]) => {
+      const engine = new SpatialEffectsEngine(undefined, 1);
+      engine.init([
+        { id: 'in', simPos: { x: 1.5, y: 4.5 }, spatialContext: 'inside_building', level: 'G' },
+        { id: 'out', simPos: { x: -1.5, y: 4.5 }, spatialContext: 'open_air', level: 'G' },
+      ]);
+      engine.setFuelCells(new Map([['in', WOOD]]));
+      engine.setBuildingEnvelope(verts, exits);
+      (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['in']);
+      for (let i = 0; i < 1200; i++) engine.step(0.1, [], []);
+      return extinctionK(engine.studStates.get('out')?.smoke ?? 0);
+    };
+    const open = run([opening]);
+    const shut = run([{ ...opening, status: 'blocked' }]);
+    const unset = run([]);
+    assert.ok(open > 0.05, `exit K ${open}`);
+    assert.ok(open > shut * 5, `exit ${open}, wall ${shut}`);
+    assert.ok(open > unset * 5, `exit ${open}, no exits ${unset}`);
+  });
+
+  test('a closed food court keeps most of a 1 MW fire indoors', () => {
+    const polygon = foodCourtSample.scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const verts = projectPolygon(polygon);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const vertex of verts) {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+    }
+    const pad = 12;
+    const studs: FireSimStud[] = [];
+    for (const stud of projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']))) {
+      if (stud.simPos.x < minX - pad || stud.simPos.x > maxX + pad) continue;
+      if (stud.simPos.y < minY - pad || stud.simPos.y > maxY + pad) continue;
+      studs.push({
+        id: stud.id,
+        simPos: stud.simPos,
+        spatialContext: stud.spatialContext,
+        level: stud.floor ?? 'G',
+      });
+    }
+    const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
+    let cx = 0;
+    let cy = 0;
+    for (const stud of indoor) {
+      cx += stud.simPos.x;
+      cy += stud.simPos.y;
+    }
+    cx /= indoor.length;
+    cy /= indoor.length;
+    let fire = indoor[0];
+    let best = Infinity;
+    for (const stud of indoor) {
+      const d = Math.hypot(stud.simPos.x - cx, stud.simPos.y - cy);
+      if (d < best) {
+        best = d;
+        fire = stud;
+      }
+    }
+    const height = foodCourtSample.scene.levels[0].heightM;
+    const walls = foodCourtSample.scene.interiorWalls as InteriorWall[];
+    const exits = (foodCourtSample.scene.exits as ExitDef[]).map((exit) => ({
+      ...exit,
+      status: 'blocked' as const,
+    }));
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init(studs);
+    engine.setStoreyHeights({ G: height });
+    engine.setBuildingEnvelope(verts, exits);
+    engine.setFuelCells(new Map([[fire.id, WOOD]]));
+    const sim = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    sim.ignite([fire.id]);
+    const dt = 0.1;
+    const horizon = 300;
+    let made = 0;
+    let expected = 0;
+    for (let t = 0; t < horizon - 1e-9; t += dt) {
+      let soot = 0;
+      for (const source of sim.burningSoot()) soot += source.sootGPerS;
+      made += soot * dt;
+      expected = advanceSootK(expected, soot, SMOKE_LEAK_PER_S, dt);
+      engine.step(dt, walls, []);
+    }
+    const volume = STUD_AREA_M2 * height;
+    let indoorG = 0;
+    let outdoorG = 0;
+    let sumK = 0;
+    for (const cell of studs) {
+      const k = extinctionK(engine.studStates.get(cell.id)?.smoke ?? 0);
+      const grams = (k * volume) / SOOT_EXTINCTION_M2_PER_G;
+      if (cell.spatialContext === 'inside_building') {
+        indoorG += grams;
+        sumK += k;
+      } else outdoorG += grams;
+    }
+    const meanK = sumK / indoor.length;
+    const balancedK = (expected * SOOT_EXTINCTION_M2_PER_G) / (indoor.length * volume);
+    const release = engine.fuelReleaseKw(fire.id) ?? 0;
+    assert.ok(indoor.length > 50, `indoor studs ${indoor.length}`);
+    assert.ok(release > 800, `release ${release} kW`);
+    assert.ok(indoorG / made >= 0.6, `indoors ${indoorG} g of ${made} g, outdoors ${outdoorG} g`);
+    assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
   });
 
   test('a wall stops the gases and a door gap does not', () => {
@@ -281,7 +452,9 @@ describe('smoke carries the gases', () => {
     blocked.setFuelCells(new Map([['a', WOOD]]));
     (blocked as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
     const barrier = wall(1.5, -5, 1.5, 5);
-    for (let t = 0; t < 60; t++) blocked.step(1, [barrier], []);
+    // One minute of this wood fire is still small in a storey-height column.
+    // Two minutes is long enough for the door to carry CO, and the wall still blocks it.
+    for (let t = 0; t < 120; t++) blocked.step(1, [barrier], []);
     assert.ok((blocked.studStates.get('a')?.fumes?.CO ?? 0) > 0);
     assert.equal(blocked.studStates.get('far')?.fumes, undefined);
 
@@ -289,7 +462,7 @@ describe('smoke carries the gases', () => {
     open.init([stud('a', 0, 0), stud('far', 3, 0)]);
     open.setFuelCells(new Map([['a', WOOD]]));
     (open as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
-    for (let t = 0; t < 60; t++) open.step(1, [wall(1.5, -5, 1.5, 5, true)], []);
+    for (let t = 0; t < 120; t++) open.step(1, [wall(1.5, -5, 1.5, 5, true)], []);
     assert.ok((open.studStates.get('far')?.fumes?.CO ?? 0) > 0, 'door did not pass CO');
   });
 
@@ -386,20 +559,21 @@ describe('smoke carries the gases', () => {
     assert.ok(t < 180, 'hood did not open');
     const opened = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
     assert.ok(opened > 0, 'no acrolein when the hood opened');
-    let later = opened;
-    let fellAt = -1;
-    for (let i = 0; i < 1600; i++) {
-      hooded.step(1, [], []);
-      bare.step(1, [], []);
-      later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
-      if (later < opened * 0.8) {
-        fellAt = i + 1;
-        break;
-      }
+    // The hood opens while the pan is still growing, so the ppm can rise
+    // after it opens. Extraction is 1 m³/s on this stud's storey column.
+    // By ten minutes that exhaust has brought the ppm under 80% of the
+    // opening reading, and well under the same pan with no hood.
+    const limitS = 600;
+    const stepS = 0.1;
+    for (let elapsed = 0; elapsed < limitS - 1e-9; elapsed += stepS) {
+      hooded.step(stepS, [], []);
+      bare.step(stepS, [], []);
     }
+    const later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
     const bareLater = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
-    assert.ok(fellAt > 0, `ppm stayed ${later} from ${opened}`);
-    assert.ok(bareLater > later, `bare ${bareLater}, hood ${later}`);
+    assert.ok(later > 0, 'hood cleared the pan entirely');
+    assert.ok(later < opened * 0.8, `hood ${later} from ${opened}`);
+    assert.ok(later < bareLater * 0.5, `hood ${later}, bare ${bareLater}`);
     assert.ok((bare.studStates.get('a')?.smoke ?? 0) > (hooded.studStates.get('a')?.smoke ?? 0));
   });
 
@@ -409,11 +583,13 @@ describe('smoke carries the gases', () => {
     engine.setFuelCells(new Map([['pan', OIL]]));
     (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['pan']);
     let t = 0;
-    while (fecOf(engine.studStates.get('pan')?.fumes) < 1 && t < 120) {
+    // A 0.2 MW pan mixed through a 36 m³ column reaches an irritant fraction
+    // of 1 in about three minutes. Four minutes is the bound.
+    while (fecOf(engine.studStates.get('pan')?.fumes) < 1 && t < 300) {
       engine.step(0.1, [], []);
       t += 0.1;
     }
-    assert.ok(t < 90, `pan FEC reached 1 at ${t}`);
+    assert.ok(t < 240, `pan FEC reached 1 at ${t}`);
     const pan = engine.studStates.get('pan');
     assert.ok((pan?.fumes?.acrolein ?? 0) < 250, `acrolein ${pan?.fumes?.acrolein}`);
     assert.equal(pan?.fumes?.CO, undefined);
@@ -448,7 +624,38 @@ describe('smoke carries the gases', () => {
     const coarse = doseOver(1, 30);
     assert.ok(Math.abs(fine.fed - coarse.fed) < 1e-9, `FED ${fine.fed} vs ${coarse.fed}`);
     assert.ok(Math.abs(fine.ppm - coarse.ppm) < 1e-9, `ppm ${fine.ppm} vs ${coarse.ppm}`);
+    assert.ok(Math.abs(fine.smoke - coarse.smoke) < 1e-9, `smoke ${fine.smoke} vs ${coarse.smoke}`);
     assert.ok(fine.fed > 0);
+  });
+
+  test('smoke is the soot the fire is making, and spreading it does not create more', () => {
+    const quietCell = { ...WOOD, sootYieldGPerG: 0 };
+    const quiet = effects(new Map([['a', quietCell]]));
+    const burning = effects(new Map([['a', WOOD]]));
+    const shared = effects(new Map([['a', WOOD]]), [stud('nbr', 3, 0)]);
+    for (let i = 0; i < 600; i++) {
+      quiet.step(0.1, [], []);
+      burning.step(0.1, [], []);
+      shared.step(0.1, [], []);
+    }
+    assert.ok((quiet.studStates.get('a')?.smoke ?? 0) < 1e-6, 'a cell with no soot yield made smoke');
+    assert.ok((burning.studStates.get('a')?.smoke ?? 0) > 0.02, 'wood smoke did not follow the soot');
+    const alone = burning.studStates.get('a')?.smoke ?? 0;
+    const source = shared.studStates.get('a')?.smoke ?? 0;
+    const neighbour = shared.studStates.get('nbr')?.smoke ?? 0;
+    assert.ok(neighbour > 0, 'smoke did not spread');
+    assert.ok(source < alone, `source kept smoke it had given away (${source} vs ${alone})`);
+
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('src', 0, 0), stud('nbr', 3, 0)]);
+    const src = engine.studStates.get('src');
+    const nbr = engine.studStates.get('nbr');
+    assert.ok(src && nbr);
+    src.smoke = 1;
+    engine.step(0.1, [], []);
+    assert.ok(nbr.smoke > 0, 'neighbour gained no smoke');
+    assert.ok(src.smoke < 1, 'source did not lose the smoke it gave away');
+    assert.ok(src.smoke + nbr.smoke <= 1 + 1e-6, 'spread created smoke');
   });
 });
 
@@ -488,6 +695,99 @@ describe('people', () => {
     assert.equal(down.injury, 'serious');
     assert.equal(down.fumeDownCount, 1);
     assert.ok(down.moved < 0.05, `a downed person walked (${down.moved})`);
+
+    const dry = walk([{ fumes: { acrolein: 30 }, steps: 180 }]);
+    const hurt = walk([{ fumes: { acrolein: 30 }, steps: 180 }], { injury: 'minor', wet: true });
+    assert.ok(hurt.moved > 0.05, `injured crawl did not move (${hurt.moved})`);
+    assert.ok(hurt.moved < dry.moved * 0.85, `injury and wet floor did not slow the crawl (${hurt.moved} vs ${dry.moved})`);
+    assert.equal(hurt.posture, 'crawl');
+
+    const plain = walk([{ fumes: { acrolein: 30 }, steps: 180 }], { showcase: false });
+    const plainHurt = walk([{ fumes: { acrolein: 30 }, steps: 180 }], {
+      showcase: false,
+      injury: 'minor',
+      wet: true,
+    });
+    assert.equal(plain.posture, 'crawl');
+    assert.ok(plain.moved > 0.05, `plain crawl did not move (${plain.moved})`);
+    assert.ok(
+      plainHurt.moved < plain.moved * 0.85,
+      `plain crawl skipped injury and wet floor (${plainHurt.moved} vs ${plain.moved})`,
+    );
+  });
+
+  test('an irritant crawl on a stair applies injury and a wet floor', () => {
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      { x: 40, y: 20 },
+      { x: 0, y: 20 },
+    ];
+    const ground: LevelDef = { id: 'G', name: 'G', index: 0, heightM: 4, designed: true, pedestrianCount: 0 };
+    const stair: Stairwell = {
+      id: 's',
+      pos: { x: 10, y: 10 },
+      connectsFloors: [0, 1],
+      blocked: false,
+      label: 'S',
+      kind: 'stair',
+      widthM: 1.2,
+      levels: { from: 'G', to: 'L1' },
+    };
+    const duration = (injury?: 'minor', wet?: boolean) => {
+      const eng = new PolygonEvacuationEngine(
+        { vertices: verts, pedestrianCount: 0, pedestrianRadius: 0.25, desiredSpeed: 1.4, panicFactor: 0, dt: 1 / 60 },
+        [],
+        [],
+        [],
+        undefined,
+        {
+          ids: ['G', 'L1'],
+          exitsByLevel: { G: [], L1: [] },
+          wallsByLevel: { G: [], L1: [] },
+          stairs: [stair],
+          counts: { G: 0, L1: 0 },
+          heights: { G: 4, L1: 4 },
+        },
+      );
+      if (wet) {
+        const hazard = new HazardField([{ id: 'wet', simPos: { x: 10, y: 10 }, indoor: true }]);
+        hazard.setStates(new Map([['wet', { smoke: 0, fire: { state: 'none' }, wet: true }]]));
+        eng.setHazardField(hazard);
+      }
+      const occ = {
+        label: {
+          kind: 'pedestrian' as const,
+          pedId: 1,
+          evacuated: false,
+          targetExitId: '',
+          fumeHeld: true,
+          posture: 'stand' as const,
+          injury,
+          level: 'G',
+        },
+        stairId: 's',
+        dir: 'up' as const,
+        fromLevel: 'G',
+        toLevel: 'L1',
+        phase: 'queue' as const,
+        enqueuedAt: 0,
+        travelStart: 0,
+        travelDuration: 0,
+      };
+      (eng as unknown as { beginTravel(person: typeof occ): void }).beginTravel(occ);
+      const travelled = occ.travelDuration;
+      eng.destroy();
+      return travelled;
+    };
+    const base = stairTravelS(ground, 'up');
+    const dry = duration();
+    const hurt = duration('minor', true);
+    const dryExpected = base / LEVEL.STAIR_CRAWL_FACTOR;
+    const hurtExpected = base / (LEVEL.STAIR_CRAWL_FACTOR * SHOWCASE.MINOR_INJURY_SPEED_FACTOR * WET_FLOOR_SPEED);
+    assert.ok(Math.abs(dry - dryExpected) < 1e-6, `dry stair ${dry} vs ${dryExpected}`);
+    assert.ok(Math.abs(hurt - hurtExpected) < 1e-6, `hurt stair ${hurt} vs ${hurtExpected}`);
+    assert.ok(hurt > dry * 2, `stair crawl did not slow (${hurt} vs ${dry})`);
   });
 });
 
@@ -532,7 +832,7 @@ function distance(fumes: { CO?: number; acrolein?: number } | undefined): number
   return walk([{ fumes, steps: 180 }]).moved;
 }
 
-function doseOver(frameDt: number, frames: number): { fed: number; ppm: number } {
+function doseOver(frameDt: number, frames: number): { fed: number; ppm: number; smoke: number } {
   const engine = effects(new Map([['a', WOOD]]));
   const acc = createAccumulator();
   let fed = 0;
@@ -541,11 +841,12 @@ function doseOver(frameDt: number, frames: number): { fed: number; ppm: number }
       fed = advanceFed(fed, engine.studStates.get('a')?.fumes, FX.EFFECTS_DT);
     });
   }
-  return { fed, ppm: engine.studStates.get('a')?.fumes?.CO ?? 0 };
+  return { fed, ppm: engine.studStates.get('a')?.fumes?.CO ?? 0, smoke: engine.studStates.get('a')?.smoke ?? 0 };
 }
 
 function walk(
   phases: Array<{ fumes?: { CO?: number; acrolein?: number }; steps: number }>,
+  opts: { injury?: 'minor'; wet?: boolean; showcase?: boolean } = {},
 ): {
   moved: number;
   state: string;
@@ -574,18 +875,19 @@ function walk(
     [exit],
     [],
     [],
-    { afterExit: 'disperse', zones: [], seed: 1 },
+    opts.showcase === false ? undefined : { afterExit: 'disperse', zones: [], seed: 1 },
   );
   const studs = [];
   const states = new Map<string, { smoke: number; fire: { state: string }; fumes?: { CO?: number; acrolein?: number } }>();
   for (let x = 0; x <= 40; x += 3) {
     const id = `s${x}`;
     studs.push({ id, simPos: { x, y: 10 }, indoor: true });
-    states.set(id, { smoke: 0, fire: { state: 'none' } });
+    states.set(id, { smoke: 0, fire: { state: 'none' }, wet: opts.wet === true });
   }
   const hazard = new HazardField(studs);
   hazard.setStates(states);
   eng.setHazardField(hazard);
+  eng.setHazardFields(new Map([['G', hazard]]));
   const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
   Matter.Body.setPosition(body, { x: 8, y: 10 });
   Matter.Body.setVelocity(body, { x: 0, y: 0 });
@@ -597,13 +899,16 @@ function walk(
       posture: Posture;
       fumeHeld?: boolean;
       fumeDown?: boolean;
-      injury?: string;
+      injury?: 'none' | 'minor' | 'serious' | 'lethal';
+      level?: string;
     };
   }).__ped;
   ped.state = 'evacuating';
   ped.targetExitId = 'east';
   ped.nextCheckAt = 1e9;
   ped.posture = 'stand';
+  ped.level = 'G';
+  if (opts.injury) ped.injury = opts.injury;
   const start = body.position.x;
   for (const phase of phases) {
     for (const state of states.values()) {
