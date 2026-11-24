@@ -2212,6 +2212,7 @@ export function DebugRTSSim() {
           }
           for (; cursor < evacSteps; cursor++) evac.step();
           evacStepsDoneRef.current += evacSteps;
+          rts.limitElapsed(evacStepsDoneRef.current * FX.FIXED_DT);
         } else {
           const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
           for (let i = 0; i < stepsPerFrame; i++) evac.step();
