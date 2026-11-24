@@ -374,6 +374,35 @@ describe('smoke carries the gases', () => {
     assert.ok(held < free * 0.8, `hood ${held}, bare ${free}`);
   });
 
+  test('the concentration a person breathes falls after a hood opens', () => {
+    const hooded = effects(new Map([['a', OIL]]), [], [head('c', 0, 0, 'wet_chemical')]);
+    const bare = effects(new Map([['a', OIL]]));
+    let t = 0;
+    while (hooded.suppressionState('c')?.open !== true && t < 180) {
+      hooded.step(1, [], []);
+      bare.step(1, [], []);
+      t += 1;
+    }
+    assert.ok(t < 180, 'hood did not open');
+    const opened = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
+    assert.ok(opened > 0, 'no acrolein when the hood opened');
+    let later = opened;
+    let fellAt = -1;
+    for (let i = 0; i < 1600; i++) {
+      hooded.step(1, [], []);
+      bare.step(1, [], []);
+      later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
+      if (later < opened * 0.8) {
+        fellAt = i + 1;
+        break;
+      }
+    }
+    const bareLater = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
+    assert.ok(fellAt > 0, `ppm stayed ${later} from ${opened}`);
+    assert.ok(bareLater > later, `bare ${bareLater}, hood ${later}`);
+    assert.ok((bare.studStates.get('a')?.smoke ?? 0) > (hooded.studStates.get('a')?.smoke ?? 0));
+  });
+
   test('a fryer fire reaches an irritant fraction of 1 in its own smoke, and the gas stays bounded', () => {
     const engine = new SpatialEffectsEngine(undefined, 1);
     engine.init([stud('pan', 0, 0), stud('next', 3, 0)]);
@@ -424,27 +453,31 @@ describe('smoke carries the gases', () => {
 });
 
 describe('people', () => {
-  test('an irritant fraction of 1 stops them until the air clears, and only FED puts them down', () => {
+  test('an irritant fraction of 1 makes them crawl until the air clears, and only FED puts them down', () => {
     const clean = distance(undefined);
     const dosing = distance({ CO: 200 });
     assert.ok(clean > 0.3, `did not walk (${clean})`);
     assert.ok(Math.abs(dosing - clean) / clean < 0.02, `pace ${dosing} vs ${clean}`);
 
-    const held = walk([{ fumes: { acrolein: 30 }, steps: 30 }]);
-    assert.equal(held.state, 'evacuating');
-    assert.equal(held.fumeHeld, true);
-    assert.notEqual(held.fumeDown, true);
-    assert.ok(held.moved < 0.05, `still walking (${held.moved})`);
-    assert.equal(held.fumeHeldCount, 1);
-    assert.equal(held.fumeDownCount, 0);
+    const crawling = walk([{ fumes: { acrolein: 30 }, steps: 180 }]);
+    assert.equal(crawling.state, 'evacuating');
+    assert.equal(crawling.fumeHeld, true);
+    assert.equal(crawling.posture, 'crawl');
+    assert.notEqual(crawling.fumeDown, true);
+    assert.ok(crawling.moved > 0.25, `did not crawl (${crawling.moved})`);
+    assert.ok(crawling.moved < clean * 0.8, `crawl ${crawling.moved} vs walk ${clean}`);
+    assert.equal(crawling.fumeHeldCount, 1);
+    assert.equal(crawling.fumeDownCount, 0);
 
+    const stayed = walk([{ fumes: { acrolein: 30 }, steps: 210 }]);
     const resumed = walk([
       { fumes: { acrolein: 30 }, steps: 30 },
       { steps: 180 },
     ]);
     assert.equal(resumed.state, 'evacuating');
     assert.notEqual(resumed.fumeHeld, true);
-    assert.ok(resumed.moved > 0.3, `did not resume (${resumed.moved})`);
+    assert.equal(resumed.posture, 'stand');
+    assert.ok(resumed.moved > stayed.moved, `did not speed up (${resumed.moved} vs ${stayed.moved})`);
 
     const down = walk([
       { fumes: { CO: 200_000_000 }, steps: 5 },
@@ -519,6 +552,7 @@ function walk(
   fumeHeld?: boolean;
   fumeDown?: boolean;
   injury?: string;
+  posture?: Posture;
   fumeHeldCount: number;
   fumeDownCount: number;
 } {
@@ -585,6 +619,7 @@ function walk(
     fumeHeld: ped.fumeHeld,
     fumeDown: ped.fumeDown,
     injury: ped.injury,
+    posture: ped.posture,
     fumeHeldCount: metrics?.fumeHeld ?? 0,
     fumeDownCount: metrics?.fumeDown ?? 0,
   };

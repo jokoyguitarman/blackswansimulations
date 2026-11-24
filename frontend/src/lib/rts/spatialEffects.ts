@@ -561,11 +561,22 @@ export class SpatialEffectsEngine {
     toxic: 0.9,
   };
 
+  /**
+   * Smoke added per second by a burning stud at full release. A spray
+   * multiplies this by `FireStudState.output`, the suppressed release
+   * divided by the unsprayed one. That scale is assumed: this field is
+   * not a soot yield. Output is 1 until a spray opens, so an unsprayed
+   * fire keeps this rate.
+   */
+  private static readonly BURN_SMOKE_PER_S = 0.03;
+
   private stepSmoke(dt: number, walls: InteriorWall[]) {
     // Generate smoke from active fires and smoke-producing events
     for (const [, state] of this.studStates) {
       if (state.fire.state === 'burning') {
-        state.smoke = Math.min(1, state.smoke + dt * 0.03);
+        const output = state.fire.output;
+        const scale = output == null || !(output < 1) ? 1 : Math.max(0, output);
+        state.smoke = Math.min(1, state.smoke + dt * SpatialEffectsEngine.BURN_SMOKE_PER_S * scale);
       }
     }
 

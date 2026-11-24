@@ -215,6 +215,8 @@ interface StairOccupant {
   enqueuedAt: number;
   travelStart: number;
   travelDuration: number;
+  /** The remaining stair time was stretched to the crawl factor for irritant smoke. */
+  fumeStretched?: boolean;
 }
 
 export interface ObstaclePoint {
@@ -578,12 +580,12 @@ export class PolygonEvacuationEngine {
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
       if (ped.evacuated || ped.state === 'down' || ped.state === 'left_map') continue;
-      if (ped.fumeHeld) {
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
-        continue;
-      }
+      // FEC at 1 is the seeded crawl toward the exit, not a stop. The
+      // choice of that pace, with no further fraction, is assumed.
+      const pace = ped.fumeHeld ? SHOWCASE.CRAWL_SPEED : targetSpeed;
+      if (ped.fumeHeld) ped.posture = 'crawl';
       if (this.levelPlan && ped.level) {
-        this.stepPlainLevel(body, ped, targetSpeed, dt, tau);
+        this.stepPlainLevel(body, ped, pace, dt, tau);
         continue;
       }
 
@@ -600,18 +602,18 @@ export class PolygonEvacuationEngine {
       const nx = dx / dist;
       const ny = dy / dist;
 
-      const vDesX = nx * targetSpeed * dt;
-      const vDesY = ny * targetSpeed * dt;
+      const vDesX = nx * pace * dt;
+      const vDesY = ny * pace * dt;
 
       // Repulsion from obstacles (hazards, casualties) and static bodies.
       let repX = 0;
       let repY = 0;
       for (const obs of this.obstacles) {
-        const push = this.obstaclePush(body, obs.x, obs.y, obs.radius, targetSpeed, dt);
+        const push = this.obstaclePush(body, obs.x, obs.y, obs.radius, pace, dt);
         repX += push.x;
         repY += push.y;
       }
-      const bodies = this.pushFromBodies(body, steered.near, targetSpeed, dt);
+      const bodies = this.pushFromBodies(body, steered.near, pace, dt);
       repX += bodies.x;
       repY += bodies.y;
 
@@ -622,7 +624,7 @@ export class PolygonEvacuationEngine {
       Matter.Body.setVelocity(body, { x: newVx, y: newVy });
 
       const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
-      const maxSpeed = targetSpeed * dt * 1.3;
+      const maxSpeed = pace * dt * 1.3;
       if (currentSpeed > maxSpeed) {
         const s = maxSpeed / currentSpeed;
         Matter.Body.setVelocity(body, {
@@ -841,10 +843,6 @@ export class PolygonEvacuationEngine {
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state === 'down' || ped.state === 'left_map') continue;
-      if (ped.fumeHeld) {
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
-        continue;
-      }
       if (ped.state === 'arrived') {
         this.stepArrived(body, ped);
         continue;
@@ -949,6 +947,9 @@ export class PolygonEvacuationEngine {
     } else {
       ped.posture = 'crawl';
     }
+    // FEC at 1 forces the seeded crawl toward the current exit. Assumed:
+    // that pace, with no further fraction, is the impaired movement.
+    if (ped.fumeHeld) ped.posture = 'crawl';
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
     const footing = sample.wet ? WET_FLOOR_SPEED : 1;
     const speed =
@@ -2447,6 +2448,7 @@ export class PolygonEvacuationEngine {
     const fam = ped.familiarity ?? 'visitor';
     if (!ped.forcedCrawl && !ped.sheltering) ped.posture = nextPosture(ped.posture ?? 'stand', sample.smoke, fam);
     else ped.posture = 'crawl';
+    if (ped.fumeHeld) ped.posture = 'crawl';
     const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
     const footing = sample.wet ? WET_FLOOR_SPEED : 1;
     const speed =
@@ -2579,7 +2581,19 @@ export class PolygonEvacuationEngine {
       this.arriveFromStair(occ);
     }
     for (const occ of this.stairPeople) {
-      if (occ.label.fumeHeld && occ.phase === 'travel') occ.travelStart += dt;
+      if (occ.phase !== 'travel') continue;
+      if (occ.label.fumeHeld && !occ.fumeStretched && occ.label.posture !== 'crawl') {
+        const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
+        const remain = Math.max(0, occ.travelDuration - done);
+        occ.travelDuration = done + remain / LEVEL.STAIR_CRAWL_FACTOR;
+        occ.label.posture = 'crawl';
+        occ.fumeStretched = true;
+      } else if (!occ.label.fumeHeld && occ.fumeStretched) {
+        const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
+        const remain = Math.max(0, occ.travelDuration - done);
+        occ.travelDuration = done + remain * LEVEL.STAIR_CRAWL_FACTOR;
+        occ.fumeStretched = false;
+      }
     }
     this.advanceStairs();
     this.releaseStairs(dt);
@@ -2587,7 +2601,7 @@ export class PolygonEvacuationEngine {
 
   /**
    * One breath of the smoke on the nearest stud. Walking speed stays on the
-   * smoke density. FEC at 1 stops the person until the next breath under 1.
+   * smoke density. FEC at 1 makes them crawl until the next breath under 1.
    * FED at 1 puts them down, and that stays.
    */
   private breathe(ped: PedLabel, x: number, y: number, dt: number): boolean {
@@ -2628,7 +2642,7 @@ export class PolygonEvacuationEngine {
           this.stairPrimed.set(key, false);
           continue;
         }
-        if (waiting[0].label.fumeHeld) continue;
+        if (waiting[0].label.fumeHeld) waiting[0].label.posture = 'crawl';
         let acc = this.stairAcc.get(key) ?? 0;
         if (!this.stairPrimed.get(key)) {
           acc = Math.max(acc, 1);
@@ -2654,11 +2668,13 @@ export class PolygonEvacuationEngine {
 
   private beginTravel(occ: StairOccupant) {
     const from = this.levelDefs.find((l) => l.id === occ.fromLevel);
+    if (occ.label.fumeHeld) occ.label.posture = 'crawl';
     const factor = occ.label.posture === 'crawl'
       ? LEVEL.STAIR_CRAWL_FACTOR
       : occ.label.posture === 'crouch'
         ? LEVEL.CROUCH_SPEED_FACTOR
         : 1;
+    occ.fumeStretched = false;
     occ.phase = 'travel';
     occ.travelStart = this.elapsed;
     occ.travelDuration = from ? stairTravelS(from, occ.dir) / factor : 1;

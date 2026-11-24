@@ -5987,7 +5987,7 @@ export function DebugRTSSim() {
                   Down {showcaseHud.metrics.down.lethal} lethal / {showcaseHud.metrics.down.serious}{' '}
                   serious
                 </div>
-                <div>Fume held {showcaseHud.metrics.fumeHeld}</div>
+                <div>Fume crawl {showcaseHud.metrics.fumeHeld}</div>
                 <div>Fume down {showcaseHud.metrics.fumeDown}</div>
                 <div>Minor injured {showcaseHud.metrics.minorInjured}</div>
                 <div>Reroutes {showcaseHud.metrics.reroutes}</div>
