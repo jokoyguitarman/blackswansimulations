@@ -11,6 +11,7 @@ import type { FuelCell } from './flameFront';
 import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
+import { addFumeGrams, fumesFromSmoke, type FumeGrams } from './toxicDose';
 
 // ── Effect types ─────────────────────────────────────────────────────────
 
@@ -48,6 +49,11 @@ export interface StudEffectState {
   smoke: number;
   /** True once an open spray can reach this stud. */
   wet?: boolean;
+  /**
+   * ppm of the gases whose smoke has reached this stud. Absent is clean air.
+   * It follows what is burning now, scaled by the smoke already stored here.
+   */
+  fumes?: FumeGrams;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -264,6 +270,10 @@ export class SpatialEffectsEngine {
     return this.fireSim.fuelReleaseKw(id);
   }
 
+  fumeSources() {
+    return this.fireSim.fumeSources();
+  }
+
   isJetting(id: string): boolean {
     return this.fireSim.isJetting(id);
   }
@@ -304,6 +314,7 @@ export class SpatialEffectsEngine {
     this.stepFlood(simDt, walls);
     this.stepStructural(simDt);
     this.stepSmoke(simDt, walls);
+    this.stepFumes(walls);
   }
 
   private processHazardEvents(hazards: HazardZone[], walls: InteriorWall[]) {
@@ -550,11 +561,22 @@ export class SpatialEffectsEngine {
     toxic: 0.9,
   };
 
+  /**
+   * Smoke added per second by a burning stud at full release. A spray
+   * multiplies this by `FireStudState.output`, the suppressed release
+   * divided by the unsprayed one. That scale is assumed: this field is
+   * not a soot yield. Output is 1 until a spray opens, so an unsprayed
+   * fire keeps this rate.
+   */
+  private static readonly BURN_SMOKE_PER_S = 0.03;
+
   private stepSmoke(dt: number, walls: InteriorWall[]) {
     // Generate smoke from active fires and smoke-producing events
     for (const [, state] of this.studStates) {
       if (state.fire.state === 'burning') {
-        state.smoke = Math.min(1, state.smoke + dt * 0.03);
+        const output = state.fire.output;
+        const scale = output == null || !(output < 1) ? 1 : Math.max(0, output);
+        state.smoke = Math.min(1, state.smoke + dt * SpatialEffectsEngine.BURN_SMOKE_PER_S * scale);
       }
     }
 
@@ -618,6 +640,78 @@ export class SpatialEffectsEngine {
     for (const { id, amount } of toSpread) {
       const s = this.studStates.get(id);
       if (s) s.smoke = Math.min(1, s.smoke + amount);
+    }
+  }
+
+  /**
+   * Read the gases off the smoke already on each stud. The production of the
+   * fires whose smoke has reached it only splits that soot among species.
+   * A solid wall stops the walk. A door gap does not. Another storey is
+   * reached only up a shaft, and only where smoke has risen. Nothing burning
+   * clears the split, including a jet or an arc on its own.
+   */
+  private stepFumes(walls: InteriorWall[]) {
+    for (const state of this.studStates.values()) state.fumes = undefined;
+    const sources = this.fireSim.fumeSources();
+    if (sources.length === 0) return;
+
+    const upward = new Map<string, string[]>();
+    for (const pair of this.verticalPairs) {
+      const list = upward.get(pair.lower);
+      if (list) list.push(pair.upper);
+      else upward.set(pair.lower, [pair.upper]);
+    }
+
+    const totals = new Map<string, { grams: FumeGrams; soot: number }>();
+    const addSource = (id: string, gramsPerS: FumeGrams, sootGPerS: number) => {
+      const bucket = totals.get(id);
+      if (bucket) {
+        addFumeGrams(bucket.grams, gramsPerS);
+        bucket.soot += sootGPerS;
+        return;
+      }
+      const grams: FumeGrams = {};
+      addFumeGrams(grams, gramsPerS);
+      totals.set(id, { grams, soot: sootGPerS });
+    };
+
+    for (const source of sources) {
+      const seen = new Set<string>();
+      const stack = [source.id];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (id == null || seen.has(id)) continue;
+        seen.add(id);
+        const state = this.studStates.get(id);
+        const from = this.studIndex.get(id);
+        if (!state || !from) continue;
+        const origin = id === source.id;
+        if (!origin && !(state.smoke > 0.02)) continue;
+        addSource(id, source.gramsPerS, source.sootGPerS);
+        for (const nextId of this.neighborCache.get(id) ?? []) {
+          if (seen.has(nextId)) continue;
+          const dest = this.studIndex.get(nextId);
+          const next = this.studStates.get(nextId);
+          if (!dest || !next || !(next.smoke > 0.02)) continue;
+          if (isWallBlocked(from.simPos, dest.simPos, walls, levelOf(from))) continue;
+          stack.push(nextId);
+        }
+        for (const upperId of upward.get(id) ?? []) {
+          const upper = this.studStates.get(upperId);
+          if (upper && upper.smoke > 0.02) stack.push(upperId);
+        }
+      }
+    }
+
+    for (const [id, bucket] of totals) {
+      const state = this.studStates.get(id);
+      if (!state || !(state.smoke > 0)) continue;
+      const ppm = fumesFromSmoke(state.smoke, bucket.grams, bucket.soot);
+      let any = false;
+      for (const value of Object.values(ppm)) {
+        if (value != null && value > 0) any = true;
+      }
+      if (any) state.fumes = ppm;
     }
   }
 

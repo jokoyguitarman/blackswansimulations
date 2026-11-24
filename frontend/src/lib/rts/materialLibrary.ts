@@ -3,15 +3,39 @@
  *
  * The trainer never picks a fuel category. They describe the object, the
  * keyword list matches library entries, and they confirm the names. After
- * confirm, the fire sim reads the category and that entry's ignition numbers.
- * Toxic yields stay stored and unread.
+ * confirm, the fire sim reads the category, that entry's ignition numbers,
+ * and that entry's toxic yields. The trainer does not pick a gas.
  *
  * Light-fuel CHF 10 kW/m² and TRP 134 are the red-oak row, used as the stand-in
  * for ordinary wood. Heavy-fuel CHF, the shorter TRP, both room-scale speeds,
- * both fuel loads, the 0.3 m² pan, and every yield are assumed.
+ * both fuel loads, the 0.3 m² pan, and every yield that is not named below
+ * are assumed.
+ *
+ * Soot yields are well-ventilated flaming figures, grams per gram. Red oak
+ * 0.015, flexible polyurethane foam 0.188 and PVC 0.172 are NUREG-1805
+ * Table 18-3 (seed `soot_yield_by_material`). Paper uses the red-oak figure
+ * (assumed: no paper row). Shop stock 0.1 and cooking oil 0.02 are assumed.
+ *
+ * Gas yields before flashover are the well-ventilated set. Wood CO 0.004 is
+ * Tewarson's well-ventilated wood, about 0.004 g/g (SFPE Handbook). Paper
+ * and shop stock use that figure until the stud flashes (assumed). Foam CO
+ * 0.01 and PVC CO 0.06 are assumed. HCN 0.01, HCl 0.2 and acrolein 0.01 have
+ * no separate well-ventilated figure in the seeds, so the stored label is
+ * used before flashover as well. After the flashover latch the stored
+ * `toxicYieldGPerG` is the under-ventilated gas yield.
  */
 
-import { FRYER_POOL_AREA_M2, HOOD_HEIGHT_M, SPRINKLER_CEILING_M, type FuelCell } from './flameFront';
+import {
+  FRYER_POOL_AREA_M2,
+  HOOD_HEIGHT_M,
+  SPRINKLER_CEILING_M,
+  TOXIC_PRODUCTS,
+  type FuelCell,
+  type ToxicProduct,
+  type ToxicYields,
+} from './flameFront';
+
+export type { ToxicProduct };
 
 export type FuelCategory = 'non_combustible' | 'light' | 'heavy';
 
@@ -19,8 +43,6 @@ export type MaterialBehaviour = 'none' | 'pressurised_gas' | 'suppression' | 'el
 
 /** Sprinkler and kitchen hood share the wet-zone behaviour. The RTI differs. */
 export type SuppressionKind = 'sprinkler' | 'wet_chemical';
-
-export type ToxicProduct = 'CO' | 'HCN' | 'HCl' | 'acrolein';
 
 export interface MaterialEntry {
   id: string;
@@ -31,10 +53,20 @@ export interface MaterialEntry {
   behaviour: MaterialBehaviour;
   /** Set on a suppression entry. Absent on everything else. */
   suppression?: SuppressionKind;
-  /** Stored for a later phase. The fire sim does not read this. */
+  /** Gases this entry emits while it burns. A label, not a measurement. */
   toxicProducts: readonly ToxicProduct[];
-  /** Grams of gas per gram burned. Assumed. The fire sim does not read this. */
-  toxicYieldGPerG: Partial<Record<ToxicProduct, number>>;
+  /**
+   * Grams of soot per gram burned. Well-ventilated. Null when it does not burn.
+   * Cited rows are named in the file header. The rest are assumed.
+   */
+  sootYieldGPerG: number | null;
+  /**
+   * Grams of gas per gram burned before flashover. Where this matches the
+   * stored yield, no separate well-ventilated figure was available.
+   */
+  toxicYieldWellVentGPerG: ToxicYields;
+  /** Grams of gas per gram burned after flashover. The stored label. */
+  toxicYieldGPerG: ToxicYields;
   /** kW/m². Null does not ignite. */
   chfKwM2: number | null;
   /** Thermal response parameter. Null does not ignite. */
@@ -154,6 +186,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['wood', 'wooden', 'timber', 'plywood', 'oak'],
     behaviour: 'none',
     toxicProducts: ['CO'],
+    sootYieldGPerG: 0.015,
+    toxicYieldWellVentGPerG: { CO: 0.004 },
     toxicYieldGPerG: { CO: 0.1 },
     ...LIGHT_WOOD,
   },
@@ -163,6 +197,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['paper', 'cardboard', 'newspaper'],
     behaviour: 'none',
     toxicProducts: ['CO'],
+    sootYieldGPerG: 0.015,
+    toxicYieldWellVentGPerG: { CO: 0.004 },
     toxicYieldGPerG: { CO: 0.1 },
     ...LIGHT_ASSUMED,
   },
@@ -172,6 +208,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['foam', 'upholstery', 'polyurethane', 'cushion'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
+    sootYieldGPerG: 0.188,
+    toxicYieldWellVentGPerG: { CO: 0.01, HCN: 0.01 },
     toxicYieldGPerG: { CO: 0.1, HCN: 0.01 },
     ...LIGHT_ASSUMED,
   },
@@ -181,6 +219,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['pvc', 'vinyl'],
     behaviour: 'none',
     toxicProducts: ['HCl', 'CO'],
+    sootYieldGPerG: 0.172,
+    toxicYieldWellVentGPerG: { HCl: 0.2, CO: 0.06 },
     toxicYieldGPerG: { HCl: 0.2, CO: 0.1 },
     ...LIGHT_ASSUMED,
   },
@@ -190,6 +230,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['shop stock', 'merchandise', 'retail stock', 'shop fittings'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
+    sootYieldGPerG: 0.1,
+    toxicYieldWellVentGPerG: { CO: 0.004, HCN: 0.01 },
     toxicYieldGPerG: { CO: 0.1, HCN: 0.01 },
     ...HEAVY_SOLID,
   },
@@ -199,6 +241,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['cooking oil', 'deep fryer', 'fryer', 'oil', 'grease'],
     behaviour: 'none',
     toxicProducts: ['acrolein'],
+    sootYieldGPerG: 0.02,
+    toxicYieldWellVentGPerG: { acrolein: 0.01 },
     toxicYieldGPerG: { acrolein: 0.01 },
     ...HEAVY_ASSUMED,
   },
@@ -208,6 +252,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['steel', 'iron'],
     behaviour: 'none',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -217,6 +263,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['tile', 'ceramic', 'porcelain'],
     behaviour: 'none',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -226,6 +274,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['concrete', 'masonry', 'brick'],
     behaviour: 'none',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -235,6 +285,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['gas line', 'gas', 'hob', 'cylinder', 'propane'],
     behaviour: 'pressurised_gas',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -245,6 +297,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     behaviour: 'suppression',
     suppression: 'wet_chemical',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -255,6 +309,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     behaviour: 'suppression',
     suppression: 'sprinkler',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -264,6 +320,8 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['fridge', 'refrigerator', 'electrical', 'socket', 'cable'],
     behaviour: 'electrical',
     toxicProducts: [],
+    sootYieldGPerG: null,
+    toxicYieldWellVentGPerG: {},
     toxicYieldGPerG: {},
     ...INERT,
   },
@@ -298,6 +356,8 @@ export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
   ) {
     return null;
   }
+  const toxicYieldGPerG = copyYields(entry.toxicYieldGPerG);
+  const toxicYieldWellVentGPerG = copyYields(entry.toxicYieldWellVentGPerG);
   return {
     category: entry.fuel,
     chfKwM2: entry.chfKwM2,
@@ -307,7 +367,21 @@ export function fuelCellFromEntry(entry: MaterialEntry): FuelCell | null {
     fuelLoadKgM2: entry.fuelLoadKgM2,
     liquidPool: entry.liquidPool,
     ...(entry.liquidPool ? { poolAreaM2: FRYER_POOL_AREA_M2 } : {}),
+    ...(entry.sootYieldGPerG != null && entry.sootYieldGPerG > 0
+      ? { sootYieldGPerG: entry.sootYieldGPerG }
+      : {}),
+    ...(Object.keys(toxicYieldWellVentGPerG).length > 0 ? { toxicYieldWellVentGPerG } : {}),
+    ...(Object.keys(toxicYieldGPerG).length > 0 ? { toxicYieldGPerG } : {}),
   };
+}
+
+function copyYields(yields: ToxicYields): ToxicYields {
+  const out: ToxicYields = {};
+  for (const gas of TOXIC_PRODUCTS) {
+    const yieldG = yields[gas];
+    if (yieldG != null && yieldG > 0) out[gas] = yieldG;
+  }
+  return out;
 }
 
 /** Wood, used when a scene names no fuel. Assumed stand-in for an ordinary interior. */

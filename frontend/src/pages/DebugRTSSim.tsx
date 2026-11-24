@@ -51,7 +51,7 @@ import {
 } from '../lib/rts/blast/blastModel';
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
 import { FX, noteDowngradeFrom, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
-import { createAccumulator, takeSteps } from '../lib/rts/fx/simClock';
+import { createAccumulator, stepEffectsFixed, takeSteps } from '../lib/rts/fx/simClock';
 import { activeRasterLayout, createRasterLayoutCache, type RasterLayout } from '../lib/rts/fx/hazardRaster';
 import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
 import {
@@ -2070,43 +2070,25 @@ export function DebugRTSSim() {
 
       const effectsEng = effectsEngineRef.current;
       if (effectsEng && simRunning) {
-        let effectDt: number;
-        if (showcaseOn) {
-          const effectSteps = takeSteps(
-            effectsAccRef.current,
-            dt,
-            rts.state.clock.speed,
-            FX.EFFECTS_DT,
-            FX.MAX_STEPS_PER_FRAME,
-          );
-          const walls = interiorWallsRef.current;
-          const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
-          effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
-          syncIgnition(
-            effectsEng,
-            placedObjectsRef.current,
-            hazardZonesRef.current,
-            chargeRef.current,
-            levelsRef.current,
-          );
-          for (let i = 0; i < effectSteps; i++) effectsEng.step(FX.EFFECTS_DT, walls, hazards);
-          effectDt = effectSteps * FX.EFFECTS_DT;
-        } else {
-          effectDt = dt * rts.state.clock.speed;
-          effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
-          syncIgnition(
-            effectsEng,
-            placedObjectsRef.current,
-            hazardZonesRef.current,
-            chargeRef.current,
-            levelsRef.current,
-          );
-          effectsEng.step(
-            effectDt,
-            interiorWallsRef.current,
-            hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current),
-          );
-        }
+        const walls = interiorWallsRef.current;
+        const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
+        effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
+        syncIgnition(
+          effectsEng,
+          placedObjectsRef.current,
+          hazardZonesRef.current,
+          chargeRef.current,
+          levelsRef.current,
+        );
+        const effectSteps = stepEffectsFixed(
+          effectsEng,
+          effectsAccRef.current,
+          dt,
+          rts.state.clock.speed,
+          walls,
+          hazards,
+        );
+        const effectDt = effectSteps * FX.EFFECTS_DT;
         effectStatesRef.current = new Map(effectsEng.studStates);
         const jetCount = effectsEng.gasJets().length;
         setGasJetCount((prev) => (prev === jetCount ? prev : jetCount));
@@ -6005,6 +5987,8 @@ export function DebugRTSSim() {
                   Down {showcaseHud.metrics.down.lethal} lethal / {showcaseHud.metrics.down.serious}{' '}
                   serious
                 </div>
+                <div>Fume crawl {showcaseHud.metrics.fumeHeld}</div>
+                <div>Fume down {showcaseHud.metrics.fumeDown}</div>
                 <div>Minor injured {showcaseHud.metrics.minorInjured}</div>
                 <div>Reroutes {showcaseHud.metrics.reroutes}</div>
                 <div>Burning studs {showcaseHud.burning}</div>

@@ -44,6 +44,7 @@ import {
   suppressedHeatKw,
   type FuelCell,
 } from './flameFront';
+import { fumesPresent, sootProductionGPerS, speciesProductionGPerS, type FumeGrams } from './toxicDose';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -592,6 +593,48 @@ export class FireSimulation {
     const meta = this.burn.get(id);
     if (!meta) return null;
     return this.releaseKw(this.burningCell(id), meta);
+  }
+
+  /** True once this stud has met the flashover rule. The latch does not clear. */
+  isFlashed(id: string): boolean {
+    return this.flashedStuds.has(id);
+  }
+
+  /**
+   * Grams per second each burning cell is putting into the smoke, and the
+   * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
+   * The release is the decayed one. The gas yield is the well-ventilated
+   * set until this stud has flashed.
+   */
+  fumeSources(): Array<{
+    id: string;
+    pos: Vec2;
+    level: string;
+    gramsPerS: FumeGrams;
+    sootGPerS: number;
+  }> {
+    const sources: Array<{
+      id: string;
+      pos: Vec2;
+      level: string;
+      gramsPerS: FumeGrams;
+      sootGPerS: number;
+    }> = [];
+    for (const fire of this.liveFires()) {
+      const release = this.releaseKw(fire.cell, fire.meta);
+      const flashed = this.flashedStuds.has(fire.id);
+      const gramsPerS = speciesProductionGPerS(fire.cell, release, flashed);
+      const sootGPerS = sootProductionGPerS(fire.cell, release);
+      if (!fumesPresent(gramsPerS) || !(sootGPerS > 0)) continue;
+      sources.push({
+        id: fire.id,
+        pos: { x: fire.stud.simPos.x, y: fire.stud.simPos.y },
+        level: levelOf(fire.stud),
+        gramsPerS,
+        sootGPerS,
+      });
+    }
+    return sources;
   }
 
   /**

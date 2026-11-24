@@ -4,6 +4,7 @@ import { SHOWCASE } from './showcaseConstants';
 import { BLAST_CONSTANTS } from '../rts/blast/blastModel';
 import type { LevelDef, Stairwell } from '../rts/types';
 import { levelIndex, levelOf, linkLevels, stairFlowPerS, stairTravelS } from '../rts/levels';
+import type { FumeGrams } from '../rts/toxicDose';
 
 export type HeadSmokeClass = 'clear' | 'light' | 'thick' | 'untenable';
 export type FireCell = 'none' | 'heating' | 'burning' | 'burnt_out';
@@ -15,6 +16,8 @@ export interface HazardSample {
   fire: FireCell;
   /** True when an open spray has wetted the nearest stud. Absent means dry. */
   wet: boolean;
+  /** ppm of gases in the smoke on the nearest stud. Empty is clean air. */
+  fumes: FumeGrams;
 }
 
 export interface HazardStud {
@@ -27,6 +30,7 @@ interface StudStateLike {
   smoke: number;
   fire: { state: string };
   wet?: boolean;
+  fumes?: FumeGrams;
 }
 
 function asFireCell(state: string | undefined): FireCell {
@@ -58,9 +62,14 @@ export class HazardField {
   /** Nearest stud within 1.5 × cellM, else { smoke: 0, fire: 'none' }. */
   sample(x: number, y: number): HazardSample {
     const nearest = this.nearest(x, y, 1.5 * this.cellM);
-    if (!nearest) return { smoke: 0, fire: 'none', wet: false };
+    if (!nearest) return { smoke: 0, fire: 'none', wet: false, fumes: {} };
     const st = this.states?.get(nearest.id);
-    return { smoke: st?.smoke ?? 0, fire: asFireCell(st?.fire.state), wet: st?.wet === true };
+    return {
+      smoke: st?.smoke ?? 0,
+      fire: asFireCell(st?.fire.state),
+      wet: st?.wet === true,
+      fumes: st?.fumes ?? {},
+    };
   }
 
   /** Burning and heating studs within radius, for repulsion. */

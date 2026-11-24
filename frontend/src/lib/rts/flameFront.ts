@@ -26,6 +26,12 @@
  * The dose holds when q falls back under CHF. It does not decay.
  */
 
+/** Gases a confirmed material can put into the smoke. The trainer does not pick these. */
+export const TOXIC_PRODUCTS = ['CO', 'HCN', 'HCl', 'acrolein'] as const;
+export type ToxicProduct = (typeof TOXIC_PRODUCTS)[number];
+/** Grams of gas per gram of fuel burned. Every library value is assumed. */
+export type ToxicYields = Partial<Record<ToxicProduct, number>>;
+
 export interface FuelCell {
   category: 'light' | 'heavy';
   chfKwM2: number;
@@ -36,6 +42,24 @@ export interface FuelCell {
   liquidPool: boolean;
   /** Liquid surface, m². Absent on a solid. */
   poolAreaM2?: number;
+  /**
+   * Grams of soot per gram burned, the well-ventilated figure. The smoke
+   * field already bounds the soot mass, so this stays the denominator after
+   * flashover. Absent on a cell that has no yield.
+   */
+  sootYieldGPerG?: number;
+  /**
+   * Grams of each gas per gram burned while the stud has not flashed over.
+   * Absent when the entry has no well-ventilated figure distinct from the
+   * stored yield, in which case the stored yield is used.
+   */
+  toxicYieldWellVentGPerG?: ToxicYields;
+  /**
+   * Grams of each gas per gram burned after the stud's flashover latch.
+   * These are the stored under-ventilated labels. Absent on a cell that
+   * has no yield. The fire reads a yield only while the cell is burning.
+   */
+  toxicYieldGPerG?: ToxicYields;
 }
 
 /** C/VM2 radiative fraction for building contents. */
