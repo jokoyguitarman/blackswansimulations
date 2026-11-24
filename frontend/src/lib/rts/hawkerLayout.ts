@@ -40,6 +40,16 @@ const COPY_NORM = 'An upper floor with no plan of its own copies the ground wall
 /** One stud on the 3 m grid is one stall. */
 const PITCH_M = 3;
 const ASSUMED_ROW = 4;
+/**
+ * The counter is shallower than the grid. A full-depth stall on a 3 m pitch
+ * puts the next row's back wall on this row's open front and closes the bay.
+ * 1.2 m behind the stud, with 0.5 m fins, leaves the stud in the aisle and
+ * about 1.7 m clear to the next row once the wall thickness is taken off.
+ */
+const COUNTER_BACK_M = 1.2;
+const COUNTER_DEPTH_M = 0.5;
+/** Keep this much open between a row end and the shell, so the aisle can reach an exit. */
+const END_CLEAR_M = 2.4;
 
 interface Stud {
   id: string;
@@ -149,6 +159,45 @@ function partition(id: string, start: Vec2, end: Vec2, description: string): Int
 }
 
 /** Back wall on the closed side, side partitions between stalls, open toward the seating. */
+function boundaryDistance(verts: Vec2[], x: number, y: number): number {
+  let best = Infinity;
+  for (let index = 0; index < verts.length; index += 1) {
+    const a = verts[index];
+    const b = verts[(index + 1) % verts.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    const t =
+      lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / lenSq));
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
+  }
+  return best;
+}
+
+/** Pull both ends in until each is clear of the shell. Too short to keep means no wall. */
+function clearOfShell(verts: Vec2[], start: Vec2, end: Vec2): { start: Vec2; end: Vec2 } | null {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  let lo = 0;
+  let hi = len;
+  const step = 0.25;
+  while (lo < hi && boundaryDistance(verts, start.x + ux * lo, start.y + uy * lo) < END_CLEAR_M) {
+    lo += step;
+  }
+  while (hi > lo && boundaryDistance(verts, start.x + ux * hi, start.y + uy * hi) < END_CLEAR_M) {
+    hi -= step;
+  }
+  if (hi - lo < 1) return null;
+  return {
+    start: { x: start.x + ux * lo, y: start.y + uy * lo },
+    end: { x: start.x + ux * hi, y: start.y + uy * hi },
+  };
+}
+
 function addRowWalls(
   verts: Vec2[],
   walls: InteriorWall[],
@@ -157,19 +206,17 @@ function addRowWalls(
   idPrefix: string,
   description: string,
 ) {
-  const half = PITCH_M / 2;
   let runIndex = 0;
   for (const row of rowsNorthToSouth(stalls)) {
     for (const run of runsOf(row)) {
       const y = run[0].y;
-      const backY = openSouth ? y - half : y + half;
-      const frontY = openSouth ? y + half : y - half;
-      const x0 = run[0].x - half;
-      const x1 = run[run.length - 1].x + half;
-      const backStart = { x: x0, y: backY };
-      const backEnd = { x: x1, y: backY };
-      if (segmentInside(verts, backStart, backEnd)) {
-        walls.push(partition(`${idPrefix}-back-${runIndex}`, backStart, backEnd, description));
+      const backY = openSouth ? y - COUNTER_BACK_M : y + COUNTER_BACK_M;
+      const lipY = openSouth ? backY + COUNTER_DEPTH_M : backY - COUNTER_DEPTH_M;
+      const x0 = run[0].x - PITCH_M / 2;
+      const x1 = run[run.length - 1].x + PITCH_M / 2;
+      const back = clearOfShell(verts, { x: x0, y: backY }, { x: x1, y: backY });
+      if (back && segmentInside(verts, back.start, back.end)) {
+        walls.push(partition(`${idPrefix}-back-${runIndex}`, back.start, back.end, description));
       }
       const edges = [x0];
       for (let index = 0; index < run.length - 1; index += 1) {
@@ -178,7 +225,13 @@ function addRowWalls(
       edges.push(x1);
       edges.forEach((x, edge) => {
         const start = { x, y: backY };
-        const end = { x, y: frontY };
+        const end = { x, y: lipY };
+        if (
+          boundaryDistance(verts, start.x, start.y) < END_CLEAR_M ||
+          boundaryDistance(verts, end.x, end.y) < END_CLEAR_M
+        ) {
+          return;
+        }
         if (segmentInside(verts, start, end)) {
           walls.push(partition(`${idPrefix}-side-${runIndex}-${edge}`, start, end, description));
         }

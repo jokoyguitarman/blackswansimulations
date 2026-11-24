@@ -34,6 +34,144 @@ const HOLLAND: [number, number][] = [
 
 const NEA = 'Comprises 21 cooked food stalls and 48 market stalls.';
 const BUILDING = 'Holland Village Market and Food Centre';
+/** Same thickness and body radius the evacuation engine uses for these walls. */
+const WALL_CLEAR_M = 0.4 + 0.25;
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+/** Stall and table studs a person cannot walk from to a public exit. */
+function stallsThatCannotReachAnExit(
+  verts: { x: number; y: number }[],
+  layout: ReturnType<typeof layoutHawkerCentre>,
+): number {
+  const shell: Array<{ ax: number; ay: number; bx: number; by: number }> = [];
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % verts.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    const gaps = layout.exits
+      .filter((exit) => exit.edgeIndex === i && exit.exitType !== 'service')
+      .map((exit) => {
+        const t = (exit.center.x - a.x) * ux + (exit.center.y - a.y) * uy;
+        return { lo: t - exit.width / 2, hi: t + exit.width / 2 };
+      })
+      .sort((p, q) => p.lo - q.lo);
+    let cursor = 0;
+    const push = (lo: number, hi: number) => {
+      if (hi - lo < 0.2) return;
+      shell.push({
+        ax: a.x + ux * lo,
+        ay: a.y + uy * lo,
+        bx: a.x + ux * hi,
+        by: a.y + uy * hi,
+      });
+    };
+    for (const gap of gaps) {
+      push(cursor, Math.max(cursor, gap.lo));
+      cursor = Math.max(cursor, gap.hi);
+    }
+    push(cursor, len);
+  }
+  const blocked = (x: number, y: number) => {
+    for (const wall of layout.walls) {
+      if (distToSeg(x, y, wall.start.x, wall.start.y, wall.end.x, wall.end.y) < WALL_CLEAR_M) {
+        return true;
+      }
+    }
+    for (const wall of shell) {
+      if (distToSeg(x, y, wall.ax, wall.ay, wall.bx, wall.by) < WALL_CLEAR_M) return true;
+    }
+    return false;
+  };
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const vert of verts) {
+    minX = Math.min(minX, vert.x);
+    maxX = Math.max(maxX, vert.x);
+    minY = Math.min(minY, vert.y);
+    maxY = Math.max(maxY, vert.y);
+  }
+  const step = 0.4;
+  const cols = Math.ceil((maxX - minX) / step);
+  const rows = Math.ceil((maxY - minY) / step);
+  const at = (col: number, row: number) => row * cols + col;
+  const open = new Uint8Array(cols * rows);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = minX + (col + 0.5) * step;
+      const y = minY + (row + 0.5) * step;
+      if (isInsidePolygon(x, y, verts) && !blocked(x, y)) open[at(col, row)] = 1;
+    }
+  }
+  const reach = new Uint8Array(cols * rows);
+  const queue: number[] = [];
+  const seed = (x: number, y: number) => {
+    const col = Math.floor((x - minX) / step);
+    const row = Math.floor((y - minY) / step);
+    if (col < 0 || row < 0 || col >= cols || row >= rows) return;
+    const index = at(col, row);
+    if (!open[index] || reach[index]) return;
+    reach[index] = 1;
+    queue.push(index);
+  };
+  for (const exit of layout.exits) {
+    if (exit.exitType === 'service') continue;
+    const a = verts[exit.edgeIndex];
+    const b = verts[(exit.edgeIndex + 1) % verts.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    let nx = -(b.y - a.y) / len;
+    let ny = (b.x - a.x) / len;
+    if (!isInsidePolygon(exit.center.x + nx, exit.center.y + ny, verts)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    for (let dist = 0.8; dist <= 2.4; dist += 0.4) {
+      seed(exit.center.x + nx * dist, exit.center.y + ny * dist);
+    }
+  }
+  while (queue.length > 0) {
+    const index = queue.pop()!;
+    const col = index % cols;
+    const row = (index - col) / cols;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nextCol = col + dc;
+      const nextRow = row + dr;
+      if (nextCol < 0 || nextRow < 0 || nextCol >= cols || nextRow >= rows) continue;
+      const next = at(nextCol, nextRow);
+      if (!open[next] || reach[next]) continue;
+      reach[next] = 1;
+      queue.push(next);
+    }
+  }
+  const targets = layout.objects.filter(
+    (object) =>
+      object.id.startsWith('cooked-oil-') ||
+      object.id.startsWith('market-') ||
+      object.id.startsWith('table-'),
+  );
+  let closed = 0;
+  for (const object of targets) {
+    const col = Math.floor((object.pos.x - minX) / step);
+    const row = Math.floor((object.pos.y - minY) / step);
+    if (col < 0 || row < 0 || col >= cols || row >= rows || !reach[at(col, row)]) closed++;
+  }
+  return closed;
+}
 
 function facts(): HawkerFacts {
   return extractHawkerFacts(
@@ -184,6 +322,7 @@ describe('hawker layout', () => {
       assert.ok(isInsidePolygon(line.start.x, line.start.y, verts));
       assert.ok(isInsidePolygon(line.end.x, line.end.y, verts));
     }
+    assert.equal(stallsThatCannotReachAnExit(verts, layout), 0);
   });
 
   test('with no pages, the interior is assumed and still has two exits', () => {
