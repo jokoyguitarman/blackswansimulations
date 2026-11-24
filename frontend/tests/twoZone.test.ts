@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
+import { HOOD_HEIGHT_M } from '../src/lib/rts/flameFront.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects.ts';
 import type { InteriorWall } from '../src/lib/rts/types.ts';
@@ -17,8 +18,17 @@ import {
   effectiveHeatLossKwM2K,
   enclosureFromGrid,
   formsSustainedLayer,
+  FAN_FULL_FLOW_PA,
+  FAN_ZERO_FLOW_PA,
+  HOOD_EXHAUST_M3_PER_S_PER_M,
+  HOOD_EXTRACT_M3_PER_S,
+  HOOD_FAN_WHEN,
+  HOOD_INTAKE_M,
+  HOOD_LENGTH_M,
   freshLayer,
+  fanVolumeM3PerS,
   heskestadEntrainmentKgS,
+  mechanicalExtract,
   mqhFlashoverKw,
   mqhRiseK,
   orificeSliceKgS,
@@ -268,6 +278,95 @@ test('a door holds a distinct layer and a wide open hall does not', () => {
   const warmRise = (warm?.upperK ?? AMBIENT_K) - AMBIENT_K;
   assert.ok(warmRise > DISTINCT_LAYER_RISE_K, `1 MW shut rise ${warmRise}`);
   assert.ok(CEILING_JET_DEPTH_FRACTION > 0);
+});
+
+test('a fan takes the layer that contains its intake', () => {
+  // CFAST TN 1889v2 §6.2. Full flow through 200 Pa, none at 300 Pa.
+  assert.equal(FAN_FULL_FLOW_PA, 200);
+  assert.equal(FAN_ZERO_FLOW_PA, 300);
+  assert.equal(fanVolumeM3PerS(1, 0), 1);
+  assert.equal(fanVolumeM3PerS(1, FAN_FULL_FLOW_PA), 1);
+  assert.ok(Math.abs(fanVolumeM3PerS(1, 250) - 0.5) < 1e-12);
+  assert.equal(fanVolumeM3PerS(1, FAN_ZERO_FLOW_PA), 0);
+  assert.equal(fanVolumeM3PerS(1, 400), 0);
+
+  // 2021 IMC 507.5. 300 cfm/ft, and the code's 1.55 L/s per metre.
+  assert.ok(Math.abs(HOOD_EXHAUST_M3_PER_S_PER_M - 0.465) < 1e-12);
+  assert.equal(HOOD_LENGTH_M, 1.22);
+  assert.ok(Math.abs(HOOD_EXTRACT_M3_PER_S - 0.465 * 1.22) < 1e-12);
+  // Greenheck 452413: 80 in from the floor to the canopy's front lower edge.
+  // That lip is the intake centre. It is not the link height over the pan.
+  assert.ok(Math.abs(HOOD_INTAKE_M - 80 * 0.0254) < 1e-12);
+  assert.ok(HOOD_INTAKE_M > HOOD_HEIGHT_M);
+  assert.equal(HOOD_FAN_WHEN, 'discharge');
+
+  // Mass is density times the volume still moving. 353 / T is the density
+  // already used for the orifice. The intake above the interface is hot.
+  const hot = mechanicalExtract([{ flowM3PerS: 1, intakeM: 3 }], 1.5, 400, 0);
+  assert.ok(Math.abs(hot.upperKgS - 353 / 400) < 1e-9, `upper ${hot.upperKgS}`);
+  assert.equal(hot.lowerKgS, 0);
+  const clear = mechanicalExtract([{ flowM3PerS: 1, intakeM: 1.1 }], 2, 400, 0);
+  assert.equal(clear.upperKgS, 0);
+  assert.ok(Math.abs(clear.lowerKgS - 353 / 293) < 1e-9, `lower ${clear.lowerKgS}`);
+  const halved = mechanicalExtract([{ flowM3PerS: 1, intakeM: 1.1 }], 2, 400, -250);
+  assert.ok(Math.abs(halved.lowerKgS - 0.5 * (353 / 293)) < 1e-9);
+
+  // Same room, three fans. The one in the smoke holds the interface up and
+  // takes soot. The one in the clear air pulls the interface down and
+  // leaves the soot in the layer.
+  const area = 20;
+  const height = 2.6;
+  const walls = 2 * (4 + 5) * height - 0.9 * 2;
+  const base: LayerSpec = {
+    areaM2: area,
+    ceilingM: height,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: walls, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 200, diameterM: diameterForReleaseKw(200) }],
+  };
+  const run = (fans: LayerSpec['fans']) => {
+    let state = freshLayer(height);
+    for (let t = 0; t < 120; t++) state = stepZone(state, { ...base, fans }, 1, 1).state;
+    return state;
+  };
+  const none = run(undefined);
+  const upper = run([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: 2.4 }]);
+  const lower = run([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: 0.3 }]);
+  assert.ok(upper.interfaceM > none.interfaceM, `smoke fan ${upper.interfaceM}, none ${none.interfaceM}`);
+  assert.ok(lower.interfaceM < none.interfaceM, `clear fan ${lower.interfaceM}, none ${none.interfaceM}`);
+  assert.ok(upper.interfaceM < 2.4, `intake left the smoke ${upper.interfaceM}`);
+  assert.ok(lower.interfaceM > 0.3, `clear intake was swallowed ${lower.interfaceM}`);
+  assert.ok(upper.sootG < none.sootG, `smoke fan soot ${upper.sootG}, none ${none.sootG}`);
+  assert.ok(lower.sootG >= none.sootG * 0.9, `clear fan soot ${lower.sootG}, none ${none.sootG}`);
+
+  // A 40 kW pan in the NUREG room. The canopy is in the smoke, so the
+  // interface stays higher than the same room with no fan, and less soot
+  // is held.
+  const small: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 2.6,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 2 * 9 * 2.6 - 1.8, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 40, diameterM: diameterForReleaseKw(40) }],
+  };
+  const pan = (fans: LayerSpec['fans']) => {
+    let state = freshLayer(small.ceilingM);
+    for (let t = 0; t < 300; t++) state = stepZone(state, { ...small, fans }, 1, 1).state;
+    return state;
+  };
+  const open = pan(undefined);
+  const canopy = pan([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M }]);
+  assert.ok(canopy.interfaceM > open.interfaceM, `canopy ${canopy.interfaceM}, open ${open.interfaceM}`);
+  assert.ok(canopy.interfaceM > 1.7, `canopy dropped through head height ${canopy.interfaceM}`);
+  assert.ok(canopy.sootG < open.sootG, `canopy soot ${canopy.sootG}, open ${open.sootG}`);
 });
 
 test('the building outline is a wall except at an exit', () => {

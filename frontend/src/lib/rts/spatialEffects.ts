@@ -7,12 +7,20 @@ import {
   type FireParams,
   type GasJet,
 } from './fireSimulation';
-import { GAS_JET_KW, STUD_AREA_M2, electricalHeatReleaseKw, type FuelCell } from './flameFront';
+import {
+  GAS_JET_KW,
+  STUD_AREA_M2,
+  electricalHeatReleaseKw,
+  type FuelCell,
+} from './flameFront';
 import {
   AMBIENT_K,
   CEILING_JET_DEPTH_FRACTION,
   DISTINCT_LAYER_RISE_K,
   HEAD_HEIGHT_M,
+  HOOD_EXTRACT_M3_PER_S,
+  HOOD_FAN_WHEN,
+  HOOD_INTAKE_M,
   LAYER_OFF_FRACTION,
   MIN_LAYER_FIRE_KW,
   diameterForReleaseKw,
@@ -26,7 +34,9 @@ import {
   type Enclosure,
   type FirePlume,
   type GridStud,
+  type MechanicalVent,
   type GridWall,
+  type HoodFanWhen,
   type LayerSpec,
   type ZoneState,
 } from './twoZone';
@@ -124,14 +134,6 @@ export const SMOKE_LEAK_PER_S = 0.002;
  * was the indoor decay plus four times that decay again.
  */
 export const SMOKE_OUTDOOR_VENT_FACTOR = 5;
-
-/**
- * Wet-chemical hood exhaust, assumed, of order 1 m³/s per hood. It is
- * applied to the stud that hood is mounted on, and only while the hood is
- * discharging. The loss rate is this flow divided by that stud's column.
- * A sprinkler is not an exhaust.
- */
-export const HOOD_EXTRACT_M3_PER_S = 1;
 
 /**
  * Share of the extinction difference a neighbour takes per second, assumed.
@@ -317,6 +319,11 @@ export class SpatialEffectsEngine {
   private neighborCache: Map<string, string[]> = new Map();
   private verticalPairs: ShaftPair[] = [];
   private fireSim: FireSimulation;
+  /**
+   * When a hood fan runs. Discharge-only until a scene says otherwise.
+   * That default is an assumption. See HOOD_FAN_WHEN.
+   */
+  private hoodFanWhen: HoodFanWhen = HOOD_FAN_WHEN;
   /** Null keeps blast smoke on every affected stud. A set limits that source to fuel. */
   private fuelGate: Set<string> | null = null;
   /** Extinction from burning soot, kept apart from blast-event smoke. */
@@ -451,6 +458,15 @@ export class SpatialEffectsEngine {
   /** Confirmed sprinkler and wet-chemical heads. A chemical circle is not a head. */
   setSuppression(heads: readonly SuppressionPlacement[]) {
     this.fireSim.setSuppression(heads);
+  }
+
+  /**
+   * When the hood fan runs. `discharge` is only while the system is open.
+   * `appliances` also runs it for a placed hood, the appliance under it
+   * being taken as on. The default is discharge, and that choice is open.
+   */
+  setHoodFanWhen(when: HoodFanWhen): void {
+    this.hoodFanWhen = when;
   }
 
   /** Close one jet, or every jet when the id is omitted. */
@@ -969,9 +985,10 @@ export class SpatialEffectsEngine {
   }
 
   /**
-   * Advance every ceiling that can hold a reservoir. An open side, a bare
-   * grid, and a room with a discharging hood stay on the column. The hood
-   * is still the old per-stud extract; it moves onto the layer later.
+   * Advance every ceiling that can hold a reservoir. An open side and a bare
+   * grid stay on the column. A running hood is a fan on the layer, at the
+   * canopy height above the floor. A hood whose room has no layer keeps
+   * the same flow as a loss on its own stud.
    * Returns the studs the column must not also fill.
    */
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
@@ -1008,7 +1025,6 @@ export class SpatialEffectsEngine {
       if (!room) continue;
       sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
     }
-    const hoods = new Set(this.fireSim.hoodColumns());
     const seen = new Set<string>();
 
     for (const [room, members] of groups) {
@@ -1022,13 +1038,12 @@ export class SpatialEffectsEngine {
       let heat = 0;
       for (const fire of fires) heat += fire.heatKw;
       const prev = this.layerState.get(room);
-      const hooded = members.some((id) => hoods.has(id));
       const retire = () => {
         if (!prev?.active) return;
         this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
         prev.active = false;
       };
-      if (hooded || (heat < MIN_LAYER_FIRE_KW && !prev?.active)) {
+      if (heat < MIN_LAYER_FIRE_KW && !prev?.active) {
         retire();
         continue;
       }
@@ -1037,7 +1052,13 @@ export class SpatialEffectsEngine {
         retire();
         continue;
       }
-      const spec: LayerSpec = { ...enc.spec, fires };
+      const memberSet = new Set(members);
+      const fans: MechanicalVent[] = [];
+      for (const id of this.fireSim.hoodColumns(this.hoodFanWhen)) {
+        if (!memberSet.has(id)) continue;
+        fans.push({ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M });
+      }
+      const spec: LayerSpec = { ...enc.spec, fires, fans };
       const zone = prev?.zone ?? freshLayer(ceiling);
       const steady = steadyLayer(spec, zone.ageS);
       const rise = steady ? steady.upperK - AMBIENT_K : 0;
@@ -1180,12 +1201,15 @@ export class SpatialEffectsEngine {
     // Soot mass becomes extinction in the stud column (NUREG-1805 Eq. 18-2,
     // K = σₘ × soot / volume). Volume is 9 m² times the storey height.
     // The release is the decayed one, so a spray that has cut the fire cuts
-    // the smoke with it. An open hood adds its exhaust on its own stud.
-    // A stud inside an active layer is skipped: the layer holds that soot,
-    // and the column must not make a second copy or leak it through the wall.
+    // the smoke with it. A running hood on an active layer is a fan, not a
+    // second loss here. A hood whose room has no layer still extracts the
+    // IMC flow from its own column. A stud inside an active layer is
+    // skipped: the layer holds that soot, and the column must not make a
+    // second copy or leak it through the wall.
     const owned = this.stepLayers(dt, walls, kMax);
     const extractM3 = new Map<string, number>();
-    for (const id of this.fireSim.hoodColumns()) {
+    for (const id of this.fireSim.hoodColumns(this.hoodFanWhen)) {
+      if (owned.has(id)) continue;
       extractM3.set(id, (extractM3.get(id) ?? 0) + HOOD_EXTRACT_M3_PER_S);
     }
     const sootById = new Map<string, number>();
