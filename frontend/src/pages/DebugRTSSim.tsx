@@ -37,6 +37,12 @@ import {
   sortLevels,
 } from '../lib/rts/levels';
 import { generateSceneStuds, projectSceneStuds } from '../lib/rts/sceneStuds';
+import {
+  HOLLAND_VILLAGE_OSM_ID,
+  footprintSessionNote,
+  levelsForFootprint,
+  type OsmBuildingFootprint,
+} from '../lib/rts/footprintLevels';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { PlacedObjectDraw } from '../lib/rts/renderer';
@@ -581,6 +587,10 @@ export function DebugRTSSim() {
   const [sceneConfigId, setSceneConfigId] = useState<string | null>(null);
   const [dbScenes, setDbScenes] = useState<SceneConfigSummary[]>([]);
   const [savingScene, setSavingScene] = useState(false);
+  const [liveOnly, setLiveOnly] = useState(false);
+  const [liveNote, setLiveNote] = useState<string | null>(null);
+  const [hollandLoading, setHollandLoading] = useState(false);
+  const [hollandError, setHollandError] = useState<string | null>(null);
 
   // ── Place search (Nominatim) ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -629,6 +639,8 @@ export function DebugRTSSim() {
 
   const handleFinishDrawing = useCallback(() => {
     if (drawnVertices.length < 3) return;
+    setLiveOnly(false);
+    setLiveNote(null);
 
     const polygon = drawnVertices;
     let cLat = 0,
@@ -1079,6 +1091,8 @@ export function DebugRTSSim() {
 
   // ── Map phase handlers ────────────────────────────────────────────────
   const handleFetch = useCallback(async () => {
+    setLiveOnly(false);
+    setLiveNote(null);
     setLoading(true);
     setError(null);
     setFetchResult(null);
@@ -1186,6 +1200,7 @@ export function DebugRTSSim() {
 
   // ── Save / load map handlers ────────────────────────────────────────
   const handleSaveMap = useCallback(() => {
+    if (liveOnly) return;
     if (!fetchResult || !saveMapName.trim()) return;
     const map: SavedMap = {
       id: generateMapId(),
@@ -1200,9 +1215,11 @@ export function DebugRTSSim() {
     saveMap(map);
     setSavedMaps(loadSavedMaps());
     setSaveMapName('');
-  }, [fetchResult, saveMapName, lat, lng, radius]);
+  }, [fetchResult, saveMapName, lat, lng, radius, liveOnly]);
 
   const handleLoadSavedMap = useCallback((m: SavedMap) => {
+    setLiveOnly(false);
+    setLiveNote(null);
     setLat(m.lat);
     setLng(m.lng);
     setRadius(m.radius);
@@ -1282,6 +1299,7 @@ export function DebugRTSSim() {
 
   // ── Scene config save/load ──────────────────────────────────────────
   const handleSaveSceneToDb = useCallback(async () => {
+    if (liveOnly) return;
     if (!selectedGrid || projectedVerts.length < 3) return;
     setSavingScene(true);
     try {
@@ -1347,6 +1365,7 @@ export function DebugRTSSim() {
     wallPoints,
     pedestrianCount,
     sceneConfigId,
+    liveOnly,
   ]);
 
   const handleEnrichScene = useCallback(async () => {
@@ -1450,6 +1469,8 @@ export function DebugRTSSim() {
   ]);
 
   const handleLoadSceneFromDb = useCallback(async (id: string) => {
+    setLiveOnly(false);
+    setLiveNote(null);
     try {
       const sc = await loadSceneConfig(id);
       setSceneConfigId(sc.id);
@@ -1584,6 +1605,8 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadFoodCourt = useCallback(() => {
+    setLiveOnly(false);
+    setLiveNote(null);
     const scene = foodCourtSample.scene;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
@@ -1658,6 +1681,8 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadHarbourHouse = useCallback(() => {
+    setLiveOnly(false);
+    setLiveNote(null);
     const scene = harbourHouseSample.scene;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
@@ -1735,6 +1760,101 @@ export function DebugRTSSim() {
     setWallPoints(generateWallPoints(polygon, verts));
     setPhase('rts');
   }, []);
+
+  const handleLoadHollandVillage = useCallback(async () => {
+    setHollandLoading(true);
+    setHollandError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        apiUrl(`/api/debug/osm-building?osmId=${encodeURIComponent(HOLLAND_VILLAGE_OSM_ID)}`),
+        { headers },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        building?: OsmBuildingFootprint;
+      };
+      if (!res.ok || !body.building || body.building.polygon.length < 3) {
+        throw new Error(body.error || `Could not load ${HOLLAND_VILLAGE_OSM_ID}`);
+      }
+      const building = body.building;
+      const polygon = building.polygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+      const nextLevels = levelsForFootprint({
+        aboveGround: building.levels,
+        underground: building.underground,
+      }).map((level) => (level.id === 'G' ? { ...level, pedestrianCount } : level));
+      const levelIds = nextLevels.map((level) => level.id);
+      let centerLat = 0;
+      let centerLng = 0;
+      for (const [lat, lng] of polygon) {
+        centerLat += lat;
+        centerLng += lng;
+      }
+      centerLat /= polygon.length;
+      centerLng /= polygon.length;
+      const grid: GridItem = {
+        buildingIndex: 0,
+        buildingName: building.name,
+        polygon,
+        floors: levelIds,
+        spacingM: 3,
+        studs: generateSceneStuds(polygon, 0, levelIds),
+      };
+      setUserGeoPos({ lat: centerLat, lng: centerLng });
+      setLat(String(centerLat));
+      setLng(String(centerLng));
+      setFetchResult({
+        grids: [grid],
+        buildings: [
+          {
+            name: building.name,
+            lat: centerLat,
+            lng: centerLng,
+            levels: building.levels,
+            use: building.buildingType,
+            polygonPoints: polygon.length,
+          },
+        ],
+      });
+      setSelectedGridIdx(0);
+      setSceneConfigId(null);
+      setLiveOnly(true);
+      setLiveNote(footprintSessionNote(building));
+      setExits([]);
+      setInteriorWalls([]);
+      setHazardZones([]);
+      setPlacedObjects([]);
+      setActiveObjectId(null);
+      setPlacingObject(false);
+      setObjectNotice(null);
+      setStairwells([]);
+      setCasualtyPins([]);
+      setPlantedItems([]);
+      setPedestrians([]);
+      setLevels(nextLevels);
+      setActiveLevel('G');
+      setBlastLevel('G');
+      setSelectedStairId(null);
+      blastRecordRef.current = null;
+      setBlastSite(null);
+      setShowcase(false);
+      effectsEngineRef.current = null;
+      setEffectStates(null);
+      setGasJetCount(0);
+      setArcCount(0);
+      setSprayCount(0);
+      const verts = projectPolygon(polygon);
+      rtsRef.current = new RTSEngine();
+      rtsRef.current.setBuildingVertices(verts);
+      rtsRef.current.setExits([]);
+      setWallPoints(generateWallPoints(polygon, verts));
+      setPhase('rts');
+    } catch (err) {
+      setHollandError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHollandLoading(false);
+    }
+  }, [pedestrianCount]);
 
   const handleLoadDbSceneList = useCallback(async () => {
     try {
@@ -5325,10 +5445,10 @@ export function DebugRTSSim() {
                   />
                   <button
                     onClick={handleSaveMap}
-                    disabled={!saveMapName.trim()}
+                    disabled={!saveMapName.trim() || liveOnly}
                     className="bg-green-800 hover:bg-green-700 disabled:opacity-30 text-green-100 px-2 py-1 text-xs rounded border border-green-600"
                   >
-                    Save
+                    {liveOnly ? 'Demo' : 'Save'}
                   </button>
                 </div>
               )}
@@ -5350,6 +5470,15 @@ export function DebugRTSSim() {
               >
                 Load Harbour House
               </button>
+              <button
+                type="button"
+                onClick={handleLoadHollandVillage}
+                disabled={hollandLoading}
+                className="w-full text-xs text-left px-2 py-1.5 mt-1 rounded border border-amber-700 text-amber-200 hover:border-amber-400 disabled:opacity-50"
+              >
+                {hollandLoading ? 'Loading Holland Village…' : 'Load Holland Village'}
+              </button>
+              {hollandError && <p className="text-xs text-red-400 mt-1">{hollandError}</p>}
               <p className="text-xs text-amber-800 mt-2">
                 Opens the plan in this browser. It does not save to the database.
               </p>
@@ -7073,15 +7202,20 @@ export function DebugRTSSim() {
 
                 <button
                   onClick={handleSaveSceneToDb}
-                  disabled={savingScene}
+                  disabled={savingScene || liveOnly}
                   className="w-full mt-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-blue-100 text-xs px-3 py-1.5 rounded border border-blue-600"
                 >
-                  {savingScene
-                    ? 'Saving...'
-                    : sceneConfigId
-                      ? '💾 Update Scene in DB'
-                      : '💾 Save Scene to DB'}
+                  {liveOnly
+                    ? 'Not saved — demo only'
+                    : savingScene
+                      ? 'Saving...'
+                      : sceneConfigId
+                        ? '💾 Update Scene in DB'
+                        : '💾 Save Scene to DB'}
                 </button>
+                {liveOnly && liveNote && (
+                  <div className="text-xs text-amber-300 mt-1">{liveNote}</div>
+                )}
                 {sceneConfigId && (
                   <div className="text-xs text-blue-500 mt-0.5">
                     Saved: {sceneConfigId.slice(0, 8)}...

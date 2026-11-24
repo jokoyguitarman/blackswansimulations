@@ -39,6 +39,8 @@ import {
   evaluateTriageAssessment,
 } from '../services/rtsCasualtyService.js';
 import { env } from '../env.js';
+import { lookupOsmBuilding, parseOsmObjectId } from '../services/osmBuildingLookup.js';
+import { readLiveOsmBuilding, readSavedOsmBuilding } from '../services/osmBuildingLookupLive.js';
 
 const router = Router();
 
@@ -678,6 +680,31 @@ router.post('/rts-fire-params', requireAuth, json(), async (req: AuthenticatedRe
   } catch (err) {
     logger.error({ err }, 'Error in POST /debug/rts-fire-params');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/debug/osm-building?osmId=way/152752628
+ * Read one footprint. Tries the saved Singapore table with a SELECT, then
+ * live OpenStreetMap. Does not insert, update, or delete.
+ */
+router.get('/osm-building', async (req, res) => {
+  const osmId = String(req.query.osmId ?? '').trim();
+  if (!parseOsmObjectId(osmId)) {
+    return res.status(400).json({ error: 'osmId must look like way/123 or relation/123' });
+  }
+  try {
+    const building = await lookupOsmBuilding(osmId, {
+      readSaved: readSavedOsmBuilding,
+      readLive: readLiveOsmBuilding,
+    });
+    if (!building) {
+      return res.status(404).json({ error: `No footprint for ${osmId}` });
+    }
+    return res.json({ building });
+  } catch (err) {
+    logger.error({ err, osmId }, 'OSM building lookup failed');
+    return res.status(502).json({ error: 'Could not read the building footprint' });
   }
 });
 
