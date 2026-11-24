@@ -162,7 +162,7 @@ describe('ISO 13571 dose', () => {
     const well = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, false);
     assert.ok(Math.abs((well.CO ?? 0) - 4) < 1e-9, `well-vent CO ${well.CO}`);
     const flashed = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, true);
-    assert.ok(Math.abs((flashed.CO ?? 0) - 400) < 1e-9, `post-flashover CO ${flashed.CO}`);
+    assert.ok(Math.abs((flashed.CO ?? 0) - 200) < 1e-9, `post-flashover CO ${flashed.CO}`);
     assert.equal(flashed.HCN, undefined);
     assert.equal(flashed.acrolein, undefined);
     assert.ok(Math.abs(sootProductionGPerS(WOOD, WOOD_HEAT_KJ_KG) - 15) < 1e-9);
@@ -186,13 +186,13 @@ describe('fumes follow the confirmed material', () => {
     const pvc = fuelCellFromEntry(entryById('pvc')!)!;
     assert.equal(wood.sootYieldGPerG, 0.015);
     assert.deepEqual(wood.toxicYieldWellVentGPerG, { CO: 0.004 });
-    assert.deepEqual(wood.toxicYieldGPerG, { CO: 0.4 });
+    assert.deepEqual(wood.toxicYieldGPerG, { CO: 0.2 });
     assert.equal(foam.sootYieldGPerG, 0.188);
     assert.deepEqual(foam.toxicYieldWellVentGPerG, { CO: 0.028, HCN: 0.01 });
-    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.4, HCN: 0.01 });
+    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.2, HCN: 0.01 });
     assert.equal(pvc.sootYieldGPerG, 0.172);
     assert.deepEqual(pvc.toxicYieldWellVentGPerG, { HCl: 0.2, CO: 0.063 });
-    assert.deepEqual(pvc.toxicYieldGPerG, { HCl: 0.2, CO: 0.4 });
+    assert.deepEqual(pvc.toxicYieldGPerG, { HCl: 0.2, CO: 0.2 });
     assert.equal(OIL.sootYieldGPerG, 0.02);
     assert.deepEqual(OIL.toxicYieldWellVentGPerG, { acrolein: 0.01 });
     assert.deepEqual(OIL.toxicYieldGPerG, { acrolein: 0.01 });
@@ -628,7 +628,7 @@ describe('smoke carries the gases', () => {
     const after = sim.fumeSources()[0];
     const q = sim.fuelReleaseKw('a') ?? 0;
     const perKw = (after?.gramsPerS.CO ?? 0) / q;
-    const expected = (0.4 * 1000) / WOOD_HEAT_KJ_KG;
+    const expected = (0.2 * 1000) / WOOD_HEAT_KJ_KG;
     assert.ok(Math.abs(perKw - expected) / expected < 0.01, `post-flashover ${perKw}`);
 
     const fine = doseOver(0.1, 300);

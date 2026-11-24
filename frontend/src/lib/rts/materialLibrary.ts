@@ -196,12 +196,9 @@ const REF = {
   enNetHeat: `EN 1991-1-2:2002 Annex E Table E.3, net calorific value Hu. ${NOT_SEEDED}`,
   enFireLoad: 'EN 1991-1-2:2002 Annex E Table E.4. Seed `en1991_fire_load_density`.',
   alphaClasses: 'NFPA t-squared classes. Seed `t2_alpha_classes`.',
-  cvm2Pre:
-    'NZ C/VM2 2nd ed. (2025) Table 2.3.2.1, "Ysoot = 0.07 kg/kg YCO = 0.04 kg/kg ΔHc = 20 MJ/kg". Seed spread-materials. A design value for building contents, not a measured row for this material.',
-  cvm2PostCo:
-    'NZ C/VM2 2nd ed. (2025) 2.3.3.4, "YCO = 0.40 kg/kgfuel" after flashover. Seed `cvm2_post_flashover_co_yield`. A design value, not a function of the air supply.',
-  cvm2PostSoot:
-    'NZ C/VM2 2nd ed. (2025) 2.3.3.4, soot 0.14 kg/kg after flashover. Seed `cvm2_post_flashover_soot_yield`.',
+  underVentCo: `Gottuk and Lattimer, SFPE Handbook 3rd ed. Sec. 2 Ch. 5, "Effect of Combustion Conditions on Species Production": CO yield levels off near 0.2 g/g once the equivalence ratio is well past 1 (about 0.1 to 0.25 by fuel). Holds until yields follow the equivalence ratio. The C/VM2 2.3.3.4 design value, 0.40 (seed \`cvm2_post_flashover_co_yield\`), is the conservative alternative and is not used. ${NOT_SEEDED}`,
+  underVentSoot:
+    'C/VM2 2.3.3.4 design value, 0.14 (seed `cvm2_post_flashover_soot_yield`). No measured under-ventilated soot row was read, so it is a placeholder. The flame front does not read it.',
   pool: 'NUREG-1805 Ch. 3 Table 3-2, transformer oil 0.039 kg/m²s, 46,400 kJ/kg, kβ 0.7. Seed `pool_fire_hrr`.',
 } as const;
 
@@ -212,8 +209,8 @@ const assumed = (ref: string): SourceNote => ({ status: 'assumed', ref });
 /** Wood net heat, MJ/kg, the basis the front turns a solid's kg into energy with. */
 const WOOD_HEAT_MJ_KG = WOOD_HEAT_KJ_KG / 1000;
 
-/** EN 1991-1-2 Table E.4, shopping centre, 80 % fractile (the characteristic value), MJ/m². */
-const SHOPPING_CENTRE_FIRE_LOAD_MJ_M2 = 730;
+/** EN 1991-1-2 Table E.4, shopping centre, mean, MJ/m². The 80 % fractile is 730. */
+const SHOPPING_CENTRE_FIRE_LOAD_MJ_M2 = 600;
 
 const LIGHT_FUEL_LOAD_KG_M2 = 10;
 const OIL_FUEL_LOAD_KG_M2 = 30;
@@ -240,8 +237,8 @@ const LIGHT_SOURCES: MaterialSources = {
     `${LIGHT_FUEL_LOAD_KG_M2} kg/m² at the wood heat. Table E.4 has occupancies, not loose furniture, and no food centre.`,
   ),
   fuelLoad: assumed(`${LIGHT_FUEL_LOAD_KG_M2} kg/m². No row.`),
-  'underVent.CO': cited(REF.cvm2PostCo),
-  sootYieldUnderVent: cited(REF.cvm2PostSoot),
+  'underVent.CO': cited(REF.underVentCo),
+  sootYieldUnderVent: assumed(REF.underVentSoot),
 };
 
 const HEAVY_SOLID = {
@@ -268,21 +265,37 @@ const COOKING_OIL = {
 
 const HEAVY_IGNITION = assumed('CHF 10 kW/m², TRP 80. No row for mixed goods or hot oil.');
 
-/** Generic building contents: C/VM2 design yields and heat, pre- and post-flashover. */
-const CVM2_CONTENTS = {
-  heatOfCombustionMjKg: 20,
-  effectiveHeatOfCombustionMjKg: 20,
-  sootYieldGPerG: 0.07,
+/**
+ * Mixed goods: half cellulosic (red oak: card, textiles, wooden fittings and
+ * stalls) and half polyolefin (polypropylene: packaging, crates) by mass.
+ * Each column is the mass average of the two measured rows. The 50/50 split
+ * is assumed. The polyethylene row (CO 0.024, soot 0.060) is within 0.001
+ * of polypropylene, so the crate plastic does not change the result.
+ */
+const MIX = 0.5;
+const mixOf = (cellulosic: number, polyolefin: number) => MIX * cellulosic + (1 - MIX) * polyolefin;
+const MIXED_SPLIT = 'Mass average, 50 % red oak and 50 % polypropylene; the split is assumed.';
+
+const MIXED_CONTENTS = {
+  heatOfCombustionMjKg: mixOf(17.5, 40),
+  effectiveHeatOfCombustionMjKg: mixOf(12.4, 38.6),
+  sootYieldGPerG: mixOf(0.015, 0.059),
   sootYieldUnderVentGPerG: 0.14,
 };
 
-const CVM2_CONTENTS_SOURCES: MaterialSources = {
-  heatOfCombustion: cited(REF.cvm2Pre),
-  effectiveHeatOfCombustion: cited(REF.cvm2Pre),
-  sootYield: cited(REF.cvm2Pre),
-  sootYieldUnderVent: cited(REF.cvm2PostSoot),
-  'wellVent.CO': cited(REF.cvm2Pre),
-  'underVent.CO': cited(REF.cvm2PostCo),
+const MIXED_WELL_VENT_CO = mixOf(0.004, 0.024);
+
+const MIXED_CONTENTS_SOURCES: MaterialSources = {
+  heatOfCombustion: derived(
+    `Wood 17.5 and pure hydrocarbon plastics (PE, PS, PP) 40 MJ/kg. ${REF.enNetHeat} ${MIXED_SPLIT}`,
+  ),
+  effectiveHeatOfCombustion: derived(
+    `ΔHch red oak 12.4 and polypropylene 38.6 MJ/kg. ${REF.tewarson} ${MIXED_SPLIT}`,
+  ),
+  sootYield: derived(`Red oak 0.015 and polypropylene 0.059. ${REF.sootTable} ${MIXED_SPLIT}`),
+  sootYieldUnderVent: assumed(REF.underVentSoot),
+  'wellVent.CO': derived(`Red oak 0.004 and polypropylene 0.024. ${REF.tewarson} ${MIXED_SPLIT}`),
+  'underVent.CO': cited(REF.underVentCo),
 };
 
 const INERT = {
@@ -315,7 +328,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     sootYieldGPerG: 0.015,
     sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { CO: 0.004 },
-    toxicYieldGPerG: { CO: 0.4 },
+    toxicYieldGPerG: { CO: 0.2 },
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
@@ -336,7 +349,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     sootYieldGPerG: 0.015,
     sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { CO: 0.004 },
-    toxicYieldGPerG: { CO: 0.4 },
+    toxicYieldGPerG: { CO: 0.2 },
     ...LIGHT_WOOD,
     trp: 152,
     sources: {
@@ -361,7 +374,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     sootYieldGPerG: 0.188,
     sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { CO: 0.028, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.4, HCN: 0.01 },
+    toxicYieldGPerG: { CO: 0.2, HCN: 0.01 },
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
@@ -371,7 +384,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
       ),
       sootYield: cited(`Flexible polyurethane foam 0.188. ${REF.sootTable}`),
       'wellVent.CO': cited(
-        `Flexible polyurethane foams GM21 to GM27, 0.010 to 0.042, mean 0.028. ${REF.tewarson}`,
+        `Flexible polyurethane foams GM21 0.010, GM23 0.031, GM25 0.028, GM27 0.042; mean 0.028. ${REF.tewarson}`,
       ),
       'wellVent.HCN': assumed('0.01. No HCN row was read.'),
       'underVent.HCN': assumed('0.01, the same label. No under-ventilated HCN row was read.'),
@@ -389,7 +402,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     sootYieldGPerG: 0.172,
     sootYieldUnderVentGPerG: 0.14,
     toxicYieldWellVentGPerG: { HCl: 0.2, CO: 0.063 },
-    toxicYieldGPerG: { HCl: 0.2, CO: 0.4 },
+    toxicYieldGPerG: { HCl: 0.2, CO: 0.2 },
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
@@ -397,7 +410,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
       effectiveHeatOfCombustion: cited(`PVC ΔHch 5.7 MJ/kg. ${REF.tewarson}`),
       sootYield: cited(`PVC 0.172. ${REF.sootTable}`),
       sootYieldUnderVent: assumed(
-        'C/VM2 0.14 is below the well-ventilated PVC figure. It is the cited generic value, kept as a label.',
+        `${REF.underVentSoot} It is below the well-ventilated PVC figure.`,
       ),
       'wellVent.CO': cited(`PVC 0.063. ${REF.tewarson}`),
       'wellVent.HCl': assumed(
@@ -415,13 +428,13 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['shop stock', 'merchandise', 'retail stock', 'shop fittings'],
     behaviour: 'none',
     toxicProducts: ['CO', 'HCN'],
-    ...CVM2_CONTENTS,
-    toxicYieldWellVentGPerG: { CO: 0.04, HCN: 0.01 },
-    toxicYieldGPerG: { CO: 0.4, HCN: 0.01 },
+    ...MIXED_CONTENTS,
+    toxicYieldWellVentGPerG: { CO: MIXED_WELL_VENT_CO, HCN: 0.01 },
+    toxicYieldGPerG: { CO: 0.2, HCN: 0.01 },
     ...HEAVY_SOLID,
     sources: {
-      ...CVM2_CONTENTS_SOURCES,
-      'wellVent.HCN': assumed('0.01. C/VM2 gives no HCN yield.'),
+      ...MIXED_CONTENTS_SOURCES,
+      'wellVent.HCN': assumed('0.01. Neither measured row has nitrogen; no HCN row was read.'),
       'underVent.HCN': assumed('0.01, the same label.'),
       ignition: HEAVY_IGNITION,
       growth: cited(
@@ -429,7 +442,7 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
       ),
       spread: assumed('Room-scale front 4 m/min. No row.'),
       fireLoad: cited(
-        `Shopping centre, ${SHOPPING_CENTRE_FIRE_LOAD_MJ_M2} MJ/m², 80 % fractile. ${REF.enFireLoad}`,
+        `Shopping centre mean, ${SHOPPING_CENTRE_FIRE_LOAD_MJ_M2} MJ/m². The 80 % fractile, 730 MJ/m², is the design (characteristic) value and is not used. ${REF.enFireLoad} The table averages over the whole compartment floor, aisles included; it is applied to each stocked stud. Where a scene stocks only part of a room, the per-stud load should be the room total over the stocked area.`,
       ),
       fuelLoad: derived(
         `Fire load ${SHOPPING_CENTRE_FIRE_LOAD_MJ_M2} MJ/m² over the wood heat the front burns solids at, so the front releases the cited energy.`,
@@ -442,14 +455,16 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     keywords: ['wet market', 'wet-market', 'market produce'],
     behaviour: 'none',
     toxicProducts: ['CO'],
-    ...CVM2_CONTENTS,
-    toxicYieldWellVentGPerG: { CO: 0.04 },
-    toxicYieldGPerG: { CO: 0.4 },
+    ...MIXED_CONTENTS,
+    toxicYieldWellVentGPerG: { CO: MIXED_WELL_VENT_CO },
+    toxicYieldGPerG: { CO: 0.2 },
     ...LIGHT_WOOD,
     sources: {
       ...LIGHT_SOURCES,
-      ...CVM2_CONTENTS_SOURCES,
-      ignition: assumed('Red-oak CHF and TRP. No row for market goods.'),
+      ...MIXED_CONTENTS_SOURCES,
+      ignition: assumed(
+        'Red-oak CHF and TRP. No row for market goods. Produce, fish and ice are not fuel.',
+      ),
     },
   },
   {
@@ -551,6 +566,7 @@ export type WallField = 'conductivity' | 'density' | 'specificHeat' | 'thickness
  * Inert lining for heat loss into a wall. Properties at room temperature.
  * Thickness is the building's, not the material's, so every thickness is
  * assumed until a scene stores one. The flame front does not read these.
+ * The smoke layer reads `layerLiningFor`, not this table directly.
  */
 export interface WallMaterial {
   id: string;
@@ -601,25 +617,25 @@ export const WALL_MATERIALS: readonly WallMaterial[] = [
     ...seededLining(0.12, 0.26, 960, '200 mm block.'),
   },
   {
-    id: 'concrete',
-    label: 'Concrete',
-    keywords: ['concrete', 'reinforced'],
-    thicknessM: 0.2,
-    ...seededLining(2.9, 1.6, 750, '200 mm wall.'),
+    id: 'gypsum',
+    label: 'Gypsum board',
+    keywords: ['gypsum', 'drywall', 'plaster'],
+    thicknessM: 0.016,
+    ...seededLining(0.18, 0.17, 1100, 'One 16 mm board. Decision 1.'),
   },
   {
     id: 'brick_block',
     label: 'Brick or concrete block',
-    keywords: ['brick', 'block', 'masonry'],
-    thicknessM: 0.2,
-    ...seededLining(1.2, 0.73, 840, '200 mm wall.'),
+    keywords: ['brick', 'masonry', 'block'],
+    thicknessM: 0.15,
+    ...seededLining(1.2, 0.73, 840, '150 mm wall. Decision 1.'),
   },
   {
-    id: 'gypsum',
-    label: 'Gypsum board',
-    keywords: ['gypsum', 'drywall', 'plasterboard'],
-    thicknessM: 0.0125,
-    ...seededLining(0.18, 0.17, 1100, 'One 12.5 mm board.'),
+    id: 'concrete',
+    label: 'Concrete',
+    keywords: ['concrete', 'reinforced'],
+    thicknessM: 0.15,
+    ...seededLining(2.9, 1.6, 750, '150 mm wall. Decision 1.'),
   },
   {
     id: 'glass',
@@ -694,6 +710,16 @@ export function wallMaterialFor(material: string | null | undefined): WallMateri
   return (
     WALL_MATERIALS.find((row) => row.keywords.some((keyword) => mat.includes(keyword))) ?? null
   );
+}
+
+/** Decision 1: the layer uses concrete, brick or gypsum, and concrete for anything else. */
+const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum']);
+
+/** The lining the smoke layer conducts into. Never null; glass and steel fall back to concrete. */
+export function layerLiningFor(material: string | null | undefined): WallMaterial {
+  const row = wallMaterialFor(material);
+  if (row && LAYER_LININGS.has(row.id)) return row;
+  return WALL_MATERIALS.find((item) => item.id === 'concrete') as WallMaterial;
 }
 
 export const COMMON_PICKS: readonly CommonPick[] = [

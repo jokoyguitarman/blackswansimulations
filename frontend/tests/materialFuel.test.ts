@@ -13,6 +13,7 @@ import {
   entryById,
   matchMaterials,
   snapObjectsToStuds,
+  layerLiningFor,
   wallMaterialFor,
   type MaterialEntry,
   type MaterialField,
@@ -163,8 +164,9 @@ describe('material library', () => {
 
   test('a solid releases its cited fire load at the wood heat the front burns', () => {
     const shop = entryById('shop_contents');
-    assert.ok(shop?.fuelLoadKgM2 != null && shop.fireLoadMjM2 === 730);
-    assert.ok(Math.abs((shop.fuelLoadKgM2 * WOOD_HEAT_KJ_KG) / 1000 - 730) < 1e-9);
+    assert.ok(shop?.fuelLoadKgM2 != null && shop.fireLoadMjM2 === 600);
+    assert.ok(Math.abs((shop.fuelLoadKgM2 * WOOD_HEAT_KJ_KG) / 1000 - 600) < 1e-9);
+    assert.ok(Math.abs(shop.fuelLoadKgM2 - 34.29) < 0.01);
     assert.equal(shop.sources.fireLoad?.status, 'cited');
     assert.equal(entryById('wood')?.sources.fuelLoad?.status, 'assumed');
   });
@@ -187,6 +189,31 @@ describe('material library', () => {
     assert.ok(Math.abs(inertia('brick_block') - 1.2) < 1e-9);
     assert.ok(Math.abs(inertia('gypsum') - 0.18) < 1e-9);
     assert.ok(Math.abs(inertia('aerated_concrete') - 0.12) < 1e-9);
+  });
+
+  test('the smoke layer gets 150 mm concrete and brick, 16 mm gypsum, and concrete for anything else', () => {
+    assert.equal(layerLiningFor('concrete').thicknessM, 0.15);
+    assert.equal(layerLiningFor('brick').thicknessM, 0.15);
+    assert.equal(layerLiningFor('concrete block').id, 'brick_block');
+    assert.equal(layerLiningFor('drywall').thicknessM, 0.016);
+    assert.equal(layerLiningFor('plaster').id, 'gypsum');
+    for (const other of ['glass', 'steel', 'timber', 'aerated concrete', '', 'mystery']) {
+      assert.equal(layerLiningFor(other).id, 'concrete', other);
+    }
+  });
+
+  test('runtime yields are measured rows, not the C/VM2 design values', () => {
+    for (const entry of MATERIAL_LIBRARY) {
+      if (entry.toxicYieldGPerG.CO != null) assert.equal(entry.toxicYieldGPerG.CO, 0.2, entry.id);
+    }
+    for (const id of ['shop_contents', 'wet_market']) {
+      const entry = entryById(id);
+      assert.ok(entry);
+      assert.ok(Math.abs((entry.sootYieldGPerG ?? 0) - 0.037) < 1e-9, id);
+      assert.ok(Math.abs((entry.toxicYieldWellVentGPerG.CO ?? 0) - 0.014) < 1e-9, id);
+      assert.equal(entry.sources.sootYield?.status, 'derived');
+      assert.equal(entry.sources['wellVent.CO']?.status, 'derived');
+    }
   });
 });
 
