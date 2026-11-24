@@ -43,9 +43,21 @@ export interface FuelCell {
   /** Liquid surface, m². Absent on a solid. */
   poolAreaM2?: number;
   /**
-   * Grams of each gas per gram burned. Copied from the confirmed entry.
-   * Absent on a cell that has no yield. The fire reads this only while the
-   * cell is burning.
+   * Grams of soot per gram burned, the well-ventilated figure. The smoke
+   * field already bounds the soot mass, so this stays the denominator after
+   * flashover. Absent on a cell that has no yield.
+   */
+  sootYieldGPerG?: number;
+  /**
+   * Grams of each gas per gram burned while the stud has not flashed over.
+   * Absent when the entry has no well-ventilated figure distinct from the
+   * stored yield, in which case the stored yield is used.
+   */
+  toxicYieldWellVentGPerG?: ToxicYields;
+  /**
+   * Grams of each gas per gram burned after the stud's flashover latch.
+   * These are the stored under-ventilated labels. Absent on a cell that
+   * has no yield. The fire reads a yield only while the cell is burning.
    */
   toxicYieldGPerG?: ToxicYields;
 }

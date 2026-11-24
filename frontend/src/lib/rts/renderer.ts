@@ -604,11 +604,13 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
 
   if (ped.state !== 'down') {
     const dose = Math.max(ped.fumeFed ?? 0, ped.fumeFec ?? 0);
-    if (dose > 0.02) {
+    if (ped.fumeHeld || dose > 0.02) {
       ctx.beginPath();
-      ctx.arc(p.cx, p.cy, base + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(217, 119, 6, ${0.35 + 0.65 * Math.min(1, dose)})`;
-      ctx.lineWidth = 2;
+      ctx.arc(p.cx, p.cy, base + (ped.fumeHeld ? 6 : 4), 0, Math.PI * 2);
+      ctx.strokeStyle = ped.fumeHeld
+        ? '#d97706'
+        : `rgba(217, 119, 6, ${0.35 + 0.65 * Math.min(1, dose)})`;
+      ctx.lineWidth = ped.fumeHeld ? 3 : 2;
       ctx.stroke();
     }
   }
