@@ -40,6 +40,38 @@ export const EMPTY_HAWKER_FACTS: HawkerFacts = {
 const COMPRISES = /comprises\s+(\d+)\s+cooked food stalls and\s+(\d+)\s+market stalls/gi;
 const STALL_01 = /\b01-\d{1,3}\b/g;
 const STALL_UPPER = /\b0[2-9]-\d{1,3}\b/;
+const NAME_WINDOW = 240;
+const NAME_SKIP = new Set([
+  'and',
+  'the',
+  'market',
+  'food',
+  'centre',
+  'center',
+  'hawker',
+  'singapore',
+]);
+
+/** Words that identify the building, without the generic hawker-centre words. */
+export function buildingTokens(name: string): string[] {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length > 2 && !NAME_SKIP.has(word));
+}
+
+function hasTokens(text: string, tokens: readonly string[]): boolean {
+  if (tokens.length === 0) return false;
+  const hay = text.toLowerCase();
+  return tokens.every((token) => hay.includes(token));
+}
+
+function aboutThisBuilding(page: PageText, tokens: readonly string[], around: number): boolean {
+  if (hasTokens(page.title, tokens)) return true;
+  const start = Math.max(0, around - NAME_WINDOW);
+  const end = Math.min(page.text.length, around + NAME_WINDOW);
+  return hasTokens(page.text.slice(start, end), tokens);
+}
 
 export function htmlToText(html: string): string {
   const stripped = html
@@ -64,10 +96,12 @@ function clip(quote: string): string {
   return clean.length <= 180 ? clean : `${clean.slice(0, 177)}...`;
 }
 
-export function extractHawkerFacts(pages: readonly PageText[]): HawkerFacts {
+export function extractHawkerFacts(pages: readonly PageText[], buildingName: string): HawkerFacts {
+  const tokens = buildingTokens(buildingName);
   const pairs = new Map<string, { cooked: number; market: number; sources: LayoutSource[] }>();
   for (const page of pages) {
     for (const match of page.text.matchAll(COMPRISES)) {
+      if (!aboutThisBuilding(page, tokens, match.index ?? 0)) continue;
       const cooked = Number(match[1]);
       const market = Number(match[2]);
       const key = `${cooked}/${market}`;
@@ -102,7 +136,7 @@ export function extractHawkerFacts(pages: readonly PageText[]): HawkerFacts {
   let singleStorey: Cited<true> | null = null;
   let cookedStallAreaM2: Cited<number> | null = null;
   for (const page of pages) {
-    if (!/holland village/i.test(page.text)) continue;
+    if (!hasTokens(`${page.title} ${page.text}`, tokens)) continue;
     const levelOne = page.text.match(STALL_01) ?? [];
     if (!singleStorey && levelOne.length >= 2 && !STALL_UPPER.test(page.text)) {
       const at = page.text.search(STALL_01);
@@ -140,19 +174,35 @@ export function extractHawkerFacts(pages: readonly PageText[]): HawkerFacts {
   return { cookedStalls, marketStalls, singleStorey, cookedStallAreaM2, disagreements };
 }
 
-/** Links a DuckDuckGo HTML results page actually offered. A homepage is empty. */
-export function parseDuckDuckGoLinks(html: string): string[] {
-  const urls: string[] = [];
-  for (const match of html.matchAll(/uddg=([^&"']+)/g)) {
-    let url = match[1];
-    try {
-      url = decodeURIComponent(url);
-    } catch {
-      continue;
+/**
+ * URLs cited by an OpenAI Responses API web-search reply.
+ * Each citation is `{ type: "url_citation", url, title }` on a message annotation.
+ */
+export function citationsFromOpenAiResponse(body: unknown): { title: string; url: string }[] {
+  if (!body || typeof body !== 'object') return [];
+  const output = (body as { output?: unknown }).output;
+  if (!Array.isArray(output)) return [];
+  const found: { title: string; url: string }[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue;
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue;
+      const annotations = (part as { annotations?: unknown }).annotations;
+      if (!Array.isArray(annotations)) continue;
+      for (const note of annotations) {
+        if (!note || typeof note !== 'object') continue;
+        const typed = note as { type?: unknown; url?: unknown; title?: unknown };
+        if (typed.type !== 'url_citation' || typeof typed.url !== 'string') continue;
+        if (!/^https?:\/\//i.test(typed.url)) continue;
+        if (found.some((hit) => hit.url === typed.url)) continue;
+        found.push({
+          url: typed.url,
+          title: typeof typed.title === 'string' && typed.title.trim() ? typed.title : typed.url,
+        });
+      }
     }
-    if (!/^https?:\/\//i.test(url)) continue;
-    if (/duckduckgo\.com/i.test(url)) continue;
-    if (!urls.includes(url)) urls.push(url);
   }
-  return urls;
+  return found;
 }

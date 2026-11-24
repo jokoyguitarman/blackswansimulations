@@ -23,28 +23,28 @@ export interface HawkerLayout {
   labels: LayoutLabel[];
 }
 
-const COOKED_NORM = 'A cooked-food stall has a gas line, cooking oil, and a wet-chemical hood.';
+const COOKED_NORM =
+  'A cooked-food stall has a gas line, cooking oil, a wet-chemical hood, and an electrical appliance.';
 const EXIT_NORM = 'An assembly floor has two ways out, on separate sides.';
 const SERVICE_NORM = 'A market and food centre has a service door besides the public exits.';
-const MARKET_NORM = 'A market stall holds shop stock. The pages do not say where the stalls stand.';
-const TABLE_NORM = 'The seating between the stalls has wooden tables.';
+const MARKET_NORM =
+  'A wet-market stall holds produce, fish, or meat, so the fuel load is light. The pages do not say where the stalls stand.';
+const TABLE_NORM = 'The seating between the stall rows has a wooden table on alternate studs.';
 const PLACE_NORM =
-  'The pages do not give a floor plan, so the stalls are lined up inside the footprint.';
+  'The pages do not give a floor plan, so the stalls are lined up in rows inside the footprint.';
+const WALL_NORM =
+  'A stall row has a steel back wall and steel side partitions, and an open front toward the seating.';
 const NO_STAIR_NORM = 'No upper floor was found, so no stair or lift is drawn.';
 const COPY_NORM = 'An upper floor with no plan of its own copies the ground walls and exits.';
 
-const MAX_COOKED_DRAWN = 8;
-const MAX_MARKET_DRAWN = 6;
-const MAX_TABLES = 4;
+/** One stud on the 3 m grid is one stall. */
+const PITCH_M = 3;
+const ASSUMED_ROW = 4;
 
 interface Stud {
   id: string;
   x: number;
   y: number;
-}
-
-function cited(sources: LayoutSource[]): string {
-  return sources.map((source) => `${source.title}: “${source.quote}”`).join(' ');
 }
 
 function inside(verts: Vec2[], x: number, y: number): boolean {
@@ -71,15 +71,52 @@ function insetStud(verts: Vec2[], stud: Stud): boolean {
   );
 }
 
-function spread(studs: readonly Stud[], limit: number, spacing: number): Stud[] {
-  const chosen: Stud[] = [];
+function rowsNorthToSouth(studs: readonly Stud[]): Stud[][] {
+  const groups = new Map<number, Stud[]>();
   for (const stud of studs) {
-    if (chosen.every((kept) => Math.hypot(kept.x - stud.x, kept.y - stud.y) >= spacing)) {
+    const key = Math.round(stud.y * 100);
+    const row = groups.get(key);
+    if (row) row.push(stud);
+    else groups.set(key, [stud]);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, row]) => row.sort((left, right) => left.x - right.x));
+}
+
+function takeStuds(rows: readonly Stud[][], count: number, used: Set<string>): Stud[] {
+  const chosen: Stud[] = [];
+  if (count <= 0) return chosen;
+  for (const row of rows) {
+    for (const stud of row) {
+      if (used.has(stud.id)) continue;
+      used.add(stud.id);
       chosen.push(stud);
+      if (chosen.length >= count) return chosen;
     }
-    if (chosen.length >= limit) break;
   }
   return chosen;
+}
+
+function alternateStuds(studs: readonly Stud[]): Stud[] {
+  const chosen: Stud[] = [];
+  rowsNorthToSouth(studs).forEach((row, rowIndex) => {
+    row.forEach((stud, column) => {
+      if ((rowIndex + column) % 2 === 0) chosen.push(stud);
+    });
+  });
+  return chosen;
+}
+
+function runsOf(row: readonly Stud[]): Stud[][] {
+  const runs: Stud[][] = [];
+  for (const stud of row) {
+    const last = runs[runs.length - 1];
+    const prev = last?.[last.length - 1];
+    if (!prev || Math.abs(stud.x - prev.x) > PITCH_M * 1.4) runs.push([stud]);
+    else last.push(stud);
+  }
+  return runs;
 }
 
 function objectAt(id: string, stud: Stud, entryId: string, description: string): PlacedObject {
@@ -96,19 +133,59 @@ function objectAt(id: string, stud: Stud, entryId: string, description: string):
   };
 }
 
-function wall(id: string, start: Vec2, end: Vec2, description: string): InteriorWall {
+function partition(id: string, start: Vec2, end: Vec2, description: string): InteriorWall {
   return {
     id,
     start,
     end,
-    hasDoor: true,
-    doorWidth: 1.2,
+    hasDoor: false,
+    doorWidth: 0,
     doorPosition: 0.5,
     description,
-    material: 'concrete',
+    material: 'steel',
     photos: [],
     level: 'G',
   };
+}
+
+/** Back wall on the closed side, side partitions between stalls, open toward the seating. */
+function addRowWalls(
+  verts: Vec2[],
+  walls: InteriorWall[],
+  stalls: readonly Stud[],
+  openSouth: boolean,
+  idPrefix: string,
+  description: string,
+) {
+  const half = PITCH_M / 2;
+  let runIndex = 0;
+  for (const row of rowsNorthToSouth(stalls)) {
+    for (const run of runsOf(row)) {
+      const y = run[0].y;
+      const backY = openSouth ? y - half : y + half;
+      const frontY = openSouth ? y + half : y - half;
+      const x0 = run[0].x - half;
+      const x1 = run[run.length - 1].x + half;
+      const backStart = { x: x0, y: backY };
+      const backEnd = { x: x1, y: backY };
+      if (segmentInside(verts, backStart, backEnd)) {
+        walls.push(partition(`${idPrefix}-back-${runIndex}`, backStart, backEnd, description));
+      }
+      const edges = [x0];
+      for (let index = 0; index < run.length - 1; index += 1) {
+        edges.push((run[index].x + run[index + 1].x) / 2);
+      }
+      edges.push(x1);
+      edges.forEach((x, edge) => {
+        const start = { x, y: backY };
+        const end = { x, y: frontY };
+        if (segmentInside(verts, start, end)) {
+          walls.push(partition(`${idPrefix}-side-${runIndex}-${edge}`, start, end, description));
+        }
+      });
+      runIndex += 1;
+    }
+  }
 }
 
 function chooseExits(verts: Vec2[]): ExitDef[] {
@@ -206,39 +283,20 @@ export function layoutHawkerCentre(input: {
   }
 
   const room = input.studs.filter((stud) => insetStud(verts, stud));
-  const northBand = [...room].sort((a, b) => a.y - b.y);
-  const northCut = Math.max(1, Math.ceil(northBand.length * 0.4));
-  const cookedLimit = Math.min(MAX_COOKED_DRAWN, facts.cookedStalls?.value ?? 4);
-  const cooked = spread(
-    northBand.slice(0, northCut).sort((a, b) => a.x - b.x),
-    cookedLimit,
-    5,
-  );
-  const cookedIds = new Set(cooked.map((stud) => stud.id));
+  const used = new Set<string>();
+  const cookedWanted = facts.cookedStalls?.value ?? ASSUMED_ROW;
+  const marketWanted = facts.marketStalls?.value ?? ASSUMED_ROW;
+  const cooked = takeStuds(rowsNorthToSouth(room), cookedWanted, used);
+  const market = takeStuds([...rowsNorthToSouth(room)].reverse(), marketWanted, used);
+  const tables = alternateStuds(room.filter((stud) => !used.has(stud.id)));
 
-  const southBand = [...room].filter((stud) => !cookedIds.has(stud.id)).sort((a, b) => b.y - a.y);
-  const southCut = Math.max(1, Math.ceil(southBand.length * 0.4));
-  const marketLimit = Math.min(MAX_MARKET_DRAWN, facts.marketStalls ? MAX_MARKET_DRAWN : 4);
-  const market = spread(
-    southBand
-      .slice(0, southCut)
-      .filter((stud) =>
-        cooked.every((stall) => Math.hypot(stall.x - stud.x, stall.y - stud.y) >= 6),
-      ),
-    marketLimit,
-    5,
-  );
-  const used = new Set([...cooked, ...market].map((stud) => stud.id));
-  const centre = [...room].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-  const tables = spread(
-    centre.filter((stud) => !used.has(stud.id)),
-    MAX_TABLES,
-    6,
-  );
-
+  const cookedFit =
+    facts.cookedStalls && cooked.length < facts.cookedStalls.value
+      ? ` ${cooked.length} of ${facts.cookedStalls.value} fit on the stud grid.`
+      : '';
   const cookedText = facts.cookedStalls
-    ? `${facts.cookedStalls.value} cooked-food stalls are on the fetched page (${cited(facts.cookedStalls.sources)}). ${cooked.length} are drawn. Assumed. ${PLACE_NORM} ${COOKED_NORM}`
-    : `${cooked.length} cooked-food stalls are drawn. Assumed. ${PLACE_NORM} ${COOKED_NORM}`;
+    ? `${facts.cookedStalls.value} cooked-food stalls are on the fetched page.${cookedFit} They are drawn in rows. Assumed. ${PLACE_NORM} ${COOKED_NORM} ${WALL_NORM}`
+    : `${cooked.length} cooked-food stalls are drawn in a row. Assumed. ${PLACE_NORM} ${COOKED_NORM} ${WALL_NORM}`;
   labels.push({
     id: 'row-cooked',
     origin: 'assumed',
@@ -250,58 +308,36 @@ export function layoutHawkerCentre(input: {
     objects.push(objectAt(`cooked-oil-${index}`, stud, 'cooking_oil', stall));
     objects.push(objectAt(`cooked-gas-${index}`, stud, 'gas_line', stall));
     objects.push(objectAt(`cooked-hood-${index}`, stud, 'wet_chemical', stall));
-    if (index < 4) {
-      objects.push(
-        objectAt(
-          `cooked-power-${index}`,
-          stud,
-          'electrical',
-          `Cooked-food stall ${index + 1}. Assumed. The stall has an electrical appliance.`,
-        ),
-      );
-    }
-    let cx = 0;
-    let cy = 0;
-    for (const vert of verts) {
-      cx += vert.x;
-      cy += vert.y;
-    }
-    cx /= verts.length;
-    cy /= verts.length;
-    const dx = cx - stud.x;
-    const dy = cy - stud.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const px = -dy / len;
-    const py = dx / len;
-    const front = { x: stud.x + (dx / len) * 1.6, y: stud.y + (dy / len) * 1.6 };
-    const start = { x: front.x - px * 1.6, y: front.y - py * 1.6 };
-    const end = { x: front.x + px * 1.6, y: front.y + py * 1.6 };
-    if (segmentInside(verts, start, end)) {
-      walls.push(
-        wall(
-          `stall-front-${index}`,
-          start,
-          end,
-          `Front of cooked-food stall ${index + 1}. Assumed. ${PLACE_NORM}`,
-        ),
-      );
-    }
+    objects.push(
+      objectAt(
+        `cooked-power-${index}`,
+        stud,
+        'electrical',
+        `Cooked-food stall ${index + 1}. Assumed. The stall has an electrical appliance.`,
+      ),
+    );
   });
+  addRowWalls(verts, walls, cooked, true, 'cooked', `Cooked-food row. Assumed. ${WALL_NORM}`);
 
+  const marketFit =
+    facts.marketStalls && market.length < facts.marketStalls.value
+      ? ` ${market.length} of ${facts.marketStalls.value} fit on the stud grid.`
+      : '';
   const marketText = facts.marketStalls
-    ? `${facts.marketStalls.value} market stalls are on the fetched page (${cited(facts.marketStalls.sources)}). ${market.length} are drawn. Assumed. ${MARKET_NORM}`
-    : `${market.length} market stalls are drawn. Assumed. ${MARKET_NORM}`;
+    ? `${facts.marketStalls.value} market stalls are on the fetched page.${marketFit} They are drawn in rows. Assumed. ${MARKET_NORM} ${WALL_NORM}`
+    : `${market.length} market stalls are drawn in a row. Assumed. ${MARKET_NORM} ${WALL_NORM}`;
   labels.push({ id: 'row-market', origin: 'assumed', text: marketText, sources: [] });
   market.forEach((stud, index) => {
     objects.push(
       objectAt(
         `market-${index}`,
         stud,
-        'shop_contents',
+        'wet_market',
         `Market stall ${index + 1}. Assumed. ${MARKET_NORM}`,
       ),
     );
   });
+  addRowWalls(verts, walls, market, false, 'market', `Market row. Assumed. ${WALL_NORM}`);
 
   labels.push({
     id: 'row-tables',
@@ -325,7 +361,7 @@ export function layoutHawkerCentre(input: {
     labels.push({
       id: 'vertical',
       origin: 'researched',
-      text: 'No stair and no lift. The fetched page lists 01- stall numbers and no higher storey.',
+      text: 'No stair and no lift. Researched from stall numbers: the fetched page lists 01- numbers and no higher storey.',
       sources: facts.singleStorey.sources,
     });
   } else {

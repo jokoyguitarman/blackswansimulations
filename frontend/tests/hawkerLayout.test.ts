@@ -6,9 +6,10 @@ import { layoutHawkerCentre } from '../src/lib/rts/hawkerLayout.ts';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds.ts';
 import {
   EMPTY_HAWKER_FACTS,
+  buildingTokens,
+  citationsFromOpenAiResponse,
   extractHawkerFacts,
   htmlToText,
-  parseDuckDuckGoLinks,
 } from '../../shared/hawkerFacts.ts';
 import type { HawkerFacts } from '../../shared/hawkerFacts.ts';
 
@@ -32,20 +33,24 @@ const HOLLAND: [number, number][] = [
 ];
 
 const NEA = 'Comprises 21 cooked food stalls and 48 market stalls.';
+const BUILDING = 'Holland Village Market and Food Centre';
 
 function facts(): HawkerFacts {
-  return extractHawkerFacts([
-    {
-      url: 'https://example.test/centre',
-      title: 'Centre page',
-      text: `Holland Village Market and Food Centre. ${NEA} National Environment Agency.`,
-    },
-    {
-      url: 'https://example.test/stalls',
-      title: 'Stall notes',
-      text: 'Holland Village Market. Notes 01-33 and 01-37. Cooked food stalls are about 10.75 m².',
-    },
-  ]);
+  return extractHawkerFacts(
+    [
+      {
+        url: 'https://example.test/centre',
+        title: 'Centre page',
+        text: `Holland Village Market and Food Centre. ${NEA} National Environment Agency.`,
+      },
+      {
+        url: 'https://example.test/stalls',
+        title: 'Stall notes',
+        text: 'Holland Village Market. Notes 01-33 and 01-37. Cooked food stalls are about 10.75 m².',
+      },
+    ],
+    BUILDING,
+  );
 }
 
 describe('hawker facts', () => {
@@ -60,14 +65,17 @@ describe('hawker facts', () => {
   });
 
   test('a disagreed count is not treated as researched', () => {
-    const read = extractHawkerFacts([
-      { url: 'https://example.test/a', title: 'A', text: NEA },
-      {
-        url: 'https://example.test/b',
-        title: 'B',
-        text: 'Comprises 21 cooked food stalls and 38 market stalls.',
-      },
-    ]);
+    const read = extractHawkerFacts(
+      [
+        { url: 'https://example.test/a', title: 'Holland Village Market', text: NEA },
+        {
+          url: 'https://example.test/b',
+          title: 'Holland Village Food Centre',
+          text: 'Comprises 21 cooked food stalls and 38 market stalls.',
+        },
+      ],
+      BUILDING,
+    );
     assert.equal(read.cookedStalls, null);
     assert.equal(read.marketStalls, null);
     assert.match(read.disagreements[0], /21\/48/);
@@ -75,22 +83,51 @@ describe('hawker facts', () => {
   });
 
   test('an upper stall number keeps the storey unknown', () => {
-    const read = extractHawkerFacts([
-      {
-        url: 'https://example.test/stalls',
-        title: 'Stall notes',
-        text: 'Holland Village 01-33 and 02-10.',
-      },
-    ]);
+    const read = extractHawkerFacts(
+      [
+        {
+          url: 'https://example.test/stalls',
+          title: 'Stall notes',
+          text: 'Holland Village 01-33 and 02-10.',
+        },
+      ],
+      BUILDING,
+    );
     assert.equal(read.singleStorey, null);
   });
 
-  test('strips tags and reads DuckDuckGo result links', () => {
+  test('strips tags, names the building, and ignores another centre’s counts', () => {
     assert.equal(htmlToText('<p>21&nbsp;cooked food stalls</p>'), '21 cooked food stalls');
-    const html =
-      '<a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.test%2Fcentre&rut=1">Centre</a>';
-    assert.deepEqual(parseDuckDuckGoLinks(html), ['https://example.test/centre']);
-    assert.deepEqual(parseDuckDuckGoLinks('<title>DuckDuckGo</title>'), []);
+    assert.deepEqual(buildingTokens(BUILDING), ['holland', 'village']);
+    const cited = citationsFromOpenAiResponse({
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              annotations: [
+                { type: 'url_citation', url: 'https://example.test/centre', title: 'Centre' },
+                { type: 'url_citation', url: 'https://example.test/centre', title: 'Centre' },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    assert.deepEqual(cited, [{ url: 'https://example.test/centre', title: 'Centre' }]);
+    const other = extractHawkerFacts(
+      [
+        {
+          url: 'https://example.test/other',
+          title: 'A directory of centres',
+          text: 'Bedok Market. Comprises 21 cooked food stalls and 48 market stalls.',
+        },
+      ],
+      BUILDING,
+    );
+    assert.equal(other.cookedStalls, null);
+    assert.equal(other.marketStalls, null);
   });
 });
 
@@ -110,15 +147,32 @@ describe('hawker layout', () => {
     assert.match(layout.labels.find((label) => label.id === 'vertical')?.text ?? '', /No stair/);
 
     const oils = layout.objects.filter((object) => object.id.startsWith('cooked-oil-'));
-    assert.ok(oils.length >= 4 && oils.length <= 8);
+    assert.equal(oils.length, 21);
     for (const oil of oils) {
       const index = oil.id.replace('cooked-oil-', '');
       assert.ok(layout.objects.some((object) => object.id === `cooked-gas-${index}`));
       assert.ok(layout.objects.some((object) => object.id === `cooked-hood-${index}`));
+      assert.ok(layout.objects.some((object) => object.id === `cooked-power-${index}`));
       assert.equal(oil.confirmed, true);
       assert.ok(isInsidePolygon(oil.pos.x, oil.pos.y, verts));
     }
-    assert.ok(layout.objects.length <= 40);
+    const market = layout.objects.filter((object) => object.id.startsWith('market-'));
+    assert.equal(market.length, 48);
+    assert.ok(market.every((object) => object.matches[0]?.entryId === 'wet_market'));
+    const stallIds = new Set(
+      layout.objects
+        .filter((object) => object.id.startsWith('cooked-') || object.id.startsWith('market-'))
+        .map((object) => object.studId),
+    );
+    const tables = layout.objects.filter((object) => object.id.startsWith('table-'));
+    assert.ok(tables.length > 4);
+    assert.ok(tables.every((table) => !stallIds.has(table.studId)));
+    assert.ok(layout.walls.length > 0);
+    for (const line of layout.walls) {
+      assert.equal(line.material, 'steel');
+      assert.equal(line.hasDoor, false);
+      assert.ok(line.start.x === line.end.x || line.start.y === line.end.y);
+    }
     assert.ok(layout.exits.filter((exit) => exit.exitType === 'public').length >= 2);
     for (const exit of layout.exits) {
       const snap = nearestEdge(exit.center.x, exit.center.y, verts);

@@ -236,6 +236,17 @@ export const MATERIAL_LIBRARY: readonly MaterialEntry[] = [
     ...HEAVY_SOLID,
   },
   {
+    id: 'wet_market',
+    label: 'Wet-market goods',
+    keywords: ['wet market', 'wet-market', 'market produce'],
+    behaviour: 'none',
+    toxicProducts: ['CO'],
+    sootYieldGPerG: 0.015,
+    toxicYieldWellVentGPerG: { CO: 0.004 },
+    toxicYieldGPerG: { CO: 0.1 },
+    ...LIGHT_ASSUMED,
+  },
+  {
     id: 'cooking_oil',
     label: 'Cooking oil',
     keywords: ['cooking oil', 'deep fryer', 'fryer', 'oil', 'grease'],
@@ -428,7 +439,10 @@ export function suggestLibraryEntry(_text: string): string | null {
 }
 
 function normalize(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 /** Plural of one word. "gas" stays matchable as "gas"; "gases" is extra. */
@@ -541,7 +555,12 @@ export function confirmedGasLines(objects: readonly PlacedObject[]): GasLinePlac
  */
 export function confirmedElectricalSources(
   objects: readonly PlacedObject[],
-  zones: readonly { id: string; pos: { x: number; y: number }; hazardType: string; level?: string }[] = [],
+  zones: readonly {
+    id: string;
+    pos: { x: number; y: number };
+    hazardType: string;
+    level?: string;
+  }[] = [],
 ): ElectricalPlacement[] {
   const sources: ElectricalPlacement[] = [];
   for (const obj of objects) {
@@ -582,7 +601,8 @@ export function confirmedSuppression(
     const kind = entry?.suppression ?? 'wet_chemical';
     const level = obj.level || 'G';
     const stored = ceilingByLevel[level];
-    const storey = stored != null && Number.isFinite(stored) && stored > 0 ? stored : SPRINKLER_CEILING_M;
+    const storey =
+      stored != null && Number.isFinite(stored) && stored > 0 ? stored : SPRINKLER_CEILING_M;
     // A hood link hangs over the pan. The storey height is the sprinkler ceiling.
     const ceilingM = kind === 'wet_chemical' ? HOOD_HEIGHT_M : storey;
     heads.push({

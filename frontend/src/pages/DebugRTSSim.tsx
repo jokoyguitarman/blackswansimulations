@@ -1845,14 +1845,10 @@ export function DebugRTSSim() {
           const research = (await interior.json()) as {
             mode?: string;
             facts?: HawkerFacts;
+            note?: string;
           };
           if (research.facts) facts = research.facts;
-          researchNote =
-            research.mode === 'search'
-              ? 'Interior pages came from a live web search.'
-              : research.mode === 'listed_pages'
-                ? 'Web search returned no pages, so the public centre pages were fetched instead.'
-                : researchNote;
+          researchNote = research.note || researchNote;
         }
       } catch {
         researchNote = 'The interior search failed, so the interior is assumed.';
@@ -7269,8 +7265,17 @@ export function DebugRTSSim() {
                         </span>
                         {label.text}
                         {label.sources.map((source) => (
-                          <div key={source.url} className="text-slate-500">
-                            {source.title}: {source.quote}
+                          <div key={`${source.url}-${source.quote}`} className="text-slate-500">
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline text-emerald-600"
+                            >
+                              {source.title}
+                            </a>
+                            <div>{source.url}</div>
+                            <div>{source.quote}</div>
                           </div>
                         ))}
                       </li>
