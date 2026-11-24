@@ -665,6 +665,30 @@ export class FireSimulation {
     return wet;
   }
 
+  /**
+   * The stud a discharging wet-chemical hood is mounted on, one entry per
+   * hood. Half a stud (1.5 m) is the mount. The spray throw is wider and is
+   * not the exhaust. A sprinkler is not a hood.
+   */
+  hoodColumns(): string[] {
+    const ids: string[] = [];
+    for (const head of this.suppressionRuntime.values()) {
+      if (!head.open || head.kind !== 'wet_chemical') continue;
+      let best: string | null = null;
+      let bestD = 1.5;
+      for (const [id, stud] of this.studIndex) {
+        if (levelOf(stud) !== head.level) continue;
+        const d = Math.hypot(stud.simPos.x - head.pos.x, stud.simPos.y - head.pos.y);
+        if (d > bestD) continue;
+        if (best != null && d === bestD && id > best) continue;
+        bestD = d;
+        best = id;
+      }
+      if (best != null) ids.push(best);
+    }
+    return ids;
+  }
+
   isArcing(id: string): boolean {
     const arc = this.arcRuntime.get(id);
     return !!arc && arc.arcing && !arc.shutoff;

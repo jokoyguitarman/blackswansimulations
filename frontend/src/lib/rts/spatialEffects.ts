@@ -10,6 +10,7 @@ import {
 import { STUD_AREA_M2, type FuelCell } from './flameFront';
 import type { ChargeSpec } from './blast/blastModel';
 import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
+import { LEVEL } from '../evacuation/levelConstants';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 import { addFumeGrams, fumesFromSmoke, SOOT_EXTINCTION_M2_PER_G, type FumeGrams } from './toxicDose';
 import { extinctionK, smokeFromK } from '../evacuation/hazardSensing';
@@ -89,23 +90,26 @@ export interface HazardRuntimeState {
 const NEIGHBOR_RADIUS = 8;
 
 /**
- * Mixed depth of the soot in one stud, assumed. The grid is not a layer
- * solver, and the orifice in `vent_flow_orifice` needs a neutral plane this
- * stud does not have, so the soot is mixed through area × this depth.
- * The visibility table still caps the stored extinction.
+ * Building leakage as a first-order loss of the soot column, assumed, per
+ * second. About 7 air changes an hour. It is the old indoor smoke decay
+ * (0.002 per second) applied to soot mass. It is not fitted to a travel
+ * time or a ppm target.
  */
-export const SMOKE_LAYER_DEPTH_M = 0.15;
+export const SMOKE_LEAK_PER_S = 0.002;
 
 /**
- * First-order loss of the stud's soot, assumed, per second. It stands in
- * for the vent the orifice formula cannot be applied to here. 0.15/s lets
- * the extinction follow a hood whose fire decays with τ = 435 s. A deeper
- * layer would still be climbing several minutes after that hood opened.
+ * Open air loses soot at five times the indoor rate. The old outdoor rule
+ * was the indoor decay plus four times that decay again.
  */
-export const SMOKE_VENT_PER_S = 0.15;
-
-/** Open air loses soot at five times the indoor rate, matching the old outdoor decay. */
 export const SMOKE_OUTDOOR_VENT_FACTOR = 5;
+
+/**
+ * Wet-chemical hood exhaust, assumed, of order 1 m³/s per hood. It is
+ * applied to the stud that hood is mounted on, and only while the hood is
+ * discharging. The loss rate is this flow divided by that stud's column.
+ * A sprinkler is not an exhaust.
+ */
+export const HOOD_EXTRACT_M3_PER_S = 1;
 
 /**
  * Share of the extinction difference a neighbour takes per second, assumed.
@@ -238,6 +242,9 @@ export class SpatialEffectsEngine {
   private fuelGate: Set<string> | null = null;
   /** Extinction from burning soot, kept apart from blast-event smoke. */
   private sootK = new Map<string, number>();
+  /** Wall tests for one walls array. Rebuilt when the caller passes another array. */
+  private blockedWalls: InteriorWall[] | null = null;
+  private blockedNeighbors = new Map<string, Set<string>>();
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -250,6 +257,8 @@ export class SpatialEffectsEngine {
     this.neighborCache.clear();
     this.verticalPairs = [];
     this.sootK.clear();
+    this.blockedWalls = null;
+    this.blockedNeighbors.clear();
     this.activeEffects = [];
     this.elapsed = 0;
 
@@ -636,6 +645,42 @@ export class SpatialEffectsEngine {
     toxic: 0.9,
   };
 
+  /** Floor area times the storey height. Basements use the basement height. */
+  private columnVolume(id: string): number {
+    const stud = this.studIndex.get(id);
+    const level = stud ? levelOf(stud) : 'G';
+    const height = level.startsWith('B')
+      ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M
+      : LEVEL.DEFAULT_STOREY_HEIGHT_M;
+    return STUD_AREA_M2 * height;
+  }
+
+  /**
+   * A solid wall between two neighbours. The result is kept for this walls
+   * array, so a step does not repeat the geometry for every fire.
+   */
+  private wallBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
+    if (walls.length === 0) return false;
+    if (walls !== this.blockedWalls) {
+      this.blockedWalls = walls;
+      this.blockedNeighbors.clear();
+    }
+    let blocked = this.blockedNeighbors.get(id);
+    if (!blocked) {
+      blocked = new Set();
+      const src = this.studIndex.get(id);
+      if (src) {
+        const level = levelOf(src);
+        for (const nId of this.neighborCache.get(id) ?? []) {
+          const dest = this.studIndex.get(nId);
+          if (dest && isWallBlocked(src.simPos, dest.simPos, walls, level)) blocked.add(nId);
+        }
+      }
+      this.blockedNeighbors.set(id, blocked);
+    }
+    return blocked.has(neighborId);
+  }
+
   private stepSmoke(dt: number, walls: InteriorWall[]) {
     if (!(dt > 0)) return;
     const kMax = extinctionK(1);
@@ -675,17 +720,24 @@ export class SpatialEffectsEngine {
       eventD.set(id, Math.max(0, density - loss));
     }
 
-    // Soot mass becomes extinction in the stud's layer (NUREG-1805 Eq. 18-2,
-    // K = σₘ × soot / volume). The release is the decayed one, so a spray
-    // that has cut the fire cuts the smoke with it.
-    const volume = STUD_AREA_M2 * SMOKE_LAYER_DEPTH_M;
+    // Soot mass becomes extinction in the stud column (NUREG-1805 Eq. 18-2,
+    // K = σₘ × soot / volume). Volume is 9 m² times the storey height.
+    // The release is the decayed one, so a spray that has cut the fire cuts
+    // the smoke with it. An open hood adds its exhaust on its own stud.
+    const extractM3 = new Map<string, number>();
+    for (const id of this.fireSim.hoodColumns()) {
+      extractM3.set(id, (extractM3.get(id) ?? 0) + HOOD_EXTRACT_M3_PER_S);
+    }
     const sootById = new Map<string, number>();
     for (const src of this.fireSim.burningSoot()) sootById.set(src.id, src.sootGPerS);
     for (const id of this.studStates.keys()) {
+      const volume = this.columnVolume(id);
       const generation = ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
       const src = this.studIndex.get(id);
       const outdoor = src != null && src.spatialContext !== 'inside_building';
-      const vent = SMOKE_VENT_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);
+      const leak = SMOKE_LEAK_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);
+      const flow = extractM3.get(id) ?? 0;
+      const vent = leak + (flow > 0 ? flow / volume : 0);
       let k = advanceSootK(this.sootK.get(id) ?? 0, generation, vent, dt);
       if (k > kMax) k = kMax;
       this.sootK.set(id, k);
@@ -726,7 +778,7 @@ export class SpatialEffectsEngine {
         if (!dest) continue;
         const other = field.get(nId) ?? 0;
         if (!(value > other)) continue;
-        const blocked = isWallBlocked(src.simPos, dest.simPos, walls, levelOf(src));
+        const blocked = this.wallBlocked(id, nId, walls);
         const share = dt * SMOKE_EXCHANGE_PER_S * (blocked ? SMOKE_WALL_LEAK : 1);
         const moved = (value - other) * share;
         if (moved > 1e-10) moves.push({ from: id, to: nId, k: moved });
@@ -761,8 +813,85 @@ export class SpatialEffectsEngine {
       else upward.set(pair.lower, [pair.upper]);
     }
 
+    // Same-level smoke is an undirected graph, so every fire in one
+    // component reaches the same studs. One flood per component replaces
+    // a walk from every fire. Shafts only go up, so those sums move up
+    // after the components are known. A fire whose own stud is still
+    // below the smoke threshold is not in a component; it is walked on
+    // its own, which is the early fire and not the expensive case.
+    const compOf = new Map<string, number>();
+    let compCount = 0;
+    const stack: string[] = [];
+    for (const [id, state] of this.studStates) {
+      if (!(state.smoke > 0.02) || compOf.has(id)) continue;
+      const cid = compCount++;
+      stack.push(id);
+      compOf.set(id, cid);
+      while (stack.length > 0) {
+        const cur = stack.pop();
+        if (cur == null) continue;
+        for (const nId of this.neighborCache.get(cur) ?? []) {
+          if (compOf.has(nId) || this.wallBlocked(cur, nId, walls)) continue;
+          const next = this.studStates.get(nId);
+          if (!next || !(next.smoke > 0.02)) continue;
+          compOf.set(nId, cid);
+          stack.push(nId);
+        }
+      }
+    }
+
+    const compGrams: FumeGrams[] = [];
+    const compSoot: number[] = [];
+    for (let i = 0; i < compCount; i++) {
+      compGrams.push({});
+      compSoot.push(0);
+    }
+    const lone: Array<{ id: string; gramsPerS: FumeGrams; sootGPerS: number }> = [];
+    for (const source of sources) {
+      const cid = compOf.get(source.id);
+      if (cid == null) {
+        lone.push(source);
+        continue;
+      }
+      addFumeGrams(compGrams[cid], source.gramsPerS);
+      compSoot[cid] += source.sootGPerS;
+    }
+
+    const outgoing = new Map<number, number[]>();
+    const linked = new Set<string>();
+    for (const pair of this.verticalPairs) {
+      const lower = compOf.get(pair.lower);
+      const upper = compOf.get(pair.upper);
+      if (lower == null || upper == null || lower === upper) continue;
+      const key = `${lower}>${upper}`;
+      if (linked.has(key)) continue;
+      linked.add(key);
+      const list = outgoing.get(lower);
+      if (list) list.push(upper);
+      else outgoing.set(lower, [upper]);
+    }
+    // Each lower component's own production is added once to every
+    // component it can reach upward, including through another storey.
+    const ownGrams = compGrams.map((grams) => ({ ...grams }));
+    const ownSoot = compSoot.slice();
+    for (let cid = 0; cid < compCount; cid++) {
+      const seen = new Set<number>();
+      const walk = [cid];
+      while (walk.length > 0) {
+        const cur = walk.pop();
+        if (cur == null) continue;
+        for (const upper of outgoing.get(cur) ?? []) {
+          if (seen.has(upper)) continue;
+          seen.add(upper);
+          addFumeGrams(compGrams[upper], ownGrams[cid]);
+          compSoot[upper] += ownSoot[cid];
+          walk.push(upper);
+        }
+      }
+    }
+
     const totals = new Map<string, { grams: FumeGrams; soot: number }>();
-    const addSource = (id: string, gramsPerS: FumeGrams, sootGPerS: number) => {
+    const pour = (id: string, gramsPerS: FumeGrams, sootGPerS: number) => {
       const bucket = totals.get(id);
       if (bucket) {
         addFumeGrams(bucket.grams, gramsPerS);
@@ -773,31 +902,28 @@ export class SpatialEffectsEngine {
       addFumeGrams(grams, gramsPerS);
       totals.set(id, { grams, soot: sootGPerS });
     };
+    for (const [id, cid] of compOf) pour(id, compGrams[cid], compSoot[cid]);
 
-    for (const source of sources) {
+    for (const source of lone) {
       const seen = new Set<string>();
-      const stack = [source.id];
-      while (stack.length > 0) {
-        const id = stack.pop();
+      const walk = [source.id];
+      while (walk.length > 0) {
+        const id = walk.pop();
         if (id == null || seen.has(id)) continue;
         seen.add(id);
         const state = this.studStates.get(id);
-        const from = this.studIndex.get(id);
-        if (!state || !from) continue;
+        if (!state) continue;
         const origin = id === source.id;
         if (!origin && !(state.smoke > 0.02)) continue;
-        addSource(id, source.gramsPerS, source.sootGPerS);
+        pour(id, source.gramsPerS, source.sootGPerS);
         for (const nextId of this.neighborCache.get(id) ?? []) {
-          if (seen.has(nextId)) continue;
-          const dest = this.studIndex.get(nextId);
+          if (seen.has(nextId) || this.wallBlocked(id, nextId, walls)) continue;
           const next = this.studStates.get(nextId);
-          if (!dest || !next || !(next.smoke > 0.02)) continue;
-          if (isWallBlocked(from.simPos, dest.simPos, walls, levelOf(from))) continue;
-          stack.push(nextId);
+          if (next && next.smoke > 0.02) walk.push(nextId);
         }
         for (const upperId of upward.get(id) ?? []) {
           const upper = this.studStates.get(upperId);
-          if (upper && upper.smoke > 0.02) stack.push(upperId);
+          if (upper && upper.smoke > 0.02) walk.push(upperId);
         }
       }
     }

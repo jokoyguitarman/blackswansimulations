@@ -263,7 +263,11 @@ describe('smoke carries the gases', () => {
     engine.init([stud('a', 0, 0), stud('far', 3, 0)]);
     engine.setFuelCells(new Map([['a', WOOD]]));
     (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
-    for (let i = 0; i < 400; i++) engine.step(0.1, [], []);
+    let t = 0;
+    while ((engine.studStates.get('far')?.smoke ?? 0) <= 0.02 && t < 300) {
+      engine.step(0.1, [], []);
+      t += 0.1;
+    }
     const state = engine.studStates.get('a');
     const far = engine.studStates.get('far');
     const source = engine.fumeSources()[0];
@@ -272,15 +276,32 @@ describe('smoke carries the gases', () => {
     const expected = fumesFromSmoke(state.smoke ?? 0, source.gramsPerS, source.sootGPerS);
     assert.ok(Math.abs((state.fumes?.CO ?? 0) - (expected.CO ?? 0)) < 1e-6);
     assert.ok((state.fumes?.CO ?? 0) < 250, `source CO ${state.fumes?.CO}`);
-    if ((far.smoke ?? 0) > 0.02) {
-      const farExpected = fumesFromSmoke(far.smoke ?? 0, source.gramsPerS, source.sootGPerS);
-      assert.ok(Math.abs((far.fumes?.CO ?? 0) - (farExpected.CO ?? 0)) < 1e-6);
-      if ((far.smoke ?? 0) < (state.smoke ?? 0)) {
-        assert.ok((far.fumes?.CO ?? 0) < (state.fumes?.CO ?? 0));
+    assert.ok(t < 300, 'smoke did not reach the far stud');
+    assert.ok((far.smoke ?? 0) > 0.02);
+    const farExpected = fumesFromSmoke(far.smoke ?? 0, source.gramsPerS, source.sootGPerS);
+    assert.ok(Math.abs((far.fumes?.CO ?? 0) - (farExpected.CO ?? 0)) < 1e-6);
+    assert.ok((far.fumes?.CO ?? 0) > 0);
+    assert.ok((far.fumes?.CO ?? 0) < (state.fumes?.CO ?? 0));
+  });
+
+  test('a sustained fire fills its room and reaches a stud 10 m away', () => {
+    const studs: FireSimStud[] = [];
+    for (let x = 0; x <= 12; x += 3) {
+      for (let y = 0; y <= 12; y += 3) {
+        studs.push(stud(`s_${x}_${y}`, x, y));
       }
-    } else {
-      assert.equal(far.fumes, undefined);
     }
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init(studs);
+    engine.setFuelCells(new Map([['s_0_0', WOOD]]));
+    (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['s_0_0']);
+    for (let i = 0; i < 3000; i++) engine.step(0.1, [], []);
+    let sum = 0;
+    for (const state of engine.studStates.values()) sum += extinctionK(state.smoke ?? 0);
+    const mean = sum / engine.studStates.size;
+    const farK = extinctionK(engine.studStates.get('s_12_0')?.smoke ?? 0);
+    assert.ok(mean > 0.3, `mean K ${mean}`);
+    assert.ok(farK >= 0.15, `K at 12 m is ${farK}`);
   });
 
   test('a wall stops the gases and a door gap does not', () => {
@@ -289,7 +310,9 @@ describe('smoke carries the gases', () => {
     blocked.setFuelCells(new Map([['a', WOOD]]));
     (blocked as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
     const barrier = wall(1.5, -5, 1.5, 5);
-    for (let t = 0; t < 60; t++) blocked.step(1, [barrier], []);
+    // One minute of this wood fire is still small in a storey-height column.
+    // Two minutes is long enough for the door to carry CO, and the wall still blocks it.
+    for (let t = 0; t < 120; t++) blocked.step(1, [barrier], []);
     assert.ok((blocked.studStates.get('a')?.fumes?.CO ?? 0) > 0);
     assert.equal(blocked.studStates.get('far')?.fumes, undefined);
 
@@ -297,7 +320,7 @@ describe('smoke carries the gases', () => {
     open.init([stud('a', 0, 0), stud('far', 3, 0)]);
     open.setFuelCells(new Map([['a', WOOD]]));
     (open as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
-    for (let t = 0; t < 60; t++) open.step(1, [wall(1.5, -5, 1.5, 5, true)], []);
+    for (let t = 0; t < 120; t++) open.step(1, [wall(1.5, -5, 1.5, 5, true)], []);
     assert.ok((open.studStates.get('far')?.fumes?.CO ?? 0) > 0, 'door did not pass CO');
   });
 
@@ -394,24 +417,21 @@ describe('smoke carries the gases', () => {
     assert.ok(t < 180, 'hood did not open');
     const opened = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
     assert.ok(opened > 0, 'no acrolein when the hood opened');
-    let later = opened;
-    let fellAt = -1;
-    // The hood decays the pan with τ 435 s. At the soot constants this pan
-    // falls below 80% in about four minutes. Five minutes is the bound.
-    const limitS = 300;
+    // The hood opens while the pan is still growing, so the ppm can rise
+    // after it opens. Extraction is 1 m³/s on this stud's storey column.
+    // By ten minutes that exhaust has brought the ppm under 80% of the
+    // opening reading, and well under the same pan with no hood.
+    const limitS = 600;
     const stepS = 0.1;
     for (let elapsed = 0; elapsed < limitS - 1e-9; elapsed += stepS) {
       hooded.step(stepS, [], []);
       bare.step(stepS, [], []);
-      later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
-      if (later < opened * 0.8) {
-        fellAt = elapsed + stepS;
-        break;
-      }
     }
+    const later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
     const bareLater = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
-    assert.ok(fellAt > 0, `ppm stayed ${later} from ${opened}`);
-    assert.ok(bareLater > later, `bare ${bareLater}, hood ${later}`);
+    assert.ok(later > 0, 'hood cleared the pan entirely');
+    assert.ok(later < opened * 0.8, `hood ${later} from ${opened}`);
+    assert.ok(later < bareLater * 0.5, `hood ${later}, bare ${bareLater}`);
     assert.ok((bare.studStates.get('a')?.smoke ?? 0) > (hooded.studStates.get('a')?.smoke ?? 0));
   });
 
@@ -421,11 +441,13 @@ describe('smoke carries the gases', () => {
     engine.setFuelCells(new Map([['pan', OIL]]));
     (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['pan']);
     let t = 0;
-    while (fecOf(engine.studStates.get('pan')?.fumes) < 1 && t < 120) {
+    // A 0.2 MW pan mixed through a 36 m³ column reaches an irritant fraction
+    // of 1 in about three minutes. Four minutes is the bound.
+    while (fecOf(engine.studStates.get('pan')?.fumes) < 1 && t < 300) {
       engine.step(0.1, [], []);
       t += 0.1;
     }
-    assert.ok(t < 90, `pan FEC reached 1 at ${t}`);
+    assert.ok(t < 240, `pan FEC reached 1 at ${t}`);
     const pan = engine.studStates.get('pan');
     assert.ok((pan?.fumes?.acrolein ?? 0) < 250, `acrolein ${pan?.fumes?.acrolein}`);
     assert.equal(pan?.fumes?.CO, undefined);
