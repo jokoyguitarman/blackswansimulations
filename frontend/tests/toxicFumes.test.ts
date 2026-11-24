@@ -5,7 +5,12 @@ import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
 import { HazardField, type Posture } from '../src/lib/evacuation/hazardSensing';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
 import { projectPolygon } from '../src/lib/evacuation/geometry';
-import { GAS_JET_KW, STUD_AREA_M2, WET_FLOOR_SPEED, WOOD_HEAT_KJ_KG } from '../src/lib/rts/flameFront';
+import {
+  GAS_JET_KW,
+  STUD_AREA_M2,
+  WET_FLOOR_SPEED,
+  WOOD_HEAT_KJ_KG,
+} from '../src/lib/rts/flameFront';
 import { LEVEL } from '../src/lib/evacuation/levelConstants';
 import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
 import { stairTravelS } from '../src/lib/rts/levels';
@@ -24,7 +29,11 @@ import {
 } from '../src/lib/rts/materialLibrary';
 import { foodCourtPlacedObjects, foodCourtSample } from '../src/lib/rts/foodCourtSample';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds';
-import { SMOKE_LEAK_PER_S, SpatialEffectsEngine, advanceSootK } from '../src/lib/rts/spatialEffects';
+import {
+  SMOKE_LEAK_PER_S,
+  SpatialEffectsEngine,
+  advanceSootK,
+} from '../src/lib/rts/spatialEffects';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -153,7 +162,7 @@ describe('ISO 13571 dose', () => {
     const well = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, false);
     assert.ok(Math.abs((well.CO ?? 0) - 4) < 1e-9, `well-vent CO ${well.CO}`);
     const flashed = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, true);
-    assert.ok(Math.abs((flashed.CO ?? 0) - 100) < 1e-9, `post-flashover CO ${flashed.CO}`);
+    assert.ok(Math.abs((flashed.CO ?? 0) - 400) < 1e-9, `post-flashover CO ${flashed.CO}`);
     assert.equal(flashed.HCN, undefined);
     assert.equal(flashed.acrolein, undefined);
     assert.ok(Math.abs(sootProductionGPerS(WOOD, WOOD_HEAT_KJ_KG) - 15) < 1e-9);
@@ -177,13 +186,13 @@ describe('fumes follow the confirmed material', () => {
     const pvc = fuelCellFromEntry(entryById('pvc')!)!;
     assert.equal(wood.sootYieldGPerG, 0.015);
     assert.deepEqual(wood.toxicYieldWellVentGPerG, { CO: 0.004 });
-    assert.deepEqual(wood.toxicYieldGPerG, { CO: 0.1 });
+    assert.deepEqual(wood.toxicYieldGPerG, { CO: 0.4 });
     assert.equal(foam.sootYieldGPerG, 0.188);
-    assert.deepEqual(foam.toxicYieldWellVentGPerG, { CO: 0.01, HCN: 0.01 });
-    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.1, HCN: 0.01 });
+    assert.deepEqual(foam.toxicYieldWellVentGPerG, { CO: 0.028, HCN: 0.01 });
+    assert.deepEqual(foam.toxicYieldGPerG, { CO: 0.4, HCN: 0.01 });
     assert.equal(pvc.sootYieldGPerG, 0.172);
-    assert.deepEqual(pvc.toxicYieldWellVentGPerG, { HCl: 0.2, CO: 0.06 });
-    assert.deepEqual(pvc.toxicYieldGPerG, { HCl: 0.2, CO: 0.1 });
+    assert.deepEqual(pvc.toxicYieldWellVentGPerG, { HCl: 0.2, CO: 0.063 });
+    assert.deepEqual(pvc.toxicYieldGPerG, { HCl: 0.2, CO: 0.4 });
     assert.equal(OIL.sootYieldGPerG, 0.02);
     assert.deepEqual(OIL.toxicYieldWellVentGPerG, { acrolein: 0.01 });
     assert.deepEqual(OIL.toxicYieldGPerG, { acrolein: 0.01 });
@@ -359,7 +368,9 @@ describe('smoke carries the gases', () => {
   });
 
   test('a closed food court keeps most of a 1 MW fire indoors', () => {
-    const polygon = foodCourtSample.scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const polygon = foodCourtSample.scene.buildingPolygon.map(
+      (pair) => [pair[0], pair[1]] as [number, number],
+    );
     const verts = projectPolygon(polygon);
     let minX = Infinity;
     let minY = Infinity;
@@ -617,7 +628,7 @@ describe('smoke carries the gases', () => {
     const after = sim.fumeSources()[0];
     const q = sim.fuelReleaseKw('a') ?? 0;
     const perKw = (after?.gramsPerS.CO ?? 0) / q;
-    const expected = (0.1 * 1000) / WOOD_HEAT_KJ_KG;
+    const expected = (0.4 * 1000) / WOOD_HEAT_KJ_KG;
     assert.ok(Math.abs(perKw - expected) / expected < 0.01, `post-flashover ${perKw}`);
 
     const fine = doseOver(0.1, 300);
@@ -638,8 +649,14 @@ describe('smoke carries the gases', () => {
       burning.step(0.1, [], []);
       shared.step(0.1, [], []);
     }
-    assert.ok((quiet.studStates.get('a')?.smoke ?? 0) < 1e-6, 'a cell with no soot yield made smoke');
-    assert.ok((burning.studStates.get('a')?.smoke ?? 0) > 0.02, 'wood smoke did not follow the soot');
+    assert.ok(
+      (quiet.studStates.get('a')?.smoke ?? 0) < 1e-6,
+      'a cell with no soot yield made smoke',
+    );
+    assert.ok(
+      (burning.studStates.get('a')?.smoke ?? 0) > 0.02,
+      'wood smoke did not follow the soot',
+    );
     const alone = burning.studStates.get('a')?.smoke ?? 0;
     const source = shared.studStates.get('a')?.smoke ?? 0;
     const neighbour = shared.studStates.get('nbr')?.smoke ?? 0;
@@ -677,19 +694,16 @@ describe('people', () => {
     assert.equal(crawling.fumeDownCount, 0);
 
     const stayed = walk([{ fumes: { acrolein: 30 }, steps: 210 }]);
-    const resumed = walk([
-      { fumes: { acrolein: 30 }, steps: 30 },
-      { steps: 180 },
-    ]);
+    const resumed = walk([{ fumes: { acrolein: 30 }, steps: 30 }, { steps: 180 }]);
     assert.equal(resumed.state, 'evacuating');
     assert.notEqual(resumed.fumeHeld, true);
     assert.equal(resumed.posture, 'stand');
-    assert.ok(resumed.moved > stayed.moved, `did not speed up (${resumed.moved} vs ${stayed.moved})`);
+    assert.ok(
+      resumed.moved > stayed.moved,
+      `did not speed up (${resumed.moved} vs ${stayed.moved})`,
+    );
 
-    const down = walk([
-      { fumes: { CO: 200_000_000 }, steps: 5 },
-      { steps: 60 },
-    ]);
+    const down = walk([{ fumes: { CO: 200_000_000 }, steps: 5 }, { steps: 60 }]);
     assert.equal(down.state, 'down');
     assert.equal(down.fumeDown, true);
     assert.equal(down.injury, 'serious');
@@ -699,7 +713,10 @@ describe('people', () => {
     const dry = walk([{ fumes: { acrolein: 30 }, steps: 180 }]);
     const hurt = walk([{ fumes: { acrolein: 30 }, steps: 180 }], { injury: 'minor', wet: true });
     assert.ok(hurt.moved > 0.05, `injured crawl did not move (${hurt.moved})`);
-    assert.ok(hurt.moved < dry.moved * 0.85, `injury and wet floor did not slow the crawl (${hurt.moved} vs ${dry.moved})`);
+    assert.ok(
+      hurt.moved < dry.moved * 0.85,
+      `injury and wet floor did not slow the crawl (${hurt.moved} vs ${dry.moved})`,
+    );
     assert.equal(hurt.posture, 'crawl');
 
     const plain = walk([{ fumes: { acrolein: 30 }, steps: 180 }], { showcase: false });
@@ -723,7 +740,14 @@ describe('people', () => {
       { x: 40, y: 20 },
       { x: 0, y: 20 },
     ];
-    const ground: LevelDef = { id: 'G', name: 'G', index: 0, heightM: 4, designed: true, pedestrianCount: 0 };
+    const ground: LevelDef = {
+      id: 'G',
+      name: 'G',
+      index: 0,
+      heightM: 4,
+      designed: true,
+      pedestrianCount: 0,
+    };
     const stair: Stairwell = {
       id: 's',
       pos: { x: 10, y: 10 },
@@ -736,7 +760,14 @@ describe('people', () => {
     };
     const duration = (injury?: 'minor', wet?: boolean) => {
       const eng = new PolygonEvacuationEngine(
-        { vertices: verts, pedestrianCount: 0, pedestrianRadius: 0.25, desiredSpeed: 1.4, panicFactor: 0, dt: 1 / 60 },
+        {
+          vertices: verts,
+          pedestrianCount: 0,
+          pedestrianRadius: 0.25,
+          desiredSpeed: 1.4,
+          panicFactor: 0,
+          dt: 1 / 60,
+        },
         [],
         [],
         [],
@@ -784,7 +815,8 @@ describe('people', () => {
     const dry = duration();
     const hurt = duration('minor', true);
     const dryExpected = base / LEVEL.STAIR_CRAWL_FACTOR;
-    const hurtExpected = base / (LEVEL.STAIR_CRAWL_FACTOR * SHOWCASE.MINOR_INJURY_SPEED_FACTOR * WET_FLOOR_SPEED);
+    const hurtExpected =
+      base / (LEVEL.STAIR_CRAWL_FACTOR * SHOWCASE.MINOR_INJURY_SPEED_FACTOR * WET_FLOOR_SPEED);
     assert.ok(Math.abs(dry - dryExpected) < 1e-6, `dry stair ${dry} vs ${dryExpected}`);
     assert.ok(Math.abs(hurt - hurtExpected) < 1e-6, `hurt stair ${hurt} vs ${hurtExpected}`);
     assert.ok(hurt > dry * 2, `stair crawl did not slow (${hurt} vs ${dry})`);
@@ -793,7 +825,9 @@ describe('people', () => {
 
 describe('food court with no fire', () => {
   test('five minutes of the food court produces no fumes and no dose', () => {
-    const polygon = foodCourtSample.scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const polygon = foodCourtSample.scene.buildingPolygon.map(
+      (pair) => [pair[0], pair[1]] as [number, number],
+    );
     const studs = projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']));
     const placed = snapObjects(studs);
     const asFire = studs.map((item) => ({
@@ -841,7 +875,11 @@ function doseOver(frameDt: number, frames: number): { fed: number; ppm: number; 
       fed = advanceFed(fed, engine.studStates.get('a')?.fumes, FX.EFFECTS_DT);
     });
   }
-  return { fed, ppm: engine.studStates.get('a')?.fumes?.CO ?? 0, smoke: engine.studStates.get('a')?.smoke ?? 0 };
+  return {
+    fed,
+    ppm: engine.studStates.get('a')?.fumes?.CO ?? 0,
+    smoke: engine.studStates.get('a')?.smoke ?? 0,
+  };
 }
 
 function walk(
@@ -871,14 +909,24 @@ function walk(
     center: { x: 40, y: 10 },
   };
   const eng = new PolygonEvacuationEngine(
-    { vertices: verts, pedestrianCount: 1, pedestrianRadius: 0.25, desiredSpeed: 1.4, panicFactor: 0, dt: 1 / 60 },
+    {
+      vertices: verts,
+      pedestrianCount: 1,
+      pedestrianRadius: 0.25,
+      desiredSpeed: 1.4,
+      panicFactor: 0,
+      dt: 1 / 60,
+    },
     [exit],
     [],
     [],
     opts.showcase === false ? undefined : { afterExit: 'disperse', zones: [], seed: 1 },
   );
   const studs = [];
-  const states = new Map<string, { smoke: number; fire: { state: string }; fumes?: { CO?: number; acrolein?: number } }>();
+  const states = new Map<
+    string,
+    { smoke: number; fire: { state: string }; fumes?: { CO?: number; acrolein?: number } }
+  >();
   for (let x = 0; x <= 40; x += 3) {
     const id = `s${x}`;
     studs.push({ id, simPos: { x, y: 10 }, indoor: true });
@@ -891,18 +939,20 @@ function walk(
   const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
   Matter.Body.setPosition(body, { x: 8, y: 10 });
   Matter.Body.setVelocity(body, { x: 0, y: 0 });
-  const ped = (body as Matter.Body & {
-    __ped: {
-      state: string;
-      targetExitId: string;
-      nextCheckAt: number;
-      posture: Posture;
-      fumeHeld?: boolean;
-      fumeDown?: boolean;
-      injury?: 'none' | 'minor' | 'serious' | 'lethal';
-      level?: string;
-    };
-  }).__ped;
+  const ped = (
+    body as Matter.Body & {
+      __ped: {
+        state: string;
+        targetExitId: string;
+        nextCheckAt: number;
+        posture: Posture;
+        fumeHeld?: boolean;
+        fumeDown?: boolean;
+        injury?: 'none' | 'minor' | 'serious' | 'lethal';
+        level?: string;
+      };
+    }
+  ).__ped;
   ped.state = 'evacuating';
   ped.targetExitId = 'east';
   ped.nextCheckAt = 1e9;
