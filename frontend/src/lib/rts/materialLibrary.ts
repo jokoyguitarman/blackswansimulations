@@ -196,7 +196,7 @@ const REF = {
   enNetHeat: `EN 1991-1-2:2002 Annex E Table E.3, net calorific value Hu. ${NOT_SEEDED}`,
   enFireLoad: 'EN 1991-1-2:2002 Annex E Table E.4. Seed `en1991_fire_load_density`.',
   alphaClasses: 'NFPA t-squared classes. Seed `t2_alpha_classes`.',
-  underVentCo: `Gottuk and Lattimer, SFPE Handbook 3rd ed. Sec. 2 Ch. 5, "Effect of Combustion Conditions on Species Production": CO yield levels off near 0.2 g/g once the equivalence ratio is well past 1 (about 0.1 to 0.25 by fuel). Holds until yields follow the equivalence ratio. The C/VM2 2.3.3.4 design value, 0.40 (seed \`cvm2_post_flashover_co_yield\`), is the conservative alternative and is not used. ${NOT_SEEDED}`,
+  underVentCo: `Gottuk and Lattimer, SFPE Handbook 3rd ed. Sec. 2 Ch. 5, "Effect of Combustion Conditions on Species Production": CO yield levels off near 0.2 g/g once the equivalence ratio is well past 1 (about 0.1 to 0.25 by fuel). The yield moves from the well-ventilated figure to this one as Φ goes from 0.75 to 1.5. The C/VM2 2.3.3.4 design value, 0.40 (seed \`cvm2_post_flashover_co_yield\`), is the conservative alternative and is not used. ${NOT_SEEDED}`,
   underVentSoot:
     'C/VM2 2.3.3.4 design value, 0.14 (seed `cvm2_post_flashover_soot_yield`). No measured under-ventilated soot row was read, so it is a placeholder. The flame front does not read it.',
   purserPostFlashoverCo: `Purser, Polymers 8 (2016) 330, Table 6: ISO/TS 19700 tube furnace at 850 °C, Φ 1.5 to 2, the post-flashover yields Purser also gives in the SFPE Handbook 5th ed. combustion toxicity chapter. ${NOT_SEEDED}`,

@@ -17,9 +17,14 @@
  * their production added up: total gas grams per second over total soot
  * grams per second. That split is assumed. This is not a species solver.
  *
- * Before the stud's flashover latch the gas yield is the well-ventilated
- * figure. After it, the stored under-ventilated label. The soot yield stays
- * the well-ventilated figure, because K already bounds the soot mass.
+ * The gas yield follows the room's equivalence ratio. At Φ below 0.75,
+ * ISO 19706 stage 2, it is the well-ventilated figure. At Φ of 1.5 and
+ * above, the start of Purser's post-flashover band, it is the stored
+ * under-ventilated figure. Between those two cited ends the yield moves
+ * in a straight line. No curve was read for that interval, and the line
+ * is not fitted. The flashover latch does not choose the yield. The soot
+ * yield stays the well-ventilated figure: the under-ventilated soot row
+ * is a placeholder, and K already bounds the soot mass.
  * Smoke that has not arrived, a solid wall, and another storey with no
  * shaft contribute nothing. A door gap does not block, and a shaft carries
  * fumes only upward, with the smoke.
@@ -30,8 +35,10 @@
  * The dose is ISO 13571 only. Asphyxiants (clause 6.1): CO is ppm·min /
  * 35 000. HCN is (exp(ppm / 43) − 1) / 220 per minute. The standard writes
  * exp(ppm / 43) / 220, which is 1/220 at zero; subtracting that baseline
- * makes the term zero in clean air. CO2 is not tracked, so the clause 6.1.3
- * factor is not applied. Oxygen is not tracked and stays out of the sum.
+ * makes the term zero in clean air. Clause 6.1.3 multiplies those two
+ * terms by exp(%CO2 / 5). The oxygen term is Δt / exp[8.13 − 0.54(20.9 −
+ * %O2)], and the clean-air value is subtracted so 20.9% adds nothing, the
+ * same baseline as HCN. Oxygen is outside the carbon-dioxide factor.
  * Irritants (clause 6.2) are ppm / F, instantaneous: hydrogen chloride
  * 1000 ppm, acrolein 30 ppm. FED at 1 puts the person down, and that stays.
  * FEC at 1 makes them crawl while the smoke is that thick, and they walk
@@ -99,16 +106,46 @@ export function massLossKgPerS(heatKw: number, dHcKjKg: number): number {
   return heatKw / dHcKjKg;
 }
 
-/** The yield set for this ventilation state. Well-ventilated until flashover. */
-export function gasYieldsFor(cell: FuelCell, flashed: boolean): ToxicYields | undefined {
-  if (flashed) return cell.toxicYieldGPerG;
-  return cell.toxicYieldWellVentGPerG ?? cell.toxicYieldGPerG;
+/**
+ * ISO 19706 stage 2 is well-ventilated flaming at Φ < 0.75. Purser's
+ * post-flashover yields (ISO/TS 19700, Φ 1.5 to 2) are the other end.
+ */
+export const PHI_WELL_VENT = 0.75;
+export const PHI_UNDER_VENT = 1.5;
+
+/** 0 at the well-ventilated end, 1 at the under-ventilated end. */
+export function ventilationBlend(phi: number): number {
+  if (!(phi > PHI_WELL_VENT)) return 0;
+  if (!Number.isFinite(phi) || phi >= PHI_UNDER_VENT) return 1;
+  return (phi - PHI_WELL_VENT) / (PHI_UNDER_VENT - PHI_WELL_VENT);
 }
 
-/** Grams per second of each gas the cell emits at this release. */
-export function speciesProductionGPerS(cell: FuelCell, heatKw: number, flashed = false): FumeGrams {
+/**
+ * The yield set at this equivalence ratio. A straight line between the
+ * stored well-ventilated and under-ventilated figures. Φ of 0, and a fire
+ * with no layer, stays on the well-ventilated figure.
+ */
+export function gasYieldsFor(cell: FuelCell, phi = 0): ToxicYields | undefined {
+  const well = cell.toxicYieldWellVentGPerG ?? cell.toxicYieldGPerG;
+  const rich = cell.toxicYieldGPerG;
+  if (!well && !rich) return undefined;
+  const blend = ventilationBlend(phi);
+  if (!(blend > 0) || !rich) return well;
+  if (blend >= 1 || !well) return rich;
+  const out: ToxicYields = {};
+  for (const gas of TOXIC_PRODUCTS) {
+    const calm = well[gas] ?? 0;
+    const hot = rich[gas] ?? 0;
+    const yieldG = calm + (hot - calm) * blend;
+    if (yieldG > 0) out[gas] = yieldG;
+  }
+  return out;
+}
+
+/** Grams per second of each gas the cell emits at this release and equivalence ratio. */
+export function speciesProductionGPerS(cell: FuelCell, heatKw: number, phi = 0): FumeGrams {
   const out: FumeGrams = {};
-  const yields = gasYieldsFor(cell, flashed);
+  const yields = gasYieldsFor(cell, phi);
   if (!yields || !(heatKw > 0)) return out;
   const burnedGPerS = massLossKgPerS(heatKw, heatOfCombustionKjKg(cell)) * 1000;
   if (!(burnedGPerS > 0)) return out;
@@ -164,21 +201,75 @@ export function fumesFromSmoke(smoke: number, gasGPerS: FumeGrams, sootGPerS: nu
   return out;
 }
 
-/** ISO 13571 CO and HCN terms, per minute, at this concentration. */
-export function fedPerMin(fumes: FumeGrams | undefined): number {
-  if (!fumes) return 0;
+/** Volume percent from a mass fraction. CFAST's 29 g/mol air and the species molar mass. */
+export function volumePercent(massFraction: number, molarMassG: number): number {
+  if (!(massFraction > 0) || !(molarMassG > 0)) return 0;
+  return massFraction * (29 / molarMassG) * 100;
+}
+
+/** Ambient oxygen as a volume percent. 0.23 × 29/32 × 100. */
+export const O2_AMBIENT_VOLUME_PERCENT = volumePercent(0.23, 32);
+
+/**
+ * ISO 13571 oxygen term, per minute. The clean-air rate is subtracted, so
+ * 20.9% and anything richer add nothing.
+ */
+export function oxygenFedPerMin(volumePercentO2: number): number {
+  if (!(volumePercentO2 < 20.9)) return 0;
+  const clean = 1 / Math.exp(8.13);
+  const at = 1 / Math.exp(8.13 - 0.54 * (20.9 - volumePercentO2));
+  return Math.max(0, at - clean);
+}
+
+/**
+ * ISO 13571 clause 6.1.3. exp(%CO2 / 5). No carbon dioxide leaves it at 1.
+ * The percent is the oxygen volume the layer has lost, one volume of CO2
+ * for one volume of O2, the cellulose reaction (C6H10O5 + 6 O2 → 6 CO2 +
+ * 5 H2O). That ratio is assumed. A plastic makes less CO2 per O2, and CO
+ * takes a little of the carbon. It is not fitted.
+ */
+export function co2Hyperventilation(volumePercentCo2: number): number {
+  if (!(volumePercentCo2 > 0)) return 1;
+  return Math.exp(volumePercentCo2 / 5);
+}
+
+/** What a head in this layer breathes. The deficit from ambient oxygen is the CO2. */
+export function layerBreath(o2MassFraction: number): { oxygenVolumePercent: number; co2VolumePercent: number } {
+  const oxygen = volumePercent(o2MassFraction, 32);
+  return {
+    oxygenVolumePercent: oxygen,
+    co2VolumePercent: Math.max(0, O2_AMBIENT_VOLUME_PERCENT - oxygen),
+  };
+}
+
+/** ISO 13571 CO and HCN terms, per minute, then oxygen. CO2 multiplies the first two. */
+export function fedPerMin(
+  fumes: FumeGrams | undefined,
+  oxygenVolumePercent?: number,
+  co2VolumePercent?: number,
+): number {
   let rate = 0;
-  const co = fumes.CO ?? 0;
-  if (co > 0) rate += co / FED_CO_PPM_MIN;
-  const hcn = fumes.HCN ?? 0;
-  if (hcn > 0) rate += (Math.exp(hcn / FED_HCN_DIVISOR) - 1) / FED_HCN_PER_MIN;
+  if (fumes) {
+    const co = fumes.CO ?? 0;
+    if (co > 0) rate += co / FED_CO_PPM_MIN;
+    const hcn = fumes.HCN ?? 0;
+    if (hcn > 0) rate += (Math.exp(hcn / FED_HCN_DIVISOR) - 1) / FED_HCN_PER_MIN;
+  }
+  rate *= co2Hyperventilation(co2VolumePercent ?? 0);
+  rate += oxygenFedPerMin(oxygenVolumePercent ?? 20.9);
   return rate;
 }
 
 /** Accumulate FED. `dtSec` is physical time. Constant concentration is exact in dt. */
-export function advanceFed(fed: number, fumes: FumeGrams | undefined, dtSec: number): number {
+export function advanceFed(
+  fed: number,
+  fumes: FumeGrams | undefined,
+  dtSec: number,
+  oxygenVolumePercent?: number,
+  co2VolumePercent?: number,
+): number {
   if (!(dtSec > 0)) return fed;
-  return fed + fedPerMin(fumes) * (dtSec / 60);
+  return fed + fedPerMin(fumes, oxygenVolumePercent, co2VolumePercent) * (dtSec / 60);
 }
 
 /** ISO 13571 irritant sum. Instantaneous: it is not integrated. */

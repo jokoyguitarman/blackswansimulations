@@ -2626,8 +2626,9 @@ export class PolygonEvacuationEngine {
    */
   private breathe(ped: PedLabel, x: number, y: number, dt: number): boolean {
     if (ped.state === 'down' || ped.state === 'left_map') return false;
-    const fumes = this.field(ped.level).sample(x, y).fumes;
-    ped.fed = advanceFed(ped.fed ?? 0, fumes, dt);
+    const sample = this.field(ped.level).sample(x, y);
+    const fumes = sample.fumes;
+    ped.fed = advanceFed(ped.fed ?? 0, fumes, dt, sample.oxygenVolumePercent, sample.co2VolumePercent);
     ped.fec = fecOf(fumes);
     ped.fumeHeld = fecImpairs(ped.fec);
     if (!fedIncapacitates(ped.fed ?? 0)) return false;

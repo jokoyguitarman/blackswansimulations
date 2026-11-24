@@ -50,10 +50,13 @@ import {
   fecImpairs,
   fecOf,
   fedIncapacitates,
+  co2Hyperventilation,
   fedPerMin,
   fumesFromSmoke,
+  oxygenFedPerMin,
   sootProductionGPerS,
   speciesProductionGPerS,
+  ventilationBlend,
 } from '../src/lib/rts/toxicDose';
 import type { ChargeSpec } from '../src/lib/rts/blast/blastModel';
 import type { InteriorWall } from '../src/lib/rts/types';
@@ -160,12 +163,16 @@ describe('ISO 13571 dose', () => {
   });
 
   test('production is yield times mass-loss rate, and a cell with no yield emits nothing', () => {
-    const well = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, false);
+    const well = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, 0);
     assert.ok(Math.abs((well.CO ?? 0) - 4) < 1e-9, `well-vent CO ${well.CO}`);
-    const flashed = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, true);
-    assert.ok(Math.abs((flashed.CO ?? 0) - 200) < 1e-9, `post-flashover CO ${flashed.CO}`);
-    assert.equal(flashed.HCN, undefined);
-    assert.equal(flashed.acrolein, undefined);
+    const rich = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, 2);
+    assert.ok(Math.abs((rich.CO ?? 0) - 200) < 1e-9, `rich CO ${rich.CO}`);
+    assert.equal(ventilationBlend(0.75), 0);
+    assert.equal(ventilationBlend(1.5), 1);
+    const mid = speciesProductionGPerS(WOOD, WOOD_HEAT_KJ_KG, 1.125);
+    assert.ok(Math.abs((mid.CO ?? 0) - 102) < 1e-6, `mid CO ${mid.CO}`);
+    assert.equal(rich.HCN, undefined);
+    assert.equal(rich.acrolein, undefined);
     assert.ok(Math.abs(sootProductionGPerS(WOOD, WOOD_HEAT_KJ_KG) - 15) < 1e-9);
     assert.deepEqual(speciesProductionGPerS(WOOD, 0), {});
     const bare = { ...WOOD };
@@ -691,7 +698,7 @@ describe('smoke carries the gases', () => {
     }
   });
 
-  test('flashover switches the gas yield, and the dose does not depend on the frame size', () => {
+  test('the flashover latch does not switch the gas yield, and the dose does not depend on the frame size', () => {
     const sim = fireSim(new Map([['a', WOOD]]));
     let t = 0;
     while (!sim.isFlashed('a') && t < 400) {
@@ -703,8 +710,17 @@ describe('smoke carries the gases', () => {
     const after = sim.fumeSources()[0];
     const q = sim.fuelReleaseKw('a') ?? 0;
     const perKw = (after?.gramsPerS.CO ?? 0) / q;
-    const expected = (0.2 * 1000) / WOOD_HEAT_KJ_KG;
-    assert.ok(Math.abs(perKw - expected) / expected < 0.01, `post-flashover ${perKw}`);
+    // One stud and no walls is not a layer, so the yield stays well ventilated.
+    const expected = (0.004 * 1000) / WOOD_HEAT_KJ_KG;
+    assert.ok(Math.abs(perKw - expected) / expected < 0.01, `well-vent after the latch ${perKw}`);
+    assert.equal(oxygenFedPerMin(20.9), 0);
+    assert.ok(oxygenFedPerMin(12) > 0.03, `12% oxygen ${oxygenFedPerMin(12)}`);
+    assert.equal(co2Hyperventilation(0), 1);
+    assert.ok(Math.abs(co2Hyperventilation(5) - Math.exp(1)) < 1e-12);
+    const plain = fedPerMin({ CO: 35000 });
+    assert.ok(Math.abs(fedPerMin({ CO: 35000 }, 20.9, 5) - plain * Math.exp(1)) < 1e-9);
+    const o2 = oxygenFedPerMin(12);
+    assert.ok(Math.abs(fedPerMin({}, 12, 5) - o2) < 1e-12, 'CO2 does not multiply the oxygen term');
 
     const fine = doseOver(0.1, 300);
     const coarse = doseOver(1, 30);

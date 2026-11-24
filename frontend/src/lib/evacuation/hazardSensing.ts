@@ -18,6 +18,10 @@ export interface HazardSample {
   wet: boolean;
   /** ppm of gases in the smoke on the nearest stud. Empty is clean air. */
   fumes: FumeGrams;
+  /** Oxygen volume percent at the head. Absent is ambient. */
+  oxygenVolumePercent?: number;
+  /** Carbon dioxide volume percent at the head. Absent is none. */
+  co2VolumePercent?: number;
 }
 
 export interface HazardStud {
@@ -31,6 +35,8 @@ interface StudStateLike {
   fire: { state: string };
   wet?: boolean;
   fumes?: FumeGrams;
+  oxygenVolumePercent?: number;
+  co2VolumePercent?: number;
 }
 
 function asFireCell(state: string | undefined): FireCell {
@@ -69,6 +75,8 @@ export class HazardField {
       fire: asFireCell(st?.fire.state),
       wet: st?.wet === true,
       fumes: st?.fumes ?? {},
+      oxygenVolumePercent: st?.oxygenVolumePercent,
+      co2VolumePercent: st?.co2VolumePercent,
     };
   }
 
