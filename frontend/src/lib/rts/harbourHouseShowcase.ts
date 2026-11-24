@@ -228,6 +228,9 @@ export const harbourHouseSample = {
     locationDescription:
       'Harbour House showcase floor, dressed as a mall. Each shop is its own room, with a door onto the tile mall. The kitchen is a room of cooking oil. Gas lines do not burn. Corridors are tile, with a few benches. The sealed room is concrete.',
     pedestrianCount: 120,
+    // Fan only while a hood is discharging. Assumed, and not the lasting
+    // default: a scene may set 'appliances' (NFPA 96 §8.2.3.3).
+    hoodFanWhen: 'discharge' as const,
     levels: [
       {
         id: 'G',

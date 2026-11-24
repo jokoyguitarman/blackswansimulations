@@ -458,7 +458,8 @@ export const SPRINKLER_CEILING_M = 3;
 /**
  * Assumed height of a wet-chemical link above the cooking surface, metres.
  * A hood's detectors sit about a metre over the appliance, not at the
- * storey ceiling. 1.1 m is that assumption. The plan distance is still r,
+ * storey ceiling. 1.1 m is that assumption. It is not the fan intake:
+ * that centre is measured above the floor. The plan distance is still r,
  * so a hood on the appliance stud uses Alpert's r = 0 branch.
  */
 export const HOOD_HEIGHT_M = 1.1;

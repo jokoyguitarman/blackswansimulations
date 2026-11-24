@@ -296,6 +296,29 @@ export const HOOD_LENGTH_M = 1.22;
 /** One discharging hood, m³/s. The IMC rate times the assumed length. */
 export const HOOD_EXTRACT_M3_PER_S = HOOD_EXHAUST_M3_PER_S_PER_M * HOOD_LENGTH_M;
 
+/**
+ * Centre of the canopy intake above the floor, metres. CFAST TN 1889v2
+ * §6.1 reads the centre height of the duct opening above the floor.
+ * Greenheck Document 452413, the installation manual for its UL 710 canopy,
+ * gives a typical hanging height of 80 in (203.2 cm) from the finished
+ * floor to the front lower edge. The opening centre is taken as that lip.
+ * The filter sits just above it, and that offset is not in the manual.
+ * This is not the link height above the cooking surface.
+ */
+export const HOOD_INTAKE_M = 80 * 0.0254;
+
+/**
+ * When a hood fan runs. `discharge` is the default, and it is an assumption
+ * the user has not settled: the fan runs only while the wet-chemical system
+ * is discharging. NFPA 96 §8.2.3.1 keeps it running after that discharge.
+ * `appliances` also starts it when a heat-producing appliance under the hood
+ * is on, which this model takes as the hood being placed. NFPA 96 §8.2.3.3.
+ */
+export type HoodFanWhen = 'discharge' | 'appliances';
+
+/** The unsettled default. A scene may set the other value. */
+export const HOOD_FAN_WHEN: HoodFanWhen = 'discharge';
+
 export interface MechanicalVent {
   /** Nominal extract while the fan is on, m³/s. Positive leaves the room. */
   flowM3PerS: number;

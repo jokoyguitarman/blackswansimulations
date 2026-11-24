@@ -7,7 +7,6 @@ import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
 import { projectPolygon } from '../src/lib/evacuation/geometry';
 import {
   GAS_JET_KW,
-  HOOD_HEIGHT_M,
   STUD_AREA_M2,
   WET_FLOOR_SPEED,
   WOOD_HEAT_KJ_KG,
@@ -580,10 +579,9 @@ describe('smoke carries the gases', () => {
   });
 
   test('a discharging hood is a fan on the layer, not a hole in one stud', () => {
-    // Two studs, a door, and the stud outside that door. The hood intake
-    // is the link height. Once the layer reaches it, the fan takes smoke;
-    // above it, the fan takes clear air and pulls the layer down. The
-    // interface settles on that height.
+    // Two studs, a door, and the stud outside that door. The intake is the
+    // canopy, about 2 m above the floor. While the layer is below that, the
+    // fan takes smoke and holds the interface up.
     const walls = [
       wall(-1.5, 1.5, 4.5, 1.5),
       wall(-1.5, -1.5, 4.5, -1.5),
@@ -621,10 +619,9 @@ describe('smoke carries the gases', () => {
     const free = layerOf(bare);
     assert.ok(held, 'the hood removed the layer');
     assert.ok(free, 'the bare room did not layer');
-    assert.ok(
-      Math.abs((held?.zone.interfaceM ?? 0) - HOOD_HEIGHT_M) < 0.05,
-      `hood interface ${held?.zone.interfaceM}, intake ${HOOD_HEIGHT_M}`,
-    );
+    // The canopy lip is 2.03 m. This decaying pan and its door hold the
+    // interface above 1.5 m, short of that lip.
+    assert.ok((held?.zone.interfaceM ?? 0) > 1.5, `hood interface ${held?.zone.interfaceM}`);
     assert.ok(
       (free?.zone.interfaceM ?? 0) < (held?.zone.interfaceM ?? 0),
       `bare ${free?.zone.interfaceM}, hood ${held?.zone.interfaceM}`,
@@ -635,6 +632,35 @@ describe('smoke carries the gases', () => {
     const hoodPpm = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
     const barePpm = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
     assert.ok(hoodPpm > 0 && hoodPpm < barePpm, `ppm hood ${hoodPpm}, bare ${barePpm}`);
+  });
+
+  test('a hood with no layer still extracts, and only a discharging one does by default', () => {
+    // One stud and no walls, so no enclosure and no layer. The IMC flow
+    // comes off that column. The default waits for the discharge. The
+    // appliances setting is already drawing before the link opens.
+    const hooded = effects(new Map([['a', OIL]]), [], [head('c', 0, 0, 'wet_chemical')]);
+    const bare = effects(new Map([['a', OIL]]));
+    const cooking = effects(new Map([['a', OIL]]), [], [head('c', 0, 0, 'wet_chemical')]);
+    cooking.setHoodFanWhen('appliances');
+    let t = 0;
+    while (hooded.suppressionState('c')?.open !== true && t < 180) {
+      hooded.step(1, [], []);
+      bare.step(1, [], []);
+      cooking.step(1, [], []);
+      t += 1;
+    }
+    assert.ok(t < 180, 'hood did not open');
+    const atOpen = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
+    const cookingAtOpen = cooking.studStates.get('a')?.fumes?.acrolein ?? 0;
+    assert.ok(cookingAtOpen < atOpen, `appliances ${cookingAtOpen}, discharge ${atOpen}`);
+    for (let i = 0; i < 180; i++) {
+      hooded.step(1, [], []);
+      bare.step(1, [], []);
+    }
+    const later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
+    const bareLater = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
+    assert.ok(later > 0 && later < bareLater, `hood ${later}, bare ${bareLater}`);
+    assert.ok((hooded.studStates.get('a')?.smoke ?? 1) < (bare.studStates.get('a')?.smoke ?? 0));
   });
 
   test('a fryer fire reaches an irritant fraction of 1 in its own smoke, and the gas stays bounded', () => {

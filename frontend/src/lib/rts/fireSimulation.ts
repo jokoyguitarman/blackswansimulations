@@ -9,6 +9,7 @@ import {
   type SuppressionPlacement,
 } from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
+import { HOOD_FAN_WHEN, type HoodFanWhen } from './twoZone';
 import {
   ELECTRICAL_ARC_SEC,
   ELECTRICAL_DAMAGE_KPA,
@@ -666,14 +667,17 @@ export class FireSimulation {
   }
 
   /**
-   * The stud a discharging wet-chemical hood is mounted on, one entry per
-   * hood. Half a stud (1.5 m) is the mount. The spray throw is wider and is
-   * not the exhaust. A sprinkler is not a hood.
+   * The stud a wet-chemical hood is mounted on, one entry per hood. Half a
+   * stud (1.5 m) is the mount. The spray throw is wider and is not the
+   * exhaust. A sprinkler is not a hood. `discharge` counts a hood only
+   * while it is open. `appliances` counts every placed hood, because the
+   * appliance under it is taken as on.
    */
-  hoodColumns(): string[] {
+  hoodColumns(when: HoodFanWhen = HOOD_FAN_WHEN): string[] {
     const ids: string[] = [];
     for (const head of this.suppressionRuntime.values()) {
-      if (!head.open || head.kind !== 'wet_chemical') continue;
+      if (head.kind !== 'wet_chemical') continue;
+      if (when === 'discharge' && !head.open) continue;
       let best: string | null = null;
       let bestD = 1.5;
       for (const [id, stud] of this.studIndex) {

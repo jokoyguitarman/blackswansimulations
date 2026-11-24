@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
+import { HOOD_HEIGHT_M } from '../src/lib/rts/flameFront.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects.ts';
 import type { InteriorWall } from '../src/lib/rts/types.ts';
@@ -21,6 +22,8 @@ import {
   FAN_ZERO_FLOW_PA,
   HOOD_EXHAUST_M3_PER_S_PER_M,
   HOOD_EXTRACT_M3_PER_S,
+  HOOD_FAN_WHEN,
+  HOOD_INTAKE_M,
   HOOD_LENGTH_M,
   freshLayer,
   fanVolumeM3PerS,
@@ -291,6 +294,11 @@ test('a fan takes the layer that contains its intake', () => {
   assert.ok(Math.abs(HOOD_EXHAUST_M3_PER_S_PER_M - 0.465) < 1e-12);
   assert.equal(HOOD_LENGTH_M, 1.22);
   assert.ok(Math.abs(HOOD_EXTRACT_M3_PER_S - 0.465 * 1.22) < 1e-12);
+  // Greenheck 452413: 80 in from the floor to the canopy's front lower edge.
+  // That lip is the intake centre. It is not the link height over the pan.
+  assert.ok(Math.abs(HOOD_INTAKE_M - 80 * 0.0254) < 1e-12);
+  assert.ok(HOOD_INTAKE_M > HOOD_HEIGHT_M);
+  assert.equal(HOOD_FAN_WHEN, 'discharge');
 
   // Mass is density times the volume still moving. 353 / T is the density
   // already used for the orifice. The intake above the interface is hot.
@@ -334,6 +342,31 @@ test('a fan takes the layer that contains its intake', () => {
   assert.ok(lower.interfaceM > 0.3, `clear intake was swallowed ${lower.interfaceM}`);
   assert.ok(upper.sootG < none.sootG, `smoke fan soot ${upper.sootG}, none ${none.sootG}`);
   assert.ok(lower.sootG >= none.sootG * 0.9, `clear fan soot ${lower.sootG}, none ${none.sootG}`);
+
+  // A 40 kW pan in the NUREG room. The canopy is in the smoke, so the
+  // interface stays higher than the same room with no fan, and less soot
+  // is held.
+  const small: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 2.6,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 2 * 9 * 2.6 - 1.8, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 40, diameterM: diameterForReleaseKw(40) }],
+  };
+  const pan = (fans: LayerSpec['fans']) => {
+    let state = freshLayer(small.ceilingM);
+    for (let t = 0; t < 300; t++) state = stepZone(state, { ...small, fans }, 1, 1).state;
+    return state;
+  };
+  const open = pan(undefined);
+  const canopy = pan([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M }]);
+  assert.ok(canopy.interfaceM > open.interfaceM, `canopy ${canopy.interfaceM}, open ${open.interfaceM}`);
+  assert.ok(canopy.interfaceM > 1.7, `canopy dropped through head height ${canopy.interfaceM}`);
+  assert.ok(canopy.sootG < open.sootG, `canopy soot ${canopy.sootG}, open ${open.sootG}`);
 });
 
 test('the building outline is a wall except at an exit', () => {

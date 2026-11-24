@@ -7,6 +7,7 @@ import { edgeLength, isInsidePolygon, nearestEdge } from '../evacuation/geometry
 import type { ExitDef, Vec2 } from '../evacuation/types';
 import { entryById, matchFromEntry, type PlacedObject } from './materialLibrary';
 import type { InteriorWall } from './types';
+import { HOOD_FAN_WHEN, type HoodFanWhen } from './twoZone';
 import type { HawkerFacts, LayoutSource } from '@shared/hawkerFacts';
 
 export interface LayoutLabel {
@@ -23,6 +24,11 @@ export interface HawkerLayout {
   labels: LayoutLabel[];
   /** Seating point the existing charge can open a cooked stall's gas line from. */
   bomb: Vec2 | null;
+  /**
+   * When a stall hood's fan runs. Discharge-only until the user picks the
+   * default. See HOOD_FAN_WHEN.
+   */
+  hoodFanWhen: HoodFanWhen;
 }
 
 const COOKED_NORM =
@@ -488,5 +494,5 @@ export function layoutHawkerCentre(input: {
     });
   }
 
-  return { walls, exits, objects, labels, bomb };
+  return { walls, exits, objects, labels, bomb, hoodFanWhen: HOOD_FAN_WHEN };
 }

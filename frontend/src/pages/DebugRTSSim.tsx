@@ -117,6 +117,7 @@ import {
   type HazardPhase,
   type HazardEvent,
 } from '../lib/rts/spatialEffects';
+import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
 import {
   createSceneConfig,
   loadSceneConfig,
@@ -831,6 +832,8 @@ export function DebugRTSSim() {
   const [zoneKinds, setZoneKinds] = useState<Record<string, ZoneKind>>({});
   const blastFiredRef = useRef(false);
   const placedObjectsRef = useRef<PlacedObject[]>([]);
+  /** Discharge-only until the loaded scene says otherwise. */
+  const hoodFanWhenRef = useRef<HoodFanWhen>(HOOD_FAN_WHEN);
   const placeObjectRef = useRef(false);
   const objectIdRef = useRef(0);
   const explosionStartRef = useRef<number | null>(null);
@@ -1223,6 +1226,7 @@ export function DebugRTSSim() {
   }, [fetchResult, saveMapName, lat, lng, radius, liveOnly]);
 
   const handleLoadSavedMap = useCallback((m: SavedMap) => {
+    hoodFanWhenRef.current = HOOD_FAN_WHEN;
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -1475,6 +1479,7 @@ export function DebugRTSSim() {
   ]);
 
   const handleLoadSceneFromDb = useCallback(async (id: string) => {
+    hoodFanWhenRef.current = HOOD_FAN_WHEN;
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -1616,6 +1621,7 @@ export function DebugRTSSim() {
     setLiveNote(null);
     setLayoutLabels([]);
     const scene = foodCourtSample.scene;
+    hoodFanWhenRef.current = scene.hoodFanWhen;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
     const levelIds = savedLevels.map((level) => level.id);
@@ -1693,6 +1699,7 @@ export function DebugRTSSim() {
     setLiveNote(null);
     setLayoutLabels([]);
     const scene = harbourHouseSample.scene;
+    hoodFanWhenRef.current = scene.hoodFanWhen;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
     const levelIds = savedLevels.map((level) => level.id);
@@ -1857,6 +1864,7 @@ export function DebugRTSSim() {
       }
       const upperFloors = nextLevels.filter((level) => level.id !== 'G' && !level.designed).map((level) => level.id);
       const layout = layoutHawkerCentre({ verts, studs: indoor, facts, upperFloorIds: upperFloors });
+      hoodFanWhenRef.current = layout.hoodFanWhen;
       setLiveNote(`${footprintSessionNote(building)} ${researchNote}`);
       setLayoutLabels(layout.labels);
       setExits(layout.exits);
@@ -2235,6 +2243,7 @@ export function DebugRTSSim() {
       if (effectsEng && simRunning) {
         const walls = interiorWallsRef.current;
         const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
+        effectsEng.setHoodFanWhen(hoodFanWhenRef.current);
         effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
         effectsEng.setStoreyHeights(
           Object.fromEntries(levelsRef.current.map((level) => [level.id, level.heightM])),
