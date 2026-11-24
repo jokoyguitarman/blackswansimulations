@@ -29,7 +29,7 @@ import {
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
-  layerBurn,
+  oxygenLimitedBurn,
   oxygenMassFraction,
   steadyLayer,
   stepZone,
@@ -1067,12 +1067,14 @@ export class SpatialEffectsEngine {
       }
       const spec: LayerSpec = { ...enc.spec, fires, fans };
       const zone = prev?.zone ?? freshLayer(ceiling);
-      const opening = layerBurn(
-        fires,
+      const opening = oxygenLimitedBurn(
+        spec,
         zone.interfaceM,
+        zone.upperK,
         oxygenMassFraction(zone.lowerO2),
         oxygenMassFraction(zone.upperO2),
-      );
+        dt,
+      ).burn;
       const limitedFires =
         opening.prescribedKw > 0 && opening.fraction < 0.999
           ? fires.map((fire) => ({ ...fire, heatKw: fire.heatKw * opening.fraction }))
@@ -1105,7 +1107,7 @@ export class SpatialEffectsEngine {
         }
         zone.sootG = carried;
       }
-      const stepped = stepZone(zone, spec, dt, (sootByRoom.get(room) ?? 0) * opening.fraction);
+      const stepped = stepZone(zone, spec, dt, sootByRoom.get(room) ?? 0);
       this.layerState.set(room, {
         active: true,
         zone: stepped.state,
@@ -1250,8 +1252,7 @@ export class SpatialEffectsEngine {
         continue;
       }
       const volume = this.columnVolume(id);
-      const generation =
-        ((sootById.get(id) ?? 0) * this.fireSim.burnFraction(id) * SOOT_EXTINCTION_M2_PER_G) / volume;
+      const generation = ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
       const src = this.studIndex.get(id);
       const outdoor = src != null && src.spatialContext !== 'inside_building';
       const leak = SMOKE_LEAK_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);

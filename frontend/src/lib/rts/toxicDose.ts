@@ -211,14 +211,16 @@ export function volumePercent(massFraction: number, molarMassG: number): number 
 export const O2_AMBIENT_VOLUME_PERCENT = volumePercent(0.23, 32);
 
 /**
- * ISO 13571 oxygen term, per minute. The clean-air rate is subtracted, so
- * 20.9% and anything richer add nothing.
+ * ISO 13571 oxygen term, per minute. The rate at ambient is subtracted, so
+ * ambient air and anything richer add nothing. Ambient here is the layer's
+ * 0.23 mass fraction, 20.84% by volume, not the 20.9% written in the
+ * formula. A head in untouched air must not accumulate a dose.
  */
 export function oxygenFedPerMin(volumePercentO2: number): number {
-  if (!(volumePercentO2 < 20.9)) return 0;
-  const clean = 1 / Math.exp(8.13);
-  const at = 1 / Math.exp(8.13 - 0.54 * (20.9 - volumePercentO2));
-  return Math.max(0, at - clean);
+  const ambient = O2_AMBIENT_VOLUME_PERCENT;
+  if (!(volumePercentO2 < ambient)) return 0;
+  const at = (percent: number) => 1 / Math.exp(8.13 - 0.54 * (20.9 - percent));
+  return Math.max(0, at(volumePercentO2) - at(ambient));
 }
 
 /**
@@ -256,7 +258,7 @@ export function fedPerMin(
     if (hcn > 0) rate += (Math.exp(hcn / FED_HCN_DIVISOR) - 1) / FED_HCN_PER_MIN;
   }
   rate *= co2Hyperventilation(co2VolumePercent ?? 0);
-  rate += oxygenFedPerMin(oxygenVolumePercent ?? 20.9);
+  rate += oxygenFedPerMin(oxygenVolumePercent ?? O2_AMBIENT_VOLUME_PERCENT);
   return rate;
 }
 

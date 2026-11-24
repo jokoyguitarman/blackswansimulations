@@ -402,22 +402,36 @@ export function ventilationLimitedKw(areaM2: number, heightM: number): number {
 export interface LayerBurn {
   prescribedKw: number;
   burnedKw: number;
-  /** Prescribed release over the oxygen supply, before the cutoff. */
+  /**
+   * Prescribed release over the fresh-air oxygen supply, before the cutoff.
+   * Fresh air is the lower-layer stream. Recirculated upper-layer gas is
+   * not in it.
+   */
   phi: number;
   /** Burned over prescribed. 1 when the plume can still feed the fire. */
   fraction: number;
+  /** Lower-layer air the plumes were allowed to entrain, kg/s. */
+  lowerAirKgS: number;
   oxygenLowerKgS: number;
   oxygenUpperKgS: number;
+}
+
+interface PlumeAir {
+  heatKw: number;
+  eLower: number;
+  eUpper: number;
 }
 
 /**
  * CFAST Eq. 3.13 for every plume in the room. Entrainment up to the flame
  * tip, from the lower layer below the interface and from the upper layer
- * above it. Each plume only burns the oxygen it entrains. The prescribed
- * release is the pyrolysis the fire is asking for. What burns is the
- * lesser of that and the oxygen. Unburned fuel is not carried on; this
- * model does not have that stream, so the heat release itself is the
- * limited one.
+ * above it. The plumes share one lower-layer air supply: `lowerAirCapKgS`
+ * is the door inflow, the fan makeup, and the air the interface can still
+ * give up. A sum of stud plumes cannot burn more than that. The prescribed
+ * release is the pyrolysis the fire is asking for. What burns is the lesser
+ * of that and the oxygen. Unburned fuel is not carried on; this model does
+ * not have that stream, so the heat release itself is the limited one.
+ * φ uses the fresh lower-layer air only. Upper-layer gas is recirculated.
  */
 export function layerBurn(
   fires: readonly FirePlume[],
@@ -425,14 +439,14 @@ export function layerBurn(
   yLower: number,
   yUpper: number,
   chi = RADIATIVE_FRACTION,
+  lowerAirCapKgS = Number.POSITIVE_INFINITY,
 ): LayerBurn {
-  let prescribed = 0;
-  let supply = 0;
-  let fromLowerKw = 0;
-  let fromUpperKw = 0;
   const yL = yLower > 0 ? yLower : 0;
   const yU = yUpper > 0 ? yUpper : 0;
   const z = interfaceM > 0 ? interfaceM : 0;
+  const pieces: PlumeAir[] = [];
+  let prescribed = 0;
+  let wanted = 0;
   for (const fire of fires) {
     if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
     prescribed += fire.heatKw;
@@ -441,10 +455,18 @@ export function layerBurn(
     const eLower = heskestadEntrainmentKgS(fire.heatKw, lowerH, fire.diameterM, chi);
     const eFlame = heskestadEntrainmentKgS(fire.heatKw, flame, fire.diameterM, chi);
     const eUpper = Math.max(0, eFlame - eLower);
-    supply += oxygenSupplyKw(eLower, yL) + oxygenSupplyKw(eUpper, yU);
-    const capL = oxygenCapacityKw(eLower, yL);
-    const capU = oxygenCapacityKw(eUpper, yU);
-    const burned = Math.min(fire.heatKw, capL + capU);
+    pieces.push({ heatKw: fire.heatKw, eLower, eUpper });
+    wanted += eLower;
+  }
+  const cap = Number.isFinite(lowerAirCapKgS) ? Math.max(0, lowerAirCapKgS) : wanted;
+  const scale = wanted > cap ? cap / wanted : 1;
+  const lowerAir = wanted * scale;
+  let fromLowerKw = 0;
+  let fromUpperKw = 0;
+  for (const piece of pieces) {
+    const capL = oxygenCapacityKw(piece.eLower * scale, yL);
+    const capU = oxygenCapacityKw(piece.eUpper, yU);
+    const burned = Math.min(piece.heatKw, capL + capU);
     const lowerKw = Math.min(burned, capL);
     fromLowerKw += lowerKw;
     fromUpperKw += burned - lowerKw;
@@ -453,10 +475,73 @@ export function layerBurn(
   return {
     prescribedKw: prescribed,
     burnedKw,
-    phi: equivalenceRatio(prescribed, supply),
+    phi: equivalenceRatio(prescribed, oxygenSupplyKw(lowerAir, yL)),
     fraction: prescribed > 0 ? burnedKw / prescribed : 1,
+    lowerAirKgS: lowerAir,
     oxygenLowerKgS: DELTA_H_O2_KJ_PER_KG > 0 ? fromLowerKw / DELTA_H_O2_KJ_PER_KG : 0,
     oxygenUpperKgS: DELTA_H_O2_KJ_PER_KG > 0 ? fromUpperKw / DELTA_H_O2_KJ_PER_KG : 0,
+  };
+}
+
+/** The interface cannot fall through this. The same clamp the stepper uses. */
+const INTERFACE_FLOOR_M = 0.05;
+
+export interface LimitedBurn {
+  burn: LayerBurn;
+  plumeKgS: number;
+  inKgS: number;
+  outKgS: number;
+  outByVentKgS: number[];
+  fanUpperKgS: number;
+  fanLowerKgS: number;
+}
+
+/**
+ * The oxygen limit tied to the vents. Lower-layer air available this step
+ * is the door inflow and fan makeup, plus the air the interface can still
+ * descend through. At the floor only the inflow remains. The plume the
+ * mass balance moves cannot exceed that air, and the burn cannot use more
+ * lower-layer air than that plume moves.
+ */
+export function oxygenLimitedBurn(
+  spec: LayerSpec,
+  interfaceM: number,
+  upperK: number,
+  yLower: number,
+  yUpper: number,
+  dt: number,
+): LimitedBurn {
+  const chi = chiOf(spec);
+  const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
+  const slice = dt > 0 ? dt : SUBSTEP_S;
+  const rho = densityKgM3(AMBIENT_K);
+  const descendKgS = (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
+  let airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
+  let qConv = 0;
+  for (const fire of spec.fires) if (fire.heatKw > 0) qConv += (1 - chi) * fire.heatKw;
+  const riseNow = Math.max(upperK - AMBIENT_K, 1);
+  let burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  let plume = 0;
+  for (let n = 0; n < 4; n++) {
+    const fraction = burn.prescribedKw > 0 ? burn.fraction : 1;
+    const qGas = qConv * fraction;
+    plume = plumeKgS(spec, interfaceM);
+    if (plume > airCap) plume = airCap;
+    const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
+    if (!(qGas > 0)) plume = 0;
+    else if (plume > enthalpyCap) plume = enthalpyCap;
+    if (!(burn.lowerAirKgS > plume + 1e-4)) break;
+    airCap = plume;
+    burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  }
+  return {
+    burn,
+    plumeKgS: plume,
+    inKgS: flows.inKgS,
+    outKgS: flows.outKgS,
+    outByVentKgS: flows.outByVent,
+    fanUpperKgS: flows.fanUpperKgS,
+    fanLowerKgS: flows.fanLowerKgS,
   };
 }
 
@@ -983,28 +1068,25 @@ function stepZoneNow(
   const split = fireSplit(spec);
   const q = split.convectedKw;
   const radiantBase = fireRadiantKwM2;
-  const chi = chiOf(spec);
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
     if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
-    const burn = layerBurn(spec.fires, z, yL, yU, chi);
+    const limited = oxygenLimitedBurn(spec, z, temp, yL, yU, slice);
+    const burn = limited.burn;
     burnedFraction = burn.prescribedKw > 0 ? burn.fraction : 1;
     phi = burn.phi;
     const qGas = q * burnedFraction;
     fireRadiantKwM2 = radiantBase * burnedFraction;
     const depth = Math.max(0.02, spec.ceilingM - z);
     const mass = densityKgM3(temp) * spec.areaM2 * depth;
-    let plume = plumeKgS(spec, z);
-    const riseNow = Math.max(temp - AMBIENT_K, 1);
-    // CFAST Eq. 3.18. The plume correlation uses the prescribed fire.
-    // The cap stops it carrying more enthalpy than the heat the oxygen
-    // actually released. An unlimited fire releases the prescribed
-    // convected part, so the cap is the one this room had before.
-    const cap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
-    if (!(qGas > 0)) plume = 0;
-    else if (plume > cap) plume = cap;
-    const flows = balancedFlows(spec.vents, z, temp, spec.fans ?? []);
-    outByVent = flows.outByVent;
+    const plume = limited.plumeKgS;
+    const flows = {
+      inKgS: limited.inKgS,
+      outKgS: limited.outKgS,
+      fanLowerKgS: limited.fanLowerKgS,
+      fanUpperKgS: limited.fanUpperKgS,
+    };
+    outByVent = limited.outByVentKgS;
     const qLoss = lossPowerKw(spec.boundaries, age, temp);
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
     let dT = (qGas - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
@@ -1029,7 +1111,7 @@ function stepZoneNow(
     const o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
     const mL2 = mL - slicePlume - sliceFanL + sliceIn;
     const mU2 = mass - sliceOut - sliceFanU + slicePlume;
-    yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : O2_AMBIENT_MASS;
+    yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
     z = Math.min(spec.ceilingM - 0.02, Math.max(0.05, z + dZ * slice));

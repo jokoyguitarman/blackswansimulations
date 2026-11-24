@@ -725,11 +725,49 @@ test('oxygen limits the fire at the CFAST cutoff, and 1500 A√H is that cap', (
   sealed.vents = [];
   let state = freshLayer(sealed.ceilingM);
   let limited = 1;
+  let phiSealed = 0;
   for (let t = 0; t < 120; t++) {
     const step = stepZone(state, sealed, 1);
     state = step.state;
     limited = step.burnedFraction;
+    phiSealed = step.phi;
   }
   assert.ok((state.upperO2 ?? 1) < O2_AMBIENT_MASS, `upper oxygen ${state.upperO2}`);
   assert.ok(limited < 0.5, `sealed fraction ${limited}, oxygen ${state.upperO2}`);
+  assert.ok(phiSealed > 1, `sealed φ ${phiSealed}`);
+  // An emptied lower layer stays empty. It does not refill with ambient air.
+  state.lowerO2 = 0.05;
+  state.interfaceM = 0.05;
+  const held = stepZone(state, sealed, 1);
+  assert.ok((held.state.lowerO2 ?? 1) <= 0.05, `lower oxygen refilled to ${held.state.lowerO2}`);
+});
+
+test('a single door holds a large fire near 1500 A√H', () => {
+  const width = 0.9;
+  const height = 2;
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  // Ten studs, one door. The sum of the plumes wants more air than the door admits.
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  const burned: number[] = [];
+  const phi: number[] = [];
+  for (let t = 0; t < 600; t++) {
+    const step = stepZone(state, spec, 1);
+    state = step.state;
+    burned.push(step.burnedFraction * prescribed);
+    phi.push(step.phi);
+  }
+  const tail = burned.slice(480);
+  const mean = tail.reduce((sum, value) => sum + value, 0) / tail.length;
+  const meanPhi = phi.slice(480).reduce((sum, value) => sum + value, 0) / tail.length;
+  const cap = ventilationLimitedKw(width * height, height);
+  // The room, not the algebra. The formula itself is within 5%. This is the
+  // doorway the stepper actually runs, averaged over the last two minutes.
+  assert.ok(Math.abs(mean - cap) / cap < 0.15, `mean ${mean.toFixed(0)} kW vs ${cap.toFixed(0)}`);
+  assert.ok(meanPhi > 1, `φ ${meanPhi}`);
+  assert.ok(mean / prescribed < 0.5, `fraction ${mean / prescribed}`);
 });

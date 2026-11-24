@@ -528,7 +528,7 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'none');
   });
 
-  test('a blast lights a confirmed table, and the room then flashes onto the next fuel stud', () => {
+  test('a blast lights a confirmed table, and the sealed room waits for the front', () => {
     const { engine, zone } = blastEngine(new Set(['table', 'next']));
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
@@ -536,14 +536,24 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'burning');
     assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
 
+    // Three indoor studs, no opening. The oxygen in that room is used up
+    // before the burned release reaches 1 MW, so the latch does not light
+    // the next stud at the unlimited age. The next stud is 3 m from the
+    // table. The light-fuel front covers that distance at the entry's speed.
+    const fuel = defaultLightFuel();
+    const flash = flashoverAgeSec(fuel);
+    const frontSec = fuel.spreadMPerMin != null && fuel.spreadMPerMin > 0 ? (3 / fuel.spreadMPerMin) * 60 : null;
+    assert.ok(flash != null && frontSec != null);
+    assert.ok(frontSec > flash + 2);
     let seconds = 0.1;
+    let burningAtLatch = false;
     while (engine.studStates.get('next')?.fire.state !== 'burning' && seconds < 400) {
       engine.step(1, [], [zone]);
       seconds += 1;
+      if (seconds <= flash + 2 && engine.studStates.get('next')?.fire.state === 'burning') burningAtLatch = true;
     }
-    const flash = flashoverAgeSec(defaultLightFuel());
-    assert.ok(flash != null);
-    assert.ok(seconds > flash && seconds < flash + 2, `room lit the next stud at ${seconds}s`);
+    assert.equal(burningAtLatch, false);
+    assert.ok(seconds > frontSec && seconds < frontSec + 2, `front lit the next stud at ${seconds}s`);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
     assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });

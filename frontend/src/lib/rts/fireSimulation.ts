@@ -667,8 +667,9 @@ export class FireSimulation {
   /**
    * Grams per second each burning cell is putting into the smoke, and the
    * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
-   * The release is the decayed one, then the oxygen limit. The gas yield
-   * follows the stud's equivalence ratio. No layer means the well-ventilated
+   * The release is the prescribed pyrolysis, the fuel the timer is
+   * consuming. The yield follows the stud's equivalence ratio. The oxygen
+   * limit cuts the heat, not this mass. No layer means the well-ventilated
    * set. The flashover latch does not choose it.
    */
   fumeSources(): Array<{
@@ -686,7 +687,7 @@ export class FireSimulation {
       sootGPerS: number;
     }> = [];
     for (const fire of this.liveFires()) {
-      const release = this.releaseKw(fire.cell, fire.meta) * this.burnFraction(fire.id);
+      const release = this.releaseKw(fire.cell, fire.meta);
       const gramsPerS = speciesProductionGPerS(fire.cell, release, this.burnPhi(fire.id));
       const sootGPerS = sootProductionGPerS(fire.cell, release);
       if (!fumesPresent(gramsPerS) || !(sootGPerS > 0)) continue;

@@ -53,6 +53,7 @@ import {
   co2Hyperventilation,
   fedPerMin,
   fumesFromSmoke,
+  O2_AMBIENT_VOLUME_PERCENT,
   oxygenFedPerMin,
   sootProductionGPerS,
   speciesProductionGPerS,
@@ -714,6 +715,17 @@ describe('smoke carries the gases', () => {
     const expected = (0.004 * 1000) / WOOD_HEAT_KJ_KG;
     assert.ok(Math.abs(perKw - expected) / expected < 0.01, `well-vent after the latch ${perKw}`);
     assert.equal(oxygenFedPerMin(20.9), 0);
+    assert.equal(oxygenFedPerMin(O2_AMBIENT_VOLUME_PERCENT), 0);
+    const limited = fireSim(new Map([['rich', WOOD]]));
+    limited.step(1, [], []);
+    limited.setBurnLimit(['rich'], 0.35, 2);
+    const pyrolysis = limited.fuelReleaseKw('rich') ?? 0;
+    const fumes = limited.fumeSources()[0];
+    const full = speciesProductionGPerS(WOOD, pyrolysis, 2);
+    assert.ok(Math.abs((fumes?.gramsPerS.CO ?? 0) - (full.CO ?? 0)) < 1e-6, 'CO follows the fuel mass lost');
+    assert.ok(Math.abs((fumes?.sootGPerS ?? 0) - sootProductionGPerS(WOOD, pyrolysis)) < 1e-6);
+    const burnedOnly = speciesProductionGPerS(WOOD, pyrolysis * 0.35, 2);
+    assert.ok((fumes?.gramsPerS.CO ?? 0) > (burnedOnly.CO ?? 0) * 2);
     assert.ok(oxygenFedPerMin(12) > 0.03, `12% oxygen ${oxygenFedPerMin(12)}`);
     assert.equal(co2Hyperventilation(0), 1);
     assert.ok(Math.abs(co2Hyperventilation(5) - Math.exp(1)) < 1e-12);
