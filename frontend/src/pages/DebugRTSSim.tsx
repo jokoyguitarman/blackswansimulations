@@ -43,6 +43,8 @@ import {
   levelsForFootprint,
   type OsmBuildingFootprint,
 } from '../lib/rts/footprintLevels';
+import { layoutHawkerCentre, type LayoutLabel } from '../lib/rts/hawkerLayout';
+import { EMPTY_HAWKER_FACTS, type HawkerFacts } from '@shared/hawkerFacts';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { PlacedObjectDraw } from '../lib/rts/renderer';
@@ -589,6 +591,7 @@ export function DebugRTSSim() {
   const [savingScene, setSavingScene] = useState(false);
   const [liveOnly, setLiveOnly] = useState(false);
   const [liveNote, setLiveNote] = useState<string | null>(null);
+  const [layoutLabels, setLayoutLabels] = useState<LayoutLabel[]>([]);
   const [hollandLoading, setHollandLoading] = useState(false);
   const [hollandError, setHollandError] = useState<string | null>(null);
 
@@ -641,6 +644,7 @@ export function DebugRTSSim() {
     if (drawnVertices.length < 3) return;
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
 
     const polygon = drawnVertices;
     let cLat = 0,
@@ -1093,6 +1097,7 @@ export function DebugRTSSim() {
   const handleFetch = useCallback(async () => {
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
     setLoading(true);
     setError(null);
     setFetchResult(null);
@@ -1220,6 +1225,7 @@ export function DebugRTSSim() {
   const handleLoadSavedMap = useCallback((m: SavedMap) => {
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
     setLat(m.lat);
     setLng(m.lng);
     setRadius(m.radius);
@@ -1471,6 +1477,7 @@ export function DebugRTSSim() {
   const handleLoadSceneFromDb = useCallback(async (id: string) => {
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
     try {
       const sc = await loadSceneConfig(id);
       setSceneConfigId(sc.id);
@@ -1607,6 +1614,7 @@ export function DebugRTSSim() {
   const handleLoadFoodCourt = useCallback(() => {
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
     const scene = foodCourtSample.scene;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
@@ -1683,6 +1691,7 @@ export function DebugRTSSim() {
   const handleLoadHarbourHouse = useCallback(() => {
     setLiveOnly(false);
     setLiveNote(null);
+    setLayoutLabels([]);
     const scene = harbourHouseSample.scene;
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
@@ -1819,11 +1828,43 @@ export function DebugRTSSim() {
       setSelectedGridIdx(0);
       setSceneConfigId(null);
       setLiveOnly(true);
-      setLiveNote(footprintSessionNote(building));
-      setExits([]);
-      setInteriorWalls([]);
+      const verts = projectPolygon(polygon);
+      const indoor = projectSceneStuds(polygon, grid.studs)
+        .filter((stud) => stud.spatialContext === 'inside_building' && stud.floor === 'G')
+        .map((stud) => ({ id: stud.id, x: stud.simPos.x, y: stud.simPos.y }));
+      let facts: HawkerFacts = EMPTY_HAWKER_FACTS;
+      let researchNote = 'No page could be fetched, so the interior is assumed.';
+      try {
+        const interior = await fetch(
+          apiUrl(
+            `/api/debug/building-interior?name=${encodeURIComponent(building.name ?? 'Holland Village Market and Food Centre')}`,
+          ),
+          { headers },
+        );
+        if (interior.ok) {
+          const research = (await interior.json()) as {
+            mode?: string;
+            facts?: HawkerFacts;
+          };
+          if (research.facts) facts = research.facts;
+          researchNote =
+            research.mode === 'search'
+              ? 'Interior pages came from a live web search.'
+              : research.mode === 'listed_pages'
+                ? 'Web search returned no pages, so the public centre pages were fetched instead.'
+                : researchNote;
+        }
+      } catch {
+        researchNote = 'The interior search failed, so the interior is assumed.';
+      }
+      const upperFloors = nextLevels.filter((level) => level.id !== 'G' && !level.designed).map((level) => level.id);
+      const layout = layoutHawkerCentre({ verts, studs: indoor, facts, upperFloorIds: upperFloors });
+      setLiveNote(`${footprintSessionNote(building)} ${researchNote}`);
+      setLayoutLabels(layout.labels);
+      setExits(layout.exits);
+      setInteriorWalls(layout.walls);
       setHazardZones([]);
-      setPlacedObjects([]);
+      setPlacedObjects(objectsOnStuds(polygon, grid.studs, layout.objects));
       setActiveObjectId(null);
       setPlacingObject(false);
       setObjectNotice(null);
@@ -1843,10 +1884,9 @@ export function DebugRTSSim() {
       setGasJetCount(0);
       setArcCount(0);
       setSprayCount(0);
-      const verts = projectPolygon(polygon);
       rtsRef.current = new RTSEngine();
       rtsRef.current.setBuildingVertices(verts);
-      rtsRef.current.setExits([]);
+      rtsRef.current.setExits(layout.exits);
       setWallPoints(generateWallPoints(polygon, verts));
       setPhase('rts');
     } catch (err) {
@@ -7215,6 +7255,27 @@ export function DebugRTSSim() {
                 </button>
                 {liveOnly && liveNote && (
                   <div className="text-xs text-amber-300 mt-1">{liveNote}</div>
+                )}
+                {liveOnly && layoutLabels.length > 0 && (
+                  <ul className="mt-2 max-h-48 overflow-auto space-y-1">
+                    {layoutLabels.map((label) => (
+                      <li key={label.id} className="text-xs text-slate-300">
+                        <span
+                          className={
+                            label.origin === 'researched' ? 'text-emerald-400' : 'text-amber-500'
+                          }
+                        >
+                          {label.origin === 'researched' ? 'Researched. ' : 'Assumed. '}
+                        </span>
+                        {label.text}
+                        {label.sources.map((source) => (
+                          <div key={source.url} className="text-slate-500">
+                            {source.title}: {source.quote}
+                          </div>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
                 )}
                 {sceneConfigId && (
                   <div className="text-xs text-blue-500 mt-0.5">
