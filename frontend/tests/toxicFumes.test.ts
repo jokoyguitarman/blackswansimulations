@@ -7,6 +7,7 @@ import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
 import { projectPolygon } from '../src/lib/evacuation/geometry';
 import {
   GAS_JET_KW,
+  HOOD_HEIGHT_M,
   STUD_AREA_M2,
   WET_FLOOR_SPEED,
   WOOD_HEAT_KJ_KG,
@@ -578,34 +579,62 @@ describe('smoke carries the gases', () => {
     assert.ok(held < free * 0.8, `hood ${held}, bare ${free}`);
   });
 
-  test('the concentration a person breathes falls after a hood opens', () => {
-    const hooded = effects(new Map([['a', OIL]]), [], [head('c', 0, 0, 'wet_chemical')]);
-    const bare = effects(new Map([['a', OIL]]));
+  test('a discharging hood is a fan on the layer, not a hole in one stud', () => {
+    // Two studs, a door, and the stud outside that door. The hood intake
+    // is the link height. Once the layer reaches it, the fan takes smoke;
+    // above it, the fan takes clear air and pulls the layer down. The
+    // interface settles on that height.
+    const walls = [
+      wall(-1.5, 1.5, 4.5, 1.5),
+      wall(-1.5, -1.5, 4.5, -1.5),
+      wall(-1.5, -1.5, -1.5, 1.5),
+      wall(4.5, -1.5, 4.5, 1.5, true),
+    ];
+    // The NUREG worked-example door, 0.9 m.
+    walls[3]!.doorWidth = 0.9;
+    const outside: FireSimStud = {
+      id: 'out',
+      simPos: { x: 6, y: 0 },
+      spatialContext: 'open_air',
+      level: 'G',
+    };
+    const hooded = effects(new Map([['a', OIL]]), [stud('b', 3, 0), outside], [
+      head('c', 0, 0, 'wet_chemical'),
+    ]);
+    const bare = effects(new Map([['a', OIL]]), [stud('b', 3, 0), outside]);
     let t = 0;
     while (hooded.suppressionState('c')?.open !== true && t < 180) {
-      hooded.step(1, [], []);
-      bare.step(1, [], []);
+      hooded.step(1, walls, []);
+      bare.step(1, walls, []);
       t += 1;
     }
     assert.ok(t < 180, 'hood did not open');
-    const opened = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
-    assert.ok(opened > 0, 'no acrolein when the hood opened');
-    // The hood opens while the pan is still growing, so the ppm can rise
-    // after it opens. Extraction is 1 m³/s on this stud's storey column.
-    // By ten minutes that exhaust has brought the ppm under 80% of the
-    // opening reading, and well under the same pan with no hood.
-    const limitS = 600;
-    const stepS = 0.1;
-    for (let elapsed = 0; elapsed < limitS - 1e-9; elapsed += stepS) {
-      hooded.step(stepS, [], []);
-      bare.step(stepS, [], []);
+    for (let i = 0; i < 150; i++) {
+      hooded.step(1, walls, []);
+      bare.step(1, walls, []);
     }
-    const later = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
-    const bareLater = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
-    assert.ok(later > 0, 'hood cleared the pan entirely');
-    assert.ok(later < opened * 0.8, `hood ${later} from ${opened}`);
-    assert.ok(later < bareLater * 0.5, `hood ${later}, bare ${bareLater}`);
-    assert.ok((bare.studStates.get('a')?.smoke ?? 0) > (hooded.studStates.get('a')?.smoke ?? 0));
+    const layerOf = (engine: SpatialEffectsEngine) =>
+      [...(engine as unknown as { layerState: Map<string, { active: boolean; zone: { interfaceM: number; sootG: number } }> }).layerState.values()].find(
+        (row) => row.active,
+      );
+    const held = layerOf(hooded);
+    const free = layerOf(bare);
+    assert.ok(held, 'the hood removed the layer');
+    assert.ok(free, 'the bare room did not layer');
+    assert.ok(
+      Math.abs((held?.zone.interfaceM ?? 0) - HOOD_HEIGHT_M) < 0.05,
+      `hood interface ${held?.zone.interfaceM}, intake ${HOOD_HEIGHT_M}`,
+    );
+    assert.ok(
+      (free?.zone.interfaceM ?? 0) < (held?.zone.interfaceM ?? 0),
+      `bare ${free?.zone.interfaceM}, hood ${held?.zone.interfaceM}`,
+    );
+    const hoodSmoke = hooded.studStates.get('a')?.smoke ?? 0;
+    const bareSmoke = bare.studStates.get('a')?.smoke ?? 0;
+    assert.ok(hoodSmoke > 0 && hoodSmoke < bareSmoke, `smoke hood ${hoodSmoke}, bare ${bareSmoke}`);
+    const hoodPpm = hooded.studStates.get('a')?.fumes?.acrolein ?? 0;
+    const barePpm = bare.studStates.get('a')?.fumes?.acrolein ?? 0;
+    assert.ok(hoodPpm > 0 && hoodPpm < barePpm, `ppm hood ${hoodPpm}, bare ${barePpm}`);
   });
 
   test('a fryer fire reaches an irritant fraction of 1 in its own smoke, and the gas stays bounded', () => {

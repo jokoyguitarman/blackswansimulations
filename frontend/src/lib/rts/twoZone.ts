@@ -269,6 +269,53 @@ export interface Vent {
   soffitM: number;
 }
 
+/**
+ * A fan. CFAST Technical Reference, NIST TN 1889v1 §4.3, specifies a volume
+ * flow, not a duct and not a fan curve. NIST TN 1889v2 §6.2 then holds that
+ * flow constant up to 200 Pa of backwards pressure and cuts it off at 300 Pa.
+ * Those two pressures are the CFAST defaults. Between them the flow falls
+ * in a straight line.
+ */
+export const FAN_FULL_FLOW_PA = 200;
+export const FAN_ZERO_FLOW_PA = 300;
+
+/**
+ * 2021 IMC Section 507.5, a wall-mounted canopy over a medium-duty appliance.
+ * A fryer is medium duty (IMC Section 202). 300 cubic feet per minute per
+ * linear foot. The code's own SI note is 1.55 L/s per metre for each cfm
+ * per foot, so 300 × 1.55 = 465 L/s per metre of hood.
+ */
+export const HOOD_EXHAUST_M3_PER_S_PER_M = (300 * 1.55) / 1000;
+
+/**
+ * Assumed. The hood length is not stored on the appliance. 1.22 m is a 4 ft
+ * canopy over one appliance. It is not the width of the stall.
+ */
+export const HOOD_LENGTH_M = 1.22;
+
+/** One discharging hood, m³/s. The IMC rate times the assumed length. */
+export const HOOD_EXTRACT_M3_PER_S = HOOD_EXHAUST_M3_PER_S_PER_M * HOOD_LENGTH_M;
+
+export interface MechanicalVent {
+  /** Nominal extract while the fan is on, m³/s. Positive leaves the room. */
+  flowM3PerS: number;
+  /** Centre of the intake above the floor, m. CFAST TN 1889v2 §6.1. */
+  intakeM: number;
+}
+
+/**
+ * Volume still moving against a backwards pressure. At or below 200 Pa the
+ * fan is at its nominal flow. At or above 300 Pa it is stopped.
+ */
+export function fanVolumeM3PerS(nominalM3PerS: number, backPressurePa: number): number {
+  if (!(nominalM3PerS > 0)) return 0;
+  const back = Math.max(0, backPressurePa);
+  if (back <= FAN_FULL_FLOW_PA) return nominalM3PerS;
+  if (back >= FAN_ZERO_FLOW_PA) return 0;
+  const span = FAN_ZERO_FLOW_PA - FAN_FULL_FLOW_PA;
+  return (nominalM3PerS * (FAN_ZERO_FLOW_PA - back)) / span;
+}
+
 export interface Boundary {
   areaM2: number;
   lining: Lining;
@@ -285,6 +332,12 @@ export interface LayerSpec {
   vents: readonly Vent[];
   boundaries: readonly Boundary[];
   fires: readonly FirePlume[];
+  /**
+   * Fans. Absent means none. Each one extracts from the layer that contains
+   * its intake: above the interface, the upper layer; at or below it, the
+   * lower layer.
+   */
+  fans?: readonly MechanicalVent[];
   /** Radiative fraction. Defaults to the contents value. */
   chi?: number;
 }
@@ -462,6 +515,10 @@ interface SliceFlows {
 interface Flows extends SliceFlows {
   /** Outflow of each vent, same order as the spec. */
   outByVent: number[];
+  /** Fan extract from the upper layer, kg/s. It leaves through the duct. */
+  fanUpperKgS: number;
+  /** Fan extract from the lower layer, kg/s. Clear air, in this model. */
+  fanLowerKgS: number;
 }
 
 function pressureAt(z: number, interfaceM: number, dP0: number, rhoL: number, rhoU: number): number {
@@ -469,8 +526,48 @@ function pressureAt(z: number, interfaceM: number, dP0: number, rhoL: number, rh
   return dP0 + (rhoL - rhoU) * LEVEL.G * (z - interfaceM);
 }
 
+/**
+ * Which layer a fan draws, and the mass that leaves. The intake centre is
+ * CFAST TN 1889v2 §6.1. Above the interface it is in the upper layer, so the
+ * density is the hot gas. At or below the interface it is in the lower
+ * layer, which this model keeps at ambient. The mass flow is that density
+ * times the volume still moving at the room pressure. Soot leaves only with
+ * the upper-layer stream. CFAST filtering starts off (TN 1889v1 §4.3), so
+ * none of that soot is caught.
+ */
+export function mechanicalExtract(
+  fans: readonly MechanicalVent[],
+  interfaceM: number,
+  upperK: number,
+  floorPressurePa: number,
+): { upperKgS: number; lowerKgS: number } {
+  let upper = 0;
+  let lower = 0;
+  const rhoL = densityKgM3(AMBIENT_K);
+  const rhoU = densityKgM3(upperK);
+  for (const fan of fans) {
+    if (!(fan.flowM3PerS > 0) || !(fan.intakeM >= 0)) continue;
+    const atIntake = pressureAt(fan.intakeM, interfaceM, floorPressurePa, rhoL, rhoU);
+    const volume = fanVolumeM3PerS(fan.flowM3PerS, -atIntake);
+    if (!(volume > 0)) continue;
+    if (fan.intakeM > interfaceM) upper += volume * rhoU;
+    else lower += volume * rhoL;
+  }
+  return { upperKgS: upper, lowerKgS: lower };
+}
+
+function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Flows {
+  return { ...door, fanUpperKgS: fans.upperKgS, fanLowerKgS: fans.lowerKgS };
+}
+
 function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, dP0: number): Flows {
-  const flows: Flows = { inKgS: 0, outKgS: 0, outByVent: vents.map(() => 0) };
+  const flows: Flows = {
+    inKgS: 0,
+    outKgS: 0,
+    outByVent: vents.map(() => 0),
+    fanUpperKgS: 0,
+    fanLowerKgS: 0,
+  };
   const rhoU = densityKgM3(upperK);
   const rhoL = densityKgM3(AMBIENT_K);
   const rhoA = LEVEL.RHO_AIR;
@@ -529,10 +626,19 @@ function sliceFlows(
   return flows;
 }
 
-function balancedFlows(vents: readonly Vent[], interfaceM: number, upperK: number): Flows {
-  if (vents.length === 0) return { inKgS: 0, outKgS: 0, outByVent: [] };
-  const at = (p: number) => ventFlows(vents, interfaceM, upperK, p);
-  const net = (flow: Flows) => flow.inKgS - flow.outKgS;
+function balancedFlows(
+  vents: readonly Vent[],
+  interfaceM: number,
+  upperK: number,
+  fans: readonly MechanicalVent[] = [],
+): Flows {
+  const at = (p: number) =>
+    withFans(ventFlows(vents, interfaceM, upperK, p), mechanicalExtract(fans, interfaceM, upperK, p));
+  // No orifice to relieve the room. The fan is read at zero pressure
+  // difference, so it stays at its nominal flow. A sealed volume would
+  // climb until the fan stalled; this model does not grow that pressure.
+  if (vents.length === 0) return at(0);
+  const net = (flow: Flows) => flow.inKgS - flow.outKgS - flow.fanUpperKgS - flow.fanLowerKgS;
   let lo = -80;
   let hi = 20;
   let flo = at(lo);
@@ -562,6 +668,7 @@ interface Balance {
   plumeKgS: number;
   outKgS: number;
   inKgS: number;
+  fanUpperKgS: number;
   riseK: number;
 }
 
@@ -583,8 +690,14 @@ export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Bala
     else hi = mid;
   }
   const rise = 0.5 * (lo + hi);
-  const flows = balancedFlows(spec.vents, interfaceM, AMBIENT_K + rise);
-  return { plumeKgS: plume, outKgS: flows.outKgS, inKgS: flows.inKgS, riseK: rise };
+  const flows = balancedFlows(spec.vents, interfaceM, AMBIENT_K + rise, spec.fans ?? []);
+  return {
+    plumeKgS: plume,
+    outKgS: flows.outKgS,
+    inKgS: flows.inKgS,
+    fanUpperKgS: flows.fanUpperKgS,
+    riseK: rise,
+  };
 }
 
 /**
@@ -605,7 +718,9 @@ function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
   if (!(zMax > zMin)) return null;
   const residual = (z: number) => {
     const row = balanceAt(spec, z, tS);
-    return row.plumeKgS - row.outKgS;
+    // The plume replaces what the door and an upper-layer fan carry out.
+    // A fan in the lower layer does not take smoke, so it is not in this.
+    return row.plumeKgS - row.outKgS - row.fanUpperKgS;
   };
   const samples = 36;
   let zPrev = zMin;
@@ -685,7 +800,7 @@ function stepZoneNow(
     const riseNow = Math.max(temp - AMBIENT_K, 1);
     const cap = q > 0 ? q / (CP_KJ_KGK * riseNow) : 0;
     if (cap > 0 && plume > cap) plume = cap;
-    const flows = balancedFlows(spec.vents, z, temp);
+    const flows = balancedFlows(spec.vents, z, temp, spec.fans ?? []);
     outByVent = flows.outByVent;
     const qLoss = lossPowerKw(spec.boundaries, age, temp);
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
@@ -693,14 +808,18 @@ function stepZoneNow(
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
-    let dZ = (flows.inKgS - plume) / areaRho;
+    // Makeup air fills the lower layer. The plume and a fan in that clear
+    // air both drain it, so the interface falls. A fan in the smoke is
+    // balanced by extra inflow, which lifts the interface.
+    let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     temp = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
     z = Math.min(spec.ceilingM - 0.02, Math.max(0.05, z + dZ * slice));
     const carried = mass > 1e-6 ? (soot / mass) * flows.outKgS * slice : 0;
+    const extracted = mass > 1e-6 ? (soot / mass) * flows.fanUpperKgS * slice : 0;
     const made = Math.max(0, sootGPerS) * slice;
-    soot = Math.max(0, soot + made - carried);
+    soot = Math.max(0, soot + made - carried - extracted);
     vented += carried;
     left -= slice;
   }
