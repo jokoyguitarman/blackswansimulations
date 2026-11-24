@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { isInsidePolygon, nearestEdge } from '../src/lib/evacuation/geometry.ts';
 import { projectPolygon } from '../src/lib/evacuation/geometry.ts';
-import { layoutHawkerCentre } from '../src/lib/rts/hawkerLayout.ts';
+import { HOLLAND_BOMB, layoutHawkerCentre, seatingBomb } from '../src/lib/rts/hawkerLayout.ts';
+import { blastPressureAt, defaultCharge } from '../src/lib/rts/blast/blastModel.ts';
+import { GAS_RUPTURE_KPA } from '../src/lib/rts/flameFront.ts';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds.ts';
 import {
   EMPTY_HAWKER_FACTS,
@@ -318,6 +320,20 @@ describe('hawker layout', () => {
     }
     const [a, b] = layout.exits.filter((exit) => exit.exitType === 'public');
     assert.ok(Math.hypot(a.center.x - b.center.x, a.center.y - b.center.y) > 15);
+    const bomb = layout.bomb;
+    const gas = layout.objects.find((object) => object.id === 'cooked-gas-0');
+    assert.ok(bomb);
+    assert.ok(gas);
+    assert.ok(isInsidePolygon(bomb.x, bomb.y, verts));
+    const reach = Math.hypot(bomb.x - gas.pos.x, bomb.y - gas.pos.y);
+    assert.ok(reach <= HOLLAND_BOMB.fireballM, `bomb is ${reach} m from the gas line`);
+    assert.ok(reach >= 2, `bomb is only ${reach} m from the stall`);
+    const pressure = blastPressureAt(defaultCharge(), reach, false).psKpa;
+    assert.ok(pressure >= GAS_RUPTURE_KPA, `incident pressure ${pressure} kPa`);
+    const bombLabel = layout.labels.find((label) => label.id === 'bomb');
+    assert.equal(bombLabel?.origin, 'assumed');
+    assert.match(bombLabel?.text ?? '', /seating/);
+    assert.equal(seatingBomb(verts, []), null);
     for (const line of layout.walls) {
       assert.ok(isInsidePolygon(line.start.x, line.start.y, verts));
       assert.ok(isInsidePolygon(line.end.x, line.end.y, verts));
@@ -340,6 +356,7 @@ describe('hawker layout', () => {
       true,
     );
     assert.equal(layout.labels.find((label) => label.id === 'vertical')?.origin, 'assumed');
+    assert.equal(layout.bomb, null);
     assert.ok(layout.exits.filter((exit) => exit.exitType === 'public').length >= 2);
   });
 
