@@ -1789,6 +1789,7 @@ test('east exit blocked at T+2:00: at least 80% of people who can leave are out 
       eng.setZones(currentZones());
       const steps = Math.max(1, Math.round(rts.state.clock.speed));
       for (let i = 0; i < steps; i++) eng.step();
+      effects.setBuildingEnvelope(verts, exits);
       effects.step(dt * rts.state.clock.speed, effectWalls, hazardZones);
     }
   }

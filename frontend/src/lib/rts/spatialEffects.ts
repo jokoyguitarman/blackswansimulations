@@ -1,4 +1,4 @@
-import type { Vec2 } from '../evacuation/types';
+import type { ExitDef, Vec2 } from '../evacuation/types';
 import type { InteriorWall, HazardZone } from './types';
 import {
   FireSimulation,
@@ -117,7 +117,7 @@ export const HOOD_EXTRACT_M3_PER_S = 1;
  */
 export const SMOKE_EXCHANGE_PER_S = 0.025;
 
-/** Solid wall. A door gap uses the full exchange. Assumed. */
+/** Solid wall, including the outside wall. A door or an exit uses the full exchange. Assumed. */
 export const SMOKE_WALL_LEAK = 0.05;
 
 /**
@@ -173,6 +173,55 @@ function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
   const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
   const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
   return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+}
+
+/** The cut an exit makes in one edge of the outline. A blocked exit is a wall. */
+interface ShellOpening {
+  a: Vec2;
+  b: Vec2;
+  level: string;
+}
+
+/**
+ * Exit gaps on the outline. The same edge cut the evacuation walls leave
+ * open. An exit with no edge is not a gap. Assumed: the facade is closed
+ * everywhere else, and a blocked exit is closed.
+ */
+function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): ShellOpening[] {
+  const openings: ShellOpening[] = [];
+  const n = vertices.length;
+  if (n < 2) return openings;
+  for (const exit of exits) {
+    if (exit.status === 'blocked') continue;
+    if (!(exit.width > 0)) continue;
+    if (exit.edgeIndex < 0 || exit.edgeIndex >= n) continue;
+    const start = vertices[exit.edgeIndex];
+    const end = vertices[(exit.edgeIndex + 1) % n];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.01) continue;
+    const half = exit.width / 2;
+    const tCenter = ((exit.center.x - start.x) * dx + (exit.center.y - start.y) * dy) / (len * len);
+    const t0 = Math.max(0, tCenter - half / len);
+    const t1 = Math.min(1, tCenter + half / len);
+    if (!(t1 > t0)) continue;
+    openings.push({
+      a: { x: start.x + dx * t0, y: start.y + dy * t0 },
+      b: { x: start.x + dx * t1, y: start.y + dy * t1 },
+      level: exit.level ?? 'G',
+    });
+  }
+  return openings;
+}
+
+function shellSignature(vertices: readonly Vec2[], exits: readonly ExitDef[]): string {
+  let key = String(vertices.length);
+  for (const vertex of vertices) key += `|${vertex.x},${vertex.y}`;
+  for (const exit of exits) {
+    key += `|${exit.id},${exit.status},${exit.edgeIndex},${exit.width},${exit.center.x},${exit.center.y},${exit.level ?? ''}`;
+  }
+  return key;
 }
 
 function wallBlocksPath(from: Vec2, to: Vec2, wall: InteriorWall): boolean {
@@ -245,6 +294,13 @@ export class SpatialEffectsEngine {
   /** Wall tests for one walls array. Rebuilt when the caller passes another array. */
   private blockedWalls: InteriorWall[] | null = null;
   private blockedNeighbors = new Map<string, Set<string>>();
+  /** Outside wall. Indoor–outdoor links are blocked unless they cross an exit. */
+  private shellKey = '';
+  private shellGaps: ShellOpening[] = [];
+  private shellReady = false;
+  private shellBlocked = new Map<string, Set<string>>();
+  /** Saved storey height, metres. A missing level keeps the default. */
+  private storeyHeights = new Map<string, number>();
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -259,6 +315,8 @@ export class SpatialEffectsEngine {
     this.sootK.clear();
     this.blockedWalls = null;
     this.blockedNeighbors.clear();
+    this.shellReady = false;
+    this.shellBlocked.clear();
     this.activeEffects = [];
     this.elapsed = 0;
 
@@ -286,6 +344,33 @@ export class SpatialEffectsEngine {
   setVerticalLinks(links: ShaftLink[]) {
     this.verticalPairs = shaftPairs([...this.studIndex.values()], links);
     this.fireSim.setShaftPairs(this.verticalPairs);
+  }
+
+  /**
+   * Saved storey heights, metres. The soot column uses one when it is set.
+   * A missing or empty height keeps the 4 m storey, or 3.5 m in a basement.
+   */
+  setStoreyHeights(heights: Readonly<Record<string, number>>): void {
+    this.storeyHeights.clear();
+    for (const [id, height] of Object.entries(heights)) {
+      if (height > 0) this.storeyHeights.set(id, height);
+    }
+  }
+
+  /**
+   * The outside wall. An indoor stud and an outdoor neighbour exchange at
+   * the full rate only when the link crosses an exit opening. Every other
+   * indoor–outdoor link is a wall, with the same 5% leak. Assumed: the
+   * facade is closed except at exits that are not blocked. No exits, or an
+   * exit with no edge, leaves that part of the shell closed.
+   */
+  setBuildingEnvelope(vertices: readonly Vec2[], exits: readonly ExitDef[]): void {
+    const key = shellSignature(vertices, exits);
+    if (key === this.shellKey) return;
+    this.shellKey = key;
+    this.shellGaps = shellOpenings(vertices, exits);
+    this.shellReady = false;
+    this.shellBlocked.clear();
   }
 
   /** Confirmed studs, with light wood assumed where no category was stored. Null is the indoor stand-in. */
@@ -645,14 +730,66 @@ export class SpatialEffectsEngine {
     toxic: 0.9,
   };
 
-  /** Floor area times the storey height. Basements use the basement height. */
+  /** Floor area times the storey height. A saved height wins. A basement otherwise uses 3.5 m. */
   private columnVolume(id: string): number {
     const stud = this.studIndex.get(id);
     const level = stud ? levelOf(stud) : 'G';
-    const height = level.startsWith('B')
-      ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M
-      : LEVEL.DEFAULT_STOREY_HEIGHT_M;
+    const saved = this.storeyHeights.get(level);
+    const height =
+      saved != null && saved > 0
+        ? saved
+        : level.startsWith('B')
+          ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M
+          : LEVEL.DEFAULT_STOREY_HEIGHT_M;
     return STUD_AREA_M2 * height;
+  }
+
+  /** Indoor–outdoor neighbours, unless the link crosses an exit on this storey. */
+  private rebuildShell(): void {
+    this.shellBlocked.clear();
+    const block = (from: string, to: string) => {
+      let set = this.shellBlocked.get(from);
+      if (!set) {
+        set = new Set();
+        this.shellBlocked.set(from, set);
+      }
+      set.add(to);
+    };
+    for (const [id, neighbors] of this.neighborCache) {
+      const src = this.studIndex.get(id);
+      if (!src) continue;
+      const srcIn = src.spatialContext === 'inside_building';
+      for (const nId of neighbors) {
+        if (nId <= id) continue;
+        const dest = this.studIndex.get(nId);
+        if (!dest) continue;
+        const destIn = dest.spatialContext === 'inside_building';
+        if (srcIn === destIn) continue;
+        const level = levelOf(src);
+        let open = false;
+        for (const gap of this.shellGaps) {
+          if (gap.level !== level) continue;
+          if (segmentsIntersect(src.simPos, dest.simPos, gap.a, gap.b)) {
+            open = true;
+            break;
+          }
+        }
+        if (open) continue;
+        block(id, nId);
+        block(nId, id);
+      }
+    }
+    this.shellReady = true;
+  }
+
+  private shellBlocks(id: string, neighborId: string): boolean {
+    if (!this.shellReady) this.rebuildShell();
+    return this.shellBlocked.get(id)?.has(neighborId) ?? false;
+  }
+
+  /** A solid interior wall, or the outside wall away from an exit. */
+  private exchangeBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
+    return this.wallBlocked(id, neighborId, walls) || this.shellBlocks(id, neighborId);
   }
 
   /**
@@ -778,7 +915,7 @@ export class SpatialEffectsEngine {
         if (!dest) continue;
         const other = field.get(nId) ?? 0;
         if (!(value > other)) continue;
-        const blocked = this.wallBlocked(id, nId, walls);
+        const blocked = this.exchangeBlocked(id, nId, walls);
         const share = dt * SMOKE_EXCHANGE_PER_S * (blocked ? SMOKE_WALL_LEAK : 1);
         const moved = (value - other) * share;
         if (moved > 1e-10) moves.push({ from: id, to: nId, k: moved });
@@ -797,7 +934,8 @@ export class SpatialEffectsEngine {
   /**
    * Read the gases off the smoke already on each stud. The production of the
    * fires whose smoke has reached it only splits that soot among species.
-   * A solid wall stops the walk. A door gap does not. Another storey is
+   * A solid wall stops the walk, and so does the outside wall away from an
+   * exit. A door gap does not. Another storey is
    * reached only up a shaft, and only where smoke has risen. Nothing burning
    * clears the split, including a jet or an arc on its own.
    */
@@ -831,7 +969,7 @@ export class SpatialEffectsEngine {
         const cur = stack.pop();
         if (cur == null) continue;
         for (const nId of this.neighborCache.get(cur) ?? []) {
-          if (compOf.has(nId) || this.wallBlocked(cur, nId, walls)) continue;
+          if (compOf.has(nId) || this.exchangeBlocked(cur, nId, walls)) continue;
           const next = this.studStates.get(nId);
           if (!next || !(next.smoke > 0.02)) continue;
           compOf.set(nId, cid);
@@ -917,7 +1055,7 @@ export class SpatialEffectsEngine {
         if (!origin && !(state.smoke > 0.02)) continue;
         pour(id, source.gramsPerS, source.sootGPerS);
         for (const nextId of this.neighborCache.get(id) ?? []) {
-          if (seen.has(nextId) || this.wallBlocked(id, nextId, walls)) continue;
+          if (seen.has(nextId) || this.exchangeBlocked(id, nextId, walls)) continue;
           const next = this.studStates.get(nextId);
           if (next && next.smoke > 0.02) walk.push(nextId);
         }

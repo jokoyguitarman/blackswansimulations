@@ -2073,6 +2073,10 @@ export function DebugRTSSim() {
         const walls = interiorWallsRef.current;
         const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
         effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
+        effectsEng.setStoreyHeights(
+          Object.fromEntries(levelsRef.current.map((level) => [level.id, level.heightM])),
+        );
+        effectsEng.setBuildingEnvelope(projectedVertsRef.current, exitsRef.current);
         syncIgnition(
           effectsEng,
           placedObjectsRef.current,
@@ -3550,6 +3554,8 @@ export function DebugRTSSim() {
           };
         }),
       );
+      engine.setStoreyHeights(heightByLevel);
+      engine.setBuildingEnvelope(projectedVertsRef.current, exitsRef.current);
     };
     const publishFields = () => {
       const evac = evacEngRef.current;
@@ -6808,6 +6814,10 @@ export function DebugRTSSim() {
                           }
 
                           preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
+                          preview.setStoreyHeights(
+                            Object.fromEntries(levels.map((level) => [level.id, level.heightM])),
+                          );
+                          preview.setBuildingEnvelope(projectedVerts, exits);
                           syncIgnition(preview, placedObjects, hazardZones, charge, levels);
                           preview.runPreview(
                             effectPreviewTime,

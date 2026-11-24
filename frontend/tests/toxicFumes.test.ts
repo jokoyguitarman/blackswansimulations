@@ -4,7 +4,8 @@ import Matter from 'matter-js';
 import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine';
 import { HazardField, type Posture } from '../src/lib/evacuation/hazardSensing';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
-import { GAS_JET_KW, WET_FLOOR_SPEED, WOOD_HEAT_KJ_KG } from '../src/lib/rts/flameFront';
+import { projectPolygon } from '../src/lib/evacuation/geometry';
+import { GAS_JET_KW, STUD_AREA_M2, WET_FLOOR_SPEED, WOOD_HEAT_KJ_KG } from '../src/lib/rts/flameFront';
 import { LEVEL } from '../src/lib/evacuation/levelConstants';
 import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
 import { stairTravelS } from '../src/lib/rts/levels';
@@ -23,7 +24,7 @@ import {
 } from '../src/lib/rts/materialLibrary';
 import { foodCourtPlacedObjects, foodCourtSample } from '../src/lib/rts/foodCourtSample';
 import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds';
-import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
+import { SMOKE_LEAK_PER_S, SpatialEffectsEngine, advanceSootK } from '../src/lib/rts/spatialEffects';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -302,6 +303,147 @@ describe('smoke carries the gases', () => {
     const farK = extinctionK(engine.studStates.get('s_12_0')?.smoke ?? 0);
     assert.ok(mean > 0.3, `mean K ${mean}`);
     assert.ok(farK >= 0.15, `K at 12 m is ${farK}`);
+  });
+
+  test('a taller saved storey holds the same soot at a lower extinction', () => {
+    const run = (height: number | null) => {
+      const engine = new SpatialEffectsEngine(undefined, 1);
+      engine.init([stud('a', 0, 0)]);
+      if (height != null) engine.setStoreyHeights({ G: height });
+      engine.setFuelCells(new Map([['a', WOOD]]));
+      (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['a']);
+      for (let i = 0; i < 300; i++) engine.step(0.1, [], []);
+      return extinctionK(engine.studStates.get('a')?.smoke ?? 0);
+    };
+    const base = run(null);
+    const tall = run(LEVEL.DEFAULT_STOREY_HEIGHT_M * 2);
+    assert.ok(base > 0, 'the fire made no smoke');
+    assert.ok(Math.abs(tall / base - 0.5) < 1e-6, `tall ${tall}, storey ${base}`);
+  });
+
+  test('smoke leaves through an exit and not through the outside wall', () => {
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 9, y: 0 },
+      { x: 9, y: 9 },
+      { x: 0, y: 9 },
+    ];
+    const opening: ExitDef = {
+      id: 'west',
+      center: { x: 0, y: 4.5 },
+      width: 3,
+      edgeIndex: 3,
+      description: '',
+      status: 'open',
+      photos: [],
+      level: 'G',
+    };
+    const run = (exits: ExitDef[]) => {
+      const engine = new SpatialEffectsEngine(undefined, 1);
+      engine.init([
+        { id: 'in', simPos: { x: 1.5, y: 4.5 }, spatialContext: 'inside_building', level: 'G' },
+        { id: 'out', simPos: { x: -1.5, y: 4.5 }, spatialContext: 'open_air', level: 'G' },
+      ]);
+      engine.setFuelCells(new Map([['in', WOOD]]));
+      engine.setBuildingEnvelope(verts, exits);
+      (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['in']);
+      for (let i = 0; i < 1200; i++) engine.step(0.1, [], []);
+      return extinctionK(engine.studStates.get('out')?.smoke ?? 0);
+    };
+    const open = run([opening]);
+    const shut = run([{ ...opening, status: 'blocked' }]);
+    const unset = run([]);
+    assert.ok(open > 0.05, `exit K ${open}`);
+    assert.ok(open > shut * 5, `exit ${open}, wall ${shut}`);
+    assert.ok(open > unset * 5, `exit ${open}, no exits ${unset}`);
+  });
+
+  test('a closed food court keeps most of a 1 MW fire indoors', () => {
+    const polygon = foodCourtSample.scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const verts = projectPolygon(polygon);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const vertex of verts) {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+    }
+    const pad = 12;
+    const studs: FireSimStud[] = [];
+    for (const stud of projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']))) {
+      if (stud.simPos.x < minX - pad || stud.simPos.x > maxX + pad) continue;
+      if (stud.simPos.y < minY - pad || stud.simPos.y > maxY + pad) continue;
+      studs.push({
+        id: stud.id,
+        simPos: stud.simPos,
+        spatialContext: stud.spatialContext,
+        level: stud.floor ?? 'G',
+      });
+    }
+    const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
+    let cx = 0;
+    let cy = 0;
+    for (const stud of indoor) {
+      cx += stud.simPos.x;
+      cy += stud.simPos.y;
+    }
+    cx /= indoor.length;
+    cy /= indoor.length;
+    let fire = indoor[0];
+    let best = Infinity;
+    for (const stud of indoor) {
+      const d = Math.hypot(stud.simPos.x - cx, stud.simPos.y - cy);
+      if (d < best) {
+        best = d;
+        fire = stud;
+      }
+    }
+    const height = foodCourtSample.scene.levels[0].heightM;
+    const walls = foodCourtSample.scene.interiorWalls as InteriorWall[];
+    const exits = (foodCourtSample.scene.exits as ExitDef[]).map((exit) => ({
+      ...exit,
+      status: 'blocked' as const,
+    }));
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init(studs);
+    engine.setStoreyHeights({ G: height });
+    engine.setBuildingEnvelope(verts, exits);
+    engine.setFuelCells(new Map([[fire.id, WOOD]]));
+    const sim = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    sim.ignite([fire.id]);
+    const dt = 0.1;
+    const horizon = 300;
+    let made = 0;
+    let expected = 0;
+    for (let t = 0; t < horizon - 1e-9; t += dt) {
+      let soot = 0;
+      for (const source of sim.burningSoot()) soot += source.sootGPerS;
+      made += soot * dt;
+      expected = advanceSootK(expected, soot, SMOKE_LEAK_PER_S, dt);
+      engine.step(dt, walls, []);
+    }
+    const volume = STUD_AREA_M2 * height;
+    let indoorG = 0;
+    let outdoorG = 0;
+    let sumK = 0;
+    for (const cell of studs) {
+      const k = extinctionK(engine.studStates.get(cell.id)?.smoke ?? 0);
+      const grams = (k * volume) / SOOT_EXTINCTION_M2_PER_G;
+      if (cell.spatialContext === 'inside_building') {
+        indoorG += grams;
+        sumK += k;
+      } else outdoorG += grams;
+    }
+    const meanK = sumK / indoor.length;
+    const balancedK = (expected * SOOT_EXTINCTION_M2_PER_G) / (indoor.length * volume);
+    const release = engine.fuelReleaseKw(fire.id) ?? 0;
+    assert.ok(indoor.length > 50, `indoor studs ${indoor.length}`);
+    assert.ok(release > 800, `release ${release} kW`);
+    assert.ok(indoorG / made >= 0.6, `indoors ${indoorG} g of ${made} g, outdoors ${outdoorG} g`);
+    assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
   });
 
   test('a wall stops the gases and a door gap does not', () => {
