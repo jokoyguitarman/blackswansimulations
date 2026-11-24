@@ -43,7 +43,7 @@ import {
   levelsForFootprint,
   type OsmBuildingFootprint,
 } from '../lib/rts/footprintLevels';
-import { layoutHawkerCentre, type LayoutLabel } from '../lib/rts/hawkerLayout';
+import { HOLLAND_BOMB, layoutHawkerCentre, type LayoutLabel } from '../lib/rts/hawkerLayout';
 import { EMPTY_HAWKER_FACTS, type HawkerFacts } from '@shared/hawkerFacts';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
@@ -1791,7 +1791,9 @@ export function DebugRTSSim() {
       const nextLevels = levelsForFootprint({
         aboveGround: building.levels,
         underground: building.underground,
-      }).map((level) => (level.id === 'G' ? { ...level, pedestrianCount } : level));
+      }).map((level) =>
+        level.id === 'G' ? { ...level, pedestrianCount: HOLLAND_BOMB.crowd } : level,
+      );
       const levelIds = nextLevels.map((level) => level.id);
       let centerLat = 0;
       let centerLng = 0;
@@ -1868,13 +1870,17 @@ export function DebugRTSSim() {
       setCasualtyPins([]);
       setPlantedItems([]);
       setPedestrians([]);
+      setPedestrianCount(HOLLAND_BOMB.crowd);
       setLevels(nextLevels);
       setActiveLevel('G');
       setBlastLevel('G');
       setSelectedStairId(null);
       blastRecordRef.current = null;
-      setBlastSite(null);
-      setShowcase(false);
+      setCharge(defaultCharge());
+      setManualRadius(true);
+      setBlastRadius(HOLLAND_BOMB.fireballM);
+      setBlastSite(layout.bomb);
+      setShowcase(true);
       effectsEngineRef.current = null;
       setEffectStates(null);
       setGasJetCount(0);
@@ -1890,7 +1896,7 @@ export function DebugRTSSim() {
     } finally {
       setHollandLoading(false);
     }
-  }, [pedestrianCount]);
+  }, []);
 
   const handleLoadDbSceneList = useCallback(async () => {
     try {
@@ -2206,6 +2212,7 @@ export function DebugRTSSim() {
           }
           for (; cursor < evacSteps; cursor++) evac.step();
           evacStepsDoneRef.current += evacSteps;
+          rts.limitElapsed(evacStepsDoneRef.current * FX.FIXED_DT);
         } else {
           const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
           for (let i = 0; i < stepsPerFrame; i++) evac.step();

@@ -21,6 +21,8 @@ export interface HawkerLayout {
   exits: ExitDef[];
   objects: PlacedObject[];
   labels: LayoutLabel[];
+  /** Seating point the existing charge can open a cooked stall's gas line from. */
+  bomb: Vec2 | null;
 }
 
 const COOKED_NORM =
@@ -36,6 +38,15 @@ const WALL_NORM =
   'A stall row has a steel back wall and steel side partitions, and an open front toward the seating.';
 const NO_STAIR_NORM = 'No upper floor was found, so no stair or lift is drawn.';
 const COPY_NORM = 'An upper floor with no plan of its own copies the ground walls and exits.';
+const BOMB_NORM =
+  'The pages do not say where a device would be, so the bomb sits in the seating, a few metres from a cooked-food stall.';
+
+/** Distance from the stall to the bomb, the fireball used on this session, and the crowd. */
+export const HOLLAND_BOMB = {
+  fromStallM: 4,
+  fireballM: 8,
+  crowd: 120,
+} as const;
 
 /** One stud on the 3 m grid is one stall. */
 const PITCH_M = 3;
@@ -296,6 +307,35 @@ function chooseExits(verts: Vec2[]): ExitDef[] {
   return exits;
 }
 
+function gasLine(objects: readonly PlacedObject[]): PlacedObject | undefined {
+  return objects.find((object) => object.matches.some((match) => match.entryId === 'gas_line'));
+}
+
+/** A point in the seating, toward the hall centre from the first cooked stall. */
+export function seatingBomb(verts: Vec2[], objects: readonly PlacedObject[]): Vec2 | null {
+  const gas = gasLine(objects);
+  if (!gas || verts.length < 3) return null;
+  let cx = 0;
+  let cy = 0;
+  for (const vert of verts) {
+    cx += vert.x;
+    cy += vert.y;
+  }
+  cx /= verts.length;
+  cy /= verts.length;
+  const dx = cx - gas.pos.x;
+  const dy = cy - gas.pos.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const step = Math.min(HOLLAND_BOMB.fromStallM, len - 0.5);
+  for (let dist = step; dist >= 1; dist -= 0.5) {
+    const x = gas.pos.x + (dx / len) * dist;
+    const y = gas.pos.y + (dy / len) * dist;
+    if (inside(verts, x, y)) return { x, y };
+  }
+  return null;
+}
+
 export function layoutHawkerCentre(input: {
   verts: Vec2[];
   studs: readonly Stud[];
@@ -436,5 +476,17 @@ export function layoutHawkerCentre(input: {
     });
   }
 
-  return { walls, exits, objects, labels };
+  const bomb = seatingBomb(verts, objects);
+  const gas = gasLine(objects);
+  if (bomb && gas) {
+    const metres = Math.round(Math.hypot(bomb.x - gas.pos.x, bomb.y - gas.pos.y) * 10) / 10;
+    labels.push({
+      id: 'bomb',
+      origin: 'assumed',
+      text: `The bomb is in the seating, ${metres} m from a cooked-food stall. Assumed. ${BOMB_NORM}`,
+      sources: [],
+    });
+  }
+
+  return { walls, exits, objects, labels, bomb };
 }

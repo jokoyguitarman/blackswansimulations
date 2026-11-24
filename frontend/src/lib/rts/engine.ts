@@ -86,6 +86,18 @@ export class RTSEngine {
     this.state.clock.speed = s;
   }
 
+  /**
+   * The showcase drops steps when a frame asks for more than it can run.
+   * Pull the clock back so the HUD does not count time the crowd never lived.
+   */
+  limitElapsed(seconds: number) {
+    const clock = this.state.clock;
+    if (seconds < clock.elapsed) {
+      clock.elapsed = Math.max(0, seconds);
+      clock.phase = this.computePhase(clock.elapsed);
+    }
+  }
+
   // ── Staging area ──────────────────────────────────────────────────────
   setStagingArea(pos: Vec2) {
     this.state.stagingArea = pos;
