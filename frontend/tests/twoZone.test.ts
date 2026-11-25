@@ -58,6 +58,9 @@ import {
   orificeSliceKgS,
   steadyLayer,
   oxygenLimitedBurn,
+  coolUnclaimedSheet,
+  isothermalSheet,
+  liningForMaterial,
   stepZone,
   withRememberedSheets,
   type LayerSpec,
@@ -274,6 +277,43 @@ test('a sheet keeps its own temperature when an earlier wall leaves the list', (
   assert.ok(
     Math.abs((reformed.sheetK?.late ?? 0) - late) < 5,
     `re-formed late ${(reformed.sheetK?.late ?? 0).toFixed(1)} from ${late.toFixed(1)}`,
+  );
+});
+
+test('a sheet held for both rooms keeps one temperature and takes both films', () => {
+  const glass = liningForMaterial('glass');
+  assert.equal(isothermalSheet(glass, 120), true);
+  const spec = (heatKw: number): LayerSpec => ({
+    areaM2: 20,
+    ceilingM: 2.6,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete },
+      { id: 'pane', areaM2: 12, lining: glass },
+    ],
+    fires: heatKw > 0 ? [{ heatKw, diameterM: 0.5 }] : [],
+  });
+  const start: ZoneState = {
+    ...freshLayer(2.6),
+    ageS: 120,
+    upperK: 600,
+    sheetK: { pane: 360 },
+  };
+  const other: ZoneState = { ...start, upperK: 450 };
+  const hold = new Set(['pane']);
+  const hot = stepZone(start, spec(80), 30, 0, null, hold);
+  const cool = stepZone(other, spec(0), 30, 0, null, hold);
+  assert.equal(hot.state.sheetK?.pane, 360, 'the hot room moved a shared sheet on its own');
+  assert.equal(cool.state.sheetK?.pane, 360, 'the cool room moved a shared sheet on its own');
+  const store = glass.rhoKgM3 * glass.cKjKgK * glass.thicknessM;
+  const both = 360 + ((hot.sheetGainKjM2?.pane ?? 0) + (cool.sheetGainKjM2?.pane ?? 0)) / store;
+  const alone = stepZone(start, spec(80), 30).state.sheetK?.pane ?? 0;
+  // The outdoor film is gone and the other room's gas is on the back face.
+  // One room against outdoor air finishes cooler.
+  assert.ok(
+    both > alone + 1,
+    `both ${(both - AMBIENT_K).toFixed(1)} K, one side ${(alone - AMBIENT_K).toFixed(1)} K`,
   );
 });
 
@@ -1150,6 +1190,159 @@ test('a new layer keeps the glass sheet the wall already holds', () => {
   assert.ok(
     Math.abs(restored - sheet) < 3,
     `restored ${(restored - AMBIENT_K).toFixed(1)} K from ${(sheet - AMBIENT_K).toFixed(1)} K`,
+  );
+});
+
+test('an unclaimed sheet cools toward ambient', () => {
+  const wood = defaultLightFuel();
+  const glass = liningForMaterial('glass');
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    material: string,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material,
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([
+    stud('a', 0, 0),
+    stud('b', 3, 0),
+    stud('out', 6, 0, false),
+    stud('north', 0, 3, false),
+  ]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['a', wood]]));
+  const walls = [
+    barrier('glass', -1.5, 1.5, 4.5, 1.5, 'glass', false),
+    barrier('s', -1.5, -1.5, 4.5, -1.5, 'concrete', false),
+    barrier('w', -1.5, -1.5, -1.5, 1.5, 'concrete', false),
+    barrier('e', 4.5, -1.5, 4.5, 1.5, 'concrete', true),
+  ];
+  (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['a']);
+  for (let t = 0; t < 180; t++) engine.step(1, walls, []);
+  const view = engine as unknown as {
+    fireSim: { states: Map<string, { state: string }> };
+    wallSheetK: Map<string, number>;
+    layerState: Map<string, { active: boolean; zone: ZoneState }>;
+  };
+  for (const state of view.fireSim.states.values()) {
+    if (state.state === 'burning') state.state = 'burnt_out';
+  }
+  engine.step(1, walls, []);
+  const warm = view.wallSheetK.get('glass') ?? 0;
+  const zoned = [...view.layerState.values()].find((row) => row.zone.sheetK?.glass != null);
+  assert.ok(warm > AMBIENT_K + 8, `sheet ${(warm - AMBIENT_K).toFixed(1)} K`);
+  assert.ok(
+    Math.abs((zoned?.zone.sheetK?.glass ?? 0) - warm) < 0.05,
+    'the zone kept a temperature the wall no longer holds',
+  );
+  // Eight minutes with no layer. A 6 mm pane stores about 13.6 kJ/m²K.
+  engine.step(480, walls, []);
+  const cooled = view.wallSheetK.get('glass') ?? AMBIENT_K;
+  const expected = coolUnclaimedSheet(warm, glass, 480);
+  assert.ok(
+    warm - cooled > 4,
+    `still ${(cooled - AMBIENT_K).toFixed(1)} K above ambient, from ${(warm - AMBIENT_K).toFixed(1)} K`,
+  );
+  assert.ok(
+    Math.abs(cooled - expected) < 0.5,
+    `wall ${(cooled - AMBIENT_K).toFixed(2)} K, films ${(expected - AMBIENT_K).toFixed(2)} K`,
+  );
+  const after = [...view.layerState.values()].find((row) => row.zone.sheetK?.glass != null);
+  assert.ok(
+    Math.abs((after?.zone.sheetK?.glass ?? 0) - cooled) < 0.05,
+    'the zone still has the temperature from before the layer left',
+  );
+});
+
+test('a partition between two rooms is one sheet, heated from both sides', () => {
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (id: string, y: number, material: string, door: boolean): InteriorWall => ({
+    id,
+    start: { x: -0.2, y },
+    end: { x: 3.2, y },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material,
+    photos: [],
+    level: 'G',
+  });
+  const burn = (shared: boolean) => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    const people = shared
+      ? [
+          stud('a', 1.5, 0),
+          stud('b', 1.5, 3),
+          stud('south', 1.5, -3, false),
+          stud('north', 1.5, 6, false),
+        ]
+      : [stud('a', 1.5, 0), stud('north', 1.5, 3, false), stud('south', 1.5, -3, false)];
+    engine.init(people);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(
+      new Map(
+        shared
+          ? [
+              ['a', wood],
+              ['b', wood],
+            ]
+          : [['a', wood]],
+      ),
+    );
+    const walls = [barrier('pane', 1.5, 'glass', false), barrier('south', -1.5, 'concrete', true)];
+    if (shared) walls.push(barrier('north', 4.5, 'concrete', true));
+    const ignite = shared ? ['a', 'b'] : ['a'];
+    (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(ignite);
+    for (let t = 0; t < 180; t++) engine.step(1, walls, []);
+    const view = engine as unknown as {
+      layerState: Map<string, { active: boolean; zone: ZoneState }>;
+    };
+    const sheets = [...view.layerState.values()]
+      .filter((row) => row.active && row.zone.sheetK?.pane != null)
+      .map((row) => row.zone.sheetK?.pane ?? 0);
+    return sheets;
+  };
+  const both = burn(true);
+  const one = burn(false);
+  assert.equal(both.length, 2, `shared rooms ${both.length}`);
+  assert.equal(one.length, 1, `single room ${one.length}`);
+  const shared = both[0] ?? 0;
+  const other = both[1] ?? 0;
+  const alone = one[0] ?? 0;
+  assert.ok(
+    Math.abs(shared - other) < 0.05,
+    `rooms ${(shared - AMBIENT_K).toFixed(1)} K and ${(other - AMBIENT_K).toFixed(1)} K`,
+  );
+  assert.ok(
+    shared > alone + 15,
+    `both sides ${(shared - AMBIENT_K).toFixed(1)} K, outdoor back ${(alone - AMBIENT_K).toFixed(1)} K`,
   );
 });
 

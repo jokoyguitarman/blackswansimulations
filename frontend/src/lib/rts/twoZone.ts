@@ -194,6 +194,11 @@ function backFaceExposed(lining: Lining, tS: number): boolean {
   return kOverD >= EXTERIOR_RAD_HK_KW_M2K / ISOTHERMAL_BIOT;
 }
 
+/** True when this lining is integrated as one temperature at this age. */
+export function isothermalSheet(lining: Lining, tS: number): boolean {
+  return backFaceExposed(lining, tS);
+}
+
 /** Stefan–Boltzmann, kW/m²K⁴. */
 export const SIGMA_KW_M2K4 = 5.67e-11;
 
@@ -1107,13 +1112,28 @@ function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number):
  * The temperature is kept under the wall id. A face with no id uses the
  * steady film, because a temperature stored by position is handed to the
  * next wall when a pane leaves the list.
+ *
+ * A wall in `hold` is one partition with a layer on the other side. This
+ * room still loses the inside film. The temperature does not move here:
+ * the other side is added once, and there is no outdoor film on that back
+ * face. `gainKjM2` collects this side's film and radiation, kJ/m².
  */
+function sheetFilmKwM2(gasK: number, sheetK: number): number {
+  const across = gasK - sheetK;
+  const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
+  const hRad =
+    SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + sheetK * sheetK) * (gasK + sheetK);
+  return (hConv + hRad) * across;
+}
+
 function stepSheetLoss(
   boundaries: readonly Boundary[],
   sheetK: Readonly<Record<string, number>> | undefined,
   tS: number,
   gasK: number,
   slice: number,
+  hold?: ReadonlySet<string>,
+  gainKjM2?: Record<string, number>,
 ): { lossKw: number; sheetK?: Readonly<Record<string, number>> } {
   let exposed = false;
   for (const boundary of boundaries) {
@@ -1134,16 +1154,40 @@ function stepSheetLoss(
     }
     const stored = next[boundary.id];
     const ts = stored != null && stored > 0 ? stored : AMBIENT_K;
-    const across = gasK - ts;
-    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
-    const hRad = SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + ts * ts) * (gasK + ts);
-    const fromGas = (hConv + hRad) * across;
+    const fromGas = sheetFilmKwM2(gasK, ts);
+    if (hold?.has(boundary.id)) {
+      sum += boundary.areaM2 * fromGas;
+      if (gainKjM2) {
+        gainKjM2[boundary.id] = (gainKjM2[boundary.id] ?? 0) + (fromGas + rad) * slice;
+      }
+      continue;
+    }
     const store = boundary.lining.rhoKgM3 * boundary.lining.cKjKgK * boundary.lining.thicknessM;
     const warmed = ts + (slice * (fromGas + rad - exteriorFluxKwM2(ts))) / Math.max(store, 1e-6);
     next[boundary.id] = Math.min(1500, Math.max(AMBIENT_K, warmed));
     sum += boundary.areaM2 * fromGas;
   }
   return { lossKw: sum, sheetK: next };
+}
+
+/**
+ * A sheet no layer is stepping. Both faces see ambient: the inside film
+ * and the exterior film. A 6 mm pane stores about 13.6 kJ/m²K, so this is
+ * several minutes, not a step. The slice is the layer's 0.1 s.
+ */
+export function coolUnclaimedSheet(tempK: number, lining: Lining, dtS: number): number {
+  if (!(tempK > AMBIENT_K) || !(dtS > 0)) return Math.max(tempK, 0);
+  const store = lining.rhoKgM3 * lining.cKjKgK * lining.thicknessM;
+  if (!(store > 0)) return tempK;
+  let ts = tempK;
+  let left = dtS;
+  while (left > 1e-9) {
+    const slice = Math.min(0.1, left);
+    const flux = sheetFilmKwM2(AMBIENT_K, ts) - exteriorFluxKwM2(ts);
+    ts = Math.min(1500, Math.max(AMBIENT_K, ts + (slice * flux) / store));
+    left -= slice;
+  }
+  return ts;
 }
 
 /**
@@ -1590,6 +1634,12 @@ export function stepZone(
   dt: number,
   sootGPerS = 0,
   jet?: DoorJetInflow | null,
+  /**
+   * Walls whose temperature this step must not change. Each is a partition
+   * with a layer on the other side. The gas is still charged the inside
+   * film, and `sheetGainKjM2` is that film plus this room's radiation.
+   */
+  hold?: ReadonlySet<string>,
 ): {
   state: ZoneState;
   ventedSootG: number;
@@ -1600,8 +1650,10 @@ export function stepZone(
   burnedFraction: number;
   /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
   phi: number;
+  /** Energy into each held sheet this step, kJ/m². Absent when nothing is held. */
+  sheetGainKjM2?: Readonly<Record<string, number>>;
 } {
-  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet));
+  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
 
 function stepZoneNow(
@@ -1610,6 +1662,7 @@ function stepZoneNow(
   dt: number,
   sootGPerS = 0,
   jet?: DoorJetInflow | null,
+  hold?: ReadonlySet<string>,
 ) {
   let z = state.interfaceM;
   let temp = state.upperK;
@@ -1626,6 +1679,7 @@ function stepZoneNow(
   let burnedFraction = 1;
   let phi = 0;
   let left = Math.max(0, dt);
+  const gainKjM2 = hold && hold.size > 0 ? ({} as Record<string, number>) : undefined;
   const split = fireSplit(spec);
   const q = split.convectedKw;
   const radiantBase = fireRadiantKwM2;
@@ -1659,7 +1713,7 @@ function stepZoneNow(
       hotT[v] = (hotT[v] ?? 0) + dm * temp;
       hotY[v] = (hotY[v] ?? 0) + dm * yU;
     }
-    const loss = stepSheetLoss(spec.boundaries, sheets, age, temp, slice);
+    const loss = stepSheetLoss(spec.boundaries, sheets, age, temp, slice, hold, gainKjM2);
     const qLoss = loss.lossKw;
     sheets = loss.sheetK;
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
@@ -1727,6 +1781,7 @@ function stepZoneNow(
     })),
     burnedFraction,
     phi,
+    ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }
 

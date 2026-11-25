@@ -27,12 +27,15 @@ import {
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
+  coolUnclaimedSheet,
+  isothermalSheet,
   withRememberedSheets,
   oxygenLimitedBurn,
   oxygenMassFraction,
   steadyLayer,
   stepZone,
   type Boundary,
+  type Lining,
   type DoorJetInflow,
   type Enclosure,
   type FirePlume,
@@ -580,6 +583,9 @@ export class SpatialEffectsEngine {
     this.fallenGlass.clear();
     this.linings.clear();
     this.wallSheetK.clear();
+    this.sheetLining.clear();
+    this.claimedSheets.clear();
+    this.droppedSheets.clear();
     this.liningFraction.clear();
     this.roomPhi.clear();
     this.glassTouch.clear();
@@ -1788,8 +1794,15 @@ export class SpatialEffectsEngine {
   /**
    * Sheet temperature by wall id, kept after the layer that wrote it is
    * gone. A new layer reads it back instead of starting the wall at ambient.
+   * While no layer claims the wall, the temperature cools toward ambient.
    */
   private wallSheetK = new Map<string, number>();
+  /** The lining last integrated for that wall, so an unclaimed sheet can cool. */
+  private sheetLining = new Map<string, Lining>();
+  /** Walls a layer integrated on this step. The rest of wallSheetK cools. */
+  private claimedSheets = new Set<string>();
+  /** Walls whose temperature reached ambient this step. Zones drop the key. */
+  private droppedSheets = new Set<string>();
 
   /** Temperatures to put on a zone that does not have them yet. */
   private rememberedSheets(): Record<string, number> | undefined {
@@ -1815,6 +1828,152 @@ export class SpatialEffectsEngine {
       const temp = sheetK[id];
       if (!(temp > 0)) continue;
       this.wallSheetK.set(id, temp);
+      this.sheetLining.set(id, boundary.lining);
+      this.claimedSheets.add(id);
+    }
+  }
+
+  /**
+   * A wall id on two layers this step. Each would otherwise integrate its
+   * own copy against outdoor air, and the map would keep the last writer.
+   */
+  private sharedSheetIds(
+    jobs: readonly { boundaries: readonly Boundary[]; ageS: number }[],
+  ): Set<string> {
+    const counts = new Map<string, number>();
+    for (const job of jobs) {
+      const seen = new Set<string>();
+      for (const boundary of job.boundaries) {
+        const id = boundary.id;
+        if (!id || seen.has(id) || !(boundary.areaM2 > 0)) continue;
+        if (!isothermalSheet(boundary.lining, job.ageS)) continue;
+        seen.add(id);
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    const shared = new Set<string>();
+    for (const [id, count] of counts) if (count >= 2) shared.add(id);
+    return shared;
+  }
+
+  /** One starting temperature for a partition both layers are about to step. */
+  private zoneWithSharedSheet(
+    zone: ZoneState,
+    boundaries: readonly Boundary[],
+    hold: ReadonlySet<string>,
+    startT: ReadonlyMap<string, number>,
+  ): ZoneState {
+    if (hold.size === 0) return zone;
+    let sheet: Record<string, number> | undefined;
+    let changed = false;
+    for (const boundary of boundaries) {
+      const id = boundary.id;
+      if (!id || !hold.has(id)) continue;
+      const temp = startT.get(id);
+      if (!(temp != null && temp > 0)) continue;
+      const have = (sheet ?? zone.sheetK)?.[id];
+      if (have === temp) continue;
+      if (!changed) {
+        sheet = zone.sheetK ? { ...zone.sheetK } : {};
+        changed = true;
+      }
+      if (sheet) sheet[id] = temp;
+    }
+    return changed && sheet ? { ...zone, sheetK: sheet } : zone;
+  }
+
+  /**
+   * Add both sides' films to one partition. Fewer than two sides means the
+   * other face was not a layer, so the step that ran already held the
+   * temperature and this leaves the outdoor film out only when both
+   * contributed.
+   */
+  private applySharedSheetGains(
+    rows: readonly {
+      room: string;
+      boundaries: readonly Boundary[];
+      gain?: Readonly<Record<string, number>>;
+    }[],
+    startT: ReadonlyMap<string, number>,
+  ): void {
+    const gained = new Map<string, { kjm2: number; lining: Lining; rooms: string[] }>();
+    for (const row of rows) {
+      if (!row.gain) continue;
+      for (const [id, kjm2] of Object.entries(row.gain)) {
+        const have = gained.get(id);
+        if (have) {
+          have.kjm2 += kjm2;
+          have.rooms.push(row.room);
+          continue;
+        }
+        const boundary = row.boundaries.find((item) => item.id === id);
+        if (!boundary) continue;
+        gained.set(id, { kjm2, lining: boundary.lining, rooms: [row.room] });
+      }
+    }
+    for (const [id, row] of gained) {
+      if (row.rooms.length < 2) continue;
+      const store = row.lining.rhoKgM3 * row.lining.cKjKgK * row.lining.thicknessM;
+      if (!(store > 0)) continue;
+      const prev = startT.get(id) ?? AMBIENT_K;
+      const next = Math.min(1500, Math.max(AMBIENT_K, prev + row.kjm2 / store));
+      this.wallSheetK.set(id, next);
+      this.sheetLining.set(id, row.lining);
+      this.claimedSheets.add(id);
+      for (const room of row.rooms) {
+        const live = this.layerState.get(room);
+        if (!live) continue;
+        live.zone = { ...live.zone, sheetK: { ...(live.zone.sheetK ?? {}), [id]: next } };
+      }
+    }
+  }
+
+  /** Both films to ambient, for a sheet no layer stepped. */
+  private relaxUnclaimedSheets(dt: number): void {
+    if (!(dt > 0)) return;
+    for (const [id, temp] of this.wallSheetK) {
+      if (this.claimedSheets.has(id) || !(temp > AMBIENT_K)) continue;
+      const lining = this.sheetLining.get(id);
+      if (!lining) continue;
+      const next = coolUnclaimedSheet(temp, lining, dt);
+      if (!(next > AMBIENT_K + 1e-4)) {
+        this.wallSheetK.delete(id);
+        this.sheetLining.delete(id);
+        this.droppedSheets.add(id);
+        continue;
+      }
+      this.wallSheetK.set(id, next);
+    }
+  }
+
+  /** Zones read the temperature the wall holds now, including one that cooled. */
+  private publishSheetTemperatures(): void {
+    if (this.wallSheetK.size === 0 && this.droppedSheets.size === 0) return;
+    for (const live of this.layerState.values()) {
+      const sheet = live.zone.sheetK;
+      if (!sheet) continue;
+      let next: Record<string, number> | undefined;
+      let changed = false;
+      for (const [id, temp] of Object.entries(sheet)) {
+        const kept = this.wallSheetK.get(id);
+        if (kept != null && kept > AMBIENT_K) {
+          if (Math.abs(kept - temp) > 1e-6) {
+            if (!next) next = { ...sheet };
+            next[id] = kept;
+            changed = true;
+          }
+          continue;
+        }
+        if (!this.droppedSheets.has(id)) continue;
+        if (!next) next = { ...sheet };
+        delete next[id];
+        changed = true;
+      }
+      if (!changed || !next) continue;
+      live.zone =
+        Object.keys(next).length > 0
+          ? { ...live.zone, sheetK: next }
+          : { ...live.zone, sheetK: undefined };
     }
   }
 
@@ -1823,6 +1982,8 @@ export class SpatialEffectsEngine {
   }
 
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
+    this.claimedSheets.clear();
+    this.droppedSheets.clear();
     const owned = new Set<string>();
     this.layerGrants = [];
     const keptLower = this.jetLowerStuds;
@@ -1872,6 +2033,16 @@ export class SpatialEffectsEngine {
     }
     const seen = new Set<string>();
     const nextJets = new Map<string, { kg: number; tKg: number; yKg: number }>();
+    const pending: Array<{
+      boundaries: readonly Boundary[];
+      ageS: number;
+      zone: ZoneState;
+      room: string;
+      run: (
+        hold: ReadonlySet<string>,
+        startT: ReadonlyMap<string, number>,
+      ) => { gain?: Readonly<Record<string, number>> };
+    }> = [];
 
     for (const [room, members] of groups) {
       seen.add(room);
@@ -1938,41 +2109,58 @@ export class SpatialEffectsEngine {
         // The only heat is the neighbour's jet. The steady fire correlation
         // does not see it, so the layer is the integrated upper layer.
         if (incoming) this.jetTaken.set(room, incoming);
-        const next = stepZone(zone, spec, dt, sootRate, incoming);
-        this.keepSheetTemperatures(spec.boundaries, next.state.sheetK);
-        const depth = spec.ceilingM - next.state.interfaceM;
-        const rise = next.state.upperK - AMBIENT_K;
-        const thick = CEILING_JET_DEPTH_FRACTION * ceiling;
-        const hold =
-          prev?.active === true &&
-          rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
-          depth >= thick * LAYER_OFF_FRACTION;
-        const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
-        if (!active) {
-          retire();
-          this.layerState.set(room, {
-            active: false,
-            zone: next.state,
-            members,
-            areaM2: spec.areaM2,
-            ceilingM: ceiling,
-          });
-          continue;
-        }
-        // The column soot stays where it is and leaks. Copying it into the
-        // layer as well would count those grams twice.
-        this.layerState.set(room, {
-          active: true,
-          zone: next.state,
-          members,
-          areaM2: spec.areaM2,
-          ceilingM: ceiling,
+        pending.push({
+          boundaries: spec.boundaries,
+          ageS: zone.ageS,
+          zone,
+          room,
+          run: (hold, startT) => {
+            const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
+            const next = stepZone(
+              seeded,
+              spec,
+              dt,
+              sootRate,
+              incoming,
+              hold.size > 0 ? hold : undefined,
+            );
+            this.keepSheetTemperatures(spec.boundaries, next.state.sheetK);
+            const depth = spec.ceilingM - next.state.interfaceM;
+            const rise = next.state.upperK - AMBIENT_K;
+            const thick = CEILING_JET_DEPTH_FRACTION * ceiling;
+            const layerHold =
+              prev?.active === true &&
+              rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+              depth >= thick * LAYER_OFF_FRACTION;
+            const active = layerHold || formsSustainedLayer(depth, ceiling, rise, true);
+            if (!active) {
+              retire();
+              this.layerState.set(room, {
+                active: false,
+                zone: next.state,
+                members,
+                areaM2: spec.areaM2,
+                ceilingM: ceiling,
+              });
+              return { gain: next.sheetGainKjM2 };
+            }
+            // The column soot stays where it is and leaks. Copying it into the
+            // layer as well would count those grams twice.
+            this.layerState.set(room, {
+              active: true,
+              zone: next.state,
+              members,
+              areaM2: spec.areaM2,
+              ceilingM: ceiling,
+            });
+            for (const id of members) {
+              owned.add(id);
+              this.jetLowerStuds.add(id);
+            }
+            this.grantVented(room, members, enc, next, dt, rooms, nextJets);
+            return { gain: next.sheetGainKjM2 };
+          },
         });
-        for (const id of members) {
-          owned.add(id);
-          this.jetLowerStuds.add(id);
-        }
-        this.grantVented(room, members, enc, next, dt, rooms, nextJets);
         continue;
       }
       const opening = oxygenLimitedBurn(
@@ -2014,27 +2202,77 @@ export class SpatialEffectsEngine {
       if (prev?.active !== true) this.scoopColumnSoot(members, zone);
       // A room with its own fire already solves the door against ambient.
       // Adding the neighbour's jet on top of that flow fills the layer.
-      const stepped = stepZone(zone, spec, dt, sootRate);
-      this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
-      this.layerState.set(room, {
-        active: true,
-        zone: stepped.state,
-        members,
-        areaM2: spec.areaM2,
-        ceilingM: ceiling,
+      // The step itself waits until every room is known, so a shared
+      // partition is integrated once from both sides.
+      pending.push({
+        boundaries: spec.boundaries,
+        ageS: zone.ageS,
+        zone,
+        room,
+        run: (hold, startT) => {
+          const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
+          const stepped = stepZone(
+            seeded,
+            spec,
+            dt,
+            sootRate,
+            undefined,
+            hold.size > 0 ? hold : undefined,
+          );
+          this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
+          this.layerState.set(room, {
+            active: true,
+            zone: stepped.state,
+            members,
+            areaM2: spec.areaM2,
+            ceilingM: ceiling,
+          });
+          // Fire that spreads into a jet-fed room must not wipe the soot that
+          // room already kept at head height. A layer that is only now forming
+          // from its own fire is absent here, and stepSmoke still clears it.
+          const keptJetSoot = prev?.active === true && members.some((id) => keptLower.has(id));
+          for (const id of members) {
+            owned.add(id);
+            if (keptJetSoot) this.jetLowerStuds.add(id);
+          }
+          this.roomPhi.set(room, stepped.phi);
+          this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
+          this.grantVented(room, members, enc, stepped, dt, rooms, nextJets);
+          return { gain: stepped.sheetGainKjM2 };
+        },
       });
-      // Fire that spreads into a jet-fed room must not wipe the soot that
-      // room already kept at head height. A layer that is only now forming
-      // from its own fire is absent here, and stepSmoke still clears it.
-      const keptJetSoot = prev?.active === true && members.some((id) => keptLower.has(id));
-      for (const id of members) {
-        owned.add(id);
-        if (keptJetSoot) this.jetLowerStuds.add(id);
-      }
-      this.roomPhi.set(room, stepped.phi);
-      this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
-      this.grantVented(room, members, enc, stepped, dt, rooms, nextJets);
     }
+
+    const hold = this.sharedSheetIds(pending);
+    const startT = new Map<string, number>();
+    for (const id of hold) {
+      let temp = this.wallSheetK.get(id);
+      if (!(temp != null && temp > AMBIENT_K)) {
+        for (const job of pending) {
+          const found = job.zone.sheetK?.[id];
+          if (found != null && found > AMBIENT_K) {
+            temp = found;
+            break;
+          }
+        }
+      }
+      startT.set(id, temp != null && temp > AMBIENT_K ? temp : AMBIENT_K);
+    }
+    const finished: Array<{
+      room: string;
+      boundaries: readonly Boundary[];
+      gain?: Readonly<Record<string, number>>;
+    }> = [];
+    for (const job of pending) {
+      finished.push({
+        room: job.room,
+        boundaries: job.boundaries,
+        ...job.run(hold, startT),
+      });
+    }
+    this.applySharedSheetGains(finished, startT);
+    this.relaxUnclaimedSheets(dt);
+    this.publishSheetTemperatures();
 
     this.doorJets = queueDoorJets(nextJets, dt);
 
