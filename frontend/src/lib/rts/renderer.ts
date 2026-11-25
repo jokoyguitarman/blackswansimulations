@@ -14,6 +14,7 @@ import type {
   Stairwell,
 } from './types';
 import { levelIndex, linkLevels, sortLevels } from './levels';
+import { doorOpenFraction } from './doorLeaf';
 import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { isInsidePolygon, polygonBounds } from '../evacuation/geometry';
@@ -174,7 +175,10 @@ export function renderRTS(
   const shake = fxFrame != null && fxFrame.shakePx > 0;
   if (shake && fxFrame) {
     ctx.save();
-    ctx.translate((Math.random() * 2 - 1) * fxFrame.shakePx, (Math.random() * 2 - 1) * fxFrame.shakePx);
+    ctx.translate(
+      (Math.random() * 2 - 1) * fxFrame.shakePx,
+      (Math.random() * 2 - 1) * fxFrame.shakePx,
+    );
   }
 
   if (!transparentBg) {
@@ -199,21 +203,18 @@ export function renderRTS(
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
 
-  const hazardAnimated =
-    !!showcaseFx?.hazardFx && showcaseFx.hazardFx.ctx.quality !== 'classic';
+  const hazardAnimated = !!showcaseFx?.hazardFx && showcaseFx.hazardFx.ctx.quality !== 'classic';
   const viewActive = levelView?.active;
   const onActive = (level?: string) => !levelView || (level ?? 'G') === viewActive;
   const stairLevels = levelView
-    ? levelView.levels.map(
-        (id): LevelDef => ({
-          id,
-          name: id,
-          index: levelIndex(id),
-          heightM: 4,
-          designed: true,
-          pedestrianCount: 0,
-        }),
-      )
+    ? levelView.levels.map((id): LevelDef => ({
+        id,
+        name: id,
+        index: levelIndex(id),
+        heightM: 4,
+        designed: true,
+        pedestrianCount: 0,
+      }))
     : [];
   const stairHere = (sw: Stairwell) =>
     !levelView || linkLevels(sw, stairLevels).includes(viewActive ?? '');
@@ -224,7 +225,9 @@ export function renderRTS(
     ? placedObjects?.filter((obj) => onActive(obj.level))
     : placedObjects;
   const stairsToDraw = levelView ? stairwells?.filter(stairHere) : stairwells;
-  const pinsToDraw = levelView ? casualtyPinsParam?.filter((pin) => onActive(pin.level)) : casualtyPinsParam;
+  const pinsToDraw = levelView
+    ? casualtyPinsParam?.filter((pin) => onActive(pin.level))
+    : casualtyPinsParam;
 
   if (levelView) {
     const ordered = sortLevels(levelView.levels);
@@ -258,7 +261,8 @@ export function renderRTS(
       drawAssemblyRing(ctx, buildingVerts, showcaseFx.assemblyRingM, rc);
     }
     if (showcaseFx.injuryRings) drawShowcaseInjuryRings(ctx, showcaseFx.injuryRings, rc);
-    if (showcaseFx.zones.length > 0) drawShowcaseZones(ctx, showcaseFx.zones, showcaseFx.zoneCounts, rc);
+    if (showcaseFx.zones.length > 0)
+      drawShowcaseZones(ctx, showcaseFx.zones, showcaseFx.zoneCounts, rc);
   }
 
   if (wallsToDraw && wallsToDraw.length > 0) {
@@ -278,11 +282,7 @@ export function renderRTS(
     );
   }
   if (gasJets && gasJets.length > 0) {
-    drawGasJets(
-      ctx,
-      rc,
-      levelView ? gasJets.filter((jet) => onActive(jet.level)) : gasJets,
-    );
+    drawGasJets(ctx, rc, levelView ? gasJets.filter((jet) => onActive(jet.level)) : gasJets);
   }
   if (suppressionSprays && suppressionSprays.length > 0) {
     drawSuppressionSprays(
@@ -708,11 +708,7 @@ function drawGhostPerson(
  * The partner view draws the front as a disc that grows across the next stud.
  * The radius is that stud's share of the gap, not a second fire on the tile.
  */
-function drawFlameFront(
-  ctx: CanvasRenderingContext2D,
-  rc: RenderContext,
-  fx: ShowcaseRenderFx,
-) {
+function drawFlameFront(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: ShowcaseRenderFx) {
   const states = fx.effectStates;
   if (!states) return;
   const cell = mToCanvas(fx.cellM, rc);
@@ -734,11 +730,7 @@ function drawFlameFront(
   }
 }
 
-function drawHazardField(
-  ctx: CanvasRenderingContext2D,
-  rc: RenderContext,
-  fx: ShowcaseRenderFx,
-) {
+function drawHazardField(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: ShowcaseRenderFx) {
   const states = fx.effectStates;
   if (!states) return;
   const size = mToCanvas(fx.cellM, rc);
@@ -825,11 +817,46 @@ function drawShowcaseInjuryRings(
     dash: number[];
     alpha: number;
   }> = [
-    { radiusM: rings.glassBreakageM, stroke: '#7dd3fc', fill: null, label: 'GLASS BREAKAGE', dash: [2, 3], alpha: 0.5 },
-    { radiusM: rings.glassInjuryM, stroke: '#38bdf8', fill: null, label: 'GLASS INJURY', dash: [6, 4], alpha: 1 },
-    { radiusM: rings.minorM, stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.06)', label: 'MINOR', dash: [6, 4], alpha: 1 },
-    { radiusM: rings.seriousM, stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.08)', label: 'SERIOUS', dash: [6, 4], alpha: 1 },
-    { radiusM: rings.lethalM, stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.12)', label: 'LETHAL', dash: [6, 4], alpha: 1 },
+    {
+      radiusM: rings.glassBreakageM,
+      stroke: '#7dd3fc',
+      fill: null,
+      label: 'GLASS BREAKAGE',
+      dash: [2, 3],
+      alpha: 0.5,
+    },
+    {
+      radiusM: rings.glassInjuryM,
+      stroke: '#38bdf8',
+      fill: null,
+      label: 'GLASS INJURY',
+      dash: [6, 4],
+      alpha: 1,
+    },
+    {
+      radiusM: rings.minorM,
+      stroke: '#eab308',
+      fill: 'rgba(234, 179, 8, 0.06)',
+      label: 'MINOR',
+      dash: [6, 4],
+      alpha: 1,
+    },
+    {
+      radiusM: rings.seriousM,
+      stroke: '#f97316',
+      fill: 'rgba(249, 115, 22, 0.08)',
+      label: 'SERIOUS',
+      dash: [6, 4],
+      alpha: 1,
+    },
+    {
+      radiusM: rings.lethalM,
+      stroke: '#ef4444',
+      fill: 'rgba(239, 68, 68, 0.12)',
+      label: 'LETHAL',
+      dash: [6, 4],
+      alpha: 1,
+    },
   ];
   ctx.save();
   let outer = 0;
@@ -860,8 +887,7 @@ function drawShowcaseInjuryRings(
     prevLabelY = labelY;
   }
   if (outer > 0) {
-    const minorR =
-      rings.minorM != null && rings.minorM > 0 ? mToCanvas(rings.minorM, rc) : outer;
+    const minorR = rings.minorM != null && rings.minorM > 0 ? mToCanvas(rings.minorM, rc) : outer;
     ctx.globalAlpha = base;
     ctx.fillStyle = '#fde68a';
     ctx.font = '11px monospace';
@@ -877,7 +903,12 @@ function drawShowcaseInjuryRings(
   ctx.restore();
 }
 
-function drawAssemblyRing(ctx: CanvasRenderingContext2D, verts: Vec2[], distM: number, rc: RenderContext) {
+function drawAssemblyRing(
+  ctx: CanvasRenderingContext2D,
+  verts: Vec2[],
+  distM: number,
+  rc: RenderContext,
+) {
   const ring = offsetOutline(verts, distM);
   if (ring.length < 3) return;
   ctx.beginPath();
@@ -1428,13 +1459,14 @@ function drawInteriorWall(
     const doorCenter = wall.doorPosition * len;
     const doorStart = doorCenter - doorPx / 2;
     const doorEnd = doorCenter + doorPx / 2;
+    const leafEnd = doorStart + doorPx * (1 - doorOpenFraction(wall));
 
     ctx.strokeStyle = ghost ? '#64748b' : '#94a3b8';
     ctx.lineWidth = 3;
 
     ctx.beginPath();
     ctx.moveTo(s.cx, s.cy);
-    ctx.lineTo(s.cx + nx * doorStart, s.cy + ny * doorStart);
+    ctx.lineTo(s.cx + nx * leafEnd, s.cy + ny * leafEnd);
     ctx.stroke();
 
     ctx.beginPath();
@@ -1442,15 +1474,16 @@ function drawInteriorWall(
     ctx.lineTo(e.cx, e.cy);
     ctx.stroke();
 
-    // Door gap indicator
-    ctx.strokeStyle = ghost ? '#64748b' : '#22d3ee';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.moveTo(s.cx + nx * doorStart, s.cy + ny * doorStart);
-    ctx.lineTo(s.cx + nx * doorEnd, s.cy + ny * doorEnd);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (leafEnd < doorEnd - 0.5) {
+      ctx.strokeStyle = ghost ? '#64748b' : '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(s.cx + nx * leafEnd, s.cy + ny * leafEnd);
+      ctx.lineTo(s.cx + nx * doorEnd, s.cy + ny * doorEnd);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   } else {
     ctx.beginPath();
     ctx.moveTo(s.cx, s.cy);

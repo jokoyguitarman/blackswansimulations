@@ -117,7 +117,10 @@ test('the concrete room holds a layer and the stepper reaches it', () => {
     formsSustainedLayer(steady?.depthM ?? 0, 2.6, steadyRise, hasSmokeReservoir(spec.vents, 2.6)),
     `depth ${steady?.depthM} rise ${steadyRise}`,
   );
-  assert.ok(Math.abs(runRise - steadyRise) / steadyRise < 0.2, `run ${runRise.toFixed(1)} steady ${steadyRise.toFixed(1)}`);
+  assert.ok(
+    Math.abs(runRise - steadyRise) / steadyRise < 0.2,
+    `run ${runRise.toFixed(1)} steady ${steadyRise.toFixed(1)}`,
+  );
   assert.ok(Math.abs(state.interfaceM - (steady?.interfaceM ?? 0)) < 0.2);
 });
 
@@ -205,7 +208,10 @@ test('Steckler center door reports the coupled flow', () => {
     Math.abs(state.interfaceM - measuredZ) <= zTol,
     `interface ${state.interfaceM.toFixed(3)} m, measured ${measuredZ} ± ${zTol.toFixed(3)}`,
   );
-  assert.ok(Math.abs((steady?.interfaceM ?? 0) - measuredZ) <= zTol, `steady interface ${steady?.interfaceM}`);
+  assert.ok(
+    Math.abs((steady?.interfaceM ?? 0) - measuredZ) <= zTol,
+    `steady interface ${steady?.interfaceM}`,
+  );
   // χQ goes to the surfaces, so the rise is inside 20%. The emissivity
   // is not adjusted to put it there.
   const riseRatio = rise / measuredRise;
@@ -216,10 +222,14 @@ test('Steckler center door reports the coupled flow', () => {
   // The model's own doorway flow. Heskestad at the measured height entrains
   // about 0.30 kg/s and McCaffrey about 0.36; the coupled points are about
   // 0.39 and 0.42 kg/s. Neither is inside 25% of 0.571 (the floor is 0.428).
-  // CFAST's doorway jet (TRG Eq. 4.7) entrains after the gas has left the
-  // room, so it is not added to this flow. The orifice held at 0.985 m is
-  // only a check that the vent formula works.
-  assert.ok(coupled < measuredFlow * 0.75, `coupled ${coupled.toFixed(3)} kg/s was reported as inside 25%`);
+  // The inverse door jet (Eq. 4.7) was tried in this balance. At this
+  // interface it entrains about 0.005 kg/s, and with the interface on the
+  // floor it over-entrains and drops the heat and soot it carries, so it
+  // is not included. The orifice held at 0.985 m only checks the vent formula.
+  assert.ok(
+    coupled < measuredFlow * 0.75,
+    `coupled ${coupled.toFixed(3)} kg/s was reported as inside 25%`,
+  );
   assert.ok(
     Math.abs(coupled - 0.392) < 0.03,
     `coupled outflow ${coupled.toFixed(3)} kg/s, measured ${measuredFlow}`,
@@ -345,8 +355,14 @@ test('a fan takes the layer that contains its intake', () => {
   const none = run(undefined);
   const upper = run([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: 2.4 }]);
   const lower = run([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: 0.3 }]);
-  assert.ok(upper.interfaceM > none.interfaceM, `smoke fan ${upper.interfaceM}, none ${none.interfaceM}`);
-  assert.ok(lower.interfaceM < none.interfaceM, `clear fan ${lower.interfaceM}, none ${none.interfaceM}`);
+  assert.ok(
+    upper.interfaceM > none.interfaceM,
+    `smoke fan ${upper.interfaceM}, none ${none.interfaceM}`,
+  );
+  assert.ok(
+    lower.interfaceM < none.interfaceM,
+    `clear fan ${lower.interfaceM}, none ${none.interfaceM}`,
+  );
   assert.ok(upper.interfaceM < 2.4, `intake left the smoke ${upper.interfaceM}`);
   assert.ok(lower.interfaceM > 0.3, `clear intake was swallowed ${lower.interfaceM}`);
   assert.ok(upper.sootG < none.sootG, `smoke fan soot ${upper.sootG}, none ${none.sootG}`);
@@ -373,7 +389,10 @@ test('a fan takes the layer that contains its intake', () => {
   };
   const open = pan(undefined);
   const canopy = pan([{ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M }]);
-  assert.ok(canopy.interfaceM > open.interfaceM, `canopy ${canopy.interfaceM}, open ${open.interfaceM}`);
+  assert.ok(
+    canopy.interfaceM > open.interfaceM,
+    `canopy ${canopy.interfaceM}, open ${open.interfaceM}`,
+  );
   assert.ok(canopy.interfaceM > 1.7, `canopy dropped through head height ${canopy.interfaceM}`);
   assert.ok(canopy.sootG < open.sootG, `canopy soot ${canopy.sootG}, open ${open.sootG}`);
 });
@@ -392,7 +411,8 @@ test('the building outline is a wall except at an exit', () => {
     ['side', ['a']],
   ]);
   const facade = (member: string, outside: string) => {
-    if (member === 'b' && outside === 'door') return { kind: 'exit' as const, exitKey: 'west', widthM: 1.6 };
+    if (member === 'b' && outside === 'door')
+      return { kind: 'exit' as const, exitKey: 'west', widthM: 1.6 };
     if (member === 'a' && outside === 'side') return { kind: 'wall' as const };
     return null;
   };
@@ -481,7 +501,11 @@ test('the food-court corridor is a wall, including at its junctions', () => {
   );
   assert.ok(enc);
   const fullHeight = enc?.spec.vents.filter((vent) => vent.soffitM > 3.9) ?? [];
-  assert.equal(fullHeight.length, 0, `full-height width ${fullHeight.map((vent) => vent.widthM).join(',')}`);
+  assert.equal(
+    fullHeight.length,
+    0,
+    `full-height width ${fullHeight.map((vent) => vent.widthM).join(',')}`,
+  );
   const doors = enc?.spec.vents.filter((vent) => Math.abs(vent.widthM - 1.5) < 0.05) ?? [];
   assert.equal(doors.length, 2);
   assert.ok(doors.every((vent) => vent.soffitM === DOOR_SOFFIT_M));
@@ -566,7 +590,12 @@ test("Harbour's kitchen keeps its own door and the west shop keeps its exit", ()
   engine.setBuildingEnvelope(verts, [west]);
   const shop = (
     engine as unknown as {
-      enclosureOf: (room: string, members: string[], walls: InteriorWall[], ceiling: number) => {
+      enclosureOf: (
+        room: string,
+        members: string[],
+        walls: InteriorWall[],
+        ceiling: number,
+      ) => {
         spec: { vents: { widthM: number; soffitM: number }[] };
         ventReceivers: string[][];
       } | null;
@@ -577,9 +606,15 @@ test("Harbour's kitchen keeps its own door and the west shop keeps its exit", ()
   assert.equal(exits.length, 1);
   assert.equal(exits[0]?.soffitM, DOOR_SOFFIT_M);
   const receivers = shop?.ventReceivers[shop.spec.vents.indexOf(exits[0]!)] ?? [];
-  assert.ok(receivers.includes('outA') && receivers.includes('outB'), `receivers ${receivers.join(',')}`);
+  assert.ok(
+    receivers.includes('outA') && receivers.includes('outB'),
+    `receivers ${receivers.join(',')}`,
+  );
   assert.ok(!receivers.includes('outWall'));
-  assert.equal(shop?.spec.vents.some((vent) => vent.soffitM > 3.9), false);
+  assert.equal(
+    shop?.spec.vents.some((vent) => vent.soffitM > 3.9),
+    false,
+  );
 });
 
 test('the smoke step layers a closed room and leaves an open side alone', () => {
@@ -627,7 +662,10 @@ test('the smoke step layers a closed room and leaves an open side alone', () => 
   const live = [
     ...(
       closed as unknown as {
-        layerState: Map<string, { active: boolean; ceilingM: number; zone: { interfaceM: number } }>;
+        layerState: Map<
+          string,
+          { active: boolean; ceilingM: number; zone: { interfaceM: number } }
+        >;
       }
     ).layerState.values(),
   ].find((row) => row.active);
@@ -646,9 +684,7 @@ test('the smoke step layers a closed room and leaves an open side alone', () => 
   (open as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['s0']);
   for (let t = 0; t < 200; t++) open.step(1, [], []);
   const active = [
-    ...(
-      open as unknown as { layerState: Map<string, { active: boolean }> }
-    ).layerState.values(),
+    ...(open as unknown as { layerState: Map<string, { active: boolean }> }).layerState.values(),
   ].some((row) => row.active);
   const near = extinctionK(open.studStates.get('s1')?.smoke ?? 0);
   const src = extinctionK(open.studStates.get('s0')?.smoke ?? 0);
@@ -686,9 +722,7 @@ test('the smoke step layers a closed room and leaves an open side alone', () => 
   (shell as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['in0']);
   for (let t = 0; t < 400; t++) shell.step(1, [], []);
   const layered = [
-    ...(
-      shell as unknown as { layerState: Map<string, { active: boolean }> }
-    ).layerState.values(),
+    ...(shell as unknown as { layerState: Map<string, { active: boolean }> }).layerState.values(),
   ].some((row) => row.active);
   const atExit = extinctionK(shell.studStates.get('atExit')?.smoke ?? 0);
   const atWall = extinctionK(shell.studStates.get('atWall')?.smoke ?? 0);

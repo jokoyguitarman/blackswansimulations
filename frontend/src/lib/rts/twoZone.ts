@@ -11,7 +11,11 @@
  * and the slab are in series. hk on its own is the conduction coefficient,
  * not the loss from the gas.
  * The lower layer stays at the ambient 293 K. That is the usual
- * pre-flashover assumption; mixing into the lower layer is not in this step.
+ * pre-flashover assumption. The inverse door jet (CFAST TN 1889v1
+ * Eq. 4.7) was tried and left out: at the Steckler interface it entrains
+ * about 0.005 kg/s, and with the interface on the floor it over-entrains
+ * and drops the enthalpy and the soot it would move. Mixing into the
+ * lower layer is not in this step.
  *
  * A layer is kept only where that balance can hold a reservoir: smoke
  * deeper than a ceiling jet, hotter than a distinct-layer rise, and a spill
@@ -34,6 +38,7 @@
  */
 
 import { LEVEL } from '../evacuation/levelConstants';
+import { doorOpenFraction } from './doorLeaf';
 import { CONTENTS_HRRPUA_KW_M2, RADIATIVE_FRACTION, STUD_AREA_M2 } from './flameFront';
 import { layerLiningFor, type WallMaterial } from './materialLibrary';
 
@@ -177,10 +182,7 @@ function surfaceFluxKwM2(hk: number, gasK: number, radInKwM2: number): number {
     const across = gasK - surfaceK;
     const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
     const hRad =
-      SURFACE_EMISSIVITY *
-      SIGMA_KW_M2K4 *
-      (gasK * gasK + surfaceK * surfaceK) *
-      (gasK + surfaceK);
+      SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + surfaceK * surfaceK) * (gasK + surfaceK);
     return (hConv + hRad) * across;
   };
   const residual = (surfaceK: number) => film(surfaceK) + radInKwM2 - hk * (surfaceK - AMBIENT_K);
@@ -249,7 +251,13 @@ function withFluxMemo<T>(body: () => T): T {
 }
 
 /** NUREG Eq. 2-1. Q is kW, areas are m², Ho is m, hk is kW/m²K. */
-export function mqhRiseK(qKw: number, ventAreaM2: number, ventHeightM: number, atM2: number, hk: number): number {
+export function mqhRiseK(
+  qKw: number,
+  ventAreaM2: number,
+  ventHeightM: number,
+  atM2: number,
+  hk: number,
+): number {
   const vent = ventAreaM2 * Math.sqrt(ventHeightM);
   const loss = atM2 * hk;
   if (!(qKw > 0) || !(vent > 0) || !(loss > 0)) return 0;
@@ -257,7 +265,12 @@ export function mqhRiseK(qKw: number, ventAreaM2: number, ventHeightM: number, a
 }
 
 /** NUREG Eq. 13-2. The heat release that drives the MQH rise to flashover. */
-export function mqhFlashoverKw(hk: number, atM2: number, ventAreaM2: number, ventHeightM: number): number {
+export function mqhFlashoverKw(
+  hk: number,
+  atM2: number,
+  ventAreaM2: number,
+  ventHeightM: number,
+): number {
   const group = hk * atM2 * ventAreaM2 * Math.sqrt(ventHeightM);
   if (!(group > 0)) return 0;
   return 610 * Math.sqrt(group);
@@ -515,7 +528,8 @@ export function oxygenLimitedBurn(
   const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
   const slice = dt > 0 ? dt : SUBSTEP_S;
   const rho = densityKgM3(AMBIENT_K);
-  const descendKgS = (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
+  const descendKgS =
+    (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
   let airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
   let qConv = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) qConv += (1 - chi) * fire.heatKw;
@@ -766,7 +780,12 @@ export function orificeSliceKgS(
     return c * widthM * heightM * Math.sqrt(2 * rhoKgM3 * Math.max(a, b));
   }
   return (
-    ((2 / 3) * c * Math.sqrt(2 * rhoKgM3) * widthM * heightM * (Math.pow(b, 1.5) - Math.pow(a, 1.5))) /
+    ((2 / 3) *
+      c *
+      Math.sqrt(2 * rhoKgM3) *
+      widthM *
+      heightM *
+      (Math.pow(b, 1.5) - Math.pow(a, 1.5))) /
     (b - a)
   );
 }
@@ -785,7 +804,13 @@ interface Flows extends SliceFlows {
   fanLowerKgS: number;
 }
 
-function pressureAt(z: number, interfaceM: number, dP0: number, rhoL: number, rhoU: number): number {
+function pressureAt(
+  z: number,
+  interfaceM: number,
+  dP0: number,
+  rhoL: number,
+  rhoU: number,
+): number {
   if (z <= interfaceM) return dP0;
   return dP0 + (rhoL - rhoU) * LEVEL.G * (z - interfaceM);
 }
@@ -877,7 +902,10 @@ function sliceFlows(
     if (zN > z0 + 1e-6 && zN < z1 - 1e-6) {
       const lower = sliceFlows(z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
       const upper = sliceFlows(zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
-      return { inKgS: lower.inKgS + upper.inKgS, outKgS: lower.outKgS + upper.outKgS };
+      return {
+        inKgS: lower.inKgS + upper.inKgS,
+        outKgS: lower.outKgS + upper.outKgS,
+      };
     }
   }
   if (p0 === 0 && p1 === 0) return flows;
@@ -897,7 +925,10 @@ function balancedFlows(
   fans: readonly MechanicalVent[] = [],
 ): Flows {
   const at = (p: number) =>
-    withFans(ventFlows(vents, interfaceM, upperK, p), mechanicalExtract(fans, interfaceM, upperK, p));
+    withFans(
+      ventFlows(vents, interfaceM, upperK, p),
+      mechanicalExtract(fans, interfaceM, upperK, p),
+    );
   // No orifice to relieve the room. The fan is read at zero pressure
   // difference, so it stays at its nominal flow. A sealed volume would
   // climb until the fan stalled; this model does not grow that pressure.
@@ -1048,12 +1079,7 @@ export function stepZone(
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS));
 }
 
-function stepZoneNow(
-  state: ZoneState,
-  spec: LayerSpec,
-  dt: number,
-  sootGPerS = 0,
-) {
+function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 0) {
   let z = state.interfaceM;
   let temp = state.upperK;
   let soot = state.sootG;
@@ -1148,6 +1174,8 @@ export interface GridWall {
   doorWidth: number;
   /** 0–1 along the wall. Absent means the middle. */
   doorPosition?: number;
+  /** Leaf, 0 shut to 1 open. Absent means fully open. */
+  openFraction?: number;
   material: string;
   level: string;
 }
@@ -1170,6 +1198,8 @@ export interface Enclosure {
    * the soot leaves the building instead of being painted on a stud.
    */
   ventReceivers: string[][];
+  /** Walls that bound this room, including shut doors. */
+  wallIds: string[];
 }
 
 const FACE_MIN_M = 2;
@@ -1178,7 +1208,13 @@ const FACE_MAX_M = 3.4;
 const DIAGONAL_FACE_MAX_M = 4.5;
 
 /** Where the stud link crosses the wall, 0–1 along the wall. Null when it misses. */
-function paramAlongWall(ax: number, ay: number, bx: number, by: number, wall: GridWall): number | null {
+function paramAlongWall(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  wall: GridWall,
+): number | null {
   const d1x = bx - ax;
   const d1y = by - ay;
   const d2x = wall.x2 - wall.x1;
@@ -1271,7 +1307,18 @@ export function enclosureFromGrid(
       let wall: GridWall | null = null;
       for (const candidate of walls) {
         if (candidate.level !== level) continue;
-        if (segmentsCross(stud.x, stud.y, other.x, other.y, candidate.x1, candidate.y1, candidate.x2, candidate.y2)) {
+        if (
+          segmentsCross(
+            stud.x,
+            stud.y,
+            other.x,
+            other.y,
+            candidate.x1,
+            candidate.y1,
+            candidate.x2,
+            candidate.y2,
+          )
+        ) {
           wall = candidate;
           break;
         }
@@ -1320,7 +1367,8 @@ export function enclosureFromGrid(
     const links = doorLinks.get(wall.id) ?? [];
     const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (!(len > 0)) return [];
-    const doorWidth = wall.doorWidth > 0 ? wall.doorWidth : 0.9;
+    const nominal = wall.doorWidth > 0 ? wall.doorWidth : 0.9;
+    const doorWidth = nominal * doorOpenFraction(wall);
     const center = wall.doorPosition ?? 0.5;
     const half = doorWidth / (2 * len);
     const inGap = links.filter((link) => Math.abs(link.t - center) <= half + 1e-4);
@@ -1353,7 +1401,8 @@ export function enclosureFromGrid(
     // A door belongs to the room whose links cross its gap. The same wall
     // can bound a room further along, and that room does not get the door.
     const across = wall.hasDoor ? receiversForDoor(wall) : [];
-    const doorWidth = across.length > 0 ? Math.min(length, wall.doorWidth > 0 ? wall.doorWidth : 0.9) : 0;
+    const nominal = wall.doorWidth > 0 ? wall.doorWidth : 0.9;
+    const doorWidth = across.length > 0 ? Math.min(length, nominal * doorOpenFraction(wall)) : 0;
     const lining = liningForMaterial(wall.material);
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
       vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
@@ -1384,5 +1433,6 @@ export function enclosureFromGrid(
       fires: [],
     },
     ventReceivers,
+    wallIds: [...wallHits.keys()],
   };
 }

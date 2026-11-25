@@ -584,7 +584,18 @@ export interface InteriorWall {
   end: Vec2;
   hasDoor: boolean;
   doorWidth: number;
+  /** 0–1 along the wall, where the opening sits. */
   doorPosition: number;
+  /** Leaf, 0 shut to 1 open. Absent means fully open. */
+  openFraction?: number;
+  /** NFPA 252 endurance, minutes. Absent means the door is unrated. */
+  fireRatingMin?: number;
+  /** Seconds a flashed room has been on this door. */
+  doorExposedSec?: number;
+  /** The rating elapsed. The leaf stays open. */
+  doorFailed?: boolean;
+  /** A command is holding the leaf. People and the closer leave it. */
+  doorPinned?: boolean;
   description: string;
   material: string;
   photos: string[];
@@ -595,12 +606,7 @@ export interface InteriorWall {
 }
 
 export type HazardType =
-  | 'combustible'
-  | 'ignitable'
-  | 'debris_risk'
-  | 'falling_object'
-  | 'electrical'
-  | 'chemical';
+  'combustible' | 'ignitable' | 'debris_risk' | 'falling_object' | 'electrical' | 'chemical';
 
 export interface HazardZone {
   id: string;
