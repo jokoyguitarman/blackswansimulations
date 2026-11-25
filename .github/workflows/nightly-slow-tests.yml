@@ -1,0 +1,24 @@
+name: Nightly slow tests
+
+# Scene tests that each take over a minute (up to ~15 on a 4-core machine), kept out of the
+# per-PR `npm test`. Run from the Actions tab with "Run workflow" to check a branch on demand.
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slow:
+    name: Slow scene tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run test:slow
