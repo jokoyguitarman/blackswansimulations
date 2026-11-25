@@ -196,7 +196,7 @@ const vttSpec: Omit<LayerSpec, 'fires'> = {
   ],
   boundaries: [
     { areaM2: 27 * 13.8, lining: concreteBe2 },
-    { areaM2: vttSteelM2, lining: steelBe2 },
+    { id: 'vtt-steel', areaM2: vttSteelM2, lining: steelBe2 },
   ],
 };
 

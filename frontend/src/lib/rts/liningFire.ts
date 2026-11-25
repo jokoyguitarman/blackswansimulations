@@ -480,7 +480,11 @@ export interface GlassPaneStep {
  * cracks it. The crack is not an opening. Fallout is the gas the pane
  * sees reaching Babrauskas's 450 °C, and only after the crack. Neither
  * heals. Once the pane has cracked, its temperature stays: fallout does
- * not need a hotter pane, only the gas.
+ * not need a hotter pane, only the gas. This is not the layer sheet.
+ * The sheet is the wall-average balance the gas is charged. This step
+ * is the local point source, and it stops at the crack. One number
+ * cannot be both: the wall average does not crack a nearby pane, and
+ * adding this flux on top of χQ/A would count the flame twice.
  */
 export function stepGlassPane(input: GlassPaneInput, already: GlassPaneState): GlassPaneStep {
   const gasK = input.gasK > 0 ? input.gasK : AMBIENT_K;

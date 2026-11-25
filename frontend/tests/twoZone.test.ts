@@ -59,7 +59,9 @@ import {
   steadyLayer,
   oxygenLimitedBurn,
   stepZone,
+  withRememberedSheets,
   type LayerSpec,
+  type ZoneState,
   type Lining,
 } from '../src/lib/rts/twoZone.ts';
 
@@ -186,7 +188,7 @@ test('an isothermal sheet stores its heat and starts cold on every run', () => {
     vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
     boundaries: [
       { areaM2: 36, lining: floor },
-      { areaM2: 60, lining: steel },
+      { id: 'sheet', areaM2: 60, lining: steel },
     ],
     fires: [{ heatKw: 200, diameterM: 0.5 }],
   };
@@ -195,7 +197,7 @@ test('an isothermal sheet stores its heat and starts cold on every run', () => {
     const sheet: number[] = [];
     for (let t = 1; t <= 400; t++) {
       state = stepZone(state, spec, 1).state;
-      if (t === 30 || t === 130 || t === 400) sheet.push((state.sheetK?.[1] ?? 0) - AMBIENT_K);
+      if (t === 30 || t === 130 || t === 400) sheet.push((state.sheetK?.sheet ?? 0) - AMBIENT_K);
     }
     return { rise: state.upperK - AMBIENT_K, sheet };
   };
@@ -208,6 +210,71 @@ test('an isothermal sheet stores its heat and starts cold on every run', () => {
   assert.ok(first.sheet[0]! > 5, `sheet at 30 s ${first.sheet[0]}`);
   assert.ok(first.sheet[1]! > first.sheet[0]! + 20, `sheet at 130 s ${first.sheet[1]}`);
   assert.ok(first.sheet[2]! > first.sheet[1]! + 20, `sheet at 400 s ${first.sheet[2]}`);
+});
+
+test('a sheet keeps its own temperature when an earlier wall leaves the list', () => {
+  // Positional sheetK hands the removed wall's temperature to the next
+  // face, or starts that face at ambient. The two sheets have different
+  // capacities, so the numbers are not the same.
+  const sheet = (thicknessM: number): Lining => ({
+    name: 'steel sheet',
+    kKwMK: 0.054,
+    rhoKgM3: 7850,
+    cKjKgK: 0.425,
+    thicknessM,
+  });
+  const floor: Lining = {
+    name: 'concrete floor',
+    kKwMK: 0.0014,
+    rhoKgM3: 2300,
+    cKjKgK: 0.88,
+    thicknessM: 0.15,
+  };
+  const walls = (ids: readonly ('early' | 'late')[]): LayerSpec => ({
+    areaM2: 36,
+    ceilingM: 2.6,
+    chi: 0.35,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { id: 'floor', areaM2: 36, lining: floor },
+      ...ids.map((id) => ({
+        id,
+        areaM2: 30,
+        lining: sheet(id === 'early' ? 0.001 : 0.008),
+      })),
+    ],
+    fires: [{ heatKw: 400, diameterM: 0.5 }],
+  });
+  let state = freshLayer(2.6);
+  for (let t = 0; t < 90; t++) state = stepZone(state, walls(['early', 'late']), 1).state;
+  const early = state.sheetK?.early ?? 0;
+  const late = state.sheetK?.late ?? 0;
+  assert.ok(early > late + 15, `early ${early.toFixed(1)} late ${late.toFixed(1)}`);
+  // The early wall is first. Dropping it, or listing the late wall first,
+  // used to read sheetK[0] as whichever face now occupies that slot.
+  const reversed = stepZone(state, walls(['late', 'early']), 1).state;
+  assert.ok(
+    Math.abs((reversed.sheetK?.late ?? 0) - late) < 5,
+    `reversed late ${(reversed.sheetK?.late ?? 0).toFixed(1)} from ${late.toFixed(1)}`,
+  );
+  assert.ok(
+    Math.abs((reversed.sheetK?.early ?? 0) - early) < 5,
+    `reversed early ${(reversed.sheetK?.early ?? 0).toFixed(1)} from ${early.toFixed(1)}`,
+  );
+  const dropped = stepZone(state, walls(['late']), 1).state;
+  const kept = dropped.sheetK?.late ?? 0;
+  assert.ok(
+    Math.abs(kept - late) < 5,
+    `late jumped from ${late.toFixed(1)} to ${kept.toFixed(1)}; early was ${early.toFixed(1)}`,
+  );
+  assert.ok((dropped.sheetK?.early ?? 0) > early - 1, 'the wall that left keeps its heat');
+  // A layer that forms again has a fresh zone. The walls are still warm.
+  const again = withRememberedSheets(freshLayer(2.6), walls(['late']).boundaries, state.sheetK);
+  const reformed = stepZone(again, walls(['late']), 1).state;
+  assert.ok(
+    Math.abs((reformed.sheetK?.late ?? 0) - late) < 5,
+    `re-formed late ${(reformed.sheetK?.late ?? 0).toFixed(1)} from ${late.toFixed(1)}`,
+  );
 });
 
 test('the concrete room holds a layer and the stepper reaches it', () => {
@@ -981,6 +1048,7 @@ test('fallen glass opens a labelled fraction, and a concrete id does not', () =>
   assert.equal(shut?.spec.vents.length, 0);
   const pane = shut?.spec.boundaries.find((boundary) => boundary.lining.name === 'glass');
   assert.ok(pane);
+  assert.equal(pane?.id, 'pane');
   assert.equal(pane?.areaM2, 6 * 4);
 
   const open = enclosureFromGrid(['a'], studs, neighbors, [glass], 4, undefined, new Set(['pane']));
@@ -991,6 +1059,7 @@ test('fallen glass opens a labelled fraction, and a concrete id does not', () =>
   assert.deepEqual(open?.ventReceivers, [['out']]);
   const kept = open?.spec.boundaries.find((boundary) => boundary.lining.name === 'glass');
   assert.ok(kept);
+  assert.equal(kept?.id, 'pane');
   assert.ok(Math.abs((kept?.areaM2 ?? 0) - 6 * 4 * (1 - GLASS_FALLOUT_AREA_FRACTION)) < 1e-9);
 
   const concrete = { ...glass, id: 'slab', material: 'concrete' };
@@ -1009,6 +1078,78 @@ test('fallen glass opens a labelled fraction, and a concrete id does not', () =>
       (boundary) => boundary.lining.name === 'concrete' && boundary.areaM2 === 24,
     ),
     true,
+  );
+});
+
+test('a new layer keeps the glass sheet the wall already holds', () => {
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    material: string,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material,
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([
+    stud('a', 0, 0),
+    stud('b', 3, 0),
+    stud('out', 6, 0, false),
+    stud('north', 0, 3, false),
+  ]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['a', wood]]));
+  const walls = [
+    barrier('glass', -1.5, 1.5, 4.5, 1.5, 'glass', false),
+    barrier('s', -1.5, -1.5, 4.5, -1.5, 'concrete', false),
+    barrier('w', -1.5, -1.5, -1.5, 1.5, 'concrete', false),
+    barrier('e', 4.5, -1.5, 4.5, 1.5, 'concrete', true),
+  ];
+  (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['a']);
+  for (let t = 0; t < 180; t++) engine.step(1, walls, []);
+  const view = engine as unknown as {
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        ceilingM: number;
+        zone: ZoneState;
+      }
+    >;
+  };
+  const live = [...view.layerState.values()].find((row) => row.active);
+  assert.ok(live, 'no layer');
+  const sheet = live.zone.sheetK?.glass ?? 0;
+  assert.ok(sheet > AMBIENT_K + 8, `sheet ${(sheet - AMBIENT_K).toFixed(1)} K`);
+  // The layer is replaced. The wall is still warm, so the new layer must
+  // not start that sheet at ambient. A temperature stored by position
+  // cannot be copied onto a fresh zone once the boundary list has moved.
+  live.zone = freshLayer(live.ceilingM);
+  engine.step(1, walls, []);
+  const next = [...view.layerState.values()].find((row) => row.zone.sheetK?.glass != null);
+  const restored = next?.zone.sheetK?.glass ?? 0;
+  assert.ok(
+    Math.abs(restored - sheet) < 3,
+    `restored ${(restored - AMBIENT_K).toFixed(1)} K from ${(sheet - AMBIENT_K).toFixed(1)} K`,
   );
 });
 
