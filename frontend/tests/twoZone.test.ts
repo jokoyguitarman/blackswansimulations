@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
-import { HOOD_HEIGHT_M } from '../src/lib/rts/flameFront.ts';
+import { HOOD_HEIGHT_M, STUD_AREA_M2 } from '../src/lib/rts/flameFront.ts';
 import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
+import { SOOT_EXTINCTION_M2_PER_G, sootProductionGPerS } from '../src/lib/rts/toxicDose.ts';
 import {
   DOOR_JET_MIN_KGS,
+  SMOKE_LEAK_PER_S,
   SpatialEffectsEngine,
+  advanceSootK,
   assignDoorJet,
   queueDoorJets,
   type DoorJetBook,
@@ -28,6 +31,8 @@ import {
   formsSustainedLayer,
   FAN_FULL_FLOW_PA,
   FAN_ZERO_FLOW_PA,
+  HEAD_HEIGHT_M,
+  MIN_LAYER_FIRE_KW,
   HOOD_EXHAUST_M3_PER_S_PER_M,
   HOOD_EXTRACT_M3_PER_S,
   HOOD_FAN_WHEN,
@@ -1067,8 +1072,22 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
     };
     jetAudit: DoorJetBook[] | null;
     jetTaken: Map<string, { kgS: number; tempK: number; oxygenY: number }>;
+    sootK: Map<string, number>;
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        members: string[];
+        zone: { sootG: number; interfaceM: number; upperK: number };
+      }
+    >;
   };
   exposed.fireSim.ignite(['fire']);
+  // A known column load, so a scoop on activation would show up as a jump
+  // in the layer equal to these grams. Soot does not change the jet.
+  const seededK = 2;
+  exposed.sootK.set('hall', seededK);
+  const columnG = (k: number) => (k * STUD_AREA_M2 * 2.6) / SOOT_EXTINCTION_M2_PER_G;
   const audit: DoorJetBook[] = [];
   exposed.jetAudit = audit;
   const rooms = exposed.fireSim.compartmentsOf(walls);
@@ -1078,6 +1097,10 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
   let prev: DoorJetBook[] = [];
   let sentKg = 0;
   let sentKJ = 0;
+  let hallWasActive = false;
+  let prevColumnG = columnG(seededK);
+  let prevLayerG = 0;
+  let checkedSoot = false;
   for (let t = 0; t < 400; t++) {
     engine.step(1, walls, []);
     // What the source vents assigned on the previous step is what this step
@@ -1099,6 +1122,32 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
       sentKg += expHall.kgS;
       sentKJ += expHall.kgS * expHall.tempK;
     }
+    const hallLive = exposed.layerState.get(hallId);
+    const columnNow = columnG(exposed.sootK.get('hall') ?? 0);
+    const layerNow = hallLive?.zone.sootG ?? 0;
+    if (!hallWasActive && hallLive?.active === true) {
+      checkedSoot = true;
+      assert.ok(
+        prevColumnG > 0.5,
+        `only ${prevColumnG.toFixed(3)} g was in the column, so a copied scoop would not show`,
+      );
+      const gained = layerNow - prevLayerG;
+      assert.ok(
+        gained < prevColumnG * 0.5,
+        `the layer gained ${gained.toFixed(3)} g while ${prevColumnG.toFixed(3)} g stayed in the column`,
+      );
+      // Once the interface is at the head the stud shows the layer, so the
+      // column reading is no longer the lower soot. Above the head it is.
+      if (hallLive.zone.interfaceM > HEAD_HEIGHT_M) {
+        assert.ok(
+          columnNow > prevColumnG * 0.5,
+          `column soot fell from ${prevColumnG.toFixed(3)} g to ${columnNow.toFixed(3)} g when the layer formed`,
+        );
+      }
+    }
+    hallWasActive = hallLive?.active === true;
+    prevColumnG = columnNow;
+    prevLayerG = layerNow;
     prev = audit.map((book) => ({
       room: book.room,
       members: book.members.slice(),
@@ -1108,6 +1157,7 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
   }
   assert.ok(sentKg > 1, `the door moved only ${sentKg.toFixed(4)} kg`);
   assert.ok(sentKJ > sentKg * (AMBIENT_K + 1), 'the jet enthalpy was not above ambient');
+  assert.ok(checkedSoot, 'the hall layer never formed, so the soot check did not run');
   const layers = [
     ...(
       engine as unknown as {
@@ -1131,4 +1181,210 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
   assert.ok(rise >= DISTINCT_LAYER_RISE_K, `hall rise ${rise.toFixed(1)} K`);
   assert.ok((hall?.zone.interfaceM ?? 2.6) < 2.6, `hall interface ${hall?.zone.interfaceM}`);
   assert.ok(extinctionK(engine.studStates.get('hall')?.smoke ?? 0) > 0, 'hall stud has no smoke');
+});
+
+test('a jet-fed room keeps its head-height soot when it catches fire', () => {
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('hall', 0, 3)]);
+  // The same hall at 2.6 m already has its interface at head height when the
+  // jet layer forms, so the column shows the layer. Six metres keeps the
+  // interface above 1.7 m, which is the soot this test is watching.
+  engine.setStoreyHeights({ G: 6 });
+  engine.setFuelCells(new Map([['fire', wood]]));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void };
+    sootK: Map<string, number>;
+    layerState: Map<string, { active: boolean; members: string[]; zone: { interfaceM: number } }>;
+  };
+  exposed.fireSim.ignite(['fire']);
+  exposed.sootK.set('hall', 2);
+  const hallSoot = () => exposed.sootK.get('hall') ?? 0;
+  let ready = false;
+  let best = 'none';
+  for (let t = 0; t < 400 && !ready; t++) {
+    engine.step(1, walls, []);
+    const hall = [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+    if (t === 30 || t === 120 || hall?.active) {
+      best = `t=${t + 1} z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'} active=${hall?.active === true} soot=${hallSoot().toFixed(3)}`;
+    }
+    ready = hall?.active === true && hall.zone.interfaceM > HEAD_HEIGHT_M && hallSoot() > 0.2;
+  }
+  assert.ok(ready, `the hall never held a jet layer above head height with column soot (${best})`);
+  const kept = hallSoot();
+  engine.setFuelCells(
+    new Map([
+      ['fire', wood],
+      ['hall', { ...wood, alphaKwS2: 5000, spreadMPerMin: 0 }],
+    ]),
+  );
+  exposed.fireSim.ignite(['hall']);
+  engine.step(0.2, walls, []);
+  const release = engine.fuelReleaseKw('hall') ?? 0;
+  assert.ok(
+    release >= 1,
+    `the hall fire was only ${release.toFixed(2)} kW, so it stayed on the jet path`,
+  );
+  const hall = [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  assert.ok(
+    hall?.active,
+    `the hall layer dropped when the fire started (z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'}, soot=${hallSoot().toFixed(3)}, ${release.toFixed(1)} kW)`,
+  );
+  assert.equal(hall?.members.includes('fire'), false, 'the fire spread merged the rooms');
+  assert.ok(
+    (hall?.zone.interfaceM ?? 0) > HEAD_HEIGHT_M,
+    `the interface was already at the head (${hall?.zone.interfaceM.toFixed(2)} m), so this step does not test the clear`,
+  );
+  const still = hallSoot();
+  assert.ok(
+    still > kept * 0.5,
+    `head-height soot fell from ${kept.toFixed(3)} /m to ${still.toFixed(3)} /m when the room caught fire`,
+  );
+});
+
+test('a burning stud under a jet layer adds no soot to the column', () => {
+  const wood = defaultLightFuel();
+  // Under 1 kW, so the room stays on the jet branch. The yield is large on
+  // purpose: one second of that release would move the column if it were
+  // painted there as well as put into the layer.
+  const hallFuel = { ...wood, alphaKwS2: 0.8, spreadMPerMin: 0, sootYieldGPerG: 4 };
+  const ceilingM = 6;
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('hall', 0, 3)]);
+  engine.setStoreyHeights({ G: ceilingM });
+  engine.setFuelCells(new Map([['fire', wood]]));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void };
+    sootK: Map<string, number>;
+    layerState: Map<
+      string,
+      { active: boolean; members: string[]; zone: { interfaceM: number; sootG: number } }
+    >;
+  };
+  exposed.fireSim.ignite(['fire']);
+  exposed.sootK.set('hall', 2);
+  const hallLayer = () =>
+    [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  let ready = false;
+  for (let t = 0; t < 400 && !ready; t++) {
+    engine.step(1, walls, []);
+    const hall = hallLayer();
+    ready =
+      hall?.active === true &&
+      hall.zone.interfaceM > HEAD_HEIGHT_M &&
+      (exposed.sootK.get('hall') ?? 0) > 0.2;
+  }
+  const before = hallLayer();
+  assert.ok(before, 'the hall never held a jet layer above head height');
+  assert.ok(before.active, 'the hall layer was not active above head height');
+  const kept = exposed.sootK.get('hall') ?? 0;
+  const layerBefore = before.zone.sootG;
+  engine.setFuelCells(
+    new Map([
+      ['fire', wood],
+      ['hall', hallFuel],
+    ]),
+  );
+  exposed.fireSim.ignite(['hall']);
+  const dt = 1;
+  engine.step(dt, walls, []);
+  const release = engine.fuelReleaseKw('hall') ?? 0;
+  assert.ok(release > 0, 'the hall stud did not burn');
+  assert.ok(
+    release < MIN_LAYER_FIRE_KW,
+    `the hall fire was ${release.toFixed(2)} kW, so it left the jet path`,
+  );
+  const hall = hallLayer();
+  assert.ok(hall, 'the hall layer dropped when the stud burned');
+  assert.ok(hall.active, 'the hall layer dropped when the stud burned');
+  assert.equal(hall.members.includes('fire'), false, 'the fire spread merged the rooms');
+  assert.ok(
+    hall.zone.interfaceM > HEAD_HEIGHT_M,
+    `the interface was at ${hall.zone.interfaceM.toFixed(2)} m, so the column shows the layer`,
+  );
+  const producedG = sootProductionGPerS(hallFuel, release) * dt;
+  const columnFromRelease = (producedG * SOOT_EXTINCTION_M2_PER_G) / (STUD_AREA_M2 * ceilingM);
+  assert.ok(
+    columnFromRelease > 0.02,
+    `the stud made only ${columnFromRelease.toFixed(4)} /m, so a column copy would not show`,
+  );
+  const leaked = advanceSootK(kept, 0, SMOKE_LEAK_PER_S, dt);
+  const still = exposed.sootK.get('hall') ?? 0;
+  assert.ok(
+    Math.abs(still - leaked) < columnFromRelease * 0.25,
+    `column soot went from ${kept.toFixed(3)} /m to ${still.toFixed(3)} /m; leak-only is ${leaked.toFixed(3)} /m and the release would add ${columnFromRelease.toFixed(3)} /m`,
+  );
+  const gained = hall.zone.sootG - layerBefore;
+  assert.ok(
+    gained >= producedG * 0.8,
+    `the layer gained ${gained.toFixed(3)} g while the stud made ${producedG.toFixed(3)} g`,
+  );
 });

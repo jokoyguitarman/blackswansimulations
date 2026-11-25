@@ -65,7 +65,7 @@ import {
 } from './fixtures/fireValidation/nbsPlan.ts';
 
 /** Recorded corridor extinction, 1/m, mean over 300–880 s. */
-const FV4_CORRIDOR_K = 0.2788;
+const FV4_CORRIDOR_K = 0.2766;
 
 // ── Flashover correlations, 4 m × 5 m × 2.6 m concrete room, 0.9 × 2.0 m door ──
 
