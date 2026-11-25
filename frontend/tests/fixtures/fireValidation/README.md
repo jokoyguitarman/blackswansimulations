@@ -88,7 +88,7 @@ The test runs `nbsPlan.ts` through `SpatialEffectsEngine`: the fire room, entry 
 - Each door has a 2.0 m head.
 - The burner's radiative fraction is 0.35.
 
-In the same plan the fire room is unchanged, at 1.08 m with an 88.6 K rise. Over 300–880 s the corridor has a layer in 59 of 59 samples, at 1.13 m and 33.4 K. The mean corridor extinction is 0.2788 ± 0.02 /m.
+In the same plan the fire room is unchanged, at 1.08 m with an 88.6 K rise. Over 300–880 s the corridor has a layer in 59 of 59 samples, at 1.13 m and 33.4 K. The mean corridor extinction is 0.2766 ± 0.02 /m.
 
 **Receiver limits, recorded and not changed.** The receiving room still solves its doors against ambient air.
 
