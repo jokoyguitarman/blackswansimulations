@@ -24,29 +24,46 @@
  * 30 kW/m² as the flame flux for that t_ig. The 60 kW/m² in the same paper
  * is the flux they used for the pyrolysis-zone energy release in a
  * room-corner correlation. This model does not use 60. The energy release
- * is the charring rate. For this board Q'' is under 100 kW/m², so the flame
- * is shorter than the pyrolysis zone and the front does not run ahead of
- * the height that first ignited. That first height is the Heskestad flame
- * of the stud with the greatest flux on the wall, their ignitor region y_0.
- * There is no separate ignitor here.
+ * is the charring rate, about 86.8 kW/m², so k_f Q'' is under 1 and the
+ * front does not run ahead of the height that first ignited. That height
+ * is the Heskestad flame of the stud with the greatest flux on the wall,
+ * their ignitor region y_0. There is no separate ignitor here. There is
+ * also no early peak-HRR period. A peak above 100 kW/m² would make the
+ * flame taller than the pyrolysis zone. This model does not have one, so
+ * that upward spread is not represented.
  *
  * Opposed spread is Quintiere and Harkleroad, NBSIR 84-2943:
- * V = Φ / [kρc (T_ig − T_s)²]. Φ is a measured flame-spread parameter.
- * This board has none, and a specimen regression is not a substitute, so
- * the formula is available and is not applied. In a well-mixed layer the
- * flux has no horizontal gradient, so the immersed strip ignites together.
- * That is the lateral case this room can actually see.
+ * V = Φ / [kρc (T_ig − T_s)²]. Table 2 of that report lists flame-spread
+ * properties, including Φ, for plain plywood (0.635 cm) and fire-retardant
+ * plywood (1.27 cm). The formula is not applied. Those specimens are not
+ * this 18 mm board, and a well-mixed layer has no horizontal gradient, so
+ * the immersed strip ignites together rather than as an opposed front.
  *
- * Glass is Keski-Rahkonen, Fire and Materials 12 (1988), "Breaking of
- * Window Glass Close to Fire". The pane is thermally thin, the edge stays
- * at the initial temperature because the frame shades it, and it cracks
- * when the centre is hotter than the edge by σ_b / (E β). His properties
- * are σ_b = 50 MPa, β = 8×10⁻⁶ K⁻¹, E = 80 GPa. Pagni (IAFSS symposium 7,
- * "Thermal Glass Breakage") is clear that the first crack is not a vent:
- * a piece falls out only after later cracks isolate it. This model has no
- * fallout fraction. The first-crack difference opens the whole stored
- * face, which overstates the opening. The face is the wall, because no
- * window rectangle is stored.
+ * Glass cracks by Keski-Rahkonen, Fire and Materials 12 (1988), "Breaking
+ * of Window Glass Close to Fire". The pane is thermally thin, the edge
+ * stays at the initial temperature because the frame shades it, and it
+ * cracks when the centre is hotter than the edge by σ_b / (E β). His
+ * properties are σ_b = 50 MPa, β = 8×10⁻⁶ K⁻¹, E = 80 GPa. Pagni (IAFSS
+ * symposium 7, "Thermal Glass Breakage") is clear that the first crack is
+ * not a vent. The crack changes nothing in the opening.
+ *
+ * Fallout is Babrauskas, "Glass Breakage in Fires". For 4–6 mm single
+ * glazing the mean gas temperature at which glass falls out enough to
+ * affect the air flow is about 450 °C. This pane is 6 mm. The 3 mm mean,
+ * about 360 °C, and double glazing, about 600 °C, are not used. Hassani,
+ * Shields and Silcock recorded first cracks at 323–467 °C gas and fallout
+ * in 1 of 6 panes by about 450–500 °C. That 1/6 is a probability of any
+ * fallout, not an area, so it is not the opening. Shields later found that
+ * 6 mm fallout needed about 35 kW/m². The trigger here is Babrauskas's
+ * 450 °C, not that flux.
+ *
+ * The area is Wang and Rush, Fire Safety Journal (2018): ordinary float
+ * glass "falls out gradually with a significantly smaller fallout fraction
+ * (~20%)" than tempered glass, which falls out completely. This row is
+ * float glass. The tilde is theirs, and the opening is that 20%. Wong, Li
+ * and Spearpoint, Fire Safety Science 11 (2014) 444-457, never recorded
+ * 100% for 6 mm glass. The piece is that fraction of the wall width, still
+ * full height, because no hole rectangle is stored.
  */
 
 import {
@@ -66,13 +83,22 @@ import {
   coldSurfaceIncidentKwM2,
 } from './twoZone';
 
-/** EN 1995-1-2:2004 Table 3.1, wood panelling and plywood. Not the 0.65 solid rate. */
+/**
+ * EN 1995-1-2:2004 Table 3.1, β0 for wood panelling and plywood, 1.0 mm/min.
+ * The table is for a 20 mm board at 450 kg/m³. Eq. 3.7 would raise an 18 mm
+ * board at 420 kg/m³ by about √(450/420) × √(20/18), about 1.09 mm/min.
+ * That correction is not applied. The 0.65 mm/min solid-softwood rate is
+ * not used. The density on the timber row is C24, 420 kg/m³ (EN 338), not
+ * plywood. NBSIR 84-2943 Table 3 lists plywood at 540 kg/m³. The plywood
+ * keyword still uses this row.
+ */
 export const PLYWOOD_CHAR_MM_PER_MIN = 1;
 
 /**
  * Cleary and Quintiere (1991) as stated in "Material Fire Properties":
  * y_f = k_f Q'' y_p. At 100 kW/m² the flame is exactly as tall as the
- * pyrolysis zone, which is why that paper's spread slows below 100.
+ * pyrolysis zone. This board's char rate is under that, and there is no
+ * early peak-HRR period that would put it over.
  */
 export const UPWARD_FLAME_K_M2_PER_KW = 0.01;
 
@@ -90,9 +116,23 @@ export const GLASS_MODULUS_PA = 80e9;
 /**
  * A lumped pane has one temperature. It is heated by the upper layer only
  * when the hot gas covers at least half the face. Below that it sees
- * ambient gas plus the point source. The half is assumed.
+ * ambient gas plus the point source. Fallout reads that same gas, so a
+ * shallow layer does not count as Babrauskas's room gas. The half is assumed.
  */
 export const GLASS_LAYER_COVER = 0.5;
+
+/**
+ * Babrauskas, "Glass Breakage in Fires": mean gas temperature for fallout
+ * of 4–6 mm single glazing, about 450 °C. The stored pane is 6 mm.
+ */
+export const GLASS_FALLOUT_GAS_C = 450;
+
+/**
+ * Wang and Rush (Fire Safety Journal, 2018): float glass falls out at about
+ * 20% of the pane. Tempered glass, which falls out completely, is not this
+ * row. The tilde in "~20%" is theirs.
+ */
+export const GLASS_FALLOUT_AREA_FRACTION = 0.2;
 
 export type LiningKind = 'timber' | 'glass' | 'inert';
 
@@ -107,6 +147,11 @@ export function liningKind(material: string | null | undefined): LiningKind {
 /** Keski-Rahkonen's centre-to-edge difference, kelvin. About 78 K with his properties. */
 export function glassBreakDeltaK(): number {
   return GLASS_BREAK_STRESS_PA / (GLASS_EXPANSION_PER_K * GLASS_MODULUS_PA);
+}
+
+/** Babrauskas's 450 °C, in kelvin. About, so 273.15 is the usual offset, not a fit. */
+export function glassFalloutGasK(): number {
+  return GLASS_FALLOUT_GAS_C + 273.15;
 }
 
 /** β0 for the plywood board, metres per second. */
@@ -150,8 +195,9 @@ export function concurrentSpreadMPerS(
 
 /**
  * Opposed-flow speed, m/s. Φ is (kW)²/m³ and kρc is (kW/m²K)² s, the
- * thermally thick form in NBSIR 84-2943. Not applied to the timber row:
- * that board has no measured Φ.
+ * thermally thick form in NBSIR 84-2943. Table 2 lists Φ for plain and
+ * fire-retardant plywood. Not applied: those specimens are not this board,
+ * and the immersed strip ignites together.
  */
 export function opposedSpreadMPerS(
   phiKw2PerM3: number,
@@ -417,22 +463,37 @@ export interface GlassPaneInput {
   thicknessM: number;
 }
 
+export interface GlassPaneState {
+  cracked: boolean;
+  fallen: boolean;
+}
+
 export interface GlassPaneStep {
   paneK: number;
-  broken: boolean;
+  cracked: boolean;
+  fallen: boolean;
 }
 
 /**
  * One lumped step. The pane starts at ambient, and that ambient is the
  * shaded edge for the whole fire. Crossing the Keski-Rahkonen difference
- * breaks it. It does not heal.
+ * cracks it. The crack is not an opening. Fallout is the gas the pane
+ * sees reaching Babrauskas's 450 °C, and only after the crack. Neither
+ * heals. Once the pane has cracked, its temperature stays: fallout does
+ * not need a hotter pane, only the gas.
  */
-export function stepGlassPane(input: GlassPaneInput, alreadyBroken: boolean): GlassPaneStep {
-  if (alreadyBroken) return { paneK: input.paneK, broken: true };
-  const cap = input.rhoKgM3 * (input.cJKgK / 1000) * input.thicknessM;
-  const start = input.paneK > 0 ? input.paneK : AMBIENT_K;
-  if (!(cap > 0) || !(input.dt > 0)) return { paneK: start, broken: false };
-  const q = paneNetKwM2(start, input.gasK > 0 ? input.gasK : AMBIENT_K, input.flameKwM2);
-  const next = Math.min(1500, Math.max(AMBIENT_K, start + (q / cap) * input.dt));
-  return { paneK: next, broken: next - AMBIENT_K >= glassBreakDeltaK() };
+export function stepGlassPane(input: GlassPaneInput, already: GlassPaneState): GlassPaneStep {
+  const gasK = input.gasK > 0 ? input.gasK : AMBIENT_K;
+  if (already.fallen) return { paneK: input.paneK, cracked: true, fallen: true };
+  let paneK = input.paneK > 0 ? input.paneK : AMBIENT_K;
+  let cracked = already.cracked;
+  if (!cracked) {
+    const cap = input.rhoKgM3 * (input.cJKgK / 1000) * input.thicknessM;
+    if (cap > 0 && input.dt > 0) {
+      const q = paneNetKwM2(paneK, gasK, input.flameKwM2);
+      paneK = Math.min(1500, Math.max(AMBIENT_K, paneK + (q / cap) * input.dt));
+      cracked = paneK - AMBIENT_K >= glassBreakDeltaK();
+    }
+  }
+  return { paneK, cracked, fallen: cracked && gasK >= glassFalloutGasK() };
 }

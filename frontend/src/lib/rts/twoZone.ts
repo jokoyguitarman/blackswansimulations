@@ -40,6 +40,7 @@
 import { LEVEL } from '../evacuation/levelConstants';
 import { doorOpenFraction } from './doorLeaf';
 import { CONTENTS_HRRPUA_KW_M2, RADIATIVE_FRACTION, STUD_AREA_M2 } from './flameFront';
+import { GLASS_FALLOUT_AREA_FRACTION } from './liningFire';
 import { layerLiningFor, type WallMaterial } from './materialLibrary';
 
 /** 20 °C, the ambient the sprinkler link and the gas molar volume already use. */
@@ -1323,9 +1324,10 @@ function segmentsCross(
  * front. A link to a stud outside the set, with no wall and no facade, is
  * a full-height opening. A facade link is a concrete wall unless it
  * crosses an exit, which is one vent of that exit's width with its head
- * at DOOR_SOFFIT_M. A glass wall in `openWallIds` has cracked and is a
- * vent of the whole face: the model stores no window rectangle. That
- * replaces the solid area and any door in the same wall.
+ * at DOOR_SOFFIT_M. A glass wall in `openWallIds` has fallen out, not
+ * merely cracked. The vent is GLASS_FALLOUT_AREA_FRACTION of the wall
+ * width, still full height, because no hole rectangle is stored. The rest
+ * of the face stays glass. A door in that wall is not a second opening.
  */
 export function enclosureFromGrid(
   memberIds: readonly string[],
@@ -1470,8 +1472,14 @@ export function enclosureFromGrid(
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (!(length > 0)) continue;
     if (openWallIds?.has(wall.id) && liningForMaterial(wall.material).name === 'glass') {
-      vents.push({ widthM: length, sillM: 0, soffitM: ceilingM });
-      ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
+      const lining = liningForMaterial(wall.material);
+      const openWidth = length * GLASS_FALLOUT_AREA_FRACTION;
+      if (openWidth > 0) {
+        vents.push({ widthM: openWidth, sillM: 0, soffitM: ceilingM });
+        ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
+      }
+      const kept = (length - openWidth) * ceilingM;
+      if (kept > 0) boundaries.push({ areaM2: kept, lining });
       continue;
     }
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);

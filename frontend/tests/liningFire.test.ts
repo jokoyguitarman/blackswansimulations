@@ -5,6 +5,8 @@ import {
   FLAME_AHEAD_FLUX_KW_M2,
   GLASS_BREAK_STRESS_PA,
   GLASS_EXPANSION_PER_K,
+  GLASS_FALLOUT_AREA_FRACTION,
+  GLASS_FALLOUT_GAS_C,
   GLASS_MODULUS_PA,
   PLYWOOD_CHAR_MM_PER_MIN,
   UPWARD_FLAME_K_M2_PER_KW,
@@ -14,6 +16,7 @@ import {
   concurrentSpreadMPerS,
   freshTimberFace,
   glassBreakDeltaK,
+  glassFalloutGasK,
   liningBurnAreaM2,
   liningKind,
   linkCrossesWall,
@@ -35,6 +38,7 @@ test('glass cracks at Keski-Rahkonen σ / (E β), and a cool pane stays whole', 
   assert.ok(Math.abs(delta - 78.125) < 1e-9);
 
   const row = layerLiningFor('glass');
+  const whole = { cracked: false, fallen: false };
   const still = stepGlassPane(
     {
       paneK: AMBIENT_K,
@@ -45,9 +49,10 @@ test('glass cracks at Keski-Rahkonen σ / (E β), and a cool pane stays whole', 
       cJKgK: row.specificHeatJKgK,
       thicknessM: row.thicknessM,
     },
-    false,
+    whole,
   );
-  assert.equal(still.broken, false);
+  assert.equal(still.cracked, false);
+  assert.equal(still.fallen, false);
   assert.equal(still.paneK, AMBIENT_K);
 
   const cap = row.densityKgM3 * (row.specificHeatJKgK / 1000) * row.thicknessM;
@@ -63,14 +68,15 @@ test('glass cracks at Keski-Rahkonen σ / (E β), and a cool pane stays whole', 
       cJKgK: row.specificHeatJKgK,
       thicknessM: row.thicknessM,
     },
-    false,
+    whole,
   );
   assert.ok(Math.abs(one.paneK - (AMBIENT_K + q / cap)) < 1e-9);
-  assert.equal(one.broken, false);
+  assert.equal(one.cracked, false);
+  assert.equal(one.fallen, false);
 
   let pane = AMBIENT_K;
-  let broken = false;
-  for (let i = 0; i < 30 && !broken; i++) {
+  let state = { cracked: false, fallen: false };
+  for (let i = 0; i < 30 && !state.cracked; i++) {
     const step = stepGlassPane(
       {
         paneK: pane,
@@ -81,12 +87,13 @@ test('glass cracks at Keski-Rahkonen σ / (E β), and a cool pane stays whole', 
         cJKgK: row.specificHeatJKgK,
         thicknessM: row.thicknessM,
       },
-      broken,
+      state,
     );
     pane = step.paneK;
-    broken = step.broken;
+    state = { cracked: step.cracked, fallen: step.fallen };
   }
-  assert.equal(broken, true);
+  assert.equal(state.cracked, true);
+  assert.equal(state.fallen, false);
   assert.ok(pane - AMBIENT_K >= delta);
   const held = stepGlassPane(
     {
@@ -98,17 +105,100 @@ test('glass cracks at Keski-Rahkonen σ / (E β), and a cool pane stays whole', 
       cJKgK: row.specificHeatJKgK,
       thicknessM: row.thicknessM,
     },
-    true,
+    state,
   );
-  assert.equal(held.broken, true);
+  assert.equal(held.cracked, true);
+  assert.equal(held.fallen, false);
   assert.equal(held.paneK, pane);
+  const dropped = stepGlassPane(
+    {
+      paneK: pane,
+      gasK: glassFalloutGasK(),
+      flameKwM2: 0,
+      dt: 1,
+      rhoKgM3: row.densityKgM3,
+      cJKgK: row.specificHeatJKgK,
+      thicknessM: row.thicknessM,
+    },
+    { cracked: true, fallen: false },
+  );
+  assert.equal(dropped.fallen, true);
+  assert.equal(dropped.paneK, pane);
+});
+
+test('a 6 mm pane under 200–300 °C cracks without falling, and 450 °C falls out', () => {
+  assert.equal(GLASS_FALLOUT_GAS_C, 450);
+  assert.equal(glassFalloutGasK(), 723.15);
+  assert.equal(GLASS_FALLOUT_AREA_FRACTION, 0.2);
+  const row = layerLiningFor('glass');
+  const expose = (gasC: number, seconds: number) => {
+    let pane = AMBIENT_K;
+    let state = { cracked: false, fallen: false };
+    let crackedAt: number | null = null;
+    for (let t = 1; t <= seconds; t++) {
+      const step = stepGlassPane(
+        {
+          paneK: pane,
+          gasK: gasC + 273.15,
+          flameKwM2: 0,
+          dt: 1,
+          rhoKgM3: row.densityKgM3,
+          cJKgK: row.specificHeatJKgK,
+          thicknessM: row.thicknessM,
+        },
+        state,
+      );
+      pane = step.paneK;
+      if (step.cracked && crackedAt == null) crackedAt = t;
+      state = { cracked: step.cracked, fallen: step.fallen };
+    }
+    return { state, crackedAt };
+  };
+  const cool = expose(150, 30 * 60);
+  assert.equal(cool.state.cracked, false, `150 °C cracked at ${cool.crackedAt}`);
+  assert.equal(cool.state.fallen, false);
+  const warm = expose(200, 30 * 60);
+  assert.equal(warm.state.cracked, true);
+  assert.equal(warm.state.fallen, false);
+  assert.ok(warm.crackedAt != null && warm.crackedAt > 400 && warm.crackedAt < 550);
+  const hotter = expose(300, 30 * 60);
+  assert.equal(hotter.state.cracked, true);
+  assert.equal(hotter.state.fallen, false);
+  assert.ok(hotter.crackedAt != null && hotter.crackedAt > 100 && hotter.crackedAt < 220);
+  const fall = expose(450, 30 * 60);
+  assert.equal(fall.state.cracked, true);
+  assert.equal(fall.state.fallen, true);
+  assert.ok(fall.crackedAt != null && fall.crackedAt < 90);
+  assert.ok(
+    fall.crackedAt != null &&
+      hotter.crackedAt != null &&
+      warm.crackedAt != null &&
+      fall.crackedAt < hotter.crackedAt &&
+      hotter.crackedAt < warm.crackedAt,
+  );
+  const justUnder = stepGlassPane(
+    {
+      paneK: AMBIENT_K + glassBreakDeltaK(),
+      gasK: glassFalloutGasK() - 0.2,
+      flameKwM2: 0,
+      dt: 1,
+      rhoKgM3: row.densityKgM3,
+      cJKgK: row.specificHeatJKgK,
+      thicknessM: row.thicknessM,
+    },
+    { cracked: true, fallen: false },
+  );
+  assert.equal(justUnder.fallen, false);
 });
 
 test('a plywood board releases β ρ ΔH and chars through at the panel rate', () => {
   const row = layerLiningFor('timber');
   const wood = entryById('wood');
   assert.equal(PLYWOOD_CHAR_MM_PER_MIN, 1);
+  const eq37 = Math.sqrt(450 / 420) * Math.sqrt(20 / 18);
+  assert.ok(Math.abs(eq37 - 1.091) < 0.002, `Eq. 3.7 would be ${eq37.toFixed(3)} mm/min`);
   assert.equal(row.densityKgM3, 420);
+  assert.notEqual(row.densityKgM3, 540);
   assert.equal(row.thicknessM, 0.018);
   assert.equal(wood?.effectiveHeatOfCombustionMjKg, 12.4);
   assert.equal(wood?.chfKwM2, 10);
@@ -267,8 +357,12 @@ test('a timber wall burns and a glass wall opens, and concrete does neither', ()
   );
 
   const glass = run('glass', 'pane');
-  const broken = (glass as unknown as { brokenGlass: Set<string> }).brokenGlass;
-  assert.ok(broken.has('pane'), `broken ${[...broken].join(',')}`);
+  const mem = (
+    glass as unknown as { linings: Map<string, { cracked: boolean; fallen: boolean }> }
+  ).linings.get('pane');
+  assert.ok(mem?.cracked, 'the point source cracks the pane');
+  const fallen = (glass as unknown as { fallenGlass: Set<string> }).fallenGlass;
+  assert.equal(fallen.has('pane'), mem?.fallen === true);
   const walls = [wall('pane', 'glass', 0.4), door];
   const enc = (
     glass as unknown as {
@@ -281,10 +375,19 @@ test('a timber wall burns and a glass wall opens, and concrete does neither', ()
     }
   ).enclosureOf('check', ['a', 'b'], walls, 4);
   const opened = enc?.spec.vents.filter((vent) => vent.soffitM > 3.9) ?? [];
-  assert.ok(
+  assert.equal(
     opened.some((vent) => Math.abs(vent.widthM - 7) < 0.05),
-    `vents ${JSON.stringify(opened)}`,
+    false,
+    `whole face opened ${JSON.stringify(opened)}`,
   );
+  if (mem?.fallen) {
+    assert.ok(
+      opened.some((vent) => Math.abs(vent.widthM - 7 * GLASS_FALLOUT_AREA_FRACTION) < 0.05),
+      `fallout vents ${JSON.stringify(opened)}`,
+    );
+  } else {
+    assert.equal(fallen.has('pane'), false);
+  }
 });
 
 test('a partition the studs can walk around burns into that room', () => {

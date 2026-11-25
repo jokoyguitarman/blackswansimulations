@@ -391,15 +391,21 @@ export class SpatialEffectsEngine {
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
   /** Door walls of a room that has flashed. The leaf clock reads this. */
   private exposedDoors = new Set<string>();
-  /** Glass that has cracked. The next enclosure turns that face into a vent. */
-  private brokenGlass = new Set<string>();
+  /** Glass that has fallen out. A crack is not in this set, and it is not a vent. */
+  private fallenGlass = new Set<string>();
   /**
    * Remaining-fuel mass, pane temperature, and the per-room timber face.
    * Keyed by wall id. One mass for the board, shared by both faces.
    */
   private linings = new Map<
     string,
-    { burnedKg: number; paneK: number; broken: boolean; faces: Map<string, TimberFace> }
+    {
+      burnedKg: number;
+      paneK: number;
+      cracked: boolean;
+      fallen: boolean;
+      faces: Map<string, TimberFace>;
+    }
   >();
   /** Previous step's burned fraction, read before the layer clears the limit. */
   private liningFraction = new Map<string, number>();
@@ -439,7 +445,7 @@ export class SpatialEffectsEngine {
     this.layerLeafKey = '';
     this.exposedDoors = new Set();
     this.layerGrants = [];
-    this.brokenGlass.clear();
+    this.fallenGlass.clear();
     this.linings.clear();
     this.liningFraction.clear();
     this.roomPhi.clear();
@@ -1045,7 +1051,7 @@ export class SpatialEffectsEngine {
         (wall) => liningKind(wall.material) !== 'inert',
       );
     }
-    const openKey = [...this.brokenGlass].sort().join(',');
+    const openKey = [...this.fallenGlass].sort().join(',');
     const key = `${room}@${ceiling}@${openKey}`;
     if (this.layerEnclosures.has(key)) return this.layerEnclosures.get(key) ?? null;
     const found = enclosureFromGrid(
@@ -1055,7 +1061,7 @@ export class SpatialEffectsEngine {
       this.layerGridWalls,
       ceiling,
       (memberId, outsideId) => this.facadeAt(memberId, outsideId),
-      this.brokenGlass,
+      this.fallenGlass,
     );
     this.layerEnclosures.set(key, found);
     return found;
@@ -1093,12 +1099,19 @@ export class SpatialEffectsEngine {
   private liningMem(wallId: string): {
     burnedKg: number;
     paneK: number;
-    broken: boolean;
+    cracked: boolean;
+    fallen: boolean;
     faces: Map<string, TimberFace>;
   } {
     let mem = this.linings.get(wallId);
     if (!mem) {
-      mem = { burnedKg: 0, paneK: AMBIENT_K, broken: false, faces: new Map() };
+      mem = {
+        burnedKg: 0,
+        paneK: AMBIENT_K,
+        cracked: false,
+        fallen: false,
+        faces: new Map(),
+      };
       this.linings.set(wallId, mem);
     }
     return mem;
@@ -1296,11 +1309,15 @@ export class SpatialEffectsEngine {
     };
   }
 
-  /** One temperature per pane, from the hotter side. A crack opens on the next step. */
+  /**
+   * One temperature per pane, from the hotter side. A crack is recorded
+   * and left as glass. Fallout, once the gas has reached 450 °C, opens on
+   * the next step.
+   */
   private commitGlass(dt: number): void {
     for (const [wallId, touch] of this.glassTouch) {
       const mem = this.liningMem(wallId);
-      if (mem.broken) continue;
+      if (mem.fallen) continue;
       const row = layerLiningFor('glass');
       const stepped = stepGlassPane(
         {
@@ -1312,12 +1329,13 @@ export class SpatialEffectsEngine {
           cJKgK: row.specificHeatJKgK,
           thicknessM: row.thicknessM,
         },
-        mem.broken,
+        { cracked: mem.cracked, fallen: mem.fallen },
       );
       mem.paneK = stepped.paneK;
-      if (!stepped.broken) continue;
-      mem.broken = true;
-      this.brokenGlass.add(wallId);
+      mem.cracked = stepped.cracked;
+      if (!stepped.fallen) continue;
+      mem.fallen = true;
+      this.fallenGlass.add(wallId);
     }
     this.glassTouch.clear();
   }
