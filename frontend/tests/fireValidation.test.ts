@@ -26,6 +26,7 @@ import {
 } from '../src/lib/rts/toxicDose.ts';
 import {
   AMBIENT_K,
+  balanceAt,
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
@@ -242,7 +243,10 @@ const CALCIUM_SILICATE: Lining = {
 test('Steckler centre burner: interface and rise pass, door flow is known gap FV-1', (t) => {
   // 2.8 × 2.8 × 2.13 m, door 0.74 × 1.83 m, 62.9 kW, χ = 0.2. Johansson and
   // van Hees (IAFSS 2014, Table 3): interface 0.985 m, Tg/Ta 1.335.
-  // NBSIR 82-2520: outflow 0.571 kg/s.
+  // NBSIR 82-2520, the full-door centre run: outflow 0.571 kg/s, inflow
+  // 0.554 kg/s, neutral plane 1.027 m. The coupled root is short because
+  // Heskestad at 0.985 m entrains about 0.30 kg/s. The doorway inflow that
+  // would tilt that plume was not given an angle, so it is not applied.
   const width = 2.8;
   const height = 2.13;
   const floor = width * width;
@@ -278,6 +282,31 @@ test('Steckler centre burner: interface and rise pass, door flow is known gap FV
     target: (1.335 - 1) * AMBIENT_K,
     tolerance: { relative: TOLERANCE.riseFraction },
   });
+  // The plane is the zero of the same hydrostatic pressure as the orifice.
+  // 1.23 m against 1.027 m is inside the interface height band. The flow
+  // gap is the plume, and this pin fails if that root moves.
+  expectPass(t, {
+    case: 'Steckler',
+    metric: 'neutral plane',
+    unit: 'm',
+    model: steady.neutralM,
+    target: 1.027,
+    tolerance: { absolute: TOLERANCE.interfaceM(height) },
+  });
+  assert.ok(
+    Math.abs(steady.neutralM - 1.229) <= 0.02,
+    `neutral plane ${steady.neutralM.toFixed(3)} m left its recorded 1.229 m`,
+  );
+  const held = balanceAt(spec, 0.985, 600);
+  assert.ok(
+    Math.abs(held.neutralM - 1.094) <= 0.02,
+    `plane at 0.985 m is ${held.neutralM.toFixed(3)} m`,
+  );
+  const plumeAtMeasured = heskestadEntrainmentKgS(62.9, 0.985, 0.3, 0.2);
+  assert.ok(
+    plumeAtMeasured < 0.4 && Math.abs(plumeAtMeasured - 0.301) < 0.01,
+    `Heskestad at 0.985 m is ${plumeAtMeasured.toFixed(3)} kg/s`,
+  );
   expectKnownGap(
     t,
     {

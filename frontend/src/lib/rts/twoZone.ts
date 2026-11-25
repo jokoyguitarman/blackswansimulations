@@ -20,7 +20,12 @@
  * Eq. 4.7) was tried and left out: at the Steckler interface it entrains
  * about 0.005 kg/s, and with the interface on the floor it over-entrains
  * and drops the enthalpy and the soot it would move. Mixing into the
- * lower layer is not in this step.
+ * lower layer is not in this step. The centre-burner door still carries
+ * less mass than Steckler measured. NBSIR 82-2520 puts that on the plume:
+ * a fire away from the walls entrains more once the doorway inflow tilts
+ * it. Quintiere, Rinkinen and Jones (Combustion Science and Technology 26,
+ * 1981) use an entrainment length Z/sin θ for that tilt. The angle was
+ * not measured, so the plume stays the vertical Heskestad formula.
  *
  * Gas that leaves through a vent is not mixed back into this room. The
  * part that left the upper layer (the orifice slice whose midpoint is
@@ -884,6 +889,8 @@ export interface SteadyLayer {
   depthM: number;
   outKgS: number;
   plumeKgS: number;
+  /** Neutral plane of the balanced door, metres above the floor. */
+  neutralM: number;
 }
 
 /**
@@ -1225,6 +1232,18 @@ function densityKgM3(tempK: number): number {
 }
 
 /**
+ * Height where the inside-outside pressure difference is zero.
+ * Below the interface the difference is the solved floor value. Above it
+ * the hydrostatic slope is (ρ_lower − ρ_upper) g, CFAST Eq. 4.1. A floor
+ * pressure below the outside air puts the plane above the interface.
+ */
+export function neutralPlaneM(interfaceM: number, upperK: number, floorPressurePa: number): number {
+  const slope = (densityKgM3(AMBIENT_K) - densityKgM3(upperK)) * LEVEL.G;
+  if (!(slope > 1e-9)) return interfaceM;
+  return interfaceM - floorPressurePa / slope;
+}
+
+/**
  * One horizontal slice of an orifice, kg/s. CFAST Eq. 4.3. Pressures are
  * the inside-minus-outside values at the bottom and top of the slice, and
  * they must not change sign. `rho` is the gas that is flowing.
@@ -1463,12 +1482,14 @@ function balancedFlows(
   interfaceM: number,
   upperK: number,
   fans: readonly MechanicalVent[] = [],
-): Flows {
-  const at = (p: number) =>
-    withFans(
+): Flows & { floorPressurePa: number } {
+  const at = (p: number) => ({
+    ...withFans(
       ventFlows(vents, interfaceM, upperK, p),
       mechanicalExtract(fans, interfaceM, upperK, p),
-    );
+    ),
+    floorPressurePa: p,
+  });
   // No orifice to relieve the room. The fan is read at zero pressure
   // difference, so it stays at its nominal flow. A sealed volume would
   // climb until the fan stalled; this model does not grow that pressure.
@@ -1513,6 +1534,8 @@ interface Balance {
   inKgS: number;
   fanUpperKgS: number;
   riseK: number;
+  /** Neutral plane of this door balance, metres above the floor. */
+  neutralM: number;
 }
 
 function energyKw(spec: LayerSpec, tS: number, plumeKgS: number, riseK: number): number {
@@ -1533,13 +1556,15 @@ export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Bala
     else hi = mid;
   }
   const rise = 0.5 * (lo + hi);
-  const flows = balancedFlows(spec.vents, interfaceM, AMBIENT_K + rise, spec.fans ?? []);
+  const upperK = AMBIENT_K + rise;
+  const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
   return {
     plumeKgS: plume,
     outKgS: flows.outKgS,
     inKgS: flows.inKgS,
     fanUpperKgS: flows.fanUpperKgS,
     riseK: rise,
+    neutralM: neutralPlaneM(interfaceM, upperK, flows.floorPressurePa),
   };
 }
 
@@ -1595,6 +1620,7 @@ function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
         depthM: 0,
         outKgS: 0,
         plumeKgS: 0,
+        neutralM: spec.ceilingM,
       };
     }
   }
@@ -1605,6 +1631,7 @@ function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
     depthM: spec.ceilingM - root,
     outKgS: at.outKgS,
     plumeKgS: at.plumeKgS,
+    neutralM: at.neutralM,
   };
 }
 

@@ -450,6 +450,9 @@ test('Steckler center door reports the coupled flow', () => {
   // interface it entrains about 0.005 kg/s, and with the interface on the
   // floor it over-entrains and drops the heat and soot it carries, so it
   // is not included. The orifice held at 0.985 m only checks the vent formula.
+  // NBSIR 82-2520 measured the neutral plane at 1.027 m on this door. The
+  // coupled plane is about 1.23 m, inside the 0.32 m height band. The same
+  // orifice at 0.985 m puts the plane at about 1.09 m.
   assert.ok(
     coupled < measuredFlow * 0.75,
     `coupled ${coupled.toFixed(3)} kg/s was reported as inside 25%`,
@@ -461,6 +464,19 @@ test('Steckler center door reports the coupled flow', () => {
   assert.ok(
     Math.abs(atDoor.outKgS - measuredFlow) <= 0.25 * measuredFlow,
     `orifice at ${measuredZ} m is ${atDoor.outKgS.toFixed(3)} kg/s`,
+  );
+  assert.ok(steady);
+  assert.ok(
+    Math.abs(steady.neutralM - 1.229) < 0.02,
+    `coupled neutral plane ${steady.neutralM.toFixed(3)} m`,
+  );
+  assert.ok(
+    Math.abs(steady.neutralM - 1.027) <= zTol,
+    `neutral plane ${steady.neutralM.toFixed(3)} m, measured 1.027 ± ${zTol.toFixed(3)}`,
+  );
+  assert.ok(
+    Math.abs(atDoor.neutralM - 1.094) < 0.02,
+    `neutral plane at ${measuredZ} m is ${atDoor.neutralM.toFixed(3)} m`,
   );
 });
 
