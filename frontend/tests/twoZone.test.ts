@@ -907,3 +907,97 @@ test('fallen glass opens a labelled fraction, and a concrete id does not', () =>
     true,
   );
 });
+
+test('a door jet warms an upper layer that has no fire', () => {
+  const spec: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 2.44,
+    vents: [{ widthM: 0.81, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 2.44, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const jet = { kgS: 0.3, tempK: AMBIENT_K + 90, oxygenY: 0.18 };
+  let state = freshLayer(spec.ceilingM);
+  for (let t = 0; t < 300; t++) state = stepZone(state, spec, 1, 0, jet).state;
+  const rise = state.upperK - AMBIENT_K;
+  const fresh = freshLayer(spec.ceilingM);
+  // 0.3 kg/s at a 90 K rise into this 36 m² concrete room levels off just
+  // under the 20 K layer line. The mass still deepens the layer. A real
+  // doorway, checked below, is hot enough to cross the line.
+  assert.ok(rise > 15 && rise < 25, `rise ${rise.toFixed(1)} K`);
+  assert.ok(state.interfaceM < fresh.interfaceM, `interface ${state.interfaceM}`);
+  let cold = freshLayer(spec.ceilingM);
+  for (let t = 0; t < 300; t++) cold = stepZone(cold, spec, 1, 0).state;
+  assert.ok(cold.upperK < AMBIENT_K + 2, `no jet rose to ${cold.upperK - AMBIENT_K} K`);
+});
+
+test('the neighbour of a burning room forms a layer from the door jet', () => {
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('hall', 0, 3)]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['fire', wood]]));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['fire']);
+  for (let t = 0; t < 400; t++) engine.step(1, walls, []);
+  const layers = [
+    ...(
+      engine as unknown as {
+        layerState: Map<
+          string,
+          {
+            active: boolean;
+            members: string[];
+            zone: { interfaceM: number; upperK: number };
+          }
+        >;
+      }
+    ).layerState.values(),
+  ];
+  const hall = layers.find((row) => row.members.includes('hall'));
+  const fire = layers.find((row) => row.members.includes('fire') && row.members.length === 1);
+  assert.ok(fire?.active, 'the fire room lost its layer');
+  assert.equal(fire?.members.includes('hall'), false, 'the door did not split the rooms');
+  assert.ok(hall?.active, `hall layer active=${hall?.active}`);
+  const rise = (hall?.zone.upperK ?? AMBIENT_K) - AMBIENT_K;
+  assert.ok(rise >= DISTINCT_LAYER_RISE_K, `hall rise ${rise.toFixed(1)} K`);
+  assert.ok((hall?.zone.interfaceM ?? 2.6) < 2.6, `hall interface ${hall?.zone.interfaceM}`);
+  assert.ok(extinctionK(engine.studStates.get('hall')?.smoke ?? 0) > 0, 'hall stud has no smoke');
+});

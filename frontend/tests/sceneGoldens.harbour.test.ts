@@ -1,6 +1,10 @@
 /**
- * Harbour House Decision 9 scenes: open crowd, east exit blocked, and the shop.
+ * Harbour House scenes: open crowd, east exit blocked, and the shop.
  * About 8, 8 and 9 minutes, run one at a time. One nightly matrix entry.
+ *
+ * The crowd figures were rebaselined when the mall started taking a door-jet
+ * layer. The interface stays above head height, so that smoke leaves the
+ * breathing zone and more people get out. The shop burn did not move.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';

@@ -5,6 +5,7 @@
 import { heatReleaseKw } from '../../src/lib/rts/flameFront.ts';
 import { confirmedFuelCells } from '../../src/lib/rts/materialLibrary.ts';
 import { harbourHouseFuelObjects } from '../../src/lib/rts/harbourHouseShowcase.ts';
+import { AMBIENT_K } from '../../src/lib/rts/twoZone.ts';
 import { HarbourRun } from './harbourHarness.ts';
 import { effectsView } from './effectsView.ts';
 import { fixed } from './round.ts';
@@ -20,6 +21,12 @@ export interface HarbourMark {
   burning: number;
 }
 
+export interface HarbourMallLayer {
+  active: boolean;
+  interfaceM: number;
+  riseK: number;
+}
+
 export interface HarbourCrowdResult {
   blocked: boolean;
   down: number;
@@ -31,6 +38,8 @@ export interface HarbourCrowdResult {
   reroutes: number;
   outByT300: number;
   reachable: number;
+  /** Tile mall at T+300. A stud in the open mall, not a shop. */
+  mall: HarbourMallLayer;
   marks: { t180: HarbourMark; t240: HarbourMark; t300: HarbourMark };
 }
 
@@ -45,6 +54,21 @@ interface CrowdBody {
 
 function bodiesOf(run: HarbourRun): CrowdBody[] {
   return (run.evac as unknown as { pedestrians: CrowdBody[] }).pedestrians;
+}
+
+/** Plan (27.5, 18.5) is tile, clear of the shops and the kiosk. */
+const MALL_STUD = 's_27_18';
+
+function mallLayer(run: HarbourRun): HarbourMallLayer {
+  const live = [...effectsView(run.effects).layerState.values()].find(
+    (row) => row.active && row.members.includes(MALL_STUD),
+  );
+  if (!live) return { active: false, interfaceM: 4, riseK: 0 };
+  return {
+    active: true,
+    interfaceM: fixed(live.zone.interfaceM, 2),
+    riseK: fixed(live.zone.upperK - AMBIENT_K, 1),
+  };
 }
 
 function lit(
@@ -162,6 +186,7 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
     reroutes: showcase?.reroutes ?? 0,
     outByT300: outAt.size,
     reachable,
+    mall: mallLayer(run),
     marks: { t180: mark(180), t240: mark(240), t300: mark(300) },
   };
 }
