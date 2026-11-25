@@ -44,6 +44,7 @@ import {
   VTT_CASE_1,
   compareLayer,
   expectKnownGap,
+  KNOWN_GAPS_DOC,
   expectPass,
   readLayer,
   runCase,
@@ -57,6 +58,15 @@ import {
   timeToFlashoverS,
   T2_ALPHA,
 } from './fixtures/fireValidation/flashover.ts';
+import {
+  NBS_PLAN_CEILING_M,
+  NBS_PLAN_FIRE_KW,
+  runNbsPlan,
+  type RoomSample,
+} from './fixtures/fireValidation/nbsPlan.ts';
+
+/** Recorded corridor extinction, 1/m, mean over 300–880 s. */
+const FV4_CORRIDOR_K = 0.2055;
 
 // ── Flashover correlations, 4 m × 5 m × 2.6 m concrete room, 0.9 × 2.0 m door ──
 
@@ -321,10 +331,30 @@ test('NBS MV100A fire room: interface passes, rise is known gap FV-3', (t) => {
 });
 
 test('NBS MV100A corridor: no layer forms without its own fire (known gap FV-4)', (t) => {
-  // The corridor's only heat is the fire room's outflow. A layer has no
-  // inflow from another room's layer, so the engine gives the corridor none.
+  // Fire room, entry and corridor as one plan in the live engine, joined by
+  // their doors. The corridor's only heat is the fire room's outflow. The
+  // engine passes soot across a door but not the hot gas, so the corridor has
+  // no layer and its studs fill with column-mixed soot.
   const c = NBS_CORRIDOR;
-  assert.equal(steadyLayer({ ...c.spec, fires: [] }, 600), null);
+  const plan = runNbsPlan(c.window[1]);
+  assert.ok(Math.abs(plan.fireKw - NBS_PLAN_FIRE_KW) < 1, `burner ${plan.fireKw} kW`);
+  const inWindow = (rows: readonly RoomSample[]) =>
+    rows.filter((row) => row.t >= c.window[0] && row.t <= c.window[1]);
+  const mean = (rows: readonly RoomSample[], key: 'interfaceM' | 'riseK' | 'meanK') =>
+    rows.reduce((sum, row) => sum + row[key], 0) / rows.length;
+  const corridor = inWindow(plan.corridor);
+  const fireRoom = inWindow(plan.fireRoom);
+  assert.ok(corridor.length >= 3);
+  // The fire room in the same plan does hold a layer, so the doors carry its outflow.
+  assert.ok(
+    fireRoom.every((row) => row.active),
+    'the fire room lost its layer',
+  );
+  t.diagnostic(
+    `plan fire room: interface ${mean(fireRoom, 'interfaceM').toFixed(2)} m, rise ${mean(fireRoom, 'riseK').toFixed(1)} K; ` +
+      `corridor layer samples ${corridor.filter((row) => row.active).length} of ${corridor.length}`,
+  );
+
   const rows = readLayer(c.extract).filter((row) => row.t >= c.window[0] && row.t <= c.window[1]);
   const ambientC = readLayer(c.extract)[0]!.lowerC;
   const measuredZ = rows.reduce((sum, row) => sum + row.interfaceM, 0) / rows.length;
@@ -336,11 +366,11 @@ test('NBS MV100A corridor: no layer forms without its own fire (known gap FV-4)'
       case: c.title,
       metric: 'interface height',
       unit: 'm',
-      model: c.spec.ceilingM,
+      model: mean(corridor, 'interfaceM'),
       target: measuredZ,
       tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
     },
-    { id: 'FV-4', recorded: 2.44, pin: 0, roadmap },
+    { id: 'FV-4', recorded: NBS_PLAN_CEILING_M, pin: 0.01, roadmap },
   );
   expectKnownGap(
     t,
@@ -348,11 +378,21 @@ test('NBS MV100A corridor: no layer forms without its own fire (known gap FV-4)'
       case: c.title,
       metric: 'upper-layer rise',
       unit: 'K',
-      model: 0,
+      model: mean(corridor, 'riseK'),
       target: measuredRise,
       tolerance: { relative: TOLERANCE.riseFraction },
     },
-    { id: 'FV-4', recorded: 0, pin: 0, roadmap },
+    { id: 'FV-4', recorded: 0, pin: 0.5, roadmap },
+  );
+  // No measurement to compare. Heat crossing the door would put this soot in
+  // a layer instead of the columns, so the mixed extinction is pinned as well.
+  const corridorK = mean(corridor, 'meanK');
+  t.diagnostic(
+    `FV-4 corridor mean extinction ${corridorK.toFixed(4)} /m over ${c.window[0]}–${c.window[1]} s`,
+  );
+  assert.ok(
+    Math.abs(corridorK - FV4_CORRIDOR_K) <= 0.02,
+    `FV-4 corridor extinction moved from ${FV4_CORRIDOR_K} ± 0.02 to ${corridorK.toFixed(4)} /m. Update ${KNOWN_GAPS_DOC}#fv-4`,
   );
 });
 

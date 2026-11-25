@@ -128,6 +128,7 @@ export const NBS_FIRE_ROOM: ValidationCase = {
 };
 
 /** The corridor has no fire of its own. Its doors are the entry and the outside. */
+// FV-4 runs the corridor through `nbsPlan.ts`; this case supplies its extract, window and ceiling.
 export const NBS_CORRIDOR: ValidationCase = {
   id: 'nbs-mv100a-corridor',
   title: 'NBS multi-room MV100A, corridor',

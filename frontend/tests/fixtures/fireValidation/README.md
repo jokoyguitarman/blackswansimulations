@@ -29,7 +29,8 @@ Steckler uses the published values already in `twoZone.test.ts`: Johansson and v
 
 These parts of the setup differ from the tests:
 
-- **Vents.** The layer vents to ambient air. The NBS fire-room door actually opens to an entry and then the corridor.
+- **Vents.** In the single-room cases the layer vents to ambient air. The NBS fire-room door actually opens to an entry and then the corridor. The corridor (FV-4) instead runs through the live engine with all three rooms joined (see FV-4).
+- **The target-room door.** The corridor's 0.79 m × 2.04 m door to the target-room entry is left out. In MV100A it is shut for the whole test (CFAST `WallVent_4` and `WallVent_5` have open fraction F = 0 at all times; the title is "No Target Room").
 - **Burner position.** The NBS burner stands 0.1 m from a wall, and the VTT pan stands 1 m above the floor. Both plumes are entrained as free plumes from the floor.
 - **VTT geometry.** The VTT hall has a pitched roof. It is modelled as its 372.6 m² floor up to the 19 m ridge, with the steel at the hall's real surface area.
 
@@ -47,8 +48,8 @@ These parts of the setup differ from the tests:
 | Steckler                                        | Door outflow                 | 0.385 kg/s              | 0.571 kg/s                                    | ±25%      | FV-1                           |
 | NBS MV100A fire room                            | Interface                    | 0.986 m                 | 0.948 m                                       | ±0.32 m   | pass                           |
 | NBS MV100A fire room                            | Rise                         | 183 K                   | 242 K                                         | ±20%      | FV-3                           |
-| NBS MV100A corridor                             | Interface                    | no layer (2.44 m)       | 1.32 m                                        | ±0.37 m   | FV-4                           |
-| NBS MV100A corridor                             | Rise                         | 0 K                     | 80.2 K                                        | ±20%      | FV-4                           |
+| NBS MV100A corridor (engine plan)               | Interface                    | no layer (2.44 m)       | 1.32 m                                        | ±0.37 m   | FV-4                           |
+| NBS MV100A corridor (engine plan)               | Rise                         | 0 K                     | 80.2 K                                        | ±20%      | FV-4                           |
 | BE#3 Test 3                                     | Interface                    | 1.11 m                  | 0.951 m                                       | ±0.57 m   | pass                           |
 | BE#3 Test 3                                     | Rise                         | 189 K                   | 192 K                                         | ±20%      | pass                           |
 | VTT Case 1                                      | Layer forms                  | yes                     | yes                                           | —         | pass                           |
@@ -73,7 +74,23 @@ These parts of the setup differ from the tests:
 
 ### FV-4
 
-**No layer in a room without its own fire.** The NBS corridor gets the fire room's hot outflow through the entry. The engine's layer takes mass only from a plume in its own enclosure, and soot crosses a door onto the studs but heat does not. So the corridor has no layer: the interface stays at the 2.44 m ceiling and the rise is 0 K. The measured corridor has a layer at 1.32 m and an 80 K rise. Pinned at 2.44 m and 0 K. Roadmap: "What to reproduce", the two-room case ("so a door between rooms is tested").
+**No layer in a room without its own fire.** The NBS corridor gets the fire room's hot outflow through the entry. In the engine, a room's layer takes mass only from a plume in its own enclosure. Gas leaving a neighbouring layer crosses the door as soot grams onto the studs, not as mass or heat. So a room without a fire never forms a layer, and its studs fill with column-mixed soot. The measured corridor has a layer at 1.32 m with an 80 K rise. Roadmap: "What to reproduce", the two-room case ("so a door between rooms is tested").
+
+The test runs `nbsPlan.ts` through `SpatialEffectsEngine`: the fire room, entry and corridor on the stud grid, joined by the two 0.81 m doors, with the corridor's 0.76 m outside door as the building exit and a 110 kW pool stud in the fire room. The plan keeps the test's topology, not its dimensions:
+
+- Each room is made of whole 9 m² studs: the fire room and the entry are one stud each, the corridor four.
+- There is one 2.44 m storey.
+- The linings are concrete.
+- Each door has a 2.0 m head.
+- The burner's radiative fraction is 0.35.
+
+In the same plan the fire room holds a layer, at 1.08 m with an 88.6 K rise. Over 300–880 s the corridor has a layer in 0 of 59 samples. Three pins:
+
+- the mean corridor interface, 2.44 m ± 0.01 (no layer, so the ceiling);
+- the rise, 0 K ± 0.5;
+- the mean corridor extinction, 0.2055 ± 0.02 /m.
+
+A change that brings heat across the door moves all three. As a check, a 110 kW fire placed in the corridor itself gives a layer in 59 of 59 samples, at 1.28 m, 46.6 K and 0.586 /m.
 
 ### FV-5
 
