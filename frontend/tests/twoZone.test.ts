@@ -42,6 +42,7 @@ import {
   mqhRiseK,
   orificeSliceKgS,
   steadyLayer,
+  oxygenLimitedBurn,
   stepZone,
   type LayerSpec,
   type Lining,
@@ -804,4 +805,48 @@ test('a single door holds a large fire near 1500 A√H', () => {
   assert.ok(Math.abs(mean - cap) / cap < 0.15, `mean ${mean.toFixed(0)} kW vs ${cap.toFixed(0)}`);
   assert.ok(meanPhi > 1, `φ ${meanPhi}`);
   assert.ok(mean / prescribed < 0.5, `fraction ${mean / prescribed}`);
+});
+
+test('ten floor seconds stay near 1500 A√H', () => {
+  const width = 0.9;
+  const height = 2;
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  const cap = ventilationLimitedKw(width * height, height);
+  let state = freshLayer(spec.ceilingM);
+  const lines: string[] = [];
+  const afterFloor: number[] = [];
+  for (let t = 1; t <= 90; t++) {
+    const step = stepZone(state, spec, 1);
+    state = step.state;
+    const burnedKw = step.burnedFraction * prescribed;
+    lines.push(`${t} ${burnedKw.toFixed(0)} kW z ${state.interfaceM.toFixed(3)}`);
+    if (afterFloor.length > 0 || state.interfaceM <= 0.051) afterFloor.push(burnedKw);
+  }
+  const window = afterFloor.slice(0, 10);
+  const shown = lines.join('\n');
+  assert.equal(window.length, 10, shown);
+  for (const value of window) {
+    assert.ok(
+      Math.abs(value - cap) / cap < 0.15,
+      `${value.toFixed(0)} kW vs ${cap.toFixed(0)}\n${shown}`,
+    );
+  }
+  // One bad doorway root, or the enthalpy cap fed back into the air, used
+  // to drop a single second far below the vent limit.
+  for (const value of afterFloor) {
+    assert.ok(value > cap * 0.5, `collapse ${value.toFixed(0)} kW\n${shown}`);
+  }
+  // Upper-layer oxygen at the floor is not a second supply. The flame is
+  // the fresh-air fire, so a hot layer at 0.177 still burns near the door.
+  const stored = oxygenLimitedBurn(spec, 0.05, AMBIENT_K + 300, O2_AMBIENT_MASS, 0.177, 0.1);
+  assert.ok(
+    Math.abs(stored.burn.burnedKw - cap) / cap < 0.15,
+    `stored oxygen ${stored.burn.burnedKw.toFixed(0)} kW vs ${cap.toFixed(0)}`,
+  );
+  assert.ok(stored.burn.burnedKw < prescribed * 0.5);
 });
