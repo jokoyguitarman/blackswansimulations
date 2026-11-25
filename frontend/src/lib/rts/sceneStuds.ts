@@ -5,7 +5,21 @@
  */
 
 const STUD_SPACING_M = 3;
-const EXTERIOR_PADDING_M = 150;
+/**
+ * Outdoor studs stop this far past the footprint, and past every placement.
+ * The row and column numbers still count from the old 150 m grid, so an
+ * indoor stud keeps its id.
+ */
+export const SCENE_STUD_MARGIN_M = 48;
+const STUD_INDEX_PAD_M = 150;
+
+/** A blast, a hazard, or a placed object, in the scene's metre frame. */
+export interface SceneCoverPoint {
+  x: number;
+  y: number;
+  /** Metres of the placement itself. The outdoor margin is added outside this. */
+  radiusM?: number;
+}
 
 export interface SceneStud {
   id: string;
@@ -23,6 +37,8 @@ export function generateSceneStuds(
   polygon: [number, number][],
   buildingIndex: number,
   levelIds: string[] = ['G'],
+  cover: readonly SceneCoverPoint[] = [],
+  include: readonly (readonly [number, number])[] = [],
 ): SceneStud[] {
   if (polygon.length < 3) return [];
   const floors = levelIds.length > 0 ? levelIds.map((id) => (id === 'Ground' ? 'G' : id)) : ['G'];
@@ -42,44 +58,131 @@ export function generateSceneStuds(
   const studs: SceneStud[] = [];
   const dLat = STUD_SPACING_M / 111_320;
   const dLng = STUD_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
-  const extPadLat = EXTERIOR_PADDING_M / 111_320;
-  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const indexPadLat = STUD_INDEX_PAD_M / 111_320;
+  const indexPadLng = STUD_INDEX_PAD_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const emitPadLat = SCENE_STUD_MARGIN_M / 111_320;
+  const emitPadLng = SCENE_STUD_MARGIN_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const latLo = minLat - emitPadLat;
+  const latHi = maxLat + emitPadLat;
+  const lngLo = minLng - emitPadLng;
+  const lngHi = maxLng + emitPadLng;
+  let extLatLo = latLo;
+  let extLatHi = latHi;
+  let extLngLo = lngLo;
+  let extLngHi = lngHi;
+  if (cover.length > 0 || include.length > 0) {
+    let sumLat = 0;
+    let sumLng = 0;
+    for (const [lat, lng] of polygon) {
+      sumLat += lat;
+      sumLng += lng;
+    }
+    const refLat = sumLat / polygon.length;
+    const refLng = sumLng / polygon.length;
+    const mPerDegLat = 111_320;
+    const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+    for (const [lat, lng] of include) {
+      if (lat < extLatLo) extLatLo = lat;
+      if (lat > extLatHi) extLatHi = lat;
+      if (lng < extLngLo) extLngLo = lng;
+      if (lng > extLngHi) extLngHi = lng;
+    }
+    for (const point of cover) {
+      const lat = refLat - point.y / mPerDegLat;
+      const lng = refLng + point.x / mPerDegLng;
+      const radius = point.radiusM ?? 0;
+      const rLat = radius / mPerDegLat;
+      const rLng = radius / mPerDegLng;
+      const loLat = lat - rLat - emitPadLat;
+      const hiLat = lat + rLat + emitPadLat;
+      const loLng = lng - rLng - emitPadLng;
+      const hiLng = lng + rLng + emitPadLng;
+      if (loLat < extLatLo) extLatLo = loLat;
+      if (hiLat > extLatHi) extLatHi = hiLat;
+      if (loLng < extLngLo) extLngLo = loLng;
+      if (hiLng > extLngHi) extLngHi = hiLng;
+    }
+  }
 
+  const pushCell = (lat: number, lng: number, row: number, col: number) => {
+    const inside = pointInPolygonLatLng(lat, lng, polygon);
+    if (!inside) {
+      studs.push({
+        id: `ext-${buildingIndex}-${row}-${col}`,
+        lat,
+        lng,
+        floor: 'G',
+        studType: 'outdoor',
+        blastBand: null,
+        operationalZone: null,
+        distFromIncidentM: null,
+        spatialContext: 'open_air',
+      });
+      return;
+    }
+    for (const floor of floors) {
+      studs.push({
+        id: `bldg-${buildingIndex}-${floor}-${row}-${col}`,
+        lat,
+        lng,
+        floor,
+        studType: 'building',
+        blastBand: null,
+        operationalZone: null,
+        distFromIncidentM: null,
+        spatialContext: 'inside_building',
+      });
+    }
+  };
+
+  const originLat = minLat - indexPadLat + dLat / 2;
+  const originLng = minLng - indexPadLng + dLng / 2;
+  const indexLatHi = maxLat + indexPadLat;
+  const indexLngHi = maxLng + indexPadLng;
   let row = 0;
-  for (let lat = minLat - extPadLat + dLat / 2; lat <= maxLat + extPadLat; lat += dLat) {
+  for (let lat = originLat; lat <= indexLatHi; lat += dLat) {
     let col = 0;
-    for (let lng = minLng - extPadLng + dLng / 2; lng <= maxLng + extPadLng; lng += dLng) {
-      const inside = pointInPolygonLatLng(lat, lng, polygon);
-      if (!inside) {
-        studs.push({
-          id: `ext-${buildingIndex}-${row}-${col}`,
-          lat,
-          lng,
-          floor: 'G',
-          studType: 'outdoor',
-          blastBand: null,
-          operationalZone: null,
-          distFromIncidentM: null,
-          spatialContext: 'open_air',
-        });
-      } else {
-        for (const floor of floors) {
-          studs.push({
-            id: `bldg-${buildingIndex}-${floor}-${row}-${col}`,
-            lat,
-            lng,
-            floor,
-            studType: 'building',
-            blastBand: null,
-            operationalZone: null,
-            distFromIncidentM: null,
-            spatialContext: 'inside_building',
-          });
-        }
-      }
+    const latIn = lat >= extLatLo && lat <= extLatHi;
+    for (let lng = originLng; lng <= indexLngHi; lng += dLng) {
+      if (latIn && lng >= extLngLo && lng <= extLngHi) pushCell(lat, lng, row, col);
       col++;
     }
     row++;
+  }
+
+  // A placement past the 150 m index still gets studs. Rows stay on the same
+  // lattice, so the cells the loop already emitted keep their ids.
+  if (
+    extLatLo < originLat ||
+    extLatHi > indexLatHi ||
+    extLngLo < originLng ||
+    extLngHi > indexLngHi
+  ) {
+    const row0 = Math.ceil((extLatLo - originLat) / dLat - 1e-8);
+    const row1 = Math.floor((extLatHi - originLat) / dLat + 1e-8);
+    const col0 = Math.ceil((extLngLo - originLng) / dLng - 1e-8);
+    const col1 = Math.floor((extLngHi - originLng) / dLng + 1e-8);
+    for (let extraRow = row0; extraRow <= row1; extraRow++) {
+      const lat = originLat + extraRow * dLat;
+      if (lat < extLatLo - 1e-9 || lat > extLatHi + 1e-9) continue;
+      if (lat >= originLat - 1e-9 && lat <= indexLatHi + 1e-9) continue;
+      for (let extraCol = col0; extraCol <= col1; extraCol++) {
+        const lng = originLng + extraCol * dLng;
+        if (lng < extLngLo - 1e-9 || lng > extLngHi + 1e-9) continue;
+        pushCell(lat, lng, extraRow, extraCol);
+      }
+    }
+    for (let extraRow = row0; extraRow <= row1; extraRow++) {
+      const lat = originLat + extraRow * dLat;
+      if (lat < originLat - 1e-9 || lat > indexLatHi + 1e-9) continue;
+      if (lat < extLatLo - 1e-9 || lat > extLatHi + 1e-9) continue;
+      for (let extraCol = col0; extraCol <= col1; extraCol++) {
+        const lng = originLng + extraCol * dLng;
+        if (lng >= originLng - 1e-9 && lng <= indexLngHi + 1e-9) continue;
+        if (lng < extLngLo - 1e-9 || lng > extLngHi + 1e-9) continue;
+        pushCell(lat, lng, extraRow, extraCol);
+      }
+    }
   }
   return studs;
 }

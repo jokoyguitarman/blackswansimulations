@@ -182,22 +182,29 @@ export const SURFACE_EMISSIVITY = 0.9;
 function surfaceFluxKwM2(hk: number, gasK: number, radInKwM2: number): number {
   if (!(hk > 0)) return 0;
   if (!(gasK > AMBIENT_K + 0.05) && !(radInKwM2 > 0)) return 0;
-  const film = (surfaceK: number) => {
-    const across = gasK - surfaceK;
-    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
-    const hRad =
-      SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + surfaceK * surfaceK) * (gasK + surfaceK);
-    return (hConv + hRad) * across;
-  };
-  const residual = (surfaceK: number) => film(surfaceK) + radInKwM2 - hk * (surfaceK - AMBIENT_K);
+  // Same film and the same 32 bisections as the closure form. The coefficients
+  // are invariant for this gas temperature, so they are read once.
+  const convC = SURFACE_CONVECTION_C_W / 1000;
+  const sigmaE = SURFACE_EMISSIVITY * SIGMA_KW_M2K4;
+  const gas2 = gasK * gasK;
   let lo = AMBIENT_K;
   let hi = Math.max(gasK, AMBIENT_K) + 2000;
   for (let i = 0; i < 32; i++) {
-    const mid = 0.5 * (lo + hi);
-    if (residual(mid) > 0) lo = mid;
-    else hi = mid;
+    const surfaceK = 0.5 * (lo + hi);
+    const across = gasK - surfaceK;
+    // cbrt agrees with pow(x, 1/3) on the sign of this residual across the
+    // temperatures the table samples, and the film below still uses pow.
+    const hConv = convC * Math.cbrt(Math.abs(across));
+    const hRad = sigmaE * (gas2 + surfaceK * surfaceK) * (gasK + surfaceK);
+    const residual = (hConv + hRad) * across + radInKwM2 - hk * (surfaceK - AMBIENT_K);
+    if (residual > 0) lo = surfaceK;
+    else hi = surfaceK;
   }
-  return film(0.5 * (lo + hi));
+  const surfaceK = 0.5 * (lo + hi);
+  const across = gasK - surfaceK;
+  const hConv = convC * Math.pow(Math.abs(across), 1 / 3);
+  const hRad = sigmaE * (gas2 + surfaceK * surfaceK) * (gasK + surfaceK);
+  return (hConv + hRad) * across;
 }
 
 const FLUX_TABLE_N = 96;
@@ -205,26 +212,100 @@ const FLUX_T_MAX = 1500;
 
 /** One lining at one age and one fire flux. The balance samples it dozens of times. */
 function fluxTable(hk: number, radInKwM2: number): (gasK: number) => number {
-  const ys = new Array<number>(FLUX_TABLE_N + 1);
-  for (let i = 0; i <= FLUX_TABLE_N; i++) {
-    const gas = AMBIENT_K + ((FLUX_T_MAX - AMBIENT_K) * i) / FLUX_TABLE_N;
-    ys[i] = surfaceFluxKwM2(hk, gas, radInKwM2);
-  }
+  const ys = new Float64Array(FLUX_TABLE_N + 1);
+  const ready = new Uint8Array(FLUX_TABLE_N + 1);
   const span = (FLUX_T_MAX - AMBIENT_K) / FLUX_TABLE_N;
+  // Knots the balance never samples stay unsolved. A solved knot matches the
+  // full table, so the interpolation is the same.
+  const knot = (i: number) => {
+    if (ready[i] === 1) return ys[i] ?? 0;
+    ready[i] = 1;
+    const gas = AMBIENT_K + ((FLUX_T_MAX - AMBIENT_K) * i) / FLUX_TABLE_N;
+    const y = surfaceFluxKwM2(hk, gas, radInKwM2);
+    ys[i] = y;
+    return y;
+  };
   return (gasK: number) => {
     if (!(gasK > AMBIENT_K + 0.05)) return 0;
     const x = (Math.min(gasK, FLUX_T_MAX) - AMBIENT_K) / span;
     const i = Math.min(FLUX_TABLE_N - 1, Math.floor(x));
-    const frac = x - i;
-    const lo = ys[i] ?? 0;
-    const hi = ys[i + 1] ?? lo;
-    return lo + (hi - lo) * frac;
+    const lo = knot(i);
+    const hi = knot(i + 1);
+    return lo + (hi - lo) * (x - i);
   };
 }
 
-let fluxMemo: Map<string, (gasK: number) => number> | null = null;
+type FluxAt = (gasK: number) => number;
+
+/**
+ * Six significant figures, the same bins as `Number(n.toExponential(5))`.
+ * The balance used to build that string on every sample.
+ */
+function fluxGroup(n: number): number {
+  if (n === 0 || !Number.isFinite(n)) return 0;
+  const neg = n < 0;
+  const abs = Math.abs(n);
+  let exp = Math.floor(Math.log10(abs));
+  let scale = 10 ** (5 - exp);
+  let scaled = abs * scale;
+  if (scaled >= 1e6 - 1e-8) {
+    exp += 1;
+    scale = 10 ** (5 - exp);
+    scaled = abs * scale;
+  } else if (scaled < 1e5) {
+    exp -= 1;
+    scale = 10 ** (5 - exp);
+    scaled = abs * scale;
+  }
+  const grouped = Math.round(scaled) / scale;
+  return neg ? -grouped : grouped;
+}
+
+interface HotFlux {
+  gen: number;
+  hk: number;
+  rad: number;
+  at: FluxAt;
+}
+
+/** Last exact table for this lining inside the current balance. */
+const hotFlux = new WeakMap<Lining, HotFlux>();
+/** Lining name, then grouped hk, then grouped radiant flux. */
+let fluxMemo: Map<string, Map<number, Map<number, FluxAt>>> | null = null;
+let fluxSerial = 0;
+let fluxGen = 0;
 /** χQ / AT for the fire currently being solved, kW/m². Zero outside a balance. */
 let fireRadiantKwM2 = 0;
+
+const zeroFlux: FluxAt = () => 0;
+
+function fluxAt(lining: Lining, tS: number): FluxAt {
+  const hk = effectiveHeatLossKwM2K(lining, tS);
+  const radIn = fireRadiantKwM2;
+  if (!(hk > 0)) return zeroFlux;
+  if (!fluxMemo) return (gasK: number) => surfaceFluxKwM2(hk, gasK, radIn);
+  const hot = hotFlux.get(lining);
+  if (hot && hot.gen === fluxGen && hot.hk === hk && hot.rad === radIn) return hot.at;
+  const hkQ = fluxGroup(hk);
+  const radQ = fluxGroup(radIn);
+  let byHk = fluxMemo.get(lining.name);
+  if (!byHk) {
+    byHk = new Map();
+    fluxMemo.set(lining.name, byHk);
+  }
+  let byRad = byHk.get(hkQ);
+  if (!byRad) {
+    byRad = new Map();
+    byHk.set(hkQ, byRad);
+  }
+  let at = byRad.get(radQ);
+  if (!at) {
+    at = fluxTable(hk, radIn);
+    byRad.set(radQ, at);
+  }
+  hotFlux.set(lining, { gen: fluxGen, hk, rad: radIn, at });
+  return at;
+}
 
 /**
  * Flux a surface at ambient takes from gas at `gasK`, kW/m². Convection is
@@ -241,30 +322,23 @@ export function coldSurfaceIncidentKwM2(gasK: number): number {
 }
 
 export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number {
-  const hk = effectiveHeatLossKwM2K(lining, tS);
-  const radIn = fireRadiantKwM2;
-  if (!(hk > 0)) return 0;
-  if (!(gasK > AMBIENT_K + 0.05) && !(radIn > 0)) return 0;
-  if (!fluxMemo) return surfaceFluxKwM2(hk, gasK, radIn);
-  const key = `${lining.name}|${hk.toExponential(5)}|${radIn.toExponential(5)}`;
-  let at = fluxMemo.get(key);
-  if (!at) {
-    at = fluxTable(hk, radIn);
-    fluxMemo.set(key, at);
-  }
-  return at(gasK);
+  return fluxAt(lining, tS)(gasK);
 }
 
 function withFluxMemo<T>(body: () => T): T {
-  const prev = fluxMemo;
+  const prevMemo = fluxMemo;
   const prevRad = fireRadiantKwM2;
+  const prevGen = fluxGen;
+  fluxSerial += 1;
+  fluxGen = fluxSerial;
   fluxMemo = new Map();
   fireRadiantKwM2 = 0;
   try {
     return body();
   } finally {
-    fluxMemo = prev;
+    fluxMemo = prevMemo;
     fireRadiantKwM2 = prevRad;
+    fluxGen = prevGen;
   }
 }
 
@@ -796,21 +870,93 @@ export function heskestadEntrainmentKgS(
   return at(flame) * (heightM / flame);
 }
 
+interface PreparedPlume {
+  heatKw: number;
+  diameterM: number;
+  at: (heightM: number) => number;
+}
+
+let preparedFires: readonly FirePlume[] | null = null;
+let preparedChi = Number.NaN;
+let preparedPlumes: PreparedPlume[] = [];
+
+function plumeCurve(qKw: number, diameterM: number, chi: number): (heightM: number) => number {
+  const qPow = Math.pow(qKw, 0.4);
+  const z0 = 0.083 * qPow - 1.02 * diameterM;
+  const flame = heskestadFlameHeightM(qKw, diameterM);
+  const qc = Math.max(0, (1 - chi) * qKw);
+  const rho = LEVEL.RHO_AIR;
+  const group = Math.pow((LEVEL.G * rho * rho) / (CP_KJ_KGK * AMBIENT_K), 1 / 3);
+  const qc13 = Math.pow(qc, 1 / 3);
+  const qc23 = Math.pow(qc, 2 / 3);
+  const denomScale = Math.pow(Math.sqrt(LEVEL.G) * CP_KJ_KGK * rho * AMBIENT_K, 2 / 3);
+  const atHeight = (z: number) => {
+    const dz = Math.max(z - z0, 0.05);
+    const dz53 = Math.pow(dz, 5 / 3);
+    const denom = denomScale * dz53;
+    const bracket = 1 + (2.9 * qc23) / Math.max(denom, 1e-9);
+    return 0.196 * group * qc13 * dz53 * bracket;
+  };
+  return (heightM: number) => {
+    if (!(heightM > 0)) return 0;
+    if (heightM >= flame) return atHeight(heightM);
+    return atHeight(flame) * (heightM / flame);
+  };
+}
+
 function plumeKgS(spec: LayerSpec, interfaceM: number): number {
   const chi = chiOf(spec);
-  let mass = 0;
-  for (const fire of spec.fires) {
-    if (!(fire.heatKw > 0)) continue;
-    mass += heskestadEntrainmentKgS(fire.heatKw, interfaceM, fire.diameterM, chi);
+  if (spec.fires !== preparedFires || chi !== preparedChi) {
+    preparedFires = spec.fires;
+    preparedChi = chi;
+    preparedPlumes = [];
+    for (const fire of spec.fires) {
+      if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+      preparedPlumes.push({
+        heatKw: fire.heatKw,
+        diameterM: fire.diameterM,
+        at: plumeCurve(fire.heatKw, fire.diameterM, chi),
+      });
+    }
   }
+  let mass = 0;
+  for (const fire of preparedPlumes) mass += fire.at(interfaceM);
   return mass;
 }
 
+interface BoundLoss {
+  boundaries: readonly Boundary[];
+  tS: number;
+  rad: number;
+  gen: number;
+  terms: Array<{ area: number; at: FluxAt }>;
+}
+
+let boundLoss: BoundLoss | null = null;
+
 function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number): number {
+  const rad = fireRadiantKwM2;
+  let bound = boundLoss;
+  if (
+    !bound ||
+    bound.boundaries !== boundaries ||
+    bound.tS !== tS ||
+    bound.rad !== rad ||
+    bound.gen !== fluxGen
+  ) {
+    const terms: Array<{ area: number; at: FluxAt }> = [];
+    for (const boundary of boundaries) {
+      if (!(boundary.areaM2 > 0)) continue;
+      terms.push({ area: boundary.areaM2, at: fluxAt(boundary.lining, tS) });
+    }
+    bound = { boundaries, tS, rad, gen: fluxGen, terms };
+    boundLoss = bound;
+  }
   let sum = 0;
-  for (const boundary of boundaries) {
-    if (!(boundary.areaM2 > 0)) continue;
-    sum += boundary.areaM2 * liningFluxKwM2(boundary.lining, tS, gasK);
+  const terms = bound.terms;
+  for (let i = 0; i < terms.length; i++) {
+    const term = terms[i];
+    if (term) sum += term.area * term.at(gasK);
   }
   return sum;
 }
@@ -909,6 +1055,95 @@ function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Fl
   return { ...door, fanUpperKgS: fans.upperKgS, fanLowerKgS: fans.lowerKgS };
 }
 
+const ventMarks = [0, 0, 0];
+const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0 };
+
+function addSliceFlows(
+  into: SliceFlows,
+  z0: number,
+  z1: number,
+  interfaceM: number,
+  dP0: number,
+  rhoL: number,
+  rhoU: number,
+  rhoA: number,
+  widthM: number,
+): void {
+  if (!(z1 > z0 + 1e-9)) return;
+  const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
+  const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
+  if (p0 * p1 < 0 && p1 !== p0) {
+    const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
+    // Split whenever the neutral plane is strictly inside the slice.
+    // A plane that falls within a micron of an end used to be left mixed,
+    // and the slice was then called an outflow if either end was positive.
+    // That dropped the inflow for one step and the burn followed it.
+    const pad = Math.min(1e-6, (z1 - z0) * 0.25);
+    if (zN > z0 + pad && zN < z1 - pad) {
+      addSliceFlows(into, z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
+      addSliceFlows(into, zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
+      return;
+    }
+  }
+  if (p0 === 0 && p1 === 0) return;
+  // The end farther from the plane owns a slice that was not split.
+  const outflow = Math.abs(p0) >= Math.abs(p1) ? p0 > 0 : p1 > 0;
+  const mid = (z0 + z1) / 2;
+  const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
+  const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
+  if (outflow) into.outKgS += mass;
+  else into.inKgS += mass;
+}
+
+function accumulateVent(
+  into: SliceFlows,
+  vent: Vent,
+  interfaceM: number,
+  dP0: number,
+  rhoL: number,
+  rhoU: number,
+  rhoA: number,
+): void {
+  const sill = Math.min(vent.sillM, vent.soffitM);
+  const soffit = Math.max(vent.sillM, vent.soffitM);
+  if (!(vent.widthM > 0) || !(soffit > sill)) return;
+  let count = 2;
+  ventMarks[0] = sill;
+  ventMarks[1] = soffit;
+  if (interfaceM > sill && interfaceM < soffit) {
+    ventMarks[2] = interfaceM;
+    count = 3;
+  }
+  if (ventMarks[0] > ventMarks[1]) {
+    const swap = ventMarks[0];
+    ventMarks[0] = ventMarks[1];
+    ventMarks[1] = swap;
+  }
+  if (count === 3 && ventMarks[1] > ventMarks[2]) {
+    const swap = ventMarks[1];
+    ventMarks[1] = ventMarks[2];
+    ventMarks[2] = swap;
+    if (ventMarks[0] > ventMarks[1]) {
+      const again = ventMarks[0];
+      ventMarks[0] = ventMarks[1];
+      ventMarks[1] = again;
+    }
+  }
+  for (let i = 0; i < count - 1; i++) {
+    addSliceFlows(
+      into,
+      ventMarks[i] ?? sill,
+      ventMarks[i + 1] ?? soffit,
+      interfaceM,
+      dP0,
+      rhoL,
+      rhoU,
+      rhoA,
+      vent.widthM,
+    );
+  }
+}
+
 function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, dP0: number): Flows {
   const flows: Flows = {
     inKgS: 0,
@@ -923,65 +1158,32 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
     if (!vent) continue;
-    const sill = Math.min(vent.sillM, vent.soffitM);
-    const soffit = Math.max(vent.sillM, vent.soffitM);
-    if (!(vent.widthM > 0) || !(soffit > sill)) continue;
-    const marks = [sill, soffit];
-    if (interfaceM > sill && interfaceM < soffit) marks.push(interfaceM);
-    marks.sort((a, b) => a - b);
-    let out = 0;
-    for (let i = 0; i < marks.length - 1; i++) {
-      const z0 = marks[i] ?? sill;
-      const z1 = marks[i + 1] ?? soffit;
-      const piece = sliceFlows(z0, z1, interfaceM, dP0, rhoL, rhoU, rhoA, vent.widthM);
-      flows.inKgS += piece.inKgS;
-      out += piece.outKgS;
-    }
-    flows.outByVent[v] = out;
-    flows.outKgS += out;
+    const before = flows.outKgS;
+    accumulateVent(flows, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
+    flows.outByVent[v] = flows.outKgS - before;
   }
   return flows;
 }
 
-function sliceFlows(
-  z0: number,
-  z1: number,
+function pressureNet(
+  vents: readonly Vent[],
   interfaceM: number,
+  upperK: number,
   dP0: number,
+  fans: readonly MechanicalVent[],
   rhoL: number,
   rhoU: number,
   rhoA: number,
-  widthM: number,
-): SliceFlows {
-  const flows: SliceFlows = { inKgS: 0, outKgS: 0 };
-  if (!(z1 > z0 + 1e-9)) return flows;
-  const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
-  const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
-  if (p0 * p1 < 0 && p1 !== p0) {
-    const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
-    // Split whenever the neutral plane is strictly inside the slice.
-    // A plane that falls within a micron of an end used to be left mixed,
-    // and the slice was then called an outflow if either end was positive.
-    // That dropped the inflow for one step and the burn followed it.
-    const pad = Math.min(1e-6, (z1 - z0) * 0.25);
-    if (zN > z0 + pad && zN < z1 - pad) {
-      const lower = sliceFlows(z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
-      const upper = sliceFlows(zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
-      return {
-        inKgS: lower.inKgS + upper.inKgS,
-        outKgS: lower.outKgS + upper.outKgS,
-      };
-    }
+): number {
+  ventScratch.inKgS = 0;
+  ventScratch.outKgS = 0;
+  for (let v = 0; v < vents.length; v++) {
+    const vent = vents[v];
+    if (!vent) continue;
+    accumulateVent(ventScratch, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
   }
-  if (p0 === 0 && p1 === 0) return flows;
-  // The end farther from the plane owns a slice that was not split.
-  const outflow = Math.abs(p0) >= Math.abs(p1) ? p0 > 0 : p1 > 0;
-  const mid = (z0 + z1) / 2;
-  const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
-  const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
-  if (outflow) flows.outKgS = mass;
-  else flows.inKgS = mass;
-  return flows;
+  const extracted = mechanicalExtract(fans, interfaceM, upperK, dP0);
+  return ventScratch.inKgS - ventScratch.outKgS - extracted.upperKgS - extracted.lowerKgS;
 }
 
 function balancedFlows(
@@ -999,30 +1201,38 @@ function balancedFlows(
   // difference, so it stays at its nominal flow. A sealed volume would
   // climb until the fan stalled; this model does not grow that pressure.
   if (vents.length === 0) return at(0);
-  const net = (flow: Flows) => flow.inKgS - flow.outKgS - flow.fanUpperKgS - flow.fanLowerKgS;
+  const rhoU = densityKgM3(upperK);
+  const rhoL = densityKgM3(AMBIENT_K);
+  const rhoA = LEVEL.RHO_AIR;
+  const netAt = (p: number) => pressureNet(vents, interfaceM, upperK, p, fans, rhoL, rhoU, rhoA);
   let lo = -80;
   let hi = 20;
-  let flo = at(lo);
-  let fhi = at(hi);
-  for (let i = 0; i < 6 && net(flo) < 0; i++) {
+  let nLo = netAt(lo);
+  let nHi = netAt(hi);
+  for (let i = 0; i < 6 && nLo < 0; i++) {
     lo = lo * 2 - 10;
-    flo = at(lo);
+    nLo = netAt(lo);
   }
-  for (let i = 0; i < 6 && net(fhi) > 0; i++) {
+  for (let i = 0; i < 6 && nHi > 0; i++) {
     hi = hi * 2 + 10;
-    fhi = at(hi);
+    nHi = netAt(hi);
   }
-  if (net(flo) < 0 && net(fhi) < 0) return flo;
-  if (net(flo) > 0 && net(fhi) > 0) return fhi;
-  let best = Math.abs(net(flo)) < Math.abs(net(fhi)) ? flo : fhi;
+  if (nLo < 0 && nHi < 0) return at(lo);
+  if (nLo > 0 && nHi > 0) return at(hi);
+  let bestP = Math.abs(nLo) < Math.abs(nHi) ? lo : hi;
+  let bestAbs = Math.abs(bestP === lo ? nLo : nHi);
   for (let i = 0; i < 28; i++) {
     const midP = 0.5 * (lo + hi);
-    const mid = at(midP);
-    if (Math.abs(net(mid)) < Math.abs(net(best))) best = mid;
-    if (net(mid) > 0) lo = midP;
+    const nMid = netAt(midP);
+    const absMid = Math.abs(nMid);
+    if (absMid < bestAbs) {
+      bestP = midP;
+      bestAbs = absMid;
+    }
+    if (nMid > 0) lo = midP;
     else hi = midP;
   }
-  return best;
+  return at(bestP);
 }
 
 interface Balance {

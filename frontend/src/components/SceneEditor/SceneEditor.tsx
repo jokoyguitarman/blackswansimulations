@@ -127,7 +127,7 @@ interface RoadPolylineItem {
 type OsmSourceMode = 'local_cache' | 'live_osm';
 
 const STUD_SPACING_M = 3;
-const EXTERIOR_PADDING_M = 150;
+const EXTERIOR_PADDING_M = 48;
 
 function getEstimatedRoadWidthM(highwayType: string): number {
   switch (highwayType) {
@@ -274,7 +274,11 @@ function clipRoadPolylineToRadius(
   return deduped.length >= 2 ? deduped.map(toLatLng) : coordinates;
 }
 
-function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): StudPoint[] {
+function generateStudsForPolygon(
+  polygon: [number, number][],
+  _verts: Vec2[],
+  cover: ReadonlyArray<{ x: number; y: number; radiusM?: number }> = [],
+): StudPoint[] {
   if (polygon.length < 3) return [];
   let minLat = Infinity,
     maxLat = -Infinity,
@@ -297,25 +301,81 @@ function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): S
   const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
 
   const studs: StudPoint[] = [];
+  const push = (la: number, ln: number, row: number, col: number) => {
+    const inside = pointInPoly(la, ln, polygon);
+    studs.push({
+      id: inside ? `stud-${row}-${col}` : `ext-${row}-${col}`,
+      lat: la,
+      lng: ln,
+      simPos: {
+        x: (ln - refLng) * mPerDegLng,
+        y: (refLat - la) * mPerDegLat,
+      },
+      studType: inside ? 'building' : 'outdoor',
+      spatialContext: inside ? 'inside_building' : 'open_air',
+    });
+  };
   let row = 0;
   for (let la = minLat - extPadLat; la <= maxLat + extPadLat; la += dLat) {
     let col = 0;
     for (let ln = minLng - extPadLng; ln <= maxLng + extPadLng; ln += dLng) {
-      const inside = pointInPoly(la, ln, polygon);
-      studs.push({
-        id: inside ? `stud-${row}-${col}` : `ext-${row}-${col}`,
-        lat: la,
-        lng: ln,
-        simPos: {
-          x: (ln - refLng) * mPerDegLng,
-          y: (refLat - la) * mPerDegLat,
-        },
-        studType: inside ? 'building' : 'outdoor',
-        spatialContext: inside ? 'inside_building' : 'open_air',
-      });
+      push(la, ln, row, col);
       col++;
     }
     row++;
+  }
+  if (cover.length === 0) return studs;
+
+  let extLatLo = minLat - extPadLat;
+  let extLatHi = maxLat + extPadLat;
+  let extLngLo = minLng - extPadLng;
+  let extLngHi = maxLng + extPadLng;
+  for (const point of cover) {
+    const lat = refLat - point.y / mPerDegLat;
+    const lng = refLng + point.x / mPerDegLng;
+    const radius = point.radiusM ?? 0;
+    const rLat = radius / mPerDegLat;
+    const rLng = radius / mPerDegLng;
+    extLatLo = Math.min(extLatLo, lat - rLat - extPadLat);
+    extLatHi = Math.max(extLatHi, lat + rLat + extPadLat);
+    extLngLo = Math.min(extLngLo, lng - rLng - extPadLng);
+    extLngHi = Math.max(extLngHi, lng + rLng + extPadLng);
+  }
+  const originLat = minLat - extPadLat;
+  const originLng = minLng - extPadLng;
+  const baseLatHi = maxLat + extPadLat;
+  const baseLngHi = maxLng + extPadLng;
+  if (
+    extLatLo >= originLat - 1e-12 &&
+    extLatHi <= baseLatHi + 1e-12 &&
+    extLngLo >= originLng - 1e-12 &&
+    extLngHi <= baseLngHi + 1e-12
+  ) {
+    return studs;
+  }
+  const row0 = Math.ceil((extLatLo - originLat) / dLat - 1e-8);
+  const row1 = Math.floor((extLatHi - originLat) / dLat + 1e-8);
+  const col0 = Math.ceil((extLngLo - originLng) / dLng - 1e-8);
+  const col1 = Math.floor((extLngHi - originLng) / dLng + 1e-8);
+  const seen = new Set(studs.map((stud) => stud.id));
+  for (let extraRow = row0; extraRow <= row1; extraRow++) {
+    const la = originLat + extraRow * dLat;
+    for (let extraCol = col0; extraCol <= col1; extraCol++) {
+      const ln = originLng + extraCol * dLng;
+      if (
+        la >= originLat - 1e-9 &&
+        la <= baseLatHi + 1e-9 &&
+        ln >= originLng - 1e-9 &&
+        ln <= baseLngHi + 1e-9
+      ) {
+        continue;
+      }
+      const inside = pointInPoly(la, ln, polygon);
+      const id = inside ? `stud-${extraRow}-${extraCol}` : `ext-${extraRow}-${extraCol}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      push(la, ln, extraRow, extraCol);
+    }
   }
   return studs;
 }
@@ -578,10 +638,14 @@ export function SceneEditor({
     () => (selectedGrid ? projectPolygon(selectedGrid.polygon) : []),
     [selectedGrid],
   );
-  const simStuds = useMemo(
-    () => (selectedGrid ? generateStudsForPolygon(selectedGrid.polygon, projectedVerts) : []),
-    [selectedGrid, projectedVerts],
-  );
+  const simStuds = useMemo(() => {
+    if (!selectedGrid) return [];
+    const cover = [
+      ...(blastSite ? [{ x: blastSite.x, y: blastSite.y, radiusM: blastRadius }] : []),
+      ...hazardZones.map((zone) => ({ x: zone.pos.x, y: zone.pos.y, radiusM: zone.radius })),
+    ];
+    return generateStudsForPolygon(selectedGrid.polygon, projectedVerts, cover);
+  }, [selectedGrid, projectedVerts, blastSite, blastRadius, hazardZones]);
   simStudsRef.current = simStuds;
 
   // Sim-space converter
@@ -596,18 +660,28 @@ export function SceneEditor({
 
   const snapToStud = useCallback(
     (sim: Vec2): { pos: Vec2; stud: StudPoint | null } => {
-      let best: StudPoint | null = null;
-      let bestDist = 6;
-      for (const s of simStuds) {
-        const d = Math.hypot(s.simPos.x - sim.x, s.simPos.y - sim.y);
-        if (d < bestDist) {
-          bestDist = d;
-          best = s;
+      const pick = (studs: readonly StudPoint[]) => {
+        let best: StudPoint | null = null;
+        let bestDist = 6;
+        for (const s of studs) {
+          const d = Math.hypot(s.simPos.x - sim.x, s.simPos.y - sim.y);
+          if (d < bestDist) {
+            bestDist = d;
+            best = s;
+          }
         }
-      }
-      return best ? { pos: best.simPos, stud: best } : { pos: sim, stud: null };
+        return best ? { pos: best.simPos, stud: best } : { pos: sim, stud: null };
+      };
+      const hit = pick(simStuds);
+      if (hit.stud || !selectedGrid) return hit;
+      const cover = [
+        ...(blastSite ? [{ x: blastSite.x, y: blastSite.y, radiusM: blastRadius }] : []),
+        ...hazardZones.map((zone) => ({ x: zone.pos.x, y: zone.pos.y, radiusM: zone.radius })),
+        { x: sim.x, y: sim.y },
+      ];
+      return pick(generateStudsForPolygon(selectedGrid.polygon, projectedVerts, cover));
     },
-    [simStuds],
+    [simStuds, selectedGrid, projectedVerts, blastSite, blastRadius, hazardZones],
   );
 
   // ── Auto-load saved scene when initialSceneId is set ─────────────────
@@ -1004,10 +1078,7 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        | 'inside_building'
-        | 'road'
-        | 'open_air'
-        | undefined;
+        'inside_building' | 'road' | 'open_air' | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned

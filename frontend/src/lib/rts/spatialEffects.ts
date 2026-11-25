@@ -1,5 +1,5 @@
 import type { ExitDef, Vec2 } from '../evacuation/types';
-import { doorLeafKey, doorOpenFraction, leafWidthM } from './doorLeaf';
+import { doorOpenFraction, leafWidthM } from './doorLeaf';
 import type { InteriorWall, HazardZone } from './types';
 import {
   FireSimulation,
@@ -172,6 +172,21 @@ export const SMOKE_OUTDOOR_VENT_FACTOR = 5;
  */
 export const SMOKE_EXCHANGE_PER_S = 0.025;
 
+/** Column spacing when a scene grid has only one row or column to measure. */
+const SCENE_LATTICE_M = 3;
+
+function latticeStep(values: readonly number[]): number {
+  const uniq = [...new Set(values.map((value) => Math.round(value * 1000) / 1000))].sort(
+    (a, b) => a - b,
+  );
+  let step = SCENE_LATTICE_M;
+  for (let i = 1; i < uniq.length; i++) {
+    const gap = (uniq[i] ?? 0) - (uniq[i - 1] ?? 0);
+    if (gap > 0.5 && gap < step) step = gap;
+  }
+  return step;
+}
+
 /** Solid wall, including the outside wall. A door or an exit uses the full exchange. Assumed. */
 export const SMOKE_WALL_LEAK = 0.05;
 
@@ -191,36 +206,6 @@ export function advanceSootK(
   if (!(vent > 0)) return Math.max(0, k + gen * dt);
   const decay = Math.exp(-vent * dt);
   return Math.max(0, k * decay + (gen / vent) * (1 - decay));
-}
-
-function applySmokeMoves(
-  kNow: Map<string, number>,
-  moves: Array<{ from: string; to: string; k: number }>,
-  kMax: number,
-): void {
-  const out = new Map<string, number>();
-  for (const move of moves) out.set(move.from, (out.get(move.from) ?? 0) + move.k);
-  for (const move of moves) {
-    const available = kNow.get(move.from) ?? 0;
-    const total = out.get(move.from) ?? 0;
-    if (total > available && total > 0) move.k *= available / total;
-  }
-  const incoming = new Map<string, number>();
-  for (const move of moves) incoming.set(move.to, (incoming.get(move.to) ?? 0) + move.k);
-  const roomScale = new Map<string, number>();
-  for (const [id, add] of incoming) {
-    const room = kMax - (kNow.get(id) ?? 0);
-    roomScale.set(id, add > room && add > 0 ? Math.max(0, room) / add : 1);
-  }
-  for (const move of moves) {
-    const moved = move.k * (roomScale.get(move.to) ?? 1);
-    if (!(moved > 0)) continue;
-    kNow.set(move.from, (kNow.get(move.from) ?? 0) - moved);
-    kNow.set(move.to, Math.min(kMax, (kNow.get(move.to) ?? 0) + moved));
-  }
-  for (const [id, k] of kNow) {
-    if (!(k > 1e-10)) kNow.set(id, 0);
-  }
 }
 
 function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
@@ -354,6 +339,29 @@ export class SpatialEffectsEngine {
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
+  /** Studs in insertion order, so a smoke walk can read neighbours by slot. */
+  private smokeSlots: string[] = [];
+  private smokeSlotOf = new Map<string, number>();
+  private smokeNeigh: number[][] = [];
+  /** Missing outdoor-lattice neighbours. Each one is open air, not a wall. */
+  private smokeOpen = new Uint8Array(0);
+  /** 1 when that neighbour link is a wall or the shell. Invalidated with the leaves. */
+  private smokeBlock: Array<Uint8Array | null> = [];
+  private smokeBlockKey = '';
+  private smokeBlockWalls: InteriorWall[] | null = null;
+  private kScratch = new Float64Array(0);
+  /** Reused so the init-order sort does not allocate on the burning slices. */
+  private smokeEmit: number[] = [];
+  private sumScratch = new Float64Array(0);
+  private scaleScratch = new Float64Array(0);
+  private seenScratch = new Uint8Array(0);
+  private wasInField = new Uint8Array(0);
+  private usedSlots: number[] = [];
+  private moveFrom: string[] = [];
+  private moveTo: string[] = [];
+  private moveFromSlot: number[] = [];
+  private moveToSlot: number[] = [];
+  private moveK: number[] = [];
   private verticalPairs: ShaftPair[] = [];
   private fireSim: FireSimulation;
   /**
@@ -365,10 +373,22 @@ export class SpatialEffectsEngine {
   private fuelGate: Set<string> | null = null;
   /** Extinction from burning soot, kept apart from blast-event smoke. */
   private sootK = new Map<string, number>();
-  /** Wall tests for one walls array. Rebuilt when the caller passes another array. */
+  /** Wall tests for one walls array. Rebuilt when a leaf moves, not on every query. */
   private blockedWalls: InteriorWall[] | null = null;
-  private blockedLeafKey = '';
+  private blockedGen = -1;
   private blockedNeighbors = new Map<string, Set<string>>();
+  /** Open fraction of each wall the last time the leaf generation moved. */
+  private leafWalls: InteriorWall[] | null = null;
+  private leafOpen: Array<number | null> = [];
+  private leafFlags: number[] = [];
+  private leafIds: string[] = [];
+  private leafGen = 0;
+  /** Studs whose smoke or soot was non-zero after the previous slice. */
+  private liveSmoke: string[] = [];
+  /** Studs that carried a layer breath fraction, so the next slice can clear it. */
+  private breathIds: string[] = [];
+  /** Studs that received a fume split, so the next slice can clear it. */
+  private fumeIds: string[] = [];
   /** Outside wall. Indoor–outdoor links are blocked unless they cross an exit. */
   private shellKey = '';
   private shellGaps: ShellOpening[] = [];
@@ -383,9 +403,10 @@ export class SpatialEffectsEngine {
     { active: boolean; zone: ZoneState; members: string[]; areaM2: number; ceilingM: number }
   >();
   private layerWalls: InteriorWall[] | null = null;
-  private layerLeafKey = '';
   private layerHeightKey = '';
   private layerEnclosures = new Map<string, Enclosure | null>();
+  /** Open fractions the cached enclosure was built with, for the walls it hits. */
+  private layerDoorSnap = new Map<string, Array<{ id: string; open: number | null }>>();
   private layerShellKey = '';
   private layerGridWalls: GridWall[] = [];
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
@@ -434,15 +455,23 @@ export class SpatialEffectsEngine {
     this.verticalPairs = [];
     this.sootK.clear();
     this.blockedWalls = null;
-    this.blockedLeafKey = '';
+    this.blockedGen = -1;
     this.blockedNeighbors.clear();
+    this.leafWalls = null;
+    this.leafOpen = [];
+    this.leafFlags = [];
+    this.leafIds = [];
+    this.leafGen = 0;
+    this.liveSmoke = [];
+    this.breathIds = [];
+    this.fumeIds = [];
     this.shellReady = false;
     this.shellBlocked.clear();
     this.gridStuds.clear();
     this.layerState.clear();
     this.layerEnclosures.clear();
+    this.layerDoorSnap.clear();
     this.layerWalls = null;
-    this.layerLeafKey = '';
     this.exposedDoors = new Set();
     this.layerGrants = [];
     this.fallenGlass.clear();
@@ -470,8 +499,142 @@ export class SpatialEffectsEngine {
 
     const built = neighborIdsByLevel(studs, NEIGHBOR_RADIUS);
     for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
+    this.rebuildSmokeSlots();
 
     this.fireSim.init(studs);
+  }
+
+  /** Slot table for the smoke walk. Neighbour order matches `neighborCache`. */
+  private rebuildSmokeSlots(): void {
+    this.smokeSlots = [];
+    this.smokeSlotOf.clear();
+    for (const id of this.studIndex.keys()) {
+      this.smokeSlotOf.set(id, this.smokeSlots.length);
+      this.smokeSlots.push(id);
+    }
+    const n = this.smokeSlots.length;
+    this.smokeNeigh = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const id = this.smokeSlots[i] ?? '';
+      const row: number[] = [];
+      for (const nId of this.neighborCache.get(id) ?? []) {
+        const slot = this.smokeSlotOf.get(nId);
+        if (slot != null) row.push(slot);
+      }
+      this.smokeNeigh[i] = row;
+    }
+    this.smokeBlock = new Array(n).fill(null);
+    this.smokeBlockKey = '';
+    this.smokeBlockWalls = null;
+    this.kScratch = new Float64Array(n);
+    this.sumScratch = new Float64Array(n);
+    this.scaleScratch = new Float64Array(n);
+    this.seenScratch = new Uint8Array(n);
+    this.wasInField = new Uint8Array(n);
+    this.usedSlots = [];
+    this.fillOpenAir();
+  }
+
+  /**
+   * Studs placed after the field was built. Old studs keep their smoke and
+   * their slot numbers; the new ones are appended.
+   */
+  extendStuds(studs: readonly FireSimStud[]): void {
+    const fresh = studs.filter((stud) => !this.studIndex.has(stud.id));
+    if (fresh.length === 0) return;
+    for (const stud of fresh) {
+      this.studIndex.set(stud.id, stud);
+      this.gridStuds.set(stud.id, {
+        id: stud.id,
+        x: stud.simPos.x,
+        y: stud.simPos.y,
+        level: levelOf(stud),
+      });
+      this.studStates.set(stud.id, {
+        fire: { state: 'none', timer: 0, fuelFactor: 1.0 },
+        gas: 0,
+        flood: 0,
+        structural: 0,
+        smoke: 0,
+      });
+    }
+    this.neighborCache.clear();
+    const built = neighborIdsByLevel([...this.studIndex.values()], NEIGHBOR_RADIUS);
+    for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
+    this.rebuildSmokeSlots();
+    this.fireSim.addStuds(fresh);
+    this.shellReady = false;
+    this.shellBlocked.clear();
+    this.blockedWalls = null;
+    this.blockedGen = -1;
+    this.blockedNeighbors.clear();
+    this.layerEnclosures.clear();
+    this.layerDoorSnap.clear();
+    this.layerWalls = null;
+  }
+
+  /**
+   * Outdoor studs on the scene lattice. A missing 8 m neighbour is air beyond
+   * the crop, so smoke leaves instead of reflecting. Indoor ids are not
+   * opened: a missing upper-floor neighbour is not the outdoors.
+   */
+  private fillOpenAir(): void {
+    const n = this.smokeSlots.length;
+    const open = new Uint8Array(n);
+    this.smokeOpen = open;
+    const scene: Array<{ x: number; y: number; slot: number; ext: boolean }> = [];
+    for (let i = 0; i < n; i++) {
+      const id = this.smokeSlots[i] ?? '';
+      if (!id.startsWith('ext-') && !id.startsWith('bldg-')) continue;
+      const stud = this.gridStuds.get(id);
+      if (!stud) continue;
+      scene.push({ x: stud.x, y: stud.y, slot: i, ext: id.startsWith('ext-') });
+    }
+    if (!scene.some((stud) => stud.ext)) return;
+    const dx = latticeStep(scene.map((stud) => stud.x));
+    const dy = latticeStep(scene.map((stud) => stud.y));
+    const offsets: Array<[number, number]> = [];
+    for (let di = -4; di <= 4; di++) {
+      for (let dj = -4; dj <= 4; dj++) {
+        if (di === 0 && dj === 0) continue;
+        if (Math.hypot(di * dx, dj * dy) <= NEIGHBOR_RADIUS + 1e-6) offsets.push([di, dj]);
+      }
+    }
+    if (offsets.length === 0 || offsets.length > 32) return;
+    const occupied = new Set<string>();
+    const at = (x: number, y: number) => `${Math.round(x / dx)}:${Math.round(y / dy)}`;
+    for (const stud of scene) occupied.add(at(stud.x, stud.y));
+    for (const stud of scene) {
+      if (!stud.ext) continue;
+      let holes = 0;
+      for (const [di, dj] of offsets) {
+        if (!occupied.has(at(stud.x + di * dx, stud.y + dj * dy))) holes += 1;
+      }
+      open[stud.slot] = holes;
+    }
+  }
+
+  /** Wall and shell bits for one stud, cached until a leaf or the shell changes. */
+  private blockRow(slot: number, walls: InteriorWall[]): Uint8Array {
+    if (!this.shellReady) this.rebuildShell();
+    const gen = walls === this.leafWalls ? this.leafGen : this.noteLeaves(walls);
+    const key = `${gen}:${this.shellKey}`;
+    if (key !== this.smokeBlockKey || walls !== this.smokeBlockWalls) {
+      this.smokeBlockKey = key;
+      this.smokeBlockWalls = walls;
+      this.smokeBlock = new Array(this.smokeSlots.length).fill(null);
+    }
+    const cached = this.smokeBlock[slot];
+    if (cached) return cached;
+    const neigh = this.smokeNeigh[slot] ?? [];
+    const row = new Uint8Array(neigh.length);
+    const id = this.smokeSlots[slot] ?? '';
+    for (let j = 0; j < neigh.length; j++) {
+      const nSlot = neigh[j] ?? 0;
+      row[j] = this.exchangeBlocked(id, this.smokeSlots[nSlot] ?? '', walls) ? 1 : 0;
+    }
+    this.smokeBlock[slot] = row;
+    return row;
   }
 
   /**
@@ -623,6 +786,7 @@ export class SpatialEffectsEngine {
     const simDt = dt * this.timeScale;
     this.elapsed += simDt;
 
+    this.noteLeaves(walls);
     this.processHazardEvents(hazards, walls);
     this.stepFire(simDt, walls, hazards);
     this.stepGas(simDt, walls);
@@ -966,12 +1130,59 @@ export class SpatialEffectsEngine {
    * A solid wall between two neighbours. The result is kept for this walls
    * array, so a step does not repeat the geometry for every fire.
    */
+  /**
+   * Bumps when a leaf's id, open fraction, pin, or failure changes.
+   * The same array with the same leaves keeps the previous generation,
+   * so a smoke step does not rebuild a string for every neighbour.
+   */
+  private noteLeaves(walls: InteriorWall[]): number {
+    const n = walls.length;
+    let same = this.leafWalls === walls && this.leafOpen.length === n;
+    if (same) {
+      for (let i = 0; i < n; i++) {
+        const wall = walls[i];
+        if (!wall) {
+          same = false;
+          break;
+        }
+        const open =
+          wall.openFraction == null || !Number.isFinite(wall.openFraction)
+            ? null
+            : wall.openFraction;
+        const flags = (wall.doorPinned ? 1 : 0) + (wall.doorFailed ? 2 : 0);
+        if (
+          open !== this.leafOpen[i] ||
+          flags !== this.leafFlags[i] ||
+          wall.id !== this.leafIds[i]
+        ) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) return this.leafGen;
+    this.leafWalls = walls;
+    this.leafOpen = new Array(n);
+    this.leafFlags = new Array(n);
+    this.leafIds = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const wall = walls[i];
+      if (!wall) continue;
+      this.leafOpen[i] =
+        wall.openFraction == null || !Number.isFinite(wall.openFraction) ? null : wall.openFraction;
+      this.leafFlags[i] = (wall.doorPinned ? 1 : 0) + (wall.doorFailed ? 2 : 0);
+      this.leafIds[i] = wall.id;
+    }
+    this.leafGen += 1;
+    return this.leafGen;
+  }
+
   private wallBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
     if (walls.length === 0) return false;
-    const leafKey = doorLeafKey(walls);
-    if (walls !== this.blockedWalls || leafKey !== this.blockedLeafKey) {
+    const gen = walls === this.leafWalls ? this.leafGen : this.noteLeaves(walls);
+    if (walls !== this.blockedWalls || gen !== this.blockedGen) {
       this.blockedWalls = walls;
-      this.blockedLeafKey = leafKey;
+      this.blockedGen = gen;
       this.blockedNeighbors.clear();
     }
     let blocked = this.blockedNeighbors.get(id);
@@ -1012,27 +1223,42 @@ export class SpatialEffectsEngine {
     return best;
   }
 
-  private enclosureOf(
-    room: string,
-    members: readonly string[],
-    walls: InteriorWall[],
-    ceiling: number,
-  ): Enclosure | null {
+  /** Copy the current leaves onto the grid walls. A new shell or a moved wall drops the cache. */
+  private syncLayerWalls(walls: InteriorWall[]) {
     const heights = [...this.storeyHeights.entries()]
       .map(([id, height]) => `${id}=${height}`)
       .join(',');
-    const leafKey = doorLeafKey(walls);
-    if (
+    let moved =
       walls !== this.layerWalls ||
       heights !== this.layerHeightKey ||
       this.shellKey !== this.layerShellKey ||
-      leafKey !== this.layerLeafKey
-    ) {
+      walls.length !== this.layerGridWalls.length;
+    if (!moved) {
+      for (let i = 0; i < walls.length; i++) {
+        const wall = walls[i];
+        const grid = this.layerGridWalls[i];
+        if (
+          !wall ||
+          !grid ||
+          grid.id !== wall.id ||
+          grid.x1 !== wall.start.x ||
+          grid.y1 !== wall.start.y ||
+          grid.x2 !== wall.end.x ||
+          grid.y2 !== wall.end.y ||
+          grid.material !== wall.material ||
+          grid.level !== levelOf(wall)
+        ) {
+          moved = true;
+          break;
+        }
+      }
+    }
+    if (moved) {
       this.layerWalls = walls;
       this.layerHeightKey = heights;
       this.layerShellKey = this.shellKey;
-      this.layerLeafKey = leafKey;
       this.layerEnclosures.clear();
+      this.layerDoorSnap.clear();
       this.layerGridWalls = walls.map((wall) => ({
         id: wall.id,
         x1: wall.start.x,
@@ -1050,10 +1276,53 @@ export class SpatialEffectsEngine {
       this.liningWalls = this.layerGridWalls.filter(
         (wall) => liningKind(wall.material) !== 'inert',
       );
+      return;
     }
+    for (let i = 0; i < walls.length; i++) {
+      const wall = walls[i];
+      const grid = this.layerGridWalls[i];
+      if (!wall || !grid) continue;
+      grid.hasDoor = wall.hasDoor;
+      grid.doorWidth = wall.doorWidth;
+      grid.doorPosition = wall.doorPosition;
+      grid.openFraction = wall.openFraction;
+    }
+  }
+
+  private doorOpenOf(wall: GridWall | undefined): number | null {
+    if (!wall || wall.openFraction == null || !Number.isFinite(wall.openFraction)) return null;
+    return wall.openFraction;
+  }
+
+  private enclosureDoorsMatch(key: string, enc: Enclosure | null): boolean {
+    const snap = this.layerDoorSnap.get(key);
+    if (!snap || !enc) return snap != null && enc == null;
+    if (snap.length !== enc.wallIds.length) return false;
+    for (let i = 0; i < snap.length; i++) {
+      const row = snap[i];
+      if (!row || row.id !== enc.wallIds[i]) return false;
+      if (row.open !== this.doorOpenOf(this.wallById.get(row.id))) return false;
+    }
+    return true;
+  }
+
+  private enclosureOf(
+    room: string,
+    members: readonly string[],
+    walls: InteriorWall[],
+    ceiling: number,
+  ): Enclosure | null {
+    this.syncLayerWalls(walls);
     const openKey = [...this.fallenGlass].sort().join(',');
     const key = `${room}@${ceiling}@${openKey}`;
-    if (this.layerEnclosures.has(key)) return this.layerEnclosures.get(key) ?? null;
+    const cached = this.layerEnclosures.get(key);
+    if (
+      this.layerEnclosures.has(key) &&
+      cached !== undefined &&
+      this.enclosureDoorsMatch(key, cached)
+    ) {
+      return cached;
+    }
     const found = enclosureFromGrid(
       members,
       this.gridStuds,
@@ -1063,6 +1332,11 @@ export class SpatialEffectsEngine {
       (memberId, outsideId) => this.facadeAt(memberId, outsideId),
       this.fallenGlass,
     );
+    const snap = (found?.wallIds ?? []).map((id) => ({
+      id,
+      open: this.doorOpenOf(this.wallById.get(id)),
+    }));
+    this.layerDoorSnap.set(key, snap);
     this.layerEnclosures.set(key, found);
     return found;
   }
@@ -1352,7 +1626,8 @@ export class SpatialEffectsEngine {
       if (fraction < 0.999) this.liningFraction.set(id, fraction);
     }
     this.fireSim.clearBurnLimits();
-    const rooms = this.fireSim.compartmentIds(walls);
+    this.syncLayerWalls(walls);
+    const rooms = this.fireSim.compartmentsOf(walls);
     const groups = new Map<string, string[]>();
     for (const [id, room] of rooms) {
       const list = groups.get(room);
@@ -1402,6 +1677,12 @@ export class SpatialEffectsEngine {
         this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
         prev.active = false;
       };
+      // No fire and no combustible lining: the enclosure and the face
+      // update would not write anything. A hot neighbour still grants
+      // soot onto these studs later.
+      if (heat < MIN_LAYER_FIRE_KW && !prev?.active && this.liningWalls.length === 0) {
+        continue;
+      }
       const enc = this.enclosureOf(room, members, walls, ceiling);
       if (enc && members.some((id) => this.fireSim.isFlashed(id))) {
         for (const wallId of enc.wallIds) this.exposedDoors.add(wallId);
@@ -1520,17 +1801,21 @@ export class SpatialEffectsEngine {
   }
 
   /** Write the layer onto heads that have reached it, and hand vented soot to the next stud. */
-  private commitLayers(owned: ReadonlySet<string>, kMax: number): void {
-    for (const state of this.studStates.values()) {
+  private commitLayers(owned: ReadonlySet<string>, kMax: number, touch: Set<string>): void {
+    for (const id of this.breathIds) {
+      const state = this.studStates.get(id);
+      if (!state) continue;
       state.oxygenVolumePercent = undefined;
       state.co2VolumePercent = undefined;
     }
+    this.breathIds = [];
     const incoming = new Map<string, number>();
     for (const grant of this.layerGrants) {
       if (grant.receivers.length === 0) continue;
       const each = grant.grams / grant.receivers.length;
       for (const id of grant.receivers) {
         if (!this.studStates.has(id)) continue;
+        touch.add(id);
         if (owned.has(id)) {
           incoming.set(id, (incoming.get(id) ?? 0) + each);
           continue;
@@ -1555,12 +1840,15 @@ export class SpatialEffectsEngine {
         oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
       );
       for (const id of live.members) {
+        touch.add(id);
         if (!owned.has(id)) continue;
-        this.sootK.set(id, atHead ? k : 0);
+        if (atHead && k > 0) this.sootK.set(id, k);
+        else this.sootK.delete(id);
         const state = this.studStates.get(id);
         if (!state) continue;
         state.oxygenVolumePercent = breath.oxygenVolumePercent;
         state.co2VolumePercent = breath.co2VolumePercent;
+        this.breathIds.push(id);
       }
     }
   }
@@ -1568,17 +1856,31 @@ export class SpatialEffectsEngine {
   private stepSmoke(dt: number, walls: InteriorWall[]) {
     if (!(dt > 0)) return;
     const kMax = extinctionK(1);
+    const touch = new Set<string>(this.liveSmoke);
+    // Smoke written onto a stud before the first step, as the level tests do,
+    // is not in liveSmoke yet. After that the step itself is the only writer,
+    // and liveSmoke already lists those studs.
+    if (this.liveSmoke.length === 0) {
+      for (const [id, state] of this.studStates) {
+        if (state.smoke > 0) touch.add(id);
+      }
+    }
+    for (const src of this.fireSim.burningSoot()) touch.add(src.id);
 
     // Blast smoke stays a smoke number with the old constant loss. It is not
     // the soot of a burning material, so the soot vent below does not take it.
+    // Cold studs stay at zero and are not written again.
     const eventD = new Map<string, number>();
-    for (const [id, state] of this.studStates) {
+    for (const id of touch) {
+      const state = this.studStates.get(id);
+      if (!state) continue;
       const total = extinctionK(state.smoke);
       let soot = this.sootK.get(id) ?? 0;
       if (soot > total) soot = total;
-      if (!(soot > 0)) soot = 0;
-      this.sootK.set(id, soot);
-      eventD.set(id, smokeFromK(Math.max(0, total - soot)));
+      if (!(soot > 0)) this.sootK.delete(id);
+      else this.sootK.set(id, soot);
+      const event = smokeFromK(Math.max(0, total - soot));
+      if (event > 0) eventD.set(id, event);
     }
 
     for (const [, hs] of this.hazardStates) {
@@ -1589,8 +1891,9 @@ export class SpatialEffectsEngine {
         if (!event.affectedStuds?.length) continue;
         for (const sId of event.affectedStuds) {
           if (this.fuelGate && !this.fuelGate.has(sId)) continue;
-          if (!eventD.has(sId)) continue;
+          if (!this.studStates.has(sId)) continue;
           eventD.set(sId, Math.min(1, (eventD.get(sId) ?? 0) + dt * rate * 0.02));
+          touch.add(sId);
         }
       }
     }
@@ -1619,10 +1922,16 @@ export class SpatialEffectsEngine {
       extractM3.set(id, (extractM3.get(id) ?? 0) + HOOD_EXTRACT_M3_PER_S);
     }
     const sootById = new Map<string, number>();
-    for (const src of this.fireSim.burningSoot()) sootById.set(src.id, src.sootGPerS);
-    for (const id of this.studStates.keys()) {
+    for (const src of this.fireSim.burningSoot()) {
+      sootById.set(src.id, src.sootGPerS);
+      touch.add(src.id);
+    }
+    for (const id of owned) touch.add(id);
+    for (const id of this.sootK.keys()) touch.add(id);
+    for (const id of touch) {
+      if (!this.studStates.has(id)) continue;
       if (owned.has(id)) {
-        this.sootK.set(id, 0);
+        this.sootK.delete(id);
         continue;
       }
       const volume = this.columnVolume(id);
@@ -1634,15 +1943,20 @@ export class SpatialEffectsEngine {
       const vent = leak + (flow > 0 ? flow / volume : 0);
       let k = advanceSootK(this.sootK.get(id) ?? 0, generation, vent, dt);
       if (k > kMax) k = kMax;
-      this.sootK.set(id, k);
+      if (k > 0) this.sootK.set(id, k);
+      else this.sootK.delete(id);
     }
 
     // What leaves a stud is taken off it, in each reservoir.
-    this.moveSmoke(eventD, 1, dt, walls);
-    this.moveSmoke(this.sootK, kMax, dt, walls, owned);
-    this.commitLayers(owned, kMax);
+    this.moveSmoke(eventD, 1, dt, walls, undefined, touch);
+    this.moveSmoke(this.sootK, kMax, dt, walls, owned, touch);
+    this.commitLayers(owned, kMax, touch);
+    for (const id of this.sootK.keys()) touch.add(id);
 
-    for (const [id, state] of this.studStates) {
+    const next: string[] = [];
+    for (const id of touch) {
+      const state = this.studStates.get(id);
+      if (!state) continue;
       let soot = this.sootK.get(id) ?? 0;
       let eventK = extinctionK(eventD.get(id) ?? 0);
       const sum = soot + eventK;
@@ -1650,10 +1964,13 @@ export class SpatialEffectsEngine {
         const scale = kMax / sum;
         soot *= scale;
         eventK *= scale;
-        this.sootK.set(id, soot);
+        if (soot > 0) this.sootK.set(id, soot);
+        else this.sootK.delete(id);
       }
       state.smoke = smokeFromK(Math.min(kMax, soot + eventK));
+      if (state.smoke > 0 || (this.sootK.get(id) ?? 0) > 0) next.push(id);
     }
+    this.liveSmoke = next;
   }
 
   /** Neighbours and the shaft above. The amount added is the amount removed. */
@@ -1663,33 +1980,202 @@ export class SpatialEffectsEngine {
     dt: number,
     walls: InteriorWall[],
     skip?: ReadonlySet<string>,
+    touch?: Set<string>,
   ): void {
-    const moves: Array<{ from: string; to: string; k: number }> = [];
+    const froms = this.moveFrom;
+    const tos = this.moveTo;
+    const fromSlots = this.moveFromSlot;
+    const toSlots = this.moveToSlot;
+    const ks = this.moveK;
+    let n = 0;
+    const openShare = dt * SMOKE_EXCHANGE_PER_S;
+    const leakShare = openShare * SMOKE_WALL_LEAK;
+    const scratch = this.kScratch;
+    const was = this.wasInField;
+    const present: number[] = [];
     for (const [id, value] of field) {
-      if (!(value > 0) || skip?.has(id)) continue;
-      const src = this.studIndex.get(id);
-      if (!src) continue;
-      for (const nId of this.neighborCache.get(id) ?? []) {
+      const slot = this.smokeSlotOf.get(id);
+      if (slot == null) continue;
+      scratch[slot] = value;
+      was[slot] = 1;
+      present.push(slot);
+    }
+    // The old map held every stud, so positive sources were visited in init
+    // order. The live map only keeps the positive keys, in touch order.
+    // Emitting in slot order is that same init order, and the sums stay
+    // bit-identical.
+    const emit = this.smokeEmit;
+    emit.length = 0;
+    for (const slot of present) {
+      if ((scratch[slot] ?? 0) > 0) emit.push(slot);
+    }
+    emit.sort((a, b) => a - b);
+    for (const slot of emit) {
+      const value = scratch[slot] ?? 0;
+      const id = this.smokeSlots[slot] ?? '';
+      if (skip?.has(id) || !this.studIndex.has(id)) continue;
+      const neigh = this.smokeNeigh[slot] ?? [];
+      const blocked = this.blockRow(slot, walls);
+      for (let j = 0; j < neigh.length; j++) {
+        const nSlot = neigh[j] ?? 0;
+        const nId = this.smokeSlots[nSlot] ?? '';
         if (skip?.has(nId)) continue;
-        const dest = this.studIndex.get(nId);
-        if (!dest) continue;
-        const other = field.get(nId) ?? 0;
+        const other = scratch[nSlot] ?? 0;
         if (!(value > other)) continue;
-        const blocked = this.exchangeBlocked(id, nId, walls);
-        const share = dt * SMOKE_EXCHANGE_PER_S * (blocked ? SMOKE_WALL_LEAK : 1);
+        const share = blocked[j] === 1 ? leakShare : openShare;
         const moved = (value - other) * share;
-        if (moved > 1e-10) moves.push({ from: id, to: nId, k: moved });
+        if (moved > 1e-10) {
+          froms[n] = id;
+          tos[n] = nId;
+          fromSlots[n] = slot;
+          toSlots[n] = nSlot;
+          ks[n] = moved;
+          n += 1;
+        }
+      }
+      const holes = this.smokeOpen[slot] ?? 0;
+      if (holes > 0) {
+        const leaving = value * openShare * holes;
+        if (leaving > 1e-10) {
+          froms[n] = id;
+          tos[n] = '';
+          fromSlots[n] = slot;
+          toSlots[n] = -1;
+          ks[n] = leaving;
+          n += 1;
+        }
       }
     }
     for (const pair of this.verticalPairs) {
       if (skip?.has(pair.lower) || skip?.has(pair.upper)) continue;
       const lower = field.get(pair.lower) ?? 0;
       const upper = field.get(pair.upper) ?? 0;
-      if (!(lower > upper) || !field.has(pair.lower) || !field.has(pair.upper)) continue;
+      if (!(lower > upper)) continue;
+      if (!this.studStates.has(pair.lower) || !this.studStates.has(pair.upper)) continue;
       const moved = (lower - upper) * Math.min(0.5, pair.coeffPerS * dt);
-      if (moved > 1e-10) moves.push({ from: pair.lower, to: pair.upper, k: moved });
+      if (!(moved > 1e-10)) continue;
+      const lo = this.smokeSlotOf.get(pair.lower);
+      const hi = this.smokeSlotOf.get(pair.upper);
+      if (lo == null || hi == null) continue;
+      froms[n] = pair.lower;
+      tos[n] = pair.upper;
+      fromSlots[n] = lo;
+      toSlots[n] = hi;
+      ks[n] = moved;
+      n += 1;
     }
-    applySmokeMoves(field, moves, cap);
+    this.applySmokeMoves(field, n, cap, touch);
+    for (const slot of present) {
+      scratch[slot] = 0;
+      was[slot] = 0;
+    }
+  }
+
+  /**
+   * Same sums as walking the move list with maps: outgoing scale, then the
+   * room left under the cap, then the paired add and remove. Map insertion
+   * order stays the order of the first write.
+   */
+  private applySmokeMoves(
+    kNow: Map<string, number>,
+    n: number,
+    kMax: number,
+    touch?: Set<string>,
+  ): void {
+    const froms = this.moveFrom;
+    const tos = this.moveTo;
+    const fromSlots = this.moveFromSlot;
+    const toSlots = this.moveToSlot;
+    const ks = this.moveK;
+    const sum = this.sumScratch;
+    const seen = this.seenScratch;
+    const used = this.usedSlots;
+    const work = this.kScratch;
+    const was = this.wasInField;
+    let usedN = 0;
+    for (let i = 0; i < n; i++) {
+      const slot = fromSlots[i] ?? 0;
+      if (seen[slot] === 0) {
+        seen[slot] = 1;
+        used[usedN] = slot;
+        usedN += 1;
+      }
+      sum[slot] = (sum[slot] ?? 0) + (ks[i] ?? 0);
+    }
+    for (let i = 0; i < n; i++) {
+      const slot = fromSlots[i] ?? 0;
+      const available = work[slot] ?? 0;
+      const total = sum[slot] ?? 0;
+      if (total > available && total > 0) ks[i] = (ks[i] ?? 0) * (available / total);
+    }
+    for (let u = 0; u < usedN; u++) {
+      const slot = used[u] ?? 0;
+      seen[slot] = 0;
+      sum[slot] = 0;
+    }
+    const scale = this.scaleScratch;
+    usedN = 0;
+    for (let i = 0; i < n; i++) {
+      const slot = toSlots[i] ?? 0;
+      if (slot < 0) continue;
+      if (seen[slot] === 0) {
+        seen[slot] = 1;
+        used[usedN] = slot;
+        usedN += 1;
+        sum[slot] = 0;
+      }
+      sum[slot] = (sum[slot] ?? 0) + (ks[i] ?? 0);
+    }
+    for (let u = 0; u < usedN; u++) {
+      const slot = used[u] ?? 0;
+      const add = sum[slot] ?? 0;
+      const room = kMax - (work[slot] ?? 0);
+      scale[slot] = add > room && add > 0 ? Math.max(0, room) / add : 1;
+      seen[slot] = 0;
+      sum[slot] = 0;
+    }
+    const appended: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const toSlot = toSlots[i] ?? 0;
+      const fromSlot = fromSlots[i] ?? 0;
+      if (toSlot < 0) {
+        const moved = ks[i] ?? 0;
+        if (!(moved > 0)) continue;
+        work[fromSlot] = (work[fromSlot] ?? 0) - moved;
+        if (touch) touch.add(froms[i] ?? '');
+        continue;
+      }
+      const moved = (ks[i] ?? 0) * (scale[toSlot] ?? 1);
+      if (!(moved > 0)) continue;
+      work[fromSlot] = (work[fromSlot] ?? 0) - moved;
+      work[toSlot] = Math.min(kMax, (work[toSlot] ?? 0) + moved);
+      if (was[fromSlot] === 0 && seen[fromSlot] === 0) {
+        seen[fromSlot] = 1;
+        appended.push(fromSlot);
+      }
+      if (was[toSlot] === 0 && seen[toSlot] === 0) {
+        seen[toSlot] = 1;
+        appended.push(toSlot);
+      }
+      if (touch) {
+        touch.add(froms[i] ?? '');
+        touch.add(tos[i] ?? '');
+      }
+    }
+    for (const [id, old] of kNow) {
+      const slot = this.smokeSlotOf.get(id);
+      if (slot == null) continue;
+      const next = work[slot] ?? 0;
+      if (next !== old) kNow.set(id, next);
+    }
+    for (const slot of appended) {
+      kNow.set(this.smokeSlots[slot] ?? '', work[slot] ?? 0);
+      seen[slot] = 0;
+      work[slot] = 0;
+    }
+    for (const [id, k] of kNow) {
+      if (!(k > 1e-10)) kNow.delete(id);
+    }
   }
 
   /**
@@ -1701,7 +2187,11 @@ export class SpatialEffectsEngine {
    * clears the split, including a jet or an arc on its own.
    */
   private stepFumes(walls: InteriorWall[]) {
-    for (const state of this.studStates.values()) state.fumes = undefined;
+    for (const id of this.fumeIds) {
+      const state = this.studStates.get(id);
+      if (state) state.fumes = undefined;
+    }
+    this.fumeIds = [];
     const sources = [...this.fireSim.fumeSources(), ...this.liningFumes];
     if (sources.length === 0) return;
 
@@ -1721,8 +2211,9 @@ export class SpatialEffectsEngine {
     const compOf = new Map<string, number>();
     let compCount = 0;
     const stack: string[] = [];
-    for (const [id, state] of this.studStates) {
-      if (!(state.smoke > 0.02) || compOf.has(id)) continue;
+    for (const id of this.liveSmoke) {
+      const state = this.studStates.get(id);
+      if (!state || !(state.smoke > 0.02) || compOf.has(id)) continue;
       const cid = compCount++;
       stack.push(id);
       compOf.set(id, cid);
@@ -1835,7 +2326,10 @@ export class SpatialEffectsEngine {
       for (const value of Object.values(ppm)) {
         if (value != null && value > 0) any = true;
       }
-      if (any) state.fumes = ppm;
+      if (any) {
+        state.fumes = ppm;
+        this.fumeIds.push(id);
+      }
     }
   }
 
