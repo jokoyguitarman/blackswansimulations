@@ -22,7 +22,7 @@ export interface ParticipantScore {
  */
 export async function calculateParticipantScores(
   sessionId: string,
-  aarReportId: string,
+  _aarReportId: string,
 ): Promise<ParticipantScore[]> {
   try {
     // Get all participants for the session
@@ -130,7 +130,6 @@ export async function calculateParticipantScores(
       }
 
       for (const channelId in channelMessages) {
-        const channelMsgs = channelMessages[channelId];
         // Get all messages in this channel (including from other participants)
         const allChannelMessages = (messages || [])
           .filter((m) => m.channel_id === channelId)
