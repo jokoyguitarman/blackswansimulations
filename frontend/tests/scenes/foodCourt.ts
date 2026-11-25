@@ -46,8 +46,14 @@ export function runFoodCourt(options: {
   hoods: boolean;
   /** Reported seconds after ignition. The full figures stop at 600. */
   untilSec?: number;
+  /**
+   * Extra reported times to record. The Decision 9 runs leave this unset, so
+   * their marks stay 120, 300 and 600.
+   */
+  alsoAt?: number[];
 }): FoodCourtResult {
   const untilSec = options.untilSec ?? 600;
+  const alsoAt = options.alsoAt ?? [];
   const polygon = foodCourtSample.scene.buildingPolygon.map(
     (point) => [point[0], point[1]] as [number, number],
   );
@@ -97,7 +103,10 @@ export function runFoodCourt(options: {
       }
     }
     const reported = Math.round(t - 10);
-    if (!MARKS.some((mark) => Math.abs(t - (mark + 10)) < dt / 2)) continue;
+    const onMark =
+      MARKS.some((mark) => Math.abs(t - (mark + 10)) < dt / 2) ||
+      alsoAt.some((mark) => Math.abs(t - (mark + 10)) < dt / 2);
+    if (!onMark) continue;
     if (reported > untilSec) continue;
     let studsK15 = 0;
     let reach = 0;

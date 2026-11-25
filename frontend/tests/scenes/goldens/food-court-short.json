@@ -1,0 +1,22 @@
+{
+  "fire": "table",
+  "hoods": false,
+  "sourceId": "bldg-0-G-57-58",
+  "hoodCount": 0,
+  "marks": [
+    {
+      "tSec": 15,
+      "releaseKw": 3,
+      "peakKw": 3,
+      "hoodsOpen": {},
+      "layerActive": false,
+      "interfaceM": 3.52,
+      "riseK": 1,
+      "sootG": 0,
+      "kAtFire": 0,
+      "studsK15": 0,
+      "reachM": 0,
+      "acroleinPpm": 0
+    }
+  ]
+}
