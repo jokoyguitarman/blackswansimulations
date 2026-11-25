@@ -376,7 +376,7 @@ describe('smoke carries the gases', () => {
     assert.ok(open > unset * 5, `exit ${open}, no exits ${unset}`);
   });
 
-  test('a closed food court keeps most of a 1 MW fire indoors', () => {
+  test('a closed food court keeps most of a 1 MW fire indoors', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
     const polygon = foodCourtSample.scene.buildingPolygon.map(
       (pair) => [pair[0], pair[1]] as [number, number],
     );

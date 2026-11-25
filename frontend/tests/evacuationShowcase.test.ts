@@ -1234,7 +1234,7 @@ test('a swing beside a door jamb does not land inside the slab', () => {
   eng.destroy();
 });
 
-test('an open jamb lane lets all ten walkers out on every seed', () => {
+test('an open jamb lane lets all ten walkers out on every seed', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
     { x: 60, y: 0 },
@@ -1637,7 +1637,7 @@ function leaveShare(blast: Vec2, blastR: number): { eligible: number; within: nu
   return { eligible, within, down, fired };
 }
 
-test('no hazards: at least 90% of people who can leave are out within 120s', () => {
+test('no hazards: at least 90% of people who can leave are out within 120s', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
   const result = leaveShare({ x: -30, y: -30 }, 1);
   assert.equal(result.fired, true);
   assert.equal(result.down, 0);
@@ -1647,7 +1647,7 @@ test('no hazards: at least 90% of people who can leave are out within 120s', () 
   );
 });
 
-test('no hazards, normal blast: at least 90% of people who can leave are out within 120s', () => {
+test('no hazards, normal blast: at least 90% of people who can leave are out within 120s', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
   const result = leaveShare({ x: 10, y: 20 }, 15);
   assert.equal(result.fired, true);
   assert.ok(result.down > 0, 'the blast downed nobody');
@@ -1657,7 +1657,7 @@ test('no hazards, normal blast: at least 90% of people who can leave are out wit
   );
 });
 
-test('east exit blocked at T+2:00: at least 80% of people who can leave are out by T+5:00', () => {
+test('east exit blocked at T+2:00: at least 80% of people who can leave are out by T+5:00', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
     { x: 60, y: 0 },

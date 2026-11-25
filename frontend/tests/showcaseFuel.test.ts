@@ -144,7 +144,7 @@ describe('Harbour House showcase fuel', () => {
     assert.notEqual(rooms.get('west'), rooms.get('east'));
   });
 
-  test('the west shop burns through, and the east shop stays dark', () => {
+  test('the west shop burns through, and the east shop stays dark', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
     const studs = harnessStuds();
     const objects = harbourHouseFuelObjects(studs);
     const fuel = confirmedFuelCells(objects, studs);

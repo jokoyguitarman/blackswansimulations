@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# No secrets: unit tests run against placeholder Supabase values (scripts/test-env.ts).
+jobs:
+  root:
+    name: Root typecheck, lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The repository ignores package-lock.json, so there is no lockfile for `npm ci`.
+      - run: npm install --no-audit --no-fund
+      # The scene tests import frontend packages (matter-js and others).
+      - run: npm install --no-audit --no-fund --prefix frontend
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  frontend:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npm run build

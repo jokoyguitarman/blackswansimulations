@@ -1,0 +1,39 @@
+name: Nightly slow tests
+
+# Scene tests that each take over half a minute (up to ~15 on a 4-core machine) skip in the
+# per-PR `npm test` unless RUN_SLOW_TESTS is set. This job sets it and runs each file as its
+# own matrix entry, in parallel. To add a slow file, append it to `file` below and to the
+# `test:slow` script in package.json (the local equivalent).
+# Run from the Actions tab with "Run workflow" to check a branch on demand.
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slow:
+    name: Slow tests (${{ matrix.file }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - frontend/tests/evacuationShowcase.test.ts
+          - frontend/tests/showcaseFuel.test.ts
+          - frontend/tests/hollandCrowd.test.ts
+          - frontend/tests/toxicFumes.test.ts
+    env:
+      RUN_SLOW_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      # The scene tests import frontend packages (matter-js and others).
+      - run: npm install --no-audit --no-fund --prefix frontend
+      - run: node --import tsx --import ./scripts/test-env.ts --test "${{ matrix.file }}"
