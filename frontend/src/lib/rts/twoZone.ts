@@ -817,6 +817,12 @@ export function fanVolumeM3PerS(nominalM3PerS: number, backPressurePa: number): 
 export interface Boundary {
   areaM2: number;
   lining: Lining;
+  /**
+   * Wall this face belongs to. An isothermal sheet's temperature is stored
+   * under this id, so a later wall does not inherit it when the list changes.
+   * A face with no id is not remembered.
+   */
+  id?: string;
 }
 
 export interface FirePlume {
@@ -858,12 +864,13 @@ export interface ZoneState {
   /** Oxygen mass fraction in the upper layer. Absent on an old state means ambient. */
   upperO2?: number;
   /**
-   * Temperature of each boundary, kelvin, in the order of the boundary
-   * list that wrote it. Set only while at least one boundary is an
-   * isothermal sheet. A missing entry is still ambient. Boards are not
-   * read from here.
+   * Temperature of each isothermal sheet, kelvin, keyed by wall id.
+   * Absent means every such sheet is still at ambient. A board is not
+   * stored. A wall that leaves the boundary list keeps the entry, so the
+   * next face does not inherit it and a layer that forms again can read
+   * the heat the wall still holds.
    */
-  sheetK?: readonly number[];
+  sheetK?: Readonly<Record<string, number>>;
 }
 
 export interface SteadyLayer {
@@ -1093,39 +1100,39 @@ function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number):
  * The radiation never entered the gas. The sheet starts at ambient, so a
  * cold sheet takes more from the gas than the steady film does. The
  * balance still uses that steady film. It is the same sheet once it has
- * warmed.
+ * warmed. Glass is taken as opaque: the part of a flame's short-wave
+ * radiation that a real pane would transmit outdoors is absorbed here
+ * with χQ/A. That transmission is not in this step.
+ *
+ * The temperature is kept under the wall id. A face with no id uses the
+ * steady film, because a temperature stored by position is handed to the
+ * next wall when a pane leaves the list.
  */
 function stepSheetLoss(
   boundaries: readonly Boundary[],
-  sheetK: readonly number[] | undefined,
+  sheetK: Readonly<Record<string, number>> | undefined,
   tS: number,
   gasK: number,
   slice: number,
-): { lossKw: number; sheetK?: number[] } {
+): { lossKw: number; sheetK?: Readonly<Record<string, number>> } {
   let exposed = false;
-  for (let i = 0; i < boundaries.length; i++) {
-    const boundary = boundaries[i];
-    if (boundary && boundary.areaM2 > 0 && backFaceExposed(boundary.lining, tS)) {
+  for (const boundary of boundaries) {
+    if (boundary.areaM2 > 0 && boundary.id && backFaceExposed(boundary.lining, tS)) {
       exposed = true;
       break;
     }
   }
-  if (!exposed) return { lossKw: lossPowerKw(boundaries, tS, gasK) };
+  if (!exposed) return { lossKw: lossPowerKw(boundaries, tS, gasK), sheetK };
   const rad = fireRadiantKwM2;
-  const next = new Array<number>(boundaries.length);
+  const next: Record<string, number> = sheetK ? { ...sheetK } : {};
   let sum = 0;
-  for (let i = 0; i < boundaries.length; i++) {
-    const boundary = boundaries[i];
-    if (!boundary || !(boundary.areaM2 > 0)) {
-      next[i] = AMBIENT_K;
-      continue;
-    }
-    if (!backFaceExposed(boundary.lining, tS)) {
-      next[i] = AMBIENT_K;
+  for (const boundary of boundaries) {
+    if (!(boundary.areaM2 > 0)) continue;
+    if (!boundary.id || !backFaceExposed(boundary.lining, tS)) {
       sum += boundary.areaM2 * fluxAt(boundary.lining, tS)(gasK);
       continue;
     }
-    const stored = sheetK != null && i < sheetK.length ? sheetK[i] : undefined;
+    const stored = next[boundary.id];
     const ts = stored != null && stored > 0 ? stored : AMBIENT_K;
     const across = gasK - ts;
     const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
@@ -1133,10 +1140,40 @@ function stepSheetLoss(
     const fromGas = (hConv + hRad) * across;
     const store = boundary.lining.rhoKgM3 * boundary.lining.cKjKgK * boundary.lining.thicknessM;
     const warmed = ts + (slice * (fromGas + rad - exteriorFluxKwM2(ts))) / Math.max(store, 1e-6);
-    next[i] = Math.min(1500, Math.max(AMBIENT_K, warmed));
+    next[boundary.id] = Math.min(1500, Math.max(AMBIENT_K, warmed));
     sum += boundary.areaM2 * fromGas;
   }
   return { lossKw: sum, sheetK: next };
+}
+
+/**
+ * Put temperatures the walls already hold onto a zone that does not have
+ * them. A fresh layer would otherwise start those sheets at ambient. A
+ * temperature the zone already has is left as it is. Walls with no id are
+ * not copied.
+ */
+export function withRememberedSheets(
+  zone: ZoneState,
+  boundaries: readonly Boundary[],
+  remembered: Readonly<Record<string, number>> | undefined,
+): ZoneState {
+  if (!remembered) return zone;
+  let sheetK: Record<string, number> | undefined;
+  let added = false;
+  for (const boundary of boundaries) {
+    const id = boundary.id;
+    if (!id) continue;
+    const have = zone.sheetK?.[id];
+    if (have != null && have > AMBIENT_K) continue;
+    const kept = remembered[id];
+    if (!(kept > AMBIENT_K)) continue;
+    if (!added) {
+      sheetK = zone.sheetK ? { ...zone.sheetK } : {};
+      added = true;
+    }
+    if (sheetK) sheetK[id] = kept;
+  }
+  return added && sheetK ? { ...zone, sheetK } : zone;
 }
 
 function densityKgM3(tempK: number): number {
@@ -1949,7 +1986,7 @@ export function enclosureFromGrid(
         ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
       }
       const kept = (length - openWidth) * ceilingM;
-      if (kept > 0) boundaries.push({ areaM2: kept, lining });
+      if (kept > 0) boundaries.push({ id: wall.id, areaM2: kept, lining });
       continue;
     }
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
@@ -1963,14 +2000,14 @@ export function enclosureFromGrid(
       vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
       ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
-      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
+      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining });
     } else if (doorWidth > 0) {
       spillWidth += doorWidth;
       spillReceivers.push(...across);
       const wallArea = Math.max(0, (length - doorWidth) * ceilingM);
-      if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining });
+      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining });
     } else {
-      boundaries.push({ areaM2: length * ceilingM, lining });
+      boundaries.push({ id: wall.id, areaM2: length * ceilingM, lining });
     }
   }
   if (spillWidth > 0) {

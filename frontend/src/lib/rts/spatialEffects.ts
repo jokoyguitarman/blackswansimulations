@@ -27,10 +27,12 @@ import {
   formsSustainedLayer,
   freshLayer,
   hasSmokeReservoir,
+  withRememberedSheets,
   oxygenLimitedBurn,
   oxygenMassFraction,
   steadyLayer,
   stepZone,
+  type Boundary,
   type DoorJetInflow,
   type Enclosure,
   type FirePlume,
@@ -577,6 +579,7 @@ export class SpatialEffectsEngine {
     this.jetLowerStuds = new Set();
     this.fallenGlass.clear();
     this.linings.clear();
+    this.wallSheetK.clear();
     this.liningFraction.clear();
     this.roomPhi.clear();
     this.glassTouch.clear();
@@ -1782,6 +1785,43 @@ export class SpatialEffectsEngine {
     }
   }
 
+  /**
+   * Sheet temperature by wall id, kept after the layer that wrote it is
+   * gone. A new layer reads it back instead of starting the wall at ambient.
+   */
+  private wallSheetK = new Map<string, number>();
+
+  /** Temperatures to put on a zone that does not have them yet. */
+  private rememberedSheets(): Record<string, number> | undefined {
+    const out: Record<string, number> = {};
+    let any = false;
+    for (const [id, temp] of this.wallSheetK) {
+      if (!(temp > AMBIENT_K)) continue;
+      out[id] = temp;
+      any = true;
+    }
+    return any ? out : undefined;
+  }
+
+  /** Keep each wall's sheet after this step. The pane model is a separate temperature. */
+  private keepSheetTemperatures(
+    boundaries: readonly Boundary[],
+    sheetK: Readonly<Record<string, number>> | undefined,
+  ): void {
+    if (!sheetK) return;
+    for (const boundary of boundaries) {
+      const id = boundary.id;
+      if (!id) continue;
+      const temp = sheetK[id];
+      if (!(temp > 0)) continue;
+      this.wallSheetK.set(id, temp);
+    }
+  }
+
+  private zoneWithSheets(zone: ZoneState, boundaries: readonly Boundary[]): ZoneState {
+    return withRememberedSheets(zone, boundaries, this.rememberedSheets());
+  }
+
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
@@ -1892,13 +1932,14 @@ export class SpatialEffectsEngine {
         fans.push({ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M });
       }
       const spec: LayerSpec = { ...enc.spec, fires, fans };
-      const zone = prev?.zone ?? freshLayer(ceiling);
+      const zone = this.zoneWithSheets(prev?.zone ?? freshLayer(ceiling), spec.boundaries);
       const sootRate = sootByRoom.get(room) ?? 0;
       if (hasJet && heat < MIN_LAYER_FIRE_KW) {
         // The only heat is the neighbour's jet. The steady fire correlation
         // does not see it, so the layer is the integrated upper layer.
         if (incoming) this.jetTaken.set(room, incoming);
         const next = stepZone(zone, spec, dt, sootRate, incoming);
+        this.keepSheetTemperatures(spec.boundaries, next.state.sheetK);
         const depth = spec.ceilingM - next.state.interfaceM;
         const rise = next.state.upperK - AMBIENT_K;
         const thick = CEILING_JET_DEPTH_FRACTION * ceiling;
@@ -1974,6 +2015,7 @@ export class SpatialEffectsEngine {
       // A room with its own fire already solves the door against ambient.
       // Adding the neighbour's jet on top of that flow fills the layer.
       const stepped = stepZone(zone, spec, dt, sootRate);
+      this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
       this.layerState.set(room, {
         active: true,
         zone: stepped.state,
