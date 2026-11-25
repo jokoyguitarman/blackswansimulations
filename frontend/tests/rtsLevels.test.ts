@@ -21,7 +21,7 @@ import {
   linkLevels,
   normaliseStairwell,
 } from '../src/lib/rts/levels.ts';
-import { generateSceneStuds } from '../src/lib/rts/sceneStuds.ts';
+import { generateSceneStuds, projectSceneStuds } from '../src/lib/rts/sceneStuds.ts';
 import { defaultCharge } from '../src/lib/rts/blast/blastModel.ts';
 import type { InteriorWall, LevelDef, Stairwell } from '../src/lib/rts/types.ts';
 
@@ -44,7 +44,10 @@ function oldNeighbors(
     for (let j = 0; j < studs.length; j++) {
       if (i === j || studs[j].id === studs[i].id) continue;
       if ((studs[j].level ?? 'G') !== level) continue;
-      const d = Math.hypot(studs[j].simPos.x - studs[i].simPos.x, studs[j].simPos.y - studs[i].simPos.y);
+      const d = Math.hypot(
+        studs[j].simPos.x - studs[i].simPos.x,
+        studs[j].simPos.y - studs[i].simPos.y,
+      );
       if (d <= radius) neighbors.push(studs[j].id);
     }
     out.set(studs[i].id, neighbors);
@@ -103,7 +106,10 @@ describe('rts levels', () => {
     assert.throws(() => levelIndex('nope'));
     assert.deepEqual(sortLevels(['L2', 'B1', 'G', 'L1']), ['B1', 'G', 'L1', 'L2']);
     const defs = defaultLevels(['B1', 'G', 'L1', 'L2']);
-    assert.deepEqual(defs.map((l) => l.id), ['B1', 'G', 'L1', 'L2']);
+    assert.deepEqual(
+      defs.map((l) => l.id),
+      ['B1', 'G', 'L1', 'L2'],
+    );
     assert.equal(defaultLevels(['Ground'])[0].id, 'G');
     assert.equal(defaultLevels([])[0].id, 'G');
   });
@@ -174,7 +180,10 @@ describe('rts levels', () => {
     close(stair, (ventMeanVelocity(400, 2) * 1.2) / 9, 'stair coeff');
     close(stair, 0.234, 'stair coeff oracle');
     close(lift, 0.195, 'lift coeff');
-    assert.equal(stairFlowPerS({ widthM: 1.2 } as Stairwell), LEVEL.STAIR_SPECIFIC_FLOW * (1.2 - 0.3));
+    assert.equal(
+      stairFlowPerS({ widthM: 1.2 } as Stairwell),
+      LEVEL.STAIR_SPECIFIC_FLOW * (1.2 - 0.3),
+    );
     const travel = stairTravelS(levelDef('L1', 1), 'down');
     close(travel, (4 * LEVEL.STAIR_TRAVEL_FACTOR) / LEVEL.STAIR_SPEED_DOWN, 'travel');
   });
@@ -243,7 +252,9 @@ describe('rts levels', () => {
 
     const timed = new FireSimulation();
     timed.init(studs);
-    timed.setShaftPairs([{ lower: 'g', upper: 'u', kind: 'stair', blocked: false, coeffPerS: 0.2 }]);
+    timed.setShaftPairs([
+      { lower: 'g', upper: 'u', kind: 'stair', blocked: false, coeffPerS: 0.2 },
+    ]);
     timed.ignite(['g']);
     for (let i = 0; i < LEVEL.STAIR_FIRE_HEAT_S - 1; i++) timed.step(1, [], []);
     assert.equal(timed.states.get('u')!.state, 'none');
@@ -359,7 +370,9 @@ describe('rts levels', () => {
       },
     );
     const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
-    const ped = (body as Matter.Body & { __ped: { state: string; nextCheckAt: number; level: string } }).__ped;
+    const ped = (
+      body as Matter.Body & { __ped: { state: string; nextCheckAt: number; level: string } }
+    ).__ped;
     Matter.Body.setPosition(body, { x: 20.2, y: 10 });
     ped.state = 'evacuating';
     ped.nextCheckAt = 0;
@@ -470,11 +483,24 @@ describe('rts levels', () => {
     const smoky = new HazardField([{ id: 'top', simPos: { x: 4, y: 10 }, indoor: true }], 3);
     smoky.setStates(new Map([['top', { smoke: 1, fire: { state: 'none' } }]]));
     const empty = new HazardField([], 3);
-    eng.setHazardFields(new Map([['L2', smoky], ['L1', empty], ['G', empty]]));
+    eng.setHazardFields(
+      new Map([
+        ['L2', smoky],
+        ['L1', empty],
+        ['G', empty],
+      ]),
+    );
     const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
-    const ped = (body as Matter.Body & {
-      __ped: { state: string; nextCheckAt: number; targetStairId: string | null; stairDir: string };
-    }).__ped;
+    const ped = (
+      body as Matter.Body & {
+        __ped: {
+          state: string;
+          nextCheckAt: number;
+          targetStairId: string | null;
+          stairDir: string;
+        };
+      }
+    ).__ped;
     Matter.Body.setPosition(body, { x: 10, y: 10 });
     ped.state = 'evacuating';
     ped.nextCheckAt = 0;
@@ -508,7 +534,9 @@ describe('rts levels', () => {
     eng.triggerBlast({ x: 10, y: 10 }, 8);
     const byLevel = new Map<string, { state: string; injury: string }>();
     for (const body of bodies) {
-      const ped = (body as Matter.Body & { __ped: { level: string; state: string; injury: string } }).__ped;
+      const ped = (
+        body as Matter.Body & { __ped: { level: string; state: string; injury: string } }
+      ).__ped;
       byLevel.set(ped.level, { state: ped.state, injury: ped.injury });
     }
     assert.equal(byLevel.get('G')?.state, 'down');
@@ -547,17 +575,22 @@ describe('rts levels', () => {
     const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
     Matter.Body.setPosition(body, { x: 7, y: 10 });
     eng.triggerBlast({ x: 0, y: 10 }, { mode: 'pressure', spec: defaultCharge(), heightM: 0 });
-    const ped = (body as Matter.Body & {
-      __ped: { level: string; state: string; injury: string; nearWall?: boolean; blastKpa?: number };
-    }).__ped;
+    const ped = (
+      body as Matter.Body & {
+        __ped: {
+          level: string;
+          state: string;
+          injury: string;
+          nearWall?: boolean;
+          blastKpa?: number;
+        };
+      }
+    ).__ped;
     assert.equal(ped.level, 'G');
     assert.equal(ped.nearWall, false);
     assert.equal(ped.injury, 'minor');
     assert.equal(ped.state, 'reacting');
-    assert.ok(
-      ped.blastKpa != null && Math.abs(ped.blastKpa - 128) < 2,
-      `pressure ${ped.blastKpa}`,
-    );
+    assert.ok(ped.blastKpa != null && Math.abs(ped.blastKpa - 128) < 2, `pressure ${ped.blastKpa}`);
     eng.destroy();
   });
 
@@ -582,6 +615,84 @@ describe('rts levels', () => {
     const groundOnly = generateSceneStuds(polygon, 0, ['G']);
     assert.ok(groundOnly.some((s) => s.id.startsWith('bldg-0-G-')));
     assert.equal(groundOnly.filter((s) => s.floor === 'L1').length, 0);
+  });
+
+  it('covers a placement past the margin without moving indoor studs', () => {
+    const polygon: [number, number][] = [
+      [51.5, -0.12],
+      [51.5, -0.1196],
+      [51.50036, -0.1196],
+      [51.50036, -0.12],
+    ];
+    const plain = generateSceneStuds(polygon, 0, ['G']);
+    const indoors = plain.filter((stud) => stud.spatialContext === 'inside_building');
+    assert.ok(indoors.length > 0);
+    const covered = generateSceneStuds(polygon, 0, ['G'], [{ x: 120, y: -30, radiusM: 8 }]);
+    for (const stud of indoors) {
+      const again = covered.find((other) => other.id === stud.id);
+      assert.ok(again, stud.id);
+      assert.equal(again?.lat, stud.lat);
+      assert.equal(again?.lng, stud.lng);
+    }
+    const projected = projectSceneStuds(polygon, covered);
+    const near = projected.some((stud) => Math.hypot(stud.simPos.x - 120, stud.simPos.y + 30) < 4);
+    assert.ok(near, 'placement has no stud');
+    const inside = generateSceneStuds(polygon, 0, ['G'], [{ x: 1, y: 1, radiusM: 2 }]);
+    assert.deepEqual(
+      inside.map((stud) => stud.id),
+      plain.map((stud) => stud.id),
+    );
+    const far = generateSceneStuds(polygon, 0, ['G'], [{ x: 220, y: 0 }]);
+    const farProjected = projectSceneStuds(polygon, far);
+    assert.ok(
+      farProjected.some((stud) => Math.hypot(stud.simPos.x - 220, stud.simPos.y) < 4),
+      'placement past the index pad has no stud',
+    );
+  });
+
+  it('lets smoke leave the outdoor edge of a scene grid', () => {
+    const openStuds = [];
+    const closedStuds = [];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 5; c++) {
+        const simPos = { x: c * 3, y: r * 3 };
+        openStuds.push({
+          id: `ext-0-${r}-${c}`,
+          simPos,
+          spatialContext: 'open_air' as const,
+          level: 'G',
+        });
+        closedStuds.push({
+          id: `s-${r}-${c}`,
+          simPos,
+          spatialContext: 'open_air' as const,
+          level: 'G',
+        });
+      }
+    }
+    const open = new SpatialEffectsEngine(undefined, 1);
+    const closed = new SpatialEffectsEngine(undefined, 1);
+    open.init(openStuds);
+    closed.init(closedStuds);
+    const openCorner = open.studStates.get('ext-0-0-0');
+    const openCenter = open.studStates.get('ext-0-2-2');
+    const closedCorner = closed.studStates.get('s-0-0');
+    const closedCenter = closed.studStates.get('s-2-2');
+    assert.ok(openCorner && openCenter && closedCorner && closedCenter);
+    openCorner.smoke = 1;
+    openCenter.smoke = 1;
+    closedCorner.smoke = 1;
+    closedCenter.smoke = 1;
+    open.step(0.1, [], []);
+    closed.step(0.1, [], []);
+    assert.ok(
+      openCorner.smoke < closedCorner.smoke,
+      `corner ${openCorner.smoke} vs ${closedCorner.smoke}`,
+    );
+    assert.ok(
+      Math.abs(openCenter.smoke - closedCenter.smoke) < 1e-9,
+      `center ${openCenter.smoke} vs ${closedCenter.smoke}`,
+    );
   });
 
   it('initialises four storeys of studs within half a second', () => {

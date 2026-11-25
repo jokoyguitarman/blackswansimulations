@@ -382,6 +382,29 @@ export class FireSimulation {
     for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
   }
 
+  /**
+   * Studs added after the fire has started. Existing burn state stays.
+   * New studs are appended, so an old neighbour list keeps its order.
+   */
+  addStuds(studs: readonly FireSimStud[]): void {
+    let added = false;
+    for (const stud of studs) {
+      if (this.studIndex.has(stud.id)) continue;
+      this.studIndex.set(stud.id, stud);
+      this.states.set(stud.id, {
+        state: 'none',
+        timer: 0,
+        fuelFactor: 1.0,
+        approach: 0,
+        dose: 0,
+      });
+      added = true;
+    }
+    if (!added) return;
+    this.neighborCache.clear();
+    this.buildNeighborCache([...this.studIndex.values()]);
+  }
+
   setShaftPairs(pairs: ShaftPair[]) {
     this.shaftPairs = pairs;
     this.shaftBurn.clear();

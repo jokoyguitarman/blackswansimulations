@@ -172,6 +172,21 @@ export const SMOKE_OUTDOOR_VENT_FACTOR = 5;
  */
 export const SMOKE_EXCHANGE_PER_S = 0.025;
 
+/** Column spacing when a scene grid has only one row or column to measure. */
+const SCENE_LATTICE_M = 3;
+
+function latticeStep(values: readonly number[]): number {
+  const uniq = [...new Set(values.map((value) => Math.round(value * 1000) / 1000))].sort(
+    (a, b) => a - b,
+  );
+  let step = SCENE_LATTICE_M;
+  for (let i = 1; i < uniq.length; i++) {
+    const gap = (uniq[i] ?? 0) - (uniq[i - 1] ?? 0);
+    if (gap > 0.5 && gap < step) step = gap;
+  }
+  return step;
+}
+
 /** Solid wall, including the outside wall. A door or an exit uses the full exchange. Assumed. */
 export const SMOKE_WALL_LEAK = 0.05;
 
@@ -328,6 +343,8 @@ export class SpatialEffectsEngine {
   private smokeSlots: string[] = [];
   private smokeSlotOf = new Map<string, number>();
   private smokeNeigh: number[][] = [];
+  /** Missing outdoor-lattice neighbours. Each one is open air, not a wall. */
+  private smokeOpen = new Uint8Array(0);
   /** 1 when that neighbour link is a wall or the shell. Invalidated with the leaves. */
   private smokeBlock: Array<Uint8Array | null> = [];
   private smokeBlockKey = '';
@@ -515,6 +532,86 @@ export class SpatialEffectsEngine {
     this.seenScratch = new Uint8Array(n);
     this.wasInField = new Uint8Array(n);
     this.usedSlots = [];
+    this.fillOpenAir();
+  }
+
+  /**
+   * Studs placed after the field was built. Old studs keep their smoke and
+   * their slot numbers; the new ones are appended.
+   */
+  extendStuds(studs: readonly FireSimStud[]): void {
+    const fresh = studs.filter((stud) => !this.studIndex.has(stud.id));
+    if (fresh.length === 0) return;
+    for (const stud of fresh) {
+      this.studIndex.set(stud.id, stud);
+      this.gridStuds.set(stud.id, {
+        id: stud.id,
+        x: stud.simPos.x,
+        y: stud.simPos.y,
+        level: levelOf(stud),
+      });
+      this.studStates.set(stud.id, {
+        fire: { state: 'none', timer: 0, fuelFactor: 1.0 },
+        gas: 0,
+        flood: 0,
+        structural: 0,
+        smoke: 0,
+      });
+    }
+    this.neighborCache.clear();
+    const built = neighborIdsByLevel([...this.studIndex.values()], NEIGHBOR_RADIUS);
+    for (const [id, neighbors] of built) this.neighborCache.set(id, neighbors);
+    this.rebuildSmokeSlots();
+    this.fireSim.addStuds(fresh);
+    this.shellReady = false;
+    this.shellBlocked.clear();
+    this.blockedWalls = null;
+    this.blockedGen = -1;
+    this.blockedNeighbors.clear();
+    this.layerEnclosures.clear();
+    this.layerDoorSnap.clear();
+    this.layerWalls = null;
+  }
+
+  /**
+   * Outdoor studs on the scene lattice. A missing 8 m neighbour is air beyond
+   * the crop, so smoke leaves instead of reflecting. Indoor ids are not
+   * opened: a missing upper-floor neighbour is not the outdoors.
+   */
+  private fillOpenAir(): void {
+    const n = this.smokeSlots.length;
+    const open = new Uint8Array(n);
+    this.smokeOpen = open;
+    const scene: Array<{ x: number; y: number; slot: number; ext: boolean }> = [];
+    for (let i = 0; i < n; i++) {
+      const id = this.smokeSlots[i] ?? '';
+      if (!id.startsWith('ext-') && !id.startsWith('bldg-')) continue;
+      const stud = this.gridStuds.get(id);
+      if (!stud) continue;
+      scene.push({ x: stud.x, y: stud.y, slot: i, ext: id.startsWith('ext-') });
+    }
+    if (!scene.some((stud) => stud.ext)) return;
+    const dx = latticeStep(scene.map((stud) => stud.x));
+    const dy = latticeStep(scene.map((stud) => stud.y));
+    const offsets: Array<[number, number]> = [];
+    for (let di = -4; di <= 4; di++) {
+      for (let dj = -4; dj <= 4; dj++) {
+        if (di === 0 && dj === 0) continue;
+        if (Math.hypot(di * dx, dj * dy) <= NEIGHBOR_RADIUS + 1e-6) offsets.push([di, dj]);
+      }
+    }
+    if (offsets.length === 0 || offsets.length > 32) return;
+    const occupied = new Set<string>();
+    const at = (x: number, y: number) => `${Math.round(x / dx)}:${Math.round(y / dy)}`;
+    for (const stud of scene) occupied.add(at(stud.x, stud.y));
+    for (const stud of scene) {
+      if (!stud.ext) continue;
+      let holes = 0;
+      for (const [di, dj] of offsets) {
+        if (!occupied.has(at(stud.x + di * dx, stud.y + dj * dy))) holes += 1;
+      }
+      open[stud.slot] = holes;
+    }
   }
 
   /** Wall and shell bits for one stud, cached until a leaf or the shell changes. */
@@ -1936,6 +2033,18 @@ export class SpatialEffectsEngine {
           n += 1;
         }
       }
+      const holes = this.smokeOpen[slot] ?? 0;
+      if (holes > 0) {
+        const leaving = value * openShare * holes;
+        if (leaving > 1e-10) {
+          froms[n] = id;
+          tos[n] = '';
+          fromSlots[n] = slot;
+          toSlots[n] = -1;
+          ks[n] = leaving;
+          n += 1;
+        }
+      }
     }
     for (const pair of this.verticalPairs) {
       if (skip?.has(pair.lower) || skip?.has(pair.upper)) continue;
@@ -2008,6 +2117,7 @@ export class SpatialEffectsEngine {
     usedN = 0;
     for (let i = 0; i < n; i++) {
       const slot = toSlots[i] ?? 0;
+      if (slot < 0) continue;
       if (seen[slot] === 0) {
         seen[slot] = 1;
         used[usedN] = slot;
@@ -2028,6 +2138,13 @@ export class SpatialEffectsEngine {
     for (let i = 0; i < n; i++) {
       const toSlot = toSlots[i] ?? 0;
       const fromSlot = fromSlots[i] ?? 0;
+      if (toSlot < 0) {
+        const moved = ks[i] ?? 0;
+        if (!(moved > 0)) continue;
+        work[fromSlot] = (work[fromSlot] ?? 0) - moved;
+        if (touch) touch.add(froms[i] ?? '');
+        continue;
+      }
       const moved = (ks[i] ?? 0) * (scale[toSlot] ?? 1);
       if (!(moved > 0)) continue;
       work[fromSlot] = (work[fromSlot] ?? 0) - moved;

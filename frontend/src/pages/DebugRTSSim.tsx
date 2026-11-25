@@ -39,7 +39,7 @@ import {
   normaliseStairwell,
   sortLevels,
 } from '../lib/rts/levels';
-import { generateSceneStuds, projectSceneStuds } from '../lib/rts/sceneStuds';
+import { generateSceneStuds, projectSceneStuds, type SceneCoverPoint } from '../lib/rts/sceneStuds';
 import {
   HOLLAND_VILLAGE_OSM_ID,
   footprintSessionNote,
@@ -160,6 +160,19 @@ function blastIgnitionZone(pos: Vec2, radius: number, level?: string): HazardZon
 function storeyId(floor: string | undefined): string {
   if (!floor || floor === 'Ground') return 'G';
   return floor;
+}
+
+function placementCover(
+  blast: { x: number; y: number } | null,
+  radiusM: number,
+  zones: readonly { pos: { x: number; y: number }; radius: number }[],
+  objects: readonly { pos: { x: number; y: number } }[],
+): SceneCoverPoint[] {
+  const points: SceneCoverPoint[] = [];
+  if (blast) points.push({ x: blast.x, y: blast.y, radiusM });
+  for (const zone of zones) points.push({ x: zone.pos.x, y: zone.pos.y, radiusM: zone.radius });
+  for (const object of objects) points.push({ x: object.pos.x, y: object.pos.y });
+  return points;
 }
 
 function makeLevel(id: string, people = 0): LevelDef {
@@ -991,28 +1004,35 @@ export function DebugRTSSim() {
 
   const simStudsRef = useRef(allSimStuds);
   simStudsRef.current = allSimStuds;
+  const selectedGridRef = useRef(selectedGrid);
+  selectedGridRef.current = selectedGrid;
+  const fetchResultRef = useRef(fetchResult);
+  fetchResultRef.current = fetchResult;
   const floorsRef = useRef(selectedGrid?.floors ?? ['G']);
   floorsRef.current = selectedGrid?.floors ?? ['G'];
+  const growFieldRef = useRef<(sim: Vec2) => SimStud[] | null>(() => null);
 
   const snapToStud = useCallback((simPos: Vec2): { pos: Vec2; stud: SimStud | null } => {
-    const active = activeLevelRef.current;
-    const studs = simStudsRef.current.filter((s) => storeyId(s.floor) === active);
-    if (studs.length === 0) return { pos: simPos, stud: null };
-
-    let best: SimStud | null = null;
-    let bestDist = Infinity;
-    for (const s of studs) {
-      const d = Math.hypot(s.simPos.x - simPos.x, s.simPos.y - simPos.y);
-      if (d < bestDist) {
-        bestDist = d;
-        best = s;
+    const pick = (studs: readonly SimStud[]) => {
+      const active = activeLevelRef.current;
+      const onLevel = studs.filter((s) => storeyId(s.floor) === active);
+      if (onLevel.length === 0) return { pos: simPos, stud: null };
+      let best: SimStud | null = null;
+      let bestDist = Infinity;
+      for (const s of onLevel) {
+        const d = Math.hypot(s.simPos.x - simPos.x, s.simPos.y - simPos.y);
+        if (d < bestDist) {
+          bestDist = d;
+          best = s;
+        }
       }
-    }
-
-    if (best && bestDist < 8) {
-      return { pos: best.simPos, stud: best };
-    }
-    return { pos: simPos, stud: null };
+      if (best && bestDist < 8) return { pos: best.simPos, stud: best };
+      return { pos: simPos, stud: null };
+    };
+    const hit = pick(simStudsRef.current);
+    if (hit.stud) return hit;
+    const grown = growFieldRef.current(simPos);
+    return grown ? pick(grown) : hit;
   }, []);
 
   // ── Prevent browser zoom on canvas/map area ────────────────────────────
@@ -1500,13 +1520,28 @@ export function DebugRTSSim() {
 
       const savedLevels = Array.isArray(sc.levels) ? (sc.levels as LevelDef[]) : [];
       const levelIds = savedLevels.length > 0 ? savedLevels.map((level) => level.id) : ['G'];
+      const loadedObjects = Array.isArray(sc.placed_objects)
+        ? (sc.placed_objects as PlacedObject[])
+        : [];
+      const absorbed = absorbLegacyFuelCircles(sc.hazard_zones as HazardZone[], loadedObjects);
+      const storedBlast = readStoredBlast(sc.blast_site);
       const grid: GridItem = {
         buildingIndex: 0,
         buildingName: sc.building_name,
         polygon: sc.building_polygon,
         floors: levelIds,
         spacingM: 5,
-        studs: generateSceneStuds(sc.building_polygon, 0, levelIds),
+        studs: generateSceneStuds(
+          sc.building_polygon,
+          0,
+          levelIds,
+          placementCover(
+            storedBlast?.pos ?? null,
+            storedBlast?.radiusM ?? 0,
+            absorbed.zones,
+            absorbed.objects,
+          ),
+        ),
       };
       setFetchResult({
         grids: [grid],
@@ -1524,16 +1559,11 @@ export function DebugRTSSim() {
       setSelectedGridIdx(0);
       setExits(sc.exits as ExitDef[]);
       setInteriorWalls(sc.interior_walls as InteriorWall[]);
-      const loadedObjects = Array.isArray(sc.placed_objects)
-        ? (sc.placed_objects as PlacedObject[])
-        : [];
-      const absorbed = absorbLegacyFuelCircles(sc.hazard_zones as HazardZone[], loadedObjects);
       setHazardZones(absorbed.zones);
       setPlacedObjects(objectsOnStuds(sc.building_polygon, grid.studs, absorbed.objects));
       setActiveObjectId(null);
       setPlacingObject(false);
       setStairwells(sc.stairwells as Stairwell[]);
-      const storedBlast = readStoredBlast(sc.blast_site);
       if (storedBlast) {
         blastRecordRef.current = storedBlast.record;
         setBlastSite(storedBlast.pos);
@@ -1638,13 +1668,20 @@ export function DebugRTSSim() {
     const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
     const savedLevels = scene.levels.map((level) => ({ ...level }));
     const levelIds = savedLevels.map((level) => level.id);
+    const placed = foodCourtPlacedObjects();
+    const storedBlast = readStoredBlast(scene.blastSite);
     const grid: GridItem = {
       buildingIndex: 0,
       buildingName: scene.buildingName,
       polygon,
       floors: levelIds,
       spacingM: 3,
-      studs: generateSceneStuds(polygon, 0, levelIds),
+      studs: generateSceneStuds(
+        polygon,
+        0,
+        levelIds,
+        placementCover(storedBlast?.pos ?? null, storedBlast?.radiusM ?? 0, [], placed),
+      ),
     };
     setUserGeoPos({ lat: scene.centerLat, lng: scene.centerLng });
     setLat(String(scene.centerLat));
@@ -1674,7 +1711,7 @@ export function DebugRTSSim() {
       })) as InteriorWall[],
     );
     setHazardZones([]);
-    setPlacedObjects(objectsOnStuds(polygon, grid.studs, foodCourtPlacedObjects()));
+    setPlacedObjects(objectsOnStuds(polygon, grid.studs, placed));
     setActiveObjectId(null);
     setPlacingObject(false);
     setObjectNotice(null);
@@ -1685,7 +1722,6 @@ export function DebugRTSSim() {
     setLevels(savedLevels.length > 0 ? (savedLevels as LevelDef[]) : defaultLevels(['G']));
     setActiveLevel('G');
     setSelectedStairId(null);
-    const storedBlast = readStoredBlast(scene.blastSite);
     if (storedBlast) {
       blastRecordRef.current = storedBlast.record;
       setBlastSite(storedBlast.pos);
@@ -1885,6 +1921,26 @@ export function DebugRTSSim() {
         upperFloorIds: upperFloors,
       });
       hoodFanWhenRef.current = layout.hoodFanWhen;
+      const covered = generateSceneStuds(
+        polygon,
+        0,
+        levelIds,
+        placementCover(layout.bomb, HOLLAND_BOMB.fireballM, [], layout.objects),
+        grid.studs.map((stud) => [stud.lat, stud.lng] as [number, number]),
+      );
+      if (covered.length !== grid.studs.length) {
+        grid.studs = covered;
+        setFetchResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                grids: prev.grids.map((item) =>
+                  item.buildingIndex === grid.buildingIndex ? { ...item, studs: covered } : item,
+                ),
+              }
+            : prev,
+        );
+      }
       setLiveNote(`${footprintSessionNote(building)} ${researchNote}`);
       setLayoutLabels(layout.labels);
       setExits(layout.exits);
@@ -2156,6 +2212,33 @@ export function DebugRTSSim() {
   blastLevelRef.current = blastLevel;
   const blastSiteRef = useRef(blastSite);
   blastSiteRef.current = blastSite;
+  growFieldRef.current = (sim) => {
+    const grid = selectedGridRef.current;
+    const fetched = fetchResultRef.current;
+    if (!grid || !fetched) return null;
+    const cover = placementCover(
+      blastSiteRef.current,
+      blastRadiusRef.current,
+      hazardZonesRef.current,
+      placedObjectsRef.current,
+    );
+    cover.push({ x: sim.x, y: sim.y });
+    const next = generateSceneStuds(
+      grid.polygon,
+      grid.buildingIndex,
+      grid.floors,
+      cover,
+      grid.studs.map((stud) => [stud.lat, stud.lng] as [number, number]),
+    );
+    if (next.length === grid.studs.length) return null;
+    setFetchResult({
+      ...fetched,
+      grids: fetched.grids.map((item) =>
+        item.buildingIndex === grid.buildingIndex ? { ...item, studs: next } : item,
+      ),
+    });
+    return projectSceneStuds(grid.polygon, next);
+  };
   const hoverSimPosRef = useRef<Vec2 | null>(null);
   const gpsSimPosRef = useRef(gpsSimPos);
   gpsSimPosRef.current = gpsSimPos;
@@ -2283,6 +2366,34 @@ export function DebugRTSSim() {
 
       const effectsEng = effectsEngineRef.current;
       if (effectsEng && simRunning) {
+        const studsNow = simStudsRef.current;
+        if (effectsEng.studStates.size < studsNow.length) {
+          effectsEng.extendStuds(
+            studsNow.map((stud) => ({
+              id: stud.id,
+              simPos: stud.simPos,
+              spatialContext: stud.spatialContext,
+              level: storeyId(stud.floor),
+            })),
+          );
+          const grouped = new Map<string, Array<{ id: string; simPos: Vec2; indoor: boolean }>>();
+          for (const stud of studsNow) {
+            const level = storeyId(stud.floor);
+            const list = grouped.get(level) ?? [];
+            list.push({
+              id: stud.id,
+              simPos: stud.simPos,
+              indoor: stud.spatialContext === 'inside_building',
+            });
+            grouped.set(level, list);
+          }
+          const fields = new Map<string, HazardField>();
+          for (const [id, list] of grouped) fields.set(id, new HazardField(list, 3));
+          evacEngRef.current?.setHazardFields(fields);
+          const ground = fields.get('G') ?? new HazardField([], 3);
+          hazardFieldRef.current = ground;
+          evacEngRef.current?.setHazardField(ground);
+        }
         const walls = interiorWallsRef.current;
         const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
         effectsEng.setHoodFanWhen(hoodFanWhenRef.current);
