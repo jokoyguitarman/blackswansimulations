@@ -40,7 +40,9 @@ import {
   HOOD_LENGTH_M,
   freshLayer,
   fanVolumeM3PerS,
+  coldSurfaceIncidentKwM2,
   heskestadEntrainmentKgS,
+  liningFluxKwM2,
   DELTA_H_O2_KJ_PER_KG,
   KAWAGOE_KW,
   O2_AMBIENT_MASS,
@@ -117,6 +119,45 @@ test('Heskestad flame height matches the 1 MW worked example', () => {
   // L = 0.235 Q^0.4 − 1.02 D = 2.70 m. Entrainment at the tip is positive.
   const atTip = heskestadEntrainmentKgS(1000, 2.7, 1);
   assert.ok(atTip > 1 && atTip < 8, `entrainment at the flame tip is ${atTip}`);
+});
+
+test('Heskestad height is measured from the fuel, and a floor fire is unchanged', () => {
+  // A 5 K layer leaves the enthalpy cap near 26 kg/s, above either plume,
+  // so the height is what the mass follows.
+  const spec = (baseM?: number): LayerSpec => ({
+    areaM2: 100,
+    ceilingM: 10,
+    chi: 0.35,
+    vents: [{ widthM: 1, sillM: 0, soffitM: 2 }],
+    boundaries: [{ areaM2: 400, lining: LINING.concrete }],
+    fires: [{ heatKw: 200, diameterM: 0.5, baseM }],
+  });
+  const floor = oxygenLimitedBurn(spec(), 4, AMBIENT_K + 5, 0.23, 0.23, 1);
+  const stand = oxygenLimitedBurn(spec(1), 4, AMBIENT_K + 5, 0.23, 0.23, 1);
+  close(floor.plumeKgS, heskestadEntrainmentKgS(200, 4, 0.5), 1e-6, 'floor plume');
+  close(stand.plumeKgS, heskestadEntrainmentKgS(200, 3, 0.5), 1e-6, 'stand plume');
+  assert.ok(stand.plumeKgS < floor.plumeKgS);
+});
+
+test('an isothermal sheet loses heat through the exterior film, and a board keeps k/δ', () => {
+  // 1 mm steel, the VTT shell. k/δ is 54 kW/m²K, so a back face held at
+  // ambient made the gas see a cold wall. The exterior film is CFAST's
+  // default boundary. The ceramic board is the Steckler blanket: past its
+  // penetration time, and still conduction-limited.
+  const steel: Lining = {
+    name: 'steel sheet',
+    kKwMK: 0.054,
+    rhoKgM3: 7850,
+    cKjKgK: 0.425,
+    thicknessM: 0.001,
+  };
+  const gasK = 400;
+  const sheet = liningFluxKwM2(steel, 60, gasK);
+  const sink = coldSurfaceIncidentKwM2(gasK);
+  assert.ok(sheet < 0.6 * sink, `sheet ${sheet.toFixed(3)} cold wall ${sink.toFixed(3)}`);
+  assert.ok(sheet > 0.2 * sink, `sheet ${sheet.toFixed(3)} cold wall ${sink.toFixed(3)}`);
+  const board = liningFluxKwM2(CERAMIC_FIBRE, 600, gasK);
+  assert.ok(board < sheet, `board ${board.toFixed(3)} sheet ${sheet.toFixed(3)}`);
 });
 
 test('the concrete room holds a layer and the stepper reaches it', () => {

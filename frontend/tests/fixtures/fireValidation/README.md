@@ -31,8 +31,9 @@ These parts of the setup differ from the tests:
 
 - **Vents.** In the single-room cases the layer vents to ambient air. The NBS fire-room door actually opens to an entry and then the corridor. The corridor (FV-4) instead runs through the live engine. The entry stud is merged into the corridor, so the jet enters one room (see FV-4).
 - **The target-room door.** The corridor's 0.79 m × 2.04 m door to the target-room entry is left out. In MV100A it is shut for the whole test (CFAST `WallVent_4` and `WallVent_5` have open fraction F = 0 at all times; the title is "No Target Room").
-- **Burner position.** The NBS burner stands 0.1 m from a wall, and the VTT pan stands 1 m above the floor. Both plumes are entrained as free plumes from the floor.
+- **Burner position.** The NBS burner stands 0.1 m from a wall. The plume stays free. CFAST's technical reference does not apply a wall correction: McGrattan, NIST TN 1984, found no significant effect of a wall on entrainment. The VTT pan stands 1 m above the floor (the CFAST `HEIGHT`), and Heskestad's z is measured from the pan. Entraining from the floor instead puts Case 1 at 3.80 m and 40.6 K. From the pan it is 4.69 m and 42.3 K.
 - **VTT geometry.** The VTT hall has a pitched roof. It is modelled as its 372.6 m² floor up to the 19 m ridge, with the steel at the hall's real surface area.
+- **VTT steel.** The shell is 1 mm. k/δ is 54 kW/m²K, so a back face held at ambient put the sheet on the outdoor air and the gas saw a cold wall. The back face is CFAST's default exterior film (natural convection plus σ(T_amb⁴ − T_ext⁴)) once the sheet is isothermal, Biot number under 0.1 against 4σT³ at ambient. A board keeps k/δ to ambient. That is what the Steckler blanket and the NBS linings use.
 
 ## Results
 
@@ -53,10 +54,10 @@ These parts of the setup differ from the tests:
 | BE#3 Test 3                                     | Interface                    | 1.11 m                  | 0.951 m                                       | ±0.57 m   | pass                           |
 | BE#3 Test 3                                     | Rise                         | 189 K                   | 192 K                                         | ±20%      | pass                           |
 | VTT Case 1                                      | Layer forms                  | yes                     | yes                                           | —         | pass                           |
-| VTT Case 1                                      | Interface                    | 3.71 m                  | 5.13 m                                        | ±2.85 m   | pass                           |
-| VTT Case 1                                      | Rise                         | 27.6 K                  | 48.2 K                                        | ±20%      | FV-5                           |
-| VTT Case 2                                      | Interface                    | 3.08 m                  | 4.60 m                                        | ±2.85 m   | pass (nightly)                 |
-| VTT Case 2                                      | Rise                         | 44.1 K                  | 77.6 K                                        | ±20%      | FV-5 (nightly)                 |
+| VTT Case 1                                      | Interface                    | 4.69 m                  | 5.13 m                                        | ±2.85 m   | pass                           |
+| VTT Case 1                                      | Rise                         | 42.3 K                  | 48.2 K                                        | ±20%      | pass                           |
+| VTT Case 2                                      | Interface                    | 4.06 m                  | 4.60 m                                        | ±2.85 m   | pass (nightly)                 |
+| VTT Case 2                                      | Rise                         | 67.2 K                  | 77.6 K                                        | ±20%      | pass (nightly)                 |
 
 ## Known gaps
 
@@ -70,7 +71,9 @@ These parts of the setup differ from the tests:
 
 ### FV-3
 
-**NBS fire-room rise.** 183 K against the measured 242 K, −24%, just outside 20%. The interface (0.99 m against 0.95 m) passes. Pinned at 183.3 ± 5 K. Roadmap: "What to reproduce", the two-room case.
+**NBS fire-room rise.** 183 K against the measured 242 K, −24%, just outside 20%. The interface (0.99 m against 0.95 m) passes. Pinned at 183.3 ± 5 K. Roadmap: Decision 10.
+
+The room already uses the test linings and χ = 0.2. Over 0–880 s the walls take 17% of the convected heat. χ = 0 moves the rise to 181 K. An adiabatic lining reaches the 1500 K ceiling. Gas radiation set to zero reaches 195 K and takes the BE#3 rise from −2% to +22%. The linings are still thick at 880 s (ceramic fibre penetrates near 924 s), so the steel-sheet film does not apply. A free plume at 0.7 of Heskestad reaches 215 K with the interface still inside its band. CFAST does not apply that wall factor. The gap stays.
 
 ### FV-4
 
@@ -96,7 +99,3 @@ In the same plan the fire room is unchanged, at 1.08 m with an 88.6 K rise. Over
 - The hot outflow is not limited by the mass received. The corridor lets out 614 kg after receiving 519 kg: the layer mass is ρ(T)·A·depth, and the vent does not draw that volume down. The enthalpy residual is −4.7 MJ, −10.5% of the jet (−25.8% with adiabatic walls). The temperature is unchanged, because the loss term is the walls. The interface, and what a jet-fed room passes on, do feel the extra outflow. The Harbour mall has no outflow by T+300; its interface is still above the door heads.
 
 **Head height is a switch.** While the interface is above 1.7 m the head reads the lower layer. For a jet-formed layer that is the soot already there at activation, decaying at the column leak (0.002/s), not the layer. When the interface crosses 1.7 m the stud is set to the layer's extinction, capped at the smoke scale (6.1 /m). In the Harbour mall the layer is already on the order of 100 /m by the crossing near T+500, so the reading steps to the cap in one frame. A sharp interface into a layer that thick is opaque over a few centimetres. A blend width would be an assumed thickness this model does not have. Fire-driven layers still clear the column when they form: they form within seconds, before that soot is there.
-
-### FV-5
-
-**Large-hall rise.** VTT Case 1 rises 27.6 K against 48.2 K (−43%), and Case 2 rises 44.1 K against 77.6 K (−43%). In both cases a layer forms, as it does in the hall, and the interface is inside 2.85 m. The roof monitor is modelled at the full floor area, which over-sizes the volume above the eaves. Pinned at 27.6 ± 1.5 K and 44.1 ± 2 K. Roadmap: Decision 5 (rise within 20%). This bears on the open food-court decision (Decision 1).
