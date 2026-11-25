@@ -330,11 +330,13 @@ test('NBS MV100A fire room: interface passes, rise is known gap FV-3', (t) => {
 });
 
 test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', (t) => {
-  // Fire room, entry and corridor as one plan in the live engine, joined by
-  // their doors. The corridor's only heat is the fire room's upper-layer
-  // outflow. That door jet now builds the corridor layer. The rise is still
-  // short of the measurement: the plan entry is one 9 m² stud and the
-  // linings are concrete, so the jet cools on the way.
+  // Fire room, entry and corridor on the live engine, joined by their doors.
+  // The entry stud is merged into the corridor, so the jet enters one 45 m²
+  // room and is not cooled in a separate entry. The rise is short of the
+  // measurement because the plan's fire room is about 90 K (the test's is
+  // 242 K) and concrete takes 61% of the jet enthalpy. The receiver still
+  // solves its doors against ambient; that limit is recorded under FV-4 and
+  // is not what this pin checks.
   const c = NBS_CORRIDOR;
   const plan = runNbsPlan(c.window[1]);
   assert.ok(Math.abs(plan.fireKw - NBS_PLAN_FIRE_KW) < 1, `burner ${plan.fireKw} kW`);

@@ -5,7 +5,14 @@ import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import { HOOD_HEIGHT_M } from '../src/lib/rts/flameFront.ts';
 import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
-import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects.ts';
+import {
+  DOOR_JET_MIN_KGS,
+  SpatialEffectsEngine,
+  assignDoorJet,
+  queueDoorJets,
+  type DoorJetBook,
+  type DoorJetParcel,
+} from '../src/lib/rts/spatialEffects.ts';
 import type { InteriorWall } from '../src/lib/rts/types.ts';
 import {
   AMBIENT_K,
@@ -935,6 +942,84 @@ test('a door jet warms an upper layer that has no fire', () => {
   assert.ok(cold.upperK < AMBIENT_K + 2, `no jet rose to ${cold.upperK - AMBIENT_K} K`);
 });
 
+test('a door jet assigns the vented mass and enthalpy to the receiving room', () => {
+  const rooms = new Map<string, string>([
+    ['a', 'fire'],
+    ['b1', 'hall'],
+    ['b2', 'hall'],
+    ['c', 'other'],
+  ]);
+  const members = new Set(['a']);
+  const hot = [{ kg: 2, tempK: 500, oxygenY: 0.12 }];
+  // Two hall studs, one other room, the source itself, and the outdoors.
+  const split = assignDoorJet('fire', members, [['b1', 'b2', 'c', 'a', 'outside']], hot, rooms);
+  const hall = split.get('hall');
+  const other = split.get('other');
+  assert.ok(hall);
+  assert.ok(other);
+  assert.equal(split.has('fire'), false);
+  close(hall.kg, 2 * (2 / 5), 1e-12, 'hall kg');
+  close(other.kg, 2 * (1 / 5), 1e-12, 'other kg');
+  close(hall.kg + other.kg, 2 * (3 / 5), 1e-12, 'assigned share');
+  close(hall.tKg, hall.kg * 500, 1e-9, 'hall enthalpy');
+  close(other.tKg, other.kg * 500, 1e-9, 'other enthalpy');
+  close(hall.yKg, hall.kg * 0.12, 1e-12, 'hall oxygen');
+
+  const both = assignDoorJet(
+    'fire',
+    members,
+    [['b1'], ['b2']],
+    [
+      { kg: 1, tempK: 400, oxygenY: 0.2 },
+      { kg: 3, tempK: 600, oxygenY: 0.1 },
+    ],
+    rooms,
+  );
+  const summed = both.get('hall');
+  assert.ok(summed);
+  close(summed.kg, 4, 1e-12, 'summed kg');
+  close(summed.tKg, 1 * 400 + 3 * 600, 1e-9, 'summed enthalpy');
+  close(summed.yKg, 1 * 0.2 + 3 * 0.1, 1e-12, 'summed oxygen');
+
+  const queued = queueDoorJets(both, 1);
+  const jet = queued.get('hall');
+  assert.ok(jet);
+  close(jet.kgS * 1, summed.kg, 1e-12, 'queued mass');
+  close(jet.kgS * jet.tempK, summed.tKg, 1e-9, 'queued enthalpy');
+  close(jet.oxygenY, summed.yKg / summed.kg, 1e-12, 'queued oxygen');
+
+  const dust = new Map<string, DoorJetParcel>([
+    ['hall', { kg: DOOR_JET_MIN_KGS / 10, tKg: 400 * (DOOR_JET_MIN_KGS / 10), yKg: 0 }],
+  ]);
+  assert.equal(queueDoorJets(dust, 1).size, 0);
+  const cold = assignDoorJet(
+    'fire',
+    members,
+    [['b1']],
+    [{ kg: 1, tempK: AMBIENT_K, oxygenY: 0.23 }],
+    rooms,
+  );
+  assert.equal(cold.size, 0);
+});
+
+function offeredParcels(
+  books: readonly DoorJetBook[],
+  rooms: ReadonlyMap<string, string>,
+): Map<string, DoorJetParcel> {
+  const out = new Map<string, DoorJetParcel>();
+  for (const book of books) {
+    const part = assignDoorJet(book.room, new Set(book.members), book.receivers, book.hot, rooms);
+    for (const [dest, parcel] of part) {
+      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0 };
+      cur.kg += parcel.kg;
+      cur.tKg += parcel.tKg;
+      cur.yKg += parcel.yKg;
+      out.set(dest, cur);
+    }
+  }
+  return out;
+}
+
 test('the neighbour of a burning room forms a layer from the door jet', () => {
   const wood = defaultLightFuel();
   const stud = (id: string, x: number, y: number) => ({
@@ -975,8 +1060,54 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
     barrier('he', 1.5, 1.5, 1.5, 4.5, false),
     barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
   ];
-  (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['fire']);
-  for (let t = 0; t < 400; t++) engine.step(1, walls, []);
+  const exposed = engine as unknown as {
+    fireSim: {
+      ignite: (ids: string[]) => void;
+      compartmentsOf: (walls: InteriorWall[]) => ReadonlyMap<string, string>;
+    };
+    jetAudit: DoorJetBook[] | null;
+    jetTaken: Map<string, { kgS: number; tempK: number; oxygenY: number }>;
+  };
+  exposed.fireSim.ignite(['fire']);
+  const audit: DoorJetBook[] = [];
+  exposed.jetAudit = audit;
+  const rooms = exposed.fireSim.compartmentsOf(walls);
+  const hallId = rooms.get('hall');
+  const fireId = rooms.get('fire');
+  assert.ok(hallId && fireId && hallId !== fireId, 'the door did not make two rooms');
+  let prev: DoorJetBook[] = [];
+  let sentKg = 0;
+  let sentKJ = 0;
+  for (let t = 0; t < 400; t++) {
+    engine.step(1, walls, []);
+    // What the source vents assigned on the previous step is what this step
+    // passes into the receiver. The fire room is in the queue when the hall
+    // flows back, and it does not take that jet.
+    const expected = queueDoorJets(offeredParcels(prev, rooms), 1);
+    assert.equal(exposed.jetTaken.has(fireId), false, 'the fire room took the jet again');
+    for (const [room, got] of exposed.jetTaken) {
+      const exp = expected.get(room);
+      assert.ok(exp, `${room} took a jet that was not sent`);
+      close(got.kgS, exp.kgS, 1e-9, `${room} mass kg/s`);
+      close(got.kgS * got.tempK, exp.kgS * exp.tempK, 1e-6, `${room} enthalpy kJ/s`);
+      close(got.oxygenY, exp.oxygenY, 1e-9, `${room} oxygen`);
+    }
+    const expHall = expected.get(hallId);
+    if (expHall) {
+      const gotHall = exposed.jetTaken.get(hallId);
+      assert.ok(gotHall, 'the hall did not take the jet sent on the previous step');
+      sentKg += expHall.kgS;
+      sentKJ += expHall.kgS * expHall.tempK;
+    }
+    prev = audit.map((book) => ({
+      room: book.room,
+      members: book.members.slice(),
+      receivers: book.receivers.map((ids) => ids.slice()),
+      hot: book.hot.map((row) => ({ kg: row.kg, tempK: row.tempK, oxygenY: row.oxygenY })),
+    }));
+  }
+  assert.ok(sentKg > 1, `the door moved only ${sentKg.toFixed(4)} kg`);
+  assert.ok(sentKJ > sentKg * (AMBIENT_K + 1), 'the jet enthalpy was not above ambient');
   const layers = [
     ...(
       engine as unknown as {
