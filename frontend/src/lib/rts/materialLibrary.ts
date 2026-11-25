@@ -862,7 +862,9 @@ export const WALL_MATERIALS: readonly WallMaterial[] = [
     thicknessM: 0.018,
     sources: {
       conductivity: cited(`0.12 W/mK at 20 °C. EN 1995-1-2:2004 Annex B. ${NOT_SEEDED}`),
-      density: cited(`C24 mean density 420 kg/m³. EN 338. ${NOT_SEEDED}`),
+      density: cited(
+        `C24 mean density 420 kg/m³. EN 338. Not plywood: NBSIR 84-2943 Table 3 lists plywood at 540 kg/m³. ${NOT_SEEDED}`,
+      ),
       specificHeat: cited(`1530 J/kgK at 20 °C. EN 1995-1-2:2004 Annex B Table B.1. ${NOT_SEEDED}`),
       thickness: assumed('18 mm board.'),
     },
@@ -878,10 +880,16 @@ export function wallMaterialFor(material: string | null | undefined): WallMateri
   );
 }
 
-/** Decision 1: the layer uses concrete, brick or gypsum, and concrete for anything else. */
-const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum']);
+/**
+ * Decision 1. Concrete, brick, gypsum, timber, and glass conduct as
+ * themselves. Timber is the lining, not a finish over a concrete wall.
+ * Glass is the pane until it falls out. A crack is not a vent. Steel, aluminium, aerated concrete,
+ * and an unnamed finish stay on the concrete row: the structure behind
+ * that finish is taken to be concrete.
+ */
+const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum', 'timber', 'glass']);
 
-/** The lining the smoke layer conducts into. Never null; glass and steel fall back to concrete. */
+/** The lining the smoke layer conducts into. Never null. */
 export function layerLiningFor(material: string | null | undefined): WallMaterial {
   const row = wallMaterialFor(material);
   if (row && LAYER_LININGS.has(row.id)) return row;

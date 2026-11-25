@@ -1,5 +1,5 @@
 import type { ExitDef, Vec2 } from '../evacuation/types';
-import { doorLeafKey, leafWidthM } from './doorLeaf';
+import { doorLeafKey, doorOpenFraction, leafWidthM } from './doorLeaf';
 import type { InteriorWall, HazardZone } from './types';
 import {
   FireSimulation,
@@ -12,6 +12,7 @@ import { GAS_JET_KW, STUD_AREA_M2, electricalHeatReleaseKw, type FuelCell } from
 import {
   AMBIENT_K,
   CEILING_JET_DEPTH_FRACTION,
+  DOOR_SOFFIT_M,
   DISTINCT_LAYER_RISE_K,
   HEAD_HEIGHT_M,
   HOOD_EXTRACT_M3_PER_S,
@@ -21,6 +22,7 @@ import {
   MIN_LAYER_FIRE_KW,
   diameterForReleaseKw,
   enclosureFromGrid,
+  heskestadFlameHeightM,
   type FacadeOpening,
   formsSustainedLayer,
   freshLayer,
@@ -44,11 +46,28 @@ import type {
   GasLinePlacement,
   SuppressionPlacement,
 } from './materialLibrary';
+import {
+  GLASS_LAYER_COVER,
+  advanceTimberFace,
+  charRateMPerS,
+  distanceToSegmentM,
+  freshTimberFace,
+  fuelScale,
+  liningBurnAreaM2,
+  liningKind,
+  linkCrossesWall,
+  stepGlassPane,
+  timberRelease,
+  wallPointFluxKwM2,
+  type TimberFace,
+} from './liningFire';
+import { layerLiningFor } from './materialLibrary';
 import { LEVEL } from '../evacuation/levelConstants';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 import {
   addFumeGrams,
   fumesFromSmoke,
+  fumesPresent,
   layerBreath,
   SOOT_EXTINCTION_M2_PER_G,
   type FumeGrams,
@@ -372,6 +391,36 @@ export class SpatialEffectsEngine {
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
   /** Door walls of a room that has flashed. The leaf clock reads this. */
   private exposedDoors = new Set<string>();
+  /** Glass that has fallen out. A crack is not in this set, and it is not a vent. */
+  private fallenGlass = new Set<string>();
+  /**
+   * Remaining-fuel mass, pane temperature, and the per-room timber face.
+   * Keyed by wall id. One mass for the board, shared by both faces.
+   */
+  private linings = new Map<
+    string,
+    {
+      burnedKg: number;
+      paneK: number;
+      cracked: boolean;
+      fallen: boolean;
+      faces: Map<string, TimberFace>;
+    }
+  >();
+  /** Previous step's burned fraction, read before the layer clears the limit. */
+  private liningFraction = new Map<string, number>();
+  /** Equivalence ratio from the previous layer step. 0 is well ventilated. */
+  private roomPhi = new Map<string, number>();
+  /** Hottest touch on each glass wall during this step. */
+  private glassTouch = new Map<
+    string,
+    { flame: number; gasK: number; hot: number; ceiling: number }
+  >();
+  /** Lining soot and gases, poured with the stud sources. */
+  private liningFumes: Array<{ id: string; gramsPerS: FumeGrams; sootGPerS: number }> = [];
+  private wallById = new Map<string, GridWall>();
+  /** Timber and glass only. Empty in a building that has neither. */
+  private liningWalls: GridWall[] = [];
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -396,6 +445,14 @@ export class SpatialEffectsEngine {
     this.layerLeafKey = '';
     this.exposedDoors = new Set();
     this.layerGrants = [];
+    this.fallenGlass.clear();
+    this.linings.clear();
+    this.liningFraction.clear();
+    this.roomPhi.clear();
+    this.glassTouch.clear();
+    this.liningFumes = [];
+    this.wallById.clear();
+    this.liningWalls = [];
     this.activeEffects = [];
     this.elapsed = 0;
 
@@ -989,8 +1046,13 @@ export class SpatialEffectsEngine {
         material: wall.material,
         level: levelOf(wall),
       }));
+      this.wallById = new Map(this.layerGridWalls.map((wall) => [wall.id, wall]));
+      this.liningWalls = this.layerGridWalls.filter(
+        (wall) => liningKind(wall.material) !== 'inert',
+      );
     }
-    const key = `${room}@${ceiling}`;
+    const openKey = [...this.fallenGlass].sort().join(',');
+    const key = `${room}@${ceiling}@${openKey}`;
     if (this.layerEnclosures.has(key)) return this.layerEnclosures.get(key) ?? null;
     const found = enclosureFromGrid(
       members,
@@ -999,6 +1061,7 @@ export class SpatialEffectsEngine {
       this.layerGridWalls,
       ceiling,
       (memberId, outsideId) => this.facadeAt(memberId, outsideId),
+      this.fallenGlass,
     );
     this.layerEnclosures.set(key, found);
     return found;
@@ -1033,10 +1096,261 @@ export class SpatialEffectsEngine {
     return this.exposedDoors;
   }
 
+  private liningMem(wallId: string): {
+    burnedKg: number;
+    paneK: number;
+    cracked: boolean;
+    fallen: boolean;
+    faces: Map<string, TimberFace>;
+  } {
+    let mem = this.linings.get(wallId);
+    if (!mem) {
+      mem = {
+        burnedKg: 0,
+        paneK: AMBIENT_K,
+        cracked: false,
+        fallen: false,
+        faces: new Map(),
+      };
+      this.linings.set(wallId, mem);
+    }
+    return mem;
+  }
+
+  /**
+   * Timber or glass standing inside one compartment. The enclosure only
+   * keeps a wall that separates this room from another, so a partition
+   * the studs can walk around is missing there. Both faces are in this
+   * room. It is not a loss to the outside: the other side is the same gas.
+   */
+  private internalLiningWalls(members: readonly string[], skip: ReadonlySet<string>): GridWall[] {
+    if (this.liningWalls.length === 0) return [];
+    const inside = new Set(members);
+    const found = new Map<string, GridWall>();
+    for (const id of members) {
+      const stud = this.gridStuds.get(id);
+      if (!stud) continue;
+      for (const nId of this.neighborCache.get(id) ?? []) {
+        if (nId <= id || !inside.has(nId)) continue;
+        const other = this.gridStuds.get(nId);
+        if (!other || other.level !== stud.level) continue;
+        for (const wall of this.liningWalls) {
+          if (skip.has(wall.id) || found.has(wall.id) || wall.level !== stud.level) continue;
+          if (
+            linkCrossesWall(stud.x, stud.y, other.x, other.y, wall.x1, wall.y1, wall.x2, wall.y2)
+          ) {
+            found.set(wall.id, wall);
+          }
+        }
+      }
+    }
+    return [...found.values()];
+  }
+
+  /** Point source on this face, and the Heskestad height of the strongest stud. */
+  private flameOnWall(
+    members: readonly string[],
+    wall: GridWall,
+  ): { flux: number; flameM: number } {
+    let flux = 0;
+    let best = 0;
+    let bestQ = 0;
+    for (const id of members) {
+      const release = this.fireSim.fuelReleaseKw(id);
+      if (!(release != null && release > 0)) continue;
+      const stud = this.gridStuds.get(id);
+      if (!stud) continue;
+      const heat = release * (this.liningFraction.get(id) ?? 1);
+      if (!(heat > 0)) continue;
+      const dist = distanceToSegmentM(stud.x, stud.y, wall.x1, wall.y1, wall.x2, wall.y2);
+      const one = wallPointFluxKwM2(heat, dist);
+      flux += one;
+      if (one > best) {
+        best = one;
+        bestQ = heat;
+      }
+    }
+    const diameter = bestQ > 0 ? diameterForReleaseKw(bestQ) : 0;
+    return { flux, flameM: bestQ > 0 ? heskestadFlameHeightM(bestQ, diameter) : 0 };
+  }
+
+  private noteGlass(
+    wallId: string,
+    flux: number,
+    gasK: number,
+    hotDepth: number,
+    ceiling: number,
+  ): void {
+    const covered = hotDepth >= GLASS_LAYER_COVER * ceiling;
+    const prev = this.glassTouch.get(wallId);
+    if (!prev) {
+      this.glassTouch.set(wallId, {
+        flame: flux,
+        gasK: covered ? gasK : AMBIENT_K,
+        hot: covered ? hotDepth : 0,
+        ceiling,
+      });
+      return;
+    }
+    if (flux > prev.flame) prev.flame = flux;
+    if (covered && gasK > prev.gasK) {
+      prev.gasK = gasK;
+      prev.hot = hotDepth;
+      prev.ceiling = ceiling;
+    }
+  }
+
+  /**
+   * Timber heat for this room, and a note of any glass the room touches.
+   * The face doses advance either way. The burned mass is committed only
+   * when the caller keeps the fire, so a room with no reservoir does not
+   * consume the board. One remaining mass covers the whole board: a small
+   * flame does not char the rest of the wall through. The heat is one step
+   * behind the layer that heats it.
+   */
+  private proposeLining(
+    room: string,
+    members: readonly string[],
+    enc: Enclosure | null,
+    prev: { active: boolean; zone: ZoneState } | undefined,
+    ceiling: number,
+    dt: number,
+  ): {
+    heatKw: number;
+    sootGPerS: number;
+    fumes: FumeGrams;
+    fires: FirePlume[];
+    studId: string | null;
+    commit: () => void;
+  } {
+    const empty = {
+      heatKw: 0,
+      sootGPerS: 0,
+      fumes: {} as FumeGrams,
+      fires: [] as FirePlume[],
+      studId: null as string | null,
+      commit: () => {},
+    };
+    if (!enc) return empty;
+    const gasK = prev?.active ? prev.zone.upperK : AMBIENT_K;
+    const hotDepth = prev?.active ? Math.max(0, ceiling - prev.zone.interfaceM) : 0;
+    const phi = this.roomPhi.get(room) ?? 0;
+    const pending: Array<{ mem: { burnedKg: number }; add: number }> = [];
+    let heatKw = 0;
+    let sootGPerS = 0;
+    const fumes: FumeGrams = {};
+    const fires: FirePlume[] = [];
+    const seen = new Set(enc.wallIds);
+    const faces: Array<{ wall: GridWall; faceCount: number }> = [];
+    for (const wallId of enc.wallIds) {
+      const wall = this.wallById.get(wallId);
+      if (wall) faces.push({ wall, faceCount: 1 });
+    }
+    // An internal partition has both faces in this room. The mass is still one board.
+    for (const wall of this.internalLiningWalls(members, seen)) {
+      faces.push({ wall, faceCount: 2 });
+    }
+    for (const { wall, faceCount } of faces) {
+      const kind = liningKind(wall.material);
+      if (kind === 'inert') continue;
+      const touch = this.flameOnWall(members, wall);
+      if (kind === 'glass') {
+        this.noteGlass(wall.id, touch.flux, gasK, hotDepth, ceiling);
+        continue;
+      }
+      const mem = this.liningMem(wall.id);
+      const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+      const open = doorOpenFraction(wall);
+      const nominal = wall.hasDoor ? (wall.doorWidth > 0 ? wall.doorWidth : 0.9) : 0;
+      const advanced = advanceTimberFace(mem.faces.get(room) ?? freshTimberFace(), {
+        flameKwM2: touch.flux,
+        gasK,
+        hotDepthM: hotDepth,
+        ceilingM: ceiling,
+        igniterFlameM: touch.flameM,
+        lengthM: length,
+        doorWidthM: nominal * open,
+        doorHeadM: wall.hasDoor ? Math.min(DOOR_SOFFIT_M, ceiling) : 0,
+        dt,
+      });
+      mem.faces.set(room, advanced.face);
+      if (!(advanced.areaM2 > 0)) continue;
+      const row = layerLiningFor('timber');
+      const solid = liningBurnAreaM2(
+        length,
+        ceiling,
+        nominal * open,
+        wall.hasDoor ? Math.min(DOOR_SOFFIT_M, ceiling) : 0,
+        ceiling,
+        0,
+      );
+      const capacity = row.densityKgM3 * row.thicknessM * solid;
+      const burning = advanced.areaM2 * faceCount;
+      const demand = charRateMPerS() * row.densityKgM3 * burning * dt;
+      const scale = fuelScale(mem.burnedKg, capacity, demand);
+      if (!(scale > 0)) continue;
+      const release = timberRelease(burning * scale, phi);
+      if (!(release.heatKw > 0)) continue;
+      pending.push({ mem, add: demand * scale });
+      heatKw += release.heatKw;
+      sootGPerS += release.sootGPerS;
+      addFumeGrams(fumes, release.fumes);
+      fires.push({ heatKw: release.heatKw, diameterM: diameterForReleaseKw(release.heatKw) });
+    }
+    return {
+      heatKw,
+      sootGPerS,
+      fumes,
+      fires,
+      studId: members[0] ?? null,
+      commit: () => {
+        for (const item of pending) item.mem.burnedKg += item.add;
+      },
+    };
+  }
+
+  /**
+   * One temperature per pane, from the hotter side. A crack is recorded
+   * and left as glass. Fallout, once the gas has reached 450 °C, opens on
+   * the next step.
+   */
+  private commitGlass(dt: number): void {
+    for (const [wallId, touch] of this.glassTouch) {
+      const mem = this.liningMem(wallId);
+      if (mem.fallen) continue;
+      const row = layerLiningFor('glass');
+      const stepped = stepGlassPane(
+        {
+          paneK: mem.paneK,
+          gasK: touch.gasK,
+          flameKwM2: touch.flame,
+          dt,
+          rhoKgM3: row.densityKgM3,
+          cJKgK: row.specificHeatJKgK,
+          thicknessM: row.thicknessM,
+        },
+        { cracked: mem.cracked, fallen: mem.fallen },
+      );
+      mem.paneK = stepped.paneK;
+      mem.cracked = stepped.cracked;
+      if (!stepped.fallen) continue;
+      mem.fallen = true;
+      this.fallenGlass.add(wallId);
+    }
+    this.glassTouch.clear();
+  }
+
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
     this.exposedDoors = new Set();
+    this.liningFumes = [];
+    this.glassTouch.clear();
+    this.liningFraction.clear();
+    for (const id of this.gridStuds.keys()) {
+      const fraction = this.fireSim.burnFraction(id);
+      if (fraction < 0.999) this.liningFraction.set(id, fraction);
+    }
     this.fireSim.clearBurnLimits();
     const rooms = this.fireSim.compartmentIds(walls);
     const groups = new Map<string, string[]>();
@@ -1092,6 +1406,8 @@ export class SpatialEffectsEngine {
       if (enc && members.some((id) => this.fireSim.isFlashed(id))) {
         for (const wallId of enc.wallIds) this.exposedDoors.add(wallId);
       }
+      const lining = this.proposeLining(room, members, enc, prev, ceiling, dt);
+      heat += lining.heatKw;
       if (heat < MIN_LAYER_FIRE_KW && !prev?.active) {
         retire();
         continue;
@@ -1099,6 +1415,18 @@ export class SpatialEffectsEngine {
       if (!enc || !hasSmokeReservoir(enc.spec.vents, ceiling)) {
         retire();
         continue;
+      }
+      lining.commit();
+      for (const fire of lining.fires) fires.push(fire);
+      if (lining.sootGPerS > 0) {
+        sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + lining.sootGPerS);
+      }
+      if (lining.studId && (lining.sootGPerS > 0 || fumesPresent(lining.fumes))) {
+        this.liningFumes.push({
+          id: lining.studId,
+          gramsPerS: lining.fumes,
+          sootGPerS: lining.sootGPerS,
+        });
       }
       const memberSet = new Set(members);
       const fans: MechanicalVent[] = [];
@@ -1138,8 +1466,10 @@ export class SpatialEffectsEngine {
           areaM2: spec.areaM2,
           ceilingM: ceiling,
         });
-        if (opening.prescribedKw > 0)
+        if (opening.prescribedKw > 0) {
+          this.roomPhi.set(room, opening.phi);
           this.fireSim.setBurnLimit(members, opening.fraction, opening.phi);
+        }
         continue;
       }
       if (prev?.active !== true) {
@@ -1158,6 +1488,7 @@ export class SpatialEffectsEngine {
         ceilingM: ceiling,
       });
       for (const id of members) owned.add(id);
+      this.roomPhi.set(room, stepped.phi);
       this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
       if (stepped.ventedSootG > 0) {
         const shares = stepped.outByVentKgS;
@@ -1184,6 +1515,7 @@ export class SpatialEffectsEngine {
       this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM, kMax);
       live.active = false;
     }
+    this.commitGlass(dt);
     return owned;
   }
 
@@ -1370,7 +1702,7 @@ export class SpatialEffectsEngine {
    */
   private stepFumes(walls: InteriorWall[]) {
     for (const state of this.studStates.values()) state.fumes = undefined;
-    const sources = this.fireSim.fumeSources();
+    const sources = [...this.fireSim.fumeSources(), ...this.liningFumes];
     if (sources.length === 0) return;
 
     const upward = new Map<string, string[]>();

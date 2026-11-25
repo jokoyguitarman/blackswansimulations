@@ -192,13 +192,17 @@ describe('material library', () => {
     assert.ok(Math.abs(inertia('aerated_concrete') - 0.12) < 1e-9);
   });
 
-  test('the smoke layer gets 150 mm concrete and brick, 16 mm gypsum, and concrete for anything else', () => {
+  test('the smoke layer conducts timber and glass as themselves, and concrete for a finish', () => {
     assert.equal(layerLiningFor('concrete').thicknessM, 0.15);
     assert.equal(layerLiningFor('brick').thicknessM, 0.15);
     assert.equal(layerLiningFor('concrete block').id, 'brick_block');
     assert.equal(layerLiningFor('drywall').thicknessM, 0.016);
     assert.equal(layerLiningFor('plaster').id, 'gypsum');
-    for (const other of ['glass', 'steel', 'timber', 'aerated concrete', '', 'mystery']) {
+    assert.equal(layerLiningFor('timber').id, 'timber');
+    assert.equal(layerLiningFor('plywood').thicknessM, 0.018);
+    assert.equal(layerLiningFor('glass').id, 'glass');
+    assert.equal(layerLiningFor('window').thicknessM, 0.006);
+    for (const other of ['steel', 'aluminium', 'aerated concrete', '', 'mystery']) {
       assert.equal(layerLiningFor(other).id, 'concrete', other);
     }
   });
@@ -223,13 +227,24 @@ describe('material library', () => {
 
     const shop = entryById('shop_contents');
     assert.ok(shop);
-    assert.equal(SHOP_STOCK_MIX.reduce((sum, part) => sum + part.massFraction, 0), 1);
+    assert.equal(
+      SHOP_STOCK_MIX.reduce((sum, part) => sum + part.massFraction, 0),
+      1,
+    );
     near(shop.sootYieldGPerG ?? undefined, 0.06625, 'shop soot');
     near(shop.toxicYieldWellVentGPerG.CO, 0.0175, 'shop well-vent CO');
     near(shop.toxicYieldGPerG.CO, 0.222, 'shop under-vent CO');
     // 20 % foam at 0.009, 10 % nylon at 0.06, 5 % wool at 1.928 × 0.1325 × 0.15.
-    near(shop.toxicYieldGPerG.HCN, 0.2 * 0.009 + 0.1 * 0.06 + 0.05 * 1.928 * 0.1325 * 0.15, 'shop HCN');
-    near(shop.toxicYieldWellVentGPerG.HCN, 0.2 * 0.004 + 0.1 * 0.001 + 0.05 * 1.928 * 0.1325 * 0.01, 'shop well-vent HCN');
+    near(
+      shop.toxicYieldGPerG.HCN,
+      0.2 * 0.009 + 0.1 * 0.06 + 0.05 * 1.928 * 0.1325 * 0.15,
+      'shop HCN',
+    );
+    near(
+      shop.toxicYieldWellVentGPerG.HCN,
+      0.2 * 0.004 + 0.1 * 0.001 + 0.05 * 1.928 * 0.1325 * 0.01,
+      'shop well-vent HCN',
+    );
     assert.equal(shop.sources['underVent.HCN']?.status, 'derived');
     assert.equal(shop.sources['wellVent.CO']?.status, 'assumed', 'wool CO is a generic figure');
   });
@@ -542,7 +557,8 @@ describe('confirmed fuel gate', () => {
     // table. The light-fuel front covers that distance at the entry's speed.
     const fuel = defaultLightFuel();
     const flash = flashoverAgeSec(fuel);
-    const frontSec = fuel.spreadMPerMin != null && fuel.spreadMPerMin > 0 ? (3 / fuel.spreadMPerMin) * 60 : null;
+    const frontSec =
+      fuel.spreadMPerMin != null && fuel.spreadMPerMin > 0 ? (3 / fuel.spreadMPerMin) * 60 : null;
     assert.ok(flash != null && frontSec != null);
     assert.ok(frontSec > flash + 2);
     let seconds = 0.1;
@@ -550,10 +566,14 @@ describe('confirmed fuel gate', () => {
     while (engine.studStates.get('next')?.fire.state !== 'burning' && seconds < 400) {
       engine.step(1, [], [zone]);
       seconds += 1;
-      if (seconds <= flash + 2 && engine.studStates.get('next')?.fire.state === 'burning') burningAtLatch = true;
+      if (seconds <= flash + 2 && engine.studStates.get('next')?.fire.state === 'burning')
+        burningAtLatch = true;
     }
     assert.equal(burningAtLatch, false);
-    assert.ok(seconds > frontSec && seconds < frontSec + 2, `front lit the next stud at ${seconds}s`);
+    assert.ok(
+      seconds > frontSec && seconds < frontSec + 2,
+      `front lit the next stud at ${seconds}s`,
+    );
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
     assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });

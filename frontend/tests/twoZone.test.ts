@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import { HOOD_HEIGHT_M } from '../src/lib/rts/flameFront.ts';
+import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects.ts';
 import type { InteriorWall } from '../src/lib/rts/types.ts';
@@ -849,4 +850,60 @@ test('ten floor seconds stay near 1500 A√H', () => {
     `stored oxygen ${stored.burn.burnedKw.toFixed(0)} kW vs ${cap.toFixed(0)}`,
   );
   assert.ok(stored.burn.burnedKw < prescribed * 0.5);
+});
+
+test('fallen glass opens a labelled fraction, and a concrete id does not', () => {
+  const studs = new Map([
+    ['a', { id: 'a', x: 0, y: 0, level: 'G' }],
+    ['out', { id: 'out', x: 0, y: 3, level: 'G' }],
+  ]);
+  const neighbors = new Map<string, readonly string[]>([
+    ['a', ['out']],
+    ['out', ['a']],
+  ]);
+  const glass = {
+    id: 'pane',
+    x1: -2,
+    y1: 1.5,
+    x2: 4,
+    y2: 1.5,
+    hasDoor: false,
+    doorWidth: 0,
+    material: 'glass',
+    level: 'G',
+  };
+  const shut = enclosureFromGrid(['a'], studs, neighbors, [glass], 4);
+  assert.ok(shut);
+  assert.equal(shut?.spec.vents.length, 0);
+  const pane = shut?.spec.boundaries.find((boundary) => boundary.lining.name === 'glass');
+  assert.ok(pane);
+  assert.equal(pane?.areaM2, 6 * 4);
+
+  const open = enclosureFromGrid(['a'], studs, neighbors, [glass], 4, undefined, new Set(['pane']));
+  assert.equal(open?.spec.vents.length, 1);
+  assert.equal(open?.spec.vents[0]?.widthM, 6 * GLASS_FALLOUT_AREA_FRACTION);
+  assert.equal(open?.spec.vents[0]?.soffitM, 4);
+  assert.equal(open?.spec.vents[0]?.sillM, 0);
+  assert.deepEqual(open?.ventReceivers, [['out']]);
+  const kept = open?.spec.boundaries.find((boundary) => boundary.lining.name === 'glass');
+  assert.ok(kept);
+  assert.ok(Math.abs((kept?.areaM2 ?? 0) - 6 * 4 * (1 - GLASS_FALLOUT_AREA_FRACTION)) < 1e-9);
+
+  const concrete = { ...glass, id: 'slab', material: 'concrete' };
+  const stay = enclosureFromGrid(
+    ['a'],
+    studs,
+    neighbors,
+    [concrete],
+    4,
+    undefined,
+    new Set(['slab']),
+  );
+  assert.equal(stay?.spec.vents.length, 0);
+  assert.equal(
+    stay?.spec.boundaries.some(
+      (boundary) => boundary.lining.name === 'concrete' && boundary.areaM2 === 24,
+    ),
+    true,
+  );
 });
