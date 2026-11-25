@@ -1383,6 +1383,15 @@ export class FireSimulation {
   }
 
   /**
+   * The engine's own membership map. The layer step only reads it.
+   * `compartmentIds` copies, for callers that keep the map.
+   */
+  compartmentsOf(walls: InteriorWall[]): ReadonlyMap<string, string> {
+    this.ensureCompartments(walls);
+    return this.compartmentOf;
+  }
+
+  /**
    * A room of at most 500 m² flashes over when the burning fuel in it sums
    * to about 1 MW. Every fuelled stud in that room ignites. A larger room
    * does not. There the fire travels by the front and the flux, and a stud

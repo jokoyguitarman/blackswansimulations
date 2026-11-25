@@ -5,7 +5,12 @@
  */
 
 const STUD_SPACING_M = 3;
-const EXTERIOR_PADDING_M = 150;
+/**
+ * Outdoor studs stop this far past the footprint. The row and column numbers
+ * still count from the old 150 m grid, so an indoor stud keeps its id.
+ */
+export const SCENE_STUD_MARGIN_M = 48;
+const STUD_INDEX_PAD_M = 150;
 
 export interface SceneStud {
   id: string;
@@ -42,39 +47,48 @@ export function generateSceneStuds(
   const studs: SceneStud[] = [];
   const dLat = STUD_SPACING_M / 111_320;
   const dLng = STUD_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
-  const extPadLat = EXTERIOR_PADDING_M / 111_320;
-  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const indexPadLat = STUD_INDEX_PAD_M / 111_320;
+  const indexPadLng = STUD_INDEX_PAD_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const emitPadLat = SCENE_STUD_MARGIN_M / 111_320;
+  const emitPadLng = SCENE_STUD_MARGIN_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const latLo = minLat - emitPadLat;
+  const latHi = maxLat + emitPadLat;
+  const lngLo = minLng - emitPadLng;
+  const lngHi = maxLng + emitPadLng;
 
   let row = 0;
-  for (let lat = minLat - extPadLat + dLat / 2; lat <= maxLat + extPadLat; lat += dLat) {
+  for (let lat = minLat - indexPadLat + dLat / 2; lat <= maxLat + indexPadLat; lat += dLat) {
     let col = 0;
-    for (let lng = minLng - extPadLng + dLng / 2; lng <= maxLng + extPadLng; lng += dLng) {
-      const inside = pointInPolygonLatLng(lat, lng, polygon);
-      if (!inside) {
-        studs.push({
-          id: `ext-${buildingIndex}-${row}-${col}`,
-          lat,
-          lng,
-          floor: 'G',
-          studType: 'outdoor',
-          blastBand: null,
-          operationalZone: null,
-          distFromIncidentM: null,
-          spatialContext: 'open_air',
-        });
-      } else {
-        for (const floor of floors) {
+    const latIn = lat >= latLo && lat <= latHi;
+    for (let lng = minLng - indexPadLng + dLng / 2; lng <= maxLng + indexPadLng; lng += dLng) {
+      if (latIn && lng >= lngLo && lng <= lngHi) {
+        const inside = pointInPolygonLatLng(lat, lng, polygon);
+        if (!inside) {
           studs.push({
-            id: `bldg-${buildingIndex}-${floor}-${row}-${col}`,
+            id: `ext-${buildingIndex}-${row}-${col}`,
             lat,
             lng,
-            floor,
-            studType: 'building',
+            floor: 'G',
+            studType: 'outdoor',
             blastBand: null,
             operationalZone: null,
             distFromIncidentM: null,
-            spatialContext: 'inside_building',
+            spatialContext: 'open_air',
           });
+        } else {
+          for (const floor of floors) {
+            studs.push({
+              id: `bldg-${buildingIndex}-${floor}-${row}-${col}`,
+              lat,
+              lng,
+              floor,
+              studType: 'building',
+              blastBand: null,
+              operationalZone: null,
+              distFromIncidentM: null,
+              spatialContext: 'inside_building',
+            });
+          }
         }
       }
       col++;

@@ -48,7 +48,7 @@ function asFireCell(state: string | undefined): FireCell {
 /** Read-only view of the effects engine's stud states, with a spatial hash for nearest-stud lookup. */
 export class HazardField {
   private readonly cellM: number;
-  private readonly buckets = new Map<string, HazardStud[]>();
+  private readonly buckets = new Map<number, HazardStud[]>();
   private states: ReadonlyMap<string, StudStateLike> | null = null;
 
   constructor(studs: HazardStud[], cellM = 3) {
@@ -93,7 +93,7 @@ export class HazardField {
     const cy = Math.floor(y / this.cellM);
     for (let dx = -span; dx <= span; dx++) {
       for (let dy = -span; dy <= span; dy++) {
-        const list = this.buckets.get(`${cx + dx},${cy + dy}`);
+        const list = this.buckets.get(this.cellKey(cx + dx, cy + dy));
         if (!list) continue;
         for (const s of list) {
           if (Math.hypot(s.simPos.x - x, s.simPos.y - y) > radius) continue;
@@ -114,7 +114,7 @@ export class HazardField {
     const cy = Math.floor(y / this.cellM);
     for (let dx = -span; dx <= span; dx++) {
       for (let dy = -span; dy <= span; dy++) {
-        const list = this.buckets.get(`${cx + dx},${cy + dy}`);
+        const list = this.buckets.get(this.cellKey(cx + dx, cy + dy));
         if (!list) continue;
         for (const s of list) {
           if (Math.hypot(s.simPos.x - x, s.simPos.y - y) > radius) continue;
@@ -136,7 +136,7 @@ export class HazardField {
     let bestD = limit;
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
-        const list = this.buckets.get(`${cx + dx},${cy + dy}`);
+        const list = this.buckets.get(this.cellKey(cx + dx, cy + dy));
         if (!list) continue;
         for (const s of list) {
           const d = Math.hypot(s.simPos.x - x, s.simPos.y - y);
@@ -150,8 +150,13 @@ export class HazardField {
     return best;
   }
 
-  private key(x: number, y: number): string {
-    return `${Math.floor(x / this.cellM)},${Math.floor(y / this.cellM)}`;
+  private key(x: number, y: number): number {
+    return this.cellKey(Math.floor(x / this.cellM), Math.floor(y / this.cellM));
+  }
+
+  /** Cell indices are a few thousand at most, so this does not collide. */
+  private cellKey(cx: number, cy: number): number {
+    return cx * 1_000_003 + cy;
   }
 }
 
@@ -569,7 +574,7 @@ function segmentsHitT(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): number | null {
   return null;
 }
 
-function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
+function solidSegments(wall: WallLike): Array<[Vec2, Vec2]> {
   const start = { x: wall.startX, y: wall.startY };
   const end = { x: wall.endX, y: wall.endY };
   const dx = end.x - start.x;
@@ -589,6 +594,178 @@ function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
     parts.push([{ x: start.x + dx * gapEnd, y: start.y + dy * gapEnd }, end]);
   }
   return parts;
+}
+
+interface CachedParts {
+  open: number | null;
+  width: number;
+  position: number;
+  door: boolean;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  parts: Array<[Vec2, Vec2]>;
+}
+
+const partsCache = new WeakMap<WallLike, CachedParts>();
+
+function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
+  const open =
+    wall.openFraction == null || !Number.isFinite(wall.openFraction) ? null : wall.openFraction;
+  const hit = partsCache.get(wall);
+  if (
+    hit &&
+    hit.open === open &&
+    hit.width === wall.doorWidth &&
+    hit.position === wall.doorPosition &&
+    hit.door === wall.hasDoor &&
+    hit.x1 === wall.startX &&
+    hit.y1 === wall.startY &&
+    hit.x2 === wall.endX &&
+    hit.y2 === wall.endY
+  ) {
+    return hit.parts;
+  }
+  const parts = solidSegments(wall);
+  partsCache.set(wall, {
+    open,
+    width: wall.doorWidth,
+    position: wall.doorPosition,
+    door: wall.hasDoor,
+    x1: wall.startX,
+    y1: wall.startY,
+    x2: wall.endX,
+    y2: wall.endY,
+    parts,
+  });
+  return parts;
+}
+
+const WALL_CELL_M = 8;
+
+class WallIndex {
+  private readonly buckets = new Map<number, number[]>();
+
+  constructor(readonly walls: readonly WallLike[]) {
+    for (let i = 0; i < walls.length; i++) {
+      const wall = walls[i];
+      if (!wall) continue;
+      const minX = Math.min(wall.startX, wall.endX);
+      const maxX = Math.max(wall.startX, wall.endX);
+      const minY = Math.min(wall.startY, wall.endY);
+      const maxY = Math.max(wall.startY, wall.endY);
+      const c0x = Math.floor(minX / WALL_CELL_M);
+      const c1x = Math.floor(maxX / WALL_CELL_M);
+      const c0y = Math.floor(minY / WALL_CELL_M);
+      const c1y = Math.floor(maxY / WALL_CELL_M);
+      for (let cx = c0x; cx <= c1x; cx++) {
+        for (let cy = c0y; cy <= c1y; cy++) {
+          const key = cx * 1_000_003 + cy;
+          const list = this.buckets.get(key);
+          if (list) list.push(i);
+          else this.buckets.set(key, [i]);
+        }
+      }
+    }
+  }
+
+  /** Wall indices whose segment box meets the query, in wall-array order. */
+  indicesInBox(minX: number, minY: number, maxX: number, maxY: number): number[] {
+    const c0x = Math.floor(minX / WALL_CELL_M);
+    const c1x = Math.floor(maxX / WALL_CELL_M);
+    const c0y = Math.floor(minY / WALL_CELL_M);
+    const c1y = Math.floor(maxY / WALL_CELL_M);
+    const seen = new Set<number>();
+    const out: number[] = [];
+    for (let cx = c0x; cx <= c1x; cx++) {
+      for (let cy = c0y; cy <= c1y; cy++) {
+        const list = this.buckets.get(cx * 1_000_003 + cy);
+        if (!list) continue;
+        for (const index of list) {
+          if (seen.has(index)) continue;
+          seen.add(index);
+          out.push(index);
+        }
+      }
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  }
+}
+
+let indexedWalls: readonly WallLike[] | null = null;
+let indexedOpen: Array<number | null> = [];
+let indexedDoor: boolean[] = [];
+let indexedGeom: number[] = [];
+let wallIndex: WallIndex | null = null;
+
+function wallsIndex(walls: readonly WallLike[]): WallIndex {
+  let same = indexedWalls === walls && wallIndex != null && indexedOpen.length === walls.length;
+  if (same) {
+    for (let i = 0; i < walls.length; i++) {
+      const wall = walls[i];
+      if (!wall) {
+        same = false;
+        break;
+      }
+      const open =
+        wall.openFraction == null || !Number.isFinite(wall.openFraction) ? null : wall.openFraction;
+      const g = i * 6;
+      if (
+        open !== indexedOpen[i] ||
+        wall.hasDoor !== indexedDoor[i] ||
+        wall.startX !== indexedGeom[g] ||
+        wall.startY !== indexedGeom[g + 1] ||
+        wall.endX !== indexedGeom[g + 2] ||
+        wall.endY !== indexedGeom[g + 3] ||
+        wall.doorWidth !== indexedGeom[g + 4] ||
+        wall.doorPosition !== indexedGeom[g + 5]
+      ) {
+        same = false;
+        break;
+      }
+    }
+  }
+  if (same && wallIndex) return wallIndex;
+  indexedWalls = walls;
+  indexedOpen = new Array(walls.length);
+  indexedDoor = new Array(walls.length);
+  indexedGeom = new Array(walls.length * 6);
+  for (let i = 0; i < walls.length; i++) {
+    const wall = walls[i];
+    if (!wall) continue;
+    indexedOpen[i] =
+      wall.openFraction == null || !Number.isFinite(wall.openFraction) ? null : wall.openFraction;
+    indexedDoor[i] = wall.hasDoor;
+    const g = i * 6;
+    indexedGeom[g] = wall.startX;
+    indexedGeom[g + 1] = wall.startY;
+    indexedGeom[g + 2] = wall.endX;
+    indexedGeom[g + 3] = wall.endY;
+    indexedGeom[g + 4] = wall.doorWidth;
+    indexedGeom[g + 5] = wall.doorPosition;
+  }
+  wallIndex = new WallIndex(walls);
+  return wallIndex;
+}
+
+function wallsInBox(
+  walls: readonly WallLike[],
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): WallLike[] {
+  if (walls.length === 0) return [];
+  const index = wallsIndex(walls);
+  const ids = index.indicesInBox(minX, minY, maxX, maxY);
+  const out: WallLike[] = [];
+  for (const id of ids) {
+    const wall = walls[id];
+    if (wall) out.push(wall);
+  }
+  return out;
 }
 
 const BODY_RADIUS_M = 0.25;
@@ -640,7 +817,14 @@ export function nextIndoorWaypoint(
 ): Vec2 {
   let bestT = Infinity;
   let best: WallLike | null = null;
-  for (const wall of walls) {
+  const near = wallsInBox(
+    walls,
+    Math.min(pos.x, target.x) - 0.05,
+    Math.min(pos.y, target.y) - 0.05,
+    Math.max(pos.x, target.x) + 0.05,
+    Math.max(pos.y, target.y) + 0.05,
+  );
+  for (const wall of near) {
     let hitT = Infinity;
     for (const [a, b] of solidParts(wall)) {
       const t = segmentsHitT(pos, target, a, b);
@@ -725,7 +909,15 @@ function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLi
   const samples = Math.max(1, Math.ceil(travel / 0.5));
   let bestT = Infinity;
   let best: WallLike | null = null;
-  for (const wall of walls) {
+  const pad = WALL_FACE_CLEAR_M;
+  const near = wallsInBox(
+    walls,
+    Math.min(pos.x, target.x) - pad,
+    Math.min(pos.y, target.y) - pad,
+    Math.max(pos.x, target.x) + pad,
+    Math.max(pos.y, target.y) + pad,
+  );
+  for (const wall of near) {
     let hitT = Infinity;
     for (const [a, b] of solidParts(wall)) {
       const t = segmentsHitT(pos, target, a, b);
@@ -1410,9 +1602,11 @@ function clearOfSlab(pos: Vec2, a: Vec2, b: Vec2, clear: number): Vec2 | null {
 export function separateFromWalls(pos: Vec2, walls: WallLike[], clear = WALL_FACE_CLEAR_M): Vec2 {
   let x = pos.x;
   let y = pos.y;
+  const pad = Math.max(clear, BODY_RADIUS_M) + 0.5;
   for (let pass = 0; pass < 4; pass++) {
     let moved = false;
-    for (const wall of walls) {
+    const near = wallsInBox(walls, x - pad, y - pad, x + pad, y + pad);
+    for (const wall of near) {
       for (const [a, b] of solidParts(wall)) {
         const next = clearOfSlab({ x, y }, a, b, clear);
         if (!next) continue;
@@ -1724,7 +1918,14 @@ export function isNearWallBehind(
   if (len < 1e-6) return false;
   const reach = BLAST_CONSTANTS.NEAR_WALL_M;
   const end = { x: p.x + (dx / len) * reach, y: p.y + (dy / len) * reach };
-  for (const wall of walls) {
+  const near = wallsInBox(
+    walls,
+    Math.min(p.x, end.x) - 0.05,
+    Math.min(p.y, end.y) - 0.05,
+    Math.max(p.x, end.x) + 0.05,
+    Math.max(p.y, end.y) + 0.05,
+  );
+  for (const wall of near) {
     for (const [a, b] of solidParts(wall)) {
       if (segmentsCross(p, end, a, b)) return true;
     }

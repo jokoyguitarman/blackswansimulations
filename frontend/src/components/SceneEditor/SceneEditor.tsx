@@ -127,7 +127,7 @@ interface RoadPolylineItem {
 type OsmSourceMode = 'local_cache' | 'live_osm';
 
 const STUD_SPACING_M = 3;
-const EXTERIOR_PADDING_M = 150;
+const EXTERIOR_PADDING_M = 48;
 
 function getEstimatedRoadWidthM(highwayType: string): number {
   switch (highwayType) {
@@ -1004,10 +1004,7 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        | 'inside_building'
-        | 'road'
-        | 'open_air'
-        | undefined;
+        'inside_building' | 'road' | 'open_air' | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned
