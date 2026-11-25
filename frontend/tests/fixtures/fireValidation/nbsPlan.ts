@@ -9,9 +9,14 @@ import { AMBIENT_K } from '../../../src/lib/rts/twoZone.ts';
  * NBS MV100A as one plan in the live engine: fire room, entry and corridor on
  * the 3 m stud grid, joined by the two 0.81 m doors, with the corridor's
  * 0.76 m door to the outside as the building exit. The engine fixes what the
- * grid can say, so this is the test's topology, not its dimensions:
+ * grid can say, so this is the test's topology, not its dimensions.
  *
- * - Each room is whole studs of 9 m²: the fire room is one stud (5.5 m² in the
+ * The entry stud is not its own room. A diagonal link meets the end of the
+ * corridor-entry wall, so the entry joins the corridor: one 45 m² room
+ * (`c0`–`c3` and `entry`). The jet is not cooled in a separate entry. The
+ * corridor samples below still use `c0`–`c3` only.
+ *
+ * - The studs are whole cells of 9 m²: the fire room is one stud (5.5 m² in the
  *   test), the entry one stud (1.05 m²) and the corridor four (29.7 m²).
  * - One storey height, the corridor's 2.44 m. The fire room is 2.16 m.
  * - Walls are the engine's concrete lining; the test's are ceramic fibre and

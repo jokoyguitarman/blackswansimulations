@@ -31,6 +31,7 @@ import {
   oxygenMassFraction,
   steadyLayer,
   stepZone,
+  type DoorJetInflow,
   type Enclosure,
   type FirePlume,
   type GridStud,
@@ -206,6 +207,88 @@ export function advanceSootK(
   if (!(vent > 0)) return Math.max(0, k + gen * dt);
   const decay = Math.exp(-vent * dt);
   return Math.max(0, k * decay + (gen / vent) * (1 - decay));
+}
+
+/** Mass, kg·K and oxygen·kg offered to one neighbouring room. cp is 1 kJ/kg·K. */
+export interface DoorJetParcel {
+  kg: number;
+  tKg: number;
+  yKg: number;
+}
+
+/**
+ * One room's upper-layer outflow, copied when a test is watching the door.
+ * Play leaves this unset, so the step does not copy the vents.
+ */
+export interface DoorJetBook {
+  room: string;
+  members: readonly string[];
+  receivers: readonly (readonly string[])[];
+  hot: readonly { kg: number; tempK: number; oxygenY: number }[];
+}
+
+/**
+ * A vent flow smaller than this is numerical dust, not a door jet. The
+ * queue and the conservation test use the same cutoff.
+ */
+export const DOOR_JET_MIN_KGS = 1e-4;
+
+/**
+ * Split one room's upper-layer outflow across the rooms on the far side of
+ * each vent. The share is the fraction of that vent's receiver studs in the
+ * destination. A receiver with no room is outdoors, and a receiver in the
+ * source room is not a neighbour, so that share is not in the sum. The
+ * enthalpy of what is assigned is the assigned mass times the vent temperature.
+ */
+export function assignDoorJet(
+  room: string,
+  members: ReadonlySet<string>,
+  ventReceivers: readonly (readonly string[])[],
+  hotByVent: readonly { kg: number; tempK: number; oxygenY: number }[],
+  rooms: ReadonlyMap<string, string>,
+): Map<string, DoorJetParcel> {
+  const out = new Map<string, DoorJetParcel>();
+  for (let i = 0; i < hotByVent.length; i++) {
+    const hot = hotByVent[i];
+    const receivers = ventReceivers[i] ?? [];
+    if (!hot || !(hot.kg > 1e-8) || !(hot.tempK > AMBIENT_K + 1) || receivers.length === 0) {
+      continue;
+    }
+    const buckets = new Map<string, number>();
+    for (const id of receivers) {
+      if (members.has(id)) continue;
+      const dest = rooms.get(id);
+      if (!dest || dest === room) continue;
+      buckets.set(dest, (buckets.get(dest) ?? 0) + 1);
+    }
+    if (buckets.size === 0) continue;
+    for (const [dest, count] of buckets) {
+      const kg = hot.kg * (count / receivers.length);
+      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0 };
+      cur.kg += kg;
+      cur.tKg += kg * hot.tempK;
+      cur.yKg += kg * hot.oxygenY;
+      out.set(dest, cur);
+    }
+  }
+  return out;
+}
+
+/** The parcels the next step passes into `stepZone`, after the dust filter. */
+export function queueDoorJets(
+  parcels: ReadonlyMap<string, DoorJetParcel>,
+  dt: number,
+): Map<string, DoorJetInflow> {
+  const ready = new Map<string, DoorJetInflow>();
+  if (!(dt > 0)) return ready;
+  for (const [dest, cur] of parcels) {
+    if (!(cur.kg > 0)) continue;
+    const kgS = cur.kg / dt;
+    const tempK = cur.tKg / cur.kg;
+    if (!(kgS >= DOOR_JET_MIN_KGS) || !(tempK > AMBIENT_K + 1)) continue;
+    ready.set(dest, { kgS, tempK, oxygenY: cur.yKg / cur.kg });
+  }
+  return ready;
 }
 
 function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
@@ -410,6 +493,20 @@ export class SpatialEffectsEngine {
   private layerShellKey = '';
   private layerGridWalls: GridWall[] = [];
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
+  /**
+   * Door jet arriving this step, from the previous step's upper-layer
+   * outflow. One step behind, so room order does not matter.
+   */
+  private doorJets = new Map<string, DoorJetInflow>();
+  /** The jet actually passed into `stepZone` this step, for rooms that take one. */
+  private jetTaken = new Map<string, DoorJetInflow>();
+  /**
+   * Studs of a door-jet layer. Soot already at head height stays and leaks.
+   * Rebuilt every step from the layers that are still jet-fed.
+   */
+  private jetLowerStuds = new Set<string>();
+  /** Set by the conservation test. Null in play. */
+  private jetAudit: DoorJetBook[] | null = null;
   /** Door walls of a room that has flashed. The leaf clock reads this. */
   private exposedDoors = new Set<string>();
   /** Glass that has fallen out. A crack is not in this set, and it is not a vent. */
@@ -474,6 +571,9 @@ export class SpatialEffectsEngine {
     this.layerWalls = null;
     this.exposedDoors = new Set();
     this.layerGrants = [];
+    this.doorJets = new Map();
+    this.jetTaken = new Map();
+    this.jetLowerStuds = new Set();
     this.fallenGlass.clear();
     this.linings.clear();
     this.liningFraction.clear();
@@ -1614,9 +1714,79 @@ export class SpatialEffectsEngine {
     this.glassTouch.clear();
   }
 
+  /** Column soot joins the layer on the step the layer first becomes active. */
+  private scoopColumnSoot(members: readonly string[], zone: ZoneState): void {
+    let carried = zone.sootG;
+    for (const id of members) {
+      carried += ((this.sootK.get(id) ?? 0) * this.columnVolume(id)) / SOOT_EXTINCTION_M2_PER_G;
+    }
+    zone.sootG = carried;
+  }
+
+  /**
+   * Soot grams still cross as a grant. The upper-layer mass and enthalpy
+   * of the same vents become the neighbour's door jet on the next step.
+   * A receiver with no room is outdoors: the gas has left the building.
+   */
+  private grantVented(
+    room: string,
+    members: readonly string[],
+    enc: Enclosure,
+    stepped: {
+      ventedSootG: number;
+      outByVentKgS: readonly number[];
+      hotByVent: readonly { kg: number; tempK: number; oxygenY: number }[];
+    },
+    dt: number,
+    rooms: ReadonlyMap<string, string>,
+    jets: Map<string, { kg: number; tKg: number; yKg: number }>,
+  ): void {
+    const shares = stepped.outByVentKgS;
+    let totalOut = 0;
+    for (const share of shares) totalOut += share;
+    if (stepped.ventedSootG > 0 && totalOut > 0) {
+      for (let i = 0; i < shares.length; i++) {
+        const share = shares[i] ?? 0;
+        const receivers = enc.ventReceivers[i] ?? [];
+        // No receiver means the soot left through the opening and is
+        // not painted onto the studs along the outside wall.
+        if (!(share > 0) || receivers.length === 0) continue;
+        this.layerGrants.push({
+          receivers,
+          grams: stepped.ventedSootG * (share / totalOut),
+        });
+      }
+    }
+    if (!(dt > 0)) return;
+    const memberSet = new Set(members);
+    if (this.jetAudit) {
+      this.jetAudit.push({
+        room,
+        members: members.slice(),
+        receivers: enc.ventReceivers.map((ids) => ids.slice()),
+        hot: stepped.hotByVent.map((row) => ({
+          kg: row.kg,
+          tempK: row.tempK,
+          oxygenY: row.oxygenY,
+        })),
+      });
+    }
+    const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, stepped.hotByVent, rooms);
+    for (const [dest, parcel] of assigned) {
+      const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0 };
+      cur.kg += parcel.kg;
+      cur.tKg += parcel.tKg;
+      cur.yKg += parcel.yKg;
+      jets.set(dest, cur);
+    }
+  }
+
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
+    this.jetLowerStuds.clear();
+    this.jetTaken = new Map();
+    if (this.jetAudit) this.jetAudit.length = 0;
     this.exposedDoors = new Set();
     this.liningFumes = [];
     this.glassTouch.clear();
@@ -1659,6 +1829,7 @@ export class SpatialEffectsEngine {
       sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
     }
     const seen = new Set<string>();
+    const nextJets = new Map<string, { kg: number; tKg: number; yKg: number }>();
 
     for (const [room, members] of groups) {
       seen.add(room);
@@ -1677,10 +1848,13 @@ export class SpatialEffectsEngine {
         this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
         prev.active = false;
       };
-      // No fire and no combustible lining: the enclosure and the face
-      // update would not write anything. A hot neighbour still grants
-      // soot onto these studs later.
-      if (heat < MIN_LAYER_FIRE_KW && !prev?.active && this.liningWalls.length === 0) {
+      // No fire, no door jet, and no combustible lining: the enclosure
+      // and the face update would not write anything. A hot neighbour
+      // still grants soot onto these studs later, and its jet can start
+      // a layer here on a later step.
+      const incoming = this.doorJets.get(room);
+      const hasJet = incoming != null && incoming.kgS > 0;
+      if (heat < MIN_LAYER_FIRE_KW && !prev?.active && !hasJet && this.liningWalls.length === 0) {
         continue;
       }
       const enc = this.enclosureOf(room, members, walls, ceiling);
@@ -1689,7 +1863,7 @@ export class SpatialEffectsEngine {
       }
       const lining = this.proposeLining(room, members, enc, prev, ceiling, dt);
       heat += lining.heatKw;
-      if (heat < MIN_LAYER_FIRE_KW && !prev?.active) {
+      if (heat < MIN_LAYER_FIRE_KW && !prev?.active && !hasJet) {
         retire();
         continue;
       }
@@ -1717,6 +1891,49 @@ export class SpatialEffectsEngine {
       }
       const spec: LayerSpec = { ...enc.spec, fires, fans };
       const zone = prev?.zone ?? freshLayer(ceiling);
+      const sootRate = sootByRoom.get(room) ?? 0;
+      if (hasJet && heat < MIN_LAYER_FIRE_KW) {
+        // The only heat is the neighbour's jet. The steady fire correlation
+        // does not see it, so the layer is the integrated upper layer.
+        if (incoming) this.jetTaken.set(room, incoming);
+        const next = stepZone(zone, spec, dt, sootRate, incoming);
+        const depth = spec.ceilingM - next.state.interfaceM;
+        const rise = next.state.upperK - AMBIENT_K;
+        const thick = CEILING_JET_DEPTH_FRACTION * ceiling;
+        const hold =
+          prev?.active === true &&
+          rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+          depth >= thick * LAYER_OFF_FRACTION;
+        const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
+        if (!active) {
+          retire();
+          this.layerState.set(room, {
+            active: false,
+            zone: next.state,
+            members,
+            areaM2: spec.areaM2,
+            ceilingM: ceiling,
+          });
+          continue;
+        }
+        if (prev?.active !== true) this.scoopColumnSoot(members, next.state);
+        this.layerState.set(room, {
+          active: true,
+          zone: next.state,
+          members,
+          areaM2: spec.areaM2,
+          ceilingM: ceiling,
+        });
+        for (const id of members) {
+          owned.add(id);
+          // The column copy stays. stepSmoke leaks it while the interface
+          // is still above the head. The scoop is the layer's own copy,
+          // read once the interface comes down.
+          this.jetLowerStuds.add(id);
+        }
+        this.grantVented(room, members, enc, next, dt, rooms, nextJets);
+        continue;
+      }
       const opening = oxygenLimitedBurn(
         spec,
         zone.interfaceM,
@@ -1753,14 +1970,10 @@ export class SpatialEffectsEngine {
         }
         continue;
       }
-      if (prev?.active !== true) {
-        let carried = zone.sootG;
-        for (const id of members) {
-          carried += ((this.sootK.get(id) ?? 0) * this.columnVolume(id)) / SOOT_EXTINCTION_M2_PER_G;
-        }
-        zone.sootG = carried;
-      }
-      const stepped = stepZone(zone, spec, dt, sootByRoom.get(room) ?? 0);
+      if (prev?.active !== true) this.scoopColumnSoot(members, zone);
+      // A room with its own fire already solves the door against ambient.
+      // Adding the neighbour's jet on top of that flow fills the layer.
+      const stepped = stepZone(zone, spec, dt, sootRate);
       this.layerState.set(room, {
         active: true,
         zone: stepped.state,
@@ -1771,25 +1984,10 @@ export class SpatialEffectsEngine {
       for (const id of members) owned.add(id);
       this.roomPhi.set(room, stepped.phi);
       this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
-      if (stepped.ventedSootG > 0) {
-        const shares = stepped.outByVentKgS;
-        let totalOut = 0;
-        for (const share of shares) totalOut += share;
-        if (totalOut > 0) {
-          for (let i = 0; i < shares.length; i++) {
-            const share = shares[i] ?? 0;
-            const receivers = enc.ventReceivers[i] ?? [];
-            // No receiver means the soot left through the opening and is
-            // not painted onto the studs along the outside wall.
-            if (!(share > 0) || receivers.length === 0) continue;
-            this.layerGrants.push({
-              receivers,
-              grams: stepped.ventedSootG * (share / totalOut),
-            });
-          }
-        }
-      }
+      this.grantVented(room, members, enc, stepped, dt, rooms, nextJets);
     }
+
+    this.doorJets = queueDoorJets(nextJets, dt);
 
     for (const [room, live] of this.layerState) {
       if (seen.has(room) || !live.active) continue;
@@ -1842,8 +2040,15 @@ export class SpatialEffectsEngine {
       for (const id of live.members) {
         touch.add(id);
         if (!owned.has(id)) continue;
+        // Above the head the person is in the lower layer. A jet-formed
+        // layer leaves the soot that was already there. A fire-driven
+        // layer still clears the column: it forms before that soot exists.
+        // Crossing 1.7 m sets the stud to the layer extinction, capped at
+        // the smoke scale. A layer that is already optically thick then
+        // steps the reading to the cap in one frame. That is the sharp
+        // interface, not a mixing time. See the FV-4 note.
         if (atHead && k > 0) this.sootK.set(id, k);
-        else this.sootK.delete(id);
+        else if (atHead || !this.jetLowerStuds.has(id)) this.sootK.delete(id);
         const state = this.studStates.get(id);
         if (!state) continue;
         state.oxygenVolumePercent = breath.oxygenVolumePercent;
@@ -1912,9 +2117,9 @@ export class SpatialEffectsEngine {
     // The release is the decayed one, so a spray that has cut the fire cuts
     // the smoke with it. A running hood on an active layer is a fan, not a
     // second loss here. A hood whose room has no layer still extracts the
-    // IMC flow from its own column. A stud inside an active layer is
-    // skipped: the layer holds that soot, and the column must not make a
-    // second copy or leak it through the wall.
+    // IMC flow from its own column. A stud inside a fire-driven layer is
+    // cleared: the layer holds that soot. A jet-formed layer keeps soot
+    // that was already at head height and leaks it at the usual rate.
     const owned = this.stepLayers(dt, walls, kMax);
     const extractM3 = new Map<string, number>();
     for (const id of this.fireSim.hoodColumns(this.hoodFanWhen)) {
@@ -1930,7 +2135,7 @@ export class SpatialEffectsEngine {
     for (const id of this.sootK.keys()) touch.add(id);
     for (const id of touch) {
       if (!this.studStates.has(id)) continue;
-      if (owned.has(id)) {
+      if (owned.has(id) && !this.jetLowerStuds.has(id)) {
         this.sootK.delete(id);
         continue;
       }

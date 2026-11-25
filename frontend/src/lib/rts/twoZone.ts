@@ -17,6 +17,13 @@
  * and drops the enthalpy and the soot it would move. Mixing into the
  * lower layer is not in this step.
  *
+ * Gas that leaves through a vent is not mixed back into this room. The
+ * part that left the upper layer (the orifice slice whose midpoint is
+ * above the interface) is returned as a door jet. The caller deposits
+ * that mass in the neighbouring room's upper layer: enthalpy
+ * m cp (T_jet − T), and the interface falls by m / (ρ(T_jet) A). That is
+ * the vent flow of Eq. 4.1–4.5 changing rooms, not Eq. 4.7.
+ *
  * A layer is kept only where that balance can hold a reservoir: smoke
  * deeper than a ceiling jet, hotter than a distinct-layer rise, and a spill
  * edge below the ceiling (a door head, or no opening at all). The jet
@@ -597,6 +604,8 @@ export interface LimitedBurn {
   inKgS: number;
   outKgS: number;
   outByVentKgS: number[];
+  /** Upper-layer outflow of each vent, same order. The door jet. */
+  hotOutByVentKgS: number[];
   fanUpperKgS: number;
   fanLowerKgS: number;
 }
@@ -688,6 +697,7 @@ export function oxygenLimitedBurn(
     inKgS: flows.inKgS,
     outKgS: flows.outKgS,
     outByVentKgS: flows.outByVent,
+    hotOutByVentKgS: flows.hotOutByVent,
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
   };
@@ -999,11 +1009,15 @@ export function orificeSliceKgS(
 interface SliceFlows {
   inKgS: number;
   outKgS: number;
+  /** Outflow whose slice sits in the upper layer, kg/s. */
+  hotOutKgS: number;
 }
 
 interface Flows extends SliceFlows {
   /** Outflow of each vent, same order as the spec. */
   outByVent: number[];
+  /** Upper-layer outflow of each vent. This is the door jet. */
+  hotOutByVent: number[];
   /** Fan extract from the upper layer, kg/s. It leaves through the duct. */
   fanUpperKgS: number;
   /** Fan extract from the lower layer, kg/s. Clear air, in this model. */
@@ -1056,7 +1070,7 @@ function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Fl
 }
 
 const ventMarks = [0, 0, 0];
-const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0 };
+const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0, hotOutKgS: 0 };
 
 function addSliceFlows(
   into: SliceFlows,
@@ -1091,8 +1105,12 @@ function addSliceFlows(
   const mid = (z0 + z1) / 2;
   const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
   const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
-  if (outflow) into.outKgS += mass;
-  else into.inKgS += mass;
+  if (outflow) {
+    into.outKgS += mass;
+    // Above the interface the gas is the hot layer. Below it the outflow
+    // is lower-layer air at ambient, and that is not a door jet.
+    if (mid > interfaceM) into.hotOutKgS += mass;
+  } else into.inKgS += mass;
 }
 
 function accumulateVent(
@@ -1148,7 +1166,9 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
   const flows: Flows = {
     inKgS: 0,
     outKgS: 0,
+    hotOutKgS: 0,
     outByVent: vents.map(() => 0),
+    hotOutByVent: vents.map(() => 0),
     fanUpperKgS: 0,
     fanLowerKgS: 0,
   };
@@ -1159,8 +1179,10 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
     const vent = vents[v];
     if (!vent) continue;
     const before = flows.outKgS;
+    const beforeHot = flows.hotOutKgS;
     accumulateVent(flows, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
     flows.outByVent[v] = flows.outKgS - before;
+    flows.hotOutByVent[v] = flows.hotOutKgS - beforeHot;
   }
   return flows;
 }
@@ -1177,6 +1199,7 @@ function pressureNet(
 ): number {
   ventScratch.inKgS = 0;
   ventScratch.outKgS = 0;
+  ventScratch.hotOutKgS = 0;
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
     if (!vent) continue;
@@ -1338,24 +1361,51 @@ function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
 
 const SUBSTEP_S = 0.1;
 
+/**
+ * Upper-layer gas arriving from a neighbour's vent. Mass and enthalpy of
+ * the door jet, not a fire in this room. `oxygenY` is the source layer's
+ * oxygen mass fraction.
+ */
+export interface DoorJetInflow {
+  kgS: number;
+  tempK: number;
+  oxygenY: number;
+}
+
+/** Upper-layer gas that left one vent over the step. */
+export interface VentedHotGas {
+  kg: number;
+  tempK: number;
+  oxygenY: number;
+}
+
 export function stepZone(
   state: ZoneState,
   spec: LayerSpec,
   dt: number,
   sootGPerS = 0,
+  jet?: DoorJetInflow | null,
 ): {
   state: ZoneState;
   ventedSootG: number;
   outByVentKgS: number[];
+  /** Upper-layer outflow of each vent over the step, for the next room. */
+  hotByVent: VentedHotGas[];
   /** Share of the prescribed release the oxygen burned on the last substep. */
   burnedFraction: number;
   /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
   phi: number;
 } {
-  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS));
+  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet));
 }
 
-function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 0) {
+function stepZoneNow(
+  state: ZoneState,
+  spec: LayerSpec,
+  dt: number,
+  sootGPerS = 0,
+  jet?: DoorJetInflow | null,
+) {
   let z = state.interfaceM;
   let temp = state.upperK;
   let soot = state.sootG;
@@ -1364,12 +1414,18 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
   let yU = oxygenMassFraction(state.upperO2);
   let vented = 0;
   let outByVent = spec.vents.map(() => 0);
+  const hotKg = spec.vents.map(() => 0);
+  const hotT = spec.vents.map(() => 0);
+  const hotY = spec.vents.map(() => 0);
   let burnedFraction = 1;
   let phi = 0;
   let left = Math.max(0, dt);
   const split = fireSplit(spec);
   const q = split.convectedKw;
   const radiantBase = fireRadiantKwM2;
+  const jetKgS = jet != null && jet.kgS > 0 ? jet.kgS : 0;
+  const jetT = jet != null && jet.tempK > 0 ? jet.tempK : AMBIENT_K;
+  const jetY = jet != null && jet.oxygenY > 0 ? jet.oxygenY : O2_AMBIENT_MASS;
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
     if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
@@ -1389,16 +1445,31 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
       fanUpperKgS: limited.fanUpperKgS,
     };
     outByVent = limited.outByVentKgS;
+    const rates = limited.hotOutByVentKgS;
+    for (let v = 0; v < hotKg.length; v++) {
+      const dm = (rates[v] ?? 0) * slice;
+      if (!(dm > 0)) continue;
+      hotKg[v] = (hotKg[v] ?? 0) + dm;
+      hotT[v] = (hotT[v] ?? 0) + dm * temp;
+      hotY[v] = (hotY[v] ?? 0) + dm * yU;
+    }
     const qLoss = lossPowerKw(spec.boundaries, age, temp);
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
     let dT = (qGas - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
+    // The jet is already hot. It does not have to be warmed from ambient
+    // the way plume air does. m cp (T_jet − T) is the mixing term.
+    if (jetKgS > 0) dT += (jetKgS * CP_KJ_KGK * (jetT - temp)) / denom;
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
     // Makeup air fills the lower layer. The plume and a fan in that clear
     // air both drain it, so the interface falls. A fan in the smoke is
-    // balanced by extra inflow, which lifts the interface.
+    // balanced by extra inflow, which lifts the interface. A door jet
+    // joins the upper layer, so its volume lowers the interface.
     let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
+    if (jetKgS > 0) {
+      dZ -= jetKgS / Math.max(densityKgM3(jetT) * spec.areaM2, 1e-3);
+    }
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     const mL = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
@@ -1410,9 +1481,14 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
     const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
     const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
     const o2L = yL * mL - (slicePlume + sliceFanL) * yL + sliceIn * O2_AMBIENT_MASS;
-    const o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
+    let o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
     const mL2 = mL - slicePlume - sliceFanL + sliceIn;
-    const mU2 = mass - sliceOut - sliceFanU + slicePlume;
+    let mU2 = mass - sliceOut - sliceFanU + slicePlume;
+    if (jetKgS > 0) {
+      const sliceJet = jetKgS * slice;
+      o2U += sliceJet * jetY;
+      mU2 += sliceJet;
+    }
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
@@ -1428,6 +1504,11 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
     state: { interfaceM: z, upperK: temp, sootG: soot, ageS: age, lowerO2: yL, upperO2: yU },
     ventedSootG: vented,
     outByVentKgS: outByVent,
+    hotByVent: hotKg.map((kg, v) => ({
+      kg,
+      tempK: kg > 0 ? (hotT[v] ?? 0) / kg : AMBIENT_K,
+      oxygenY: kg > 0 ? (hotY[v] ?? 0) / kg : O2_AMBIENT_MASS,
+    })),
     burnedFraction,
     phi,
   };

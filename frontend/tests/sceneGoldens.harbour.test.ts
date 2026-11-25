@@ -1,6 +1,11 @@
 /**
- * Harbour House Decision 9 scenes: open crowd, east exit blocked, and the shop.
+ * Harbour House scenes: open crowd, east exit blocked, and the shop.
  * About 8, 8 and 9 minutes, run one at a time. One nightly matrix entry.
+ *
+ * The open and blocked crowd figures were rebaselined when a jet-formed
+ * layer stopped deleting soot that was already at head height. That soot
+ * stays and leaks. New soot stays in the ceiling layer. The shop burn is
+ * unchanged by the door jet.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
