@@ -58,6 +58,22 @@ function lit(
   return stud.simPos.x > 40;
 }
 
+/** The Decision 9 crowd for a few seconds, before the blast at 60 s. */
+export function harbourCrowdAt(seconds: number): HarbourRun {
+  const run = new HarbourRun({
+    afterExit: 'zone',
+    zones: [
+      { pos: { x: -30, y: -10 }, kind: 'assembly' },
+      { pos: { x: 95, y: 20 }, kind: 'convening' },
+    ],
+  });
+  run.start();
+  run.effects.setFuelCells(confirmedFuelCells(harbourHouseFuelObjects(run.studs), run.studs));
+  const steps = Math.round(seconds / DT);
+  for (let i = 0; i < steps; i++) run.frame(DT);
+  return run;
+}
+
 export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
   const run = new HarbourRun({
     afterExit: 'zone',

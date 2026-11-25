@@ -1,10 +1,18 @@
 /**
  * Per-PR determinism check for the scene harness.
  *
- * Two food-court table runs through T+15 must hash the same and match
- * `scenes/goldens/food-court-short.json` (3 kW, layer still off). On this
- * machine the pair takes about 7 s. The Decision 9 figures, including the
- * T+120 table mark, are the slow files below. They skip unless
+ * The food-court table runs to reported T+15. Smoke is already on hundreds of
+ * studs there; the rounded summary of that moment is still 3 kW and zeros, so
+ * this hashes every stud (fire, soot, smoke, fumes) and every layer. Two runs
+ * must match `scenes/goldens/per-pr-hashes.json`. Doubling the wood soot yield
+ * or multiplying the smoke leak by ten changes that hash.
+ *
+ * Harbour's 120 people then walk for 15 s from the showcase seed, and the
+ * hash covers their positions and states. The blast is at 60 s. A run through
+ * it and 20 s of fire does not fit this budget; the nightly Harbour golden
+ * still covers that. On this machine the four runs take about 10 s.
+ *
+ * The Decision 9 figures are the slow files below. They skip unless
  * `RUN_SLOW_TESTS=1`, which `npm run test:slow` sets.
  *
  * The nightly job runs one file per matrix entry so they stay inside its
@@ -19,16 +27,30 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import shortGolden from './scenes/goldens/food-court-short.json' with { type: 'json' };
-import { runFoodCourt } from './scenes/foodCourt.ts';
+import hashes from './scenes/goldens/per-pr-hashes.json' with { type: 'json' };
+import { foodCourtAt } from './scenes/foodCourt.ts';
+import { harbourCrowdAt } from './scenes/harbourCrowd.ts';
 import { sceneHash } from './scenes/hash.ts';
+import { crowdState, effectsState } from './scenes/stateHash.ts';
 
-const SHORT = { fire: 'table' as const, hoods: false, untilSec: 15, alsoAt: [15] };
+test(
+  'food-court T+15 state and a 15 s Harbour crowd hash the same twice',
+  { timeout: 60_000 },
+  () => {
+    const firstFire = effectsState(foodCourtAt(15));
+    const secondFire = effectsState(foodCourtAt(15));
+    assert.deepEqual(firstFire, secondFire);
+    assert.equal(sceneHash(firstFire), hashes.foodCourtTableT15);
 
-test('two food-court table runs to T+15 hash the same', { timeout: 30_000 }, () => {
-  const first = runFoodCourt(SHORT);
-  const second = runFoodCourt(SHORT);
-  assert.equal(sceneHash(first), sceneHash(second));
-  assert.deepEqual(first, second);
-  assert.deepEqual(first, shortGolden);
-});
+    const firstCrowd = harbourCrowdAt(15);
+    const secondCrowd = harbourCrowdAt(15);
+    const firstPeople = crowdState(firstCrowd.evac);
+    const secondPeople = crowdState(secondCrowd.evac);
+    assert.deepEqual(firstPeople, secondPeople);
+    assert.deepEqual(effectsState(firstCrowd.effects), effectsState(secondCrowd.effects));
+    assert.equal(
+      sceneHash({ people: firstPeople, effects: effectsState(firstCrowd.effects) }),
+      hashes.harbourCrowd15s,
+    );
+  },
+);

@@ -41,19 +41,7 @@ export interface FoodCourtResult {
 
 const MARKS = [120, 300, 600];
 
-export function runFoodCourt(options: {
-  fire: 'table' | 'oil';
-  hoods: boolean;
-  /** Reported seconds after ignition. The full figures stop at 600. */
-  untilSec?: number;
-  /**
-   * Extra reported times to record. The Decision 9 runs leave this unset, so
-   * their marks stay 120, 300 and 600.
-   */
-  alsoAt?: number[];
-}): FoodCourtResult {
-  const untilSec = options.untilSec ?? 600;
-  const alsoAt = options.alsoAt ?? [];
+function openFoodCourt(options: { fire: 'table' | 'oil'; hoods: boolean }) {
   const polygon = foodCourtSample.scene.buildingPolygon.map(
     (point) => [point[0], point[1]] as [number, number],
   );
@@ -86,6 +74,36 @@ export function runFoodCourt(options: {
   const sourceId = options.fire === 'oil' ? oil! : table.studId;
   const source = byId.get(sourceId);
   if (!source) throw new Error(`fire stud ${sourceId} is not on the grid`);
+  return { effects, sourceId, source, walls, heads, indoor };
+}
+
+/** Table fire through reported T+`untilSec`, for the per-PR state hash. */
+export function foodCourtAt(untilSec: number): SpatialEffectsEngine {
+  const { effects, sourceId, walls } = openFoodCourt({ fire: 'table', hoods: false });
+  const dt = 0.1;
+  const stop = untilSec + 10;
+  for (let i = 1; i * dt <= stop + 1e-9; i += 1) {
+    const t = i * dt;
+    if (Math.abs(t - 10) < dt / 2) effectsView(effects).fireSim.ignite([sourceId]);
+    effects.step(dt, walls, []);
+  }
+  return effects;
+}
+
+export function runFoodCourt(options: {
+  fire: 'table' | 'oil';
+  hoods: boolean;
+  /** Reported seconds after ignition. The full figures stop at 600. */
+  untilSec?: number;
+  /**
+   * Extra reported times to record. The Decision 9 runs leave this unset, so
+   * their marks stay 120, 300 and 600.
+   */
+  alsoAt?: number[];
+}): FoodCourtResult {
+  const untilSec = options.untilSec ?? 600;
+  const alsoAt = options.alsoAt ?? [];
+  const { effects, sourceId, source, walls, heads, indoor } = openFoodCourt(options);
 
   const dt = 0.1;
   let peak = 0;
