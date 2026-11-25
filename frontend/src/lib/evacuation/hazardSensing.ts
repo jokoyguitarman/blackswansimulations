@@ -2,6 +2,7 @@ import type { ExitDef, Vec2 } from './types';
 import { isInsidePolygon } from './geometry';
 import { SHOWCASE } from './showcaseConstants';
 import { BLAST_CONSTANTS } from '../rts/blast/blastModel';
+import { doorCanBePushed, doorHeldShut, leafWidthM } from '../rts/doorLeaf';
 import type { LevelDef, Stairwell } from '../rts/types';
 import { levelIndex, levelOf, linkLevels, stairFlowPerS, stairTravelS } from '../rts/levels';
 import type { FumeGrams } from '../rts/toxicDose';
@@ -81,7 +82,11 @@ export class HazardField {
   }
 
   /** Burning and heating studs within radius, for repulsion. */
-  firesNear(x: number, y: number, radius: number): Array<{ pos: Vec2; state: 'burning' | 'heating' }> {
+  firesNear(
+    x: number,
+    y: number,
+    radius: number,
+  ): Array<{ pos: Vec2; state: 'burning' | 'heating' }> {
     const out: Array<{ pos: Vec2; state: 'burning' | 'heating' }> = [];
     const span = Math.max(1, Math.ceil(radius / this.cellM));
     const cx = Math.floor(x / this.cellM);
@@ -243,8 +248,7 @@ export function walkingSpeed(
   injuryFactor: number,
 ): number {
   if (posture === 'crawl') return SHOWCASE.CRAWL_SPEED * injuryFactor;
-  const stand =
-    SHOWCASE.FREE_WALK_SPEED * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
+  const stand = SHOWCASE.FREE_WALK_SPEED * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
   if (posture === 'crouch') return stand * SHOWCASE.CROUCH_SPEED_FACTOR;
   return stand;
 }
@@ -535,6 +539,11 @@ export interface WallLike {
   hasDoor: boolean;
   doorWidth: number;
   doorPosition: number;
+  /** Leaf, 0 shut to 1 open. Absent means fully open. */
+  openFraction?: number;
+  /** A command is holding the leaf. */
+  doorPinned?: boolean;
+  doorFailed?: boolean;
 }
 
 /**
@@ -567,8 +576,9 @@ function solidParts(wall: WallLike): Array<[Vec2, Vec2]> {
   const dy = end.y - start.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.01) return [];
-  if (!wall.hasDoor) return [[start, end]];
-  const doorHalf = wall.doorWidth / (2 * len);
+  const openWidth = leafWidthM(wall);
+  if (!(openWidth > 0)) return [[start, end]];
+  const doorHalf = openWidth / (2 * len);
   const gapStart = Math.max(0, wall.doorPosition - doorHalf);
   const gapEnd = Math.min(1, wall.doorPosition + doorHalf);
   const parts: Array<[Vec2, Vec2]> = [];
@@ -608,8 +618,9 @@ export function pointOnDoorGap(wall: WallLike, lane: number): Vec2 {
   const dy = wall.endY - wall.startY;
   const len = Math.hypot(dx, dy) || 1;
   const centre = wall.doorPosition * len;
-  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
-  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  const openWidth = leafWidthM(wall);
+  const lo = Math.max(BODY_RADIUS_M, centre - openWidth / 2 + BODY_RADIUS_M);
+  const hi = Math.min(len - BODY_RADIUS_M, centre + openWidth / 2 - BODY_RADIUS_M);
   const t = Math.min(1, Math.max(0, lane));
   const at = lo <= hi ? lo + (hi - lo) * t : centre;
   return { x: wall.startX + (dx / len) * at, y: wall.startY + (dy / len) * at };
@@ -621,7 +632,12 @@ export function pointOnDoorGap(wall: WallLike, lane: number): Vec2 {
  * at its nearer end. `lane` in [0, 1] spreads people across a door opening;
  * omit it to keep the door centre.
  */
-export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], lane?: number): Vec2 {
+export function nextIndoorWaypoint(
+  pos: Vec2,
+  target: Vec2,
+  walls: WallLike[],
+  lane?: number,
+): Vec2 {
   let bestT = Infinity;
   let best: WallLike | null = null;
   for (const wall of walls) {
@@ -636,10 +652,11 @@ export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], l
     }
   }
   if (!best) return target;
-  if (!best.hasDoor) {
+  const walkable = leafWidthM(best) > 0 || doorCanBePushed(best);
+  if (!best.hasDoor || !walkable) {
     const end = nearerEndPoint(pos, best, target);
     const door = endJoined(best, end.x, end.y, walls) ? continuingDoor(best, end, walls) : null;
-    if (!door) return aroundSolid(pos, best, target, walls);
+    if (!door || doorHeldShut(door)) return aroundSolid(pos, best, target, walls);
     best = door;
   }
   if (lane == null) {
@@ -651,12 +668,18 @@ export function nextIndoorWaypoint(pos: Vec2, target: Vec2, walls: WallLike[], l
   return pointOnDoorGap(best, lane);
 }
 
-function segmentDistance(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+function segmentDistance(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
   const dx = bx - ax;
   const dy = by - ay;
   const lenSq = dx * dx + dy * dy;
-  const t =
-    lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  const t = lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
   return Math.hypot(px - ax - t * dx, py - ay - t * dy);
 }
 
@@ -664,7 +687,8 @@ function segmentDistance(px: number, py: number, ax: number, ay: number, bx: num
 function endJoined(wall: WallLike, x: number, y: number, walls: readonly WallLike[]): boolean {
   for (const other of walls) {
     if (other === wall) continue;
-    if (segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) <= 0.08) return true;
+    if (segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) <= 0.08)
+      return true;
   }
   return false;
 }
@@ -676,9 +700,7 @@ function nearerEndPoint(pos: Vec2, wall: WallLike, target: Vec2): { x: number; y
   const viaEnd =
     Math.hypot(wall.endX - pos.x, wall.endY - pos.y) +
     Math.hypot(target.x - wall.endX, target.y - wall.endY);
-  return viaEnd < viaStart
-    ? { x: wall.endX, y: wall.endY }
-    : { x: wall.startX, y: wall.startY };
+  return viaEnd < viaStart ? { x: wall.endX, y: wall.endY } : { x: wall.startX, y: wall.startY };
 }
 
 function continuingDoor(wall: WallLike, end: Vec2, walls: readonly WallLike[]): WallLike | null {
@@ -733,12 +755,16 @@ function nearestBlockingWall(pos: Vec2, target: Vec2, walls: WallLike[]): WallLi
   return best;
 }
 
-function gapSpan(wall: WallLike, inset: number): { ax: number; ay: number; bx: number; by: number } | null {
-  if (!wall.hasDoor) return null;
+function gapSpan(
+  wall: WallLike,
+  inset: number,
+): { ax: number; ay: number; bx: number; by: number } | null {
+  const openWidth = leafWidthM(wall);
+  if (!(openWidth > 0)) return null;
   const { ux, uy, len } = wallFrame(wall);
   const centre = wall.doorPosition * len;
-  const lo = Math.max(inset, centre - wall.doorWidth / 2 + inset);
-  const hi = Math.min(len - inset, centre + wall.doorWidth / 2 - inset);
+  const lo = Math.max(inset, centre - openWidth / 2 + inset);
+  const hi = Math.min(len - inset, centre + openWidth / 2 - inset);
   const a = lo <= hi ? lo : centre;
   const b = lo <= hi ? hi : centre;
   return {
@@ -754,7 +780,13 @@ function usableGap(wall: WallLike): { ax: number; ay: number; bx: number; by: nu
 }
 
 /** Project onto a segment. The normal points from the segment toward `pos`. */
-function projectOnto(pos: Vec2, ax: number, ay: number, bx: number, by: number): {
+function projectOnto(
+  pos: Vec2,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): {
   slot: Vec2;
   clamped: boolean;
   dist: number;
@@ -768,7 +800,13 @@ function projectOnto(pos: Vec2, ax: number, ay: number, bx: number, by: number):
     const vx = pos.x - ax;
     const vy = pos.y - ay;
     const d = Math.hypot(vx, vy) || 1;
-    return { slot: { x: ax, y: ay }, clamped: true, dist: Math.hypot(vx, vy), nx: vx / d, ny: vy / d };
+    return {
+      slot: { x: ax, y: ay },
+      clamped: true,
+      dist: Math.hypot(vx, vy),
+      nx: vx / d,
+      ny: vy / d,
+    };
   }
   const ux = dx / len;
   const uy = dy / len;
@@ -809,7 +847,7 @@ function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2, walls?: readonly W
   } else {
     const viaEnd =
       Math.hypot(wall.endX - pos.x, wall.endY - pos.y) +
-      Math.hypot(target.x - wall.endX, target.y - wall.endY) <
+        Math.hypot(target.x - wall.endX, target.y - wall.endY) <
       Math.hypot(wall.startX - pos.x, wall.startY - pos.y) +
         Math.hypot(target.x - wall.startX, target.y - wall.startY);
     if (viaEnd) {
@@ -851,7 +889,9 @@ function aroundSolid(pos: Vec2, wall: WallLike, target: Vec2, walls?: readonly W
 function aimBlocked(x: number, y: number, wall: WallLike, walls: readonly WallLike[]): boolean {
   for (const other of walls) {
     if (other === wall) continue;
-    if (segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) < WALL_FACE_CLEAR_M) {
+    if (
+      segmentDistance(x, y, other.startX, other.startY, other.endX, other.endY) < WALL_FACE_CLEAR_M
+    ) {
       return true;
     }
   }
@@ -928,11 +968,12 @@ function loadDoorFrame(wall: WallLike, out: DoorFrame): DoorFrame {
 
 /** Walker-centre span of a door, metres from the wall start. Null when the opening is narrower than a body. */
 function usableAlong(wall: WallLike): { lo: number; hi: number } | null {
-  if (!wall.hasDoor || !(wall.doorWidth > 0)) return null;
+  const openWidth = leafWidthM(wall);
+  if (!(openWidth > 0)) return null;
   const { len } = wallFrame(wall);
   const centre = wall.doorPosition * len;
-  const lo = Math.max(BODY_RADIUS_M, centre - wall.doorWidth / 2 + BODY_RADIUS_M);
-  const hi = Math.min(len - BODY_RADIUS_M, centre + wall.doorWidth / 2 - BODY_RADIUS_M);
+  const lo = Math.max(BODY_RADIUS_M, centre - openWidth / 2 + BODY_RADIUS_M);
+  const hi = Math.min(len - BODY_RADIUS_M, centre + openWidth / 2 - BODY_RADIUS_M);
   if (!(hi > lo + 1e-3)) return null;
   return { lo, hi };
 }
@@ -1008,7 +1049,8 @@ export function doorFreeLanes(
     if (a > cursor + 1e-3 && laneUsable(cursor, a, span.lo, span.hi)) free.push([cursor, a]);
     if (c > cursor) cursor = c;
   }
-  if (span.hi > cursor + 1e-3 && laneUsable(cursor, span.hi, span.lo, span.hi)) free.push([cursor, span.hi]);
+  if (span.hi > cursor + 1e-3 && laneUsable(cursor, span.hi, span.lo, span.hi))
+    free.push([cursor, span.hi]);
   return free;
 }
 
@@ -1314,7 +1356,13 @@ export function committedDoor(
   if (!mouth) return null;
   const index = walls.indexOf(wall);
   if (index < 0) return null;
-  return { index, dist: mouth.dist, through: mouth.through, width: wall.doorWidth };
+  const openWidth = leafWidthM(wall);
+  return {
+    index,
+    dist: mouth.dist,
+    through: mouth.through,
+    width: openWidth > 0 ? openWidth : wall.doorWidth,
+  };
 }
 
 /**
@@ -1402,7 +1450,11 @@ export function mouthProgress(
 }
 
 /** The person's slot on an exit opening: nearest point, inset by a body radius. */
-export function exitGapSlot(pos: Vec2, exit: ExitDef, verts: Vec2[]): {
+export function exitGapSlot(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+): {
   slot: Vec2;
   inward: Vec2;
   clamped: boolean;
@@ -1509,7 +1561,8 @@ function offsetOutline(verts: Vec2[], dist: number): Vec2[] {
 
 function segmentCrossesOutline(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
   for (let i = 0; i < verts.length; i++) {
-    if (segmentsHitT(a, b, verts[i], verts[(i + 1) % verts.length]) != null) return true;  }
+    if (segmentsHitT(a, b, verts[i], verts[(i + 1) % verts.length]) != null) return true;
+  }
   return false;
 }
 
@@ -1689,7 +1742,8 @@ export function isNearWallBehind(
     let gap = false;
     for (const exit of exits ?? []) {
       if (exit.edgeIndex !== i || exit.width <= 0) continue;
-      const along = ((exit.center.x - a.x) * edgeDx + (exit.center.y - a.y) * edgeDy) / (edgeLen * edgeLen);
+      const along =
+        ((exit.center.x - a.x) * edgeDx + (exit.center.y - a.y) * edgeDy) / (edgeLen * edgeLen);
       const half = exit.width / (2 * edgeLen);
       const t0 = Math.max(0, along - half);
       const t1 = Math.min(1, along + half);
@@ -1802,7 +1856,11 @@ export function chooseRoute(
       const exit = exits.find((e) => e.id === b.id);
       if (!exit) return Infinity;
       if (!field) {
-        if (doors && doors.length > 0 && routeCrossesBlockedDoor(a.pos, exit, verts, walls, doors)) {
+        if (
+          doors &&
+          doors.length > 0 &&
+          routeCrossesBlockedDoor(a.pos, exit, verts, walls, doors)
+        ) {
           return Infinity;
         }
         return Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
@@ -1923,7 +1981,11 @@ export function chooseRoute(
       stayCost = cost;
       stay = choice;
     }
-    if (stay && stayCost < Infinity && !(best.cost < stayCost * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
+    if (
+      stay &&
+      stayCost < Infinity &&
+      !(best.cost < stayCost * (1 - SHOWCASE.REROUTE_HYSTERESIS))
+    ) {
       return stay;
     }
   }

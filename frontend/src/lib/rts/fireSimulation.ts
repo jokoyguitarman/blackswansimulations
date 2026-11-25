@@ -9,6 +9,7 @@ import {
   type SuppressionPlacement,
 } from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
+import { leafWidthM } from './doorLeaf';
 import { HOOD_FAN_WHEN, type HoodFanWhen } from './twoZone';
 import {
   ELECTRICAL_ARC_SEC,
@@ -45,7 +46,12 @@ import {
   suppressedHeatKw,
   type FuelCell,
 } from './flameFront';
-import { fumesPresent, sootProductionGPerS, speciesProductionGPerS, type FumeGrams } from './toxicDose';
+import {
+  fumesPresent,
+  sootProductionGPerS,
+  speciesProductionGPerS,
+  type FumeGrams,
+} from './toxicDose';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -239,14 +245,15 @@ function segmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
 }
 
 function wallBlocksFire(from: Vec2, to: Vec2, wall: InteriorWall): boolean {
-  if (wall.hasDoor) {
+  const openWidth = leafWidthM(wall);
+  if (openWidth > 0) {
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
     const len = Math.hypot(dx, dy);
     if (len < 0.01) return false;
 
     const doorCenter = wall.doorPosition;
-    const doorHalf = wall.doorWidth / (2 * len);
+    const doorHalf = openWidth / (2 * len);
     const gapStart = Math.max(0, doorCenter - doorHalf);
     const gapEnd = Math.min(1, doorCenter + doorHalf);
 
@@ -459,7 +466,9 @@ export class FireSimulation {
     for (const line of lines) {
       const prev = this.gasRuntime.get(line.id);
       const valve =
-        line.autoShutoffSec != null && Number.isFinite(line.autoShutoffSec) && line.autoShutoffSec > 0
+        line.autoShutoffSec != null &&
+        Number.isFinite(line.autoShutoffSec) &&
+        line.autoShutoffSec > 0
           ? line.autoShutoffSec
           : null;
       next.set(line.id, {
@@ -620,7 +629,12 @@ export class FireSimulation {
    */
   setBurnLimit(ids: readonly string[], fraction: number, phi: number): void {
     const kept = fraction > 0 ? Math.min(1, fraction) : 0;
-    const ratio = phi > 0 && Number.isFinite(phi) ? phi : phi === Number.POSITIVE_INFINITY ? Number.POSITIVE_INFINITY : 0;
+    const ratio =
+      phi > 0 && Number.isFinite(phi)
+        ? phi
+        : phi === Number.POSITIVE_INFINITY
+          ? Number.POSITIVE_INFINITY
+          : 0;
     for (const id of ids) this.burnLimit.set(id, { fraction: kept, phi: ratio });
   }
 
@@ -770,7 +784,12 @@ export class FireSimulation {
    * at ELECTRICAL_DAMAGE_KPA, and that fitting then arcs. `level` omitted
    * means every storey, matching igniteRadius.
    */
-  applyBlast(origin: Vec2, fireballRadiusM: number, level: string | undefined, walls: InteriorWall[]) {
+  applyBlast(
+    origin: Vec2,
+    fireballRadiusM: number,
+    level: string | undefined,
+    walls: InteriorWall[],
+  ) {
     const spec = this.charge;
     if (!spec) return;
     for (const arc of this.arcRuntime.values()) {
@@ -778,7 +797,8 @@ export class FireSimulation {
       if (level && arc.level !== level) continue;
       const dist = Math.hypot(arc.pos.x - origin.x, arc.pos.y - origin.y);
       const inFireball = fireballRadiusM > 0 && dist <= fireballRadiusM + 1e-6;
-      const faulted = inFireball || this.incidentKpa(origin, arc.pos, spec) >= ELECTRICAL_DAMAGE_KPA;
+      const faulted =
+        inFireball || this.incidentKpa(origin, arc.pos, spec) >= ELECTRICAL_DAMAGE_KPA;
       if (!faulted) continue;
       arc.damaged = true;
       arc.arcing = true;
@@ -809,7 +829,7 @@ export class FireSimulation {
       if (!state || !cell || state.state === 'burning' || state.state === 'burnt_out') continue;
       const flux = fireballFluxKwM2(distance, radius);
       const tig = ignitionTimeSec(flux, cell.chfKwM2, cell.trp);
-      const dose = tig == null ? state.dose ?? 0 : (state.dose ?? 0) + FIREBALL_PULSE_S / tig;
+      const dose = tig == null ? (state.dose ?? 0) : (state.dose ?? 0) + FIREBALL_PULSE_S / tig;
       state.dose = dose;
       if (dose >= 1 - 1e-6 && !this.sprayed(stud, this.sceneWalls)) this.catchFire(id);
       else if (dose > 0) {
@@ -886,7 +906,10 @@ export class FireSimulation {
         if (!dest || !nState) continue;
         if (nState.state === 'burning' || nState.state === 'burnt_out') continue;
         if (!this.acceptsFuel(nId)) continue;
-        const dist = Math.hypot(dest.simPos.x - src.stud.simPos.x, dest.simPos.y - src.stud.simPos.y);
+        const dist = Math.hypot(
+          dest.simPos.x - src.stud.simPos.x,
+          dest.simPos.y - src.stud.simPos.y,
+        );
         if (!(dist > 0) || dist > FRONT_LINK_M) continue;
         if (!this.crossingOpen(src.stud, dest, walls, dt)) continue;
         const slot = slotFor(nId);
@@ -1073,7 +1096,14 @@ export class FireSimulation {
         const jet = this.strongestCeiling(head, plumes, walls);
         if (!jet || !(jet.speedMps > 0)) continue;
         const gasC = SPRINKLER_AMBIENT_C + jet.riseK;
-        const step = advanceSprinklerLink(head.linkC, gasC, jet.speedMps, head.rti, slice, head.actC);
+        const step = advanceSprinklerLink(
+          head.linkC,
+          gasC,
+          jet.speedMps,
+          head.rti,
+          slice,
+          head.actC,
+        );
         head.linkC = step.linkC;
         if (step.openedAt != null) {
           const tOpen = cursor + step.openedAt;
@@ -1198,7 +1228,12 @@ export class FireSimulation {
     }
   }
 
-  private headReaches(head: SuppressionRuntime, pos: Vec2, level: string, walls: InteriorWall[]): boolean {
+  private headReaches(
+    head: SuppressionRuntime,
+    pos: Vec2,
+    level: string,
+    walls: InteriorWall[],
+  ): boolean {
     if (level !== head.level) return false;
     const dist = Math.hypot(pos.x - head.pos.x, pos.y - head.pos.y);
     if (dist > SUPPRESSION_REACH_M + 1e-6) return false;
@@ -1320,7 +1355,8 @@ export class FireSimulation {
         for (const nId of this.neighborCache.get(id) ?? []) {
           if (seen.has(nId)) continue;
           const dest = this.studIndex.get(nId);
-          if (!dest || dest.spatialContext !== 'inside_building' || levelOf(dest) !== level) continue;
+          if (!dest || dest.spatialContext !== 'inside_building' || levelOf(dest) !== level)
+            continue;
           let separated = false;
           for (const wall of walls) {
             if (levelOf(wall) !== level) continue;

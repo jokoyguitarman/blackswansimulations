@@ -16,17 +16,20 @@ import type { PedSnapshot, ShowcaseMetrics } from '../lib/evacuation/engine';
 import type { ExitDef, PolygonSimConfig, Vec2, ZoneKind } from '../lib/evacuation/types';
 import {
   HazardField,
+  MOUTH_APPROACH_M,
   assemblyMinDistanceM,
   distanceToOutline,
 } from '../lib/evacuation/hazardSensing';
+import { stepDoorLeaves } from '../lib/rts/doorLeaf';
 import { SHOWCASE, SHOWCASE_SOURCES } from '../lib/evacuation/showcaseConstants';
-import {
-  blastEffectsTriggerSec,
-  countdownLabel,
-  shiftEvents,
-} from '../lib/evacuation/showcase';
+import { blastEffectsTriggerSec, countdownLabel, shiftEvents } from '../lib/evacuation/showcase';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
-import { projectPolygon, nearestEdge, edgeLength, isInsidePolygon } from '../lib/evacuation/geometry';
+import {
+  projectPolygon,
+  nearestEdge,
+  edgeLength,
+  isInsidePolygon,
+} from '../lib/evacuation/geometry';
 import { LEVEL } from '../lib/evacuation/levelConstants';
 import {
   defaultLevels,
@@ -58,9 +61,18 @@ import {
   type ChargeSpec,
 } from '../lib/rts/blast/blastModel';
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
-import { FX, noteDowngradeFrom, shouldAutoDowngrade, type FxQuality } from '../lib/rts/fx/fxConstants';
+import {
+  FX,
+  noteDowngradeFrom,
+  shouldAutoDowngrade,
+  type FxQuality,
+} from '../lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed, takeSteps } from '../lib/rts/fx/simClock';
-import { activeRasterLayout, createRasterLayoutCache, type RasterLayout } from '../lib/rts/fx/hazardRaster';
+import {
+  activeRasterLayout,
+  createRasterLayoutCache,
+  type RasterLayout,
+} from '../lib/rts/fx/hazardRaster';
 import { HazardFxRenderer, type HazardFxContext } from '../lib/rts/fx/drawHazardFx';
 import {
   UNIT_CATALOG,
@@ -182,7 +194,9 @@ function readShowcaseSettings(params: URLSearchParams): {
     stored.afterExit === 'disperse' || stored.afterExit === 'mixed' || stored.afterExit === 'zone'
       ? stored.afterExit
       : 'zone';
-  const showcase = params.has('showcase') ? params.get('showcase') === '1' : Boolean(stored.showcase);
+  const showcase = params.has('showcase')
+    ? params.get('showcase') === '1'
+    : Boolean(stored.showcase);
   return { showcase, afterExit };
 }
 
@@ -352,18 +366,16 @@ function objectsOnStuds(
 }
 
 function placedObjectDraws(objects: readonly PlacedObject[]): PlacedObjectDraw[] {
-  const draws = objects.map(
-    (obj): PlacedObjectDraw => ({
-      id: obj.id,
-      pos: obj.pos,
-      level: obj.level,
-      confirmed: obj.confirmed,
-      burns: obj.confirmed && obj.matches.some((match) => entryCanBurn(match.fuel)),
-      label: obj.confirmed
-        ? obj.matches.map((match) => match.label).join(', ') || 'Object'
-        : obj.description || 'Unconfirmed',
-    }),
-  );
+  const draws = objects.map((obj): PlacedObjectDraw => ({
+    id: obj.id,
+    pos: obj.pos,
+    level: obj.level,
+    confirmed: obj.confirmed,
+    burns: obj.confirmed && obj.matches.some((match) => entryCanBurn(match.fuel)),
+    label: obj.confirmed
+      ? obj.matches.map((match) => match.label).join(', ') || 'Object'
+      : obj.description || 'Unconfirmed',
+  }));
   const confirmed = draws.filter((draw) => draw.confirmed).length;
   if (confirmed <= 40) return draws;
   return draws.map((draw) => (draw.confirmed ? { ...draw, label: '' } : draw));
@@ -813,7 +825,9 @@ export function DebugRTSSim() {
   // ── Evacuation showcase ───────────────────────────────────────────────
   const showcasePrefs = useMemo(() => readShowcaseSettings(searchParams), [searchParams]);
   const [showcase, setShowcase] = useState(showcasePrefs.showcase);
-  const [afterExit, setAfterExit] = useState<'zone' | 'disperse' | 'mixed'>(showcasePrefs.afterExit);
+  const [afterExit, setAfterExit] = useState<'zone' | 'disperse' | 'mixed'>(
+    showcasePrefs.afterExit,
+  );
   const [charge, setCharge] = useState<ChargeSpec>(defaultCharge());
   const [manualRadius, setManualRadius] = useState(() => !showcase);
   const [chargeNote, setChargeNote] = useState<string | null>(null);
@@ -869,9 +883,7 @@ export function DebugRTSSim() {
   if (hazardFxRef.current === null && typeof document !== 'undefined') {
     hazardFxRef.current = new HazardFxRenderer(FX.FX_RNG_SEED);
   }
-  const hazardFxSlotRef = useRef<{ renderer: HazardFxRenderer; ctx: HazardFxContext } | null>(
-    null,
-  );
+  const hazardFxSlotRef = useRef<{ renderer: HazardFxRenderer; ctx: HazardFxContext } | null>(null);
   const hazardFxCtxRef = useRef<HazardFxContext>({
     quality: 'high',
     reducedMotion: false,
@@ -933,14 +945,13 @@ export function DebugRTSSim() {
     const mPerDegLat = 111_320;
     const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
 
-    return selectedGrid.studs
-      .map((s) => ({
-        ...s,
-        simPos: {
-          x: (s.lng - refLng) * mPerDegLng,
-          y: (refLat - s.lat) * mPerDegLat,
-        },
-      }));
+    return selectedGrid.studs.map((s) => ({
+      ...s,
+      simPos: {
+        x: (s.lng - refLng) * mPerDegLng,
+        y: (refLat - s.lat) * mPerDegLat,
+      },
+    }));
   }, [selectedGrid]);
 
   // Also convert studs from all OTHER grids (outdoor context)
@@ -1526,11 +1537,14 @@ export function DebugRTSSim() {
       if (storedBlast) {
         blastRecordRef.current = storedBlast.record;
         setBlastSite(storedBlast.pos);
-        setBlastLevel(typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G');
+        setBlastLevel(
+          typeof storedBlast.record.level === 'string' ? storedBlast.record.level : 'G',
+        );
         const savedCharge = storedBlast.charge;
         if (savedCharge) {
           const restored = clampCharge({
-            presetKey: typeof savedCharge.presetKey === 'string' ? savedCharge.presetKey : 'unknown',
+            presetKey:
+              typeof savedCharge.presetKey === 'string' ? savedCharge.presetKey : 'unknown',
             amountKg: Number(savedCharge.amountKg),
             burst: savedCharge.burst === 'free_air' ? 'free_air' : 'surface',
             heightM: Number(savedCharge.heightM),
@@ -1557,8 +1571,7 @@ export function DebugRTSSim() {
       setSelectedStairId(null);
       // Backward compatibility: convert old casualty_clusters to individual pins
       const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
-        | CasualtyPin[]
-        | undefined;
+        CasualtyPin[] | undefined;
       const rawClusters = sc.casualty_clusters as CasualtyCluster[] | undefined;
       if (rawPins && rawPins.length > 0) {
         setCasualtyPins(
@@ -1862,8 +1875,15 @@ export function DebugRTSSim() {
       } catch {
         researchNote = 'The interior search failed, so the interior is assumed.';
       }
-      const upperFloors = nextLevels.filter((level) => level.id !== 'G' && !level.designed).map((level) => level.id);
-      const layout = layoutHawkerCentre({ verts, studs: indoor, facts, upperFloorIds: upperFloors });
+      const upperFloors = nextLevels
+        .filter((level) => level.id !== 'G' && !level.designed)
+        .map((level) => level.id);
+      const layout = layoutHawkerCentre({
+        verts,
+        studs: indoor,
+        facts,
+        upperFloorIds: upperFloors,
+      });
       hoodFanWhenRef.current = layout.hoodFanWhen;
       setLiveNote(`${footprintSessionNote(building)} ${researchNote}`);
       setLayoutLabels(layout.labels);
@@ -1942,6 +1962,7 @@ export function DebugRTSSim() {
     };
     // Convert interior walls to engine format
     const iwDefs = interiorWalls.map((w) => ({
+      id: w.id,
       startX: w.start.x,
       startY: w.start.y,
       endX: w.end.x,
@@ -1950,6 +1971,11 @@ export function DebugRTSSim() {
       doorWidth: w.doorWidth,
       doorPosition: w.doorPosition,
       level: w.level,
+      openFraction: w.openFraction,
+      fireRatingMin: w.fireRatingMin,
+      doorExposedSec: w.doorExposedSec,
+      doorFailed: w.doorFailed,
+      doorPinned: w.doorPinned,
     }));
     const multi = levels.length > 1;
     const exitsByLevel: Record<string, ExitDef[]> = {};
@@ -1959,6 +1985,7 @@ export function DebugRTSSim() {
         const plan = effectiveLevelPlan(lv.id, levels, { walls: interiorWalls, exits });
         exitsByLevel[lv.id] = plan.exits;
         wallsByLevel[lv.id] = plan.walls.map((w) => ({
+          id: w.id,
           startX: w.start.x,
           startY: w.start.y,
           endX: w.end.x,
@@ -1967,6 +1994,11 @@ export function DebugRTSSim() {
           doorWidth: w.doorWidth,
           doorPosition: w.doorPosition,
           level: lv.id,
+          openFraction: w.openFraction,
+          fireRatingMin: w.fireRatingMin,
+          doorExposedSec: w.doorExposedSec,
+          doorFailed: w.doorFailed,
+          doorPinned: w.doorPinned,
         }));
       }
     }
@@ -2064,7 +2096,8 @@ export function DebugRTSSim() {
       const ids = sortLevels(levelsRef.current.map((l) => l.id));
       setActiveLevel((cur) => {
         const i = Math.max(0, ids.indexOf(cur));
-        const next = e.key === 'PageUp' ? ids[Math.min(ids.length - 1, i + 1)] : ids[Math.max(0, i - 1)];
+        const next =
+          e.key === 'PageUp' ? ids[Math.min(ids.length - 1, i + 1)] : ids[Math.max(0, i - 1)];
         return next ?? cur;
       });
     };
@@ -2163,6 +2196,19 @@ export function DebugRTSSim() {
       const evac = evacEngRef.current;
       const simRunning = !rts.state.clock.paused && rts.state.clock.phase !== 'setup';
       if (evac && simRunning) {
+        const moveDoors = (doorDt: number) => {
+          const bodies = pedestriansRef.current
+            .filter((person) => person.state !== 'left_map')
+            .map((person) => ({ x: person.x, y: person.y, level: person.level }));
+          stepDoorLeaves(
+            interiorWallsRef.current,
+            bodies,
+            effectsEngineRef.current?.exposedDoorIds() ?? new Set<string>(),
+            doorDt,
+            MOUTH_APPROACH_M,
+          );
+          evac.syncDoorLeaves(interiorWallsRef.current);
+        };
         if (showcaseOn) {
           const liveEffects = effectsEngineRef.current;
           if (liveEffects) hazardFieldRef.current?.setStates(liveEffects.studStates);
@@ -2185,16 +2231,11 @@ export function DebugRTSSim() {
             FX.FIXED_DT,
             FX.MAX_STEPS_PER_FRAME,
           );
+          moveDoors(evacSteps * FX.FIXED_DT);
           const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
           let cursor = 0;
-          if (
-            !blastFiredRef.current &&
-            evacStepsDoneRef.current + evacSteps >= blastStep
-          ) {
-            const pre = Math.max(
-              0,
-              Math.min(evacSteps, blastStep - evacStepsDoneRef.current),
-            );
+          if (!blastFiredRef.current && evacStepsDoneRef.current + evacSteps >= blastStep) {
+            const pre = Math.max(0, Math.min(evacSteps, blastStep - evacStepsDoneRef.current));
             for (; cursor < pre; cursor++) evac.step();
             blastFiredRef.current = true;
             const site = blastSiteRef.current;
@@ -2223,6 +2264,7 @@ export function DebugRTSSim() {
           rts.limitElapsed(evacStepsDoneRef.current * FX.FIXED_DT);
         } else {
           const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
+          moveDoors(stepsPerFrame * DEFAULT_POLYGON_CONFIG.dt);
           for (let i = 0; i < stepsPerFrame; i++) evac.step();
         }
         const snaps = evac.getSnapshots();
@@ -2482,11 +2524,16 @@ export function DebugRTSSim() {
                   activeFrames += active[i];
                 }
                 const effectsActive = activeFrames * 2 >= ring.length;
-                if (shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length, effectsActive)) {
+                if (
+                  shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length, effectsActive)
+                ) {
                   const current = fxQualityRef.current;
                   const next = current === 'high' ? 'low' : current === 'low' ? 'classic' : null;
                   if (next) {
-                    fxDowngradeFromRef.current = noteDowngradeFrom(fxDowngradeFromRef.current, current);
+                    fxDowngradeFromRef.current = noteDowngradeFrom(
+                      fxDowngradeFromRef.current,
+                      current,
+                    );
                     fxQualityRef.current = next;
                     setFxQuality(next);
                     setFxDowngraded(true);
@@ -2816,7 +2863,7 @@ export function DebugRTSSim() {
       const mode = rts.state.interactionMode;
 
       // Middle mouse button = pan map
-            if (e.button === 1) {
+      if (e.button === 1) {
         e.preventDefault();
         mapPanRef.current = { startX: e.clientX, startY: e.clientY };
         return;
@@ -3810,7 +3857,11 @@ export function DebugRTSSim() {
           critical: 'Engulfed',
         },
       );
-      blastDirectZoneRef.current = blastIgnitionZone(blastSite, spreadRadius, multi ? bLevel : undefined);
+      blastDirectZoneRef.current = blastIgnitionZone(
+        blastSite,
+        spreadRadius,
+        multi ? bLevel : undefined,
+      );
       hazardFieldRef.current = new HazardField(
         studs.map((s) => ({
           id: s.id,
@@ -5757,9 +5808,7 @@ export function DebugRTSSim() {
                           const description = e.target.value;
                           const matches = matchMaterials(
                             description,
-                            ENABLE_AI_ENRICHMENT
-                              ? { suggest: suggestLibraryEntry }
-                              : undefined,
+                            ENABLE_AI_ENRICHMENT ? { suggest: suggestLibraryEntry } : undefined,
                           );
                           setPlacedObjects((prev) =>
                             prev.map((obj) =>
@@ -5809,9 +5858,7 @@ export function DebugRTSSim() {
                         {active.matches.map((match) => (
                           <li key={match.entryId}>
                             {match.label} —{' '}
-                            {entryCanBurn(match.fuel)
-                              ? 'can catch fire'
-                              : 'does not catch fire'}
+                            {entryCanBurn(match.fuel) ? 'can catch fire' : 'does not catch fire'}
                             {match.source === 'ai' ? ' · suggestion, confirm it' : ''}
                           </li>
                         ))}
@@ -5864,9 +5911,7 @@ export function DebugRTSSim() {
                       <button
                         type="button"
                         onClick={() => {
-                          setPlacedObjects((prev) =>
-                            prev.filter((obj) => obj.id !== active.id),
-                          );
+                          setPlacedObjects((prev) => prev.filter((obj) => obj.id !== active.id));
                           setActiveObjectId(null);
                         }}
                         className="text-xs px-2 py-1.5 rounded border border-red-900 text-red-400"
@@ -5911,8 +5956,8 @@ export function DebugRTSSim() {
                             />
                           </label>
                           <p className="text-xs text-gray-500">
-                            Blank leaves the jet on until someone shuts it off. A time closes it
-                            on its own.
+                            Blank leaves the jet on until someone shuts it off. A time closes it on
+                            its own.
                           </p>
                           {gameState.clock.phase === 'setup' && (
                             <button
@@ -6053,67 +6098,74 @@ export function DebugRTSSim() {
                       const allUnsafe = zones.length > 0 && zones.every(unsafe);
                       return (
                         <>
-                    {zones.map((e) => {
-                        const minD = assemblyMinDistanceM(aboveGroundHeightM(selectedGrid?.floors));
-                        const notes: string[] = [];
-                        if (
-                          projectedVerts.length >= 3 &&
-                          distanceToOutline(e.pos.x, e.pos.y, projectedVerts) < minD
-                        ) {
-                          notes.push(`Too close to building (< ${minD} m)`);
-                        }
-                        if (
-                          blastSite &&
-                          Math.hypot(e.pos.x - blastSite.x, e.pos.y - blastSite.y) <=
-                            SHOWCASE.ZONE_UNSAFE_FACTOR * blastRadius
-                        ) {
-                          notes.push('Inside glass-injury radius');
-                        }
-                        const status = notes.length > 0 ? notes.join(' · ') : 'OK';
-                        return (
-                          <div key={e.id} className="border border-green-900 rounded p-2 space-y-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{e.def.label}</span>
-                              <select
-                                value={zoneKinds[e.id] ?? 'assembly'}
-                                onChange={(ev) =>
-                                  setZoneKinds((prev) => ({
-                                    ...prev,
-                                    [e.id]: ev.target.value as ZoneKind,
-                                  }))
-                                }
-                                className="bg-black border border-green-800 text-green-300 px-1 py-0.5 rounded"
+                          {zones.map((e) => {
+                            const minD = assemblyMinDistanceM(
+                              aboveGroundHeightM(selectedGrid?.floors),
+                            );
+                            const notes: string[] = [];
+                            if (
+                              projectedVerts.length >= 3 &&
+                              distanceToOutline(e.pos.x, e.pos.y, projectedVerts) < minD
+                            ) {
+                              notes.push(`Too close to building (< ${minD} m)`);
+                            }
+                            if (
+                              blastSite &&
+                              Math.hypot(e.pos.x - blastSite.x, e.pos.y - blastSite.y) <=
+                                SHOWCASE.ZONE_UNSAFE_FACTOR * blastRadius
+                            ) {
+                              notes.push('Inside glass-injury radius');
+                            }
+                            const status = notes.length > 0 ? notes.join(' · ') : 'OK';
+                            return (
+                              <div
+                                key={e.id}
+                                className="border border-green-900 rounded p-2 space-y-1"
                               >
-                                <option value="assembly">Assembly</option>
-                                <option value="safe">Safe</option>
-                                <option value="convening">Convening</option>
-                              </select>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>{e.def.label}</span>
+                                  <select
+                                    value={zoneKinds[e.id] ?? 'assembly'}
+                                    onChange={(ev) =>
+                                      setZoneKinds((prev) => ({
+                                        ...prev,
+                                        [e.id]: ev.target.value as ZoneKind,
+                                      }))
+                                    }
+                                    className="bg-black border border-green-800 text-green-300 px-1 py-0.5 rounded"
+                                  >
+                                    <option value="assembly">Assembly</option>
+                                    <option value="safe">Safe</option>
+                                    <option value="convening">Convening</option>
+                                  </select>
+                                </div>
+                                <div
+                                  className={status === 'OK' ? 'text-green-500' : 'text-amber-400'}
+                                >
+                                  {status}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {allUnsafe && (
+                            <div className="text-amber-400">
+                              All assembly zones are unsafe; people will use the one farthest from
+                              the blast.
                             </div>
-                            <div className={status === 'OK' ? 'text-green-500' : 'text-amber-400'}>
-                              {status}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    {allUnsafe && (
-                      <div className="text-amber-400">
-                        All assembly zones are unsafe; people will use the one farthest from the
-                        blast.
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        rts.setInteractionMode({
-                          type: 'place_equipment',
-                          equipmentKind: 'assembly_point',
-                        });
-                        rerender();
-                      }}
-                      className="w-full text-left px-2 py-1.5 rounded border border-green-900 text-green-400 hover:border-green-700"
-                    >
-                      + Add zone
-                    </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              rts.setInteractionMode({
+                                type: 'place_equipment',
+                                equipmentKind: 'assembly_point',
+                              });
+                              rerender();
+                            }}
+                            className="w-full text-left px-2 py-1.5 rounded border border-green-900 text-green-400 hover:border-green-700"
+                          >
+                            + Add zone
+                          </button>
                         </>
                       );
                     })()}
@@ -6124,7 +6176,9 @@ export function DebugRTSSim() {
                         <span>Exit {i + 1}</span>
                         <select
                           value={
-                            ex.status === 'blocked' || ex.status === 'congested' ? ex.status : 'open'
+                            ex.status === 'blocked' || ex.status === 'congested'
+                              ? ex.status
+                              : 'open'
                           }
                           onChange={(ev) => {
                             const status = ev.target.value as ExitDef['status'];
@@ -6153,7 +6207,8 @@ export function DebugRTSSim() {
                 <div>Idle {showcaseHud.metrics.idle}</div>
                 <div>Reacting {showcaseHud.metrics.reacting}</div>
                 <div>
-                  Evacuating {showcaseHud.metrics.evacuating} (crawling {showcaseHud.metrics.crawling})
+                  Evacuating {showcaseHud.metrics.evacuating} (crawling{' '}
+                  {showcaseHud.metrics.crawling})
                 </div>
                 <div>Outside {showcaseHud.metrics.outside}</div>
                 {Object.keys(showcaseHud.metrics.arrived).length === 0 ? (
@@ -6161,8 +6216,7 @@ export function DebugRTSSim() {
                 ) : (
                   Object.entries(showcaseHud.metrics.arrived).map(([id, n]) => (
                     <div key={id}>
-                      Arrived{' '}
-                      {gameState.equipment.find((eq) => eq.id === id)?.def.label ?? id}: {n}
+                      Arrived {gameState.equipment.find((eq) => eq.id === id)?.def.label ?? id}: {n}
                     </div>
                   ))
                 )}
@@ -6468,37 +6522,40 @@ export function DebugRTSSim() {
                   >
                     🛗 Place lift
                   </button>
-                  {stairwells.length > 0 && (() => {
-                    const editing =
-                      stairwells.find((sw) => sw.id === selectedStairId) ?? stairwells[0];
-                    return (
-                      <>
-                        <label className="block text-xs text-slate-400">
-                          Edit stair
-                          <select
-                            value={editing.id}
-                            onChange={(e) => setSelectedStairId(e.target.value)}
-                            className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded mt-0.5"
-                          >
-                            {stairwells.map((sw) => (
-                              <option key={sw.id} value={sw.id}>
-                                {sw.label || sw.id}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <StairEditor
-                          stair={editing}
-                          levels={levels}
-                          onChange={(next) =>
-                            setStairwells((prev) =>
-                              prev.map((sw) => (sw.id === next.id ? normaliseStairwell(next, levels) : sw)),
-                            )
-                          }
-                        />
-                      </>
-                    );
-                  })()}
+                  {stairwells.length > 0 &&
+                    (() => {
+                      const editing =
+                        stairwells.find((sw) => sw.id === selectedStairId) ?? stairwells[0];
+                      return (
+                        <>
+                          <label className="block text-xs text-slate-400">
+                            Edit stair
+                            <select
+                              value={editing.id}
+                              onChange={(e) => setSelectedStairId(e.target.value)}
+                              className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded mt-0.5"
+                            >
+                              {stairwells.map((sw) => (
+                                <option key={sw.id} value={sw.id}>
+                                  {sw.label || sw.id}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <StairEditor
+                            stair={editing}
+                            levels={levels}
+                            onChange={(next) =>
+                              setStairwells((prev) =>
+                                prev.map((sw) =>
+                                  sw.id === next.id ? normaliseStairwell(next, levels) : sw,
+                                ),
+                              )
+                            }
+                          />
+                        </>
+                      );
+                    })()}
                   <div className="text-xs text-green-700">
                     Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Objects:{' '}
                     {placedObjects.length} · Stairs: {stairwells.length}
@@ -6618,7 +6675,9 @@ export function DebugRTSSim() {
                         Explosive
                         <select
                           value={charge.presetKey}
-                          onChange={(e) => setCharge((prev) => ({ ...prev, presetKey: e.target.value }))}
+                          onChange={(e) =>
+                            setCharge((prev) => ({ ...prev, presetKey: e.target.value }))
+                          }
                           className="mt-0.5 w-full bg-gray-800 border border-green-900 text-green-300 text-xs rounded px-1 py-1"
                         >
                           {BLAST_DATASET.presets.map((preset) => (
@@ -6638,11 +6697,13 @@ export function DebugRTSSim() {
                             step={0.1}
                             value={Number.isFinite(charge.amountKg) ? charge.amountKg : ''}
                             onChange={(e) => {
-                              const amountKg = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              const amountKg =
+                                e.target.value === '' ? Number.NaN : Number(e.target.value);
                               setCharge((prev) => ({ ...prev, amountKg }));
                             }}
                             onBlur={(e) => {
-                              const amountKg = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              const amountKg =
+                                e.target.value === '' ? Number.NaN : Number(e.target.value);
                               const result = clampCharge({ ...charge, amountKg });
                               setCharge(result.spec);
                               setChargeNote(result.notes[0] ?? null);
@@ -6681,7 +6742,8 @@ export function DebugRTSSim() {
                             disabled={charge.burst !== 'free_air'}
                             value={Number.isFinite(charge.heightM) ? charge.heightM : ''}
                             onChange={(e) => {
-                              const heightM = e.target.value === '' ? Number.NaN : Number(e.target.value);
+                              const heightM =
+                                e.target.value === '' ? Number.NaN : Number(e.target.value);
                               setCharge((prev) => ({ ...prev, heightM }));
                             }}
                             onBlur={() => {
@@ -6708,8 +6770,8 @@ export function DebugRTSSim() {
                               {charge.burst === 'surface' ? 'surface burst' : 'free-air burst'}
                             </div>
                             <div>
-                              Lethal ≤ {rings.lethalM.toFixed(1)} m · Serious ≤ {rings.seriousM.toFixed(1)} m ·
-                              Minor ≤ {rings.minorM.toFixed(1)} m
+                              Lethal ≤ {rings.lethalM.toFixed(1)} m · Serious ≤{' '}
+                              {rings.seriousM.toFixed(1)} m · Minor ≤ {rings.minorM.toFixed(1)} m
                             </div>
                             <div>
                               Glass injury ≤ {rings.glassInjuryM.toFixed(1)} m · Glass breakage ≤{' '}
@@ -6719,8 +6781,8 @@ export function DebugRTSSim() {
                               <div>Low-confidence TNT factor for {chargePreset.label}</div>
                             )}
                             <div>
-                              Calculated from Kingery–Bulmash curves and UFC thresholds (pending review) · walls
-                              not modelled
+                              Calculated from Kingery–Bulmash curves and UFC thresholds (pending
+                              review) · walls not modelled
                             </div>
                           </>
                         )}
@@ -6744,7 +6806,8 @@ export function DebugRTSSim() {
                           disabled={!manualRadius}
                           onChange={(e) => {
                             const next = Number(e.target.value);
-                            if (Number.isFinite(next)) setBlastRadius(Math.min(100, Math.max(1, next)));
+                            if (Number.isFinite(next))
+                              setBlastRadius(Math.min(100, Math.max(1, next)));
                           }}
                           className="w-16 bg-gray-800 border border-amber-900 text-amber-100 text-xs rounded px-1 py-0.5 disabled:opacity-40"
                         />
@@ -7571,7 +7634,10 @@ function LevelSwitcher({
         const remaining = pedestrians.filter(
           (p) =>
             (p.level ?? 'G') === lv.id &&
-            (p.state === 'idle' || p.state === 'reacting' || p.state === 'evacuating' || (!p.state && !p.evacuated)),
+            (p.state === 'idle' ||
+              p.state === 'reacting' ||
+              p.state === 'evacuating' ||
+              (!p.state && !p.evacuated)),
         ).length;
         return (
           <button
@@ -7592,10 +7658,18 @@ function LevelSwitcher({
           </button>
         );
       })}
-      <button type="button" className="w-full text-left px-1 py-0.5 border border-slate-700 rounded" onClick={() => addStorey('up')}>
+      <button
+        type="button"
+        className="w-full text-left px-1 py-0.5 border border-slate-700 rounded"
+        onClick={() => addStorey('up')}
+      >
         + Level above
       </button>
-      <button type="button" className="w-full text-left px-1 py-0.5 border border-slate-700 rounded" onClick={() => addStorey('down')}>
+      <button
+        type="button"
+        className="w-full text-left px-1 py-0.5 border border-slate-700 rounded"
+        onClick={() => addStorey('down')}
+      >
         + Basement
       </button>
       <button
@@ -7617,7 +7691,9 @@ function LevelSwitcher({
             <input
               value={active.name}
               onChange={(e) =>
-                onLevels((prev) => prev.map((l) => (l.id === active.id ? { ...l, name: e.target.value } : l)))
+                onLevels((prev) =>
+                  prev.map((l) => (l.id === active.id ? { ...l, name: e.target.value } : l)),
+                )
               }
               className="w-full bg-gray-800 border border-slate-700 px-1 py-0.5 rounded"
             />
@@ -7649,7 +7725,9 @@ function LevelSwitcher({
               onChange={(e) =>
                 onLevels((prev) =>
                   prev.map((l) =>
-                    l.id === active.id ? { ...l, pedestrianCount: Math.max(0, Number(e.target.value) || 0) } : l,
+                    l.id === active.id
+                      ? { ...l, pedestrianCount: Math.max(0, Number(e.target.value) || 0) }
+                      : l,
                   ),
                 )
               }
@@ -7678,7 +7756,9 @@ function LevelSwitcher({
                   checked={copyTargets.includes(l.id)}
                   onChange={(e) =>
                     onCopyTargets(
-                      e.target.checked ? [...copyTargets, l.id] : copyTargets.filter((id) => id !== l.id),
+                      e.target.checked
+                        ? [...copyTargets, l.id]
+                        : copyTargets.filter((id) => id !== l.id),
                     )
                   }
                 />

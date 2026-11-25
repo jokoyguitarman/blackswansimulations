@@ -1,4 +1,5 @@
 import type { ExitDef, Vec2 } from '../evacuation/types';
+import { doorLeafKey, leafWidthM } from './doorLeaf';
 import type { InteriorWall, HazardZone } from './types';
 import {
   FireSimulation,
@@ -7,12 +8,7 @@ import {
   type FireParams,
   type GasJet,
 } from './fireSimulation';
-import {
-  GAS_JET_KW,
-  STUD_AREA_M2,
-  electricalHeatReleaseKw,
-  type FuelCell,
-} from './flameFront';
+import { GAS_JET_KW, STUD_AREA_M2, electricalHeatReleaseKw, type FuelCell } from './flameFront';
 import {
   AMBIENT_K,
   CEILING_JET_DEPTH_FRACTION,
@@ -43,10 +39,20 @@ import {
   type ZoneState,
 } from './twoZone';
 import type { ChargeSpec } from './blast/blastModel';
-import type { ElectricalPlacement, GasLinePlacement, SuppressionPlacement } from './materialLibrary';
+import type {
+  ElectricalPlacement,
+  GasLinePlacement,
+  SuppressionPlacement,
+} from './materialLibrary';
 import { LEVEL } from '../evacuation/levelConstants';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
-import { addFumeGrams, fumesFromSmoke, layerBreath, SOOT_EXTINCTION_M2_PER_G, type FumeGrams } from './toxicDose';
+import {
+  addFumeGrams,
+  fumesFromSmoke,
+  layerBreath,
+  SOOT_EXTINCTION_M2_PER_G,
+  type FumeGrams,
+} from './toxicDose';
 import { extinctionK, smokeFromK } from '../evacuation/hazardSensing';
 
 // ── Effect types ─────────────────────────────────────────────────────────
@@ -154,7 +160,12 @@ export const SMOKE_WALL_LEAK = 0.05;
  * Exact step of dK/dt = generation − vent·K. The loss is first-order, so a
  * fixed slice and a longer frame cut into the same slices agree.
  */
-export function advanceSootK(k: number, generationPerS: number, ventPerS: number, dt: number): number {
+export function advanceSootK(
+  k: number,
+  generationPerS: number,
+  ventPerS: number,
+  dt: number,
+): number {
   if (!(dt > 0)) return Math.max(0, k);
   const gen = generationPerS > 0 ? generationPerS : 0;
   const vent = ventPerS > 0 ? ventPerS : 0;
@@ -263,13 +274,14 @@ function shellSignature(vertices: readonly Vec2[], exits: readonly ExitDef[]): s
 }
 
 function wallBlocksPath(from: Vec2, to: Vec2, wall: InteriorWall): boolean {
-  if (wall.hasDoor) {
+  const openWidth = leafWidthM(wall);
+  if (openWidth > 0) {
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
     const len = Math.hypot(dx, dy);
     if (len < 0.01) return false;
     const doorCenter = wall.doorPosition;
-    const doorHalf = wall.doorWidth / (2 * len);
+    const doorHalf = openWidth / (2 * len);
     const gapStart = Math.max(0, doorCenter - doorHalf);
     const gapEnd = Math.min(1, doorCenter + doorHalf);
     const sA = { x: wall.start.x + dx * gapStart, y: wall.start.y + dy * gapStart };
@@ -336,6 +348,7 @@ export class SpatialEffectsEngine {
   private sootK = new Map<string, number>();
   /** Wall tests for one walls array. Rebuilt when the caller passes another array. */
   private blockedWalls: InteriorWall[] | null = null;
+  private blockedLeafKey = '';
   private blockedNeighbors = new Map<string, Set<string>>();
   /** Outside wall. Indoor–outdoor links are blocked unless they cross an exit. */
   private shellKey = '';
@@ -351,11 +364,14 @@ export class SpatialEffectsEngine {
     { active: boolean; zone: ZoneState; members: string[]; areaM2: number; ceilingM: number }
   >();
   private layerWalls: InteriorWall[] | null = null;
+  private layerLeafKey = '';
   private layerHeightKey = '';
   private layerEnclosures = new Map<string, Enclosure | null>();
   private layerShellKey = '';
   private layerGridWalls: GridWall[] = [];
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
+  /** Door walls of a room that has flashed. The leaf clock reads this. */
+  private exposedDoors = new Set<string>();
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -369,6 +385,7 @@ export class SpatialEffectsEngine {
     this.verticalPairs = [];
     this.sootK.clear();
     this.blockedWalls = null;
+    this.blockedLeafKey = '';
     this.blockedNeighbors.clear();
     this.shellReady = false;
     this.shellBlocked.clear();
@@ -376,6 +393,8 @@ export class SpatialEffectsEngine {
     this.layerState.clear();
     this.layerEnclosures.clear();
     this.layerWalls = null;
+    this.layerLeafKey = '';
+    this.exposedDoors = new Set();
     this.layerGrants = [];
     this.activeEffects = [];
     this.elapsed = 0;
@@ -892,8 +911,10 @@ export class SpatialEffectsEngine {
    */
   private wallBlocked(id: string, neighborId: string, walls: InteriorWall[]): boolean {
     if (walls.length === 0) return false;
-    if (walls !== this.blockedWalls) {
+    const leafKey = doorLeafKey(walls);
+    if (walls !== this.blockedWalls || leafKey !== this.blockedLeafKey) {
       this.blockedWalls = walls;
+      this.blockedLeafKey = leafKey;
       this.blockedNeighbors.clear();
     }
     let blocked = this.blockedNeighbors.get(id);
@@ -940,11 +961,20 @@ export class SpatialEffectsEngine {
     walls: InteriorWall[],
     ceiling: number,
   ): Enclosure | null {
-    const heights = [...this.storeyHeights.entries()].map(([id, height]) => `${id}=${height}`).join(',');
-    if (walls !== this.layerWalls || heights !== this.layerHeightKey || this.shellKey !== this.layerShellKey) {
+    const heights = [...this.storeyHeights.entries()]
+      .map(([id, height]) => `${id}=${height}`)
+      .join(',');
+    const leafKey = doorLeafKey(walls);
+    if (
+      walls !== this.layerWalls ||
+      heights !== this.layerHeightKey ||
+      this.shellKey !== this.layerShellKey ||
+      leafKey !== this.layerLeafKey
+    ) {
       this.layerWalls = walls;
       this.layerHeightKey = heights;
       this.layerShellKey = this.shellKey;
+      this.layerLeafKey = leafKey;
       this.layerEnclosures.clear();
       this.layerGridWalls = walls.map((wall) => ({
         id: wall.id,
@@ -955,6 +985,7 @@ export class SpatialEffectsEngine {
         hasDoor: wall.hasDoor,
         doorWidth: wall.doorWidth,
         doorPosition: wall.doorPosition,
+        openFraction: wall.openFraction,
         material: wall.material,
         level: levelOf(wall),
       }));
@@ -997,9 +1028,15 @@ export class SpatialEffectsEngine {
    * the same flow as a loss on its own stud.
    * Returns the studs the column must not also fill.
    */
+  /** Walls of rooms that have flashed. The door rating clock reads this. */
+  exposedDoorIds(): ReadonlySet<string> {
+    return this.exposedDoors;
+  }
+
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
+    this.exposedDoors = new Set();
     this.fireSim.clearBurnLimits();
     const rooms = this.fireSim.compartmentIds(walls);
     const groups = new Map<string, string[]>();
@@ -1040,7 +1077,8 @@ export class SpatialEffectsEngine {
       const fires: FirePlume[] = [...(extra.get(room) ?? [])];
       for (const id of members) {
         const release = this.fireSim.fuelReleaseKw(id);
-        if (release != null && release > 0) fires.push({ heatKw: release, diameterM: diameterForReleaseKw(release) });
+        if (release != null && release > 0)
+          fires.push({ heatKw: release, diameterM: diameterForReleaseKw(release) });
       }
       let heat = 0;
       for (const fire of fires) heat += fire.heatKw;
@@ -1050,11 +1088,14 @@ export class SpatialEffectsEngine {
         this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
         prev.active = false;
       };
+      const enc = this.enclosureOf(room, members, walls, ceiling);
+      if (enc && members.some((id) => this.fireSim.isFlashed(id))) {
+        for (const wallId of enc.wallIds) this.exposedDoors.add(wallId);
+      }
       if (heat < MIN_LAYER_FIRE_KW && !prev?.active) {
         retire();
         continue;
       }
-      const enc = this.enclosureOf(room, members, walls, ceiling);
       if (!enc || !hasSmokeReservoir(enc.spec.vents, ceiling)) {
         retire();
         continue;
@@ -1097,7 +1138,8 @@ export class SpatialEffectsEngine {
           areaM2: spec.areaM2,
           ceilingM: ceiling,
         });
-        if (opening.prescribedKw > 0) this.fireSim.setBurnLimit(members, opening.fraction, opening.phi);
+        if (opening.prescribedKw > 0)
+          this.fireSim.setBurnLimit(members, opening.fraction, opening.phi);
         continue;
       }
       if (prev?.active !== true) {
