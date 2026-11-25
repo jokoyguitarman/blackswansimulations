@@ -512,9 +512,26 @@ export interface LimitedBurn {
 /**
  * The oxygen limit tied to the vents. Lower-layer air available this step
  * is the door inflow and fan makeup, plus the air the interface can still
- * descend through. At the floor only the inflow remains. The plume the
- * mass balance moves cannot exceed that air, and the burn cannot use more
- * lower-layer air than that plume moves.
+ * descend through. At the floor only the inflow remains.
+ *
+ * That fresh air is the flame. CFAST Eq. 3.13 limits the burning to the
+ * oxygen the plume can take, and the plume has to be the fire that oxygen
+ * supports. The oxygen that counts is the lower-layer air the plume
+ * entrains, already shared and capped by the supply. Air the plume does
+ * not take, including the last centimetre of a large floor, does not
+ * enlarge the flame. Sizing the flame on the prescribed pyrolysis lets it
+ * entrain the oxygen stored in the upper layer and burn the free-burn
+ * rate for a step. The extra pyrolysis is not a larger flame: this model
+ * does not carry unburned fuel. Upper-layer gas can still finish a flame
+ * the fresh air already accounts for. It cannot raise the release above
+ * that air.
+ *
+ * The mass the zone moves is Heskestad entrainment of that flame at the
+ * interface. It cannot exceed the air the vents and the layer can give
+ * this step, and it cannot exceed the enthalpy the released heat can
+ * carry (CFAST Eq. 3.18). Each cap is applied once. Feeding either back
+ * into the air supply collapses the burn onto a second, much smaller
+ * root for a single step.
  */
 export function oxygenLimitedBurn(
   spec: LayerSpec,
@@ -530,24 +547,49 @@ export function oxygenLimitedBurn(
   const rho = densityKgM3(AMBIENT_K);
   const descendKgS =
     (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
-  let airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
-  let qConv = 0;
-  for (const fire of spec.fires) if (fire.heatKw > 0) qConv += (1 - chi) * fire.heatKw;
+  const airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
+  let prescribed = 0;
+  for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
+  const yL = yLower > 0 ? yLower : 0;
+  // lowerAirKgS is the lower-layer stream the prescribed plumes entrain,
+  // shared down to airCap. The oxygen in it is the flame. The burned
+  // kilowatts of this call are not used: they still include upper-layer gas.
+  const entrained = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  const freshKw = oxygenCapacityKw(entrained.lowerAirKgS, yL);
+  const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
+  const flames =
+    freshFraction < 1
+      ? spec.fires.map((fire) => ({
+          heatKw: fire.heatKw > 0 ? fire.heatKw * freshFraction : 0,
+          diameterM: fire.diameterM,
+        }))
+      : spec.fires;
+  const raw = layerBurn(flames, interfaceM, yLower, yUpper, chi, airCap);
+  const burn: LayerBurn = {
+    prescribedKw: prescribed,
+    burnedKw: raw.burnedKw,
+    phi: equivalenceRatio(prescribed, oxygenSupplyKw(raw.lowerAirKgS, yL)),
+    fraction: prescribed > 0 ? raw.burnedKw / prescribed : 1,
+    lowerAirKgS: raw.lowerAirKgS,
+    oxygenLowerKgS: raw.oxygenLowerKgS,
+    oxygenUpperKgS: raw.oxygenUpperKgS,
+  };
+  // Mass taken from the lower layer. Heskestad at the interface, for
+  // the flame the fresh air can support. It cannot exceed the air the
+  // vents and the layer can give this step: a thin layer would otherwise
+  // be stripped of oxygen in one substep. Eq. 3.18 caps the enthalpy
+  // once. Neither cap is fed back into the oxygen supply.
+  const qGas = Math.max(0, (1 - chi) * burn.burnedKw);
   const riseNow = Math.max(upperK - AMBIENT_K, 1);
-  let burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
   let plume = 0;
-  for (let n = 0; n < 4; n++) {
-    const fraction = burn.prescribedKw > 0 ? burn.fraction : 1;
-    const qGas = qConv * fraction;
-    plume = plumeKgS(spec, interfaceM);
-    if (plume > airCap) plume = airCap;
-    const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
-    if (!(qGas > 0)) plume = 0;
-    else if (plume > enthalpyCap) plume = enthalpyCap;
-    if (!(burn.lowerAirKgS > plume + 1e-4)) break;
-    airCap = plume;
-    burn = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
+  for (const fire of flames) {
+    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+    plume += heskestadEntrainmentKgS(fire.heatKw, interfaceM, fire.diameterM, chi);
   }
+  if (plume > airCap) plume = airCap;
+  if (!(qGas > 0)) plume = 0;
+  else if (plume > enthalpyCap) plume = enthalpyCap;
   return {
     burn,
     plumeKgS: plume,
@@ -894,12 +936,17 @@ function sliceFlows(
   widthM: number,
 ): SliceFlows {
   const flows: SliceFlows = { inKgS: 0, outKgS: 0 };
-  if (!(z1 > z0 + 1e-6)) return flows;
+  if (!(z1 > z0 + 1e-9)) return flows;
   const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
   const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
-  if (p0 * p1 < 0 && z1 - z0 > 1e-4) {
+  if (p0 * p1 < 0 && p1 !== p0) {
     const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
-    if (zN > z0 + 1e-6 && zN < z1 - 1e-6) {
+    // Split whenever the neutral plane is strictly inside the slice.
+    // A plane that falls within a micron of an end used to be left mixed,
+    // and the slice was then called an outflow if either end was positive.
+    // That dropped the inflow for one step and the burn followed it.
+    const pad = Math.min(1e-6, (z1 - z0) * 0.25);
+    if (zN > z0 + pad && zN < z1 - pad) {
       const lower = sliceFlows(z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
       const upper = sliceFlows(zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
       return {
@@ -909,7 +956,8 @@ function sliceFlows(
     }
   }
   if (p0 === 0 && p1 === 0) return flows;
-  const outflow = p0 > 0 || p1 > 0;
+  // The end farther from the plane owns a slice that was not split.
+  const outflow = Math.abs(p0) >= Math.abs(p1) ? p0 > 0 : p1 > 0;
   const mid = (z0 + z1) / 2;
   const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
   const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
