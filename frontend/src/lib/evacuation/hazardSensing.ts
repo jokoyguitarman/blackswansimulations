@@ -647,7 +647,7 @@ const WALL_CELL_M = 8;
 class WallIndex {
   private readonly buckets = new Map<number, number[]>();
 
-  constructor(readonly walls: readonly WallLike[]) {
+  constructor(walls: readonly WallLike[]) {
     for (let i = 0; i < walls.length; i++) {
       const wall = walls[i];
       if (!wall) continue;
