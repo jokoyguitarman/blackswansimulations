@@ -421,7 +421,7 @@ test('NIST/NRC BE#3 Test 3: interface and rise pass', (t) => {
 
 // ── VTT large hall, ICFMP BE#2 Case 1 ──
 
-test('VTT hall Case 1: a layer forms, and the interface and the rise pass', (t) => {
+test('VTT hall Case 1: a layer forms, the interface passes, and the rise is known gap FV-5', (t) => {
   const c = VTT_CASE_1;
   const states = runCase(c, c.window[1]);
   const result = compareLayer(c, states);
@@ -454,12 +454,21 @@ test('VTT hall Case 1: a layer forms, and the interface and the rise pass', (t) 
     target: result.measuredInterfaceM,
     tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
   });
-  expectPass(t, {
-    case: c.title,
-    metric: 'upper-layer rise',
-    unit: 'K',
-    model: result.modelRiseK,
-    target: result.measuredRiseK,
-    tolerance: { relative: TOLERANCE.riseFraction },
-  });
+  expectKnownGap(
+    t,
+    {
+      case: c.title,
+      metric: 'upper-layer rise',
+      unit: 'K',
+      model: result.modelRiseK,
+      target: result.measuredRiseK,
+      tolerance: { relative: TOLERANCE.riseFraction },
+    },
+    {
+      id: 'FV-5',
+      recorded: 36.0,
+      pin: 1,
+      roadmap: 'realistic-fire roadmap, Decision 10 (the steel shell is still warming)',
+    },
+  );
 });

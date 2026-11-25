@@ -160,6 +160,56 @@ test('an isothermal sheet loses heat through the exterior film, and a board keep
   assert.ok(board < sheet, `board ${board.toFixed(3)} sheet ${sheet.toFixed(3)}`);
 });
 
+test('an isothermal sheet stores its heat and starts cold on every run', () => {
+  // 1 mm steel stores about 3.3 kJ/m²K. Against the two films that is on
+  // the order of two minutes, so a short fire still sees a cold sheet.
+  // A heat-free sheet has no temperature to carry, and a temperature left
+  // on the boundary would make the second run hotter than the first.
+  const steel: Lining = {
+    name: 'steel sheet',
+    kKwMK: 0.054,
+    rhoKgM3: 7850,
+    cKjKgK: 0.425,
+    thicknessM: 0.001,
+  };
+  const floor: Lining = {
+    name: 'concrete floor',
+    kKwMK: 0.0014,
+    rhoKgM3: 2300,
+    cKjKgK: 0.88,
+    thicknessM: 0.15,
+  };
+  const spec: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 2.6,
+    chi: 0.35,
+    vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: floor },
+      { areaM2: 60, lining: steel },
+    ],
+    fires: [{ heatKw: 200, diameterM: 0.5 }],
+  };
+  const run = () => {
+    let state = freshLayer(2.6);
+    const sheet: number[] = [];
+    for (let t = 1; t <= 400; t++) {
+      state = stepZone(state, spec, 1).state;
+      if (t === 30 || t === 130 || t === 400) sheet.push((state.sheetK?.[1] ?? 0) - AMBIENT_K);
+    }
+    return { rise: state.upperK - AMBIENT_K, sheet };
+  };
+  const first = run();
+  const second = run();
+  assert.ok(
+    Math.abs(first.rise - second.rise) < 0.05,
+    `second run ${second.rise} first ${first.rise}`,
+  );
+  assert.ok(first.sheet[0]! > 5, `sheet at 30 s ${first.sheet[0]}`);
+  assert.ok(first.sheet[1]! > first.sheet[0]! + 20, `sheet at 130 s ${first.sheet[1]}`);
+  assert.ok(first.sheet[2]! > first.sheet[1]! + 20, `sheet at 400 s ${first.sheet[2]}`);
+});
+
 test('the concrete room holds a layer and the stepper reaches it', () => {
   const spec = concreteRoom(500, diameterForReleaseKw(500));
   const steady = steadyLayer(spec, 600);
@@ -176,6 +226,7 @@ test('the concrete room holds a layer and the stepper reaches it', () => {
     Math.abs(runRise - steadyRise) / steadyRise < 0.2,
     `run ${runRise.toFixed(1)} steady ${steadyRise.toFixed(1)}`,
   );
+  assert.equal(state.sheetK, undefined);
   assert.ok(Math.abs(state.interfaceM - (steady?.interfaceM ?? 0)) < 0.2);
 });
 

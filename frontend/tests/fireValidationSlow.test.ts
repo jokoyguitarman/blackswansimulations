@@ -6,6 +6,7 @@ import {
   TOLERANCE,
   VTT_CASE_2,
   compareLayer,
+  expectKnownGap,
   expectPass,
   runCase,
 } from './fixtures/fireValidation/cases.ts';
@@ -85,34 +86,47 @@ test('NIST/NRC BE#3 Test 3 over the whole steady fire', slow, (t) => {
   });
 });
 
-test('VTT hall Case 2: a layer forms, and the interface and the rise pass', slow, (t) => {
-  const c = VTT_CASE_2;
-  const states = runCase(c, c.window[1]);
-  const result = compareLayer(c, states);
-  const end = states[c.window[1]]!;
-  const reservoir = hasSmokeReservoir(c.spec.vents, c.spec.ceilingM);
-  assert.ok(
-    formsSustainedLayer(
-      c.spec.ceilingM - end.interfaceM,
-      c.spec.ceilingM,
-      end.upperK - AMBIENT_K,
-      reservoir,
-    ),
-  );
-  expectPass(t, {
-    case: c.title,
-    metric: 'interface height',
-    unit: 'm',
-    model: result.modelInterfaceM,
-    target: result.measuredInterfaceM,
-    tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
-  });
-  expectPass(t, {
-    case: c.title,
-    metric: 'upper-layer rise',
-    unit: 'K',
-    model: result.modelRiseK,
-    target: result.measuredRiseK,
-    tolerance: { relative: TOLERANCE.riseFraction },
-  });
-});
+test(
+  'VTT hall Case 2: a layer forms, the interface passes, and the rise is known gap FV-5',
+  slow,
+  (t) => {
+    const c = VTT_CASE_2;
+    const states = runCase(c, c.window[1]);
+    const result = compareLayer(c, states);
+    const end = states[c.window[1]]!;
+    const reservoir = hasSmokeReservoir(c.spec.vents, c.spec.ceilingM);
+    assert.ok(
+      formsSustainedLayer(
+        c.spec.ceilingM - end.interfaceM,
+        c.spec.ceilingM,
+        end.upperK - AMBIENT_K,
+        reservoir,
+      ),
+    );
+    expectPass(t, {
+      case: c.title,
+      metric: 'interface height',
+      unit: 'm',
+      model: result.modelInterfaceM,
+      target: result.measuredInterfaceM,
+      tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
+    });
+    expectKnownGap(
+      t,
+      {
+        case: c.title,
+        metric: 'upper-layer rise',
+        unit: 'K',
+        model: result.modelRiseK,
+        target: result.measuredRiseK,
+        tolerance: { relative: TOLERANCE.riseFraction },
+      },
+      {
+        id: 'FV-5',
+        recorded: 57.2,
+        pin: 1,
+        roadmap: 'realistic-fire roadmap, Decision 10 (the steel shell is still warming)',
+      },
+    );
+  },
+);

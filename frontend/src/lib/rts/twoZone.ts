@@ -9,9 +9,12 @@
  * Reference Eq. 5.23, radiation is the grey exchange, and the slab is
  * NUREG-1805 Eq. 2-2 to 2-5 (seed `mqh_hot_layer_temperature`). The film
  * and the slab are in series. hk on its own is the conduction coefficient,
- * not the loss from the gas. Once the slab is thermally thin, the back
- * face is CFAST's exterior film (the default boundary, ambient air), not
- * a face held at the initial temperature.
+ * not the loss from the gas. Once a wall is thin enough to be one
+ * temperature, that temperature is integrated: ρ c δ stores the heat,
+ * the inside film and the fire's radiation warm the sheet, and CFAST's
+ * exterior film cools the back. The steady film is that sheet after it
+ * has warmed. Which wall counts as a sheet is this engine's choice.
+ * CFAST applies the exterior film to every wall.
  * The lower layer stays at the ambient 293 K. That is the usual
  * pre-flashover assumption. The inverse door jet (CFAST TN 1889v1
  * Eq. 4.7) was tried and left out: at the Steckler interface it entrains
@@ -168,13 +171,19 @@ export function effectiveHeatLossKwM2K(lining: Lining, tS: number): number {
 }
 
 /**
- * A sheet is isothermal when the Biot number is under 0.1: the drop
- * across the thickness is under a tenth of the drop across the film
- * (Incropera, the lumped-capacitance limit). k/δ is then at least ten
- * times the exterior radiation coefficient. A back face held at ambient
- * overstates the loss, because the sheet cannot stay cold. A board, where
- * k/δ is the loss, keeps the NUREG thin limit. That limit is what the
- * Steckler blanket uses.
+ * A sheet is treated as one temperature when the Biot number is under
+ * 0.1: the drop across the thickness is under a tenth of the drop across
+ * the film (Incropera, the lumped-capacitance limit). The film in that
+ * test is 4σT³ at ambient, about 5.7 W/m²K, the weakest the exterior
+ * radiation can be. k/δ then has to be at least about 57 W/m²K. A fuller
+ * film, with the convection and a warm back face, is stricter, and 6 mm
+ * glass sits near 0.11 on that fuller film. It still crosses this gate.
+ *
+ * The gate is this engine's choice. CFAST applies the exterior film to
+ * every wall (`iwbound = 3`). The boards that already match a test keep
+ * NUREG's k/δ to ambient: the Steckler ceramic fibre and the BE#3
+ * Marinite. A back face held at ambient, with no capacity, is the other
+ * error. The sheet stores ρ c δ and warms.
  */
 const ISOTHERMAL_BIOT = 0.1;
 
@@ -245,9 +254,10 @@ function sheetThroughKwM2(frontK: number, hk: number): number {
  * as `radInKwM2` and does not pass through the gas. Convection and the grey
  * exchange then run between the gas and that surface, in series with the
  * slab. A thick slab conducts on toward a back face the heat has not
- * reached, so hk runs to ambient. An isothermal sheet conducts across k/δ
- * and the back face loses heat by the exterior film. A board keeps k/δ
- * to ambient. The returned flux is only the
+ * reached, so hk runs to ambient. An isothermal sheet's long-time loss
+ * conducts across k/δ onto the exterior film. While the sheet is still
+ * warming, the step integrates ρ c δ instead of this flux. A board keeps
+ * k/δ to ambient. The returned flux is only the
  * inside film, so the gas is not charged for radiation that never entered it.
  */
 function surfaceFluxKwM2(hk: number, gasK: number, radInKwM2: number, exposed: boolean): number {
@@ -847,6 +857,13 @@ export interface ZoneState {
   lowerO2?: number;
   /** Oxygen mass fraction in the upper layer. Absent on an old state means ambient. */
   upperO2?: number;
+  /**
+   * Temperature of each boundary, kelvin, in the order of the boundary
+   * list that wrote it. Set only while at least one boundary is an
+   * isothermal sheet. A missing entry is still ambient. Boards are not
+   * read from here.
+   */
+  sheetK?: readonly number[];
 }
 
 export interface SteadyLayer {
@@ -1066,6 +1083,60 @@ function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number):
     if (term) sum += term.area * term.at(gasK);
   }
   return sum;
+}
+
+/**
+ * Heat the gas loses on this slice, and the sheet temperatures after it.
+ * A board uses the steady film. An isothermal sheet is one temperature:
+ * ρ c δ dT/dt equals the inside film, plus the fire's radiation on the
+ * area, minus the exterior film. The gas is charged only the inside film.
+ * The radiation never entered the gas. The sheet starts at ambient, so a
+ * cold sheet takes more from the gas than the steady film does. The
+ * balance still uses that steady film. It is the same sheet once it has
+ * warmed.
+ */
+function stepSheetLoss(
+  boundaries: readonly Boundary[],
+  sheetK: readonly number[] | undefined,
+  tS: number,
+  gasK: number,
+  slice: number,
+): { lossKw: number; sheetK?: number[] } {
+  let exposed = false;
+  for (let i = 0; i < boundaries.length; i++) {
+    const boundary = boundaries[i];
+    if (boundary && boundary.areaM2 > 0 && backFaceExposed(boundary.lining, tS)) {
+      exposed = true;
+      break;
+    }
+  }
+  if (!exposed) return { lossKw: lossPowerKw(boundaries, tS, gasK) };
+  const rad = fireRadiantKwM2;
+  const next = new Array<number>(boundaries.length);
+  let sum = 0;
+  for (let i = 0; i < boundaries.length; i++) {
+    const boundary = boundaries[i];
+    if (!boundary || !(boundary.areaM2 > 0)) {
+      next[i] = AMBIENT_K;
+      continue;
+    }
+    if (!backFaceExposed(boundary.lining, tS)) {
+      next[i] = AMBIENT_K;
+      sum += boundary.areaM2 * fluxAt(boundary.lining, tS)(gasK);
+      continue;
+    }
+    const stored = sheetK != null && i < sheetK.length ? sheetK[i] : undefined;
+    const ts = stored != null && stored > 0 ? stored : AMBIENT_K;
+    const across = gasK - ts;
+    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
+    const hRad = SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + ts * ts) * (gasK + ts);
+    const fromGas = (hConv + hRad) * across;
+    const store = boundary.lining.rhoKgM3 * boundary.lining.cKjKgK * boundary.lining.thicknessM;
+    const warmed = ts + (slice * (fromGas + rad - exteriorFluxKwM2(ts))) / Math.max(store, 1e-6);
+    next[i] = Math.min(1500, Math.max(AMBIENT_K, warmed));
+    sum += boundary.areaM2 * fromGas;
+  }
+  return { lossKw: sum, sheetK: next };
 }
 
 function densityKgM3(tempK: number): number {
@@ -1509,6 +1580,7 @@ function stepZoneNow(
   let age = state.ageS;
   let yL = oxygenMassFraction(state.lowerO2);
   let yU = oxygenMassFraction(state.upperO2);
+  let sheets = state.sheetK;
   let vented = 0;
   let outByVent = spec.vents.map(() => 0);
   const hotKg = spec.vents.map(() => 0);
@@ -1550,7 +1622,9 @@ function stepZoneNow(
       hotT[v] = (hotT[v] ?? 0) + dm * temp;
       hotY[v] = (hotY[v] ?? 0) + dm * yU;
     }
-    const qLoss = lossPowerKw(spec.boundaries, age, temp);
+    const loss = stepSheetLoss(spec.boundaries, sheets, age, temp, slice);
+    const qLoss = loss.lossKw;
+    sheets = loss.sheetK;
     const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
     let dT = (qGas - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
     // The jet is already hot. It does not have to be warmed from ambient
@@ -1598,7 +1672,15 @@ function stepZoneNow(
     left -= slice;
   }
   return {
-    state: { interfaceM: z, upperK: temp, sootG: soot, ageS: age, lowerO2: yL, upperO2: yU },
+    state: {
+      interfaceM: z,
+      upperK: temp,
+      sootG: soot,
+      ageS: age,
+      lowerO2: yL,
+      upperO2: yU,
+      ...(sheets ? { sheetK: sheets } : {}),
+    },
     ventedSootG: vented,
     outByVentKgS: outByVent,
     hotByVent: hotKg.map((kg, v) => ({
