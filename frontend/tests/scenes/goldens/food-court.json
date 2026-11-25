@@ -1,0 +1,202 @@
+{
+  "table": {
+    "fire": "table",
+    "hoods": false,
+    "sourceId": "bldg-0-G-57-58",
+    "hoodCount": 0,
+    "marks": [
+      {
+        "tSec": 120,
+        "releaseKw": 169,
+        "peakKw": 169,
+        "hoodsOpen": {},
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.22,
+        "studsK15": 1,
+        "reachM": 0,
+        "acroleinPpm": 0
+      },
+      {
+        "tSec": 300,
+        "releaseKw": 1056,
+        "peakKw": 1056,
+        "hoodsOpen": {},
+        "layerActive": true,
+        "interfaceM": 3.15,
+        "riseK": 20,
+        "sootG": 70,
+        "kAtFire": 0,
+        "studsK15": 0,
+        "reachM": 0,
+        "acroleinPpm": 0
+      },
+      {
+        "tSec": 600,
+        "releaseKw": 2250,
+        "peakKw": 2250,
+        "hoodsOpen": {},
+        "layerActive": true,
+        "interfaceM": 1.33,
+        "riseK": 50.4,
+        "sootG": 469.1,
+        "kAtFire": 1.72,
+        "studsK15": 107,
+        "reachM": 31.9,
+        "acroleinPpm": 0
+      }
+    ]
+  },
+  "tableHood": {
+    "fire": "table",
+    "hoods": true,
+    "sourceId": "bldg-0-G-57-58",
+    "hoodCount": 5,
+    "marks": [
+      {
+        "tSec": 120,
+        "releaseKw": 169,
+        "peakKw": 169,
+        "hoodsOpen": {},
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.22,
+        "studsK15": 1,
+        "reachM": 0,
+        "acroleinPpm": 0
+      },
+      {
+        "tSec": 300,
+        "releaseKw": 374,
+        "peakKw": 471,
+        "hoodsOpen": { "hood-pizza": 200 },
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.61,
+        "studsK15": 4,
+        "reachM": 4.2,
+        "acroleinPpm": 0
+      },
+      {
+        "tSec": 600,
+        "releaseKw": 188,
+        "peakKw": 471,
+        "hoodsOpen": { "hood-pizza": 200 },
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.32,
+        "studsK15": 1,
+        "reachM": 0,
+        "acroleinPpm": 0
+      }
+    ]
+  },
+  "fryer": {
+    "fire": "oil",
+    "hoods": false,
+    "sourceId": "bldg-0-G-58-56",
+    "hoodCount": 0,
+    "marks": [
+      {
+        "tSec": 120,
+        "releaseKw": 191,
+        "peakKw": 191,
+        "hoodsOpen": {},
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.14,
+        "studsK15": 0,
+        "reachM": 0,
+        "acroleinPpm": 3.55
+      },
+      {
+        "tSec": 300,
+        "releaseKw": 191,
+        "peakKw": 191,
+        "hoodsOpen": {},
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.17,
+        "studsK15": 2,
+        "reachM": 3,
+        "acroleinPpm": 4.24
+      },
+      {
+        "tSec": 600,
+        "releaseKw": 191,
+        "peakKw": 191,
+        "hoodsOpen": {},
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.18,
+        "studsK15": 2,
+        "reachM": 3,
+        "acroleinPpm": 4.34
+      }
+    ]
+  },
+  "fryerHood": {
+    "fire": "oil",
+    "hoods": true,
+    "sourceId": "bldg-0-G-58-56",
+    "hoodCount": 5,
+    "marks": [
+      {
+        "tSec": 120,
+        "releaseKw": 62,
+        "peakKw": 74,
+        "hoodsOpen": { "hood-fryer": 40 },
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.04,
+        "studsK15": 0,
+        "reachM": 0,
+        "acroleinPpm": 0.9
+      },
+      {
+        "tSec": 300,
+        "releaseKw": 41,
+        "peakKw": 74,
+        "hoodsOpen": { "hood-fryer": 40 },
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.03,
+        "studsK15": 0,
+        "reachM": 0,
+        "acroleinPpm": 0.64
+      },
+      {
+        "tSec": 600,
+        "releaseKw": 20,
+        "peakKw": 74,
+        "hoodsOpen": { "hood-fryer": 40 },
+        "layerActive": false,
+        "interfaceM": 3.52,
+        "riseK": 1,
+        "sootG": 0,
+        "kAtFire": 0.01,
+        "studsK15": 0,
+        "reachM": 0,
+        "acroleinPpm": 0.33
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "shop": {
+    "doorMw": 22.1,
+    "at180": { "prescribedMw": 46.5, "burnedMw": 22.7, "o2Upper": 0.187 },
+    "burnedMw": { "t200": 22.7, "t290": 22.9, "t320": 23, "minFrom180": 22.6, "maxFrom180": 23 }
+  },
+  "kitchen": { "doorMw": 6.8, "burnedMwFrom210": 4.2 }
+}

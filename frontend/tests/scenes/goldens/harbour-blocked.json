@@ -1,0 +1,17 @@
+{
+  "blocked": true,
+  "down": 9,
+  "fumeDown": 0,
+  "flashoverAtS": 79.88,
+  "peakTotalMw": 163.5,
+  "within120": 0.476,
+  "crawling": 28,
+  "reroutes": 40,
+  "outByT300": 76,
+  "reachable": 105,
+  "marks": {
+    "t180": { "smoke": "0.425", "out": 42, "westLit": 72, "eastLit": 0, "burning": 94 },
+    "t240": { "smoke": "0.530", "out": 54, "westLit": 72, "eastLit": 0, "burning": 94 },
+    "t300": { "smoke": "0.563", "out": 76, "westLit": 72, "eastLit": 0, "burning": 94 }
+  }
+}

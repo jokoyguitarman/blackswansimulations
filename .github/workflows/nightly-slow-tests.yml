@@ -4,6 +4,8 @@ name: Nightly slow tests
 # per-PR `npm test` unless RUN_SLOW_TESTS is set. This job sets it and runs each file as its
 # own matrix entry, in parallel. To add a slow file, append it to `file` below and to the
 # `test:slow` script in package.json (the local equivalent).
+# The sceneGoldens.* files are the Decision 9 scenes. Holland is the longest,
+# about 27 minutes, which stays inside the 60 minute job timeout.
 # Run from the Actions tab with "Run workflow" to check a branch on demand.
 on:
   schedule:
@@ -27,6 +29,12 @@ jobs:
           - frontend/tests/hollandCrowd.test.ts
           - frontend/tests/toxicFumes.test.ts
           - frontend/tests/fireValidationSlow.test.ts
+          - frontend/tests/sceneGoldens.foodCourtTable.test.ts
+          - frontend/tests/sceneGoldens.foodCourtTableHood.test.ts
+          - frontend/tests/sceneGoldens.foodCourtFryer.test.ts
+          - frontend/tests/sceneGoldens.foodCourtFryerHood.test.ts
+          - frontend/tests/sceneGoldens.harbour.test.ts
+          - frontend/tests/sceneGoldens.holland.test.ts
     env:
       RUN_SLOW_TESTS: '1'
     steps:
