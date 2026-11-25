@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
-import { HOOD_HEIGHT_M, STUD_AREA_M2 } from '../src/lib/rts/flameFront.ts';
+import {
+  HOOD_HEIGHT_M,
+  RADIATIVE_FRACTION,
+  STUD_AREA_M2,
+  poolFireKw,
+  type FuelCell,
+} from '../src/lib/rts/flameFront.ts';
 import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
 import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
 import { SOOT_EXTINCTION_M2_PER_G, sootProductionGPerS } from '../src/lib/rts/toxicDose.ts';
@@ -19,6 +25,9 @@ import {
 import type { InteriorWall } from '../src/lib/rts/types.ts';
 import {
   AMBIENT_K,
+  SIGMA_KW_M2K4,
+  SURFACE_CONVECTION_C_W,
+  SURFACE_EMISSIVITY,
   CEILING_JET_DEPTH_FRACTION,
   DISTINCT_LAYER_RISE_K,
   LINING,
@@ -63,6 +72,8 @@ import {
   liningForMaterial,
   stepZone,
   withRememberedSheets,
+  type GridStud,
+  type GridWall,
   type LayerSpec,
   type ZoneState,
   type Lining,
@@ -1344,6 +1355,148 @@ test('a partition between two rooms is one sheet, heated from both sides', () =>
     shared > alone + 15,
     `both sides ${(shared - AMBIENT_K).toFixed(1)} K, outdoor back ${(alone - AMBIENT_K).toFixed(1)} K`,
   );
+});
+
+test('a shared partition does not lose heat to outdoor air', () => {
+  // Two equal pans, one glass partition. One step adds each room's inside
+  // film and that room's share of the fire's radiation. The outdoor film on
+  // both faces of this pane is larger than the tolerance, so the step's
+  // temperature has to match the two films with that outdoor loss left out.
+  const glass = liningForMaterial('glass');
+  const store = glass.rhoKgM3 * glass.cKjKgK * glass.thicknessM;
+  const filmKwM2 = (gasK: number, sheetK: number) => {
+    const across = gasK - sheetK;
+    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
+    const hRad =
+      SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + sheetK * sheetK) * (gasK + sheetK);
+    return (hConv + hRad) * across;
+  };
+  const outdoorKwM2 = (sheetK: number) => {
+    if (!(sheetK > AMBIENT_K)) return 0;
+    const across = sheetK - AMBIENT_K;
+    const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(across, 1 / 3);
+    return hConv * across + SIGMA_KW_M2K4 * (sheetK ** 4 - AMBIENT_K ** 4);
+  };
+  const pan: FuelCell = {
+    category: 'light',
+    chfKwM2: 10,
+    trp: 134,
+    alphaKwS2: 50,
+    spreadMPerMin: 0,
+    fuelLoadKgM2: 8,
+    liquidPool: true,
+    poolAreaM2: 0.08,
+    sootYieldGPerG: 0.015,
+  };
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (id: string, y: number, material: string, door: boolean): InteriorWall => ({
+    id,
+    start: { x: -0.2, y },
+    end: { x: 3.2, y },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material,
+    photos: [],
+    level: 'G',
+  });
+  const people = [
+    stud('a', 1.5, 0),
+    stud('b', 1.5, 3),
+    stud('south', 1.5, -3, false),
+    stud('north', 1.5, 6, false),
+  ];
+  const walls = [
+    barrier('pane', 1.5, 'glass', false),
+    barrier('south', -1.5, 'concrete', true),
+    barrier('north', 4.5, 'concrete', true),
+  ];
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init(people);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(
+    new Map([
+      ['a', pan],
+      ['b', pan],
+    ]),
+  );
+  (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite([
+    'a',
+    'b',
+  ]);
+  for (let t = 0; t < 600; t++) engine.step(1, walls, []);
+  const view = engine as unknown as {
+    wallSheetK: Map<string, number>;
+    layerState: Map<string, { active: boolean; zone: ZoneState; members: string[] }>;
+    gridStuds: Map<string, GridStud>;
+    neighborCache: Map<string, readonly string[]>;
+    layerGridWalls: GridWall[];
+  };
+  const rooms = [...view.layerState.values()].filter(
+    (row) => row.active && row.zone.sheetK?.pane != null,
+  );
+  assert.equal(rooms.length, 2, `shared rooms ${rooms.length}`);
+  const start = view.wallSheetK.get('pane') ?? 0;
+  const gases = rooms.map((row) => row.zone.upperK);
+  assert.ok(Math.abs((gases[0] ?? 0) - (gases[1] ?? 0)) < 0.05, 'the two layers diverged');
+  assert.ok(start > AMBIENT_K + 25, `pane only ${(start - AMBIENT_K).toFixed(1)} K above ambient`);
+  for (const row of rooms) {
+    assert.ok(Math.abs((row.zone.sheetK?.pane ?? 0) - start) < 0.05, 'the zone left the wall');
+  }
+  const qBefore = engine.fuelReleaseKw('a') ?? 0;
+  assert.ok(
+    Math.abs(qBefore - poolFireKw(pan.poolAreaM2 ?? 0)) < 0.05,
+    `release ${qBefore.toFixed(2)} kW`,
+  );
+  engine.step(1, walls, []);
+  const q = engine.fuelReleaseKw('a') ?? 0;
+  assert.ok(Math.abs(q - qBefore) < 0.01, 'the pan was still growing during the step');
+  const outdoor = new Set(['south', 'north']);
+  let gained = 0;
+  for (let i = 0; i < rooms.length; i++) {
+    const row = rooms[i];
+    if (!row) continue;
+    const enc = enclosureFromGrid(
+      row.members,
+      view.gridStuds,
+      view.neighborCache,
+      view.layerGridWalls,
+      2.6,
+      (memberId, outsideId) => {
+        if (outdoor.has(memberId) === outdoor.has(outsideId)) return null;
+        return { kind: 'wall' };
+      },
+    );
+    assert.ok(enc, 'no enclosure');
+    let area = 0;
+    let pane = 0;
+    for (const boundary of enc.spec.boundaries) {
+      if (!(boundary.areaM2 > 0)) continue;
+      area += boundary.areaM2;
+      if (boundary.id === 'pane') pane = boundary.areaM2;
+    }
+    assert.ok(pane > 8, `pane area ${pane.toFixed(2)} m²`);
+    const rad = area > 0 ? (RADIATIVE_FRACTION * q) / area : 0;
+    gained += filmKwM2(gases[i] ?? 0, start) + rad;
+  }
+  const predicted = start + gained / store;
+  const actual = view.wallSheetK.get('pane') ?? 0;
+  const outdoorK = (2 * outdoorKwM2(start)) / store;
+  assert.ok(outdoorK > 0.02, `an outdoor film would move the pane only ${outdoorK.toFixed(4)} K`);
+  assert.ok(
+    Math.abs(actual - predicted) < 0.005,
+    `moved ${(actual - start).toFixed(4)} K, both films ${(predicted - start).toFixed(4)} K, outdoor film ${outdoorK.toFixed(4)} K`,
+  );
+  for (const row of view.layerState.values()) {
+    if (row.zone.sheetK?.pane == null) continue;
+    assert.ok(Math.abs(row.zone.sheetK.pane - actual) < 0.05, 'the rooms no longer share the pane');
+  }
 });
 
 test('a door jet warms an upper layer that has no fire', () => {
