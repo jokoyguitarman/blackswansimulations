@@ -104,8 +104,8 @@ export interface Lining {
 
 /**
  * The layer's copy of a wall row. `WALL_MATERIALS` stores W/m·K and J/kg·K.
- * hk is in kW, so both are divided by 1000. Thickness and the concrete
- * fallback for glass and steel stay in `layerLiningFor`.
+ * hk is in kW, so both are divided by 1000. Which rows conduct as themselves
+ * stays in `layerLiningFor`.
  */
 function liningOf(row: WallMaterial): Lining {
   return {
@@ -117,14 +117,17 @@ function liningOf(row: WallMaterial): Lining {
   };
 }
 
-/** Concrete, brick, and gypsum, as `layerLiningFor` names them. */
+/** Concrete, brick, and gypsum, the inert rows `layerLiningFor` names. */
 export const LINING = {
   concrete: liningOf(layerLiningFor('concrete')),
   brick: liningOf(layerLiningFor('brick')),
   gypsum: liningOf(layerLiningFor('gypsum')),
 } as const satisfies Record<string, Lining>;
 
-/** The lining a named wall conducts into. Glass and steel come back as concrete. */
+/**
+ * The lining a named wall conducts into. Timber and glass use their own
+ * rows. Steel and an unnamed finish come back as concrete.
+ */
 export function liningForMaterial(material: string): Lining {
   return liningOf(layerLiningFor(material));
 }
@@ -152,7 +155,7 @@ export function effectiveHeatLossKwM2K(lining: Lining, tS: number): number {
 }
 
 /** Stefan–Boltzmann, kW/m²K⁴. */
-const SIGMA_KW_M2K4 = 5.67e-11;
+export const SIGMA_KW_M2K4 = 5.67e-11;
 
 /**
  * CFAST Technical Reference Eq. 5.23, the wall value, in W/m²K per K^{1/3}.
@@ -221,6 +224,20 @@ function fluxTable(hk: number, radInKwM2: number): (gasK: number) => number {
 let fluxMemo: Map<string, (gasK: number) => number> | null = null;
 /** χQ / AT for the fire currently being solved, kW/m². Zero outside a balance. */
 let fireRadiantKwM2 = 0;
+
+/**
+ * Flux a surface at ambient takes from gas at `gasK`, kW/m². Convection is
+ * the wall coefficient and the radiation is the grey exchange. This is the
+ * imposed flux on a cold lining, not the film the gas is charged for once
+ * the surface has warmed.
+ */
+export function coldSurfaceIncidentKwM2(gasK: number): number {
+  if (!(gasK > AMBIENT_K)) return 0;
+  const across = gasK - AMBIENT_K;
+  const qConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(across, 1 / 3) * across;
+  const qRad = SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK ** 4 - AMBIENT_K ** 4);
+  return qConv + qRad;
+}
 
 export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number {
   const hk = effectiveHeatLossKwM2K(lining, tS);
@@ -1306,7 +1323,9 @@ function segmentsCross(
  * front. A link to a stud outside the set, with no wall and no facade, is
  * a full-height opening. A facade link is a concrete wall unless it
  * crosses an exit, which is one vent of that exit's width with its head
- * at DOOR_SOFFIT_M.
+ * at DOOR_SOFFIT_M. A glass wall in `openWallIds` has cracked and is a
+ * vent of the whole face: the model stores no window rectangle. That
+ * replaces the solid area and any door in the same wall.
  */
 export function enclosureFromGrid(
   memberIds: readonly string[],
@@ -1315,6 +1334,7 @@ export function enclosureFromGrid(
   walls: readonly GridWall[],
   ceilingM: number,
   facade?: (memberId: string, outsideId: string) => FacadeOpening | null,
+  openWallIds?: ReadonlySet<string>,
 ): Enclosure | null {
   if (memberIds.length === 0 || !(ceilingM > 0.5)) return null;
   const members = new Set(memberIds);
@@ -1322,6 +1342,7 @@ export function enclosureFromGrid(
   const seenPairs = new Set<string>();
   const wallHits = new Map<string, GridWall>();
   const doorLinks = new Map<string, Array<{ id: string; t: number }>>();
+  const faceLinks = new Map<string, string[]>();
   const spillReceivers: string[] = [];
   const exitSlots = new Map<string, { widthM: number; receivers: string[] }>();
   const facadeWalls: number[] = [];
@@ -1373,9 +1394,12 @@ export function enclosureFromGrid(
       }
       if (wall) {
         wallHits.set(wall.id, wall);
-        if (wall.hasDoor) {
-          const t = paramAlongWall(stud.x, stud.y, other.x, other.y, wall);
-          if (t != null) {
+        const t = paramAlongWall(stud.x, stud.y, other.x, other.y, wall);
+        if (t != null) {
+          const faces = faceLinks.get(wall.id) ?? [];
+          faces.push(nId);
+          faceLinks.set(wall.id, faces);
+          if (wall.hasDoor) {
             const across = doorLinks.get(wall.id) ?? [];
             across.push({ id: nId, t });
             doorLinks.set(wall.id, across);
@@ -1445,6 +1469,11 @@ export function enclosureFromGrid(
   for (const wall of wallHits.values()) {
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (!(length > 0)) continue;
+    if (openWallIds?.has(wall.id) && liningForMaterial(wall.material).name === 'glass') {
+      vents.push({ widthM: length, sillM: 0, soffitM: ceilingM });
+      ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
+      continue;
+    }
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
     // A door belongs to the room whose links cross its gap. The same wall
     // can bound a room further along, and that room does not get the door.

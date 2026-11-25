@@ -878,10 +878,16 @@ export function wallMaterialFor(material: string | null | undefined): WallMateri
   );
 }
 
-/** Decision 1: the layer uses concrete, brick or gypsum, and concrete for anything else. */
-const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum']);
+/**
+ * Decision 1. Concrete, brick, gypsum, timber, and glass conduct as
+ * themselves. Timber is the lining, not a finish over a concrete wall.
+ * Glass is the pane until it breaks. Steel, aluminium, aerated concrete,
+ * and an unnamed finish stay on the concrete row: the structure behind
+ * that finish is taken to be concrete.
+ */
+const LAYER_LININGS = new Set(['concrete', 'brick_block', 'gypsum', 'timber', 'glass']);
 
-/** The lining the smoke layer conducts into. Never null; glass and steel fall back to concrete. */
+/** The lining the smoke layer conducts into. Never null. */
 export function layerLiningFor(material: string | null | undefined): WallMaterial {
   const row = wallMaterialFor(material);
   if (row && LAYER_LININGS.has(row.id)) return row;

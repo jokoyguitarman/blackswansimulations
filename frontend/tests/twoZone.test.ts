@@ -850,3 +850,59 @@ test('ten floor seconds stay near 1500 A√H', () => {
   );
   assert.ok(stored.burn.burnedKw < prescribed * 0.5);
 });
+
+test('a cracked glass face is a vent of the whole wall, and a concrete id is not', () => {
+  const studs = new Map([
+    ['a', { id: 'a', x: 0, y: 0, level: 'G' }],
+    ['out', { id: 'out', x: 0, y: 3, level: 'G' }],
+  ]);
+  const neighbors = new Map<string, readonly string[]>([
+    ['a', ['out']],
+    ['out', ['a']],
+  ]);
+  const glass = {
+    id: 'pane',
+    x1: -2,
+    y1: 1.5,
+    x2: 4,
+    y2: 1.5,
+    hasDoor: false,
+    doorWidth: 0,
+    material: 'glass',
+    level: 'G',
+  };
+  const shut = enclosureFromGrid(['a'], studs, neighbors, [glass], 4);
+  assert.ok(shut);
+  assert.equal(shut?.spec.vents.length, 0);
+  const pane = shut?.spec.boundaries.find((boundary) => boundary.lining.name === 'glass');
+  assert.ok(pane);
+  assert.equal(pane?.areaM2, 6 * 4);
+
+  const open = enclosureFromGrid(['a'], studs, neighbors, [glass], 4, undefined, new Set(['pane']));
+  assert.equal(open?.spec.vents.length, 1);
+  assert.equal(open?.spec.vents[0]?.widthM, 6);
+  assert.equal(open?.spec.vents[0]?.soffitM, 4);
+  assert.deepEqual(open?.ventReceivers, [['out']]);
+  assert.equal(
+    open?.spec.boundaries.some((boundary) => boundary.lining.name === 'glass'),
+    false,
+  );
+
+  const concrete = { ...glass, id: 'slab', material: 'concrete' };
+  const stay = enclosureFromGrid(
+    ['a'],
+    studs,
+    neighbors,
+    [concrete],
+    4,
+    undefined,
+    new Set(['slab']),
+  );
+  assert.equal(stay?.spec.vents.length, 0);
+  assert.equal(
+    stay?.spec.boundaries.some(
+      (boundary) => boundary.lining.name === 'concrete' && boundary.areaM2 === 24,
+    ),
+    true,
+  );
+});
