@@ -1,6 +1,9 @@
 /**
  * One door leaf, shut at 0 and fully open at 1. The fire vent, the smoke
- * gap, and the crowd read this same fraction.
+ * gap, and the crowd read this same fraction. The clear width is that
+ * fraction times the nominal width, so the width is linear in the swing
+ * angle. A swinging leaf does not clear the opening in proportion to the
+ * angle. This model uses the linear map.
  *
  * A fire door is self-closing (NFPA 80). The sweep uses the ICC
  * A117.1-2017 §404.2.8.1 minimum: 5 s from 90° open to 12° from the latch.
@@ -37,7 +40,11 @@ export function doorOpenFraction(wall: { openFraction?: number }): number {
   return value;
 }
 
-/** Width the fire, the smoke, and a pinned leaf use, metres. */
+/**
+ * Clear width the fire, the smoke, and a pinned leaf use, metres.
+ * Linear in the swing: nominal width times the open fraction. A real
+ * leaf's clear opening is not linear in angle.
+ */
 export function leafWidthM(wall: {
   hasDoor: boolean;
   doorWidth: number;

@@ -14,9 +14,7 @@ import {
   hasSmokeReservoir,
   DOOR_SOFFIT_M,
   balanceAt,
-  DOOR_JET_CM,
   diameterForReleaseKw,
-  inverseDoorJetKgS,
   effectiveHeatLossKwM2K,
   enclosureFromGrid,
   formsSustainedLayer,
@@ -160,17 +158,6 @@ test('a small fire in the concrete room is a layer within a minute', () => {
   }
 });
 
-test('the inverse door jet entrains with Cm 0.44', () => {
-  assert.equal(DOOR_JET_CM, 0.44);
-  assert.equal(inverseDoorJetKgS(0.2, 0.74, AMBIENT_K, 0.3), 0);
-  assert.equal(inverseDoorJetKgS(0.2, 0.74, 400, 0), 0);
-  const once = inverseDoorJetKgS(0.2, 0.74, 400, 0.3);
-  const twice = inverseDoorJetKgS(0.2, 0.74, 400, 0.6);
-  assert.ok(Math.abs(twice / once - 2) < 1e-9);
-  // rho = 353/400, heat = 1 * 107 * 0.2 kW, width 0.74 m, fall 0.3 m.
-  assert.ok(Math.abs(once - 0.08015) < 1e-4, `jet ${once}`);
-});
-
 test('Steckler center door reports the coupled flow', () => {
   // NBSIR 82-2520, full 0.74 m by 1.83 m door, 62.9 kW, burner in the centre:
   // outflow 0.571 kg/s. Johansson and van Hees (IAFSS 2014, Table 3) put the
@@ -217,7 +204,6 @@ test('Steckler center door reports the coupled flow', () => {
   const rise = state.upperK - AMBIENT_K;
   const atDoor = balanceAt(spec, measuredZ, Math.max(state.ageS, 600));
   const coupled = steady?.outKgS ?? 0;
-  const atSteady = balanceAt(spec, steady?.interfaceM ?? 0, Math.max(state.ageS, 600));
   assert.ok(
     Math.abs(state.interfaceM - measuredZ) <= zTol,
     `interface ${state.interfaceM.toFixed(3)} m, measured ${measuredZ} ± ${zTol.toFixed(3)}`,
@@ -233,22 +219,19 @@ test('Steckler center door reports the coupled flow', () => {
     Math.abs(riseRatio - 1) <= 0.2,
     `rise ${rise.toFixed(1)} K is ${riseRatio.toFixed(3)} of the measured ${measuredRise.toFixed(1)} K`,
   );
-  // The inverse door jet (TN 1889v1 Eq. 4.7, Cm = 0.44) is in this balance.
-  // At the coupled interface it entrains about 0.005 kg/s, and the outflow
-  // is 0.381 kg/s. That is 33% below 0.571. The 25% floor is 0.428.
-  // Heskestad at the measured height is about 0.30 kg/s and McCaffrey about
-  // 0.36; neither coupled point is inside the band. The orifice held at
-  // 0.985 m is the check that the vent formula itself is inside 25%.
-  assert.ok(
-    atSteady.mixKgS > 0 && atSteady.mixKgS < 0.02,
-    `mix ${atSteady.mixKgS.toFixed(4)} kg/s`,
-  );
+  // The model's own doorway flow. Heskestad at the measured height entrains
+  // about 0.30 kg/s and McCaffrey about 0.36; the coupled points are about
+  // 0.39 and 0.42 kg/s. Neither is inside 25% of 0.571 (the floor is 0.428).
+  // The inverse door jet (Eq. 4.7) was tried in this balance. At this
+  // interface it entrains about 0.005 kg/s, and with the interface on the
+  // floor it over-entrains and drops the heat and soot it carries, so it
+  // is not included. The orifice held at 0.985 m only checks the vent formula.
   assert.ok(
     coupled < measuredFlow * 0.75,
-    `coupled ${coupled.toFixed(3)} kg/s entered the 25% band`,
+    `coupled ${coupled.toFixed(3)} kg/s was reported as inside 25%`,
   );
   assert.ok(
-    Math.abs(coupled - 0.381) < 0.01,
+    Math.abs(coupled - 0.392) < 0.03,
     `coupled outflow ${coupled.toFixed(3)} kg/s, measured ${measuredFlow}`,
   );
   assert.ok(

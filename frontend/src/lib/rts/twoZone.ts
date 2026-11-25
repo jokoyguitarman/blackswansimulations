@@ -10,10 +10,12 @@
  * NUREG-1805 Eq. 2-2 to 2-5 (seed `mqh_hot_layer_temperature`). The film
  * and the slab are in series. hk on its own is the conduction coefficient,
  * not the loss from the gas.
- * The lower layer stays at the ambient 293 K. Cold inflow that enters the
- * upper layer entrains upper gas and deposits it in the lower layer
- * (CFAST TN 1889v1 Eq. 4.6–4.7, the inverse door jet). The heat that gas
- * carries is not kept: this layer has no lower-layer energy equation.
+ * The lower layer stays at the ambient 293 K. That is the usual
+ * pre-flashover assumption. The inverse door jet (CFAST TN 1889v1
+ * Eq. 4.7) was tried and left out: at the Steckler interface it entrains
+ * about 0.005 kg/s, and with the interface on the floor it over-entrains
+ * and drops the enthalpy and the soot it would move. Mixing into the
+ * lower layer is not in this step.
  *
  * A layer is kept only where that balance can hold a reservoir: smoke
  * deeper than a ceiling jet, hotter than a distinct-layer rise, and a spill
@@ -505,8 +507,6 @@ export interface LimitedBurn {
   outByVentKgS: number[];
   fanUpperKgS: number;
   fanLowerKgS: number;
-  /** Inverse door jet, kg/s. Upper gas deposited in the lower layer. */
-  mixKgS: number;
 }
 
 /**
@@ -556,7 +556,6 @@ export function oxygenLimitedBurn(
     outByVentKgS: flows.outByVent,
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
-    mixKgS: flows.mixKgS,
   };
 }
 
@@ -761,49 +760,6 @@ function densityKgM3(tempK: number): number {
 }
 
 /**
- * Cm in CFAST TN 1889v1 Eq. 4.7. Poreh, Morgan, Marshall and Harrison,
- * Fire Safety Journal 30 (1998), suggested 0.44–0.66. The note's value is
- * the low end. It is not fitted to a doorway measurement.
- */
-export const DOOR_JET_CM = 0.44;
-
-/**
- * Upper-layer gas entrained by cold inflow, kg/s. CFAST TN 1889v1 Eq. 4.7
- * without the source term: the orifice already put that inflow in the lower
- * layer. The receiving fluid is the upper layer. cp is 1 kJ/kg·K and the
- * stream's heat is in kW, the same pair the Heskestad group in this file
- * uses. `fallM` is the height of that cold inflow inside the upper layer.
- * Eq. 4.7 writes the length as z_I − z_N. It is not extended above the soffit.
- * The upright spill jet entrains after the gas has left the room, so it is
- * not added here.
- */
-export function inverseDoorJetKgS(
-  sourceKgS: number,
-  widthM: number,
-  receivingK: number,
-  fallM: number,
-): number {
-  if (!(sourceKgS > 0) || !(widthM > 0) || !(fallM > 0) || !(receivingK > AMBIENT_K)) return 0;
-  const rho = densityKgM3(receivingK);
-  const heatKw = CP_KJ_KGK * (receivingK - AMBIENT_K) * sourceKgS;
-  if (!(heatKw > 0) || !(rho > 0)) return 0;
-  const group = Math.pow((LEVEL.G * rho * rho) / (CP_KJ_KGK * receivingK), 1 / 3);
-  const entrained = DOOR_JET_CM * group * Math.pow(heatKw, 1 / 3) * Math.pow(widthM, 2 / 3) * fallM;
-  return entrained > 0 ? entrained : 0;
-}
-
-/** Height of doorway inflow that enters above the interface, metres. */
-function upperInflowHeightM(vent: Vent, interfaceM: number, upperK: number, dP0: number): number {
-  if (!(upperK > AMBIENT_K) || !(dP0 < 0) || !(vent.widthM > 0)) return 0;
-  const buoy = (densityKgM3(AMBIENT_K) - densityKgM3(upperK)) * LEVEL.G;
-  if (!(buoy > 1e-9)) return 0;
-  const neutral = interfaceM - dP0 / buoy;
-  const sill = Math.min(vent.sillM, vent.soffitM);
-  const soffit = Math.max(vent.sillM, vent.soffitM);
-  return Math.max(0, Math.min(soffit, neutral) - Math.max(sill, interfaceM));
-}
-
-/**
  * One horizontal slice of an orifice, kg/s. CFAST Eq. 4.3. Pressures are
  * the inside-minus-outside values at the bottom and top of the slice, and
  * they must not change sign. `rho` is the gas that is flowing.
@@ -837,8 +793,6 @@ export function orificeSliceKgS(
 interface SliceFlows {
   inKgS: number;
   outKgS: number;
-  /** Inflow whose slice sits above the interface, so it enters the upper layer. */
-  inUpperKgS: number;
 }
 
 interface Flows extends SliceFlows {
@@ -848,11 +802,6 @@ interface Flows extends SliceFlows {
   fanUpperKgS: number;
   /** Fan extract from the lower layer, kg/s. Clear air, in this model. */
   fanLowerKgS: number;
-  /**
-   * Upper-layer gas the inverse door jet deposits in the lower layer, kg/s.
-   * Internal transfer. It is not a second doorway flow.
-   */
-  mixKgS: number;
 }
 
 function pressureAt(
@@ -904,11 +853,9 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
   const flows: Flows = {
     inKgS: 0,
     outKgS: 0,
-    inUpperKgS: 0,
     outByVent: vents.map(() => 0),
     fanUpperKgS: 0,
     fanLowerKgS: 0,
-    mixKgS: 0,
   };
   const rhoU = densityKgM3(upperK);
   const rhoL = densityKgM3(AMBIENT_K);
@@ -923,20 +870,15 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
     if (interfaceM > sill && interfaceM < soffit) marks.push(interfaceM);
     marks.sort((a, b) => a - b);
     let out = 0;
-    let inUpper = 0;
     for (let i = 0; i < marks.length - 1; i++) {
       const z0 = marks[i] ?? sill;
       const z1 = marks[i + 1] ?? soffit;
       const piece = sliceFlows(z0, z1, interfaceM, dP0, rhoL, rhoU, rhoA, vent.widthM);
       flows.inKgS += piece.inKgS;
-      inUpper += piece.inUpperKgS;
       out += piece.outKgS;
     }
-    flows.inUpperKgS += inUpper;
     flows.outByVent[v] = out;
     flows.outKgS += out;
-    const fall = upperInflowHeightM(vent, interfaceM, upperK, dP0);
-    flows.mixKgS += inverseDoorJetKgS(inUpper, vent.widthM, upperK, fall);
   }
   return flows;
 }
@@ -951,7 +893,7 @@ function sliceFlows(
   rhoA: number,
   widthM: number,
 ): SliceFlows {
-  const flows: SliceFlows = { inKgS: 0, outKgS: 0, inUpperKgS: 0 };
+  const flows: SliceFlows = { inKgS: 0, outKgS: 0 };
   if (!(z1 > z0 + 1e-6)) return flows;
   const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
   const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
@@ -963,7 +905,6 @@ function sliceFlows(
       return {
         inKgS: lower.inKgS + upper.inKgS,
         outKgS: lower.outKgS + upper.outKgS,
-        inUpperKgS: lower.inUpperKgS + upper.inUpperKgS,
       };
     }
   }
@@ -973,10 +914,7 @@ function sliceFlows(
   const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
   const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
   if (outflow) flows.outKgS = mass;
-  else {
-    flows.inKgS = mass;
-    if (mid > interfaceM) flows.inUpperKgS = mass;
-  }
+  else flows.inKgS = mass;
   return flows;
 }
 
@@ -1026,7 +964,6 @@ interface Balance {
   outKgS: number;
   inKgS: number;
   fanUpperKgS: number;
-  mixKgS: number;
   riseK: number;
 }
 
@@ -1054,7 +991,6 @@ export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Bala
     outKgS: flows.outKgS,
     inKgS: flows.inKgS,
     fanUpperKgS: flows.fanUpperKgS,
-    mixKgS: flows.mixKgS,
     riseK: rise,
   };
 }
@@ -1077,10 +1013,9 @@ function steadyLayerNow(spec: LayerSpec, tS: number): SteadyLayer | null {
   if (!(zMax > zMin)) return null;
   const residual = (z: number) => {
     const row = balanceAt(spec, z, tS);
-    // The plume replaces the door, an upper-layer fan, and the upper gas
-    // the cold inflow entrains. A fan in the lower layer does not take
-    // smoke, so it is not in this.
-    return row.plumeKgS - row.outKgS - row.fanUpperKgS - row.mixKgS;
+    // The plume replaces what the door and an upper-layer fan carry out.
+    // A fan in the lower layer does not take smoke, so it is not in this.
+    return row.plumeKgS - row.outKgS - row.fanUpperKgS;
   };
   const samples = 36;
   let zPrev = zMin;
@@ -1184,14 +1119,10 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
-    // The jet cannot move more upper gas than the layer holds this slice.
-    const mixKgS = mass > 0 ? Math.min(limited.mixKgS, mass / slice) : 0;
     // Makeup air fills the lower layer. The plume and a fan in that clear
     // air both drain it, so the interface falls. A fan in the smoke is
-    // balanced by extra inflow, which lifts the interface. The inverse door
-    // jet deposits upper gas downstairs, which lifts it as well. That gas
-    // cools to the ambient lower layer, so its enthalpy is not kept.
-    let dZ = (flows.inKgS - plume - flows.fanLowerKgS + mixKgS) / areaRho;
+    // balanced by extra inflow, which lifts the interface.
+    let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     const mL = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
@@ -1200,26 +1131,20 @@ function stepZoneNow(state: ZoneState, spec: LayerSpec, dt: number, sootGPerS = 
     const sliceFanL = flows.fanLowerKgS * slice;
     const sliceOut = flows.outKgS * slice;
     const sliceFanU = flows.fanUpperKgS * slice;
-    const sliceMix = mixKgS * slice;
     const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
     const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
-    const o2L = yL * mL - (slicePlume + sliceFanL) * yL + sliceIn * O2_AMBIENT_MASS + sliceMix * yU;
-    const o2U =
-      yU * mass - (sliceOut + sliceFanU + sliceMix) * yU - useU + (slicePlume * yL - useL);
-    const mL2 = mL - slicePlume - sliceFanL + sliceIn + sliceMix;
-    const mU2 = mass - sliceOut - sliceFanU + slicePlume - sliceMix;
+    const o2L = yL * mL - (slicePlume + sliceFanL) * yL + sliceIn * O2_AMBIENT_MASS;
+    const o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
+    const mL2 = mL - slicePlume - sliceFanL + sliceIn;
+    const mU2 = mass - sliceOut - sliceFanU + slicePlume;
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
     z = Math.min(spec.ceilingM - 0.02, Math.max(0.05, z + dZ * slice));
     const carried = mass > 1e-6 ? (soot / mass) * flows.outKgS * slice : 0;
     const extracted = mass > 1e-6 ? (soot / mass) * flows.fanUpperKgS * slice : 0;
-    // Soot leaves with the deposited gas, so the upper-layer concentration
-    // stays put. The lower layer does not track soot, so that part is not
-    // painted on a stud and is not counted as vented.
-    const mixed = mass > 1e-6 ? (soot / mass) * mixKgS * slice : 0;
     const made = Math.max(0, sootGPerS) * slice;
-    soot = Math.max(0, soot + made - carried - extracted - mixed);
+    soot = Math.max(0, soot + made - carried - extracted);
     vented += carried;
     left -= slice;
   }
