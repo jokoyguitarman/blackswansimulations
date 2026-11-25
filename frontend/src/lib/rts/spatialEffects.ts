@@ -214,11 +214,13 @@ export function advanceSootK(
   return Math.max(0, k * decay + (gen / vent) * (1 - decay));
 }
 
-/** Mass, kg·K and oxygen·kg offered to one neighbouring room. cp is 1 kJ/kg·K. */
+/** Mass, kg·K, oxygen·kg and fuel·kg offered to one neighbouring room. cp is 1 kJ/kg·K. */
 export interface DoorJetParcel {
   kg: number;
   tKg: number;
   yKg: number;
+  /** Unburned pyrolysate, kilograms. Absent means none. */
+  fKg?: number;
 }
 
 /**
@@ -229,7 +231,7 @@ export interface DoorJetBook {
   room: string;
   members: readonly string[];
   receivers: readonly (readonly string[])[];
-  hot: readonly { kg: number; tempK: number; oxygenY: number }[];
+  hot: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
 }
 
 /**
@@ -249,7 +251,7 @@ export function assignDoorJet(
   room: string,
   members: ReadonlySet<string>,
   ventReceivers: readonly (readonly string[])[],
-  hotByVent: readonly { kg: number; tempK: number; oxygenY: number }[],
+  hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[],
   rooms: ReadonlyMap<string, string>,
 ): Map<string, DoorJetParcel> {
   const out = new Map<string, DoorJetParcel>();
@@ -269,10 +271,11 @@ export function assignDoorJet(
     if (buckets.size === 0) continue;
     for (const [dest, count] of buckets) {
       const kg = hot.kg * (count / receivers.length);
-      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0 };
+      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0 };
       cur.kg += kg;
       cur.tKg += kg * hot.tempK;
       cur.yKg += kg * hot.oxygenY;
+      cur.fKg = (cur.fKg ?? 0) + kg * (hot.fuelY ?? 0);
       out.set(dest, cur);
     }
   }
@@ -291,7 +294,12 @@ export function queueDoorJets(
     const kgS = cur.kg / dt;
     const tempK = cur.tKg / cur.kg;
     if (!(kgS >= DOOR_JET_MIN_KGS) || !(tempK > AMBIENT_K + 1)) continue;
-    ready.set(dest, { kgS, tempK, oxygenY: cur.yKg / cur.kg });
+    ready.set(dest, {
+      kgS,
+      tempK,
+      oxygenY: cur.yKg / cur.kg,
+      fuelY: (cur.fKg ?? 0) / cur.kg,
+    });
   }
   return ready;
 }
@@ -1745,11 +1753,11 @@ export class SpatialEffectsEngine {
     stepped: {
       ventedSootG: number;
       outByVentKgS: readonly number[];
-      hotByVent: readonly { kg: number; tempK: number; oxygenY: number }[];
+      hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
     },
     dt: number,
     rooms: ReadonlyMap<string, string>,
-    jets: Map<string, { kg: number; tKg: number; yKg: number }>,
+    jets: Map<string, { kg: number; tKg: number; yKg: number; fKg?: number }>,
   ): void {
     const shares = stepped.outByVentKgS;
     let totalOut = 0;
@@ -1778,15 +1786,17 @@ export class SpatialEffectsEngine {
           kg: row.kg,
           tempK: row.tempK,
           oxygenY: row.oxygenY,
+          fuelY: row.fuelY,
         })),
       });
     }
     const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, stepped.hotByVent, rooms);
     for (const [dest, parcel] of assigned) {
-      const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0 };
+      const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0 };
       cur.kg += parcel.kg;
       cur.tKg += parcel.tKg;
       cur.yKg += parcel.yKg;
+      cur.fKg = (cur.fKg ?? 0) + (parcel.fKg ?? 0);
       jets.set(dest, cur);
     }
   }
@@ -2032,7 +2042,7 @@ export class SpatialEffectsEngine {
       sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
     }
     const seen = new Set<string>();
-    const nextJets = new Map<string, { kg: number; tKg: number; yKg: number }>();
+    const nextJets = new Map<string, { kg: number; tKg: number; yKg: number; fKg?: number }>();
     const pending: Array<{
       boundaries: readonly Boundary[];
       ageS: number;

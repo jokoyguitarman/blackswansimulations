@@ -7,6 +7,7 @@ import {
   RADIATIVE_FRACTION,
   STUD_AREA_M2,
   poolFireKw,
+  WOOD_HEAT_KJ_KG,
   type FuelCell,
 } from '../src/lib/rts/flameFront.ts';
 import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
@@ -67,6 +68,8 @@ import {
   orificeSliceKgS,
   steadyLayer,
   oxygenLimitedBurn,
+  SPILL_PLUME_CM,
+  spillPlumeEntrainmentKgS,
   coolUnclaimedSheet,
   isothermalSheet,
   liningForMaterial,
@@ -1090,6 +1093,97 @@ test('ten floor seconds stay near 1500 A√H', () => {
   assert.ok(stored.burn.burnedKw < prescribed * 0.5);
 });
 
+test('the spill plume is the Poreh doorway term', () => {
+  assert.equal(SPILL_PLUME_CM, 0.44);
+  // ρ = 353/293, Q = (500 − 293) × 0.4 = 82.8 kW, w = 2 m, rise = 3 m.
+  // Cm (g ρ² / (cp T))^(1/3) Q^(1/3) w^(2/3) H = 3.333 kg/s.
+  const entrained = spillPlumeEntrainmentKgS(0.4, 500, 2, 3);
+  close(entrained, 3.333, 0.002, 'entrainment');
+  assert.equal(spillPlumeEntrainmentKgS(0.4, 500, 2, 0), 0);
+  assert.equal(spillPlumeEntrainmentKgS(0, 500, 2, 3), 0);
+});
+
+test('oxygen-starved pyrolysis is carried and burns in the doorway spill', () => {
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  let made = 0;
+  let vented = 0;
+  const burned: number[] = [];
+  for (let t = 0; t < 60; t++) {
+    const step = stepZone(state, spec, 1);
+    made += (prescribed * (1 - step.burnedFraction)) / WOOD_HEAT_KJ_KG;
+    for (const hot of step.hotByVent) vented += hot.kg * hot.fuelY;
+    burned.push(step.burnedFraction * prescribed);
+    state = step.state;
+  }
+  const kept = (state.fuelKg ?? 0) + vented;
+  assert.ok(made > 1, `pyrolysate ${made.toFixed(3)} kg`);
+  close(kept, made, Math.max(0.05, made * 0.02), 'fuel left the layer');
+  assert.ok(vented > 0.1, `the door carried ${vented.toFixed(3)} kg`);
+  const tail = burned.slice(-10);
+  const mean = tail.reduce((sum, value) => sum + value, 0) / tail.length;
+  const cap = ventilationLimitedKw(0.9 * 2, 2);
+  // The source room still burns only the oxygen its plume took.
+  assert.ok(Math.abs(mean - cap) / cap < 0.15, `mean ${mean.toFixed(0)} kW vs ${cap.toFixed(0)}`);
+  assert.ok(mean / prescribed < 0.5, `fraction ${mean / prescribed}`);
+
+  // A tall hall. The soffit is below the fresh interface, so the jet
+  // spills through the lower layer and entrains its oxygen.
+  const hall: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 6,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 6, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  // 0.4 kg/s at a fuel mass fraction of 0.1 is 700 kW. The spill at this
+  // door entrains enough air to finish it. A jet with no fuel is the control.
+  const jet = { kgS: 0.4, tempK: 500, oxygenY: 0.12, fuelY: 0.1 };
+  let rich = freshLayer(hall.ceilingM);
+  let plain = freshLayer(hall.ceilingM);
+  let arrived = 0;
+  let forwarded = 0;
+  for (let t = 0; t < 10; t++) {
+    const step = stepZone(rich, hall, 1, 0, jet);
+    arrived += jet.kgS * jet.fuelY;
+    for (const hot of step.hotByVent) forwarded += hot.kg * hot.fuelY;
+    rich = step.state;
+    plain = stepZone(plain, hall, 1, 0, {
+      kgS: jet.kgS,
+      tempK: jet.tempK,
+      oxygenY: jet.oxygenY,
+    }).state;
+  }
+  const burnedKg = arrived - (rich.fuelKg ?? 0) - forwarded;
+  assert.ok(
+    burnedKg > arrived * 0.9,
+    `burned ${burnedKg.toFixed(4)} kg of ${arrived.toFixed(4)} kg, stored ${rich.fuelKg}`,
+  );
+  assert.ok(
+    rich.upperK > plain.upperK + 30,
+    `doorway burn rose to ${(rich.upperK - AMBIENT_K).toFixed(1)} K, the sensible jet to ${(plain.upperK - AMBIENT_K).toFixed(1)} K`,
+  );
+
+  // The interface is already below the soffit, so the jet enters the upper
+  // layer and Eq. 4.7 does not entrain. The fuel is stored, not burned.
+  const deep = freshLayer(spec.ceilingM);
+  deep.interfaceM = 1;
+  const closed: LayerSpec = { ...spec, fires: [] };
+  const held = stepZone(deep, closed, 1, 0, jet);
+  let heldOut = 0;
+  for (const hot of held.hotByVent) heldOut += hot.kg * hot.fuelY;
+  close((held.state.fuelKg ?? 0) + heldOut, jet.kgS * jet.fuelY, 1e-6, 'no spill, no burn');
+});
+
 test('fallen glass opens a labelled fraction, and a concrete id does not', () => {
   const studs = new Map([
     ['a', { id: 'a', x: 0, y: 0, level: 'G' }],
@@ -1564,6 +1658,20 @@ test('a door jet assigns the vented mass and enthalpy to the receiving room', ()
   close(hall.tKg, hall.kg * 500, 1e-9, 'hall enthalpy');
   close(other.tKg, other.kg * 500, 1e-9, 'other enthalpy');
   close(hall.yKg, hall.kg * 0.12, 1e-12, 'hall oxygen');
+
+  const fueled = assignDoorJet(
+    'fire',
+    members,
+    [['b1', 'b2', 'c', 'a', 'outside']],
+    [{ kg: 2, tempK: 500, oxygenY: 0.12, fuelY: 0.04 }],
+    rooms,
+  );
+  const fueledHall = fueled.get('hall');
+  assert.ok(fueledHall);
+  close(fueledHall.fKg ?? 0, fueledHall.kg * 0.04, 1e-12, 'hall fuel');
+  const fueledJet = queueDoorJets(fueled, 1).get('hall');
+  assert.ok(fueledJet);
+  close(fueledJet.fuelY ?? 0, 0.04, 1e-12, 'queued fuel');
 
   const both = assignDoorJet(
     'fire',

@@ -5,7 +5,9 @@
  * The open and blocked crowd figures were rebaselined when a jet-formed
  * layer stopped deleting soot that was already at head height. That soot
  * stays and leaks. New soot stays in the ceiling layer. The shop burn is
- * unchanged by the door jet.
+ * unchanged by the door jet. The mall layer is hotter and deeper because
+ * unburned shop fuel burns in the doorway spill. The interface stays
+ * above head height, so the people and the shop burn do not move.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';

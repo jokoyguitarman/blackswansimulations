@@ -34,6 +34,17 @@
  * m cp (T_jet − T), and the interface falls by m / (ρ(T_jet) A). That is
  * the vent flow of Eq. 4.1–4.5 changing rooms, not Eq. 4.7.
  *
+ * Pyrolysate the plume cannot burn is carried in the upper layer. The
+ * mass is the unreleased prescribed heat divided by the wood net heat,
+ * 17.5 MJ/kg (EN 1991-1-2 Table E.3), the same figure the flame front
+ * uses for a solid. It leaves with the door jet. In the receiving room
+ * that jet burns against the oxygen the spill plume entrains from the
+ * lower layer (CFAST TN 1889v1 Eq. 4.6–4.7, Poreh et al., Cm = 0.44),
+ * and only while the soffit is still below the interface. The entrained
+ * air joins that room's upper layer. It is not applied in the room the
+ * fuel came from, and it is not the inverse jet, so the source room's
+ * heat release stays the oxygen the plume took.
+ *
  * A layer is kept only where that balance can hold a reservoir: smoke
  * deeper than a ceiling jet, hotter than a distinct-layer rise, and a spill
  * edge below the ceiling (a door head, or no opening at all). The jet
@@ -56,7 +67,12 @@
 
 import { LEVEL } from '../evacuation/levelConstants';
 import { doorOpenFraction } from './doorLeaf';
-import { CONTENTS_HRRPUA_KW_M2, RADIATIVE_FRACTION, STUD_AREA_M2 } from './flameFront';
+import {
+  CONTENTS_HRRPUA_KW_M2,
+  RADIATIVE_FRACTION,
+  STUD_AREA_M2,
+  WOOD_HEAT_KJ_KG,
+} from './flameFront';
 import { GLASS_FALLOUT_AREA_FRACTION } from './liningFire';
 import { layerLiningFor, type WallMaterial } from './materialLibrary';
 
@@ -577,6 +593,51 @@ export function lowerOxygenCoefficient(yO2: number): number {
   return (Math.tanh(x) + 1) / 2;
 }
 
+/**
+ * Cm in the spill-plume entrainment, CFAST TN 1889v1 Eq. 4.7. Poreh,
+ * Morgan, Marshall and Harrison, Fire Safety Journal 30 (1998). CFAST
+ * uses 0.44, the low end of the note's 0.44–0.66 range.
+ */
+export const SPILL_PLUME_CM = 0.44;
+
+/**
+ * Air the doorway spill entrains from the lower layer, kg/s. CFAST TN
+ * 1889v1 Eq. 4.7, the term added to the jet itself. Eq. 4.6 is the
+ * sensible enthalpy of that jet, cp (T_jet − T_lower) m. The rise is the
+ * height from the soffit up to the interface. The jet's own mass is not
+ * included: the caller already carries it.
+ */
+export function spillPlumeEntrainmentKgS(
+  jetKgS: number,
+  jetTempK: number,
+  widthM: number,
+  riseM: number,
+  lowerTempK = AMBIENT_K,
+): number {
+  if (!(jetKgS > 0) || !(widthM > 0) || !(riseM > 0) || !(jetTempK > lowerTempK)) return 0;
+  const qKw = CP_KJ_KGK * (jetTempK - lowerTempK) * jetKgS;
+  const rho = densityKgM3(lowerTempK);
+  const factor = Math.pow((LEVEL.G * rho * rho) / (CP_KJ_KGK * lowerTempK), 1 / 3);
+  return SPILL_PLUME_CM * factor * Math.pow(qKw, 1 / 3) * Math.pow(widthM, 2 / 3) * riseM;
+}
+
+/**
+ * Width and rise of the openings a spill can climb. The rise is the
+ * interface minus the width-weighted soffit. A soffit at or above the
+ * interface is upper layer into upper layer, and Eq. 4.7 does not apply.
+ */
+function spillOpening(spec: LayerSpec, interfaceM: number): { widthM: number; riseM: number } {
+  let width = 0;
+  let soffitWidth = 0;
+  for (const vent of spec.vents) {
+    if (!(vent.widthM > 0) || !(vent.soffitM < interfaceM - 1e-3)) continue;
+    width += vent.widthM;
+    soffitWidth += vent.widthM * vent.soffitM;
+  }
+  if (!(width > 0)) return { widthM: 0, riseM: 0 };
+  return { widthM: width, riseM: Math.max(0, interfaceM - soffitWidth / width) };
+}
+
 /** kW the oxygen in this entrainment stream can support, after the cutoff. */
 export function oxygenCapacityKw(entrainmentKgS: number, yO2: number): number {
   if (!(entrainmentKgS > 0) || !(yO2 > 0)) return 0;
@@ -636,9 +697,10 @@ interface PlumeAir {
  * is the door inflow, the fan makeup, and the air the interface can still
  * give up. A sum of stud plumes cannot burn more than that. The prescribed
  * release is the pyrolysis the fire is asking for. What burns is the lesser
- * of that and the oxygen. Unburned fuel is not carried on; this model does
- * not have that stream, so the heat release itself is the limited one.
- * φ uses the fresh lower-layer air only. Upper-layer gas is recirculated.
+ * of that and the oxygen. The unburned part is carried as pyrolysate and
+ * does not burn in this room: the plume already took the oxygen the flame
+ * can use. φ uses the fresh lower-layer air only. Upper-layer gas is
+ * recirculated.
  */
 export function layerBurn(
   fires: readonly FirePlume[],
@@ -717,8 +779,9 @@ export interface LimitedBurn {
  * not take, including the last centimetre of a large floor, does not
  * enlarge the flame. Sizing the flame on the prescribed pyrolysis lets it
  * entrain the oxygen stored in the upper layer and burn the free-burn
- * rate for a step. The extra pyrolysis is not a larger flame: this model
- * does not carry unburned fuel. Upper-layer gas can still finish a flame
+ * rate for a step. The extra pyrolysis is carried as fuel and can burn
+ * where a door jet meets oxygen. It is not a larger flame in this room.
+ * Upper-layer gas can still finish a flame
  * the fresh air already accounts for. It cannot raise the release above
  * that air.
  *
@@ -867,6 +930,12 @@ export interface ZoneState {
   upperK: number;
   /** Soot in the upper layer, grams. */
   sootG: number;
+  /**
+   * Unburned pyrolysate in the upper layer, kilograms. Absent on an old
+   * state means none. The mass is unreleased prescribed heat divided by
+   * the wood net heat, 17.5 MJ/kg.
+   */
+  fuelKg?: number;
   /** Seconds the fire has been burning, for the lining loss. */
   ageS: number;
   /** Oxygen mass fraction in the lower layer. Absent on an old state means ambient. */
@@ -938,6 +1007,7 @@ export function freshLayer(ceilingM: number): ZoneState {
     interfaceM: Math.max(0.05, ceilingM - depth),
     upperK: AMBIENT_K + 1,
     sootG: 0,
+    fuelKg: 0,
     ageS: HK_FLOOR_S,
     lowerO2: O2_AMBIENT_MASS,
     upperO2: O2_AMBIENT_MASS,
@@ -1640,12 +1710,14 @@ const SUBSTEP_S = 0.1;
 /**
  * Upper-layer gas arriving from a neighbour's vent. Mass and enthalpy of
  * the door jet, not a fire in this room. `oxygenY` is the source layer's
- * oxygen mass fraction.
+ * oxygen mass fraction. `fuelY` is the unburned pyrolysate in that gas,
+ * kilograms of fuel per kilogram of gas. Absent means none.
  */
 export interface DoorJetInflow {
   kgS: number;
   tempK: number;
   oxygenY: number;
+  fuelY?: number;
 }
 
 /** Upper-layer gas that left one vent over the step. */
@@ -1653,6 +1725,8 @@ export interface VentedHotGas {
   kg: number;
   tempK: number;
   oxygenY: number;
+  /** Unburned pyrolysate, kg fuel per kg gas. */
+  fuelY: number;
 }
 
 export function stepZone(
@@ -1694,6 +1768,7 @@ function stepZoneNow(
   let z = state.interfaceM;
   let temp = state.upperK;
   let soot = state.sootG;
+  let fuel = state.fuelKg != null && state.fuelKg > 0 ? state.fuelKg : 0;
   let age = state.ageS;
   let yL = oxygenMassFraction(state.lowerO2);
   let yU = oxygenMassFraction(state.upperO2);
@@ -1703,6 +1778,7 @@ function stepZoneNow(
   const hotKg = spec.vents.map(() => 0);
   const hotT = spec.vents.map(() => 0);
   const hotY = spec.vents.map(() => 0);
+  const hotF = spec.vents.map(() => 0);
   let burnedFraction = 1;
   let phi = 0;
   let left = Math.max(0, dt);
@@ -1713,6 +1789,10 @@ function stepZoneNow(
   const jetKgS = jet != null && jet.kgS > 0 ? jet.kgS : 0;
   const jetT = jet != null && jet.tempK > 0 ? jet.tempK : AMBIENT_K;
   const jetY = jet != null && jet.oxygenY > 0 ? jet.oxygenY : O2_AMBIENT_MASS;
+  const jetFuelY = jet != null && jet.fuelY != null && jet.fuelY > 0 ? jet.fuelY : 0;
+  let boundaryArea = 0;
+  for (const boundary of spec.boundaries) if (boundary.areaM2 > 0) boundaryArea += boundary.areaM2;
+  const chi = chiOf(spec);
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
     if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
@@ -1732,6 +1812,35 @@ function stepZoneNow(
       fanUpperKgS: limited.fanUpperKgS,
     };
     outByVent = limited.outByVentKgS;
+    const yF = mass > 1e-6 ? fuel / mass : 0;
+    const unburnedKgS =
+      burn.prescribedKw > burn.burnedKw ? (burn.prescribedKw - burn.burnedKw) / WOOD_HEAT_KJ_KG : 0;
+    // The fuel in the jet, not the fuel already in this layer. Region 3
+    // of the CFAST scheme burns the hydrocarbons the vent just carried.
+    // Under 1 kW is the same cutoff as a plume, not a doorway flame.
+    const jetFuelKw = jetKgS * jetFuelY * WOOD_HEAT_KJ_KG;
+    let mEnt = 0;
+    let burnedFuelKgS = 0;
+    let qDoorKw = 0;
+    if (jetFuelKw >= MIN_LAYER_FIRE_KW) {
+      const opening = spillOpening(spec, z);
+      const lowerKg = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
+      const offered = spillPlumeEntrainmentKgS(jetKgS, jetT, opening.widthM, opening.riseM);
+      // The room's own plume already takes its share of this air. The spill
+      // burns on what is left, and it cannot empty the lower layer twice.
+      const busy = plume + flows.fanLowerKgS;
+      const free = Math.max(0, (slice > 0 ? lowerKg / slice : 0) - busy);
+      mEnt = Math.min(offered, free);
+      const airKw = oxygenCapacityKw(mEnt, yL);
+      const burnedKw = Math.min(jetFuelKw, airKw);
+      burnedFuelKgS = burnedKw / WOOD_HEAT_KJ_KG;
+      if (boundaryArea > 0) {
+        qDoorKw = (1 - chi) * burnedKw;
+        fireRadiantKwM2 += (chi * burnedKw) / boundaryArea;
+      } else {
+        qDoorKw = burnedKw;
+      }
+    }
     const rates = limited.hotOutByVentKgS;
     for (let v = 0; v < hotKg.length; v++) {
       const dm = (rates[v] ?? 0) * slice;
@@ -1739,6 +1848,7 @@ function stepZoneNow(
       hotKg[v] = (hotKg[v] ?? 0) + dm;
       hotT[v] = (hotT[v] ?? 0) + dm * temp;
       hotY[v] = (hotY[v] ?? 0) + dm * yU;
+      hotF[v] = (hotF[v] ?? 0) + dm * yF;
     }
     const loss = stepSheetLoss(spec.boundaries, sheets, age, temp, slice, hold, gainKjM2);
     const qLoss = loss.lossKw;
@@ -1748,17 +1858,24 @@ function stepZoneNow(
     // The jet is already hot. It does not have to be warmed from ambient
     // the way plume air does. m cp (T_jet − T) is the mixing term.
     if (jetKgS > 0) dT += (jetKgS * CP_KJ_KGK * (jetT - temp)) / denom;
+    // Spill air arrives at the lower-layer temperature. The convected
+    // share of the doorway burn is the heat that air could release.
+    if (mEnt > 0 || qDoorKw > 0) {
+      dT += (qDoorKw - mEnt * CP_KJ_KGK * (temp - AMBIENT_K)) / denom;
+    }
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
     // Makeup air fills the lower layer. The plume and a fan in that clear
     // air both drain it, so the interface falls. A fan in the smoke is
     // balanced by extra inflow, which lifts the interface. A door jet
-    // joins the upper layer, so its volume lowers the interface.
+    // joins the upper layer, so its volume lowers the interface. Spill
+    // air leaves the lower layer and joins the upper one.
     let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
     if (jetKgS > 0) {
       dZ -= jetKgS / Math.max(densityKgM3(jetT) * spec.areaM2, 1e-3);
     }
+    if (mEnt > 0) dZ -= mEnt / areaRho;
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     const mL = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
@@ -1767,12 +1884,20 @@ function stepZoneNow(
     const sliceFanL = flows.fanLowerKgS * slice;
     const sliceOut = flows.outKgS * slice;
     const sliceFanU = flows.fanUpperKgS * slice;
+    const sliceEnt = mEnt * slice;
     const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
     const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
-    const o2L = yL * mL - (slicePlume + sliceFanL) * yL + sliceIn * O2_AMBIENT_MASS;
-    let o2U = yU * mass - (sliceOut + sliceFanU) * yU - useU + (slicePlume * yL - useL);
-    const mL2 = mL - slicePlume - sliceFanL + sliceIn;
-    let mU2 = mass - sliceOut - sliceFanU + slicePlume;
+    const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
+    const o2L = yL * mL - (slicePlume + sliceFanL) * yL - sliceEnt * yL + sliceIn * O2_AMBIENT_MASS;
+    let o2U =
+      yU * mass -
+      (sliceOut + sliceFanU) * yU -
+      useU +
+      (slicePlume * yL - useL) +
+      sliceEnt * yL -
+      doorO2;
+    const mL2 = mL - slicePlume - sliceFanL + sliceIn - sliceEnt;
+    let mU2 = mass - sliceOut - sliceFanU + slicePlume + sliceEnt;
     if (jetKgS > 0) {
       const sliceJet = jetKgS * slice;
       o2U += sliceJet * jetY;
@@ -1786,6 +1911,17 @@ function stepZoneNow(
     const extracted = mass > 1e-6 ? (soot / mass) * flows.fanUpperKgS * slice : 0;
     const made = Math.max(0, sootGPerS) * slice;
     soot = Math.max(0, soot + made - carried - extracted);
+    const carriedF = yF * flows.outKgS * slice;
+    const extractedF = yF * flows.fanUpperKgS * slice;
+    fuel = Math.max(
+      0,
+      fuel +
+        unburnedKgS * slice +
+        jetKgS * jetFuelY * slice -
+        carriedF -
+        extractedF -
+        burnedFuelKgS * slice,
+    );
     vented += carried;
     left -= slice;
   }
@@ -1794,6 +1930,7 @@ function stepZoneNow(
       interfaceM: z,
       upperK: temp,
       sootG: soot,
+      fuelKg: fuel,
       ageS: age,
       lowerO2: yL,
       upperO2: yU,
@@ -1805,6 +1942,7 @@ function stepZoneNow(
       kg,
       tempK: kg > 0 ? (hotT[v] ?? 0) / kg : AMBIENT_K,
       oxygenY: kg > 0 ? (hotY[v] ?? 0) / kg : O2_AMBIENT_MASS,
+      fuelY: kg > 0 ? (hotF[v] ?? 0) / kg : 0,
     })),
     burnedFraction,
     phi,
