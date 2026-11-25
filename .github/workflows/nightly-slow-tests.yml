@@ -26,6 +26,7 @@ jobs:
           - frontend/tests/showcaseFuel.test.ts
           - frontend/tests/hollandCrowd.test.ts
           - frontend/tests/toxicFumes.test.ts
+          - frontend/tests/fireValidationSlow.test.ts
     env:
       RUN_SLOW_TESTS: '1'
     steps:
