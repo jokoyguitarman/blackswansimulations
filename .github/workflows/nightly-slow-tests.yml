@@ -1,7 +1,8 @@
 name: Nightly slow tests
 
-# Scene tests that each take over a minute (up to ~15 on a 4-core machine), kept out of the
-# per-PR `npm test`. Run from the Actions tab with "Run workflow" to check a branch on demand.
+# Scene tests that each take over half a minute (up to ~15 on a 4-core machine) skip in the
+# per-PR `npm test` unless RUN_SLOW_TESTS is set; `test:slow` sets it and runs their files.
+# Run from the Actions tab with "Run workflow" to check a branch on demand.
 on:
   schedule:
     - cron: '0 18 * * *'

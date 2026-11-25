@@ -29,7 +29,7 @@ const HOLLAND: [number, number][] = [
 
 // A flood fill only checks that a gap exists. The crowd used to stop about
 // 0.7 m short of a door-less counter and never leave, so this runs the engine.
-test('the Holland Village crowd leaves with no fire or smoke', () => {
+test('the Holland Village crowd leaves with no fire or smoke', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
   const verts = projectPolygon(HOLLAND);
   const studs = projectSceneStuds(HOLLAND, generateSceneStuds(HOLLAND, 0, ['G']))
     .filter((stud) => stud.spatialContext === 'inside_building' && stud.floor === 'G')
