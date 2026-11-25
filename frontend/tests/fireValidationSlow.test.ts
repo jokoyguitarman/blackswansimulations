@@ -87,7 +87,7 @@ test('NIST/NRC BE#3 Test 3 over the whole steady fire', slow, (t) => {
 });
 
 test(
-  'VTT hall Case 2: a layer forms and the interface passes, rise is known gap FV-5',
+  'VTT hall Case 2: a layer forms, the interface passes, and the rise is known gap FV-5',
   slow,
   (t) => {
     const c = VTT_CASE_2;
@@ -123,9 +123,9 @@ test(
       },
       {
         id: 'FV-5',
-        recorded: 44.1,
-        pin: 2,
-        roadmap: 'realistic-fire roadmap, Decision 5 (rise within 20%)',
+        recorded: 57.2,
+        pin: 1,
+        roadmap: 'realistic-fire roadmap, Decision 10 (the steel shell is still warming)',
       },
     );
   },

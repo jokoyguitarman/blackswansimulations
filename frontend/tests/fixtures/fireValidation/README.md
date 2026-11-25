@@ -31,8 +31,9 @@ These parts of the setup differ from the tests:
 
 - **Vents.** In the single-room cases the layer vents to ambient air. The NBS fire-room door actually opens to an entry and then the corridor. The corridor (FV-4) instead runs through the live engine. The entry stud is merged into the corridor, so the jet enters one room (see FV-4).
 - **The target-room door.** The corridor's 0.79 m × 2.04 m door to the target-room entry is left out. In MV100A it is shut for the whole test (CFAST `WallVent_4` and `WallVent_5` have open fraction F = 0 at all times; the title is "No Target Room").
-- **Burner position.** The NBS burner stands 0.1 m from a wall, and the VTT pan stands 1 m above the floor. Both plumes are entrained as free plumes from the floor.
+- **Burner position.** The NBS burner stands 0.1 m from a wall. The plume stays free. CFAST's technical reference does not apply a wall correction: McGrattan, NIST TN 1984, found no significant effect of a wall on entrainment. The VTT pan stands 1 m above the floor (the CFAST `HEIGHT`), and Heskestad's z is measured from the pan. Entraining from the floor instead puts Case 1 at 3.76 m and 34.7 K. From the pan it is 4.65 m and 36.0 K.
 - **VTT geometry.** The VTT hall has a pitched roof. It is modelled as its 372.6 m² floor up to the 19 m ridge, with the steel at the hall's real surface area.
+- **VTT steel.** The shell is 1 mm and stores about 3.3 kJ/m²K. Against the two films that is on the order of two minutes, and both windows open while the shell is still warming. The sheet is one temperature, ρ c δ dT/dt, with the inside film and χQ/A warming it and CFAST's exterior film cooling the back. A heat-free sheet, the same films with no capacity, was 42.3 K and 67.2 K. A board keeps k/δ to ambient. The Biot gate that chooses a sheet is this engine's choice: CFAST applies the exterior film to every wall. The gate uses 4σT³ at ambient, the weakest film, so it is permissive. 6 mm glass crosses it. A glass-walled room is disclosed in Decision 10.
 
 ## Results
 
@@ -53,10 +54,10 @@ These parts of the setup differ from the tests:
 | BE#3 Test 3                                     | Interface                    | 1.11 m                  | 0.951 m                                       | ±0.57 m   | pass                           |
 | BE#3 Test 3                                     | Rise                         | 189 K                   | 192 K                                         | ±20%      | pass                           |
 | VTT Case 1                                      | Layer forms                  | yes                     | yes                                           | —         | pass                           |
-| VTT Case 1                                      | Interface                    | 3.71 m                  | 5.13 m                                        | ±2.85 m   | pass                           |
-| VTT Case 1                                      | Rise                         | 27.6 K                  | 48.2 K                                        | ±20%      | FV-5                           |
-| VTT Case 2                                      | Interface                    | 3.08 m                  | 4.60 m                                        | ±2.85 m   | pass (nightly)                 |
-| VTT Case 2                                      | Rise                         | 44.1 K                  | 77.6 K                                        | ±20%      | FV-5 (nightly)                 |
+| VTT Case 1                                      | Interface                    | 4.65 m                  | 5.13 m                                        | ±2.85 m   | pass                           |
+| VTT Case 1                                      | Rise                         | 36.0 K                  | 48.2 K                                        | ±20%      | FV-5                           |
+| VTT Case 2                                      | Interface                    | 4.02 m                  | 4.60 m                                        | ±2.85 m   | pass (nightly)                 |
+| VTT Case 2                                      | Rise                         | 57.2 K                  | 77.6 K                                        | ±20%      | FV-5 (nightly)                 |
 
 ## Known gaps
 
@@ -70,7 +71,13 @@ These parts of the setup differ from the tests:
 
 ### FV-3
 
-**NBS fire-room rise.** 183 K against the measured 242 K, −24%, just outside 20%. The interface (0.99 m against 0.95 m) passes. Pinned at 183.3 ± 5 K. Roadmap: "What to reproduce", the two-room case.
+**NBS fire-room rise.** 183 K against the measured 242 K, −24%, just outside 20%. The interface (0.99 m against 0.95 m) passes. Pinned at 183.3 ± 5 K. Roadmap: Decision 10.
+
+The room already uses the test linings and χ = 0.2. Over 0–880 s the walls take 17% of the convected heat. χ = 0 moves the rise to 181 K. An adiabatic lining reaches the 1500 K ceiling. Gas radiation set to zero reaches 195 K and takes the BE#3 rise from −2% to +22%. The linings are still thick at 880 s (ceramic fibre penetrates near 924 s), so the steel-sheet film does not apply. A free plume at 0.7 of Heskestad reaches 215 K with the interface still inside its band. CFAST does not apply that wall factor.
+
+CFAST's own error on this quantity is wider than the 20% band, and it is not cold. At the validation-guide commit this suite cites (`b869597`), the natural-ventilation hot-gas-layer temperature has bias 1.00 and a model relative standard deviation of 0.35 (13 data sets, 215 points; `validation_scatterplot_output_baseline.csv`). NIST TN 1889v3 Table 11.1, an earlier edition of that guide, gives the same row bias 1.13 and a model relative standard deviation of 0.40. Decision 5 says a pin is no tighter than the error CFAST reports against the experiment. The 20% band is already tighter than 0.35. Jones and Peacock, cited in that guide, found FAST 18.5 about 20% high on this 100 kW three-room configuration, with a satisfactory interface. A point-by-point CFAST temperature for MV100A is not in the repository. The −24% is inside that scatter and on the cold side of CFAST's bias. It stays recorded.
+
+The isolated room vents to ambient. In the test the door opens into a small entry that fills with hot gas, which changes the door flow and the air the plume entrains. That two-room case was not run. The FV-4 plan is a different room, concrete at χ = 0.35 with the entry merged into the corridor, and it does not stand in.
 
 ### FV-4
 
@@ -99,4 +106,8 @@ In the same plan the fire room is unchanged, at 1.08 m with an 88.6 K rise. Over
 
 ### FV-5
 
-**Large-hall rise.** VTT Case 1 rises 27.6 K against 48.2 K (−43%), and Case 2 rises 44.1 K against 77.6 K (−43%). In both cases a layer forms, as it does in the hall, and the interface is inside 2.85 m. The roof monitor is modelled at the full floor area, which over-sizes the volume above the eaves. Pinned at 27.6 ± 1.5 K and 44.1 ± 2 K. Roadmap: Decision 5 (rise within 20%). This bears on the open food-court decision (Decision 1).
+**VTT hall rise.** Case 1 is 4.65 m and 36.0 K against 5.13 m and 48.2 K. The interface passes. The rise is −25%, outside 20%, pinned at 36.0 ± 1 K. Case 2, on the nightly run, is 4.02 m and 57.2 K against 4.60 m and 77.6 K. The interface passes. The rise is −26%, pinned at 57.2 ± 1 K. Roadmap: Decision 10.
+
+The shell is 1 mm steel, about 3.3 kJ/m²K. The step integrates that capacity. The inside film and the fire's radiation warm the sheet, and the exterior film cools the back. The Case 1 window is 180–420 s and Case 2 is 180–360 s, and the shell is still warming through both. A heat-free sheet, the same films with nothing stored, was inside the band: 42.3 K (−12%) and 67.2 K (−13%). That pass was the missing capacity. CFAST solves the wall transiently. The 20% band is not loosened.
+
+The two cases share one boundary list. A temperature left on that object makes Case 2 start warm, and that warm start is 62.7 K, just inside 20%. Each case starts from ambient. The 57.2 K is the cold start.

@@ -421,7 +421,7 @@ test('NIST/NRC BE#3 Test 3: interface and rise pass', (t) => {
 
 // ── VTT large hall, ICFMP BE#2 Case 1 ──
 
-test('VTT hall Case 1: a layer forms and the interface passes, rise is known gap FV-5', (t) => {
+test('VTT hall Case 1: a layer forms, the interface passes, and the rise is known gap FV-5', (t) => {
   const c = VTT_CASE_1;
   const states = runCase(c, c.window[1]);
   const result = compareLayer(c, states);
@@ -466,9 +466,9 @@ test('VTT hall Case 1: a layer forms and the interface passes, rise is known gap
     },
     {
       id: 'FV-5',
-      recorded: 27.6,
-      pin: 1.5,
-      roadmap: 'realistic-fire roadmap, Decision 5 (rise within 20%)',
+      recorded: 36.0,
+      pin: 1,
+      roadmap: 'realistic-fire roadmap, Decision 10 (the steel shell is still warming)',
     },
   );
 });

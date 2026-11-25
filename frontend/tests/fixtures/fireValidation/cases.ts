@@ -69,6 +69,8 @@ export interface ValidationCase {
   spec: Omit<LayerSpec, 'fires'>;
   /** Burner diameter from the CFAST fire AREA, as a circle. */
   diameterM: number;
+  /** CFAST fire HEIGHT, metres above the floor. Absent means the fuel is on the floor. */
+  baseM?: number;
   chi: number;
   /** CFAST TABL, time s and HRR kW, linear between points. */
   hrr: readonly (readonly [number, number])[];
@@ -172,7 +174,7 @@ export const BE3_TEST_3: ValidationCase = {
 // 12 m eaves, a pitched roof to a 1.9 m wide monitor at 17.1–19 m. The layer
 // has one floor area, so the plan is the 372.6 m² floor up to the 19 m roof
 // and the steel is the hall's actual surface. The pan stands 1 m above the
-// floor; the plume is entrained from the floor. Four 0.71 m leakage vents.
+// floor (CFAST HEIGHT). Four 0.71 m leakage vents.
 const steelBe2 = matl('Steel ICFMP BE2', 54, 7850, 0.425, 0.001);
 const concreteBe2 = matl('Concrete ICFMP BE2', 2, 2300, 0.9, 0.15);
 const vttVent = 0.71;
@@ -205,6 +207,7 @@ export const VTT_CASE_1: ValidationCase = {
   extract: 'vtt-be2-case1.csv',
   spec: vttSpec,
   diameterM: circle(1.08),
+  baseM: 1,
   chi: 0.4,
   hrr: [
     [0, 0],
@@ -225,6 +228,7 @@ export const VTT_CASE_2: ValidationCase = {
   extract: 'vtt-be2-case2.csv',
   spec: vttSpec,
   diameterM: circle(2.01),
+  baseM: 1,
   chi: 0.4,
   hrr: [
     [0, 0],
@@ -257,7 +261,7 @@ export function runCase(c: ValidationCase, endS: number): ZoneState[] {
   const states: ZoneState[] = [state];
   for (let t = 1; t <= endS; t++) {
     const q = hrrAt(c.hrr, t - 0.5);
-    const fires = q > 0 ? [{ heatKw: q, diameterM: c.diameterM }] : [];
+    const fires = q > 0 ? [{ heatKw: q, diameterM: c.diameterM, baseM: c.baseM }] : [];
     state = stepZone(state, { ...c.spec, chi: c.chi, fires }, 1).state;
     states.push(state);
   }
