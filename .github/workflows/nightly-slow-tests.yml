@@ -21,4 +21,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      # The scene tests import frontend packages (matter-js and others).
+      - run: npm install --no-audit --no-fund --prefix frontend
       - run: npm run test:slow

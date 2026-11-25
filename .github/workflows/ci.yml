@@ -25,6 +25,8 @@ jobs:
           node-version: 22
       # The repository ignores package-lock.json, so there is no lockfile for `npm ci`.
       - run: npm install --no-audit --no-fund
+      # The scene tests import frontend packages (matter-js and others).
+      - run: npm install --no-audit --no-fund --prefix frontend
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
