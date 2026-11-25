@@ -7,6 +7,9 @@
  *
  *   npm run bench:fire
  *   END=180 PEDS=120 npm run bench:fire
+ *
+ * The root tsconfig leaves this file out. It imports the frontend with .ts
+ * extensions, which that program cannot resolve.
  */
 import { writeSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
