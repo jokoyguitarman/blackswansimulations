@@ -501,8 +501,9 @@ export class SpatialEffectsEngine {
   /** The jet actually passed into `stepZone` this step, for rooms that take one. */
   private jetTaken = new Map<string, DoorJetInflow>();
   /**
-   * Studs of a door-jet layer. Soot already at head height stays and leaks.
-   * Rebuilt every step from the layers that are still jet-fed.
+   * Studs whose head-height soot a jet layer left in place. They keep
+   * leaking after the room catches fire. A fire that forms its own layer
+   * from a cold start is not in this set, and still clears the column.
    */
   private jetLowerStuds = new Set<string>();
   /** Set by the conservation test. Null in play. */
@@ -1784,7 +1785,8 @@ export class SpatialEffectsEngine {
   private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
     const owned = new Set<string>();
     this.layerGrants = [];
-    this.jetLowerStuds.clear();
+    const keptLower = this.jetLowerStuds;
+    this.jetLowerStuds = new Set();
     this.jetTaken = new Map();
     if (this.jetAudit) this.jetAudit.length = 0;
     this.exposedDoors = new Set();
@@ -1916,7 +1918,8 @@ export class SpatialEffectsEngine {
           });
           continue;
         }
-        if (prev?.active !== true) this.scoopColumnSoot(members, next.state);
+        // The column soot stays where it is and leaks. Copying it into the
+        // layer as well would count those grams twice.
         this.layerState.set(room, {
           active: true,
           zone: next.state,
@@ -1926,9 +1929,6 @@ export class SpatialEffectsEngine {
         });
         for (const id of members) {
           owned.add(id);
-          // The column copy stays. stepSmoke leaks it while the interface
-          // is still above the head. The scoop is the layer's own copy,
-          // read once the interface comes down.
           this.jetLowerStuds.add(id);
         }
         this.grantVented(room, members, enc, next, dt, rooms, nextJets);
@@ -1981,7 +1981,14 @@ export class SpatialEffectsEngine {
         areaM2: spec.areaM2,
         ceilingM: ceiling,
       });
-      for (const id of members) owned.add(id);
+      // Fire that spreads into a jet-fed room must not wipe the soot that
+      // room already kept at head height. A layer that is only now forming
+      // from its own fire is absent here, and stepSmoke still clears it.
+      const keptJetSoot = prev?.active === true && members.some((id) => keptLower.has(id));
+      for (const id of members) {
+        owned.add(id);
+        if (keptJetSoot) this.jetLowerStuds.add(id);
+      }
       this.roomPhi.set(room, stepped.phi);
       this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
       this.grantVented(room, members, enc, stepped, dt, rooms, nextJets);
@@ -2140,7 +2147,12 @@ export class SpatialEffectsEngine {
         continue;
       }
       const volume = this.columnVolume(id);
-      const generation = ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
+      // New soot of a stud the layer owns belongs in the layer. The column
+      // only leaks the head-height soot it already had.
+      const generation =
+        owned.has(id) && this.jetLowerStuds.has(id)
+          ? 0
+          : ((sootById.get(id) ?? 0) * SOOT_EXTINCTION_M2_PER_G) / volume;
       const src = this.studIndex.get(id);
       const outdoor = src != null && src.spatialContext !== 'inside_building';
       const leak = SMOKE_LEAK_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);
