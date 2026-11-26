@@ -34,6 +34,7 @@ import {
   heskestadFlameHeightM,
   steadyLayer,
   stepZone,
+  upperLayerVolumeM3,
   type LayerSpec,
   type Lining,
 } from '../src/lib/rts/twoZone.ts';
@@ -49,6 +50,7 @@ import {
   expectPass,
   readLayer,
   runCase,
+  runNbsFireRoom,
 } from './fixtures/fireValidation/cases.ts';
 import {
   babrauskasFlashoverKw,
@@ -328,9 +330,9 @@ test('Steckler centre burner: interface and rise pass, door flow is known gap FV
 
 // ── NBS multi-room MV100A ──
 
-test('NBS MV100A fire room: interface passes, rise is known gap FV-3', (t) => {
+test('NBS MV100A fire room: the entry on the door brings the interface and the rise inside the band', (t) => {
   const c = NBS_FIRE_ROOM;
-  const result = compareLayer(c, runCase(c, c.window[1]));
+  const result = compareLayer(c, runNbsFireRoom(c.window[1]));
   expectPass(t, {
     case: c.title,
     metric: 'interface height',
@@ -339,23 +341,14 @@ test('NBS MV100A fire room: interface passes, rise is known gap FV-3', (t) => {
     target: result.measuredInterfaceM,
     tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
   });
-  expectKnownGap(
-    t,
-    {
-      case: c.title,
-      metric: 'upper-layer rise',
-      unit: 'K',
-      model: result.modelRiseK,
-      target: result.measuredRiseK,
-      tolerance: { relative: TOLERANCE.riseFraction },
-    },
-    {
-      id: 'FV-3',
-      recorded: 183.3,
-      pin: 5,
-      roadmap: 'realistic-fire roadmap, "What to reproduce": one two-room case',
-    },
-  );
+  expectPass(t, {
+    case: c.title,
+    metric: 'upper-layer rise',
+    unit: 'K',
+    model: result.modelRiseK,
+    target: result.measuredRiseK,
+    tolerance: { relative: TOLERANCE.riseFraction },
+  });
 });
 
 test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', (t) => {
@@ -448,9 +441,27 @@ test('NIST/NRC BE#3 Test 3: interface and rise pass', (t) => {
   });
 });
 
+test('the VTT roof is a pyramidal frustum, not the floor carried to the ridge', () => {
+  // CFAST user's guide §4.4. VTT_C1.in and VTT_C2.in list 372.6 m² up to the
+  // 12 m eaves, then 51.3 m² at 17.1 m and at 19 m. A pyramid between two
+  // areas has volume (h/3)(A1 + A2 + √(A1 A2)). Carrying the floor up to the
+  // ridge is 372.6 × 7 m.
+  const hall = VTT_CASE_1.spec;
+  const eavesToMonitor = (5.1 / 3) * (372.6 + 51.3 + Math.sqrt(372.6 * 51.3));
+  const monitor = 51.3 * 1.9;
+  const aboveEaves = upperLayerVolumeM3(hall, 12);
+  assert.ok(Math.abs(aboveEaves - (eavesToMonitor + monitor)) < 0.05, `volume ${aboveEaves}`);
+  assert.ok(aboveEaves < 1200, `box volume would be about 2608 m³, got ${aboveEaves}`);
+  const box = upperLayerVolumeM3(
+    { areaM2: 10, ceilingM: 4, vents: [], boundaries: [], fires: [] },
+    1,
+  );
+  assert.ok(Math.abs(box - 30) < 1e-9, `rectangular volume ${box}`);
+});
+
 // ── VTT large hall, ICFMP BE#2 Case 1 ──
 
-test('VTT hall Case 1: a layer forms, the interface passes, and the rise is known gap FV-5', (t) => {
+test('VTT hall Case 1: a layer forms, and the interface and the rise pass', (t) => {
   const c = VTT_CASE_1;
   const states = runCase(c, c.window[1]);
   const result = compareLayer(c, states);
@@ -483,21 +494,12 @@ test('VTT hall Case 1: a layer forms, the interface passes, and the rise is know
     target: result.measuredInterfaceM,
     tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
   });
-  expectKnownGap(
-    t,
-    {
-      case: c.title,
-      metric: 'upper-layer rise',
-      unit: 'K',
-      model: result.modelRiseK,
-      target: result.measuredRiseK,
-      tolerance: { relative: TOLERANCE.riseFraction },
-    },
-    {
-      id: 'FV-5',
-      recorded: 36.0,
-      pin: 1,
-      roadmap: 'realistic-fire roadmap, Decision 10 (the steel shell is still warming)',
-    },
-  );
+  expectPass(t, {
+    case: c.title,
+    metric: 'upper-layer rise',
+    unit: 'K',
+    model: result.modelRiseK,
+    target: result.measuredRiseK,
+    tolerance: { relative: TOLERANCE.riseFraction },
+  });
 });
