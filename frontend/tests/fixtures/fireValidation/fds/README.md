@@ -86,6 +86,8 @@ FDS still moves more gas. The engine west flow is 2.99 kg/s against 4.72, and th
 
 Once the interface is on the 0.05 m floor, the same rate still asks for the unclipped volume. The plume keeps drawing lower-layer air the room does not hold, and the vents can expel a volume the interface cannot give up. On the production Harbour shop that residual is 566 kg, all of it on the clamped substeps. Above the clamp the total mass closes. The previous expansion head measured 572 kg on the same clamp. The clamp is older than this booking, and the rate is not clipped to hide the residual.
 
+Above the clamp, the comparison shop still has a 42 kg lower-layer residual over 0–120 s (1.5 kg in the first minute, 40.4 kg in the second). It equals the extra hot gas the expanded root sends beyond the exchange. The target volume subtracts only the exchange's hot outflow, so once the interface is in the door and part of the expansion leaves hot, the interface still drops by the full extra volume. That is about 0.05 m of this shop's interface over two minutes. Total mass stays exact. A second root that removes that hot gas before setting the volume closes the 42 kg, and it also lifts the VTT Case 1 interface from 3.93 m to 4.14 m, so the correction is not in this series.
+
 ## The mall layer
 
 A hall layer does not form. The FDS column at the mall center stays within 8 K of ambient for the whole 120 s, and the highest center rise in the window is 7 K. The engine's mall rise is 6.3 K at 120 s, under the 20 K line `formsSustainedLayer` uses, so the layer gate stays off. The north exit is carrying the shop's expansion out, and the one mall temperature does not climb into a layer.

@@ -20,7 +20,11 @@
  * still saturates there, and walking and sight use that number.
  * Open outs are 65, 76, 87 and 92 at T+180, T+240, T+300 and T+600,
  * with 23 down by T+600, one fume down on the T+300 snapshot, and 29
- * still inside, 10 of them in the mall. The highest asphyxiant FED still
+ * still inside, 10 of them in the mall. Those ten go down together at
+ * about T+330 beside the congested north exit E3-north. They had turned
+ * toward the east exit and kept drifting north, which is a stall in the
+ * evacuation movement, not the smoke on the way out. The blocked crowd
+ * has the same mall layer and nobody left in it. The highest asphyxiant FED still
  * inside is 1.002 and the highest heat FED is 1. Late mean smoke is
  * 0.835. The blocked crowd lets 42 and 79 people out at T+180 and
  * T+240, and 102 by T+300. By T+600, 102 are out and 13 are down, with
@@ -50,7 +54,7 @@ describe('Harbour scene goldens', { concurrency: 1 }, () => {
   );
 
   test(
-    'Harbour blocked east exit matches the Decision 9 figures',
+    'Harbour blocked east exit matches the recorded crowd',
     { skip: slowScene, timeout: TIMEOUT_MS },
     () => {
       assert.deepEqual(runHarbourCrowd(true), harbourBlockedGolden);
