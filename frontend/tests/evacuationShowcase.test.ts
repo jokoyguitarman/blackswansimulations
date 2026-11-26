@@ -776,6 +776,57 @@ test('people who turned back do not return to that exit', () => {
   assert.equal(found, true);
 });
 
+test('a retargeted crawler in contact walks toward its new exit, not with its neighbour', () => {
+  const eng = showcaseEngine(2);
+  const studs: HazardStud[] = [];
+  const states: Record<string, { smoke: number; fire: string }> = {};
+  for (let x = 1.5; x < 40; x += 3) {
+    for (let y = 1.5; y < 20; y += 3) {
+      const id = `s_${x}_${y}`;
+      studs.push({ id, simPos: { x, y }, indoor: true });
+      states[id] = { smoke: 1, fire: 'none' };
+    }
+  }
+  eng.setHazardField(field(studs, states));
+  const [mover, neighbour] = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  type Label = {
+    state: string;
+    targetExitId: string;
+    exitCost: number;
+    nextCheckAt: number;
+    posture: string;
+    latchedExitId: string | null;
+    smokeRollDone: boolean;
+  };
+  const place = (body: Matter.Body, x: number, target: string) => {
+    Matter.Body.setPosition(body, { x, y: 10 });
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (body as Matter.Body & { __ped: Label }).__ped;
+    ped.state = 'evacuating';
+    ped.targetExitId = target;
+    ped.exitCost = 100;
+    ped.nextCheckAt = 1e9;
+    ped.posture = 'crawl';
+    ped.latchedExitId = target;
+    ped.smokeRollDone = true;
+  };
+  // Both crawl west in contact. Then one turns for the east exit.
+  place(neighbour, 20, 'west');
+  place(mover, 20.47, 'west');
+  for (let i = 0; i < 30; i++) eng.step();
+  const ped = (mover as Matter.Body & { __ped: Label }).__ped;
+  ped.targetExitId = 'east';
+  ped.latchedExitId = 'east';
+  const startX = mover.position.x;
+  for (let i = 0; i < 180; i++) eng.step();
+  assert.ok(mover.velocity.x > 0, `heading east, vx=${mover.velocity.x.toFixed(4)}`);
+  assert.ok(
+    mover.position.x - startX > 0.2,
+    `moved toward the east exit, dx=${(mover.position.x - startX).toFixed(3)}`,
+  );
+  eng.destroy();
+});
+
 test('posture resets outside and crawling counts only evacuating people', () => {
   const eng = showcaseEngine(2);
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
