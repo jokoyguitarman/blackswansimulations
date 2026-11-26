@@ -2984,8 +2984,11 @@ function stepZoneNow(
     // so the geometric total matches it. The inflow is the root's, with the
     // deposited jet left out: the same stream the exchange had been
     // crediting, which is larger than the slice that enters below the
-    // interface whenever the neutral plane sits above it. Below the floor
-    // the mass keeps the unclipped volume.
+    // interface whenever the neutral plane sits above it. On the floor the
+    // plume may only take that inflow plus the mass still above the floor.
+    // Heskestad with the virtual origin below the fuel still asks for the
+    // whole flame at a 5 cm interface; the rest is upper gas recirculating,
+    // and it moves no mass. Any other shortfall keeps the unclipped volume.
     const bookOf = (flows: LimitedBurn, hot: number) => {
       const lowerOut = Math.max(0, flows.outKgS - hot);
       const makeup = Math.max(0, flows.inKgS - (depositKgS > 0 ? flows.farUpperInKgS : 0));
@@ -2993,7 +2996,33 @@ function stepZoneNow(
       const rho0 = densityKgM3(lower);
       const v0 = lowerVolumeM3(spec, z);
       const m0 = rho0 * v0;
-      const flowKgS = makeup - lowerOut - advance.plumeKgS - flows.fanLowerKgS - advance.mEnt;
+      const aboveM3 = spec.crossSection
+        ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, z)
+        : Math.max(spec.areaM2, 0) * Math.max(0, z - INTERFACE_FLOOR_M);
+      const aboveKgS = slice > 0 ? (rho0 * aboveM3) / slice : 0;
+      const plumeCap = Math.max(0, makeup) + aboveKgS;
+      const plumeDraw = Math.min(advance.plumeKgS, plumeCap);
+      const recirc = advance.plumeKgS - plumeDraw;
+      // The exchange cooled the upper layer as if the whole plume were cold
+      // lower air. Recirculated upper gas does not. The studs record only
+      // the oxygen in the draw that remains.
+      let tempNext = advance.tempNext;
+      let burnScale = 1;
+      if (recirc > 0 && advance.plumeKgS > 0) {
+        const freshScale = plumeDraw / advance.plumeKgS;
+        const y = yL > 0 ? yL : 0;
+        if (advance.burn.burnedKw > 0) {
+          const capacity = oxygenCapacityKw(advance.burn.lowerAirKgS * freshScale, y);
+          const newBurned = Math.min(advance.burn.burnedKw, capacity);
+          burnScale = newBurned / advance.burn.burnedKw;
+        }
+        if (advance.mass > 1e-6) {
+          tempNext += (recirc * Math.max(0, temp - lower) * slice) / advance.mass;
+          if (tempNext > 1500) tempNext = 1500;
+          if (tempNext < AMBIENT_K) tempNext = AMBIENT_K;
+        }
+      }
+      const flowKgS = makeup - lowerOut - plumeDraw - flows.fanLowerKgS - advance.mEnt;
       const tin = below > 0 ? flows.lowerInK : lower;
       let dTl =
         (-advance.lowerLossKw + below * CP_KJ_KGK * (tin - lower)) /
@@ -3008,7 +3037,7 @@ function stepZoneNow(
         vEnd -= (unmatched * slice) / Math.max(densityKgM3(jetT), 1e-6);
       }
       if (advance.storeKgS > 0) {
-        vEnd -= (advance.storeKgS * slice) / Math.max(densityKgM3(advance.tempNext), 1e-6);
+        vEnd -= (advance.storeKgS * slice) / Math.max(densityKgM3(tempNext), 1e-6);
       }
       const area = Math.max(spec.areaM2, 1e-9);
       let zFlow = vEnd > 0 ? interfaceForLowerVolume(spec, vEnd) : vEnd / area;
@@ -3019,11 +3048,20 @@ function stepZoneNow(
       const ceil = spec.ceilingM - 0.02;
       const zApplied = Math.min(ceil, Math.max(floor, zFlow));
       const vMass = zFlow < floor ? area * zFlow : lowerVolumeM3(spec, zApplied);
-      const upperMass = densityKgM3(advance.tempNext) * upperLayerVolumeM3(spec, zApplied);
+      const upperMass = densityKgM3(tempNext) * upperLayerVolumeM3(spec, zApplied);
       const lowerMass = densityKgM3(lowerNext) * vMass;
       const massRateKgS =
         (upperMass + lowerMass - gasMassKg(spec, z, temp, lower)) / Math.max(slice, 1e-9);
-      return { z: zApplied, lowerK: lowerNext, lowerInKgS: makeup, lowerOutKgS: lowerOut, massRateKgS };
+      return {
+        z: zApplied,
+        lowerK: lowerNext,
+        lowerInKgS: makeup,
+        lowerOutKgS: lowerOut,
+        massRateKgS,
+        plumeKgS: plumeDraw,
+        tempNext,
+        burnScale,
+      };
     };
     let rate = planned.volumeRate;
     let hotSum = hotOf(limited);
@@ -3039,12 +3077,21 @@ function stepZoneNow(
       book = bookOf(limited, hotSum);
     }
     const burn = advance.burn;
-    burnedFraction = advance.burnedFraction;
-    phi = advance.phi;
+    burnedFraction = advance.burnedFraction * book.burnScale;
+    if (book.burnScale < 1 && advance.plumeKgS > 0) {
+      const freshScale = book.plumeKgS / advance.plumeKgS;
+      const y = yL > 0 ? yL : 0;
+      phi = equivalenceRatio(
+        advance.burn.prescribedKw,
+        oxygenSupplyKw(advance.burn.lowerAirKgS * freshScale, y),
+      );
+    } else {
+      phi = advance.phi;
+    }
     neutralM = limited.neutralM;
     floorPressurePa = limited.floorPressurePa;
     const mass = advance.mass;
-    const plume = advance.plumeKgS;
+    const plume = book.plumeKgS;
     // Oxygen, soot and fuel follow the root's flows. Hot gas and the
     // upper fan leave the upper layer. The lower layer gains the root's
     // vent inflow, with a deposited jet left out, and loses the outflow
@@ -3053,12 +3100,24 @@ function stepZoneNow(
     const lowerInKgS = book.lowerInKgS;
     outByVent = limited.outByVentKgS;
     const yF = advance.yF;
-    const unburnedKgS = advance.unburnedKgS;
+    let unburnedKgS = advance.unburnedKgS;
     const incomingFuelKgS = advance.incomingFuelKgS;
     const burnedFuelKgS = advance.burnedFuelKgS;
     const mEnt = advance.mEnt;
-    const extraKgS = advance.extraKgS;
-    const storeKgS = advance.storeKgS;
+    let extraKgS = advance.extraKgS;
+    let storeKgS = advance.storeKgS;
+    // Pyrolysis follows the fresh air that remains. The exchange still
+    // carries the larger plume's fuel, and that fuel is not in the room.
+    if (book.burnScale < 1 && advance.plumeKgS > 0) {
+      const freshScale = book.plumeKgS / advance.plumeKgS;
+      const y = yL > 0 ? yL : 0;
+      const supply = oxygenSupplyKw(advance.burn.lowerAirKgS * freshScale, y);
+      const pyrolysis = cappedPyrolysisKw(advance.burn.prescribedKw, supply);
+      const newBurned = advance.burn.burnedKw * book.burnScale;
+      unburnedKgS = pyrolysis > newBurned ? (pyrolysis - newBurned) / WOOD_HEAT_KJ_KG : 0;
+      extraKgS = hotSum > 0 ? unburnedKgS : 0;
+      storeKgS = hotSum > 0 ? 0 : unburnedKgS;
+    }
     sheets = advance.sheetK;
     upperLossSum += advance.upperLossKw;
     lowerLossSum += advance.lowerLossKw;
@@ -3068,7 +3127,7 @@ function stepZoneNow(
     lastHot = hotSum;
     lastHotByVent = limited.hotOutByVentKgS.map((rate) => rate ?? 0);
     lastFar = limited.farUpperInKgS;
-    lastPlume = advance.plumeKgS;
+    lastPlume = plume;
     lastFanL = limited.fanLowerKgS;
     lastFanU = limited.fanUpperKgS;
     lastLowerIn = lowerInKgS;
@@ -3094,8 +3153,8 @@ function stepZoneNow(
     const sliceEnt = mEnt * slice;
     const sliceExtra = extraKgS * slice;
     const sliceStore = storeKgS * slice;
-    const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
-    const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
+    const useL = Math.min(burn.oxygenLowerKgS * book.burnScale * slice, slicePlume * yL, yL * mL);
+    const useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, yU * mass);
     const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
     const o2L =
       yL * mL -
@@ -3118,7 +3177,7 @@ function stepZoneNow(
     }
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
-    temp = advance.tempNext;
+    temp = book.tempNext;
     lower = book.lowerK;
     z = book.z;
     const carried = mass > 1e-6 ? (soot / mass) * hotSum * slice : 0;

@@ -360,6 +360,67 @@ test('a burning room books outflow from below its interface', () => {
   assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
 });
 
+test('a floor-clamped layer entrains only the air the floor can give', () => {
+  // A wide fire puts Heskestad's virtual origin below the fuel, so a 5 cm
+  // interface still asks for a tall plume. The draw stops at the root's
+  // lower inflow plus the mass above the floor. The rest recirculates in
+  // the upper gas, and both the lower layer and the room total close.
+  const spec: LayerSpec = {
+    areaM2: 120,
+    ceilingM: 3,
+    vents: [{ widthM: 1.6, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 80, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 4000, diameterM: 8 }],
+  };
+  const asked = heskestadEntrainmentKgS(4000, 0.05, 8);
+  assert.ok(asked > 10, `Heskestad at the floor only asked ${asked.toFixed(1)} kg/s`);
+  const rhoAt = (tempK: number) => 353 / tempK;
+  let state = { ...freshLayer(spec.ceilingM), interfaceM: 2.2, upperK: AMBIENT_K + 30 };
+  const dt = 0.1;
+  let clamped = 0;
+  let lowerKg = 0;
+  let totalKg = 0;
+  let plumeKg = 0;
+  let inflowKg = 0;
+  let maxPlume = 0;
+  for (let i = 0; i < 400; i++) {
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const before = gasMassKg(spec, z0, state.upperK, lower0);
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
+    const stepped = stepZone(state, spec, dt);
+    const z1 = stepped.state.interfaceM;
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const after = gasMassKg(spec, z1, stepped.state.upperK, lower1);
+    const m1 = rhoAt(lower1) * spec.areaM2 * z1;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const net = stepped.inKgS - stepped.outKgS - stepped.fanUpperKgS - stepped.fanLowerKgS;
+    if (z1 <= 0.0501) {
+      clamped += 1;
+      lowerKg += m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
+      totalKg += after - (before + net * dt);
+      plumeKg += stepped.plumeKgS * dt;
+      inflowKg += stepped.lowerInKgS * dt;
+      maxPlume = Math.max(maxPlume, stepped.plumeKgS);
+    }
+    state = stepped.state;
+  }
+  assert.ok(clamped >= 200, `only ${clamped} steps sat on the floor`);
+  assert.ok(maxPlume < asked / 2, `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`);
+  // The difference is the mass above the floor taken as the interface arrives.
+  // An uncapped Heskestad plume is hundreds of kilograms over this run.
+  assert.ok(
+    Math.abs(plumeKg - inflowKg) < 6,
+    `plume drew ${plumeKg.toFixed(2)} kg from ${inflowKg.toFixed(2)} kg of inflow`,
+  );
+  assert.ok(Math.abs(lowerKg) < 2, `lower-layer residual ${lowerKg.toFixed(3)} kg`);
+  assert.ok(Math.abs(totalKg) < 2, `total residual ${totalKg.toFixed(3)} kg`);
+});
+
 test('a burning room that takes a jet does not burn the neighbour upper layer', () => {
   // The door inflow is the neighbour's hot layer. Depositing that jet
   // leaves it out of the fresh-air supply. Counting it as lower-layer air
