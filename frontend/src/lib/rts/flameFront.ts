@@ -229,11 +229,50 @@ function releaseCapKw(cell: FuelCell, areaM2: number): number | null {
 }
 
 /** α t², then the contents cap or the pan, whichever applies. */
-export function heatReleaseKw(cell: FuelCell, ageSec: number, areaM2: number = STUD_AREA_M2): number {
+export function heatReleaseKw(
+  cell: FuelCell,
+  ageSec: number,
+  areaM2: number = STUD_AREA_M2,
+): number {
   const growing = tSquaredKw(cell.alphaKwS2, ageSec);
   const cap = releaseCapKw(cell, areaM2);
   if (cap == null || !(cap > 0)) return growing;
   return Math.min(growing, cap);
+}
+
+/**
+ * Kilojoules in the fuel load. A solid uses the wood stand-in, 17.5 MJ/kg.
+ * A liquid uses the transformer-oil row. This is the load `burnoutSec` spends.
+ */
+export function fuelEnergyKj(cell: FuelCell, areaM2: number = STUD_AREA_M2): number {
+  const dHc = cell.liquidPool ? COOKING_OIL_POOL.dHcKjKg : WOOD_HEAT_KJ_KG;
+  if (!(cell.fuelLoadKgM2 > 0) || !(dHc > 0) || !(areaM2 > 0)) return 0;
+  return cell.fuelLoadKgM2 * areaM2 * dHc;
+}
+
+/**
+ * Integral of the free-burn release from t0 to t1, kJ. α t² until the
+ * contents cap or the pan, then that cap. `burnoutSec` is the time at
+ * which this integral equals `fuelEnergyKj`.
+ */
+export function releaseEnergyKj(
+  cell: FuelCell,
+  t0Sec: number,
+  t1Sec: number,
+  areaM2: number = STUD_AREA_M2,
+): number {
+  const t0 = t0Sec > 0 ? t0Sec : 0;
+  const t1 = t1Sec > t0 ? t1Sec : t0;
+  if (!(t1 > t0)) return 0;
+  const alpha = cell.alphaKwS2;
+  const cap = releaseCapKw(cell, areaM2);
+  const growing = (from: number, to: number) =>
+    alpha > 0 ? (alpha / 3) * (to ** 3 - from ** 3) : 0;
+  if (cap == null || !(cap > 0) || !(alpha > 0)) return growing(t0, t1);
+  const tCap = Math.sqrt(cap / alpha);
+  if (t1 <= tCap) return growing(t0, t1);
+  if (t0 >= tCap) return cap * (t1 - t0);
+  return growing(t0, tCap) + cap * (t1 - tCap);
 }
 
 /**
@@ -242,8 +281,7 @@ export function heatReleaseKw(cell: FuelCell, ageSec: number, areaM2: number = S
  * The heat of combustion is the wood stand-in or the transformer-oil row.
  */
 export function burnoutSec(cell: FuelCell, areaM2: number = STUD_AREA_M2): number {
-  const dHc = cell.liquidPool ? COOKING_OIL_POOL.dHcKjKg : WOOD_HEAT_KJ_KG;
-  const energyKj = cell.fuelLoadKgM2 * areaM2 * dHc;
+  const energyKj = fuelEnergyKj(cell, areaM2);
   const alpha = cell.alphaKwS2;
   if (!(energyKj > 0) || !(alpha > 0)) return 300;
   const uncapped = Math.cbrt((3 * energyKj) / alpha);
@@ -571,11 +609,7 @@ export function suppressedHeatKw(qActKw: number, ageSec: number, tauS = SUPPRESS
 }
 
 /** Red-oak flux that finishes t_ig in one fireball pulse. */
-export function fireballEdgeFluxKwM2(
-  chfKwM2 = 10,
-  trp = 134,
-  pulseS = FIREBALL_PULSE_S,
-): number {
+export function fireballEdgeFluxKwM2(chfKwM2 = 10, trp = 134, pulseS = FIREBALL_PULSE_S): number {
   const denom = Math.sqrt(pulseS / (Math.PI / 4));
   if (!(denom > 0)) return chfKwM2;
   return chfKwM2 + trp / denom;
