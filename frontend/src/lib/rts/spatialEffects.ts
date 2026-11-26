@@ -2305,7 +2305,11 @@ export class SpatialEffectsEngine {
       };
       const zone = this.zoneWithSheets(prev?.zone ?? freshLayer(ceiling), spec.boundaries);
       const sootRate = sootByRoom.get(room) ?? 0;
-      if (hasJet && heat < MIN_LAYER_FIRE_KW) {
+      // A paused jet leaves a fireless room on this path. The step judges
+      // the layer from the zone it already holds. A room with no fire and
+      // no jet of its own has a cold steady layer, which would retire a
+      // ceiling that is still hot.
+      if ((hasJet || prev?.active === true) && heat < MIN_LAYER_FIRE_KW) {
         // The only heat is the neighbour's jet. The steady fire correlation
         // does not see it, so the layer is the integrated upper layer.
         if (incoming) this.jetTaken.set(room, incoming);

@@ -2101,14 +2101,28 @@ test('an unclaimed sheet cools toward ambient', () => {
   const warm = view.wallSheetK.get('glass') ?? 0;
   const zoned = [...view.layerState.values()].find((row) => row.zone.sheetK?.glass != null);
   assert.ok(warm > AMBIENT_K + 8, `sheet ${(warm - AMBIENT_K).toFixed(1)} K`);
+  assert.ok(zoned?.active, 'the hot layer retired when the fire went out');
   assert.ok(
     Math.abs((zoned?.zone.sheetK?.glass ?? 0) - warm) < 0.05,
     'the zone kept a temperature the wall no longer holds',
   );
-  // Eight minutes with no layer. A 6 mm pane stores about 13.6 kJ/m²K.
+  // The hold is the zone, not the fire. A cold ceiling leaves on the next
+  // step, and the pane then cools with both faces in ambient air. A 6 mm
+  // pane stores about 13.6 kJ/m²K, so eight minutes is the check.
+  for (const live of view.layerState.values()) {
+    if (!live.active) continue;
+    live.zone = { ...freshLayer(2.6), upperK: AMBIENT_K, interfaceM: 2.6 };
+  }
+  engine.step(1, walls, []);
+  assert.equal(
+    [...view.layerState.values()].some((row) => row.active),
+    false,
+    'the cold ceiling stayed up',
+  );
+  const left = view.wallSheetK.get('glass') ?? 0;
   engine.step(480, walls, []);
   const cooled = view.wallSheetK.get('glass') ?? AMBIENT_K;
-  const expected = coolUnclaimedSheet(warm, glass, 480);
+  const expected = coolUnclaimedSheet(left, glass, 480);
   assert.ok(
     warm - cooled > 4,
     `still ${(cooled - AMBIENT_K).toFixed(1)} K above ambient, from ${(warm - AMBIENT_K).toFixed(1)} K`,
@@ -2918,6 +2932,119 @@ test('a jet-fed room keeps its head-height soot when it catches fire', () => {
   assert.ok(
     still > kept * 0.5,
     `head-height soot fell from ${kept.toFixed(3)} /m to ${still.toFixed(3)} /m when the room caught fire`,
+  );
+});
+
+test('a smoke-logged fireless room keeps its layer after the jet stops', () => {
+  // The hall has no fire of its own. Once the door jet has dropped the
+  // interface through head height, sealing the door stops the feed. The
+  // layer is judged from the zone it already holds, so the stud stays in
+  // that smoke.
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('hall', 0, 3)]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['fire', wood]]));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void; fuelReleaseKw: (id: string) => number | undefined };
+    doorJets: Map<string, { kgS: number }>;
+    jetTaken: Map<string, { kgS: number }>;
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        members: string[];
+        zone: { interfaceM: number; upperK: number; sootG: number };
+      }
+    >;
+  };
+  exposed.fireSim.ignite(['fire']);
+  const hallOf = () =>
+    [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  const smokeOf = () => engine.studStates.get('hall')?.smoke ?? 0;
+  let logged = false;
+  let best = 'none';
+  for (let t = 0; t < 400 && !logged; t++) {
+    engine.step(1, walls, []);
+    const hall = hallOf();
+    const smoke = smokeOf();
+    if (t === 30 || t === 120 || hall?.active) {
+      best = `t=${t + 1} z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'} active=${hall?.active === true} smoke=${smoke.toFixed(3)} soot=${(hall?.zone.sootG ?? 0).toFixed(1)} g`;
+    }
+    logged =
+      hall?.active === true &&
+      hall.zone.interfaceM <= HEAD_HEIGHT_M &&
+      smoke >= 0.5 &&
+      hall.zone.sootG > 0 &&
+      (exposed.fireSim.fuelReleaseKw('hall') ?? 0) < MIN_LAYER_FIRE_KW;
+  }
+  assert.ok(logged, `the hall never logged smoke at head height (${best})`);
+  const before = hallOf();
+  const smokeBefore = smokeOf();
+  assert.ok(before);
+  const sealed = walls.map((wall) => (wall.id === 'door' ? { ...wall, hasDoor: false } : wall));
+  exposed.doorJets = new Map();
+  for (let t = 0; t < 10; t++) {
+    engine.step(1, sealed, []);
+    assert.equal(
+      exposed.jetTaken.size,
+      0,
+      `a jet still arrived on step ${t + 1} after the door was sealed`,
+    );
+    const hall = hallOf();
+    assert.ok(
+      hall?.active,
+      `the hall layer retired ${t + 1} s after the feed stopped (z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'}, rise=${((hall?.zone.upperK ?? AMBIENT_K) - AMBIENT_K).toFixed(0)} K)`,
+    );
+    assert.ok(
+      hall.zone.interfaceM <= HEAD_HEIGHT_M,
+      `the interface lifted through head height (${hall.zone.interfaceM.toFixed(2)} m) while the feed was off`,
+    );
+    const smoke = smokeOf();
+    assert.ok(
+      smoke >= smokeBefore * 0.5,
+      `head-height smoke fell from ${smokeBefore.toFixed(3)} to ${smoke.toFixed(3)} with the layer still at ${hall.zone.interfaceM.toFixed(2)} m`,
+    );
+  }
+  const after = hallOf();
+  assert.ok(after);
+  assert.ok(
+    after.zone.sootG > before.zone.sootG * 0.5,
+    `the layer soot fell from ${before.zone.sootG.toFixed(1)} g to ${after.zone.sootG.toFixed(1)} g`,
   );
 });
 
