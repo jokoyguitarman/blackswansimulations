@@ -20,9 +20,17 @@
  * still saturates there, and walking and sight use that number.
  * Open outs are 69, 90, 100 and 104 at T+180, T+240, T+300 and T+600.
  * 16 are down by T+300 and that holds through T+600: eight from the
- * blast, two from heat and six fume downs. The six crawl out of the west
- * shop's smoke through E1-west and go down just outside it, in the plume,
- * so they count as out as well. Nobody is in the mall at T+600. The
+ * blast, one heat down who never started out, and seven in a cluster of
+ * forced crawlers heading for E1-west (one heat, six fume). The
+ * all-Infinity fallback sends that cluster to the west door, and it goes
+ * down at T+190 to T+201, six of them just outside the door in its spill.
+ * Those six count as out as well. Master had three down there, in both
+ * crowds. The extra four come from contacts no longer towing people at
+ * the faster one's pace. With one blast down fewer (nine on master),
+ * they take the blocked crowd from 13 to 16.
+ * People dying just past that door is a follow-up, with the steering
+ * blend that never catches the air drag (frictionAir). Nobody is in the
+ * mall at T+600. The
  * highest asphyxiant FED still inside is 1.002 and the highest heat FED
  * is 1. Late mean smoke is 0.835. The blocked crowd lets 42 and 81
  * people out at T+180 and T+240, and 104 by T+300. By T+600, 104 are out
