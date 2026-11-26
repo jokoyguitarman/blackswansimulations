@@ -926,9 +926,9 @@ export class FireSimulation {
       if (!fState || fState.state !== 'burning') continue;
       meta.age += dt;
       // Age still walks the prescribed curve, so the αt² demand and the
-      // flame-front reach are not slowed. Above φ = 2 the fuel ledger
-      // spends the capped pyrolysis in kilojoules against the load. At
-      // φ ≤ 2 that integral is the free-burn clock, which stays the timer.
+      // flame-front reach are not slowed. The fuel ledger spends the capped
+      // pyrolysis in kilojoules against the load at every φ. At φ ≤ 2 that
+      // integral is the free-burn clock.
       const pyro = pyrolysisFraction(this.burnPhi(id));
       meta.pyrolysis = pyro;
       const heatKw = this.releaseKw(cell, meta) * this.burnFraction(id);
@@ -945,11 +945,12 @@ export class FireSimulation {
       }
       fState.timer -= dt * pyro;
       fState.approach = 1;
-      // Above φ = 2 the ledger ends the stud. The schedule seconds run
-      // long on the αt² rise, so they do not. φ ≤ 2 keeps the free-burn clock.
+      // The ledger ends the stud at every φ. Schedule seconds run long on
+      // the αt² rise, and handing burnout back to that clock once φ falls
+      // to 2 would keep burning after the load is gone.
       const fuelKj = meta.fuelKj;
-      const onLedger = pyro < 1 && fuelKj != null;
-      if ((onLedger ? fuelKj <= 0 : fState.timer <= 0)) {
+      const onLedger = fuelKj != null;
+      if (onLedger ? fuelKj <= 0 : fState.timer <= 0) {
         fState.state = 'burnt_out';
         fState.timer = 0;
         fState.approach = 0;

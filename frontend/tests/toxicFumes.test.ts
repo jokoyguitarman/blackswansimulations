@@ -1064,6 +1064,28 @@ describe('capped pyrolysis for soot, gas, and burnout', () => {
     );
   });
 
+  test('a stud that rises at φ 7 and then recovers to φ 2 still ends on the load', () => {
+    const cell = { ...WOOD, spreadMPerMin: 0 };
+    const load = fuelEnergyKj(cell);
+    const rise = 300;
+    const untilOut = (phiAfter: number): number => {
+      const sim = fireSim(new Map([['a', cell]]));
+      sim.setBurnLimit(['a'], 0.1, 7);
+      let t = 0;
+      while (t < 5000 && sim.states.get('a')?.state === 'burning') {
+        if (t === rise) sim.setBurnLimit(['a'], 0.1, phiAfter);
+        sim.step(1, [], []);
+        t += 1;
+      }
+      return t;
+    };
+    const atTwo = untilOut(2);
+    const justOver = untilOut(2.001);
+    assert.ok(Math.abs(atTwo - justOver) <= 2, `φ 2 ends at ${atTwo}s and φ 2.001 at ${justOver}s`);
+    const spent = releaseEnergyKj(cell, 0, rise) * (2 / 7) + releaseEnergyKj(cell, rise, atTwo);
+    assert.ok(Math.abs(spent / load - 1) < 0.01, `spent ${spent} against the load ${load}`);
+  });
+
   test('the layer soot is the capped pyrolysis after the limit is cleared', () => {
     const cell = {
       ...WOOD,
