@@ -19,6 +19,7 @@ import {
   SpatialEffectsEngine,
   advanceSootK,
   assignDoorJet,
+  neighbourVentOutside,
   queueDoorJets,
   type DoorJetBook,
   type DoorJetParcel,
@@ -140,6 +141,35 @@ test('orifice slice matches the 400 K door example', () => {
   const rho = 353 / 400;
   const mass = orificeSliceKgS(0.9, 0.5, 0, 1.557, rho);
   close(mass, 0.3482, 0.3482 * 0.01, 'door flow');
+});
+
+test('a deposited jet is not also counted as neighbour-upper inflow', () => {
+  // The whole inflow is above the neighbour interface, and the jet is that
+  // same stream. Counting it in the makeup as well lifts the interface.
+  const outside = { interfaceM: 0.3, upperK: 700, floorPressurePa: 0 };
+  const spec: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [{ widthM: 1.5, sillM: 0, soffitM: 2, outside }],
+    boundaries: [
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 40, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const state = { ...freshLayer(3), interfaceM: 1.4, upperK: AMBIENT_K + 80 };
+  const far = oxygenLimitedBurn(spec, state.interfaceM, state.upperK, 0.23, 0.23, 1, true);
+  assert.ok(far.farUpperInKgS > 1, `far inflow ${far.farUpperInKgS}`);
+  assert.ok(
+    far.inKgS - far.farUpperInKgS < 0.05,
+    'the inflow was not all from the neighbour layer',
+  );
+  const jet = { kgS: far.farUpperInKgS, tempK: 700, oxygenY: 0.12 };
+  const deposited = stepZone(state, spec, 1, 0, jet).state;
+  const kept = stepZone(state, spec, 1, 0, { ...jet, fuelOnly: true }).state;
+  assert.ok(deposited.interfaceM < 1.23, `deposited interface ${deposited.interfaceM}`);
+  assert.ok(kept.interfaceM > 1.45, `orifice-kept interface ${kept.interfaceM}`);
 });
 
 test('a hot neighbour on the door cuts the outflow', () => {
@@ -1301,7 +1331,10 @@ test('new pyrolysate leaves on the hot vent while the fuel still fits in the lay
   let state = freshLayer(spec.ceilingM);
   for (let t = 0; t < 25; t++) state = stepZone(state, spec, 1).state;
   const yF = layerFuelFraction(state, spec.areaM2, spec.ceilingM);
-  assert.ok(yF > 0.02 && yF < 0.85, `fraction ${yF.toFixed(3)} is not a developed layer below the clamp`);
+  assert.ok(
+    yF > 0.02 && yF < 0.85,
+    `fraction ${yF.toFixed(3)} is not a developed layer below the clamp`,
+  );
   const limited = oxygenLimitedBurn(
     spec,
     state.interfaceM,
@@ -1359,12 +1392,18 @@ test('a long vent-limited run keeps the fuel fraction inside the mixture', () =>
     fraction.push(y);
     const mass = upperMixtureKg(state.upperK, spec.areaM2, spec.ceilingM - state.interfaceM);
     assert.ok(y < 1, `fuel fraction ${y.toFixed(3)} at ${t + 1} s`);
-    assert.ok((state.fuelKg ?? 0) <= mass + 1e-6, `fuel ${(state.fuelKg ?? 0).toFixed(3)} kg above ${mass.toFixed(3)} kg`);
+    assert.ok(
+      (state.fuelKg ?? 0) <= mass + 1e-6,
+      `fuel ${(state.fuelKg ?? 0).toFixed(3)} kg above ${mass.toFixed(3)} kg`,
+    );
   }
   const early = fraction[239] ?? 0;
   const late = fraction[299] ?? 0;
   assert.ok(late > 0.05, `the layer held only ${late.toFixed(3)}`);
-  assert.ok(Math.abs(late - early) < 0.03, `fraction still moving, ${early.toFixed(3)} to ${late.toFixed(3)}`);
+  assert.ok(
+    Math.abs(late - early) < 0.03,
+    `fraction still moving, ${early.toFixed(3)} to ${late.toFixed(3)}`,
+  );
 });
 
 test('a vent jet cooler than tgignt does not burn', () => {
@@ -1403,7 +1442,10 @@ test('a vent jet cooler than tgignt does not burn', () => {
   const coolKept = (coolState.fuelKg ?? 0) + coolVent;
   const hotKept = (hotState.fuelKg ?? 0) + hotVent;
   close(coolKept, arrived, 1e-4, 'below tgignt the fuel is only carried');
-  assert.ok(hotKept < arrived * 0.5, `at tgignt ${hotKept.toFixed(4)} kg of ${arrived.toFixed(4)} kg was still unburned`);
+  assert.ok(
+    hotKept < arrived * 0.5,
+    `at tgignt ${hotKept.toFixed(4)} kg of ${arrived.toFixed(4)} kg was still unburned`,
+  );
 });
 
 test('fuel sent into a burning room burns on the oxygen that room left', () => {
@@ -1434,7 +1476,10 @@ test('fuel sent into a burning room burns on the oxygen that room left', () => {
     const step = stepZone(state, hall, 1, 0, jet);
     arrived += jet.kgS * jet.fuelY;
     for (const hot of step.hotByVent) vented += hot.kg * hot.fuelY;
-    assert.ok(step.burnedFraction > 0.9, `the room's own fire fell to ${step.burnedFraction.toFixed(3)}`);
+    assert.ok(
+      step.burnedFraction > 0.9,
+      `the room's own fire fell to ${step.burnedFraction.toFixed(3)}`,
+    );
     state = step.state;
   }
   const kept = (state.fuelKg ?? 0) + vented;
@@ -1471,7 +1516,10 @@ test('fuel sent into a burning room burns on the oxygen that room left', () => {
     fed = fedStep.state;
   }
   const mean = own.reduce((sum, value) => sum + value, 0) / own.length;
-  assert.ok(Math.abs(mean - cap) / cap < 0.2, `own fire ${mean.toFixed(0)} kW vs cap ${cap.toFixed(0)}`);
+  assert.ok(
+    Math.abs(mean - cap) / cap < 0.2,
+    `own fire ${mean.toFixed(0)} kW vs cap ${cap.toFixed(0)}`,
+  );
   const keptFromJet = (fed.fuelKg ?? 0) + fedVent - ((quiet.fuelKg ?? 0) + quietVent);
   assert.ok(
     keptFromJet > jetIn * 0.8,
@@ -1536,7 +1584,10 @@ test('the spill burn debits oxygen, splits chi, lowers the interface, and cannot
     enthalpy < jetSensible + convected,
     `gas held ${enthalpy.toFixed(0)} kJ above a convected budget of ${(jetSensible + convected).toFixed(0)} kJ`,
   );
-  assert.ok(enthalpy > convected * 0.4, `the doorway barely warmed the gas, ${enthalpy.toFixed(0)} kJ`);
+  assert.ok(
+    enthalpy > convected * 0.4,
+    `the doorway barely warmed the gas, ${enthalpy.toFixed(0)} kJ`,
+  );
   assert.ok(
     rich.interfaceM < plain.interfaceM - 0.25,
     `spill air left the interface at ${rich.interfaceM.toFixed(3)} m, the plain jet at ${plain.interfaceM.toFixed(3)} m`,
@@ -2021,6 +2072,101 @@ test('a door jet warms an upper layer that has no fire', () => {
   assert.ok(cold.upperK < AMBIENT_K + 2, `no jet rose to ${cold.upperK - AMBIENT_K} K`);
 });
 
+test('a door into another room reads that room, and a door outdoors does not', () => {
+  const gauges = new Map([['hall', { interfaceM: 1, upperK: 500, floorPressurePa: 2 }]]);
+  const members = new Set(['a']);
+  const rooms = new Map([
+    ['a', 'fire'],
+    ['b', 'hall'],
+    ['c', 'hall'],
+    ['d', 'other'],
+  ]);
+  const hit = neighbourVentOutside(['b', 'c', 'd'], 'fire', members, rooms, gauges);
+  assert.equal(hit?.upperK, 500);
+  assert.equal(hit?.floorPressurePa, 2);
+  assert.equal(neighbourVentOutside(['yard'], 'fire', members, rooms, gauges), undefined);
+  assert.equal(neighbourVentOutside(['a'], 'fire', members, rooms, gauges), undefined);
+  assert.equal(neighbourVentOutside([], 'fire', members, rooms, gauges), undefined);
+  // The other room has no layer yet, so the door still opens to ambient.
+  assert.equal(neighbourVentOutside(['d'], 'fire', members, rooms, gauges), undefined);
+});
+
+test('a production door into a hot room chokes the fire room', () => {
+  // Same fire, same door. One far side is a room that fills from the jet.
+  // The other is outdoors. If the engine leaves every door on ambient, the
+  // two fire rooms match. CFAST Eq. 4.1 against the hot room cuts the
+  // outflow, so that fire room runs hotter.
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number, indoors: boolean) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: indoors ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const riseOf = (indoors: boolean) => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('fire', 0, 0, true), stud('hall', 0, 3, indoors)]);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(new Map([['fire', wood]]));
+    const exposed = engine as unknown as {
+      fireSim: { ignite: (ids: string[]) => void };
+      layerState: Map<string, { active: boolean; members: string[]; zone: { upperK: number } }>;
+    };
+    exposed.fireSim.ignite(['fire']);
+    for (let t = 0; t < 180; t++) engine.step(1, walls, []);
+    let fireK = AMBIENT_K;
+    let hallK = AMBIENT_K;
+    let hallActive = false;
+    for (const live of exposed.layerState.values()) {
+      if (live.members.includes('fire') && live.members.length === 1 && live.active) {
+        fireK = live.zone.upperK;
+      }
+      if (live.members.includes('hall') && live.active) {
+        hallK = live.zone.upperK;
+        hallActive = true;
+      }
+    }
+    return { fireRise: fireK - AMBIENT_K, hallRise: hallK - AMBIENT_K, hallActive };
+  };
+  const coupled = riseOf(true);
+  const outdoors = riseOf(false);
+  assert.ok(coupled.hallActive, 'the hall never formed a layer to stand on the far side');
+  assert.ok(coupled.hallRise > 30, `hall rise ${coupled.hallRise.toFixed(1)} K`);
+  assert.ok(outdoors.fireRise > 20, `outdoor fire rise ${outdoors.fireRise.toFixed(1)} K`);
+  assert.ok(
+    coupled.fireRise > outdoors.fireRise + 15,
+    `coupled ${coupled.fireRise.toFixed(1)} K, outdoors ${outdoors.fireRise.toFixed(1)} K`,
+  );
+});
+
 test('a door jet assigns the vented mass and enthalpy to the receiving room', () => {
   const rooms = new Map<string, string>([
     ['a', 'fire'],
@@ -2277,7 +2423,10 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   // engine passes.
   // Calling stepZone with fuelOnly from the test would still pass if that
   // call were deleted. The cold run keeps the same walls, so the hall's
-  // own fire is the control.
+  // own fire is the control. Both runs solve the door against the other
+  // room, so the control is already choked and the extra is only the fuel
+  // that arrives: about 0.25 kg still in the layer, and about 40 K. Dropping
+  // the jet's fuel leaves none of that mass.
   const monster = { ...defaultLightFuel(), alphaKwS2: 80, fuelLoadKgM2: 200 };
   const hallFuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 80 };
   const sources = [
@@ -2322,10 +2471,7 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   ];
   const run = (withSource: boolean) => {
     const engine = new SpatialEffectsEngine(undefined, 1);
-    const studs = [
-      ...sources.map(([id, x, y]) => stud(id, x, y)),
-      stud('hall', 0, 3),
-    ];
+    const studs = [...sources.map(([id, x, y]) => stud(id, x, y)), stud('hall', 0, 3)];
     engine.init(studs);
     engine.setStoreyHeights({ G: 2.6 });
     const cells = new Map<string, FuelCell>([['hall', hallFuel]]);
@@ -2363,13 +2509,16 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   const alone = run(false);
   assert.ok(connected.hall, 'the hall never formed a layer of its own');
   assert.ok(alone.hall, 'the hall alone never formed a layer');
-  assert.ok(connected.sentFuel > 0.2, `the source sent ${connected.sentFuel.toFixed(3)} kg of fuel`);
+  assert.ok(
+    connected.sentFuel > 0.2,
+    `the source sent ${connected.sentFuel.toFixed(3)} kg of fuel`,
+  );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
   const rise = connected.hall.upperK - AMBIENT_K;
   const ownRise = alone.hall.upperK - AMBIENT_K;
   assert.ok(
-    kept > own + 0.4 || rise > ownRise + 80,
+    kept > own + 0.2,
     `hall kept ${kept.toFixed(3)} kg and rose ${rise.toFixed(1)} K; alone kept ${own.toFixed(3)} kg and rose ${ownRise.toFixed(1)} K`,
   );
 });

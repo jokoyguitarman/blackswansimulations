@@ -26,7 +26,17 @@ export interface HarbourShopResult {
     at180: { prescribedMw: number; burnedMw: number; o2Upper: number };
     burnedMw: { t200: number; t290: number; t320: number; minFrom180: number; maxFrom180: number };
   };
-  kitchen: { doorMw: number; burnedMwFrom210: number };
+  kitchen: {
+    doorMw: number;
+    burnedMw: {
+      t210: number;
+      t250: number;
+      t290: number;
+      t370: number;
+      minFrom210: number;
+      maxFrom210: number;
+    };
+  };
 }
 
 function doorMw(run: HarbourRun, room: string): number {
@@ -129,9 +139,14 @@ export function runHarbourShop(): HarbourShopResult {
     },
     kitchen: {
       doorMw: 6.8,
-      burnedMwFrom210: kitchenFrom210.every((value) => value === kitchenFrom210[0])
-        ? kitchenFrom210[0]
-        : Number.NaN,
+      burnedMw: {
+        t210: at(kitchen, 210).burnedMw,
+        t250: at(kitchen, 250).burnedMw,
+        t290: at(kitchen, 290).burnedMw,
+        t370: at(kitchen, 370).burnedMw,
+        minFrom210: Math.min(...kitchenFrom210),
+        maxFrom210: Math.max(...kitchenFrom210),
+      },
     },
   };
 }
