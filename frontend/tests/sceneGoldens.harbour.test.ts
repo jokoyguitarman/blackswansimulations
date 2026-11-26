@@ -16,18 +16,13 @@
  * carried since about T+159. It does not mean the jet was clean. Soot
  * and gas use the same φ ≤ 2 pyrolysis. Late mean smoke is 0.835 open
  * and 0.840 blocked. The highest asphyxiant FED still inside is 0.029
- * open and 0.042 blocked, and the highest heat FED is 1.001. That
- * gas dose is the time integral. At the four heat downs (171.8 s,
- * shop s_0_12, interface 0.07 m, about 257 °C) φ is 1.47, so the
- * φ ≤ 2 cap is not cutting the pyrolysis: the fraction is 1 and the
- * CO yield is 0.214 g/g, between the well-ventilated 0.0175 and the
- * under-ventilated 0.222. The layer's soot is about 15 /m. The stud
- * is held at the smoke-scale cap, K = 6.1 /m, and the dose follows
- * that cap: about 1900 ppm CO, 88 ppm HCN, 17.4 % oxygen and 3.4 %
- * CO2, a rate of about 0.17 per minute. Until about T+140 the same
- * room is still well ventilated (φ about 0.3) and that rate is under
- * 0.01 per minute, so the rich air lasts about fifteen seconds before
- * the heat FED reaches 1. The T+300 smoke strings are unchanged.
+ * open and 0.042 blocked, and the highest heat FED is 1.001.
+ * Known gap: those gas concentrations come from the visibility-capped
+ * extinction (K ≤ 6.1 /m), so the asphyxiant FED is under-stated in
+ * smoke denser than that. At the Harbour shop the layer soot is
+ * 13.9 /m at T+170 and 17.7 /m at T+180. Reading the gases from that
+ * soot raises the dose rate 5.8× and 25×, with HCN dominating. The
+ * T+300 smoke strings are unchanged.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
