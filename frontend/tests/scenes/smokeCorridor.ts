@@ -48,6 +48,7 @@ export interface SmokeCorridorRun {
   ignitionSec: number;
 }
 
+/** `untilSec` 0 builds the scene and reads the compartments without stepping. */
 export function runSmokeCorridor(untilSec: number, sampleEverySec = 10): SmokeCorridorRun {
   const scene = smokeCorridorSample.scene;
   const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);

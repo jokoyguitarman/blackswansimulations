@@ -1,12 +1,14 @@
 /**
- * Smoke corridor test block through T+600, ignition at T+60. Only the store
+ * Smoke corridor test block. The geometry checks build the scene without
+ * stepping and run on every PR. The spread run goes to T+600, ignition at
+ * T+60, and takes about 45 s, so it is a nightly slow scene. Only the store
  * room has fuel, so every other room is reached by smoke alone.
- * About 45 s.
  */
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
 import { smokeCorridorSample, SMOKE_CORRIDOR_ROOMS } from '../src/lib/rts/smokeCorridorTest.ts';
 import { runSmokeCorridor, type SmokeCorridorRun } from './scenes/smokeCorridor.ts';
+import { slowScene } from './scenes/slow.ts';
 
 const ARRIVED = 0.05;
 
@@ -19,25 +21,38 @@ function last(run: SmokeCorridorRun, room: string) {
   return run.samples[run.samples.length - 1].rooms[room];
 }
 
-describe('Smoke corridor test block', { concurrency: 1 }, () => {
+describe('Smoke corridor test block geometry', () => {
+  const scene = runSmokeCorridor(0);
+
+  test('one compartment per room', () => {
+    assert.equal(scene.rooms.size, SMOKE_CORRIDOR_ROOMS.length);
+    assert.equal(scene.compartments.size, SMOKE_CORRIDOR_ROOMS.length);
+    for (const rooms of scene.compartments.values()) assert.equal(rooms.size, 1);
+  });
+
+  test('fuel only in the store', () => {
+    assert.ok(scene.fuelStudIds.size > 0);
+    for (const id of scene.fuelStudIds) assert.ok(scene.rooms.get('store')?.includes(id));
+  });
+
+  test('south exit open, atrium doors blocked', () => {
+    const exits = Object.fromEntries(smokeCorridorSample.scene.exits.map((e) => [e.id, e.status]));
+    assert.deepEqual(exits, { 'exit-south': 'open', 'exit-atrium-east': 'blocked' });
+  });
+
+  test('the meeting room door is the one shut leaf', () => {
+    const shut = smokeCorridorSample.scene.interiorWalls.filter((w) => w.openFraction === 0);
+    assert.deepEqual(
+      shut.map((w) => [w.id, w.doorPinned]),
+      [['w-n4-door', true]],
+    );
+  });
+});
+
+describe('Smoke corridor test block spread', { concurrency: 1, skip: slowScene }, () => {
   let run: SmokeCorridorRun;
   before(() => {
     run = runSmokeCorridor(600, 10);
-  });
-
-  test('loads with one compartment per room and fuel only in the store', () => {
-    assert.equal(run.rooms.size, SMOKE_CORRIDOR_ROOMS.length);
-    assert.equal(run.compartments.size, SMOKE_CORRIDOR_ROOMS.length);
-    for (const rooms of run.compartments.values()) assert.equal(rooms.size, 1);
-    assert.ok(run.fuelStudIds.size > 0);
-    for (const id of run.fuelStudIds) assert.ok(run.rooms.get('store')?.includes(id));
-    const exits = Object.fromEntries(smokeCorridorSample.scene.exits.map((e) => [e.id, e.status]));
-    assert.deepEqual(exits, { 'exit-south': 'open', 'exit-atrium-east': 'blocked' });
-    const shut = smokeCorridorSample.scene.interiorWalls.filter((w) => w.openFraction === 0);
-    assert.deepEqual(
-      shut.map((w) => w.id),
-      ['w-n4-door'],
-    );
   });
 
   test('only the store burns', () => {
