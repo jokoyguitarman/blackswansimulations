@@ -5,11 +5,11 @@
  * Pyrolysis mass is capped at an equivalence ratio of 2, and the spill
  * entrains only the hot outflow below the receiving interface. The shop
  * door solves against the mall layer, so the burn falls below the
- * 22.1 MW door: 21.5 MW at T+180, then 18.6–21.5 MW through T+370.
+ * 22.1 MW door: 21.3 MW at T+180, then 18.8–21.3 MW through T+370.
  * Upper-layer oxygen is still 0.186 at T+180 and 0.091 by T+370.
- * The kitchen holds 4.2 MW at T+210 and 3.1–3.2 MW from T+290, against
- * its 6.8 MW door. The tile mall at T+300 is 2.41 m and 71.9 K. At T+600
- * the interface is 1.18 m and the rise is 91.8 K.
+ * The kitchen holds 4.2 MW at T+210, 3.3 MW at T+250 and 3 MW from
+ * T+290, against its 6.8 MW door. The tile mall at T+300 is 2.41 m and
+ * 72 K. At T+600 the interface is 1.17 m and the rise is 91.8 K.
  * Heat is a separate ISO 13571 dose. Four people are down from it by
  * T+180, in both crowds. Gas concentration is the soot mass on the
  * stud: the layer's grams over the upper-layer volume, or the column
@@ -17,14 +17,14 @@
  * still saturates there, and walking and sight use that number.
  * Open outs are 64, 93, 99 and 101 at T+180, T+240, T+300 and T+600,
  * with 13 down, fume downs at 0, and 19 still inside. The highest
- * asphyxiant FED still inside is 0.104 and the highest heat FED is
- * 1.001. Late mean smoke is 0.812. The blocked crowd lets 41 and 52
- * people out at T+180 and T+240, and 82 by T+300. By T+600, 101 are
+ * asphyxiant FED still inside is 0.107 and the highest heat FED is
+ * 1.000. Late mean smoke is 0.812. The blocked crowd lets 41 and 52
+ * people out at T+180 and T+240, and 83 by T+300. By T+600, 101 are
  * out and 13 are down, with 19 still inside. Nobody is left in the
  * mall at an asphyxiant FED of 1. The highest asphyxiant FED still
- * inside is 0.104. Heat downs stay 4. Late mean smoke is 0.816.
- * Mean smoke at T+180, T+240 and T+300 is 0.421, 0.449 and 0.441 with
- * the east exit open, and 0.421, 0.449 and 0.442 with it blocked.
+ * inside is 0.107. Heat downs stay 4. Late mean smoke is 0.817.
+ * Mean smoke at T+180, T+240 and T+300 is 0.419, 0.449 and 0.441 with
+ * the east exit open, and 0.419, 0.449 and 0.441 with it blocked.
  * Flashover stays 79.88 s and the peak stays 163.5 MW.
  */
 import assert from 'node:assert/strict';

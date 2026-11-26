@@ -201,6 +201,82 @@ test('a deposited jet keeps the lower-layer air budget', () => {
   );
 });
 
+test('a burning room books outflow from below its interface', () => {
+  // No jet is deposited. The door faces a warm neighbour, and about half
+  // the outflow leaves the lower layer. The height change includes that
+  // flow in every room. Leaving it out holds this 216 m² layer up.
+  const spec: LayerSpec = {
+    areaM2: 216,
+    ceilingM: 2.6,
+    vents: [
+      {
+        widthM: 2.4,
+        sillM: 0,
+        soffitM: 2,
+        outside: { interfaceM: 0.2, upperK: 350, floorPressurePa: 0 },
+      },
+    ],
+    boundaries: [{ areaM2: 400, lining: LINING.concrete }],
+    fires: [{ heatKw: 4000, diameterM: 1 }],
+  };
+  const start = { ...freshLayer(spec.ceilingM), interfaceM: 1.2, upperK: AMBIENT_K + 300 };
+  const opened = oxygenLimitedBurn(
+    spec,
+    start.interfaceM,
+    start.upperK,
+    start.lowerO2,
+    start.upperO2,
+    0.1,
+    false,
+  );
+  const openedHot = opened.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+  const openedLower = Math.max(0, opened.outKgS - openedHot);
+  assert.ok(opened.outKgS > 1, `outflow ${opened.outKgS}`);
+  assert.ok(
+    openedLower / opened.outKgS > 0.45 && openedLower / opened.outKgS < 0.6,
+    `lower share ${(openedLower / opened.outKgS).toFixed(2)}`,
+  );
+  assert.ok(opened.burn.burnedKw > 1000, 'the room is burning');
+  let state = start;
+  let bookedZ = start.interfaceM;
+  let omittedZ = start.interfaceM;
+  const dt = 0.1;
+  for (let i = 0; i < 30; i++) {
+    const lim = oxygenLimitedBurn(
+      spec,
+      state.interfaceM,
+      state.upperK,
+      state.lowerO2,
+      state.upperO2,
+      dt,
+      false,
+    );
+    const hot = lim.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+    const lowerOut = Math.max(0, lim.outKgS - hot);
+    const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
+    const areaRho = LEVEL.RHO_AIR * spec.areaM2;
+    bookedZ = Math.min(
+      spec.ceilingM - 0.02,
+      Math.max(
+        0.05,
+        bookedZ + clamp((lim.inKgS - lim.plumeKgS - lim.fanLowerKgS - lowerOut) / areaRho) * dt,
+      ),
+    );
+    omittedZ = Math.min(
+      spec.ceilingM - 0.02,
+      Math.max(0.05, omittedZ + clamp((lim.inKgS - lim.plumeKgS - lim.fanLowerKgS) / areaRho) * dt),
+    );
+    state = stepZone(state, spec, dt, 0, null).state;
+  }
+  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - bookedZ);
+  const omittedKg = LEVEL.RHO_AIR * spec.areaM2 * (omittedZ - state.interfaceM);
+  assert.ok(
+    Math.abs(residualKg) < 0.05,
+    `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
+  );
+  assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
+});
+
 test('a burning room that takes a jet does not burn the neighbour upper layer', () => {
   // The door inflow is the neighbour's hot layer. Depositing that jet
   // leaves it out of the fresh-air supply. Counting it as lower-layer air

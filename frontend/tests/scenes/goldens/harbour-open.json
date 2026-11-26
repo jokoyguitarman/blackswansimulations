@@ -13,11 +13,11 @@
   "mall": {
     "active": true,
     "interfaceM": 2.41,
-    "riseK": 71.9
+    "riseK": 72
   },
   "marks": {
     "t180": {
-      "smoke": "0.421",
+      "smoke": "0.419",
       "out": 64,
       "down": 13,
       "heatDown": 4,
@@ -49,13 +49,13 @@
     "down": 13,
     "out": 101,
     "inMall": 0,
-    "maxFed": 0.104,
-    "maxHeatFed": 1.001,
+    "maxFed": 0.107,
+    "maxHeatFed": 1,
     "heatDown": 4,
     "mallFed": 0,
     "mall": {
       "active": true,
-      "interfaceM": 1.18,
+      "interfaceM": 1.17,
       "riseK": 91.8
     },
     "smoke": "0.812"

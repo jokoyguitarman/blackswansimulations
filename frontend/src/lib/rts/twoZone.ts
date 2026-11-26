@@ -37,10 +37,10 @@
  * interface is the same stream the jet deposits. A room that takes the
  * jet leaves that inflow out of the makeup air. The orifice already
  * includes it, so the interface takes jet volume only for the deposited
- * mass the orifice did not balance, and it books the lower layer's own
- * outflow. Subtracting the whole jet volume as well counts that volume
- * twice. A room that does not take a jet still omits outflow from below
- * its interface. Unburned fuel and the spill plume stay on the jet.
+ * mass the orifice did not balance. Subtracting the whole jet volume as
+ * well counts that volume twice. Outflow from below the interface is
+ * booked in every room, including one that does not take the jet.
+ * Unburned fuel and the spill plume stay on the jet.
  *
  * Pyrolysate the plume cannot burn is a species in the upper-layer mass,
  * the way CFAST puts fuel into the layer (`fire.f90` at b869597). The
@@ -2242,26 +2242,27 @@ function stepZoneNow(
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * atInterface, 1e-3);
-    // Makeup air fills the lower layer. The plume and a fan in that clear
-    // air both drain it, so the interface falls. A fan in the smoke is
-    // balanced by extra inflow, which lifts the interface. Spill air
-    // leaves the lower layer and joins the upper one. Fuel stored with
-    // no vent to carry it occupies upper-layer volume as well.
-    // The height change is that volume divided by the area at the
-    // interface. A pyramidal roof is narrower there than the floor.
+    // Makeup air fills the lower layer. The plume, a fan in that clear
+    // air, and outflow from below the interface all drain it, so the
+    // interface falls. A fan in the smoke is balanced by extra inflow,
+    // which lifts the interface. Spill air leaves the lower layer and
+    // joins the upper one. Fuel stored with no vent to carry it occupies
+    // upper-layer volume as well. The height change is that volume
+    // divided by the area at the interface. A pyramidal roof is narrower
+    // there than the floor.
     //
     // A room that takes the jet already has that stream inside the
     // orifice: inflow above the neighbour interface is part of the
-    // balance, and the outflow has made room for it. Dropping the
-    // interface by the whole jet volume counts that volume twice. The
-    // lower layer is booked for its own outflow, and jet volume is taken
+    // balance, and the outflow has made room for it. Jet volume is taken
     // only for deposit − skipFar, the part the orifice did not balance.
-    // A room that does not take a jet still omits outflow from below its
-    // interface. That is the older simplification.
-    let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
+    // Subtracting the whole jet volume as well counts that volume twice.
+    // The lower-layer outflow is booked in every room. A burning room
+    // whose door faces a hot neighbour sends a large share of its outflow
+    // out of the lower layer, and leaving that flow out holds the
+    // interface up.
+    const lowerOutKgS = Math.max(0, flows.outKgS - hotSum);
+    let dZ = (flows.inKgS - plume - flows.fanLowerKgS - lowerOutKgS) / areaRho;
     if (depositKgS > 0) {
-      const lowerOutKgS = Math.max(0, flows.outKgS - hotSum);
-      dZ -= lowerOutKgS / areaRho;
       const unmatchedKgS = depositKgS - skipFar;
       dZ -= unmatchedKgS / Math.max(densityKgM3(jetT) * atInterface, 1e-3);
     }
