@@ -11,6 +11,7 @@ import {
 import { GAS_JET_KW, STUD_AREA_M2, electricalHeatReleaseKw, type FuelCell } from './flameFront';
 import {
   AMBIENT_K,
+  blackLayerRadiantKwM2,
   CEILING_JET_DEPTH_FRACTION,
   DOOR_SOFFIT_M,
   DISTINCT_LAYER_RISE_K,
@@ -126,6 +127,16 @@ export interface StudEffectState {
   oxygenVolumePercent?: number;
   /** Carbon dioxide the head breathes, volume percent. Absent is none. */
   co2VolumePercent?: number;
+  /**
+   * Gas temperature at the head, °C. Set when the interface is at or below
+   * head height. Absent means the head is in the lower layer, at ambient.
+   */
+  headTempC?: number;
+  /**
+   * Incident flux from the room's black upper layer, kW/m². Absent means
+   * this stud is not under that layer.
+   */
+  radiantKwM2?: number;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -2314,7 +2325,16 @@ export class SpatialEffectsEngine {
           }
           this.roomPhi.set(room, stepped.phi);
           this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
-          this.grantVented(room, members, enc, stepped, stepped.state.interfaceM, dt, rooms, nextJets);
+          this.grantVented(
+            room,
+            members,
+            enc,
+            stepped,
+            stepped.state.interfaceM,
+            dt,
+            rooms,
+            nextJets,
+          );
           return { gain: stepped.sheetGainKjM2 };
         },
       });
@@ -2369,6 +2389,8 @@ export class SpatialEffectsEngine {
       if (!state) continue;
       state.oxygenVolumePercent = undefined;
       state.co2VolumePercent = undefined;
+      state.headTempC = undefined;
+      state.radiantKwM2 = undefined;
     }
     this.breathIds = [];
     const incoming = new Map<string, number>();
@@ -2401,6 +2423,8 @@ export class SpatialEffectsEngine {
       const breath = layerBreath(
         oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
       );
+      const radiantKwM2 = blackLayerRadiantKwM2(live.zone.upperK);
+      const headTempC = atHead ? live.zone.upperK - 273.15 : undefined;
       for (const id of live.members) {
         touch.add(id);
         if (!owned.has(id)) continue;
@@ -2417,6 +2441,8 @@ export class SpatialEffectsEngine {
         if (!state) continue;
         state.oxygenVolumePercent = breath.oxygenVolumePercent;
         state.co2VolumePercent = breath.co2VolumePercent;
+        state.radiantKwM2 = radiantKwM2;
+        if (headTempC != null) state.headTempC = headTempC;
         this.breathIds.push(id);
       }
     }

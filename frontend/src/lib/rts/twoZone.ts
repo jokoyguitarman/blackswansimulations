@@ -259,6 +259,17 @@ export function isothermalSheet(lining: Lining, tS: number): boolean {
 export const SIGMA_KW_M2K4 = 5.67e-11;
 
 /**
+ * Incident flux from a black upper layer, kW/m². σ T⁴. The gas is already
+ * taken as black. ISO 13571:2012 clause 8.2 relates 2.5 kW/m² to a source
+ * surface near 200 °C, and σ (473 K)⁴ is about 2.8 kW/m². No view factor:
+ * the layer fills the view. That fill is this model's assumption.
+ */
+export function blackLayerRadiantKwM2(gasK: number): number {
+  if (!(gasK > 0)) return 0;
+  return SIGMA_KW_M2K4 * gasK ** 4;
+}
+
+/**
  * 4 σ T³ at ambient, kW/m²K. Radiation to outdoor air cannot be weaker
  * than this, so it is the floor of the exterior film.
  */
@@ -1919,8 +1930,7 @@ function stepZoneNow(
   const jetKgS = jet != null && jet.kgS > 0 ? jet.kgS : 0;
   const jetT = jet != null && jet.tempK > 0 ? jet.tempK : AMBIENT_K;
   const jetY = jet != null && jet.oxygenY > 0 ? jet.oxygenY : O2_AMBIENT_MASS;
-  const jetFuelY =
-    jet != null && jet.fuelY != null && jet.fuelY > 0 ? Math.min(1, jet.fuelY) : 0;
+  const jetFuelY = jet != null && jet.fuelY != null && jet.fuelY > 0 ? Math.min(1, jet.fuelY) : 0;
   const jetOrigin = jet != null && jet.originM != null && jet.originM >= 0 ? jet.originM : null;
   const jetWidth = jet != null && jet.widthM != null && jet.widthM > 0 ? jet.widthM : 0;
   const jetLow = jet != null && jet.lowEdgeM != null ? jet.lowEdgeM : null;
@@ -1972,8 +1982,7 @@ function stepZoneNow(
     const rise = jetOrigin != null ? spillRiseM(z, jetOrigin) : 0;
     // Slabs of the outflow that are already inside the receiving layer
     // do not entrain. The fuel in the whole jet still arrives.
-    const band =
-      jetLow != null && jetSoffit != null ? spillBandShare(z, jetLow, jetSoffit) : 1;
+    const band = jetLow != null && jetSoffit != null ? spillBandShare(z, jetLow, jetSoffit) : 1;
     const spillKgS = jetKgS * band;
     if (
       jetFuelKw >= MIN_LAYER_FIRE_KW &&

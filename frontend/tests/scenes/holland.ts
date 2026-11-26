@@ -78,6 +78,7 @@ export interface HollandMark {
   minor: number;
   crawling: number;
   fumeDown: number;
+  heatDown: number;
   burning: number;
   smoky: number;
   jets: number;
@@ -229,6 +230,7 @@ export function runHolland(): HollandResult {
       minor: showcase?.minorInjured ?? 0,
       crawling: showcase?.crawling ?? 0,
       fumeDown: showcase?.fumeDown ?? 0,
+      heatDown: showcase?.heatDown ?? 0,
       burning: stats.fire.burning,
       smoky: stats.smokeAffected,
       jets: effects.gasJets().length,

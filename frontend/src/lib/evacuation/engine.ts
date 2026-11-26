@@ -59,7 +59,13 @@ import {
 } from '../rts/blast/blastModel';
 import { LEVEL } from './levelConstants';
 import { WET_FLOOR_SPEED } from '../rts/flameFront';
-import { advanceFed, fecImpairs, fecOf, fedIncapacitates } from '../rts/toxicDose';
+import {
+  advanceFed,
+  advanceHeatFed,
+  exposureIncapacitates,
+  fecImpairs,
+  fecOf,
+} from '../rts/toxicDose';
 import {
   levelCategories,
   levelIndex,
@@ -96,12 +102,16 @@ export interface PedSnapshot {
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
   /** ISO 13571 asphyxiant dose. Stays once accumulated. */
   fumeFed?: number;
+  /** ISO 13571 heat dose. Stays once accumulated. Separate from the asphyxiant dose. */
+  heatFed?: number;
   /** ISO 13571 irritant fraction at the last breath. */
   fumeFec?: number;
   /** Stopped while the irritant fraction is at least 1. Clears in cleaner air. */
   fumeHeld?: boolean;
   /** Down because the asphyxiant dose reached 1, not because of the blast. */
   fumeDown?: boolean;
+  /** Down because the heat dose reached 1. */
+  heatDown?: boolean;
   zoneId?: string | null;
   /** Effective pressure for someone inside the minor ring, in kPa. */
   blastKpa?: number;
@@ -126,6 +136,8 @@ export interface ShowcaseMetrics {
   fumeHeld: number;
   /** People the asphyxiant dose has put down. They are also counted in `down`. */
   fumeDown: number;
+  /** People the heat dose has put down. They are also counted in `down`. */
+  heatDown: number;
   minorInjured: number;
   reroutes: number;
   /** Set when every zone was unsafe and people were sent to the farthest one. */
@@ -156,12 +168,16 @@ interface PedLabel {
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
   /** Asphyxiant dose so far. It does not fall when the person walks clear. */
   fed?: number;
+  /** Heat dose so far. It does not fall when the person walks clear. */
+  heatFed?: number;
   /** Irritant fraction of the smoke they are in now. */
   fec?: number;
   /** True while FEC is at least 1. Cleared on the next breath under 1. */
   fumeHeld?: boolean;
   /** True when the asphyxiant dose, not the blast, put them down. */
   fumeDown?: boolean;
+  /** True when the heat dose put them down. */
+  heatDown?: boolean;
   reactAt?: number;
   exitCost?: number;
   nextCheckAt?: number;
@@ -2334,9 +2350,11 @@ export class PolygonEvacuationEngine {
       snap.familiarity = ped.familiarity;
       snap.injury = ped.injury;
       if (ped.fed != null && ped.fed > 0) snap.fumeFed = ped.fed;
+      if (ped.heatFed != null && ped.heatFed > 0) snap.heatFed = ped.heatFed;
       if (ped.fec != null && ped.fec > 0) snap.fumeFec = ped.fec;
       if (ped.fumeHeld) snap.fumeHeld = true;
       if (ped.fumeDown) snap.fumeDown = true;
+      if (ped.heatDown) snap.heatDown = true;
       snap.zoneId = ped.zoneId ?? null;
       if (ped.blastKpa != null) {
         snap.blastKpa = ped.blastKpa;
@@ -2387,6 +2405,7 @@ export class PolygonEvacuationEngine {
     let serious = 0;
     let fumeHeld = 0;
     let fumeDown = 0;
+    let heatDown = 0;
     for (const s of snaps) {
       if (s.state === 'idle') idle++;
       else if (s.state === 'reacting') reacting++;
@@ -2399,6 +2418,7 @@ export class PolygonEvacuationEngine {
       if (s.state === 'down' && s.injury === 'serious') serious++;
       if (s.fumeHeld && s.state !== 'down') fumeHeld++;
       if (s.fumeDown) fumeDown++;
+      if (s.heatDown) heatDown++;
     }
     const arrived: Record<string, number> = {};
     for (const [id, n] of this.arrivedCounts) arrived[id] = n;
@@ -2415,6 +2435,7 @@ export class PolygonEvacuationEngine {
       down: { lethal, serious },
       fumeHeld,
       fumeDown,
+      heatDown,
       minorInjured,
       reroutes: this.rerouteCount,
       unsafeZoneNote: this.unsafeZoneNote,
@@ -2755,9 +2776,10 @@ export class PolygonEvacuationEngine {
   }
 
   /**
-   * One breath of the smoke on the nearest stud. Walking speed stays on the
-   * smoke density. FEC at 1 makes them crawl until the next breath under 1.
-   * FED at 1 puts them down, and that stays.
+   * One breath of the smoke on the nearest stud, and the heat at that head.
+   * Walking speed stays on the smoke density. FEC at 1 makes them crawl
+   * until the next breath under 1. The asphyxiant FED and the heat FED are
+   * separate. Either one at 1 puts them down, and that stays.
    */
   private breathe(ped: PedLabel, x: number, y: number, dt: number): boolean {
     if (ped.state === 'down' || ped.state === 'left_map') return false;
@@ -2770,12 +2792,16 @@ export class PolygonEvacuationEngine {
       sample.oxygenVolumePercent,
       sample.co2VolumePercent,
     );
+    ped.heatFed = advanceHeatFed(ped.heatFed ?? 0, sample.headTempC, sample.radiantKwM2, dt);
     ped.fec = fecOf(fumes);
     ped.fumeHeld = fecImpairs(ped.fec);
-    if (!fedIncapacitates(ped.fed ?? 0)) return false;
+    const gasDown = (ped.fed ?? 0) >= 1;
+    const heatDown = (ped.heatFed ?? 0) >= 1;
+    if (!exposureIncapacitates(ped.fed ?? 0, ped.heatFed ?? 0)) return false;
     ped.state = 'down';
     ped.injury = 'serious';
-    ped.fumeDown = true;
+    if (gasDown) ped.fumeDown = true;
+    if (heatDown) ped.heatDown = true;
     ped.fumeHeld = false;
     ped.evacuated = false;
     return true;
@@ -2877,7 +2903,7 @@ export class PolygonEvacuationEngine {
     });
     body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
     const ped = occ.label;
-    const fumeDown = ped.fumeDown === true;
+    const fumeDown = ped.fumeDown === true || ped.heatDown === true;
     ped.level = occ.toLevel;
     ped.targetStairId = null;
     ped.targetExitId = '';

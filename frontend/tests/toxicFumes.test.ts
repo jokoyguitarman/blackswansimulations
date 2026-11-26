@@ -37,7 +37,7 @@ import {
   SpatialEffectsEngine,
   advanceSootK,
 } from '../src/lib/rts/spatialEffects';
-import { HEAD_HEIGHT_M } from '../src/lib/rts/twoZone';
+import { HEAD_HEIGHT_M, blackLayerRadiantKwM2 } from '../src/lib/rts/twoZone';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -49,8 +49,17 @@ import {
   INCAP_DOSE,
   MOLAR_VOLUME_L,
   SOOT_EXTINCTION_M2_PER_G,
+  HEAT_AMBIENT_C,
+  HEAT_CONV_COEFF,
+  HEAT_CONV_EXP,
+  HEAT_RAD_COEFF,
+  HEAT_RAD_EXP,
+  HEAT_RAD_LIMIT_KW_M2,
   advanceFed,
+  advanceHeatFed,
+  exposureIncapacitates,
   fecImpairs,
+  heatFedPerMin,
   fecOf,
   fedIncapacitates,
   co2Hyperventilation,
@@ -798,6 +807,107 @@ describe('smoke carries the gases', () => {
   });
 });
 
+describe('ISO 13571 heat dose', () => {
+  test('180 °C convects a dose of 1 on the lightly clothed clock, and 2.5 kW/m² is the radiant gate', () => {
+    const minutes = HEAT_CONV_COEFF / 180 ** HEAT_CONV_EXP;
+    assert.ok(minutes > 1 && minutes < 1.5, `convective life ${minutes} min`);
+    const clothed = 4.1e8 / 180 ** 3.61;
+    assert.ok(clothed > minutes * 2, `clothed life ${clothed} is not the longer fit`);
+    assert.ok(Math.abs(advanceHeatFed(0, 180, 0, minutes * 60) - 1) < 1e-9);
+    assert.ok(advanceHeatFed(0, 180, 0, (minutes - 0.02) * 60) < 1);
+    assert.equal(advanceHeatFed(0, HEAT_AMBIENT_C, 0, 600), 0);
+    assert.equal(heatFedPerMin(undefined, HEAT_RAD_LIMIT_KW_M2 - 0.01), 0);
+    const flux = blackLayerRadiantKwM2(200 + 273.15);
+    assert.ok(flux > HEAT_RAD_LIMIT_KW_M2 && flux < 3.2, `200 °C layer ${flux} kW/m²`);
+    const burnMin = HEAT_RAD_COEFF / 10 ** HEAT_RAD_EXP;
+    assert.ok(Math.abs(advanceHeatFed(0, undefined, 10, burnMin * 60) - 1) < 1e-9);
+    assert.equal(exposureIncapacitates(0.6, 0.6), false);
+    assert.equal(exposureIncapacitates(1, 0), true);
+    assert.equal(exposureIncapacitates(0, 1), true);
+  });
+
+  test('heat at the head puts them down, and the two doses are not added', () => {
+    const minutes = HEAT_CONV_COEFF / 180 ** HEAT_CONV_EXP;
+    const steps = Math.ceil(minutes * 3600);
+    const early = walk([{ headTempC: 180, radiantKwM2: 0, steps: steps - 1 }]);
+    assert.equal(early.state, 'evacuating', `down after ${steps - 1} steps`);
+    const down = walk([{ headTempC: 180, radiantKwM2: 0, steps }]);
+    assert.equal(down.state, 'down');
+    assert.equal(down.heatDown, true);
+    assert.notEqual(down.fumeDown, true);
+    assert.ok((down.fed ?? 0) < 1e-6, `asphyxiant ${down.fed}`);
+
+    const both = walk([
+      { fumes: { CO: 35000 }, headTempC: 180, radiantKwM2: 0, steps: Math.round(0.6 * 3600) },
+    ]);
+    assert.equal(both.state, 'evacuating', `fed ${both.fed}, heat ${both.heatFed}`);
+    assert.ok((both.fed ?? 0) > 0.5 && (both.fed ?? 0) < 1, `asphyxiant ${both.fed}`);
+    assert.ok((both.heatFed ?? 0) > 0.5 && (both.heatFed ?? 0) < 1, `heat ${both.heatFed}`);
+
+    const radSteps = Math.ceil((HEAT_RAD_COEFF / 10 ** HEAT_RAD_EXP) * 3600);
+    const cool = walk([{ radiantKwM2: 2.4, steps: radSteps }]);
+    assert.equal(cool.state, 'evacuating', 'flux under 2.5 kW/m² put them down');
+    const burned = walk([{ radiantKwM2: 10, steps: radSteps }]);
+    assert.equal(burned.state, 'down');
+    assert.equal(burned.heatDown, true);
+    assert.notEqual(burned.fumeDown, true);
+  });
+
+  test('a room layer writes the head temperature and the flux from the layer above', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0), stud('b', 3, 0), stud('out', 6, 0)]);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(
+      new Map([['a', { ...WOOD, alphaKwS2: 2, spreadMPerMin: 0, fuelLoadKgM2: 40 }]]),
+    );
+    const walls = [
+      wall(-1.5, 1.5, 4.5, 1.5),
+      wall(-1.5, -1.5, 4.5, -1.5),
+      wall(-1.5, -1.5, -1.5, 1.5),
+      wall(4.5, -1.5, 4.5, 1.5, true),
+    ];
+    (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['a']);
+    const layerOf = () =>
+      [
+        ...(
+          engine as unknown as {
+            layerState: Map<
+              string,
+              { active: boolean; zone: { interfaceM: number; upperK: number }; members: string[] }
+            >;
+          }
+        ).layerState.values(),
+      ].find((row) => row.active);
+    let above = false;
+    let immersed = false;
+    for (let t = 0; t < 180 && !immersed; t++) {
+      engine.step(1, walls, []);
+      const live = layerOf();
+      if (!live) continue;
+      const flux = blackLayerRadiantKwM2(live.zone.upperK);
+      for (const id of live.members) {
+        const state = engine.studStates.get(id);
+        assert.ok(state, id);
+        assert.ok(
+          Math.abs((state.radiantKwM2 ?? -1) - flux) < 1e-6,
+          `${id} flux ${state.radiantKwM2} vs ${flux}`,
+        );
+      }
+      assert.equal(engine.studStates.get('out')?.radiantKwM2, undefined);
+      if (live.zone.interfaceM > HEAD_HEIGHT_M) {
+        above = true;
+        assert.equal(engine.studStates.get('a')?.headTempC, undefined);
+      } else {
+        immersed = true;
+        const temp = live.zone.upperK - 273.15;
+        assert.ok(Math.abs((engine.studStates.get('a')?.headTempC ?? 0) - temp) < 1e-6);
+      }
+    }
+    assert.ok(above, 'the layer was never above the head');
+    assert.ok(immersed, 'the layer never reached the head');
+  });
+});
+
 describe('people', () => {
   test('an irritant fraction of 1 makes them crawl until the air clears, and only FED puts them down', () => {
     const clean = distance(undefined);
@@ -1205,13 +1315,21 @@ function doseOver(frameDt: number, frames: number): { fed: number; ppm: number; 
 }
 
 function walk(
-  phases: Array<{ fumes?: { CO?: number; acrolein?: number }; steps: number }>,
+  phases: Array<{
+    fumes?: { CO?: number; acrolein?: number };
+    headTempC?: number;
+    radiantKwM2?: number;
+    steps: number;
+  }>,
   opts: { injury?: 'minor'; wet?: boolean; showcase?: boolean } = {},
 ): {
   moved: number;
   state: string;
   fumeHeld?: boolean;
   fumeDown?: boolean;
+  heatDown?: boolean;
+  fed?: number;
+  heatFed?: number;
   injury?: string;
   posture?: Posture;
   fumeHeldCount: number;
@@ -1247,7 +1365,13 @@ function walk(
   const studs = [];
   const states = new Map<
     string,
-    { smoke: number; fire: { state: string }; fumes?: { CO?: number; acrolein?: number } }
+    {
+      smoke: number;
+      fire: { state: string };
+      fumes?: { CO?: number; acrolein?: number };
+      headTempC?: number;
+      radiantKwM2?: number;
+    }
   >();
   for (let x = 0; x <= 40; x += 3) {
     const id = `s${x}`;
@@ -1270,6 +1394,9 @@ function walk(
         posture: Posture;
         fumeHeld?: boolean;
         fumeDown?: boolean;
+        heatDown?: boolean;
+        fed?: number;
+        heatFed?: number;
         injury?: 'none' | 'minor' | 'serious' | 'lethal';
         level?: string;
       };
@@ -1286,6 +1413,10 @@ function walk(
     for (const state of states.values()) {
       if (phase.fumes) state.fumes = phase.fumes;
       else delete state.fumes;
+      if (phase.headTempC != null) state.headTempC = phase.headTempC;
+      else delete state.headTempC;
+      if (phase.radiantKwM2 != null) state.radiantKwM2 = phase.radiantKwM2;
+      else delete state.radiantKwM2;
     }
     for (let i = 0; i < phase.steps; i++) eng.step();
   }
@@ -1295,6 +1426,9 @@ function walk(
     state: ped.state,
     fumeHeld: ped.fumeHeld,
     fumeDown: ped.fumeDown,
+    heatDown: ped.heatDown,
+    fed: ped.fed,
+    heatFed: ped.heatFed,
     injury: ped.injury,
     posture: ped.posture,
     fumeHeldCount: metrics?.fumeHeld ?? 0,
