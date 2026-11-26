@@ -2470,14 +2470,14 @@ function stepZoneNow(
     // Layer motion at inflow = outflow. The exchange admits entrained air
     // at the volume it had in the lower layer. The upper mass after the
     // step is that plume, the spill, a deposited jet and stored fuel, less
-    // the hot gas and the upper fan the exchange already sent out. At
-    // constant pressure the layer occupies m/ρ(T), which is CFAST's vlayd
-    // taken from the heat the upper gas keeps, with the room pressure left
-    // at the quasi-steady opening. The volume beyond the exchange move
-    // leaves as lower-layer air, and the interface drops by that volume
-    // after the root. The drop is not an input to the root. A step whose
-    // upper volume would shrink keeps the exchange mass change: raising
-    // the interface would hand the flame the lower layer's stored air.
+    // the hot gas and the upper fan that leave. At constant pressure the
+    // layer occupies m/ρ(T). The first root can send more hot gas than the
+    // exchange did. That extra is taken out of the upper mass and the root
+    // is solved once more, still at the exchange height. The volume beyond
+    // the exchange move leaves as lower-layer air, and the interface drops
+    // by that volume after the root. The drop is not an input. A step whose
+    // upper volume would shrink keeps the exchange mass change: raising the
+    // interface would hand the flame the lower layer's stored air.
     const exchange = oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0);
     let exchangeHot = 0;
     for (const rate of exchange.hotOutByVentKgS) exchangeHot += rate ?? 0;
@@ -2494,16 +2494,6 @@ function stepZoneNow(
     );
     const rhoNew = densityKgM3(advance.tempNext);
     const vExchange = upperLayerVolumeM3(spec, advance.zNext);
-    const upperGainKgS =
-      advance.plumeKgS +
-      advance.mEnt +
-      (depositKgS > 0 ? depositKgS : 0) +
-      advance.storeKgS -
-      exchangeHot -
-      exchange.fanUpperKgS;
-    const mUpperNew = Math.max(0, advance.mass + upperGainKgS * slice);
-    const vTarget = rhoNew > 1e-9 ? mUpperNew / rhoNew : vExchange;
-    const deltaV = vTarget - vExchange;
     const gained =
       slice > 0
         ? (gasMassKg(spec, advance.zNext, advance.tempNext) - gasMassKg(spec, z, temp)) / slice
@@ -2511,31 +2501,46 @@ function stepZoneNow(
     // Jets the orifice missed, and fuel that stays in the layer, are
     // sources. They sit in the upper mass and are not a vent flow.
     const held = gained - advance.massRateKgS;
-    const heating = deltaV > 0;
-    let volumeRate = advance.massRateKgS;
-    let zExp = advance.zNext;
-    if (heating) {
-      const area = Math.max(sectionAreaM2(spec, advance.zNext), 1e-6);
-      zExp = advance.zNext - deltaV / area;
-      const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
-      let predicted = gained;
-      if (slice > 0 && !hitsClamp) {
-        predicted = (gasMassKg(spec, zExp, advance.tempNext) - gasMassKg(spec, z, temp)) / slice;
-      } else if (slice > 0) {
-        // The floor clamp will stop the interface. The rate still carries
-        // the unclipped volume, which is the known residual once the layer
-        // is on the floor.
-        const vStart = upperLayerVolumeM3(spec, z);
-        const lowerStart = spec.crossSection
-          ? volumeBetweenM3(spec, 0, z)
-          : Math.max(spec.areaM2, 0) * Math.max(z, 0);
-        const lowerFinal = lowerStart - (vTarget - vStart);
-        const massFinal = mUpperNew + densityKgM3(AMBIENT_K) * lowerFinal;
-        predicted = (massFinal - gasMassKg(spec, z, temp)) / slice;
+    const plan = (extraHotKgS: number) => {
+      const upperGainKgS =
+        advance.plumeKgS +
+        advance.mEnt +
+        (depositKgS > 0 ? depositKgS : 0) +
+        advance.storeKgS -
+        exchangeHot -
+        extraHotKgS -
+        exchange.fanUpperKgS;
+      const mUpperNew = Math.max(0, advance.mass + upperGainKgS * slice);
+      const vTarget = rhoNew > 1e-9 ? mUpperNew / rhoNew : vExchange;
+      const deltaV = vTarget - vExchange;
+      const heating = deltaV > 0;
+      let volumeRate = advance.massRateKgS;
+      let zExp = advance.zNext;
+      if (heating) {
+        const area = Math.max(sectionAreaM2(spec, advance.zNext), 1e-6);
+        zExp = advance.zNext - deltaV / area;
+        const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
+        let predicted = gained;
+        if (slice > 0 && !hitsClamp) {
+          predicted = (gasMassKg(spec, zExp, advance.tempNext) - gasMassKg(spec, z, temp)) / slice;
+        } else if (slice > 0) {
+          // The floor clamp will stop the interface. The rate still carries
+          // the unclipped volume, which is the known residual once the layer
+          // is on the floor.
+          const vStart = upperLayerVolumeM3(spec, z);
+          const lowerStart = spec.crossSection
+            ? volumeBetweenM3(spec, 0, z)
+            : Math.max(spec.areaM2, 0) * Math.max(z, 0);
+          const lowerFinal = lowerStart - (vTarget - vStart);
+          const massFinal = mUpperNew + densityKgM3(AMBIENT_K) * lowerFinal;
+          predicted = (massFinal - gasMassKg(spec, z, temp)) / slice;
+        }
+        volumeRate = predicted - held;
       }
-      volumeRate = predicted - held;
-    }
-    const limited = oxygenLimitedBurn(
+      return { heating, volumeRate, zExp };
+    };
+    let planned = plan(0);
+    let limited = oxygenLimitedBurn(
       spec,
       z,
       temp,
@@ -2543,8 +2548,29 @@ function stepZoneNow(
       yU,
       slice,
       depositKgS > 0,
-      () => volumeRate,
+      () => planned.volumeRate,
     );
+    {
+      let hot1 = 0;
+      for (const rate of limited.hotOutByVentKgS) hot1 += rate ?? 0;
+      const extra = Math.max(0, hot1 - exchangeHot);
+      if (planned.heating && extra > 0) {
+        planned = plan(extra);
+        limited = oxygenLimitedBurn(
+          spec,
+          z,
+          temp,
+          yL,
+          yU,
+          slice,
+          depositKgS > 0,
+          () => planned.volumeRate,
+        );
+      }
+    }
+    const heating = planned.heating;
+    const volumeRate = planned.volumeRate;
+    let zExp = planned.zExp;
     let hotSum = 0;
     for (const rate of limited.hotOutByVentKgS) hotSum += rate ?? 0;
     const burn = advance.burn;
