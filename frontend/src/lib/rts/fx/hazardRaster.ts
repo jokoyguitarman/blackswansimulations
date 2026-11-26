@@ -183,8 +183,8 @@ export function activeRasterLayout(
 }
 
 function smokeRgb(h: number, channel: 0 | 1 | 2): number {
-  const from = channel === 2 ? 98 : 88;
-  const to = channel === 2 ? 46 : 40;
+  const from = channel === 2 ? 176 : 166;
+  const to = channel === 2 ? 62 : 56;
   return Math.round(from + (to - from) * h);
 }
 

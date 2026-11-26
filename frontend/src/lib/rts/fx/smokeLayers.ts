@@ -79,16 +79,16 @@ export function shadeLayers(
       if (a > out.alpha[i]) {
         if (out.alpha[i] === 0) out.count++;
         out.alpha[i] = a;
-        out.dark[i] = Math.min(1, 0.2 + 0.35 * fill + 0.25 * hot + 0.45 * near);
+        out.dark[i] = Math.min(1, 0.05 + 0.25 * fill + 0.2 * hot + 0.6 * near);
       }
     }
   }
   return out;
 }
 
-/** Light grey to near black. */
+/** Pale haze to charcoal. The floor underneath is dark navy, so thin smoke has to be light to read. */
 export function layerRgb(dark: number, channel: 0 | 1 | 2): number {
-  const from = channel === 2 ? 168 : 158;
-  const to = channel === 2 ? 30 : 24;
+  const from = channel === 0 ? 196 : channel === 1 ? 200 : 208;
+  const to = channel === 0 ? 46 : channel === 1 ? 42 : 40;
   return from + (to - from) * dark;
 }
