@@ -3236,3 +3236,121 @@ test('a warmer lower layer changes the mass the door carries', () => {
     `outflow ${cool.outKgS.toFixed(3)} against ${warm.outKgS.toFixed(3)}`,
   );
 });
+
+test('a door on the floor does not reverse every step', () => {
+  // Two coupled rooms, the fire room's interface held on the floor. Each
+  // room used to solve its door against the other's previous gauge, and
+  // a sliver of air above the clamp enlarged the flame on one step and
+  // was gone the next. The floor gauge and the door flow changed sign
+  // every step. A steady root is unchanged by the mean of the last two.
+  const wood = { ...defaultLightFuel(), alphaKwS2: 20, fuelLoadKgM2: 2000, spreadMPerMin: 0 };
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+    width: number,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: width,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const grid = (prefix: string, n: number, x0: number, y0: number) => {
+    const side = Math.ceil(Math.sqrt(n));
+    const people = [];
+    const ids: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const id = `${prefix}${i}`;
+      ids.push(id);
+      people.push(stud(id, x0 + (i % side) * 0.3, y0 + Math.floor(i / side) * 0.3));
+    }
+    return { people, ids };
+  };
+  const fire = grid('f', 24, -0.8, -0.8);
+  const hall = grid('h', 24, -0.8, 2.2);
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([
+    ...fire.people,
+    ...hall.people,
+    stud('outF', 0, -3, false),
+    stud('outH', 0, 6, false),
+  ]);
+  engine.setStoreyHeights({ G: 4 });
+  engine.setFuelCells(new Map(fire.ids.map((id) => [id, wood])));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, true, 2),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false, 0.2),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false, 0.2),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true, 1.6),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false, 0.2),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false, 0.2),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, true, 2),
+  ];
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void };
+    floorPressurePa: Map<string, number>;
+    jetAudit: DoorJetBook[] | null;
+    layerState: Map<string, { active: boolean; members: string[]; zone: { interfaceM: number } }>;
+  };
+  exposed.fireSim.ignite(fire.ids.slice(0, 8));
+  const audit: DoorJetBook[] = [];
+  exposed.jetAudit = audit;
+  for (let i = 0; i < 120; i++) engine.step(1, walls, []);
+  const dt = 1 / 60;
+  let prevP: number | null = null;
+  let prevNet: number | null = null;
+  let gaugeFlips = 0;
+  let flowFlips = 0;
+  let onFloor = 0;
+  const signChange = (prev: number, next: number, tol: number) =>
+    prev * next < 0 && Math.abs(prev) > tol && Math.abs(next) > tol;
+  for (let i = 0; i < 180; i++) {
+    engine.step(dt, walls, []);
+    let zone: { id: string; z: number } | undefined;
+    for (const [id, live] of exposed.layerState) {
+      if (live.active && live.members.includes('f0') && !live.members.includes('h0')) {
+        zone = { id, z: live.zone.interfaceM };
+      }
+    }
+    if (!zone || zone.z > 0.051) {
+      prevP = null;
+      prevNet = null;
+      continue;
+    }
+    onFloor++;
+    const p = exposed.floorPressurePa.get(zone.id) ?? 0;
+    let inn = 0;
+    let out = 0;
+    for (const book of audit) {
+      if (!book.members.includes('f0')) continue;
+      inn = book.inKgS ?? 0;
+      out = book.outKgS ?? 0;
+    }
+    const net = inn - out;
+    // The first second after the coarse approach is the step-size change.
+    if (i >= 60 && prevP != null && prevNet != null) {
+      if (signChange(prevP, p, 0.25)) gaugeFlips++;
+      if (signChange(prevNet, net, 0.5)) flowFlips++;
+    }
+    prevP = p;
+    prevNet = net;
+  }
+  assert.ok(onFloor > 120, `the fire room was on the floor for ${onFloor} steps`);
+  assert.equal(gaugeFlips, 0, `floor gauge reversed on ${gaugeFlips} steps`);
+  assert.equal(flowFlips, 0, `door flow reversed on ${flowFlips} steps`);
+});

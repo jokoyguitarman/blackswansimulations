@@ -1191,12 +1191,22 @@ function flameSupply(
   const rho = densityKgM3(AMBIENT_K);
   // The air the interface can still descend through. A pyramidal section
   // uses that volume; a rectangular room is the floor area times the height.
+  const sliverM = Math.max(0, interfaceM - INTERFACE_FLOOR_M);
   const descendM3 = spec.crossSection
     ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, interfaceM)
-    : Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M);
+    : Math.max(spec.areaM2, 0) * sliverM;
   const descendKgS = (rho * descendM3) / slice;
   const freshIn = jetBringsUpper ? Math.max(0, flows.inKgS - flows.farUpperInKgS) : flows.inKgS;
-  const airCap = Math.max(0, freshIn - flows.fanLowerKgS) + descendKgS;
+  // The whole sliver, credited as fresh air, is a period-2 once the
+  // interface is on the floor. The flame grows, the plume consumes the
+  // sliver, the next substep is back on the clamp, and the step after
+  // grows the sliver again. The door reverses with it. Within a substep
+  // of the floor, credit the air down to the midpoint of the sliver,
+  // the mean of the interface and the clamp. A deeper layer cannot be
+  // consumed in one substep, and its full height stands. Above that
+  // both credits exceed the plume, so a deeper layer is unchanged.
+  const flameDescendKgS = sliverM <= 2 * slice ? 0.5 * descendKgS : descendKgS;
+  const airCap = Math.max(0, freshIn - flows.fanLowerKgS) + flameDescendKgS;
   let prescribed = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
   const yL = yLower > 0 ? yLower : 0;
