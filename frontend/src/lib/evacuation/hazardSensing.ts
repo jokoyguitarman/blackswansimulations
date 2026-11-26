@@ -556,11 +556,12 @@ export function chooseExit(
     !avoided.has(current.id) &&
     !options?.ignoreHysteresis &&
     pool.some((e) => e.id === current.id);
-  if (stay && current) {
+  // A crawl-only exit gets no hysteresis: a cheaper usable exit wins outright.
+  if (stay && current && !crawlOnly(current.id)) {
     const now = costOf(pool.find((e) => e.id === current.id) as ExitDef);
     // A blocked or burning exit is abandoned on this check, not one check later.
     if (now < Infinity && !(best.cost < now * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
-      return { id: current.id, cost: now, forced: crawlOnly(current.id) };
+      return { id: current.id, cost: now, forced: false };
     }
   }
   return { id: best.id, cost: best.cost, forced: crawlOnly(best.id) };

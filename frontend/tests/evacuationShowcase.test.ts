@@ -336,6 +336,17 @@ describe('evacuation showcase', () => {
       chooseExit({ x: 190, y: 20 }, [smoky, clear], box, smokedHere, null)?.id,
       'far',
     );
+    // That crawl-only hold gets no hysteresis. A cheaper usable exit inside the margin wins.
+    const inMargin = exit({ id: 'alt', center: { x: 200, y: 70 }, edgeIndex: 1 });
+    const heldCost = exitCost({ x: 190, y: 20 }, smoky, box, smokedHere, undefined, undefined, false, true);
+    const altCost = exitCost({ x: 190, y: 20 }, inMargin, box, smokedHere, undefined, undefined, true);
+    assert.ok(altCost < heldCost && altCost > heldCost * (1 - SHOWCASE.REROUTE_HYSTERESIS));
+    const switched = chooseExit({ x: 190, y: 20 }, [smoky, inMargin], box, smokedHere, {
+      id: 'near',
+      cost: heldCost,
+    });
+    assert.equal(switched?.id, 'alt');
+    assert.equal(switched?.forced, false);
 
     const appA = exitApproachInside(smoky, box);
     const appB = exitApproachInside(clear, box);
