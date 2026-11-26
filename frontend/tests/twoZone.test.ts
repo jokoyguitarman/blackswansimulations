@@ -7,6 +7,7 @@ import {
   RADIATIVE_FRACTION,
   STUD_AREA_M2,
   poolFireKw,
+  WOOD_HEAT_KJ_KG,
   type FuelCell,
 } from '../src/lib/rts/flameFront.ts';
 import { GLASS_FALLOUT_AREA_FRACTION } from '../src/lib/rts/liningFire.ts';
@@ -56,6 +57,8 @@ import {
   KAWAGOE_KW,
   O2_AMBIENT_MASS,
   O2_LIMIT_MASS,
+  POST_FLASHOVER_PHI_MAX,
+  cappedPyrolysisKw,
   equivalenceRatio,
   layerBurn,
   lowerOxygenCoefficient,
@@ -67,6 +70,14 @@ import {
   orificeSliceKgS,
   steadyLayer,
   oxygenLimitedBurn,
+  SPILL_PLUME_CM,
+  SPILL_IGNITION_K,
+  spillBandShare,
+  spillOriginM,
+  spillPlumeEntrainmentKgS,
+  spillRiseM,
+  layerFuelFraction,
+  upperMixtureKg,
   coolUnclaimedSheet,
   isothermalSheet,
   liningForMaterial,
@@ -1090,6 +1101,450 @@ test('ten floor seconds stay near 1500 A√H', () => {
   assert.ok(stored.burn.burnedKw < prescribed * 0.5);
 });
 
+test('the spill plume is the Poreh doorway term', () => {
+  assert.equal(SPILL_PLUME_CM, 0.44);
+  assert.equal(SPILL_IGNITION_K, AMBIENT_K + 200);
+  // CFAST poreh_plume. ρ = 353/293, hdot = (500 − 293) × 0.4 = 82.8 kW,
+  // w = 2 m, rise = 3 m, and (293/500)^(2/3) = 0.7003.
+  // 0.44 × 0.7003 × (g ρ² / (cp T))^(1/3) × hdot^(1/3) × w^(2/3) × z = 2.334 kg/s.
+  const entrained = spillPlumeEntrainmentKgS(0.4, 500, 2, 3);
+  close(entrained, 2.334, 0.002, 'entrainment');
+  assert.equal(spillPlumeEntrainmentKgS(0.4, 500, 2, 0), 0);
+  assert.equal(spillPlumeEntrainmentKgS(0, 500, 2, 3), 0);
+  // The rise starts at max(sill, source interface), not at the soffit.
+  assert.equal(spillOriginM(0, 1.4), 1.4);
+  assert.equal(spillOriginM(0.8, 0.3), 0.8);
+  close(spillRiseM(2.2, 1.4), 0.8, 1e-12, 'rise');
+  assert.equal(spillRiseM(1.2, 1.4), 0);
+  // The shop's hot band is about 0.9–2.0 m. Above the soffit the whole
+  // band entrains. Below the neutral plane, none of it does.
+  assert.equal(spillBandShare(2.5, 0.9, 2), 1);
+  assert.equal(spillBandShare(0.5, 0.9, 2), 0);
+  close(spillBandShare(1.45, 0.9, 2), 0.5, 1e-12, 'half the band');
+  assert.equal(spillBandShare(1.2, 2, 1), 1);
+  assert.equal(cappedPyrolysisKw(20000, 3800), POST_FLASHOVER_PHI_MAX * 3800);
+  assert.equal(cappedPyrolysisKw(1000, 3800), 1000);
+  assert.equal(cappedPyrolysisKw(20000, 0), 0);
+});
+
+test('a jet whose outflow band is above the interface does not entrain', () => {
+  const hall: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 4,
+    vents: [],
+    boundaries: [
+      { areaM2: 20, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const state = freshLayer(hall.ceilingM);
+  state.interfaceM = 1.2;
+  state.upperK = 400;
+  const jet = {
+    kgS: 1.5,
+    tempK: 700,
+    oxygenY: 0.05,
+    fuelY: 0.15,
+    originM: 0.2,
+    widthM: 2,
+  };
+  const open = stepZone(state, hall, 0.1, 0, jet);
+  const above = stepZone(state, hall, 0.1, 0, { ...jet, lowEdgeM: 1.6, soffitM: 2 });
+  const partial = stepZone(state, hall, 0.1, 0, { ...jet, lowEdgeM: 0.8, soffitM: 2 });
+  assert.ok(
+    (above.state.fuelKg ?? 0) > (open.state.fuelKg ?? 0) + 0.005,
+    `band above the layer burned the fuel: above ${(above.state.fuelKg ?? 0).toFixed(4)} kg, open ${(open.state.fuelKg ?? 0).toFixed(4)} kg`,
+  );
+  assert.ok(
+    above.state.interfaceM > open.state.interfaceM + 0.001,
+    `band above the layer still entrained: above ${above.state.interfaceM.toFixed(4)} m, open ${open.state.interfaceM.toFixed(4)} m`,
+  );
+  assert.ok(
+    partial.state.interfaceM > open.state.interfaceM + 0.0005 &&
+      partial.state.interfaceM < above.state.interfaceM - 0.0005,
+    `half band ${partial.state.interfaceM.toFixed(4)} m was not between open ${open.state.interfaceM.toFixed(4)} and above ${above.state.interfaceM.toFixed(4)}`,
+  );
+});
+
+test('oxygen-starved pyrolysis is carried and burns in the doorway spill', () => {
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  let made = 0;
+  let vented = 0;
+  const burned: number[] = [];
+  for (let t = 0; t < 60; t++) {
+    const step = stepZone(state, spec, 1);
+    const burnedKw = step.burnedFraction * prescribed;
+    const supplyKw = step.phi > 0 && Number.isFinite(step.phi) ? prescribed / step.phi : 0;
+    const pyrolysisKw = cappedPyrolysisKw(prescribed, supplyKw);
+    made += Math.max(0, pyrolysisKw - burnedKw) / WOOD_HEAT_KJ_KG;
+    for (const hot of step.hotByVent) vented += hot.kg * hot.fuelY;
+    burned.push(step.burnedFraction * prescribed);
+    state = step.state;
+  }
+  const kept = (state.fuelKg ?? 0) + vented;
+  assert.ok(made > 1, `pyrolysate ${made.toFixed(3)} kg`);
+  // The added mass uses the last substep's φ, so the integral is a few
+  // percent off the sum of the substeps. Removing the cap makes the vent
+  // carry several times this.
+  close(kept, made, Math.max(0.05, made * 0.05), 'fuel left the layer');
+  assert.ok(vented > 0.1, `the door carried ${vented.toFixed(3)} kg`);
+  const tail = burned.slice(-10);
+  const mean = tail.reduce((sum, value) => sum + value, 0) / tail.length;
+  const cap = ventilationLimitedKw(0.9 * 2, 2);
+  // The source room still burns only the oxygen its plume took.
+  assert.ok(Math.abs(mean - cap) / cap < 0.15, `mean ${mean.toFixed(0)} kW vs ${cap.toFixed(0)}`);
+  assert.ok(mean / prescribed < 0.5, `fraction ${mean / prescribed}`);
+
+  // A tall hall. The soffit is below the fresh interface, so the jet
+  // spills through the lower layer and entrains its oxygen.
+  const hall: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 6,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 6, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  // 0.4 kg/s at a fuel mass fraction of 0.1 is 700 kW. The origin is the
+  // source interface, here level with the soffit, so the spill still has
+  // a rise through the lower layer. A jet with no fuel is the control.
+  const jet = {
+    kgS: 0.4,
+    tempK: 500,
+    oxygenY: 0.12,
+    fuelY: 0.1,
+    originM: 2,
+    widthM: 2,
+  };
+  let rich = freshLayer(hall.ceilingM);
+  let plain = freshLayer(hall.ceilingM);
+  let arrived = 0;
+  let forwarded = 0;
+  for (let t = 0; t < 10; t++) {
+    const step = stepZone(rich, hall, 1, 0, jet);
+    arrived += jet.kgS * jet.fuelY;
+    for (const hot of step.hotByVent) forwarded += hot.kg * hot.fuelY;
+    rich = step.state;
+    plain = stepZone(plain, hall, 1, 0, {
+      kgS: jet.kgS,
+      tempK: jet.tempK,
+      oxygenY: jet.oxygenY,
+    }).state;
+  }
+  const burnedKg = arrived - (rich.fuelKg ?? 0) - forwarded;
+  assert.ok(
+    burnedKg > arrived * 0.9,
+    `burned ${burnedKg.toFixed(4)} kg of ${arrived.toFixed(4)} kg, stored ${rich.fuelKg}`,
+  );
+  assert.ok(
+    rich.upperK > plain.upperK + 30,
+    `doorway burn rose to ${(rich.upperK - AMBIENT_K).toFixed(1)} K, the sensible jet to ${(plain.upperK - AMBIENT_K).toFixed(1)} K`,
+  );
+
+  // The interface is already below the origin, so the jet enters the
+  // upper layer and the spill does not entrain. The fuel is stored, not
+  // burned.
+  const deep = freshLayer(spec.ceilingM);
+  deep.interfaceM = 1;
+  const closed: LayerSpec = { ...spec, fires: [] };
+  const held = stepZone(deep, closed, 1, 0, jet);
+  let heldOut = 0;
+  for (const hot of held.hotByVent) heldOut += hot.kg * hot.fuelY;
+  close((held.state.fuelKg ?? 0) + heldOut, jet.kgS * jet.fuelY, 1e-6, 'no spill, no burn');
+});
+
+test('new pyrolysate leaves on the hot vent while the fuel still fits in the layer', () => {
+  // One short step after the room is developed. The new mass is a few
+  // hundredths of a kilogram and the layer holds tens, so the end clamp
+  // does not fire. A side ledger that keeps the pyrolysate off the vent
+  // still satisfies fuel ≤ mass, and this step does not.
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  for (let t = 0; t < 25; t++) state = stepZone(state, spec, 1).state;
+  const yF = layerFuelFraction(state, spec.areaM2, spec.ceilingM);
+  assert.ok(yF > 0.02 && yF < 0.85, `fraction ${yF.toFixed(3)} is not a developed layer below the clamp`);
+  const limited = oxygenLimitedBurn(
+    spec,
+    state.interfaceM,
+    state.upperK,
+    state.lowerO2 ?? O2_AMBIENT_MASS,
+    state.upperO2 ?? O2_AMBIENT_MASS,
+    0.1,
+  );
+  const supplyKw =
+    limited.burn.phi > 0 && Number.isFinite(limited.burn.phi)
+      ? limited.burn.prescribedKw / limited.burn.phi
+      : 0;
+  const pyrolysisKw = cappedPyrolysisKw(limited.burn.prescribedKw, supplyKw);
+  const expectKg = (Math.max(0, pyrolysisKw - limited.burn.burnedKw) * 0.1) / WOOD_HEAT_KJ_KG;
+  const freeKg =
+    (Math.max(0, limited.burn.prescribedKw - limited.burn.burnedKw) * 0.1) / WOOD_HEAT_KJ_KG;
+  const step = stepZone(state, spec, 0.1);
+  const depth = Math.max(0.02, spec.ceilingM - step.state.interfaceM);
+  const endY = (step.state.fuelKg ?? 0) / upperMixtureKg(step.state.upperK, spec.areaM2, depth);
+  assert.ok(endY < 0.9, `the clamp fired at ${endY.toFixed(3)}, so the vent is not the witness`);
+  // The extra mass leaves as mixture at the layer fraction, so the vent's
+  // fuel fraction does not show it. The vent's mass does: it is the
+  // orifice plus the pyrolysate. A side ledger leaves the orifice mass.
+  let hotKg = 0;
+  const orificeHot = limited.hotOutByVentKgS.reduce((sum, rate) => sum + rate, 0) * 0.1;
+  for (const hot of step.hotByVent) {
+    if (!(hot.tempK > AMBIENT_K + 1)) continue;
+    hotKg += hot.kg;
+  }
+  const carriedMass = hotKg - orificeHot;
+  assert.ok(expectKg > 0.005, `capped pyrolysate ${expectKg.toFixed(4)} kg`);
+  assert.ok(
+    freeKg > expectKg * 2,
+    `free-burn excess ${freeKg.toFixed(4)} kg is not above the cap ${expectKg.toFixed(4)} kg`,
+  );
+  close(carriedMass, expectKg, Math.max(0.002, expectKg * 0.25), 'pyrolysate on the vent');
+  assert.ok(
+    carriedMass < freeKg * 0.45,
+    `vent took ${carriedMass.toFixed(4)} kg, the free-burn excess is ${freeKg.toFixed(4)} kg`,
+  );
+});
+
+test('a long vent-limited run keeps the fuel fraction inside the mixture', () => {
+  const prescribed = 20000;
+  const spec = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  spec.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let state = freshLayer(spec.ceilingM);
+  const fraction: number[] = [];
+  for (let t = 0; t < 300; t++) {
+    state = stepZone(state, spec, 1).state;
+    const y = layerFuelFraction(state, spec.areaM2, spec.ceilingM);
+    fraction.push(y);
+    const mass = upperMixtureKg(state.upperK, spec.areaM2, spec.ceilingM - state.interfaceM);
+    assert.ok(y < 1, `fuel fraction ${y.toFixed(3)} at ${t + 1} s`);
+    assert.ok((state.fuelKg ?? 0) <= mass + 1e-6, `fuel ${(state.fuelKg ?? 0).toFixed(3)} kg above ${mass.toFixed(3)} kg`);
+  }
+  const early = fraction[239] ?? 0;
+  const late = fraction[299] ?? 0;
+  assert.ok(late > 0.05, `the layer held only ${late.toFixed(3)}`);
+  assert.ok(Math.abs(late - early) < 0.03, `fraction still moving, ${early.toFixed(3)} to ${late.toFixed(3)}`);
+});
+
+test('a vent jet cooler than tgignt does not burn', () => {
+  const hall: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 6,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 6, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const cool = {
+    kgS: 0.4,
+    tempK: SPILL_IGNITION_K - 1,
+    oxygenY: 0.12,
+    fuelY: 0.1,
+    originM: 2,
+    widthM: 2,
+  };
+  let coolState = freshLayer(hall.ceilingM);
+  let hotState = freshLayer(hall.ceilingM);
+  let coolVent = 0;
+  let hotVent = 0;
+  for (let t = 0; t < 5; t++) {
+    const coolStep = stepZone(coolState, hall, 1, 0, cool);
+    const hotStep = stepZone(hotState, hall, 1, 0, { ...cool, tempK: SPILL_IGNITION_K });
+    for (const hot of coolStep.hotByVent) coolVent += hot.kg * hot.fuelY;
+    for (const hot of hotStep.hotByVent) hotVent += hot.kg * hot.fuelY;
+    coolState = coolStep.state;
+    hotState = hotStep.state;
+  }
+  const arrived = 5 * cool.kgS * cool.fuelY;
+  const coolKept = (coolState.fuelKg ?? 0) + coolVent;
+  const hotKept = (hotState.fuelKg ?? 0) + hotVent;
+  close(coolKept, arrived, 1e-4, 'below tgignt the fuel is only carried');
+  assert.ok(hotKept < arrived * 0.5, `at tgignt ${hotKept.toFixed(4)} kg of ${arrived.toFixed(4)} kg was still unburned`);
+});
+
+test('fuel sent into a burning room burns on the oxygen that room left', () => {
+  const hall: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 6,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 6, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 50, diameterM: diameterForReleaseKw(50) }],
+  };
+  const jet = {
+    kgS: 0.4,
+    tempK: 500,
+    oxygenY: 0.12,
+    fuelY: 0.1,
+    originM: 2,
+    widthM: 2,
+    fuelOnly: true,
+  };
+  let state = freshLayer(hall.ceilingM);
+  let arrived = 0;
+  let vented = 0;
+  for (let t = 0; t < 10; t++) {
+    const step = stepZone(state, hall, 1, 0, jet);
+    arrived += jet.kgS * jet.fuelY;
+    for (const hot of step.hotByVent) vented += hot.kg * hot.fuelY;
+    assert.ok(step.burnedFraction > 0.9, `the room's own fire fell to ${step.burnedFraction.toFixed(3)}`);
+    state = step.state;
+  }
+  const kept = (state.fuelKg ?? 0) + vented;
+  const burned = arrived - kept;
+  assert.ok(burned > arrived * 0.5, `burned ${burned.toFixed(4)} of ${arrived.toFixed(4)} kg`);
+
+  // The same fuel entering a room already at its door limit does not
+  // get a second oxygen supply, and it is not dropped. The interface is
+  // on the floor, below the origin, so the spill does not entrain.
+  const prescribed = 20000;
+  const tight = concreteRoom(prescribed, diameterForReleaseKw(prescribed));
+  tight.fires = Array.from({ length: 10 }, () => ({
+    heatKw: prescribed / 10,
+    diameterM: diameterForReleaseKw(prescribed / 10),
+  }));
+  let starved = freshLayer(tight.ceilingM);
+  for (let t = 0; t < 90; t++) starved = stepZone(starved, tight, 1).state;
+  const cap = ventilationLimitedKw(0.9 * 2, 2);
+  const richJet = { ...jet, fuelY: 0.2 };
+  let quiet = structuredClone(starved);
+  let fed = structuredClone(starved);
+  const own: number[] = [];
+  let jetIn = 0;
+  let quietVent = 0;
+  let fedVent = 0;
+  for (let t = 0; t < 10; t++) {
+    const plainStep = stepZone(quiet, tight, 1);
+    const fedStep = stepZone(fed, tight, 1, 0, richJet);
+    own.push(fedStep.burnedFraction * prescribed);
+    jetIn += richJet.kgS * richJet.fuelY;
+    for (const hot of plainStep.hotByVent) quietVent += hot.kg * hot.fuelY;
+    for (const hot of fedStep.hotByVent) fedVent += hot.kg * hot.fuelY;
+    quiet = plainStep.state;
+    fed = fedStep.state;
+  }
+  const mean = own.reduce((sum, value) => sum + value, 0) / own.length;
+  assert.ok(Math.abs(mean - cap) / cap < 0.2, `own fire ${mean.toFixed(0)} kW vs cap ${cap.toFixed(0)}`);
+  const keptFromJet = (fed.fuelKg ?? 0) + fedVent - ((quiet.fuelKg ?? 0) + quietVent);
+  assert.ok(
+    keptFromJet > jetIn * 0.8,
+    `the vent-limited room kept ${keptFromJet.toFixed(3)} kg of ${jetIn.toFixed(3)} kg`,
+  );
+});
+
+test('the spill burn debits oxygen, splits chi, lowers the interface, and cannot take air the layer does not hold', () => {
+  const hall: LayerSpec = {
+    areaM2: 36,
+    ceilingM: 6,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 36, lining: LINING.concrete },
+      { areaM2: 4 * 6 * 6, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const jet = { kgS: 0.4, tempK: 500, oxygenY: 0.12, fuelY: 0.1, originM: 2, widthM: 2 };
+  const start = freshLayer(hall.ceilingM);
+  const one = stepZone(start, hall, 0.1, 0, jet);
+  const depth0 = hall.ceilingM - start.interfaceM;
+  const mass0 = upperMixtureKg(start.upperK, hall.areaM2, depth0);
+  const rise = spillRiseM(start.interfaceM, jet.originM);
+  const offered = spillPlumeEntrainmentKgS(jet.kgS, jet.tempK, jet.widthM, rise);
+  const lowerKg = (353 / AMBIENT_K) * hall.areaM2 * start.interfaceM;
+  const mEnt = Math.min(offered, lowerKg / 0.1);
+  let kept = one.state.fuelKg ?? 0;
+  for (const hot of one.hotByVent) kept += hot.kg * hot.fuelY;
+  const burned = jet.kgS * 0.1 * jet.fuelY - kept;
+  const doorO2 = burned * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
+  const sliceJet = jet.kgS * 0.1;
+  const o2U =
+    O2_AMBIENT_MASS * mass0 + mEnt * 0.1 * O2_AMBIENT_MASS - doorO2 + sliceJet * jet.oxygenY;
+  const mU2 = mass0 + mEnt * 0.1 + sliceJet;
+  close(one.state.upperO2 ?? 0, o2U / mU2, 2e-5, 'upper oxygen after the debit');
+
+  let rich = freshLayer(hall.ceilingM);
+  let plain = freshLayer(hall.ceilingM);
+  let arrived = 0;
+  let ventedFuel = 0;
+  for (let t = 0; t < 5; t++) {
+    const step = stepZone(rich, hall, 1, 0, jet);
+    arrived += jet.kgS * jet.fuelY;
+    for (const hot of step.hotByVent) ventedFuel += hot.kg * hot.fuelY;
+    rich = step.state;
+    plain = stepZone(plain, hall, 1, 0, {
+      kgS: jet.kgS,
+      tempK: jet.tempK,
+      oxygenY: jet.oxygenY,
+      originM: jet.originM,
+      widthM: jet.widthM,
+    }).state;
+  }
+  const burnedKg = arrived - ((rich.fuelKg ?? 0) + ventedFuel);
+  const mass = upperMixtureKg(rich.upperK, hall.areaM2, hall.ceilingM - rich.interfaceM);
+  const enthalpy = mass * (rich.upperK - AMBIENT_K);
+  const jetSensible = jet.kgS * 5 * (jet.tempK - AMBIENT_K);
+  const convected = (1 - RADIATIVE_FRACTION) * burnedKg * WOOD_HEAT_KJ_KG;
+  assert.ok(
+    enthalpy < jetSensible + convected,
+    `gas held ${enthalpy.toFixed(0)} kJ above a convected budget of ${(jetSensible + convected).toFixed(0)} kJ`,
+  );
+  assert.ok(enthalpy > convected * 0.4, `the doorway barely warmed the gas, ${enthalpy.toFixed(0)} kJ`);
+  assert.ok(
+    rich.interfaceM < plain.interfaceM - 0.25,
+    `spill air left the interface at ${rich.interfaceM.toFixed(3)} m, the plain jet at ${plain.interfaceM.toFixed(3)} m`,
+  );
+
+  const tiny: LayerSpec = {
+    areaM2: 0.02,
+    ceilingM: 4,
+    vents: [],
+    boundaries: [
+      { areaM2: 1, lining: LINING.concrete },
+      { areaM2: 1, lining: LINING.concrete },
+      { areaM2: 1, lining: LINING.concrete },
+    ],
+    fires: [],
+  };
+  const thin = freshLayer(tiny.ceilingM);
+  thin.interfaceM = 3;
+  const heavy = { kgS: 1, tempK: 800, oxygenY: 0.05, fuelY: 0.3, originM: 0, widthM: 4 };
+  const capped = stepZone(thin, tiny, 0.1, 0, heavy);
+  let stored = capped.state.fuelKg ?? 0;
+  for (const hot of capped.hotByVent) stored += hot.kg * hot.fuelY;
+  const used = heavy.kgS * 0.1 * heavy.fuelY - stored;
+  const inventory = (353 / AMBIENT_K) * tiny.areaM2 * thin.interfaceM * O2_AMBIENT_MASS;
+  const demand = used * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
+  assert.ok(demand > inventory * 0.5, `the spill burned only ${demand.toFixed(4)} kg of oxygen`);
+  assert.ok(
+    demand <= inventory * 1.05,
+    `the spill took ${demand.toFixed(4)} kg of oxygen from a layer that held ${inventory.toFixed(4)} kg`,
+  );
+});
+
 test('fallen glass opens a labelled fraction, and a concrete id does not', () => {
   const studs = new Map([
     ['a', { id: 'a', x: 0, y: 0, level: 'G' }],
@@ -1565,6 +2020,20 @@ test('a door jet assigns the vented mass and enthalpy to the receiving room', ()
   close(other.tKg, other.kg * 500, 1e-9, 'other enthalpy');
   close(hall.yKg, hall.kg * 0.12, 1e-12, 'hall oxygen');
 
+  const fueled = assignDoorJet(
+    'fire',
+    members,
+    [['b1', 'b2', 'c', 'a', 'outside']],
+    [{ kg: 2, tempK: 500, oxygenY: 0.12, fuelY: 0.04 }],
+    rooms,
+  );
+  const fueledHall = fueled.get('hall');
+  assert.ok(fueledHall);
+  close(fueledHall.fKg ?? 0, fueledHall.kg * 0.04, 1e-12, 'hall fuel');
+  const fueledJet = queueDoorJets(fueled, 1).get('hall');
+  assert.ok(fueledJet);
+  close(fueledJet.fuelY ?? 0, 0.04, 1e-12, 'queued fuel');
+
   const both = assignDoorJet(
     'fire',
     members,
@@ -1776,6 +2245,109 @@ test('the neighbour of a burning room forms a layer from the door jet', () => {
   assert.ok(rise >= DISTINCT_LAYER_RISE_K, `hall rise ${rise.toFixed(1)} K`);
   assert.ok((hall?.zone.interfaceM ?? 2.6) < 2.6, `hall interface ${hall?.zone.interfaceM}`);
   assert.ok(extinctionK(engine.studStates.get('hall')?.smoke ?? 0) > 0, 'hall stud has no smoke');
+});
+
+test('a burning room keeps the fuel a neighbour jets in', () => {
+  // One stud tops out near 2.3 MW. Four of them behind a 0.35 m door are
+  // vent-limited, so the jet carries fuel. The fuelOnly path is what the
+  // engine passes.
+  // Calling stepZone with fuelOnly from the test would still pass if that
+  // call were deleted. The cold run keeps the same walls, so the hall's
+  // own fire is the control.
+  const monster = { ...defaultLightFuel(), alphaKwS2: 80, fuelLoadKgM2: 200 };
+  const hallFuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 80 };
+  const sources = [
+    ['a', 0, 0],
+    ['b', 0.4, 0],
+    ['c', -0.4, 0],
+    ['d', 0, 0.4],
+  ] as const;
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.35,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const run = (withSource: boolean) => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    const studs = [
+      ...sources.map(([id, x, y]) => stud(id, x, y)),
+      stud('hall', 0, 3),
+    ];
+    engine.init(studs);
+    engine.setStoreyHeights({ G: 2.6 });
+    const cells = new Map<string, FuelCell>([['hall', hallFuel]]);
+    for (const [id] of sources) cells.set(id, monster);
+    engine.setFuelCells(cells);
+    const exposed = engine as unknown as {
+      fireSim: { ignite: (ids: string[]) => void };
+      jetAudit: DoorJetBook[] | null;
+      layerState: Map<
+        string,
+        { active: boolean; members: string[]; zone: { upperK: number; fuelKg?: number } }
+      >;
+    };
+    exposed.fireSim.ignite(withSource ? [...sources.map(([id]) => id), 'hall'] : ['hall']);
+    const audit: DoorJetBook[] = [];
+    exposed.jetAudit = audit;
+    let sentFuel = 0;
+    for (let t = 0; t < 60; t++) {
+      engine.step(1, walls, []);
+      // The engine clears the audit at the start of the next step.
+      for (const book of audit) {
+        if (!book.members.includes('a') || book.members.includes('hall')) continue;
+        for (const row of book.hot) sentFuel += row.kg * (row.fuelY ?? 0);
+      }
+    }
+    let hall: { upperK: number; fuelKg?: number } | undefined;
+    for (const live of exposed.layerState.values()) {
+      if (live.active && live.members.includes('hall') && !live.members.includes('a')) {
+        hall = live.zone;
+      }
+    }
+    return { hall, sentFuel };
+  };
+  const connected = run(true);
+  const alone = run(false);
+  assert.ok(connected.hall, 'the hall never formed a layer of its own');
+  assert.ok(alone.hall, 'the hall alone never formed a layer');
+  assert.ok(connected.sentFuel > 0.2, `the source sent ${connected.sentFuel.toFixed(3)} kg of fuel`);
+  const kept = connected.hall.fuelKg ?? 0;
+  const own = alone.hall.fuelKg ?? 0;
+  const rise = connected.hall.upperK - AMBIENT_K;
+  const ownRise = alone.hall.upperK - AMBIENT_K;
+  assert.ok(
+    kept > own + 0.4 || rise > ownRise + 80,
+    `hall kept ${kept.toFixed(3)} kg and rose ${rise.toFixed(1)} K; alone kept ${own.toFixed(3)} kg and rose ${ownRise.toFixed(1)} K`,
+  );
 });
 
 test('a jet-fed room keeps its head-height soot when it catches fire', () => {

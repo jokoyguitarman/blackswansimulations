@@ -1,6 +1,9 @@
 /**
  * Harbour House crowd, open or with the east exit blocked at 120 s.
- * Same loop as the review `fire-mall` run: 120 people, plan walls, to T+300.
+ * Same loop as the review `fire-mall` run: 120 people, plan walls, to T+600.
+ * The counts on the result are the T+300 snapshot. `late` is T+600, past
+ * the head-height crossing, so the crowd effect is pinned. The crowd
+ * model has no ISO 13571 heat dose: FED and the down count are fumes.
  */
 import { heatReleaseKw } from '../../src/lib/rts/flameFront.ts';
 import { confirmedFuelCells } from '../../src/lib/rts/materialLibrary.ts';
@@ -27,6 +30,21 @@ export interface HarbourMallLayer {
   riseK: number;
 }
 
+/** T+600, after the layer has passed head height. Fumes only: no heat dose. */
+export interface HarbourLate {
+  inside: number;
+  down: number;
+  out: number;
+  /** People whose nearest mall stud is within 2 m. */
+  inMall: number;
+  /** Highest FED among people still inside, including anyone down. */
+  maxFed: number;
+  /** Highest FED among the people standing in the mall. */
+  mallFed: number;
+  mall: HarbourMallLayer;
+  smoke: string;
+}
+
 export interface HarbourCrowdResult {
   blocked: boolean;
   down: number;
@@ -41,6 +59,7 @@ export interface HarbourCrowdResult {
   /** Tile mall at T+300. A stud in the open mall, not a shop. */
   mall: HarbourMallLayer;
   marks: { t180: HarbourMark; t240: HarbourMark; t300: HarbourMark };
+  late: HarbourLate;
 }
 
 interface CrowdBody {
@@ -48,8 +67,10 @@ interface CrowdBody {
     pedId: number;
     state?: string;
     fumeDown?: boolean;
+    fed?: number;
     spawn?: { x: number; y: number };
   };
+  position?: { x: number; y: number };
 }
 
 function bodiesOf(run: HarbourRun): CrowdBody[] {
@@ -118,7 +139,19 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
   let peakKw = 0;
   let exitBlocked = false;
   const marks = new Map<number, HarbourMark>();
-  while (run.rts.state.clock.elapsed < 300) {
+  let at300: {
+    down: number;
+    fumeDown: number;
+    within120: number;
+    crawling: number;
+    reroutes: number;
+    outByT300: number;
+    reachable: number;
+    mall: HarbourMallLayer;
+    peakTotalMw: number;
+    flashoverAtS: number | null;
+  } | null = null;
+  while (run.rts.state.clock.elapsed < 600) {
     run.frame(DT);
     const t = run.rts.state.clock.elapsed;
     if (blocked && !exitBlocked && t >= 120) {
@@ -154,22 +187,66 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
         burning: stats.fire.burning,
       });
     }
+    if (at300 == null && t >= 300) {
+      const bodies = bodiesOf(run);
+      const reachable = bodies.filter((body) => {
+        const ped = body.__ped;
+        const spawn = ped.spawn;
+        return ped.state !== 'down' && !(spawn != null && spawn.x >= 46 && spawn.y <= 8);
+      }).length;
+      let within = 0;
+      for (const [id, started] of startEv) {
+        const left = outAt.get(id);
+        if (left != null && left - started <= 120) within += 1;
+      }
+      const showcase = run.evac.getMetrics().showcase;
+      at300 = {
+        down: bodies.filter((body) => body.__ped.state === 'down').length,
+        fumeDown: bodies.filter((body) => body.__ped.fumeDown).length,
+        within120: reachable > 0 ? fixed(within / reachable, 3) : 0,
+        crawling: showcase?.crawling ?? 0,
+        reroutes: showcase?.reroutes ?? 0,
+        outByT300: outAt.size,
+        reachable,
+        mall: mallLayer(run),
+        peakTotalMw: fixed(peakKw / 1000, 1),
+        flashoverAtS: flashAt,
+      };
+    }
   }
 
-  const bodies = bodiesOf(run);
-  const reachable = bodies.filter((body) => {
-    const ped = body.__ped;
-    const spawn = ped.spawn;
-    return ped.state !== 'down' && !(spawn != null && spawn.x >= 46 && spawn.y <= 8);
-  }).length;
-  let within = 0;
-  for (const [id, started] of startEv) {
-    const left = outAt.get(id);
-    if (left != null && left - started <= 120) within += 1;
+  if (at300 == null) throw new Error('Harbour crowd never reached T+300');
+  const studPos = new Map(run.studs.map((stud) => [stud.id, stud.simPos]));
+  let mallMembers: string[] = [];
+  for (const live of effectsView(run.effects).layerState.values()) {
+    if (live.members.includes(MALL_STUD)) mallMembers = live.members;
   }
-  const showcase = run.evac.getMetrics().showcase;
-  const down = bodies.filter((body) => body.__ped.state === 'down').length;
-  const fumeDown = bodies.filter((body) => body.__ped.fumeDown).length;
+  let inside = 0;
+  let inMall = 0;
+  let maxFed = 0;
+  let mallFed = 0;
+  let downLate = 0;
+  for (const body of bodiesOf(run)) {
+    const ped = body.__ped;
+    if (ped.state === 'down') downLate += 1;
+    if (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') continue;
+    inside += 1;
+    const fed = ped.fed ?? 0;
+    if (fed > maxFed) maxFed = fed;
+    const pos = body.position;
+    if (!pos) continue;
+    let best = Infinity;
+    for (const id of mallMembers) {
+      const sp = studPos.get(id);
+      if (!sp) continue;
+      const dist = Math.hypot(sp.x - pos.x, sp.y - pos.y);
+      if (dist < best) best = dist;
+    }
+    if (best <= 2) {
+      inMall += 1;
+      if (fed > mallFed) mallFed = fed;
+    }
+  }
   const mark = (second: number): HarbourMark => {
     const found = marks.get(second);
     if (!found) throw new Error(`Harbour crowd missed T+${second}`);
@@ -177,16 +254,26 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
   };
   return {
     blocked,
-    down,
-    fumeDown,
-    flashoverAtS: flashAt,
-    peakTotalMw: fixed(peakKw / 1000, 1),
-    within120: reachable > 0 ? fixed(within / reachable, 3) : 0,
-    crawling: showcase?.crawling ?? 0,
-    reroutes: showcase?.reroutes ?? 0,
-    outByT300: outAt.size,
-    reachable,
-    mall: mallLayer(run),
+    down: at300.down,
+    fumeDown: at300.fumeDown,
+    flashoverAtS: at300.flashoverAtS,
+    peakTotalMw: at300.peakTotalMw,
+    within120: at300.within120,
+    crawling: at300.crawling,
+    reroutes: at300.reroutes,
+    outByT300: at300.outByT300,
+    reachable: at300.reachable,
+    mall: at300.mall,
     marks: { t180: mark(180), t240: mark(240), t300: mark(300) },
+    late: {
+      inside,
+      down: downLate,
+      out: outAt.size,
+      inMall,
+      maxFed: fixed(maxFed, 3),
+      mallFed: fixed(mallFed, 3),
+      mall: mallLayer(run),
+      smoke: run.meanIndoorSmoke().toFixed(3),
+    },
   };
 }
