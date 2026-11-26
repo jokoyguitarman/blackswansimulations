@@ -142,6 +142,30 @@ test('orifice slice matches the 400 K door example', () => {
   close(mass, 0.3482, 0.3482 * 0.01, 'door flow');
 });
 
+test('a hot neighbour on the door cuts the outflow', () => {
+  // CFAST Eq. 4.1 on both sides. The same hot layer opening onto ambient
+  // drives a door. Opening onto a neighbour at the same temperature does not.
+  const layer = { ...freshLayer(2.5), interfaceM: 1, upperK: 500 };
+  const spec = (hot: boolean): LayerSpec => ({
+    areaM2: 10,
+    ceilingM: 2.5,
+    vents: [
+      {
+        widthM: 0.8,
+        sillM: 0,
+        soffitM: 2,
+        ...(hot ? { outside: { interfaceM: 1, upperK: 500, floorPressurePa: 0 } } : {}),
+      },
+    ],
+    boundaries: [{ areaM2: 50, lining: LINING.concrete }],
+    fires: [],
+  });
+  const ambient = stepZone(layer, spec(false), 0.1).outByVentKgS[0] ?? 0;
+  const neighbour = stepZone(layer, spec(true), 0.1).outByVentKgS[0] ?? 0;
+  assert.ok(ambient > 0.2, `ambient door ${ambient}`);
+  assert.ok(neighbour < ambient * 0.25, `neighbour door ${neighbour} against ambient ${ambient}`);
+});
+
 test('Heskestad flame height matches the 1 MW worked example', () => {
   // L = 0.235 Q^0.4 − 1.02 D = 2.70 m. Entrainment at the tip is positive.
   const atTip = heskestadEntrainmentKgS(1000, 2.7, 1);

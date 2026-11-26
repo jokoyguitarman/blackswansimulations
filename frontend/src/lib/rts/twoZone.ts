@@ -532,10 +532,24 @@ export function mqhFlashoverKw(
   return 610 * Math.sqrt(group);
 }
 
+/**
+ * The compartment on the other side of a door. Absent means that side is
+ * ambient at every height. With a neighbour, the vent pressure is this
+ * room's gauge minus the neighbour's gauge, CFAST Eq. 4.1 applied to both
+ * layers. `floorPressurePa` is that neighbour's solved floor gauge.
+ */
+export interface VentOutside {
+  interfaceM: number;
+  upperK: number;
+  floorPressurePa: number;
+}
+
 export interface Vent {
   widthM: number;
   sillM: number;
   soffitM: number;
+  /** The other compartment. Absent means the vent opens to ambient. */
+  outside?: VentOutside;
 }
 
 /**
@@ -890,6 +904,8 @@ export interface LimitedBurn {
   fanLowerKgS: number;
   /** Neutral plane of this opening, m. The hot outflow starts here. */
   neutralM: number;
+  /** Solved floor gauge of this room, Pa. A neighbour's door reads it. */
+  floorPressurePa: number;
 }
 
 /**
@@ -932,8 +948,12 @@ export function oxygenLimitedBurn(
   const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
   const slice = dt > 0 ? dt : SUBSTEP_S;
   const rho = densityKgM3(AMBIENT_K);
-  const descendKgS =
-    (rho * Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M)) / slice;
+  // The air the interface can still descend through. A pyramidal section
+  // uses that volume; a rectangular room is the floor area times the height.
+  const descendM3 = spec.crossSection
+    ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, interfaceM)
+    : Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M);
+  const descendKgS = (rho * descendM3) / slice;
   const airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
   let prescribed = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
@@ -993,6 +1013,7 @@ export function oxygenLimitedBurn(
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
     neutralM: neutralPlaneM(interfaceM, upperK, flows.floorPressurePa),
+    floorPressurePa: flows.floorPressurePa,
   };
 }
 
@@ -1051,6 +1072,23 @@ export interface LayerSpec {
   fans?: readonly MechanicalVent[];
   /** Radiative fraction. Defaults to the contents value. */
   chi?: number;
+  /**
+   * Horizontal area against height. Absent means a rectangular room of
+   * `areaM2` from the floor to `ceilingM`. CFAST user's guide §4.4: between
+   * two listed heights the section is a pyramid (the width-to-depth ratio
+   * stays constant), and the layer height is the height whose volume above
+   * it is the upper-layer volume.
+   */
+  crossSection?: CrossSection;
+}
+
+/**
+ * Horizontal area at a list of heights. Heights ascend from the floor.
+ * CFAST `CROSS_SECT_HEIGHTS` and `CROSS_SECT_AREAS`.
+ */
+export interface CrossSection {
+  heightsM: readonly number[];
+  areasM2: readonly number[];
 }
 
 export interface ZoneState {
@@ -1433,6 +1471,79 @@ function densityKgM3(tempK: number): number {
 }
 
 /**
+ * Horizontal area at height z. Below the first listed height and above the
+ * last, the area stays at the nearest listed value (CFAST user's guide §4.4).
+ * Between two heights the section is a pyramid, so the linear scale
+ * √A is linear in height and the area is the square of that scale.
+ */
+export function sectionAreaM2(spec: LayerSpec, zM: number): number {
+  const cs = spec.crossSection;
+  const floor = Math.max(spec.areaM2, 0);
+  if (!cs) return floor;
+  const n = Math.min(cs.heightsM.length, cs.areasM2.length);
+  if (n <= 0) return floor;
+  const z = Math.min(Math.max(zM, 0), spec.ceilingM);
+  const h0 = cs.heightsM[0] ?? 0;
+  const a0 = Math.max(cs.areasM2[0] ?? floor, 0);
+  if (z <= h0) return a0;
+  for (let i = 1; i < n; i++) {
+    const h1 = cs.heightsM[i] ?? h0;
+    const a1 = Math.max(cs.areasM2[i] ?? a0, 0);
+    const hPrev = cs.heightsM[i - 1] ?? h0;
+    const aPrev = Math.max(cs.areasM2[i - 1] ?? a0, 0);
+    if (z <= h1) {
+      if (!(h1 > hPrev)) return a1;
+      const t = (z - hPrev) / (h1 - hPrev);
+      const scale = Math.sqrt(aPrev) + (Math.sqrt(a1) - Math.sqrt(aPrev)) * t;
+      return scale * scale;
+    }
+  }
+  return Math.max(cs.areasM2[n - 1] ?? floor, 0);
+}
+
+/** Volume of a pyramidal band. Equal areas reduce to a prism. */
+function frustumM3(heightM: number, area0M2: number, area1M2: number): number {
+  if (!(heightM > 0)) return 0;
+  const a0 = Math.max(area0M2, 0);
+  const a1 = Math.max(area1M2, 0);
+  return (heightM / 3) * (a0 + a1 + Math.sqrt(a0 * a1));
+}
+
+/** Gas volume from z0 up to z1. A rectangular room is area times height. */
+function volumeBetweenM3(spec: LayerSpec, z0M: number, z1M: number): number {
+  const z0 = Math.min(Math.max(z0M, 0), spec.ceilingM);
+  const z1 = Math.min(Math.max(z1M, 0), spec.ceilingM);
+  if (!(z1 > z0)) return 0;
+  if (!spec.crossSection) return Math.max(spec.areaM2, 0) * (z1 - z0);
+  const marks = [z0];
+  const n = Math.min(spec.crossSection.heightsM.length, spec.crossSection.areasM2.length);
+  for (let i = 0; i < n; i++) {
+    const h = spec.crossSection.heightsM[i] ?? 0;
+    if (h > z0 && h < z1) marks.push(h);
+  }
+  marks.push(z1);
+  let volume = 0;
+  for (let i = 0; i < marks.length - 1; i++) {
+    const lo = marks[i] ?? z0;
+    const hi = marks[i + 1] ?? z1;
+    volume += frustumM3(hi - lo, sectionAreaM2(spec, lo), sectionAreaM2(spec, hi));
+  }
+  return volume;
+}
+
+/**
+ * Upper-layer volume, from the interface to the ceiling. CFAST integrates
+ * the cross-section from the ceiling down until the volume is filled.
+ * A layer thinner than 0.02 m of floor area keeps that floor so the mass
+ * used by the energy step does not vanish.
+ */
+export function upperLayerVolumeM3(spec: LayerSpec, interfaceM: number): number {
+  const above = volumeBetweenM3(spec, interfaceM, spec.ceilingM);
+  const floor = Math.max(spec.areaM2, 0) * 0.02;
+  return Math.max(above, floor);
+}
+
+/**
  * Height where the inside-outside pressure difference is zero.
  * Below the interface the difference is the solved floor value. Above it
  * the hydrostatic slope is (ρ_lower − ρ_upper) g, CFAST Eq. 4.1. A floor
@@ -1538,7 +1649,7 @@ function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Fl
   return { ...door, fanUpperKgS: fans.upperKgS, fanLowerKgS: fans.lowerKgS };
 }
 
-const ventMarks = [0, 0, 0];
+const ventMarks = [0, 0, 0, 0];
 const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0, hotOutKgS: 0 };
 
 function addSliceFlows(
@@ -1551,10 +1662,19 @@ function addSliceFlows(
   rhoU: number,
   rhoA: number,
   widthM: number,
+  outside?: VentOutside,
 ): void {
   if (!(z1 > z0 + 1e-9)) return;
-  const p0 = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
-  const p1 = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
+  const p0in = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
+  const p1in = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
+  const p0 = outside
+    ? p0in -
+      pressureAt(z0, outside.interfaceM, outside.floorPressurePa, rhoL, densityKgM3(outside.upperK))
+    : p0in;
+  const p1 = outside
+    ? p1in -
+      pressureAt(z1, outside.interfaceM, outside.floorPressurePa, rhoL, densityKgM3(outside.upperK))
+    : p1in;
   if (p0 * p1 < 0 && p1 !== p0) {
     const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
     // Split whenever the neutral plane is strictly inside the slice.
@@ -1563,8 +1683,8 @@ function addSliceFlows(
     // That dropped the inflow for one step and the burn followed it.
     const pad = Math.min(1e-6, (z1 - z0) * 0.25);
     if (zN > z0 + pad && zN < z1 - pad) {
-      addSliceFlows(into, z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
-      addSliceFlows(into, zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM);
+      addSliceFlows(into, z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM, outside);
+      addSliceFlows(into, zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM, outside);
       return;
     }
   }
@@ -1572,7 +1692,17 @@ function addSliceFlows(
   // The end farther from the plane owns a slice that was not split.
   const outflow = Math.abs(p0) >= Math.abs(p1) ? p0 > 0 : p1 > 0;
   const mid = (z0 + z1) / 2;
-  const rho = outflow ? (mid > interfaceM ? rhoU : rhoL) : rhoA;
+  // Inflow from a neighbour is that room's layer. An opening to ambient
+  // keeps the outside density.
+  const rho = outflow
+    ? mid > interfaceM
+      ? rhoU
+      : rhoL
+    : outside
+      ? mid > outside.interfaceM
+        ? densityKgM3(outside.upperK)
+        : rhoL
+      : rhoA;
   const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
   if (outflow) {
     into.outKgS += mass;
@@ -1601,6 +1731,11 @@ function accumulateVent(
     ventMarks[2] = interfaceM;
     count = 3;
   }
+  const far = vent.outside;
+  if (far && far.interfaceM > sill && far.interfaceM < soffit) {
+    ventMarks[count] = far.interfaceM;
+    count += 1;
+  }
   if (ventMarks[0] > ventMarks[1]) {
     const swap = ventMarks[0];
     ventMarks[0] = ventMarks[1];
@@ -1616,6 +1751,17 @@ function accumulateVent(
       ventMarks[1] = again;
     }
   }
+  if (count === 4) {
+    for (let i = 1; i < 4; i++) {
+      const key = ventMarks[i] ?? sill;
+      let j = i;
+      while (j > 0 && (ventMarks[j - 1] ?? sill) > key) {
+        ventMarks[j] = ventMarks[j - 1] ?? sill;
+        j -= 1;
+      }
+      ventMarks[j] = key;
+    }
+  }
   for (let i = 0; i < count - 1; i++) {
     addSliceFlows(
       into,
@@ -1627,6 +1773,7 @@ function accumulateVent(
       rhoU,
       rhoA,
       vent.widthM,
+      far,
     );
   }
 }
@@ -1888,6 +2035,8 @@ export function stepZone(
   outByVentKgS: number[];
   /** Upper-layer outflow of each vent over the step, for the next room. */
   hotByVent: VentedHotGas[];
+  /** Floor gauge of the last substep, Pa. A neighbour door reads it next step. */
+  floorPressurePa: number;
   /** Share of the prescribed release the oxygen burned on the last substep. */
   burnedFraction: number;
   /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
@@ -1937,6 +2086,7 @@ function stepZoneNow(
   const jetSoffit = jet != null && jet.soffitM != null ? jet.soffitM : null;
   const depositKgS = jet != null && jet.fuelOnly === true ? 0 : jetKgS;
   let neutralM = state.interfaceM;
+  let floorPressurePa = 0;
   let boundaryArea = 0;
   for (const boundary of spec.boundaries) if (boundary.areaM2 > 0) boundaryArea += boundary.areaM2;
   const chi = chiOf(spec);
@@ -1948,10 +2098,11 @@ function stepZoneNow(
     burnedFraction = burn.prescribedKw > 0 ? burn.fraction : 1;
     phi = burn.phi;
     neutralM = limited.neutralM;
+    floorPressurePa = limited.floorPressurePa;
     const qGas = q * burnedFraction;
     fireRadiantKwM2 = radiantBase * burnedFraction;
-    const depth = Math.max(0.02, spec.ceilingM - z);
-    const mass = densityKgM3(temp) * spec.areaM2 * depth;
+    const mass = densityKgM3(temp) * upperLayerVolumeM3(spec, z);
+    const atInterface = Math.max(sectionAreaM2(spec, z), 1e-6);
     const plume = limited.plumeKgS;
     const flows = {
       inKgS: limited.inKgS,
@@ -1991,7 +2142,10 @@ function stepZoneNow(
       jetWidth > 0 &&
       spillKgS > 0
     ) {
-      const lowerKg = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
+      const lowerM3 = spec.crossSection
+        ? volumeBetweenM3(spec, 0, z)
+        : spec.areaM2 * Math.max(z, 0);
+      const lowerKg = densityKgM3(AMBIENT_K) * lowerM3;
       const offered = spillPlumeEntrainmentKgS(spillKgS, jetT, jetWidth, rise);
       // The room's own plume already takes its share of this air. The spill
       // burns on what is left, and it cannot empty the lower layer twice.
@@ -2052,24 +2206,27 @@ function stepZoneNow(
     if (storeKgS > 0) dT += (storeKgS * CP_KJ_KGK * (AMBIENT_K - temp)) / denom;
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
-    const areaRho = Math.max(LEVEL.RHO_AIR * spec.areaM2, 1e-3);
+    const areaRho = Math.max(LEVEL.RHO_AIR * atInterface, 1e-3);
     // Makeup air fills the lower layer. The plume and a fan in that clear
     // air both drain it, so the interface falls. A fan in the smoke is
     // balanced by extra inflow, which lifts the interface. A door jet
     // joins the upper layer, so its volume lowers the interface. Spill
     // air leaves the lower layer and joins the upper one. Fuel stored
     // with no vent to carry it occupies upper-layer volume as well.
+    // The height change is that volume divided by the area at the
+    // interface. A pyramidal roof is narrower there than the floor.
     let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
     if (depositKgS > 0) {
-      dZ -= depositKgS / Math.max(densityKgM3(jetT) * spec.areaM2, 1e-3);
+      dZ -= depositKgS / Math.max(densityKgM3(jetT) * atInterface, 1e-3);
     }
     if (mEnt > 0) dZ -= mEnt / areaRho;
     if (storeKgS > 0) {
-      dZ -= storeKgS / Math.max(densityKgM3(temp) * spec.areaM2, 1e-3);
+      dZ -= storeKgS / Math.max(densityKgM3(temp) * atInterface, 1e-3);
     }
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
-    const mL = densityKgM3(AMBIENT_K) * spec.areaM2 * Math.max(z, 0);
+    const lowerVol = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
+    const mL = densityKgM3(AMBIENT_K) * lowerVol;
     const slicePlume = plume * slice;
     const sliceIn = flows.inKgS * slice;
     const sliceFanL = flows.fanLowerKgS * slice;
@@ -2119,8 +2276,7 @@ function stepZoneNow(
         displacedF -
         burnedFuelKgS * slice,
     );
-    const depthNow = Math.max(0.02, spec.ceilingM - z);
-    const massNow = densityKgM3(temp) * spec.areaM2 * depthNow;
+    const massNow = densityKgM3(temp) * upperLayerVolumeM3(spec, z);
     if (fuel > massNow) {
       const excess = fuel - massNow;
       fuel = massNow;
@@ -2162,6 +2318,7 @@ function stepZoneNow(
     burnedFraction,
     phi,
     neutralM,
+    floorPressurePa,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }

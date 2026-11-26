@@ -100,10 +100,10 @@ function box(
   return { areaM2: area, ceilingM: heightM, vents, boundaries };
 }
 
-// NBS MV100A (Peacock et al., NBSIR 88-3752). The fire room door opens to a
-// small entry and then the corridor. The layer vents to ambient, so the door
-// here opens to ambient air. The burner sits 0.1 m from the rear wall; the
-// plume is entrained as if free-standing, as CFAST does.
+// NBS MV100A (Peacock et al., NBSIR 88-3752). The fire-room door opens into
+// the entry. `runNbsFireRoom` puts that entry's layer on the far side of the
+// opening below. The spec records the opening. The burner sits 0.1 m from
+// the rear wall; the plume is entrained as if free-standing, as CFAST does.
 const ceramicNbs = matl('Ceramic Fiber NBS', 0.09, 128, 1.04, 0.05);
 const fireBrickNbs = matl('Fire Brick NBS', 0.36, 750, 1.04, 0.113);
 const mariniteNbs = matl('Marinite NBS', 0.12, 720, 1.25, 0.0127);
@@ -128,6 +128,86 @@ export const NBS_FIRE_ROOM: ValidationCase = {
   hrr: nbsFire,
   window: [300, 880],
 };
+
+const nbsDoor = { widthM: 0.81, sillM: 0, soffitM: 1.6 };
+
+/**
+ * Fire room and the entry it opens into (`Entry to Fire Room` in MV100A.in:
+ * 1.02 m × 1.03 m × 2.00 m, Marinite walls and ceiling, gypsum floor, a
+ * 0.81 m × 1.6 m door each way). The fire-room door sees that entry's layer
+ * (CFAST Eq. 4.1 on both sides). The entry's other door opens to ambient.
+ * Carrying the jet on into the corridor drops that corridor's interface to
+ * the floor, which is the receiver limit in FV-4, and the filled corridor
+ * then pulls the fire-room interface to 0.619 m. The measured corridor
+ * interface is 1.32 m, so that filled layer is not the far side used here.
+ */
+export function runNbsFireRoom(endS: number): ZoneState[] {
+  const entryArea = 1.02 * 1.03;
+  const entryOpenings = 2 * nbsDoor.widthM * nbsDoor.soffitM;
+  const entryWalls = 2 * (1.02 + 1.03) * 2 - entryOpenings;
+  let fire = freshLayer(NBS_FIRE_ROOM.spec.ceilingM);
+  let entry = freshLayer(2);
+  let entryPressure = 0;
+  const states: ZoneState[] = [fire];
+  for (let t = 1; t <= endS; t++) {
+    const q = hrrAt(NBS_FIRE_ROOM.hrr, t - 0.5);
+    const fireStep = stepZone(
+      fire,
+      {
+        ...NBS_FIRE_ROOM.spec,
+        chi: NBS_FIRE_ROOM.chi,
+        vents: [
+          {
+            ...nbsDoor,
+            outside: {
+              interfaceM: entry.interfaceM,
+              upperK: entry.upperK,
+              floorPressurePa: entryPressure,
+            },
+          },
+        ],
+        fires: q > 0 ? [{ heatKw: q, diameterM: NBS_FIRE_ROOM.diameterM }] : [],
+      },
+      1,
+    );
+    const left = fireStep.hotByVent[0];
+    const jet =
+      left && left.kg > 0
+        ? {
+            kgS: left.kg,
+            tempK: left.tempK,
+            oxygenY: left.oxygenY,
+            fuelY: left.fuelY,
+            widthM: nbsDoor.widthM,
+            soffitM: nbsDoor.soffitM,
+            lowEdgeM: 0,
+          }
+        : null;
+    const entryStep = stepZone(
+      entry,
+      {
+        areaM2: entryArea,
+        ceilingM: 2,
+        chi: NBS_FIRE_ROOM.chi,
+        vents: [{ ...nbsDoor }],
+        boundaries: [
+          { areaM2: entryArea, lining: gypsumNbs },
+          { areaM2: entryArea, lining: mariniteNbs },
+          { areaM2: entryWalls, lining: mariniteNbs },
+        ],
+        fires: [],
+      },
+      1,
+      0,
+      jet,
+    );
+    fire = fireStep.state;
+    entry = entryStep.state;
+    entryPressure = entryStep.floorPressurePa;
+    states.push(fire);
+  }
+  return states;
+}
 
 /** The corridor has no fire of its own. Its doors are the entry and the outside. */
 // FV-4 runs the corridor through `nbsPlan.ts`; this case supplies its extract, window and ceiling.
@@ -171,10 +251,11 @@ export const BE3_TEST_3: ValidationCase = {
 };
 
 // VTT large hall, ICFMP BE#2 (Hostikka et al., VTT 2001). 27 m × 13.8 m,
-// 12 m eaves, a pitched roof to a 1.9 m wide monitor at 17.1–19 m. The layer
-// has one floor area, so the plan is the 372.6 m² floor up to the 19 m roof
-// and the steel is the hall's actual surface. The pan stands 1 m above the
-// floor (CFAST HEIGHT). Four 0.71 m leakage vents.
+// 12 m eaves, a pitched roof to a 1.9 m wide monitor at 17.1–19 m. The steel
+// is the hall's actual surface. The gas volume follows the cross-section in
+// VTT_C1.in and VTT_C2.in (CFAST user's guide §4.4), not the floor carried
+// up to the ridge. The pan stands 1 m above the floor (CFAST HEIGHT). Four
+// 0.71 m leakage vents.
 const steelBe2 = matl('Steel ICFMP BE2', 54, 7850, 0.425, 0.001);
 const concreteBe2 = matl('Concrete ICFMP BE2', 2, 2300, 0.9, 0.15);
 const vttVent = 0.71;
@@ -185,9 +266,16 @@ const vttSteelM2 =
   2 * (27 + 1.9) * 1.9 +
   27 * 1.9 -
   4 * vttVent * vttVent;
+const vttFloorM2 = 27 * 13.8;
 const vttSpec: Omit<LayerSpec, 'fires'> = {
-  areaM2: 27 * 13.8,
+  areaM2: vttFloorM2,
   ceilingM: 19,
+  // CROSS_SECT_HEIGHTS / CROSS_SECT_AREAS from both VTT inputs. The area
+  // stays 372.6 m² up to the eaves, then a pyramid to the 51.3 m² monitor.
+  crossSection: {
+    heightsM: [0, 12, 17.1, 19],
+    areasM2: [vttFloorM2, vttFloorM2, 51.3, 51.3],
+  },
   vents: [
     { widthM: vttVent, sillM: 0, soffitM: vttVent },
     { widthM: vttVent, sillM: 0, soffitM: vttVent },
@@ -195,7 +283,7 @@ const vttSpec: Omit<LayerSpec, 'fires'> = {
     { widthM: vttVent, sillM: 12, soffitM: 12 + vttVent },
   ],
   boundaries: [
-    { areaM2: 27 * 13.8, lining: concreteBe2 },
+    { areaM2: vttFloorM2, lining: concreteBe2 },
     { id: 'vtt-steel', areaM2: vttSteelM2, lining: steelBe2 },
   ],
 };
