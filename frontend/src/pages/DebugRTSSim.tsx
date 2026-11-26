@@ -3577,13 +3577,21 @@ export function DebugRTSSim() {
   // ── Map pan: window listeners, Space modifier, click suppression ──────
   useEffect(() => {
     if (phase !== 'rts') return;
-    const isTyping = (t: EventTarget | null) => {
-      const el = t as HTMLElement | null;
-      const tag = el?.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
+    let pointerOverMap = false;
+    const spaceHasOwnMeaning = (t: EventTarget | null) => {
+      const el = t instanceof HTMLElement ? t : null;
+      if (!el) return false;
+      if (el.isContentEditable) return true;
+      return !!el.closest(
+        'input, textarea, select, button, a[href], summary, [role="button"], [role="checkbox"]',
+      );
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || isTyping(e.target)) return;
+      if (e.code !== 'Space') return;
+      // A focused control keeps Space unless the pointer is on the map; text fields always keep it.
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (!pointerOverMap && spaceHasOwnMeaning(e.target)) return;
       e.preventDefault();
       if (spaceHeldRef.current) return;
       spaceHeldRef.current = true;
@@ -3593,12 +3601,26 @@ export function DebugRTSSim() {
       spaceHeldRef.current = false;
       if (!mapPanRef.current?.active) setPanCursor('none');
     };
+    const cancelPan = () => {
+      mapPanRef.current = null;
+      setPanCursor(spaceHeldRef.current ? 'grab' : 'none');
+    };
+    const onBlur = () => {
+      releaseSpace();
+      if (mapPanRef.current) cancelPan();
+    };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') releaseSpace();
     };
     const onMove = (e: MouseEvent) => {
+      pointerOverMap = e.target === canvasRef.current;
       const pan = mapPanRef.current;
       if (!pan) return;
+      // The release happened outside the window, so no mouseup will arrive.
+      if (e.buttons === 0) {
+        cancelPan();
+        return;
+      }
       if (!pan.active) {
         if (Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) < PAN_THRESHOLD_PX) return;
         pan.active = true;
@@ -3634,14 +3656,14 @@ export function DebugRTSSim() {
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', releaseSpace);
+    window.addEventListener('blur', onBlur);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas?.addEventListener('click', swallowClick, true);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', releaseSpace);
+      window.removeEventListener('blur', onBlur);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       canvas?.removeEventListener('click', swallowClick, true);
