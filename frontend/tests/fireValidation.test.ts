@@ -69,7 +69,7 @@ import {
 } from './fixtures/fireValidation/nbsPlan.ts';
 
 /** Recorded corridor extinction, 1/m, mean over 300–880 s. */
-const FV4_CORRIDOR_K = 0.1753;
+const FV4_CORRIDOR_K = 0.2306;
 
 // ── Flashover correlations, 4 m × 5 m × 2.6 m concrete room, 0.9 × 2.0 m door ──
 
@@ -355,11 +355,11 @@ test('NBS MV100A fire room: the entry on the door brings the interface and the r
 test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', (t) => {
   // Fire room, entry and corridor on the live engine, joined by their doors.
   // The entry stud is merged into the corridor, so the jet enters one 45 m²
-  // room and is not cooled in a separate entry. The corridor door back to the
-  // fire room solves Eq. 4.1 against that room's layer, so the old ambient
-  // backflow is gone and the interface falls. The rise stays short because
-  // the plan's fire room is about 100 K (the test's is 242 K) and concrete
-  // takes most of the jet enthalpy. Both misses are FV-4.
+  // room and is not cooled in a separate entry. The arrival door sees the
+  // fire room. The interface is 0.93 m, just outside ±0.37 m of 1.32 m, and
+  // the rise stays short because the plan's fire room is about 96 K (the
+  // test's is 242 K) and concrete takes most of the jet enthalpy. Both
+  // misses are FV-4.
   const c = NBS_CORRIDOR;
   const plan = runNbsPlan(c.window[1]);
   assert.ok(Math.abs(plan.fireKw - NBS_PLAN_FIRE_KW) < 1, `burner ${plan.fireKw} kW`);
@@ -398,7 +398,7 @@ test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', 
       target: measuredZ,
       tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
     },
-    { id: 'FV-4', recorded: 0.274, pin: 0.02, roadmap },
+    { id: 'FV-4', recorded: 0.93, pin: 0.02, roadmap },
   );
   expectKnownGap(
     t,
@@ -410,7 +410,7 @@ test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', 
       target: measuredRise,
       tolerance: { relative: TOLERANCE.riseFraction },
     },
-    { id: 'FV-4', recorded: 32.2, pin: 1, roadmap },
+    { id: 'FV-4', recorded: 33.2, pin: 1, roadmap },
   );
   // No measurement of extinction. The soot now sits in the corridor layer.
   const corridorK = mean(corridor, 'meanK');

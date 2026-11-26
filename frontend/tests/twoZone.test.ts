@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
+import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import {
   HOOD_HEIGHT_M,
@@ -143,9 +144,10 @@ test('orifice slice matches the 400 K door example', () => {
   close(mass, 0.3482, 0.3482 * 0.01, 'door flow');
 });
 
-test('a deposited jet is not also counted as neighbour-upper inflow', () => {
-  // The whole inflow is above the neighbour interface, and the jet is that
-  // same stream. Counting it in the makeup as well lifts the interface.
+test('a deposited jet keeps the lower-layer air budget', () => {
+  // The inflow is the neighbour's upper layer, and the jet is that stream.
+  // The orifice already balances it, so the interface moves only by the
+  // lower-layer outflow and by whatever jet mass the orifice did not see.
   const outside = { interfaceM: 0.3, upperK: 700, floorPressurePa: 0 };
   const spec: LayerSpec = {
     areaM2: 20,
@@ -158,18 +160,86 @@ test('a deposited jet is not also counted as neighbour-upper inflow', () => {
     ],
     fires: [],
   };
-  const state = { ...freshLayer(3), interfaceM: 1.4, upperK: AMBIENT_K + 80 };
-  const far = oxygenLimitedBurn(spec, state.interfaceM, state.upperK, 0.23, 0.23, 1, true);
+  const start = { ...freshLayer(3), interfaceM: 1.4, upperK: AMBIENT_K + 80 };
+  const far = oxygenLimitedBurn(spec, start.interfaceM, start.upperK, 0.23, 0.23, 0.1, true);
   assert.ok(far.farUpperInKgS > 1, `far inflow ${far.farUpperInKgS}`);
   assert.ok(
     far.inKgS - far.farUpperInKgS < 0.05,
     'the inflow was not all from the neighbour layer',
   );
   const jet = { kgS: far.farUpperInKgS, tempK: 700, oxygenY: 0.12 };
-  const deposited = stepZone(state, spec, 1, 0, jet).state;
-  const kept = stepZone(state, spec, 1, 0, { ...jet, fuelOnly: true }).state;
-  assert.ok(deposited.interfaceM < 1.23, `deposited interface ${deposited.interfaceM}`);
-  assert.ok(kept.interfaceM > 1.45, `orifice-kept interface ${kept.interfaceM}`);
+  const rhoJet = 353 / jet.tempK;
+  let state = start;
+  let expectZ = start.interfaceM;
+  const dt = 0.1;
+  for (let i = 0; i < 20; i++) {
+    const lim = oxygenLimitedBurn(
+      spec,
+      state.interfaceM,
+      state.upperK,
+      state.lowerO2,
+      state.upperO2,
+      dt,
+      true,
+    );
+    const makeup = Math.max(0, lim.inKgS - lim.farUpperInKgS);
+    const hot = lim.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+    const lowerOut = Math.max(0, lim.outKgS - hot);
+    const unmatched = jet.kgS - lim.farUpperInKgS;
+    let dZ = (makeup - lim.plumeKgS - lim.fanLowerKgS - lowerOut) / (LEVEL.RHO_AIR * spec.areaM2);
+    dZ -= unmatched / (rhoJet * spec.areaM2);
+    if (dZ > 2) dZ = 2;
+    if (dZ < -2) dZ = -2;
+    expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ + dZ * dt));
+    state = stepZone(state, spec, dt, 0, jet).state;
+  }
+  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - expectZ);
+  assert.ok(Math.abs(start.interfaceM - state.interfaceM) > 0.05, 'the interface did not move');
+  assert.ok(
+    Math.abs(residualKg) < 0.05,
+    `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
+  );
+});
+
+test('a burning room that takes a jet does not burn the neighbour upper layer', () => {
+  // The door inflow is the neighbour's hot layer. Depositing that jet
+  // leaves it out of the fresh-air supply. Counting it as lower-layer air
+  // lets the flame burn on gas that is not fresh.
+  const spec: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [
+      {
+        widthM: 1.2,
+        sillM: 0,
+        soffitM: 2,
+        outside: { interfaceM: 0.05, upperK: 900, floorPressurePa: -2 },
+      },
+    ],
+    boundaries: [{ areaM2: 80, lining: LINING.concrete }],
+    fires: [{ heatKw: 5000, diameterM: 1 }],
+  };
+  const state = { ...freshLayer(3), interfaceM: 0.05, upperK: AMBIENT_K + 150 };
+  const limited = oxygenLimitedBurn(spec, state.interfaceM, state.upperK, 0.23, 0.12, 0.1, true);
+  assert.ok(limited.farUpperInKgS > 1, `far inflow ${limited.farUpperInKgS}`);
+  assert.ok(
+    limited.inKgS - limited.farUpperInKgS < 0.05,
+    'the inflow was not all from the neighbour layer',
+  );
+  const asFresh = oxygenLimitedBurn(spec, state.interfaceM, state.upperK, 0.23, 0.12, 0.1, false);
+  assert.ok(
+    asFresh.burn.burnedKw > 100,
+    `keeping the far inflow as fresh air only burned ${asFresh.burn.burnedKw.toFixed(0)} kW`,
+  );
+  const stepped = stepZone(state, spec, 0.1, 0, {
+    kgS: limited.farUpperInKgS,
+    tempK: 900,
+    oxygenY: 0.05,
+  });
+  assert.ok(
+    stepped.burnedFraction < 0.01,
+    `the flame burned ${(stepped.burnedFraction * 5000).toFixed(0)} kW on the neighbour layer`,
+  );
 });
 
 test('a hot neighbour on the door cuts the outflow', () => {
