@@ -63,6 +63,11 @@ interface Pair {
   rise?: boolean;
   /** MASS FLOW - is negative when gas moves in the negative coordinate direction. */
   negate?: boolean;
+  /**
+   * Record the FDS device only. Net flow and an inflow the zone series does
+   * not split per vent have no engine column to subtract.
+   */
+  fdsOnly?: boolean;
 }
 
 function reduceCase(
@@ -85,23 +90,34 @@ function reduceCase(
     if (!engine.rows.has(t) || !fdsDev.rows.has(t)) continue;
     const cells = [String(t)];
     for (const pair of pairs) {
-      const left =
-        pair.engine === 'HRR' ? col(engine, 'hrr_kW', t) : pair.engine === 'AMBIENT' ? 0 : col(engine, pair.engine, t);
       let fdsValue = pair.fds === 'HRR' ? col(fdsHrr, 'HRR', t) : col(fdsDev, pair.fds, t);
       if (pair.rise) fdsValue -= 20;
       if (pair.negate) fdsValue = -fdsValue;
-      const delta = fdsValue - left;
-      cells.push(fmt(left, pair.digits), fmt(fdsValue, pair.digits), fmt(delta, pair.digits));
-      if (t >= fromS && t <= toS) {
-        const bucket = deltas.get(pair.name) ?? [];
-        bucket.push(delta);
-        deltas.set(pair.name, bucket);
-        const e = engineMeans.get(pair.name) ?? [];
-        e.push(left);
-        engineMeans.set(pair.name, e);
-        const f = fdsMeans.get(pair.name) ?? [];
-        f.push(fdsValue);
-        fdsMeans.set(pair.name, f);
+      const inWindow = t >= fromS && t <= toS;
+      if (pair.fdsOnly) {
+        cells.push('', fmt(fdsValue, pair.digits), '');
+      } else {
+        const left =
+          pair.engine === 'HRR'
+            ? col(engine, 'hrr_kW', t)
+            : pair.engine === 'AMBIENT'
+              ? 0
+              : col(engine, pair.engine, t);
+        const delta = fdsValue - left;
+        cells.push(fmt(left, pair.digits), fmt(fdsValue, pair.digits), fmt(delta, pair.digits));
+        if (inWindow) {
+          const bucket = deltas.get(pair.name) ?? [];
+          bucket.push(delta);
+          deltas.set(pair.name, bucket);
+          const recorded = engineMeans.get(pair.name) ?? [];
+          recorded.push(left);
+          engineMeans.set(pair.name, recorded);
+        }
+      }
+      if (inWindow) {
+        const recorded = fdsMeans.get(pair.name) ?? [];
+        recorded.push(fdsValue);
+        fdsMeans.set(pair.name, recorded);
       }
     }
     lines.push(cells.join(','));
@@ -113,8 +129,8 @@ function reduceCase(
         pair.name,
         `engine ${fmt(mean(engineMeans.get(pair.name) ?? []), pair.digits)}`,
         `FDS ${fmt(mean(fdsMeans.get(pair.name) ?? []), pair.digits)}`,
-        `delta ${fmt(mean(d), pair.digits)}`,
-        `n ${d.length}`,
+        `delta ${pair.fdsOnly ? '' : fmt(mean(d), pair.digits)}`,
+        `n ${(fdsMeans.get(pair.name) ?? []).length}`,
       ].join(' | ');
     })
     .join('\n');
@@ -149,7 +165,13 @@ const pairs: Pair[] =
         { name: 'near_z_m', engine: 'mall_z_m', fds: 'near-z', digits: 3 },
         { name: 'near_rise_K', engine: 'mall_rise_K', fds: 'near-Tu', digits: 2, rise: true },
         { name: 'west_out_kg_s', engine: 'west_out_kg_s', fds: 'west-minus', digits: 3, negate: true },
+        { name: 'west_in_kg_s', engine: '', fds: 'west-plus', digits: 3, fdsOnly: true },
         { name: 'north_out_kg_s', engine: 'north_out_kg_s', fds: 'north-plus', digits: 3 },
+        { name: 'north_in_kg_s', engine: '', fds: 'north-minus', digits: 3, negate: true, fdsOnly: true },
+        // Signed net. Door +x is shop to mall, west −x is out of the shop, north +y is out of the mall.
+        { name: 'door_net_kg_s', engine: '', fds: 'door-net', digits: 3, fdsOnly: true },
+        { name: 'west_net_kg_s', engine: '', fds: 'west-net', digits: 3, fdsOnly: true },
+        { name: 'north_net_kg_s', engine: '', fds: 'north-net', digits: 3, fdsOnly: true },
       ]
     : [
         { name: 'fire_z_m', engine: 'fire_z_m', fds: 'fire-z', digits: 3 },

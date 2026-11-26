@@ -44,5 +44,8 @@
 &DEVC XB=0.0,0.0,19.2,21.2,0.0,2.0, QUANTITY='MASS FLOW -', ID='west-minus' /
 &DEVC XB=29.2,31.2,40.0,40.0,0.0,2.0, QUANTITY='MASS FLOW +', ID='north-plus' /
 &DEVC XB=29.2,31.2,40.0,40.0,0.0,2.0, QUANTITY='MASS FLOW -', ID='north-minus' /
+&DEVC XB=22.0,22.0,19.2,20.8,0.0,2.0, QUANTITY='MASS FLOW', ID='door-net' /
+&DEVC XB=0.0,0.0,19.2,21.2,0.0,2.0, QUANTITY='MASS FLOW', ID='west-net' /
+&DEVC XB=29.2,31.2,40.0,40.0,0.0,2.0, QUANTITY='MASS FLOW', ID='north-net' /
 
 &TAIL /

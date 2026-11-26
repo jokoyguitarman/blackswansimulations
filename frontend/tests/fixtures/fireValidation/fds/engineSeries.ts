@@ -237,9 +237,10 @@ function harbourSpecs(qKw: number, shop: Gauge, mall: Gauge): { shop: LayerSpec;
       boundaries: [
         { areaM2: mallArea, lining: concrete },
         { areaM2: mallArea, lining: concrete },
+        // East wall, 40 m, no opening. South wall, 18 m. North wall, 18 m minus the 2 × 2 m exit.
         { areaM2: 40 * 4, lining: concrete },
         { areaM2: 18 * 4, lining: concrete },
-        { areaM2: 40 * 4 - 4, lining: concrete },
+        { areaM2: 18 * 4 - 4, lining: concrete },
         { areaM2: 8 * 4, lining: gypsum },
         { areaM2: 32 * 4 - 3.2, lining: gypsum },
       ],
