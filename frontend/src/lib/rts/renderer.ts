@@ -742,7 +742,11 @@ const classicShade: {
   shade: LayerShade;
 } = { layers: null, studs: null, first: undefined, shade: createLayerShade(0) };
 
-/** Flat room tint for the classic field, rebuilt when the layers or the stud list change. */
+/**
+ * Room tint for the classic field, rebuilt when the layers or the stud list
+ * change. A new layers array comes with each effects step, so the fire states
+ * it darkens against are that step's.
+ */
 function classicLayerShade(fx: ShowcaseRenderFx): LayerShade | null {
   const layers = fx.hazardFx?.ctx.layers ?? null;
   if (!layers || layers.length === 0) return null;
@@ -765,7 +769,7 @@ function classicLayerShade(fx: ShowcaseRenderFx): LayerShade | null {
     ys[i] = studs[i].simPos.y;
   }
   if (cache.shade.alpha.length !== n) cache.shade = createLayerShade(n);
-  shadeLayers(indexOf, xs, ys, layers, null, cache.shade, false);
+  shadeLayers(indexOf, xs, ys, layers, fx.effectStates, cache.shade);
   cache.layers = layers;
   cache.studs = studs;
   cache.first = studs[0]?.id;
@@ -777,7 +781,8 @@ function drawHazardField(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: S
   if (!states) return;
   const size = mToCanvas(fx.cellM, rc);
   // All smoke goes down before any fire, so a later stud's smoke square
-  // cannot cover an earlier stud's fire. Colours match the animated overlay.
+  // cannot cover an earlier stud's fire. Colours, including the darkening by
+  // the fire, match the animated overlay; only the noise drift is missing.
   const shade = classicLayerShade(fx);
   for (let i = 0; i < fx.hazardStuds.length; i++) {
     const stud = fx.hazardStuds[i];

@@ -33,6 +33,14 @@ import { harbourCrowdAt } from './scenes/harbourCrowd.ts';
 import { sceneHash } from './scenes/hash.ts';
 import { crowdState, effectsState } from './scenes/stateHash.ts';
 
+test('reading smokeLayers() leaves a stepped Harbour state unchanged', { timeout: 120_000 }, () => {
+  const run = harbourCrowdAt(80);
+  const before = sceneHash(effectsState(run.effects));
+  const layers = run.effects.smokeLayers();
+  assert.ok(layers.length > 0, 'a layer has formed by T+80');
+  assert.equal(sceneHash(effectsState(run.effects)), before);
+});
+
 test(
   'food-court T+15 state and a 15 s Harbour crowd hash the same twice',
   { timeout: 60_000 },

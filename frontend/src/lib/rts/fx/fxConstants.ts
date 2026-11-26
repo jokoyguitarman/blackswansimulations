@@ -5,14 +5,22 @@
 export const FX = {
   SMOKE_ALPHA_MIN: 0.15,
   SMOKE_ALPHA_MAX: 0.8,
-  /** Faintest tint of a room that has a layer at all. */
+  /**
+   * Faintest tint of a room that has a layer at all. A display floor so a
+   * forming layer is visible: it is not soot density, and a nearly clean
+   * layer reads the same as one with a little soot.
+   */
   LAYER_ALPHA_MIN: 0.18,
   LAYER_ALPHA_MAX: 0.85,
   /** Share of the layer tint a thin layer keeps before the room fills. */
   LAYER_FILL_FLOOR: 0.6,
   /** Upper-layer rise above ambient that reads fully hot. */
   LAYER_HOT_RISE_K: 600,
-  /** Smoke within this of a burning stud is fully dark: one stud spacing. */
+  /**
+   * Smoke within this of a burning stud is fully dark: one stud spacing.
+   * Distance to fire is a display cue, not layer state. A clean hot layer
+   * beside a fire reads dark, and a sooty layer far from one reads pale.
+   */
   LAYER_NEAR_FIRE_CORE_M: 3,
   /** Past the core, darkening falls to 1/e over this distance. */
   LAYER_NEAR_FIRE_M: 4,
