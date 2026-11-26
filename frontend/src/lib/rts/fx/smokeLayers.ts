@@ -18,7 +18,7 @@ export function createLayerShade(n: number): LayerShade {
 /**
  * Looking down through a layer of depth d and extinction K lets through
  * exp(-K d) of the floor, so 1 - exp(-K d) is how much of the room is hidden.
- * Fuller rooms read heavier, and the gas over a burning stud reads darker.
+ * Fuller rooms read heavier, and the gas near a burning stud reads darker.
  */
 export function shadeLayers(
   indexOf: ReadonlyMap<string, number>,
@@ -33,8 +33,17 @@ export function shadeLayers(
   out.dark.fill(0);
   out.count = 0;
   if (!layers || layers.length === 0) return out;
+  // Every burning stud on the storey, so the side of a neighbouring room by the fire reads darker too.
   const burnX: number[] = [];
   const burnY: number[] = [];
+  if (nearFire && states) {
+    for (const [id, i] of indexOf) {
+      if (states.get(id)?.fire.state !== 'burning') continue;
+      burnX.push(xs[i]);
+      burnY.push(ys[i]);
+    }
+  }
+  const stride = Math.max(1, Math.ceil(burnX.length / FX.LAYER_FIRE_SAMPLES));
   const falloff = FX.LAYER_NEAR_FIRE_M;
   for (const layer of layers) {
     const depth = layer.depthM > 0 ? layer.depthM : 0;
@@ -47,18 +56,6 @@ export function shadeLayers(
       FX.LAYER_ALPHA_MAX * optical * (FX.LAYER_FILL_FLOOR + (1 - FX.LAYER_FILL_FLOOR) * fill),
     );
     const hot = Math.max(0, Math.min(1, (layer.upperK - 293) / FX.LAYER_HOT_RISE_K));
-    burnX.length = 0;
-    burnY.length = 0;
-    if (nearFire && states) {
-      for (const id of layer.members) {
-        if (states.get(id)?.fire.state !== 'burning') continue;
-        const i = indexOf.get(id);
-        if (i == null) continue;
-        burnX.push(xs[i]);
-        burnY.push(ys[i]);
-      }
-    }
-    const stride = Math.max(1, Math.ceil(burnX.length / FX.LAYER_FIRE_SAMPLES));
     for (const id of layer.members) {
       const i = indexOf.get(id);
       if (i == null) continue;
@@ -73,22 +70,25 @@ export function shadeLayers(
           const d2 = dx * dx + dy * dy;
           if (d2 < best) best = d2;
         }
-        near = Math.exp(-Math.sqrt(best) / falloff);
+        near = Math.exp(-Math.max(0, Math.sqrt(best) - FX.LAYER_NEAR_FIRE_CORE_M) / falloff);
       }
       const a = base + (FX.LAYER_ALPHA_MAX - base) * 0.6 * near;
       if (a > out.alpha[i]) {
         if (out.alpha[i] === 0) out.count++;
         out.alpha[i] = a;
-        out.dark[i] = Math.min(1, 0.05 + 0.25 * fill + 0.2 * hot + 0.6 * near);
+        out.dark[i] = Math.min(1, 0.1 * fill + 0.15 * hot + 0.85 * near);
       }
     }
   }
   return out;
 }
 
-/** Pale haze to charcoal. The floor underneath is dark navy, so thin smoke has to be light to read. */
+/**
+ * Pale haze to charcoal. The building floor draws as mid grey, so the far
+ * smoke stays light and only the smoke by the fire goes dark.
+ */
 export function layerRgb(dark: number, channel: 0 | 1 | 2): number {
-  const from = channel === 0 ? 196 : channel === 1 ? 200 : 208;
-  const to = channel === 0 ? 46 : channel === 1 ? 42 : 40;
+  const from = channel === 0 ? 206 : channel === 1 ? 209 : 216;
+  const to = channel === 0 ? 32 : channel === 1 ? 29 : 28;
   return from + (to - from) * dark;
 }

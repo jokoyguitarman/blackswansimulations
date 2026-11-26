@@ -22,6 +22,8 @@ import type { Bounds } from '../evacuation/geometry';
 import { getIcon, preloadIcons, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
 import type { HazardFxContext, HazardFxRenderer } from './fx/drawHazardFx';
 import { createLayerShade, layerRgb, shadeLayers, type LayerShade } from './fx/smokeLayers';
+import { FX } from './fx/fxConstants';
+import { smokeRgb } from './fx/hazardRaster';
 import type { SmokeLayerView } from './spatialEffects';
 
 export interface RenderContext {
@@ -774,23 +776,40 @@ function drawHazardField(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: S
   const states = fx.effectStates;
   if (!states) return;
   const size = mToCanvas(fx.cellM, rc);
+  // All smoke goes down before any fire, so a later stud's smoke square
+  // cannot cover an earlier stud's fire. Colours match the animated overlay.
   const shade = classicLayerShade(fx);
   for (let i = 0; i < fx.hazardStuds.length; i++) {
     const stud = fx.hazardStuds[i];
+    const d = states.get(stud.id)?.smoke ?? 0;
+    const h = d >= 0.05 ? headSmoke(d) : 0;
+    const ha = d >= 0.05 ? FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h : 0;
+    const la = shade ? shade.alpha[i] : 0;
+    let a = ha;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (shade && la > 0) {
+      const dk = shade.dark[i] + (1 - shade.dark[i]) * FX.LAYER_HEAD_DARKEN * h;
+      r = layerRgb(dk, 0);
+      g = layerRgb(dk, 1);
+      b = layerRgb(dk, 2);
+      a = 1 - (1 - ha) * (1 - la);
+    } else if (ha > 0) {
+      r = smokeRgb(h, 0);
+      g = smokeRgb(h, 1);
+      b = smokeRgb(h, 2);
+    } else {
+      continue;
+    }
+    const c = toCanvas(stud.simPos.x, stud.simPos.y, rc);
+    ctx.fillStyle = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a.toFixed(3)})`;
+    ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+  }
+  for (const stud of fx.hazardStuds) {
     const st = states.get(stud.id);
     if (!st) continue;
     const c = toCanvas(stud.simPos.x, stud.simPos.y, rc);
-    const la = shade ? shade.alpha[i] : 0;
-    if (shade && la > 0) {
-      const dk = shade.dark[i];
-      ctx.fillStyle = `rgba(${Math.round(layerRgb(dk, 0))}, ${Math.round(layerRgb(dk, 1))}, ${Math.round(layerRgb(dk, 2))}, ${la.toFixed(3)})`;
-      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
-    }
-    const d = st.smoke ?? 0;
-    if (d >= 0.05) {
-      ctx.fillStyle = `rgba(90, 90, 100, ${0.15 + 0.65 * headSmoke(d)})`;
-      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
-    }
     if (st.wet) {
       ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
       ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);

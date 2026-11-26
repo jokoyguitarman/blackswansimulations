@@ -182,9 +182,10 @@ export function activeRasterLayout(
   return cache.byLevel?.get(rasterStoreyId(activeLevel)) ?? null;
 }
 
-function smokeRgb(h: number, channel: 0 | 1 | 2): number {
-  const from = channel === 2 ? 176 : 166;
-  const to = channel === 2 ? 62 : 56;
+/** Stays lighter than the building floor at every density, so thick smoke never blends into it. */
+export function smokeRgb(h: number, channel: 0 | 1 | 2): number {
+  const from = channel === 2 ? 210 : 200;
+  const to = channel === 2 ? 138 : 128;
   return Math.round(from + (to - from) * h);
 }
 
@@ -210,8 +211,9 @@ export function writeSmokeRGBA(
     let r = 0;
     let g = 0;
     let b = 0;
+    let h = 0;
     if (d >= 0.05) {
-      const h = headSmoke(d);
+      h = headSmoke(d);
       a = Math.round(255 * (FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h));
       r = smokeRgb(h, 0);
       g = smokeRgb(h, 1);
@@ -219,15 +221,14 @@ export function writeSmokeRGBA(
     }
     const la = withLayer ? layer.alpha[i] : 0;
     if (layer && la > 0) {
-      // Head-height smoke over the layer tint, as straight alpha.
+      // Head-height smoke is the same layer once it has come down, so it
+      // thickens the room tint instead of painting its own colour over it.
       const ha = a / 255;
-      const lw = la * (1 - ha);
-      const sum = ha + lw;
-      const dk = layer.dark[i];
-      r = Math.round((r * ha + layerRgb(dk, 0) * lw) / sum);
-      g = Math.round((g * ha + layerRgb(dk, 1) * lw) / sum);
-      b = Math.round((b * ha + layerRgb(dk, 2) * lw) / sum);
-      a = Math.round(255 * sum);
+      const dk = layer.dark[i] + (1 - layer.dark[i]) * FX.LAYER_HEAD_DARKEN * h;
+      r = Math.round(layerRgb(dk, 0));
+      g = Math.round(layerRgb(dk, 1));
+      b = Math.round(layerRgb(dk, 2));
+      a = Math.round(255 * (1 - (1 - ha) * (1 - la)));
     }
     if (a > 0 && cover) cover.smoke++;
     const o = p * 4;

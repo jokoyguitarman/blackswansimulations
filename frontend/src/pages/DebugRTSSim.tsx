@@ -2681,10 +2681,11 @@ export function DebugRTSSim() {
             const fxMs = classic ? 0 : (stats?.ms ?? 0);
             const embers = classic ? 0 : (stats?.embers ?? 0);
             const collisions = rasterLayoutRef.current?.collisions ?? 0;
+            const layers = hazardFxCtxRef.current.layers?.length ?? 0;
             const label =
               collisions > 0
-                ? `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current} · collisions ${collisions}`
-                : `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current}`;
+                ? `fx ${fxMs.toFixed(2)} · embers ${embers} · layers ${layers} · quality ${fxQualityRef.current} · collisions ${collisions}`
+                : `fx ${fxMs.toFixed(2)} · embers ${embers} · layers ${layers} · quality ${fxQualityRef.current}`;
             ctx.save();
             ctx.font = '12px monospace';
             ctx.textAlign = 'right';

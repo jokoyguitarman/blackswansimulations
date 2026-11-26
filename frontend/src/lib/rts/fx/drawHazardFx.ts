@@ -120,7 +120,6 @@ export class HazardFxRenderer {
   private layerShade: LayerShade = createLayerShade(0);
   private shadedLayers: readonly SmokeLayerView[] | null | undefined = undefined;
   private shadedLayout: RasterLayout | null = null;
-  private shadedNearFire = false;
   /** The next upload replaces the whole raster. Set when the storey layout changes. */
   private forceUpload = false;
   private cols = 0;
@@ -276,25 +275,17 @@ export class HazardFxRenderer {
     this.halfFire.height = hh;
   }
 
-  /** Low quality skips the darkening near the fire. */
+  /** Runs once per effects step, not per frame: a new layers array is the signal. */
   private shade(
     layout: RasterLayout,
     states: ReadonlyMap<string, { fire: { state: string } }>,
     fx: HazardFxContext,
   ): void {
     const layers = fx.layers ?? null;
-    const nearFire = fx.quality === 'high';
-    if (
-      this.shadedLayers === layers &&
-      this.shadedLayout === layout &&
-      this.shadedNearFire === nearFire
-    ) {
-      return;
-    }
+    if (this.shadedLayers === layers && this.shadedLayout === layout) return;
     this.shadedLayers = layers;
     this.shadedLayout = layout;
-    this.shadedNearFire = nearFire;
-    shadeLayers(this.studIndex, layout.xs, layout.ys, layers, states, this.layerShade, nearFire);
+    shadeLayers(this.studIndex, layout.xs, layout.ys, layers, states, this.layerShade);
   }
 
   private writeRasters(
