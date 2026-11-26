@@ -8,21 +8,22 @@
  * 22.1 MW. The tile mall at T+300 is 2.07 m and 79.4 K. It is 1.82 m at
  * T+330 and 1.60 m at T+360, so head height falls in that half-minute.
  * At T+600 the interface is 0.81 m and the rise is 58.5 K, still above
- * the floor, with the mall empty of people. Heat is a separate ISO
- * 13571 dose. Four people are down from it by T+180, in both crowds,
- * and fume downs stay 0. Open at T+300 is 99 out and 13 down. The
- * blocked exit lets 79 people out by T+300. A mall fuel stock of 0 kg
- * before about T+376 means the spill burned the fuel the shop jet has
- * carried since about T+159. It does not mean the jet was clean. Soot
- * and gas use the same φ ≤ 2 pyrolysis. Late mean smoke is 0.835 open
- * and 0.840 blocked. The highest asphyxiant FED still inside is 0.029
- * open and 0.042 blocked, and the highest heat FED is 1.001.
- * Known gap: those gas concentrations come from the visibility-capped
- * extinction (K ≤ 6.1 /m), so the asphyxiant FED is under-stated in
- * smoke denser than that. At the Harbour shop the layer soot is
- * 13.9 /m at T+170 and 17.7 /m at T+180. Reading the gases from that
- * soot raises the dose rate 5.8× and 25×, with HCN dominating. The
- * T+300 smoke strings are unchanged.
+ * the floor. Heat is a separate ISO 13571 dose. Four people are down
+ * from it by T+180, in both crowds. Gas concentration is the soot mass
+ * on the stud: the layer's grams over the upper-layer volume, or the
+ * column extinction, including soot past 6.1 per metre. The smoke
+ * number still saturates there, and walking and sight use that number.
+ * Open outs are 64, 93, 99 and 101 at T+180, T+240, T+300 and T+600,
+ * with 13 down, fume downs at 0, and 19 still inside. The highest
+ * asphyxiant FED still inside is 0.098 and the highest heat FED is
+ * 1.001. Late mean smoke is 0.837. The blocked crowd lets 41, 52 and
+ * 82 people out at the first three marks, and 100 by T+600, with 14
+ * down and 20 still inside. One person is in the mall with asphyxiant
+ * FED 1.001. Heat downs stay 4. Late mean smoke is 0.843. Mean smoke
+ * at T+180, T+240 and T+300 is 0.424, 0.451 and 0.443 in both crowds.
+ * A mall fuel stock of 0 kg before about T+376 means the spill burned
+ * the fuel the shop jet has carried since about T+159. It does not mean
+ * the jet was clean. Soot and gas use the same φ ≤ 2 pyrolysis.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';

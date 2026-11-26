@@ -74,7 +74,7 @@ import { LEVEL } from '../evacuation/levelConstants';
 import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
 import {
   addFumeGrams,
-  fumesFromSmoke,
+  fumesFromExtinction,
   fumesPresent,
   layerBreath,
   SOOT_EXTINCTION_M2_PER_G,
@@ -1516,11 +1516,9 @@ export class SpatialEffectsEngine {
     zone: ZoneState,
     areaM2: number,
     ceilingM: number,
-    kMax: number,
   ): void {
     const volume = Math.max(areaM2 * ceilingM, 1e-6);
-    let k = (SOOT_EXTINCTION_M2_PER_G * zone.sootG) / volume;
-    if (k > kMax) k = kMax;
+    const k = (SOOT_EXTINCTION_M2_PER_G * zone.sootG) / volume;
     for (const id of members) this.sootK.set(id, k);
     // The grams now live in the columns. Leaving them on the layer would
     // add them a second time if the ceiling fills again.
@@ -2065,7 +2063,7 @@ export class SpatialEffectsEngine {
     return withRememberedSheets(zone, boundaries, this.rememberedSheets());
   }
 
-  private stepLayers(dt: number, walls: InteriorWall[], kMax: number): Set<string> {
+  private stepLayers(dt: number, walls: InteriorWall[]): Set<string> {
     this.claimedSheets.clear();
     this.droppedSheets.clear();
     const owned = new Set<string>();
@@ -2142,7 +2140,7 @@ export class SpatialEffectsEngine {
       const prev = this.layerState.get(room);
       const retire = () => {
         if (!prev?.active) return;
-        this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM, kMax);
+        this.dumpLayer(prev.members, prev.zone, prev.areaM2, prev.ceilingM);
         prev.active = false;
       };
       // No fire, no door jet, and no combustible lining: the enclosure
@@ -2375,7 +2373,7 @@ export class SpatialEffectsEngine {
 
     for (const [room, live] of this.layerState) {
       if (seen.has(room) || !live.active) continue;
-      this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM, kMax);
+      this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM);
       live.active = false;
     }
     this.commitGlass(dt);
@@ -2383,7 +2381,7 @@ export class SpatialEffectsEngine {
   }
 
   /** Write the layer onto heads that have reached it, and hand vented soot to the next stud. */
-  private commitLayers(owned: ReadonlySet<string>, kMax: number, touch: Set<string>): void {
+  private commitLayers(owned: ReadonlySet<string>, touch: Set<string>): void {
     for (const id of this.breathIds) {
       const state = this.studStates.get(id);
       if (!state) continue;
@@ -2405,8 +2403,7 @@ export class SpatialEffectsEngine {
           continue;
         }
         const volume = Math.max(this.columnVolume(id), 1e-6);
-        let k = (this.sootK.get(id) ?? 0) + (SOOT_EXTINCTION_M2_PER_G * each) / volume;
-        if (k > kMax) k = kMax;
+        const k = (this.sootK.get(id) ?? 0) + (SOOT_EXTINCTION_M2_PER_G * each) / volume;
         this.sootK.set(id, k);
       }
     }
@@ -2417,8 +2414,7 @@ export class SpatialEffectsEngine {
       if (extra > 0) live.zone.sootG += extra;
       const depth = Math.max(0.02, live.ceilingM - live.zone.interfaceM);
       const upper = Math.max(live.areaM2 * depth, 1e-6);
-      let k = (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / upper;
-      if (k > kMax) k = kMax;
+      const k = (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / upper;
       const atHead = live.zone.interfaceM <= HEAD_HEIGHT_M;
       const breath = layerBreath(
         oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
@@ -2431,10 +2427,12 @@ export class SpatialEffectsEngine {
         // Above the head the person is in the lower layer. A jet-formed
         // layer leaves the soot that was already there. A fire-driven
         // layer still clears the column: it forms before that soot exists.
-        // Crossing 1.7 m sets the stud to the layer extinction, capped at
-        // the smoke scale. A layer that is already optically thick then
-        // steps the reading to the cap in one frame. That is the sharp
-        // interface, not a mixing time. See the FV-4 note.
+        // Crossing 1.7 m sets the stud to the layer's soot extinction.
+        // The smoke number, written after this, saturates at the visibility
+        // scale. The extinction kept here does not: the gas dose reads it.
+        // A layer that is already optically thick steps the smoke number
+        // to the cap in one frame. That is the sharp interface, not a
+        // mixing time. See the FV-4 note.
         if (atHead && k > 0) this.sootK.set(id, k);
         else if (atHead || !this.jetLowerStuds.has(id)) this.sootK.delete(id);
         const state = this.studStates.get(id);
@@ -2471,10 +2469,13 @@ export class SpatialEffectsEngine {
       if (!state) continue;
       const total = extinctionK(state.smoke);
       let soot = this.sootK.get(id) ?? 0;
-      if (soot > total) soot = total;
+      // Below the visibility cap the smoke number is the whole reading, so a
+      // lower number lowers the column too. Past the cap the number has
+      // saturated and the extra soot stays.
+      if (soot <= kMax && soot > total) soot = total;
       if (!(soot > 0)) this.sootK.delete(id);
       else this.sootK.set(id, soot);
-      const event = smokeFromK(Math.max(0, total - soot));
+      const event = smokeFromK(Math.max(0, total - Math.min(soot, kMax)));
       if (event > 0) eventD.set(id, event);
     }
 
@@ -2510,7 +2511,7 @@ export class SpatialEffectsEngine {
     // IMC flow from its own column. A stud inside a fire-driven layer is
     // cleared: the layer holds that soot. A jet-formed layer keeps soot
     // that was already at head height and leaks it at the usual rate.
-    const owned = this.stepLayers(dt, walls, kMax);
+    const owned = this.stepLayers(dt, walls);
     const extractM3 = new Map<string, number>();
     for (const id of this.fireSim.hoodColumns(this.hoodFanWhen)) {
       if (owned.has(id)) continue;
@@ -2541,34 +2542,27 @@ export class SpatialEffectsEngine {
       const leak = SMOKE_LEAK_PER_S * (outdoor ? SMOKE_OUTDOOR_VENT_FACTOR : 1);
       const flow = extractM3.get(id) ?? 0;
       const vent = leak + (flow > 0 ? flow / volume : 0);
-      let k = advanceSootK(this.sootK.get(id) ?? 0, generation, vent, dt);
-      if (k > kMax) k = kMax;
+      const k = advanceSootK(this.sootK.get(id) ?? 0, generation, vent, dt);
       if (k > 0) this.sootK.set(id, k);
       else this.sootK.delete(id);
     }
 
     // What leaves a stud is taken off it, in each reservoir.
     this.moveSmoke(eventD, 1, dt, walls, undefined, touch);
-    this.moveSmoke(this.sootK, kMax, dt, walls, owned, touch);
-    this.commitLayers(owned, kMax, touch);
+    // The soot inventory is not the visibility scale. Sight saturates later,
+    // when the smoke number is written.
+    this.moveSmoke(this.sootK, Number.POSITIVE_INFINITY, dt, walls, owned, touch);
+    this.commitLayers(owned, touch);
     for (const id of this.sootK.keys()) touch.add(id);
 
     const next: string[] = [];
     for (const id of touch) {
       const state = this.studStates.get(id);
       if (!state) continue;
-      let soot = this.sootK.get(id) ?? 0;
-      let eventK = extinctionK(eventD.get(id) ?? 0);
-      const sum = soot + eventK;
-      if (sum > kMax && sum > 0) {
-        const scale = kMax / sum;
-        soot *= scale;
-        eventK *= scale;
-        if (soot > 0) this.sootK.set(id, soot);
-        else this.sootK.delete(id);
-      }
+      const soot = this.sootK.get(id) ?? 0;
+      const eventK = extinctionK(eventD.get(id) ?? 0);
       state.smoke = smokeFromK(Math.min(kMax, soot + eventK));
-      if (state.smoke > 0 || (this.sootK.get(id) ?? 0) > 0) next.push(id);
+      if (state.smoke > 0 || soot > 0) next.push(id);
     }
     this.liveSmoke = next;
   }
@@ -2779,8 +2773,8 @@ export class SpatialEffectsEngine {
   }
 
   /**
-   * Read the gases off the smoke already on each stud. The production of the
-   * fires whose smoke has reached it only splits that soot among species.
+   * Read the gases off the soot mass already on each stud. The production of
+   * the fires whose smoke has reached it only splits that soot among species.
    * A solid wall stops the walk, and so does the outside wall away from an
    * exit. A door gap does not. Another storey is
    * reached only up a shaft, and only where smoke has risen. Nothing burning
@@ -2921,7 +2915,7 @@ export class SpatialEffectsEngine {
     for (const [id, bucket] of totals) {
       const state = this.studStates.get(id);
       if (!state || !(state.smoke > 0)) continue;
-      const ppm = fumesFromSmoke(state.smoke, bucket.grams, bucket.soot);
+      const ppm = fumesFromExtinction(this.sootK.get(id) ?? 0, bucket.grams, bucket.soot);
       let any = false;
       for (const value of Object.values(ppm)) {
         if (value != null && value > 0) any = true;

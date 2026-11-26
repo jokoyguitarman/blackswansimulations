@@ -64,6 +64,7 @@ import {
   fedIncapacitates,
   co2Hyperventilation,
   fedPerMin,
+  fumesFromExtinction,
   fumesFromSmoke,
   O2_AMBIENT_VOLUME_PERCENT,
   oxygenFedPerMin,
@@ -313,6 +314,90 @@ describe('smoke carries the gases', () => {
     assert.ok(Math.abs((far.fumes?.CO ?? 0) - (farExpected.CO ?? 0)) < 1e-6);
     assert.ok((far.fumes?.CO ?? 0) > 0);
     assert.ok((far.fumes?.CO ?? 0) < (state.fumes?.CO ?? 0));
+  });
+
+  test('a column past the visibility cap keeps that soot in the gas dose', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0)]);
+    engine.setStoreyHeights({ G: 4 });
+    engine.setFuelCells(
+      new Map([
+        ['a', { ...WOOD, alphaKwS2: 5, spreadMPerMin: 0, fuelLoadKgM2: 40, sootYieldGPerG: 0.15 }],
+      ]),
+    );
+    const sim = engine as unknown as { fireSim: FireSimulation; sootK: Map<string, number> };
+    sim.fireSim.ignite(['a']);
+    const cap = extinctionK(1);
+    let t = 0;
+    while ((sim.sootK.get('a') ?? 0) <= cap * 2 && t < 90) {
+      engine.step(1, [], []);
+      t += 1;
+    }
+    const k = sim.sootK.get('a') ?? 0;
+    assert.ok(t < 90 && k > cap * 2, `column extinction stayed at ${k}`);
+    const state = engine.studStates.get('a');
+    const source = engine.fumeSources()[0];
+    assert.ok(state && source);
+    assert.ok((state.smoke ?? 0) > 0.99 && (state.smoke ?? 0) <= 1, `smoke ${state.smoke}`);
+    const capped = fumesFromSmoke(state.smoke ?? 0, source.gramsPerS, source.sootGPerS);
+    const physical = fumesFromExtinction(k, source.gramsPerS, source.sootGPerS);
+    assert.ok((physical.CO ?? 0) > (capped.CO ?? 0) * 1.5, `physical ${physical.CO}`);
+    assert.ok(
+      Math.abs((state.fumes?.CO ?? 0) - (physical.CO ?? 0)) < 1e-6,
+      `dose ${state.fumes?.CO} vs soot ${physical.CO}`,
+    );
+    assert.ok((state.fumes?.CO ?? 0) > (capped.CO ?? 0) * 1.5, `dose stayed on the cap`);
+  });
+
+  test('a layer denser than the visibility cap doses from its soot mass', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0), stud('b', 3, 0), stud('out', 6, 0)]);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(
+      new Map([
+        ['a', { ...WOOD, alphaKwS2: 2, spreadMPerMin: 0, fuelLoadKgM2: 40, sootYieldGPerG: 0.1 }],
+      ]),
+    );
+    const walls = [
+      wall(-1.5, 1.5, 4.5, 1.5),
+      wall(-1.5, -1.5, 4.5, -1.5),
+      wall(-1.5, -1.5, -1.5, 1.5),
+      wall(4.5, -1.5, 4.5, 1.5, true),
+    ];
+    const sim = engine as unknown as {
+      fireSim: FireSimulation;
+      sootK: Map<string, number>;
+      layerState: Map<
+        string,
+        { active: boolean; zone: { interfaceM: number; sootG: number }; members: string[] }
+      >;
+    };
+    sim.fireSim.ignite(['a']);
+    let live: { zone: { interfaceM: number; sootG: number } } | undefined;
+    for (let t = 0; t < 180 && !live; t++) {
+      engine.step(1, walls, []);
+      live = [...sim.layerState.values()].find(
+        (row) => row.active && row.zone.interfaceM <= HEAD_HEIGHT_M,
+      );
+    }
+    assert.ok(live, 'the layer never reached the head');
+    live.zone.sootG = 4000;
+    engine.step(1, walls, []);
+    const k = sim.sootK.get('a') ?? 0;
+    const cap = extinctionK(1);
+    assert.ok(k > cap * 2, `layer extinction ${k}`);
+    const state = engine.studStates.get('a');
+    const source = sim.fireSim.fumeSources()[0];
+    assert.ok(state && source);
+    assert.ok((state.smoke ?? 0) > 0.99 && (state.smoke ?? 0) <= 1, `smoke ${state.smoke}`);
+    const capped = fumesFromSmoke(1, source.gramsPerS, source.sootGPerS);
+    const physical = fumesFromExtinction(k, source.gramsPerS, source.sootGPerS);
+    assert.ok((physical.CO ?? 0) > (capped.CO ?? 0) * 2, `physical ${physical.CO}`);
+    assert.ok(
+      Math.abs((state.fumes?.CO ?? 0) - (physical.CO ?? 0)) < 1e-4,
+      `dose ${state.fumes?.CO} vs layer soot ${physical.CO}`,
+    );
+    assert.ok((state.fumes?.CO ?? 0) > (capped.CO ?? 0) * 2, `dose stayed on the cap`);
   });
 
   test('a sustained fire fills its room and reaches a stud 10 m away', () => {
