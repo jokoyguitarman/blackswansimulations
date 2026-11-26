@@ -35,6 +35,8 @@ import {
   WET_CHEMICAL_RTI,
   addIgnitionDose,
   burnoutSec,
+  fuelEnergyKj,
+  releaseEnergyKj,
   advanceSprinklerLink,
   ceilingJet,
   electricalHeatReleaseKw,
@@ -182,6 +184,11 @@ interface BurnRuntime {
    * that limit before it reads the soot.
    */
   pyrolysis?: number;
+  /**
+   * Kilojoules of the fuel load not yet pyrolysed. Absent when the cell has
+   * no load to integrate, and the free-burn clock is used instead.
+   */
+  fuelKj?: number;
 }
 
 interface HeatSlot {
@@ -461,7 +468,18 @@ export class FireSimulation {
     state.fuelFactor = 1;
     state.approach = 1;
     state.dose = 1;
-    if (!this.burn.has(id)) this.burn.set(id, { age: 0, qAct: null, suppressAge: 0 });
+    if (!this.burn.has(id)) this.burn.set(id, this.freshBurn(cell));
+  }
+
+  /** Fuel ledger for a stud that just caught. The load is the free-burn integral. */
+  private freshBurn(cell: FuelCell): BurnRuntime {
+    const load = fuelEnergyKj(cell);
+    return {
+      age: 0,
+      qAct: null,
+      suppressAge: 0,
+      fuelKj: load > 0 && cell.alphaKwS2 > 0 ? load : undefined,
+    };
   }
 
   ignite(studIds: string[]) {
@@ -908,10 +926,9 @@ export class FireSimulation {
       if (!fState || fState.state !== 'burning') continue;
       meta.age += dt;
       // Age still walks the prescribed curve, so the αt² demand and the
-      // flame-front reach are not slowed. The fuel timer is that schedule
-      // in seconds, and a second of it is spent only as the pyrolysed share.
-      // While the stud is still on the t² rise, one second of the schedule
-      // is not a constant power.
+      // flame-front reach are not slowed. The fuel ledger spends the capped
+      // pyrolysis in kilojoules against the load at every φ. At φ ≤ 2 that
+      // integral is the free-burn clock.
       const pyro = pyrolysisFraction(this.burnPhi(id));
       meta.pyrolysis = pyro;
       const heatKw = this.releaseKw(cell, meta) * this.burnFraction(id);
@@ -919,9 +936,21 @@ export class FireSimulation {
       fState.output = bare > 0 ? Math.min(1, heatKw / bare) : 1;
       const room = this.compartmentOf.get(id);
       if (room) roomHeat.set(room, (roomHeat.get(room) ?? 0) + heatKw);
+      if (meta.fuelKj != null) {
+        const spent =
+          meta.qAct != null
+            ? this.releaseKw(cell, meta) * pyro * dt
+            : releaseEnergyKj(cell, meta.age - dt, meta.age) * pyro;
+        meta.fuelKj -= spent;
+      }
       fState.timer -= dt * pyro;
       fState.approach = 1;
-      if (fState.timer <= 0) {
+      // The ledger ends the stud at every φ. Schedule seconds run long on
+      // the αt² rise, and handing burnout back to that clock once φ falls
+      // to 2 would keep burning after the load is gone.
+      const fuelKj = meta.fuelKj;
+      const onLedger = fuelKj != null;
+      if (onLedger ? fuelKj <= 0 : fState.timer <= 0) {
         fState.state = 'burnt_out';
         fState.timer = 0;
         fState.approach = 0;
@@ -1094,12 +1123,13 @@ export class FireSimulation {
       if (state.state !== 'burning') continue;
       const stud = this.studIndex.get(id);
       if (!stud) continue;
+      const cell = this.burningCell(id);
       let meta = this.burn.get(id);
       if (!meta) {
-        meta = { age: 0, qAct: null, suppressAge: 0 };
+        meta = this.freshBurn(cell);
         this.burn.set(id, meta);
       }
-      fires.push({ id, stud, cell: this.burningCell(id), meta });
+      fires.push({ id, stud, cell, meta });
     }
     return fires;
   }
