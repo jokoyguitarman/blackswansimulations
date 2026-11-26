@@ -136,10 +136,10 @@ const nbsDoor = { widthM: 0.81, sillM: 0, soffitM: 1.6 };
  * 1.02 m × 1.03 m × 2.00 m, Marinite walls and ceiling, gypsum floor, a
  * 0.81 m × 1.6 m door each way). The fire-room door sees that entry's layer
  * (CFAST Eq. 4.1 on both sides). The entry's other door opens to ambient.
- * Carrying the jet on into the corridor drops that corridor's interface to
- * the floor, which is the receiver limit in FV-4, and the filled corridor
- * then pulls the fire-room interface to 0.619 m. The measured corridor
- * interface is 1.32 m, so that filled layer is not the far side used here.
+ * Extending the chain so the corridor is on that door, with the jets lagged
+ * one step, leaves this room at 0.86 m and 200 K. The corridor there is
+ * 1.18 m and 33 K. Its rise is outside 20%, so that layer is not the far
+ * side used here.
  */
 export function runNbsFireRoom(endS: number): ZoneState[] {
   const entryArea = 1.02 * 1.03;

@@ -31,8 +31,16 @@
  * part that left the upper layer (the orifice slice whose midpoint is
  * above the interface) is returned as a door jet. The caller deposits
  * that mass in the neighbouring room's upper layer: enthalpy
- * m cp (T_jet − T), and the interface falls by m / (ρ(T_jet) A). That is
- * the vent flow of Eq. 4.1–4.5 changing rooms, not Eq. 4.7.
+ * m cp (T_jet − T). That is the vent flow of Eq. 4.1–4.5 changing rooms,
+ * not Eq. 4.7. A vent that names the neighbour's layer uses that layer
+ * in Eq. 4.1 instead of ambient. Inflow from above the neighbour's
+ * interface is the same stream the jet deposits. A room that takes the
+ * jet leaves that inflow out of the makeup air. The orifice already
+ * includes it, so the interface takes jet volume only for the deposited
+ * mass the orifice did not balance. Subtracting the whole jet volume as
+ * well counts that volume twice. Outflow from below the interface is
+ * booked in every room, including one that does not take the jet.
+ * Unburned fuel and the spill plume stay on the jet.
  *
  * Pyrolysate the plume cannot burn is a species in the upper-layer mass,
  * the way CFAST puts fuel into the layer (`fire.f90` at b869597). The
@@ -54,8 +62,8 @@
  * layer. It is not applied in the room the fuel came from, and it is
  * not the inverse jet, so the source room's heat release stays the
  * oxygen the plume took. A room that already has a fire does not take
- * the jet's carrier mass, because its door is already solved against
- * ambient. It does take the fuel. That fuel burns on the oxygen the
+ * the jet's carrier mass. Its door is the return flow, so the orifice
+ * is that exchange. It does take the fuel. That fuel burns on the oxygen the
  * room's own plume has not taken, and what that oxygen cannot burn
  * stays in the layer.
  *
@@ -900,6 +908,11 @@ export interface LimitedBurn {
   outByVentKgS: number[];
   /** Upper-layer outflow of each vent, same order. The door jet. */
   hotOutByVentKgS: number[];
+  /**
+   * Inflow drawn from above a neighbour's interface, kg/s. It is already
+   * inside `inKgS`. It is not fresh lower-layer air.
+   */
+  farUpperInKgS: number;
   fanUpperKgS: number;
   fanLowerKgS: number;
   /** Neutral plane of this opening, m. The hot outflow starts here. */
@@ -943,6 +956,12 @@ export function oxygenLimitedBurn(
   yLower: number,
   yUpper: number,
   dt: number,
+  /**
+   * The caller is depositing the neighbour's upper gas as a door jet.
+   * That inflow is then left out of the fresh-air supply. Absent, the
+   * orifice keeps it, which is the fire room that does not take the carrier.
+   */
+  jetBringsUpper = false,
 ): LimitedBurn {
   const chi = chiOf(spec);
   const flows = balancedFlows(spec.vents, interfaceM, upperK, spec.fans ?? []);
@@ -954,7 +973,8 @@ export function oxygenLimitedBurn(
     ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, interfaceM)
     : Math.max(spec.areaM2, 0) * Math.max(0, interfaceM - INTERFACE_FLOOR_M);
   const descendKgS = (rho * descendM3) / slice;
-  const airCap = Math.max(0, flows.inKgS - flows.fanLowerKgS) + descendKgS;
+  const freshIn = jetBringsUpper ? Math.max(0, flows.inKgS - flows.farUpperInKgS) : flows.inKgS;
+  const airCap = Math.max(0, freshIn - flows.fanLowerKgS) + descendKgS;
   let prescribed = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
   const yL = yLower > 0 ? yLower : 0;
@@ -1010,6 +1030,7 @@ export function oxygenLimitedBurn(
     outKgS: flows.outKgS,
     outByVentKgS: flows.outByVent,
     hotOutByVentKgS: flows.hotOutByVent,
+    farUpperInKgS: flows.farUpperInKgS,
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
     neutralM: neutralPlaneM(interfaceM, upperK, flows.floorPressurePa),
@@ -1591,6 +1612,8 @@ interface SliceFlows {
   outKgS: number;
   /** Outflow whose slice sits in the upper layer, kg/s. */
   hotOutKgS: number;
+  /** Inflow from above a neighbour's interface, kg/s. Already inside `inKgS`. */
+  farUpperInKgS: number;
 }
 
 interface Flows extends SliceFlows {
@@ -1650,7 +1673,7 @@ function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Fl
 }
 
 const ventMarks = [0, 0, 0, 0];
-const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0, hotOutKgS: 0 };
+const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0, hotOutKgS: 0, farUpperInKgS: 0 };
 
 function addSliceFlows(
   into: SliceFlows,
@@ -1709,7 +1732,10 @@ function addSliceFlows(
     // Above the interface the gas is the hot layer. Below it the outflow
     // is lower-layer air at ambient, and that is not a door jet.
     if (mid > interfaceM) into.hotOutKgS += mass;
-  } else into.inKgS += mass;
+  } else {
+    into.inKgS += mass;
+    if (outside && mid > outside.interfaceM) into.farUpperInKgS += mass;
+  }
 }
 
 function accumulateVent(
@@ -1783,6 +1809,7 @@ function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, d
     inKgS: 0,
     outKgS: 0,
     hotOutKgS: 0,
+    farUpperInKgS: 0,
     outByVent: vents.map(() => 0),
     hotOutByVent: vents.map(() => 0),
     fanUpperKgS: 0,
@@ -1816,6 +1843,7 @@ function pressureNet(
   ventScratch.inKgS = 0;
   ventScratch.outKgS = 0;
   ventScratch.hotOutKgS = 0;
+  ventScratch.farUpperInKgS = 0;
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
     if (!vent) continue;
@@ -1993,8 +2021,11 @@ const SUBSTEP_S = 0.1;
  * `originM` is max(sill, source interface) and `widthM` is the vent
  * width, both for the spill plume. `lowEdgeM` and `soffitM` are the
  * hot outflow band. Absent means the whole jet can entrain.
- * `fuelOnly` means the room already solves its door against ambient,
- * so the carrier mass is not added again and only the fuel is.
+ * `fuelOnly` means the room already solves its door, so the carrier
+ * mass is not added again and only the fuel is. The neighbour gauge on
+ * that door is the return flow. A room with no fire of its own takes
+ * the carrier, and then the gauge's upper-layer inflow is left out of
+ * the orifice so the jet is the only copy.
  */
 export interface DoorJetInflow {
   kgS: number;
@@ -2093,7 +2124,7 @@ function stepZoneNow(
   while (left > 1e-9) {
     const slice = Math.min(SUBSTEP_S, left);
     if (split.totalKw > MIN_LAYER_FIRE_KW) age += slice;
-    const limited = oxygenLimitedBurn(spec, z, temp, yL, yU, slice);
+    const limited = oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0);
     const burn = limited.burn;
     burnedFraction = burn.prescribedKw > 0 ? burn.fraction : 1;
     phi = burn.phi;
@@ -2104,8 +2135,12 @@ function stepZoneNow(
     const mass = densityKgM3(temp) * upperLayerVolumeM3(spec, z);
     const atInterface = Math.max(sectionAreaM2(spec, z), 1e-6);
     const plume = limited.plumeKgS;
+    // The jet already carries the neighbour's upper gas. Leaving that
+    // inflow in the makeup would enter the same kilograms twice.
+    const skipFar = depositKgS > 0 ? limited.farUpperInKgS : 0;
+    const makeupKgS = Math.max(0, limited.inKgS - skipFar);
     const flows = {
-      inKgS: limited.inKgS,
+      inKgS: makeupKgS,
       outKgS: limited.outKgS,
       fanLowerKgS: limited.fanLowerKgS,
       fanUpperKgS: limited.fanUpperKgS,
@@ -2207,17 +2242,29 @@ function stepZoneNow(
     if (dT > 400) dT = 400;
     if (dT < -400) dT = -400;
     const areaRho = Math.max(LEVEL.RHO_AIR * atInterface, 1e-3);
-    // Makeup air fills the lower layer. The plume and a fan in that clear
-    // air both drain it, so the interface falls. A fan in the smoke is
-    // balanced by extra inflow, which lifts the interface. A door jet
-    // joins the upper layer, so its volume lowers the interface. Spill
-    // air leaves the lower layer and joins the upper one. Fuel stored
-    // with no vent to carry it occupies upper-layer volume as well.
-    // The height change is that volume divided by the area at the
-    // interface. A pyramidal roof is narrower there than the floor.
-    let dZ = (flows.inKgS - plume - flows.fanLowerKgS) / areaRho;
+    // Makeup air fills the lower layer. The plume, a fan in that clear
+    // air, and outflow from below the interface all drain it, so the
+    // interface falls. A fan in the smoke is balanced by extra inflow,
+    // which lifts the interface. Spill air leaves the lower layer and
+    // joins the upper one. Fuel stored with no vent to carry it occupies
+    // upper-layer volume as well. The height change is that volume
+    // divided by the area at the interface. A pyramidal roof is narrower
+    // there than the floor.
+    //
+    // A room that takes the jet already has that stream inside the
+    // orifice: inflow above the neighbour interface is part of the
+    // balance, and the outflow has made room for it. Jet volume is taken
+    // only for deposit − skipFar, the part the orifice did not balance.
+    // Subtracting the whole jet volume as well counts that volume twice.
+    // The lower-layer outflow is booked in every room. A burning room
+    // whose door faces a hot neighbour sends a large share of its outflow
+    // out of the lower layer, and leaving that flow out holds the
+    // interface up.
+    const lowerOutKgS = Math.max(0, flows.outKgS - hotSum);
+    let dZ = (flows.inKgS - plume - flows.fanLowerKgS - lowerOutKgS) / areaRho;
     if (depositKgS > 0) {
-      dZ -= depositKgS / Math.max(densityKgM3(jetT) * atInterface, 1e-3);
+      const unmatchedKgS = depositKgS - skipFar;
+      dZ -= unmatchedKgS / Math.max(densityKgM3(jetT) * atInterface, 1e-3);
     }
     if (mEnt > 0) dZ -= mEnt / areaRho;
     if (storeKgS > 0) {

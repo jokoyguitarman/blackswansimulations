@@ -46,6 +46,8 @@ import {
   type GridWall,
   type HoodFanWhen,
   type LayerSpec,
+  type Vent,
+  type VentOutside,
   type ZoneState,
 } from './twoZone';
 import type { ChargeSpec } from './blast/blastModel';
@@ -320,6 +322,37 @@ export function assignDoorJet(
   return out;
 }
 
+/**
+ * The layer on the far side of a vent, for CFAST Eq. 4.1. A receiver with
+ * no room is outdoors, and so is a vent that does not open into another
+ * compartment. The gauge is that neighbour's layer from the previous step.
+ * The room with the most receivers owns a vent that touches two rooms.
+ */
+export function neighbourVentOutside(
+  receivers: readonly string[],
+  room: string,
+  members: ReadonlySet<string>,
+  rooms: ReadonlyMap<string, string>,
+  gauges: ReadonlyMap<string, VentOutside>,
+): VentOutside | undefined {
+  const counts = new Map<string, number>();
+  for (const id of receivers) {
+    if (members.has(id)) continue;
+    const dest = rooms.get(id);
+    if (!dest || dest === room) continue;
+    counts.set(dest, (counts.get(dest) ?? 0) + 1);
+  }
+  let best = '';
+  let bestCount = 0;
+  for (const [dest, count] of counts) {
+    if (count > bestCount) {
+      best = dest;
+      bestCount = count;
+    }
+  }
+  return best ? gauges.get(best) : undefined;
+}
+
 /** The parcels the next step passes into `stepZone`, after the dust filter. */
 export function queueDoorJets(
   parcels: ReadonlyMap<string, DoorJetParcel>,
@@ -562,6 +595,8 @@ export class SpatialEffectsEngine {
    * outflow. One step behind, so room order does not matter.
    */
   private doorJets = new Map<string, DoorJetInflow>();
+  /** Floor gauge of each active layer, Pa. The next step's neighbour doors read it. */
+  private floorPressurePa = new Map<string, number>();
   /** The jet actually passed into `stepZone` this step, for rooms that take one. */
   private jetTaken = new Map<string, DoorJetInflow>();
   /**
@@ -2063,6 +2098,30 @@ export class SpatialEffectsEngine {
     return withRememberedSheets(zone, boundaries, this.rememberedSheets());
   }
 
+  /**
+   * Copy the vents and, where a vent opens into another room that already
+   * has a layer, put that layer on the far side. Outdoor vents are left
+   * as they are, which is ambient. The cached enclosure is not mutated.
+   */
+  private ventsSeeingNeighbours(
+    vents: readonly Vent[],
+    receivers: readonly (readonly string[])[],
+    room: string,
+    members: readonly string[],
+    rooms: ReadonlyMap<string, string>,
+    gauges: ReadonlyMap<string, VentOutside>,
+  ): Vent[] {
+    const memberSet = new Set(members);
+    return vents.map((vent, i) => {
+      const outside = neighbourVentOutside(receivers[i] ?? [], room, memberSet, rooms, gauges);
+      return outside ? { ...vent, outside } : vent;
+    });
+  }
+
+  private rememberFloorPressure(room: string, floorPressurePa: number): void {
+    this.floorPressurePa.set(room, floorPressurePa);
+  }
+
   private stepLayers(dt: number, walls: InteriorWall[]): Set<string> {
     this.claimedSheets.clear();
     this.droppedSheets.clear();
@@ -2115,6 +2174,15 @@ export class SpatialEffectsEngine {
     }
     const seen = new Set<string>();
     const nextJets = new Map<string, DoorJetParcel>();
+    const gauges = new Map<string, VentOutside>();
+    for (const [id, live] of this.layerState) {
+      if (!live.active) continue;
+      gauges.set(id, {
+        interfaceM: live.zone.interfaceM,
+        upperK: live.zone.upperK,
+        floorPressurePa: this.floorPressurePa.get(id) ?? 0,
+      });
+    }
     const pending: Array<{
       boundaries: readonly Boundary[];
       ageS: number;
@@ -2184,7 +2252,19 @@ export class SpatialEffectsEngine {
         if (!memberSet.has(id)) continue;
         fans.push({ flowM3PerS: HOOD_EXTRACT_M3_PER_S, intakeM: HOOD_INTAKE_M });
       }
-      const spec: LayerSpec = { ...enc.spec, fires, fans };
+      const spec: LayerSpec = {
+        ...enc.spec,
+        vents: this.ventsSeeingNeighbours(
+          enc.spec.vents,
+          enc.ventReceivers,
+          room,
+          members,
+          rooms,
+          gauges,
+        ),
+        fires,
+        fans,
+      };
       const zone = this.zoneWithSheets(prev?.zone ?? freshLayer(ceiling), spec.boundaries);
       const sootRate = sootByRoom.get(room) ?? 0;
       if (hasJet && heat < MIN_LAYER_FIRE_KW) {
@@ -2217,6 +2297,7 @@ export class SpatialEffectsEngine {
             const active = layerHold || formsSustainedLayer(depth, ceiling, rise, true);
             if (!active) {
               retire();
+              this.floorPressurePa.delete(room);
               this.layerState.set(room, {
                 active: false,
                 zone: next.state,
@@ -2228,6 +2309,7 @@ export class SpatialEffectsEngine {
             }
             // The column soot stays where it is and leaks. Copying it into the
             // layer as well would count those grams twice.
+            this.rememberFloorPressure(room, next.floorPressurePa);
             this.layerState.set(room, {
               active: true,
               zone: next.state,
@@ -2268,6 +2350,7 @@ export class SpatialEffectsEngine {
       const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
       if (!active) {
         retire();
+        this.floorPressurePa.delete(room);
         this.layerState.set(room, {
           active: false,
           zone,
@@ -2282,12 +2365,15 @@ export class SpatialEffectsEngine {
         continue;
       }
       if (prev?.active !== true) this.scoopColumnSoot(members, zone);
-      // A room with its own fire already solves the door against ambient.
-      // Adding the neighbour's carrier jet on top of that flow fills the
-      // layer. The fuel in that jet is not the carrier. It burns here on
-      // the oxygen this room's plume has not taken, and what cannot burn
-      // stays in the layer. The step itself waits until every room is
-      // known, so a shared partition is integrated once from both sides.
+      // A room with its own fire already solves the door. The neighbour's
+      // layer is the far side of that door, so the return flow is in the
+      // orifice. Adding the carrier jet on top of that flow would fill the
+      // layer a second time. The fuel in the jet is not that carrier. It
+      // burns here on the oxygen this room's plume has not taken, and what
+      // cannot burn stays in the layer. A room with no fire of its own takes
+      // the carrier, and the orifice then leaves that upper-layer inflow
+      // out. The step itself waits until every room is known, so a shared
+      // partition is integrated once from both sides.
       const fuelJet =
         incoming != null && (incoming.fuelY ?? 0) > 0 ? { ...incoming, fuelOnly: true } : undefined;
       pending.push({
@@ -2306,6 +2392,7 @@ export class SpatialEffectsEngine {
             hold.size > 0 ? hold : undefined,
           );
           this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
+          this.rememberFloorPressure(room, stepped.floorPressurePa);
           this.layerState.set(room, {
             active: true,
             zone: stepped.state,
@@ -2375,6 +2462,7 @@ export class SpatialEffectsEngine {
       if (seen.has(room) || !live.active) continue;
       this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM);
       live.active = false;
+      this.floorPressurePa.delete(room);
     }
     this.commitGlass(dt);
     return owned;

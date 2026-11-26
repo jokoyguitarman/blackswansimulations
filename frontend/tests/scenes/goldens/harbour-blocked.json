@@ -8,16 +8,16 @@
   "within120": 0.495,
   "crawling": 1,
   "reroutes": 40,
-  "outByT300": 82,
+  "outByT300": 83,
   "reachable": 101,
   "mall": {
     "active": true,
-    "interfaceM": 2.07,
-    "riseK": 79.4
+    "interfaceM": 2.41,
+    "riseK": 72
   },
   "marks": {
     "t180": {
-      "smoke": "0.424",
+      "smoke": "0.419",
       "out": 41,
       "down": 13,
       "heatDown": 4,
@@ -26,7 +26,7 @@
       "burning": 94
     },
     "t240": {
-      "smoke": "0.451",
+      "smoke": "0.449",
       "out": 52,
       "down": 13,
       "heatDown": 4,
@@ -35,8 +35,8 @@
       "burning": 94
     },
     "t300": {
-      "smoke": "0.443",
-      "out": 82,
+      "smoke": "0.441",
+      "out": 83,
       "down": 13,
       "heatDown": 4,
       "westLit": 72,
@@ -45,19 +45,19 @@
     }
   },
   "late": {
-    "inside": 20,
-    "down": 14,
-    "out": 100,
-    "inMall": 1,
-    "maxFed": 1.001,
-    "maxHeatFed": 1.001,
+    "inside": 19,
+    "down": 13,
+    "out": 101,
+    "inMall": 0,
+    "maxFed": 0.107,
+    "maxHeatFed": 1,
     "heatDown": 4,
-    "mallFed": 1.001,
+    "mallFed": 0,
     "mall": {
       "active": true,
-      "interfaceM": 0.81,
-      "riseK": 58.5
+      "interfaceM": 1.17,
+      "riseK": 91.8
     },
-    "smoke": "0.843"
+    "smoke": "0.817"
   }
 }

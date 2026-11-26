@@ -1,8 +1,18 @@
 {
   "shop": {
     "doorMw": 22.1,
-    "at180": { "prescribedMw": 46.5, "burnedMw": 22.6, "o2Upper": 0.186 },
-    "burnedMw": { "t200": 22.7, "t290": 22.9, "t320": 22.9, "minFrom180": 22.6, "maxFrom180": 23 }
+    "at180": { "prescribedMw": 46.5, "burnedMw": 21.3, "o2Upper": 0.186 },
+    "burnedMw": { "t200": 20.5, "t290": 18.8, "t320": 18.9, "minFrom180": 18.8, "maxFrom180": 21.3 }
   },
-  "kitchen": { "doorMw": 6.8, "burnedMwFrom210": 4.2 }
+  "kitchen": {
+    "doorMw": 6.8,
+    "burnedMw": {
+      "t210": 4.2,
+      "t250": 3.3,
+      "t290": 3,
+      "t370": 3,
+      "minFrom210": 3,
+      "maxFrom210": 4.2
+    }
+  }
 }
