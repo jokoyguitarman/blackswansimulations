@@ -3,8 +3,9 @@
  * The crowds run to T+600. One nightly matrix entry, one scene at a time.
  *
  * The shop door publishes the mean of its last two floor-pressure roots,
- * and a sliver within a substep of the floor credits half its air to the
- * flame. The door no longer reverses every step once the interface is on
+ * and a sliver the prescribed plume can consume in one substep,
+ * plume·slice/(ρ·A) at the floor, credits half its air to the flame.
+ * The door no longer reverses every step once the interface is on
  * the floor. At T+180 the shop burns 12.9 MW of 46.5 MW prescribed, upper
  * oxygen 0.198. It is 15.2 MW at T+200, 15.2 MW at T+290 and 15 MW at
  * T+320, and from T+180 it spans 12.9 to 17 MW. The kitchen is 0.6 MW at

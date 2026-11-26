@@ -3237,12 +3237,14 @@ test('a warmer lower layer changes the mass the door carries', () => {
   );
 });
 
-test('a door on the floor does not reverse every step', () => {
-  // Two coupled rooms, the fire room's interface held on the floor. Each
-  // room used to solve its door against the other's previous gauge, and
-  // a sliver of air above the clamp enlarged the flame on one step and
-  // was gone the next. The floor gauge and the door flow changed sign
-  // every step. A steady root is unchanged by the mean of the last two.
+test('a floor-clamped door between two rooms does not reverse every step', () => {
+  // A large fire room on the floor, coupled to a jet-fed neighbour that
+  // has its own exit. Studs sit on a 3 m pitch, so the shared wall is a
+  // real door: a face is only a vent between 2 m and 3.4 m. Each room
+  // solves that door against the other's published floor gauge. Without
+  // the two-root mean, that gauge changes sign every step and the shared
+  // door's hot outflow turns on and off with it. The published gauge and
+  // the hot mass are the fields the step already kept before the mean.
   const wood = { ...defaultLightFuel(), alphaKwS2: 20, fuelLoadKgM2: 2000, spreadMPerMin: 0 };
   const stud = (id: string, x: number, y: number, inside = true) => ({
     id,
@@ -3270,87 +3272,104 @@ test('a door on the floor does not reverse every step', () => {
     photos: [],
     level: 'G',
   });
-  const grid = (prefix: string, n: number, x0: number, y0: number) => {
-    const side = Math.ceil(Math.sqrt(n));
+  const lattice = (prefix: string, nx: number, ny: number, x0: number, y0: number) => {
     const people = [];
     const ids: string[] = [];
-    for (let i = 0; i < n; i++) {
-      const id = `${prefix}${i}`;
-      ids.push(id);
-      people.push(stud(id, x0 + (i % side) * 0.3, y0 + Math.floor(i / side) * 0.3));
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const id = `${prefix}${i}_${j}`;
+        ids.push(id);
+        people.push(stud(id, x0 + i * 3, y0 + j * 3));
+      }
     }
     return { people, ids };
   };
-  const fire = grid('f', 24, -0.8, -0.8);
-  const hall = grid('h', 24, -0.8, 2.2);
+  const fireNx = 6;
+  const fireNy = 8;
+  const hallNx = 6;
+  const hallNy = 6;
+  const fire = lattice('f', fireNx, fireNy, 0, 0);
+  const hallY = fireNy * 3;
+  const hall = lattice('h', hallNx, hallNy, 0, hallY);
+  const xEast = (fireNx - 1) * 3 + 1.5;
+  const ySplit = (fireNy - 1) * 3 + 1.5;
+  const yNorth = hallY + (hallNy - 1) * 3 + 1.5;
+  const walls = [
+    barrier('fs', -1.5, -1.5, xEast, -1.5, true, 0.6),
+    barrier('fw', -1.5, -1.5, -1.5, ySplit, false, 0.2),
+    barrier('fe', xEast, -1.5, xEast, ySplit, false, 0.2),
+    barrier('door', -1.5, ySplit, xEast, ySplit, true, 1.2),
+    barrier('hw', -1.5, ySplit, -1.5, yNorth, false, 0.2),
+    barrier('he', xEast, ySplit, xEast, yNorth, false, 0.2),
+    barrier('hn', -1.5, yNorth, xEast, yNorth, true, 0.6),
+  ];
   const engine = new SpatialEffectsEngine(undefined, 1);
   engine.init([
     ...fire.people,
     ...hall.people,
-    stud('outF', 0, -3, false),
-    stud('outH', 0, 6, false),
+    stud('outF', (fireNx - 1) * 1.5, -3, false),
+    stud('outH', (fireNx - 1) * 1.5, yNorth + 1.5, false),
   ]);
   engine.setStoreyHeights({ G: 4 });
   engine.setFuelCells(new Map(fire.ids.map((id) => [id, wood])));
-  const walls = [
-    barrier('fs', -1.5, -1.5, 1.5, -1.5, true, 2),
-    barrier('fw', -1.5, -1.5, -1.5, 1.5, false, 0.2),
-    barrier('fe', 1.5, -1.5, 1.5, 1.5, false, 0.2),
-    barrier('door', -1.5, 1.5, 1.5, 1.5, true, 1.6),
-    barrier('hw', -1.5, 1.5, -1.5, 4.5, false, 0.2),
-    barrier('he', 1.5, 1.5, 1.5, 4.5, false, 0.2),
-    barrier('hn', -1.5, 4.5, 1.5, 4.5, true, 2),
-  ];
   const exposed = engine as unknown as {
     fireSim: { ignite: (ids: string[]) => void };
     floorPressurePa: Map<string, number>;
     jetAudit: DoorJetBook[] | null;
     layerState: Map<string, { active: boolean; members: string[]; zone: { interfaceM: number } }>;
   };
-  exposed.fireSim.ignite(fire.ids.slice(0, 8));
+  exposed.fireSim.ignite(fire.ids.slice(0, 14));
   const audit: DoorJetBook[] = [];
   exposed.jetAudit = audit;
-  for (let i = 0; i < 120; i++) engine.step(1, walls, []);
-  const dt = 1 / 60;
+  for (let i = 0; i < 90; i++) engine.step(1, walls, []);
   let prevP: number | null = null;
-  let prevNet: number | null = null;
+  let prevHot: boolean | null = null;
   let gaugeFlips = 0;
   let flowFlips = 0;
   let onFloor = 0;
-  const signChange = (prev: number, next: number, tol: number) =>
-    prev * next < 0 && Math.abs(prev) > tol && Math.abs(next) > tol;
-  for (let i = 0; i < 180; i++) {
-    engine.step(dt, walls, []);
+  let hallActive = 0;
+  let sawDoor = 0;
+  const signChange = (prev: number, next: number) =>
+    prev * next < 0 && Math.abs(prev) > 0.25 && Math.abs(next) > 0.25;
+  for (let i = 0; i < 150; i++) {
+    engine.step(1 / 60, walls, []);
     let zone: { id: string; z: number } | undefined;
+    let hallOn = false;
     for (const [id, live] of exposed.layerState) {
-      if (live.active && live.members.includes('f0') && !live.members.includes('h0')) {
-        zone = { id, z: live.zone.interfaceM };
-      }
+      const inFire = live.members.includes('f0_0');
+      const inHall = live.members.includes('h0_0');
+      if (inFire && !inHall && live.active) zone = { id, z: live.zone.interfaceM };
+      if (inHall && !inFire && live.active) hallOn = true;
     }
     if (!zone || zone.z > 0.051) {
       prevP = null;
-      prevNet = null;
+      prevHot = null;
       continue;
     }
     onFloor++;
+    if (hallOn) hallActive++;
     const p = exposed.floorPressurePa.get(zone.id) ?? 0;
-    let inn = 0;
-    let out = 0;
+    let hotKg = 0;
     for (const book of audit) {
-      if (!book.members.includes('f0')) continue;
-      inn = book.inKgS ?? 0;
-      out = book.outKgS ?? 0;
+      if (!book.members.includes('f0_0')) continue;
+      for (let vent = 0; vent < book.hot.length; vent++) {
+        const receivers = book.receivers[vent] ?? [];
+        if (!receivers.some((id) => id.startsWith('h'))) continue;
+        sawDoor++;
+        hotKg += book.hot[vent]?.kg ?? 0;
+      }
     }
-    const net = inn - out;
-    // The first second after the coarse approach is the step-size change.
-    if (i >= 60 && prevP != null && prevNet != null) {
-      if (signChange(prevP, p, 0.25)) gaugeFlips++;
-      if (signChange(prevNet, net, 0.5)) flowFlips++;
+    const hotOn = hotKg > 1e-4;
+    if (onFloor > 30 && prevP != null && prevHot != null) {
+      if (signChange(prevP, p)) gaugeFlips++;
+      if (prevHot !== hotOn) flowFlips++;
     }
     prevP = p;
-    prevNet = net;
+    prevHot = hotOn;
   }
-  assert.ok(onFloor > 120, `the fire room was on the floor for ${onFloor} steps`);
+  assert.ok(onFloor > 100, `the fire room was on the floor for ${onFloor} steps`);
+  assert.ok(hallActive > 100, `the neighbour layer was up for ${hallActive} steps`);
+  assert.ok(sawDoor > 100, `the shared door was missing on ${onFloor - sawDoor} steps`);
   assert.equal(gaugeFlips, 0, `floor gauge reversed on ${gaugeFlips} steps`);
-  assert.equal(flowFlips, 0, `door flow reversed on ${flowFlips} steps`);
+  assert.equal(flowFlips, 0, `door hot outflow turned over on ${flowFlips} steps`);
 });

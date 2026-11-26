@@ -1200,12 +1200,27 @@ function flameSupply(
   // The whole sliver, credited as fresh air, is a period-2 once the
   // interface is on the floor. The flame grows, the plume consumes the
   // sliver, the next substep is back on the clamp, and the step after
-  // grows the sliver again. The door reverses with it. Within a substep
-  // of the floor, credit the air down to the midpoint of the sliver,
-  // the mean of the interface and the clamp. A deeper layer cannot be
-  // consumed in one substep, and its full height stands. Above that
-  // both credits exceed the plume, so a deeper layer is unchanged.
-  const flameDescendKgS = sliverM <= 2 * slice ? 0.5 * descendKgS : descendKgS;
+  // grows the sliver again. The door reverses with it. The height the
+  // prescribed plume can lower the interface in one substep is
+  // plume·slice / (ρ·A) at the floor. A sliver no taller than that is
+  // credited to its midpoint, the mean of the interface and the clamp.
+  // A deeper layer cannot be consumed in one substep, and its full
+  // height stands.
+  let plumeGuess = 0;
+  for (const fire of spec.fires) {
+    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+    plumeGuess += heskestadEntrainmentKgS(
+      fire.heatKw,
+      heightAboveFuelM(interfaceM, fire.baseM),
+      fire.diameterM,
+      chi,
+    );
+  }
+  const floorArea = sectionAreaM2(spec, INTERFACE_FLOOR_M);
+  const consumableM =
+    floorArea > 0 && plumeGuess > 0 ? (plumeGuess * slice) / (rho * floorArea) : 0;
+  const flameDescendKgS =
+    sliverM > 0 && consumableM > 0 && sliverM <= consumableM ? 0.5 * descendKgS : descendKgS;
   const airCap = Math.max(0, freshIn - flows.fanLowerKgS) + flameDescendKgS;
   let prescribed = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
