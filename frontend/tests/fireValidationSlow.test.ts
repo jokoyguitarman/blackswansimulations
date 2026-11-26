@@ -27,14 +27,23 @@ test(
   'the layer flashover heat release of the NUREG room lies in the correlation band',
   slow,
   (t) => {
-    // Bisect the steady fire that first reaches 600 °C or 20 kW/m² by 600 s, to 10 kW.
-    let lo = 500;
-    let hi = 6000;
-    while (hi - lo > 10) {
-      const mid = 0.5 * (lo + hi);
-      if (flashesWithin(mid, 600)) hi = mid;
-      else lo = mid;
+    // The smallest steady fire that reaches 600 °C or 20 kW/m² by 600 s, to 10 kW.
+    // A larger fire can empty the lower layer before the upper gas flashes, and
+    // the door inflow alone then stays below flashover, so the search walks up
+    // from a fire that does not flash and stops at the first one that does.
+    let below = 500;
+    let above = 500;
+    while (above < 6000 && !flashesWithin(above, 600)) {
+      below = above;
+      above = Math.min(6000, above + 250);
     }
+    assert.ok(above < 6000 || flashesWithin(above, 600), 'no steady fire flashes by 600 s');
+    while (above - below > 10) {
+      const mid = 0.5 * (below + above);
+      if (flashesWithin(mid, 600)) above = mid;
+      else below = mid;
+    }
+    const hi = above;
     t.diagnostic(`Babrauskas ${babrauskasFlashoverKw().toFixed(0)} kW`);
     expectPass(t, {
       case: 'NUREG room',

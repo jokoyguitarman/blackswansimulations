@@ -41,24 +41,24 @@ These parts of the setup differ from the tests:
 
 | Case                                            | Metric                       | Model                   | Target                                        | Tolerance                | Result                         |
 | ----------------------------------------------- | ---------------------------- | ----------------------- | --------------------------------------------- | ------------------------ | ------------------------------ |
-| NUREG room                                      | Layer flashover heat release | 2353 kW                 | 1625–2366 kW (Thomas to MQH; Babrauskas 1909) | band                     | pass (nightly)                 |
+| NUREG room                                      | Layer flashover heat release | 2352 kW                 | 1625–2366 kW (Thomas to MQH; Babrauskas 1909) | band                     | pass (nightly)                 |
 | NUREG room                                      | Flashover latch              | 1000 kW                 | 1625–2366 kW                                  | band                     | FV-2                           |
-| NUREG room, slow / medium / fast / ultrafast t² | Time to flashover            | 869 / 465 / 246 / 130 s | MQH clock 860 / 464 / 251 / 136 s             | ±20%                     | pass (fast in CI, all nightly) |
+| NUREG room, slow / medium / fast / ultrafast t² | Time to flashover            | 866 / 462 / 244 / 128 s | MQH clock 860 / 464 / 251 / 136 s             | ±20%                     | pass (fast in CI, all nightly) |
 | Steckler                                        | Interface                    | 1.18 m                  | 0.985 m                                       | ±0.32 m                  | pass                           |
 | Steckler                                        | Rise                         | 113 K                   | 98.2 K                                        | ±20%                     | pass                           |
 | Steckler                                        | Neutral plane                | 1.23 m                  | 1.027 m                                       | ±0.32 m (interface band) | pass                           |
 | Steckler                                        | Door outflow                 | 0.385 kg/s              | 0.571 kg/s                                    | ±25%                     | FV-1                           |
-| NBS MV100A fire room                            | Interface                    | 0.745 m                 | 0.948 m                                       | ±0.32 m                  | pass                           |
+| NBS MV100A fire room                            | Interface                    | 0.743 m                 | 0.948 m                                       | ±0.32 m                  | pass                           |
 | NBS MV100A fire room                            | Rise                         | 220 K                   | 242 K                                         | ±20%                     | pass                           |
 | NBS MV100A corridor (engine plan)               | Interface                    | 0.930 m                 | 1.32 m                                        | ±0.37 m                  | FV-4                           |
 | NBS MV100A corridor (engine plan)               | Rise                         | 33.2 K                  | 80.2 K                                        | ±20%                     | FV-4                           |
-| BE#3 Test 3                                     | Interface                    | 1.11 m                  | 0.951 m                                       | ±0.57 m                  | pass                           |
+| BE#3 Test 3                                     | Interface                    | 1.10 m                  | 0.951 m                                       | ±0.57 m                  | pass                           |
 | BE#3 Test 3                                     | Rise                         | 189 K                   | 192 K                                         | ±20%                     | pass                           |
 | VTT Case 1                                      | Layer forms                  | yes                     | yes                                           | —                        | pass                           |
-| VTT Case 1                                      | Interface                    | 4.50 m                  | 5.13 m                                        | ±2.85 m                  | pass                           |
-| VTT Case 1                                      | Rise                         | 42.5 K                  | 48.2 K                                        | ±20%                     | pass                           |
-| VTT Case 2                                      | Interface                    | 3.89 m                  | 4.60 m                                        | ±2.85 m                  | pass (nightly)                 |
-| VTT Case 2                                      | Rise                         | 66.9 K                  | 77.6 K                                        | ±20%                     | pass (nightly)                 |
+| VTT Case 1                                      | Interface                    | 3.93 m                  | 5.13 m                                        | ±2.85 m                  | pass                           |
+| VTT Case 1                                      | Rise                         | 43.3 K                  | 48.2 K                                        | ±20%                     | pass                           |
+| VTT Case 2                                      | Interface                    | 3.01 m                  | 4.60 m                                        | ±2.85 m                  | pass (nightly)                 |
+| VTT Case 2                                      | Rise                         | 69.0 K                  | 77.6 K                                        | ±20%                     | pass (nightly)                 |
 
 ## Known gaps
 
@@ -74,7 +74,7 @@ NBSIR 82-2520 measured the entrainment directly. Fires near a wall agree with a 
 
 ### FV-2
 
-**The 1 MW flashover latch.** `FLASHOVER_ROOM_KW` lights every fuelled stud in a room once the burning fuel sums to 1000 kW. In the NUREG room that is below all three correlations: Thomas 1625 kW, Babrauskas 1909 kW and MQH 2366 kW. The layer alone reaches the flashover definition at 2353 kW, which is inside the band. Pinned at 1000 kW. Roadmap: Decision 8, where the 1 MW latch still ignites the fuel and is described as a stand-in.
+**The 1 MW flashover latch.** `FLASHOVER_ROOM_KW` lights every fuelled stud in a room once the burning fuel sums to 1000 kW. In the NUREG room that is below all three correlations: Thomas 1625 kW, Babrauskas 1909 kW and MQH 2366 kW. The layer alone reaches the flashover definition at 2352 kW, which is inside the band. Pinned at 1000 kW. Roadmap: Decision 8, where the 1 MW latch still ignites the fuel and is described as a stand-in.
 
 ### FV-4
 
@@ -102,10 +102,12 @@ In the same plan the fire room is 0.95 m with a 96 K rise. Over 300–880 s the 
 
 ## Closed
 
-**FV-3, the NBS fire room.** A door straight to ambient gave 183 K against 242 K, with the interface at 0.986 m. χ = 0 moved the rise to 181 K. An adiabatic lining reached the 1500 K ceiling. Gas radiation set to zero reached 195 K and took BE#3 from 189 K to 233 K. A free plume at 0.7 of Heskestad reached 215 K. The door opens into the entry, and that entry on Eq. 4.1 puts the window at 0.745 m and 220 K. Both are inside the band. Production doors between rooms now set the same neighbour gauge; a door to the outdoors stays ambient. Putting the corridor on the entry's far door, with the engine's one-step jet lag, leaves the fire room at 0.86 m and 200 K, still inside the band, and the corridor at 1.18 m and 33 K. The corridor rise is outside 20% with the test's own Marinite, so that gap is the receiving corridor and the pin stays the entry.
+**FV-3, the NBS fire room.** A door straight to ambient gave 183 K against 242 K, with the interface at 0.986 m. χ = 0 moved the rise to 181 K. An adiabatic lining reached the 1500 K ceiling. Gas radiation set to zero reached 195 K and took BE#3 from 189 K to 233 K. A free plume at 0.7 of Heskestad reached 215 K. The door opens into the entry, and that entry on Eq. 4.1 puts the window at 0.743 m and 220 K. Both are inside the band. Production doors between rooms now set the same neighbour gauge; a door to the outdoors stays ambient. Putting the corridor on the entry's far door, with the engine's one-step jet lag, leaves the fire room at 0.86 m and 200 K, still inside the band, and the corridor at 1.18 m and 33 K. The corridor rise is outside 20% with the test's own Marinite, so that gap is the receiving corridor and the pin stays the entry.
 
-**FV-5, the VTT hall.** The box of floor area up to the ridge was 4.65 m and 36.0 K, and on the nightly Case 2 it was 4.02 m and 57.2 K. The cross-section in the geometry note puts Case 1 at 4.50 m and 42.5 K (−12%) and Case 2 at 3.89 m and 66.9 K (−14%). Both pass. The steel still stores ρ c δ. A heat-free sheet on the old box was 42.3 K and 67.2 K; that pass was the missing capacity, and the coldness that remained was the extra volume above the eaves. The two cases still start from ambient. A temperature left on the shared sheet is not the case.
+**FV-5, the VTT hall.** The box of floor area up to the ridge was 4.65 m and 36.0 K, and on the nightly Case 2 it was 4.02 m and 57.2 K. The cross-section in the geometry note puts Case 1 at 3.93 m and 43.3 K (−10%) and Case 2 at 3.01 m and 69.0 K (−11%). Both pass. The steel still stores ρ c δ. A heat-free sheet on the old box was 42.3 K and 67.2 K; that pass was the missing capacity, and the coldness that remained was the extra volume above the eaves. The two cases still start from ambient. A temperature left on the shared sheet is not the case.
 
 ## FDS
 
 An offline FDS 6.11.2 comparison of a two-room box and a Harbour shop and mall is in `fds/README.md`. It is a regime check, not a test, and the device files are not in git.
+
+The production Harbour shop leaves a 566 kg total-mass residual once the interface is on the 0.05 m floor clamp. The plume keeps drawing lower-layer air the room does not hold, and the pressure step still carries the unclipped volume. Above the clamp the total closes. The previous expansion head measured 572 kg on the same clamp. The clamp is older than the expansion booking, and the rate is not clipped to hide the residual.
