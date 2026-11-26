@@ -1,16 +1,17 @@
 /**
  * Harbour House scenes: open crowd, east exit blocked, and the shop.
- * About 8, 8 and 9 minutes, run one at a time. One nightly matrix entry.
+ * The crowds run to T+600. One nightly matrix entry, one scene at a time.
  *
- * Rebaselined when pyrolysate became a species in the layer mass and the
- * doorway spill matched CFAST poreh_plume: the (Tl/Tu)^(2/3) factor, the
- * rise from max(sill, source interface), and the tgignt gate. The shop
- * stays on its door, 22.6–22.8 MW from T+180 through T+370 against
- * 22.1 MW. The tile mall at T+300 is the peak of a transient, 1.79 m and
- * 159.4 K, and the interface is still falling. It crosses head height at
- * 307 s, so the open crowd counts at T+300 do not move. The blocked exit
- * lets one more person out by T+300. Smoke at T+240 and T+300 moves with
- * the deeper layer.
+ * Pyrolysis mass is capped at an equivalence ratio of 2, and the spill
+ * entrains only the hot outflow below the receiving interface. The shop
+ * stays on its door, 22.6–23.0 MW from T+180 through T+370 against
+ * 22.1 MW. The tile mall at T+300 is 2.07 m and 79.4 K. It is 1.82 m at
+ * T+330 and 1.60 m at T+360, so head height falls in that half-minute.
+ * At T+600 the interface is 0.81 m and the rise is 58.5 K, still above
+ * the floor, with the mall empty of people. Down stays 9. The crowd
+ * model has no ISO 13571 heat dose, so that count is fumes only. The
+ * open counts at T+300 are otherwise unchanged. The blocked exit lets
+ * 82 people out by T+300.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';

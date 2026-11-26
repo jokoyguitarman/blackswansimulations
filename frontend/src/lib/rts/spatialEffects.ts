@@ -226,6 +226,12 @@ export interface DoorJetParcel {
   originKg?: number;
   /** kg times the vent width, so the mass-weighted width is widthKg / kg. */
   widthKg?: number;
+  /** kg times the bottom of the hot outflow band. Absent mass is not in the band. */
+  lowKg?: number;
+  /** kg times the soffit of that band. */
+  soffitKg?: number;
+  /** Kilograms that carried a band. The jet keeps the band only when this is the whole mass. */
+  bandKg?: number;
 }
 
 /**
@@ -263,6 +269,8 @@ export function assignDoorJet(
     fuelY?: number;
     originM?: number;
     widthM?: number;
+    lowEdgeM?: number;
+    soffitM?: number;
   }[],
   rooms: ReadonlyMap<string, string>,
 ): Map<string, DoorJetParcel> {
@@ -290,6 +298,11 @@ export function assignDoorJet(
       cur.fKg = (cur.fKg ?? 0) + kg * (hot.fuelY ?? 0);
       cur.originKg = (cur.originKg ?? 0) + kg * (hot.originM ?? 0);
       cur.widthKg = (cur.widthKg ?? 0) + kg * (hot.widthM ?? 0);
+      if (hot.lowEdgeM != null && hot.soffitM != null && hot.soffitM > hot.lowEdgeM) {
+        cur.lowKg = (cur.lowKg ?? 0) + kg * hot.lowEdgeM;
+        cur.soffitKg = (cur.soffitKg ?? 0) + kg * hot.soffitM;
+        cur.bandKg = (cur.bandKg ?? 0) + kg;
+      }
       out.set(dest, cur);
     }
   }
@@ -308,7 +321,7 @@ export function queueDoorJets(
     const kgS = cur.kg / dt;
     const tempK = cur.tKg / cur.kg;
     if (!(kgS >= DOOR_JET_MIN_KGS) || !(tempK > AMBIENT_K + 1)) continue;
-    ready.set(dest, {
+    const inflow: DoorJetInflow = {
       kgS,
       tempK,
       oxygenY: cur.yKg / cur.kg,
@@ -318,7 +331,15 @@ export function queueDoorJets(
       // mass-weighted mean. One vent, the usual door, is unchanged.
       originM: (cur.originKg ?? 0) / cur.kg,
       widthM: (cur.widthKg ?? 0) / cur.kg,
-    });
+    };
+    // A vent with no band would make the average look like a shorter
+    // door. The whole mass has to carry one, or the jet entrains in full.
+    const bandKg = cur.bandKg ?? 0;
+    if (bandKg > 0 && bandKg >= cur.kg * 0.999 && (cur.soffitKg ?? 0) > (cur.lowKg ?? 0)) {
+      inflow.lowEdgeM = (cur.lowKg ?? 0) / bandKg;
+      inflow.soffitM = (cur.soffitKg ?? 0) / bandKg;
+    }
+    ready.set(dest, inflow);
   }
   return ready;
 }
@@ -1773,14 +1794,12 @@ export class SpatialEffectsEngine {
       ventedSootG: number;
       outByVentKgS: readonly number[];
       hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
+      neutralM?: number;
     },
     sourceInterfaceM: number,
     dt: number,
     rooms: ReadonlyMap<string, string>,
-    jets: Map<
-      string,
-      { kg: number; tKg: number; yKg: number; fKg?: number; originKg?: number; widthKg?: number }
-    >,
+    jets: Map<string, DoorJetParcel>,
   ): void {
     const shares = stepped.outByVentKgS;
     let totalOut = 0;
@@ -1800,15 +1819,25 @@ export class SpatialEffectsEngine {
     }
     if (!(dt > 0)) return;
     const memberSet = new Set(members);
+    const neutral =
+      stepped.neutralM != null && Number.isFinite(stepped.neutralM)
+        ? stepped.neutralM
+        : sourceInterfaceM;
     const hot = stepped.hotByVent.map((row, i) => {
       const vent = enc.spec.vents[i];
+      const sill = vent?.sillM ?? 0;
+      const soffit = vent?.soffitM ?? sill;
       return {
         kg: row.kg,
         tempK: row.tempK,
         oxygenY: row.oxygenY,
         fuelY: row.fuelY,
-        originM: spillOriginM(vent?.sillM ?? 0, sourceInterfaceM),
+        originM: spillOriginM(sill, sourceInterfaceM),
         widthM: vent?.widthM ?? 0,
+        // Hot gas leaves from the higher of the interface and the neutral
+        // plane, up to the soffit. That is the band the neighbour entrains.
+        lowEdgeM: Math.max(sill, sourceInterfaceM, neutral),
+        soffitM: soffit,
       };
     });
     if (this.jetAudit) {
@@ -1828,6 +1857,9 @@ export class SpatialEffectsEngine {
       cur.fKg = (cur.fKg ?? 0) + (parcel.fKg ?? 0);
       cur.originKg = (cur.originKg ?? 0) + (parcel.originKg ?? 0);
       cur.widthKg = (cur.widthKg ?? 0) + (parcel.widthKg ?? 0);
+      cur.lowKg = (cur.lowKg ?? 0) + (parcel.lowKg ?? 0);
+      cur.soffitKg = (cur.soffitKg ?? 0) + (parcel.soffitKg ?? 0);
+      cur.bandKg = (cur.bandKg ?? 0) + (parcel.bandKg ?? 0);
       jets.set(dest, cur);
     }
   }
@@ -2073,10 +2105,7 @@ export class SpatialEffectsEngine {
       sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
     }
     const seen = new Set<string>();
-    const nextJets = new Map<
-      string,
-      { kg: number; tKg: number; yKg: number; fKg?: number; originKg?: number; widthKg?: number }
-    >();
+    const nextJets = new Map<string, DoorJetParcel>();
     const pending: Array<{
       boundaries: readonly Boundary[];
       ageS: number;
