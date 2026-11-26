@@ -313,6 +313,30 @@ describe('evacuation showcase', () => {
     const picked = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, smoked, null);
     assert.equal(picked?.id, 'far');
 
+    // Someone on the smoky exit and already in that smoke crawls on to it. From clear air they leave.
+    const smokedHere = field(
+      [
+        { id: 's', simPos: smokyApproach, indoor: true },
+        { id: 'p', simPos: { x: 190, y: 20 }, indoor: true },
+      ],
+      { s: { smoke: 0.46, fire: 'none' }, p: { smoke: 0.46, fire: 'none' } },
+    );
+    const kept = chooseExit({ x: 190, y: 20 }, [smoky, clear], box, smokedHere, {
+      id: 'near',
+      cost: 40,
+    });
+    assert.equal(kept?.id, 'near');
+    assert.equal(kept?.forced, true);
+    const left = chooseExit({ x: 150, y: 20 }, [smoky, clear], box, smokedHere, {
+      id: 'near',
+      cost: 80,
+    });
+    assert.equal(left?.id, 'far');
+    assert.equal(
+      chooseExit({ x: 190, y: 20 }, [smoky, clear], box, smokedHere, null)?.id,
+      'far',
+    );
+
     const appA = exitApproachInside(smoky, box);
     const appB = exitApproachInside(clear, box);
     const bothBurn = field(

@@ -366,6 +366,28 @@ function routeLegs(pos: Vec2, approach: Vec2, walls?: WallLike[]): Array<[Vec2, 
   return legs;
 }
 
+/**
+ * True when the person already stands in smoke at least as thick as the exit's
+ * approach, with no fire there. Leaving that exit for its smoke buys no
+ * cleaner air: every other route starts in the same smoke.
+ */
+export function inApproachSmoke(
+  pos: Vec2,
+  exit: ExitDef,
+  verts: Vec2[],
+  field: HazardField,
+): boolean {
+  if (exit.exitType === 'service' || exit.status === 'blocked') return false;
+  const approach = exitApproachInside(exit, verts);
+  const there = field.sample(approach.x, approach.y);
+  if (there.fire === 'burning') return false;
+  return extinctionK(field.sample(pos.x, pos.y).smoke) >= extinctionK(there.smoke);
+}
+
+/**
+ * `held` is the exit the person is already on. It is not dropped for approach
+ * smoke they are already standing in; that smoke stays on the cost.
+ */
 export function exitCost(
   pos: Vec2,
   exit: ExitDef,
@@ -374,8 +396,14 @@ export function exitCost(
   walls?: WallLike[],
   blockedDoors?: readonly WallLike[],
   recover = false,
+  held = false,
 ): number {
-  if (!isExitUsable(exit, verts, field, recover)) return Infinity;
+  if (
+    !isExitUsable(exit, verts, field, recover) &&
+    !(held && inApproachSmoke(pos, exit, verts, field))
+  ) {
+    return Infinity;
+  }
   const approach = exitApproachInside(exit, verts);
   if (
     blockedDoors &&
@@ -472,7 +500,15 @@ export function chooseExit(
       options?.walls,
       options?.blockedDoors,
       current != null && !(heldUsable && e.id === current.id),
+      current != null && e.id === current.id,
     );
+  // A current exit kept only because the person already stands in its
+  // approach smoke is the same committed crawl as the all-Infinity fallback.
+  const crawlOnly = (id: string) => {
+    if (current == null || id !== current.id) return false;
+    const e = pool.find((x) => x.id === id);
+    return e != null && !isExitUsable(e, verts, field, !heldUsable);
+  };
   const ranked = pool
     .map((e) => ({ id: e.id, cost: costOf(e) }))
     .sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id));
@@ -524,10 +560,10 @@ export function chooseExit(
     const now = costOf(pool.find((e) => e.id === current.id) as ExitDef);
     // A blocked or burning exit is abandoned on this check, not one check later.
     if (now < Infinity && !(best.cost < now * (1 - SHOWCASE.REROUTE_HYSTERESIS))) {
-      return { id: current.id, cost: now, forced: false };
+      return { id: current.id, cost: now, forced: crawlOnly(current.id) };
     }
   }
-  return { id: best.id, cost: best.cost, forced: false };
+  return { id: best.id, cost: best.cost, forced: crawlOnly(best.id) };
 }
 
 /**
