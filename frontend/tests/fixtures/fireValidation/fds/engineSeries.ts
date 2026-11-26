@@ -6,8 +6,9 @@
  * A burning room solves its doors against the neighbour's layer. A room
  * with no fire of its own takes that room's upper outflow from the previous
  * step as a door jet, which is the product's coupling. The door flows in
- * the CSV are the last substep of that second. That pressure solution
- * carries the layer's mass change out through the openings.
+ * the CSV are the last substep of that second. While the layer is warming,
+ * that pressure solution carries the ambient-density weight of the
+ * expansion volume, and the interface then drops by that volume.
  *
  *   node --import tsx frontend/tests/fixtures/fireValidation/fds/engineSeries.ts [outDir]
  */

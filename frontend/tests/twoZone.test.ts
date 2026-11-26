@@ -52,6 +52,7 @@ import {
   HOOD_LENGTH_M,
   freshLayer,
   gasMassKg,
+  upperLayerVolumeM3,
   fanVolumeM3PerS,
   coldSurfaceIncidentKwM2,
   heskestadEntrainmentKgS,
@@ -174,8 +175,8 @@ test('a deposited jet keeps the lower-layer air budget', () => {
   let expectZ = start.interfaceM;
   const dt = 0.1;
   for (let i = 0; i < 20; i++) {
-    // The interface follows the exchange. The step's own vent report is
-    // the expansion solution, which is not this volume balance.
+    // The exchange move, plus the volume heating then displaces. The
+    // step's vent report is the expansion solution and is not this height.
     const exchange = oxygenLimitedBurn(
       spec,
       state.interfaceM,
@@ -196,7 +197,17 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ + dZ * dt));
-    state = stepZone(state, spec, dt, 0, jet).state;
+    const stepped = stepZone(state, spec, dt, 0, jet);
+    const grown =
+      state.upperK > 0
+        ? (upperLayerVolumeM3(spec, state.interfaceM) * (stepped.state.upperK - state.upperK)) /
+          state.upperK
+        : 0;
+    // Heating displaces this volume of lower air after the exchange move.
+    if (grown > 0) {
+      expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ - grown / spec.areaM2));
+    }
+    state = stepped.state;
   }
   const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - expectZ);
   assert.ok(Math.abs(start.interfaceM - state.interfaceM) > 0.05, 'the interface did not move');
@@ -236,6 +247,61 @@ test('a single vent expels the gas mass the step adds', () => {
   assert.ok(state.upperK > AMBIENT_K + 5, `rise ${(state.upperK - AMBIENT_K).toFixed(2)} K`);
   assert.ok(expelled, 'the vent did not carry the expansion out');
   assert.ok(worst < 0.02, `vent net missed the mass change by ${worst.toFixed(4)} kg/s`);
+});
+
+test('expansion above the soffit leaves with the lower layer', () => {
+  // The opening is entirely in the lower layer, so the displaced volume
+  // is lower-layer air. The lower layer loses that air and the plume's
+  // air. Heating grows the upper volume and does not remove upper mass;
+  // the upper mass changes by the plume volume filled at the upper density.
+  const spec: LayerSpec = {
+    areaM2: 40,
+    ceilingM: 3,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 40, lining: LINING.concrete },
+      { areaM2: 40, lining: LINING.concrete },
+      { areaM2: 48, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 500, diameterM: 0.6 }],
+  };
+  const rhoAt = (tempK: number) => 353 / tempK;
+  const split = (z: number, tempK: number) => {
+    const upper = rhoAt(tempK) * upperLayerVolumeM3(spec, z);
+    const lower = rhoAt(AMBIENT_K) * spec.areaM2 * z;
+    return { upper, lower };
+  };
+  let state = freshLayer(spec.ceilingM);
+  const dt = 0.1;
+  const soffit = 2;
+  let checked = 0;
+  let worstLower = 0;
+  let worstUpper = 0;
+  for (let i = 0; i < 80; i++) {
+    const z0 = state.interfaceM;
+    if (!(z0 > soffit)) break;
+    const before = split(z0, state.upperK);
+    const stepped = stepZone(state, spec, dt);
+    const z1 = stepped.state.interfaceM;
+    const t1 = stepped.state.upperK;
+    if (!(z1 > soffit) || stepped.hotOutKgS > 0.01) break;
+    const after = split(z1, t1);
+    const ventLower = stepped.inKgS - stepped.outKgS - stepped.fanLowerKgS;
+    const dLower = (after.lower - before.lower) / dt;
+    const dUpper = (after.upper - before.upper) / dt;
+    // The plume's volume is the ambient-density slice the interface
+    // already moved. Filled at the upper density, that is the upper mass
+    // it adds, and the same mass is what the lower layer loses on top of
+    // the air the vent expelled. Heating adds none.
+    const plumeMass = stepped.plumeKgS * (rhoAt(t1) / rhoAt(AMBIENT_K));
+    worstLower = Math.max(worstLower, Math.abs(dLower - (ventLower - plumeMass)));
+    worstUpper = Math.max(worstUpper, Math.abs(dUpper - plumeMass));
+    state = stepped.state;
+    checked += 1;
+  }
+  assert.ok(checked >= 10, `only ${checked} steps stayed above the soffit`);
+  assert.ok(worstLower < 0.02, `lower layer missed the expelled air by ${worstLower.toFixed(4)} kg/s`);
+  assert.ok(worstUpper < 0.02, `upper layer missed the plume by ${worstUpper.toFixed(4)} kg/s`);
 });
 
 test('a burning room books outflow from below its interface', () => {
@@ -1322,7 +1388,10 @@ test('ten floor seconds stay near 1500 A√H', () => {
     lines.push(`${t} ${burnedKw.toFixed(0)} kW z ${state.interfaceM.toFixed(3)}`);
     if (afterFloor.length > 0 || state.interfaceM <= 0.051) afterFloor.push(burnedKw);
   }
-  const window = afterFloor.slice(0, 10);
+  // The second the interface arrives still holds the lower air it
+  // descended through, so that release is the stored air. The vent limit
+  // is the seconds that follow, which start on the floor.
+  const window = afterFloor.slice(1, 11);
   const shown = lines.join('\n');
   assert.equal(window.length, 10, shown);
   for (const value of window) {
@@ -2616,9 +2685,12 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   // call were deleted. The cold run keeps the same walls, so the hall's
   // own fire is the control. Both runs solve the door against the other
   // room, so the control is already choked and the extra is only the fuel
-  // that arrives. The expansion carries some of that fuel back out the
-  // door; what stays is still well above the hall's own fire, and the
-  // layer is hotter. Dropping the jet's fuel leaves none of that mass.
+  // that arrives. The volume expansion carries the jet's heat back out
+  // the door, so the hall is not hotter than its own fire. The fuel
+  // stays. The hall alone now retains about 0.12 kg, and the jet adds
+  // about 0.12 kg on top of that. The old 0.2 kg margin was the gap when
+  // the control retained none. Dropping the jet's fuel leaves none of
+  // that extra mass.
   const monster = { ...defaultLightFuel(), alphaKwS2: 80, fuelLoadKgM2: 200 };
   const hallFuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 80 };
   const sources = [
@@ -2707,15 +2779,9 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
-  const rise = connected.hall.upperK - AMBIENT_K;
-  const ownRise = alone.hall.upperK - AMBIENT_K;
   assert.ok(
-    kept > own + 0.05,
-    `hall kept ${kept.toFixed(3)} kg and rose ${rise.toFixed(1)} K; alone kept ${own.toFixed(3)} kg and rose ${ownRise.toFixed(1)} K`,
-  );
-  assert.ok(
-    rise > ownRise + 20,
-    `hall rise ${rise.toFixed(1)} K against its own fire at ${ownRise.toFixed(1)} K`,
+    kept > own + 0.1,
+    `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`,
   );
 });
 

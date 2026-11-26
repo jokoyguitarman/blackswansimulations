@@ -1,63 +1,63 @@
 {
   "blocked": false,
   "down": 13,
-  "fumeDown": 0,
-  "heatDown": 4,
+  "fumeDown": 1,
+  "heatDown": 3,
   "flashoverAtS": 79.88,
   "peakTotalMw": 163.5,
-  "within120": 0.752,
-  "crawling": 0,
-  "reroutes": 10,
-  "outByT300": 96,
+  "within120": 0.733,
+  "crawling": 10,
+  "reroutes": 24,
+  "outByT300": 83,
   "reachable": 101,
   "mall": {
     "active": true,
-    "interfaceM": 1.96,
-    "riseK": 65.9
+    "interfaceM": 1.45,
+    "riseK": 89.8
   },
   "marks": {
     "t180": {
-      "smoke": "0.408",
-      "out": 64,
-      "down": 13,
-      "heatDown": 4,
+      "smoke": "0.402",
+      "out": 65,
+      "down": 9,
+      "heatDown": 0,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94
     },
     "t240": {
-      "smoke": "0.410",
+      "smoke": "0.725",
       "out": 82,
       "down": 13,
-      "heatDown": 4,
+      "heatDown": 3,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94
     },
     "t300": {
-      "smoke": "0.450",
-      "out": 96,
+      "smoke": "0.757",
+      "out": 83,
       "down": 13,
-      "heatDown": 4,
+      "heatDown": 3,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94
     }
   },
   "late": {
-    "inside": 21,
-    "down": 15,
-    "out": 99,
-    "inMall": 2,
+    "inside": 24,
+    "down": 18,
+    "out": 97,
+    "inMall": 5,
     "maxFed": 1.001,
     "maxHeatFed": 1.001,
-    "heatDown": 4,
-    "mallFed": 1.001,
+    "heatDown": 3,
+    "mallFed": 1,
     "mall": {
       "active": true,
-      "interfaceM": 1.08,
-      "riseK": 82.6
+      "interfaceM": 0.96,
+      "riseK": 70.6
     },
-    "smoke": "0.828"
+    "smoke": "0.835"
   }
 }
