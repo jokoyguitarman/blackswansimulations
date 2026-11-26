@@ -128,6 +128,7 @@ import {
   type StudEffectState,
   type HazardPhase,
   type HazardEvent,
+  type SmokeLayerView,
 } from '../lib/rts/spatialEffects';
 import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
 import {
@@ -905,7 +906,13 @@ export function DebugRTSSim() {
     states: null,
     buildingVerts: [],
     cellM: 3,
+    layers: null,
   });
+  /** Room smoke layers from the last effects step, tagged with the engine that made them. */
+  const smokeLayersRef = useRef<{
+    engine: SpatialEffectsEngine | null;
+    layers: SmokeLayerView[] | null;
+  }>({ engine: null, layers: null });
   const rasterCacheRef = useRef(createRasterLayoutCache());
   const rasterLayoutRef = useRef<RasterLayout | null>(null);
   const evacAccRef = useRef(createAccumulator());
@@ -2419,6 +2426,9 @@ export function DebugRTSSim() {
         );
         const effectDt = effectSteps * FX.EFFECTS_DT;
         effectStatesRef.current = new Map(effectsEng.studStates);
+        if (effectSteps > 0 || smokeLayersRef.current.engine !== effectsEng) {
+          smokeLayersRef.current = { engine: effectsEng, layers: effectsEng.smokeLayers() };
+        }
         const jetCount = effectsEng.gasJets().length;
         setGasJetCount((prev) => (prev === jetCount ? prev : jetCount));
         const liveArcs = effectsEng.electricalArcs().length;
@@ -2482,6 +2492,11 @@ export function DebugRTSSim() {
             fxCtx.nowMs = performance.now();
             fxCtx.layout = layout;
             fxCtx.states = effectsEngineRef.current?.studStates ?? null;
+            const layerSnap = smokeLayersRef.current;
+            fxCtx.layers =
+              layerSnap.engine != null && layerSnap.engine === effectsEngineRef.current
+                ? layerSnap.layers
+                : null;
             fxCtx.buildingVerts = projectedVertsRef.current;
             fxCtx.cellM = 3;
             const renderer = hazardFxRef.current;
@@ -2666,10 +2681,11 @@ export function DebugRTSSim() {
             const fxMs = classic ? 0 : (stats?.ms ?? 0);
             const embers = classic ? 0 : (stats?.embers ?? 0);
             const collisions = rasterLayoutRef.current?.collisions ?? 0;
+            const layers = hazardFxCtxRef.current.layers?.length ?? 0;
             const label =
               collisions > 0
-                ? `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current} · collisions ${collisions}`
-                : `fx ${fxMs.toFixed(2)} · embers ${embers} · quality ${fxQualityRef.current}`;
+                ? `fx ${fxMs.toFixed(2)} · embers ${embers} · layers ${layers} · quality ${fxQualityRef.current} · collisions ${collisions}`
+                : `fx ${fxMs.toFixed(2)} · embers ${embers} · layers ${layers} · quality ${fxQualityRef.current}`;
             ctx.save();
             ctx.font = '12px monospace';
             ctx.textAlign = 'right';

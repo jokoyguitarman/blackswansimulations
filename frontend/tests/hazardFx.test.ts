@@ -10,7 +10,8 @@ import { RTSEngine } from '../src/lib/rts/engine';
 import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { EmberPool } from '../src/lib/rts/fx/embers';
 import { FX, noteDowngradeFrom, shouldAutoDowngrade } from '../src/lib/rts/fx/fxConstants';
-import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
+import { SpatialEffectsEngine, type SmokeLayerView } from '../src/lib/rts/spatialEffects';
+import { createLayerShade, shadeLayers } from '../src/lib/rts/fx/smokeLayers';
 import type { HazardZone } from '../src/lib/rts/types';
 import {
   activeRasterLayout,
@@ -191,8 +192,7 @@ function pageLoopUntil(frameMs: number, target: number) {
     }
     for (; cursor < n; cursor++) evac.step();
     evacDone += n;
-    const m =
-      dt > 0 ? takeSteps(effectsAcc, dt, speed, FX.EFFECTS_DT, FX.MAX_STEPS_PER_FRAME) : 0;
+    const m = dt > 0 ? takeSteps(effectsAcc, dt, speed, FX.EFFECTS_DT, FX.MAX_STEPS_PER_FRAME) : 0;
     for (let i = 0; i < m; i++) effects.step(FX.EFFECTS_DT, [], [blastZone]);
     effectDone += m;
     if (n === 0 && m === 0) break;
@@ -296,14 +296,97 @@ describe('hazard fx', () => {
       out.fill(0);
       const states = new Map([['a', { smoke: d }]]);
       writeSmokeRGBA(layout, states, out, headSmoke);
-      const expected =
-        d >= 0.05 ? Math.round(255 * (0.15 + 0.65 * headSmoke(d))) : 0;
+      const expected = d >= 0.05 ? Math.round(255 * (0.15 + 0.65 * headSmoke(d))) : 0;
       assert.equal(out[3], expected, `d=${d}`);
     }
     const again = writeSmokeRGBA(layout, new Map([['a', { smoke: 1 }]]), out, headSmoke);
     const third = writeSmokeRGBA(layout, new Map([['a', { smoke: 1 }]]), out, headSmoke);
     assert.ok(again >= 0);
     assert.equal(third, 0);
+  });
+
+  test('room layer tint fills only its members and darkens near the fire', () => {
+    const { layout } = grid(6, 1, 3);
+    const indexOf = new Map(layout.studIds.map((id, i) => [id, i] as const));
+    const members = ['0,0', '1,0', '2,0', '3,0'];
+    const layer: SmokeLayerView = {
+      room: 'r',
+      members,
+      ceilingM: 3,
+      interfaceM: 1.8,
+      depthM: 1.2,
+      extinctionK: 1.5,
+      upperK: 600,
+    };
+    const states = stateMap(layout, 'none');
+    states.set('0,0', { smoke: 0, fire: { state: 'burning' } });
+    const shade = shadeLayers(indexOf, layout.xs, layout.ys, [layer], states, createLayerShade(6));
+    assert.equal(shade.count, members.length);
+    assert.equal(shade.alpha[indexOf.get('4,0') ?? -1], 0);
+    assert.equal(shade.alpha[indexOf.get('5,0') ?? -1], 0);
+    const near = indexOf.get('0,0') ?? -1;
+    const far = indexOf.get('3,0') ?? -1;
+    assert.ok(shade.alpha[near] > shade.alpha[far], 'denser over the fire');
+    assert.ok(shade.dark[near] > shade.dark[far], 'darker over the fire');
+
+    const deeper = shadeLayers(
+      indexOf,
+      layout.xs,
+      layout.ys,
+      [{ ...layer, interfaceM: 0.6, depthM: 2.4 }],
+      states,
+      createLayerShade(6),
+    );
+    assert.ok(deeper.alpha[far] > shade.alpha[far], 'a fuller room reads heavier');
+
+    const clear = shadeLayers(
+      indexOf,
+      layout.xs,
+      layout.ys,
+      [{ ...layer, extinctionK: 0 }],
+      states,
+      createLayerShade(6),
+    );
+    assert.equal(clear.count, 0);
+  });
+
+  test('layer tint merges into the smoke raster without changing head smoke', () => {
+    const { layout } = grid(2, 1, 3);
+    const indexOf = new Map(layout.studIds.map((id, i) => [id, i] as const));
+    const states = stateMap(layout, 'none');
+    const shade = shadeLayers(
+      indexOf,
+      layout.xs,
+      layout.ys,
+      [
+        {
+          room: 'r',
+          members: ['0,0'],
+          ceilingM: 3,
+          interfaceM: 2,
+          depthM: 1,
+          extinctionK: 1,
+          upperK: 400,
+        },
+      ],
+      states,
+      createLayerShade(2),
+    );
+    const out = new Uint8ClampedArray(layout.cols * layout.rows * 4);
+    const cover = { smoke: 0 };
+    writeSmokeRGBA(layout, states, out, headSmoke, undefined, cover, shade);
+    const tinted = (layout.index[indexOf.get('0,0') ?? -1] ?? 0) * 4;
+    const clean = (layout.index[indexOf.get('1,0') ?? -1] ?? 0) * 4;
+    assert.equal(out[tinted + 3], Math.round(255 * shade.alpha[indexOf.get('0,0') ?? -1]));
+    assert.equal(out[clean + 3], 0);
+    assert.equal(cover.smoke, 1);
+    assert.equal(writeSmokeRGBA(layout, states, out, headSmoke, undefined, undefined, shade), 0);
+  });
+
+  test('smokeLayers reports nothing before a layer forms', () => {
+    const engine = new SpatialEffectsEngine(DEFAULT_FIRE_PARAMS);
+    engine.init([]);
+    assert.deepEqual(engine.smokeLayers(), []);
   });
 
   test('writers leave frozen state untouched and repeat exactly', () => {
@@ -510,10 +593,7 @@ describe('hazard fx', () => {
         if (++spins > target + 5) break;
       }
       assert.equal(done, target, `${frameMs} ms took ${done}`);
-      assert.ok(
-        Math.abs(integrated - 180) < FX.FIXED_DT,
-        `${frameMs} ms integrated ${integrated}`,
-      );
+      assert.ok(Math.abs(integrated - 180) < FX.FIXED_DT, `${frameMs} ms integrated ${integrated}`);
     }
   });
 

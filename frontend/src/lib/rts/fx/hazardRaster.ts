@@ -1,4 +1,5 @@
 import { FX } from './fxConstants';
+import { layerRgb, type LayerShade } from './smokeLayers';
 
 export interface RasterLayout {
   minX: number;
@@ -181,9 +182,10 @@ export function activeRasterLayout(
   return cache.byLevel?.get(rasterStoreyId(activeLevel)) ?? null;
 }
 
-function smokeRgb(h: number, channel: 0 | 1 | 2): number {
-  const from = channel === 2 ? 98 : 88;
-  const to = channel === 2 ? 46 : 40;
+/** Stays lighter than the building floor at every density, so thick smoke never blends into it. */
+export function smokeRgb(h: number, channel: 0 | 1 | 2): number {
+  const from = channel === 2 ? 210 : 200;
+  const to = channel === 2 ? 138 : 128;
   return Math.round(from + (to - from) * h);
 }
 
@@ -195,9 +197,11 @@ export function writeSmokeRGBA(
   headSmoke: (d: number) => number,
   dirty?: DirtyBox,
   cover?: { smoke: number },
+  layer?: LayerShade | null,
 ): number {
   let changed = 0;
   const cols = layout.cols;
+  const withLayer = layer != null && layer.count > 0;
   for (let i = 0; i < layout.index.length; i++) {
     const p = layout.index[i];
     if (p < 0) continue;
@@ -207,14 +211,24 @@ export function writeSmokeRGBA(
     let r = 0;
     let g = 0;
     let b = 0;
+    let h = 0;
     if (d >= 0.05) {
-      const h = headSmoke(d);
-      a = Math.round(
-        255 * (FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h),
-      );
+      h = headSmoke(d);
+      a = Math.round(255 * (FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h));
       r = smokeRgb(h, 0);
       g = smokeRgb(h, 1);
       b = smokeRgb(h, 2);
+    }
+    const la = withLayer ? layer.alpha[i] : 0;
+    if (layer && la > 0) {
+      // Head-height smoke is the same layer once it has come down, so it
+      // thickens the room tint instead of painting its own colour over it.
+      const ha = a / 255;
+      const dk = layer.dark[i] + (1 - layer.dark[i]) * FX.LAYER_HEAD_DARKEN * h;
+      r = Math.round(layerRgb(dk, 0));
+      g = Math.round(layerRgb(dk, 1));
+      b = Math.round(layerRgb(dk, 2));
+      a = Math.round(255 * (1 - (1 - ha) * (1 - la)));
     }
     if (a > 0 && cover) cover.smoke++;
     const o = p * 4;
