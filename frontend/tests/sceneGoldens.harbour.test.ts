@@ -16,7 +16,12 @@
  * carried since about T+159. It does not mean the jet was clean. Soot
  * and gas use the same φ ≤ 2 pyrolysis. Late mean smoke is 0.835 open
  * and 0.840 blocked. The highest asphyxiant FED still inside is 0.029
- * open and 0.042 blocked, and the highest heat FED is 1.001. The
+ * open and 0.042 blocked, and the highest heat FED is 1.001.
+ * Known gap: those gas concentrations come from the visibility-capped
+ * extinction (K ≤ 6.1 /m), so the asphyxiant FED is under-stated in
+ * smoke denser than that. At the Harbour shop the layer soot is
+ * 13.9 /m at T+170 and 17.7 /m at T+180. Reading the gases from that
+ * soot raises the dose rate 5.8× and 25×, with HCN dominating. The
  * T+300 smoke strings are unchanged.
  */
 import assert from 'node:assert/strict';

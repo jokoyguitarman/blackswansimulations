@@ -826,6 +826,17 @@ describe('ISO 13571 heat dose', () => {
     assert.equal(exposureIncapacitates(0, 1), true);
   });
 
+  test('5 kW/m² burns on ISO 13571 Eq. (7), 6.9 q to the −1.56, not the pain curve', () => {
+    assert.equal(HEAT_RAD_COEFF, 6.9);
+    assert.equal(HEAT_RAD_EXP, 1.56);
+    const burnMin = 6.9 * 5 ** -1.56;
+    const rate = heatFedPerMin(undefined, 5);
+    assert.ok(Math.abs(rate * burnMin - 1) < 1e-9, `5 kW/m² rate ${rate} per min`);
+    assert.ok(rate > 1.5 && rate < 2.2, `Eq. (7) rate ${rate} per min`);
+    const painMin = 4.2 * 5 ** -1.9;
+    assert.ok(rate * painMin < 0.5, `rate ${rate} landed on Eq. (8)`);
+  });
+
   test('heat at the head puts them down, and the two doses are not added', () => {
     const minutes = HEAT_CONV_COEFF / 180 ** HEAT_CONV_EXP;
     const steps = Math.ceil(minutes * 3600);
