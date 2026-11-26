@@ -188,7 +188,7 @@ describe('rts levels', () => {
     close(travel, (4 * LEVEL.STAIR_TRAVEL_FACTOR) / LEVEL.STAIR_SPEED_DOWN, 'travel');
   });
 
-  it('lifts smoke up a shaft and never down, blocked or open', () => {
+  it('does not carry a cold smoke number through a shaft', () => {
     const pair = [
       { id: 'g', simPos: { x: 5, y: 5 }, spatialContext: 'inside_building', level: 'G' },
       { id: 'u', simPos: { x: 5, y: 5 }, spatialContext: 'inside_building', level: 'L1' },
@@ -206,60 +206,30 @@ describe('rts levels', () => {
         u: engine.studStates.get('u')!.smoke,
       };
     };
+    // The old mix pushed this number upstairs at a fixed 400 K. A shaft
+    // now moves the layer, and a cold stud has no layer.
     const open = run('stair', false, 'g');
-    assert.ok(open.u > 0.2, `upper smoke ${open.u}`);
+    assert.equal(open.u, 0);
     const blocked = run('stair', true, 'g');
-    assert.ok(blocked.u > 0.2, `blocked upper smoke ${blocked.u}`);
+    assert.equal(blocked.u, 0);
     const down = run('stair', false, 'u');
     assert.equal(down.g, 0);
     const lift = run('lift', false, 'g');
-    assert.ok(lift.u > 0.2, `lift upper smoke ${lift.u}`);
+    assert.equal(lift.u, 0);
   });
 
-  it('climbs fire up a stair and not a lift or downward', () => {
+  it('does not ignite a landing on the 60 s timer', () => {
     const studs = [
       { id: 'g', simPos: { x: 5, y: 5 }, spatialContext: 'inside_building', level: 'G' },
       { id: 'u', simPos: { x: 5, y: 5 }, spatialContext: 'inside_building', level: 'L1' },
     ];
-    const heat = (kind: 'stair' | 'lift', blocked: boolean, source: 'g' | 'u') => {
-      const fire = new FireSimulation();
-      fire.init(studs);
-      fire.setShaftPairs([
-        {
-          lower: 'g',
-          upper: 'u',
-          kind,
-          blocked,
-          coeffPerS: 0.2,
-        },
-      ]);
-      fire.ignite([source]);
-      const steps = Math.ceil((LEVEL.STAIR_FIRE_HEAT_S + 1) / 1);
-      for (let i = 0; i < steps; i++) fire.step(1, [], []);
-      return {
-        g: fire.states.get('g')!.state,
-        u: fire.states.get('u')!.state,
-      };
-    };
-    const open = heat('stair', false, 'g');
-    assert.equal(open.u, 'burning');
-    const blocked = heat('stair', true, 'g');
-    assert.equal(blocked.u, 'burning');
-    const down = heat('stair', false, 'u');
-    assert.equal(down.g, 'none');
-    const lift = heat('lift', false, 'g');
-    assert.equal(lift.u, 'none');
-
-    const timed = new FireSimulation();
-    timed.init(studs);
-    timed.setShaftPairs([
-      { lower: 'g', upper: 'u', kind: 'stair', blocked: false, coeffPerS: 0.2 },
-    ]);
-    timed.ignite(['g']);
-    for (let i = 0; i < LEVEL.STAIR_FIRE_HEAT_S - 1; i++) timed.step(1, [], []);
-    assert.equal(timed.states.get('u')!.state, 'none');
-    timed.step(1, [], []);
-    assert.equal(timed.states.get('u')!.state, 'burning');
+    const fire = new FireSimulation();
+    fire.init(studs);
+    fire.setShaftPairs([{ lower: 'g', upper: 'u', kind: 'stair', blocked: false, coeffPerS: 0.2 }]);
+    fire.ignite(['g']);
+    for (let i = 0; i < LEVEL.STAIR_FIRE_HEAT_S + 5; i++) fire.step(1, [], []);
+    assert.equal(fire.states.get('g')!.state, 'burning');
+    assert.equal(fire.states.get('u')!.state, 'none');
   });
 
   it('chooses a clear stair, refuses blocked stairs, and takes a local exit', () => {
