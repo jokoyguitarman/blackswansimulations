@@ -11,7 +11,12 @@
  * the floor, with the mall empty of people. Down stays 9. The crowd
  * model has no ISO 13571 heat dose, so that count is fumes only. The
  * open counts at T+300 are otherwise unchanged. The blocked exit lets
- * 82 people out by T+300.
+ * 82 people out by T+300. A mall fuel stock of 0 kg before about
+ * T+376 means the spill burned the fuel the shop jet has carried
+ * since about T+159. It does not mean the jet was clean. Soot and
+ * gas use the same φ ≤ 2 pyrolysis. Late mean smoke is 0.835 open
+ * and 0.840 blocked, and the highest FED still inside is 0.006 and
+ * 0.042. The T+300 smoke strings are unchanged.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
