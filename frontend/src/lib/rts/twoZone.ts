@@ -1476,7 +1476,7 @@ function densityKgM3(tempK: number): number {
  * Between two heights the section is a pyramid, so the linear scale
  * √A is linear in height and the area is the square of that scale.
  */
-function sectionAreaM2(spec: LayerSpec, zM: number): number {
+export function sectionAreaM2(spec: LayerSpec, zM: number): number {
   const cs = spec.crossSection;
   const floor = Math.max(spec.areaM2, 0);
   if (!cs) return floor;

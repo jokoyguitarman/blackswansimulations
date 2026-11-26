@@ -100,10 +100,10 @@ function box(
   return { areaM2: area, ceilingM: heightM, vents, boundaries };
 }
 
-// NBS MV100A (Peacock et al., NBSIR 88-3752). The fire room door opens to a
-// small entry and then the corridor. The layer vents to ambient, so the door
-// here opens to ambient air. The burner sits 0.1 m from the rear wall; the
-// plume is entrained as if free-standing, as CFAST does.
+// NBS MV100A (Peacock et al., NBSIR 88-3752). The fire-room door opens into
+// the entry. `runNbsFireRoom` puts that entry's layer on the far side of the
+// opening below. The spec records the opening. The burner sits 0.1 m from
+// the rear wall; the plume is entrained as if free-standing, as CFAST does.
 const ceramicNbs = matl('Ceramic Fiber NBS', 0.09, 128, 1.04, 0.05);
 const fireBrickNbs = matl('Fire Brick NBS', 0.36, 750, 1.04, 0.113);
 const mariniteNbs = matl('Marinite NBS', 0.12, 720, 1.25, 0.0127);

@@ -33,6 +33,7 @@ import {
   heskestadEntrainmentKgS,
   heskestadFlameHeightM,
   steadyLayer,
+  sectionAreaM2,
   stepZone,
   upperLayerVolumeM3,
   type LayerSpec,
@@ -457,6 +458,26 @@ test('the VTT roof is a pyramidal frustum, not the floor carried to the ridge', 
     1,
   );
   assert.ok(Math.abs(box - 30) < 1e-9, `rectangular volume ${box}`);
+});
+
+test('the pitched roof interpolates area on the square root, above the eaves', () => {
+  // CFAST user's guide §4.4: between two heights √A is linear. Halfway from
+  // the eaves to the monitor is the square of that scale. The layer interface
+  // stays below the eaves, so the volume check never reads this band.
+  const hall = VTT_CASE_1.spec;
+  const cs = hall.crossSection!;
+  const h0 = cs.heightsM[1]!;
+  const h1 = cs.heightsM[2]!;
+  const a0 = cs.areasM2[1]!;
+  const a1 = cs.areasM2[2]!;
+  const z = (h0 + h1) / 2;
+  const t = (z - h0) / (h1 - h0);
+  const scale = Math.sqrt(a0) + (Math.sqrt(a1) - Math.sqrt(a0)) * t;
+  const area = sectionAreaM2(hall, z);
+  assert.ok(z > 12 && z < 17.1, `height ${z}`);
+  assert.ok(Math.abs(area - scale * scale) < 1e-9, `section ${area}`);
+  const linear = a0 + (a1 - a0) * t;
+  assert.ok(Math.abs(area - linear) > 20, `linear-in-area would pass, got ${area}`);
 });
 
 // ── VTT large hall, ICFMP BE#2 Case 1 ──
