@@ -1,0 +1,17 @@
+# FDS writes these beside the input. Run the cases in a scratch directory.
+*.s3d
+*.sz
+*.sf
+*.bf
+*.q
+*.prt5
+*.smv
+*.out
+*.end
+*.stop
+*_devc.csv
+*_hrr.csv
+*_cpu.csv
+*_git.txt
+*_steps.csv
+*.restart
