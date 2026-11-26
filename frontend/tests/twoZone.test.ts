@@ -51,6 +51,7 @@ import {
   HOOD_INTAKE_M,
   HOOD_LENGTH_M,
   freshLayer,
+  gasMassKg,
   fanVolumeM3PerS,
   coldSurfaceIncidentKwM2,
   heskestadEntrainmentKgS,
@@ -173,7 +174,9 @@ test('a deposited jet keeps the lower-layer air budget', () => {
   let expectZ = start.interfaceM;
   const dt = 0.1;
   for (let i = 0; i < 20; i++) {
-    const lim = oxygenLimitedBurn(
+    // The interface follows the exchange. The step's own vent report is
+    // the expansion solution, which is not this volume balance.
+    const exchange = oxygenLimitedBurn(
       spec,
       state.interfaceM,
       state.upperK,
@@ -182,11 +185,13 @@ test('a deposited jet keeps the lower-layer air budget', () => {
       dt,
       true,
     );
-    const makeup = Math.max(0, lim.inKgS - lim.farUpperInKgS);
-    const hot = lim.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const lowerOut = Math.max(0, lim.outKgS - hot);
-    const unmatched = jet.kgS - lim.farUpperInKgS;
-    let dZ = (makeup - lim.plumeKgS - lim.fanLowerKgS - lowerOut) / (LEVEL.RHO_AIR * spec.areaM2);
+    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+    const makeup = Math.max(0, exchange.inKgS - exchange.farUpperInKgS);
+    const lowerOut = Math.max(0, exchange.outKgS - hot);
+    const unmatched = jet.kgS - exchange.farUpperInKgS;
+    let dZ =
+      (makeup - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) /
+      (LEVEL.RHO_AIR * spec.areaM2);
     dZ -= unmatched / (rhoJet * spec.areaM2);
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
@@ -199,6 +204,38 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     Math.abs(residualKg) < 0.05,
     `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
   );
+});
+
+test('a single vent expels the gas mass the step adds', () => {
+  // Otherwise closed. The pressure root is in − out = dM/dt, so the vent
+  // carries the expansion instead of the layer mass simply disappearing.
+  const spec: LayerSpec = {
+    areaM2: 40,
+    ceilingM: 3,
+    vents: [{ widthM: 2, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 40, lining: LINING.concrete },
+      { areaM2: 40, lining: LINING.concrete },
+      { areaM2: 48, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 500, diameterM: 0.6 }],
+  };
+  let state = freshLayer(spec.ceilingM);
+  const dt = 0.1;
+  let worst = 0;
+  let expelled = false;
+  for (let i = 0; i < 80; i++) {
+    const before = gasMassKg(spec, state.interfaceM, state.upperK);
+    const stepped = stepZone(state, spec, dt);
+    const after = gasMassKg(spec, stepped.state.interfaceM, stepped.state.upperK);
+    const net = stepped.inKgS - stepped.outKgS - stepped.fanUpperKgS - stepped.fanLowerKgS;
+    worst = Math.max(worst, Math.abs(net - (after - before) / dt));
+    if (net < -0.05) expelled = true;
+    state = stepped.state;
+  }
+  assert.ok(state.upperK > AMBIENT_K + 5, `rise ${(state.upperK - AMBIENT_K).toFixed(2)} K`);
+  assert.ok(expelled, 'the vent did not carry the expansion out');
+  assert.ok(worst < 0.02, `vent net missed the mass change by ${worst.toFixed(4)} kg/s`);
 });
 
 test('a burning room books outflow from below its interface', () => {
@@ -242,7 +279,9 @@ test('a burning room books outflow from below its interface', () => {
   let omittedZ = start.interfaceM;
   const dt = 0.1;
   for (let i = 0; i < 30; i++) {
-    const lim = oxygenLimitedBurn(
+    // Same split the step uses to move the interface. The returned vents
+    // also carry the expansion, so they are not this balance.
+    const exchange = oxygenLimitedBurn(
       spec,
       state.interfaceM,
       state.upperK,
@@ -251,20 +290,26 @@ test('a burning room books outflow from below its interface', () => {
       dt,
       false,
     );
-    const hot = lim.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const lowerOut = Math.max(0, lim.outKgS - hot);
+    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+    const lowerOut = Math.max(0, exchange.outKgS - hot);
     const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
     const areaRho = LEVEL.RHO_AIR * spec.areaM2;
     bookedZ = Math.min(
       spec.ceilingM - 0.02,
       Math.max(
         0.05,
-        bookedZ + clamp((lim.inKgS - lim.plumeKgS - lim.fanLowerKgS - lowerOut) / areaRho) * dt,
+        bookedZ +
+          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) / areaRho) *
+            dt,
       ),
     );
     omittedZ = Math.min(
       spec.ceilingM - 0.02,
-      Math.max(0.05, omittedZ + clamp((lim.inKgS - lim.plumeKgS - lim.fanLowerKgS) / areaRho) * dt),
+      Math.max(
+        0.05,
+        omittedZ +
+          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS) / areaRho) * dt,
+      ),
     );
     state = stepZone(state, spec, dt, 0, null).state;
   }
@@ -2571,8 +2616,9 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   // call were deleted. The cold run keeps the same walls, so the hall's
   // own fire is the control. Both runs solve the door against the other
   // room, so the control is already choked and the extra is only the fuel
-  // that arrives: about 0.25 kg still in the layer, and about 40 K. Dropping
-  // the jet's fuel leaves none of that mass.
+  // that arrives. The expansion carries some of that fuel back out the
+  // door; what stays is still well above the hall's own fire, and the
+  // layer is hotter. Dropping the jet's fuel leaves none of that mass.
   const monster = { ...defaultLightFuel(), alphaKwS2: 80, fuelLoadKgM2: 200 };
   const hallFuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 80 };
   const sources = [
@@ -2664,8 +2710,12 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   const rise = connected.hall.upperK - AMBIENT_K;
   const ownRise = alone.hall.upperK - AMBIENT_K;
   assert.ok(
-    kept > own + 0.2,
+    kept > own + 0.05,
     `hall kept ${kept.toFixed(3)} kg and rose ${rise.toFixed(1)} K; alone kept ${own.toFixed(3)} kg and rose ${ownRise.toFixed(1)} K`,
+  );
+  assert.ok(
+    rise > ownRise + 20,
+    `hall rise ${rise.toFixed(1)} K against its own fire at ${ownRise.toFixed(1)} K`,
   );
 });
 

@@ -6,7 +6,8 @@
  * A burning room solves its doors against the neighbour's layer. A room
  * with no fire of its own takes that room's upper outflow from the previous
  * step as a door jet, which is the product's coupling. The door flows in
- * the CSV are the orifice on the two layers at that second.
+ * the CSV are the last substep of that second. That pressure solution
+ * carries the layer's mass change out through the openings.
  *
  *   node --import tsx frontend/tests/fixtures/fireValidation/fds/engineSeries.ts [outDir]
  */
@@ -94,6 +95,12 @@ function layerFlag(state: ZoneState, spec: LayerSpec): number {
     : 0;
 }
 
+interface OpeningFlows {
+  inKgS: number;
+  outByVentKgS: number[];
+  hotOutByVentKgS: number[];
+}
+
 function flowOf(spec: LayerSpec, state: ZoneState) {
   return oxygenLimitedBurn(
     spec,
@@ -161,9 +168,16 @@ function twoRoomCsv(): string {
   const lines = [
     't_s,fire_z_m,fire_Tu_C,fire_rise_K,entry_z_m,entry_Tu_C,entry_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,door_in_kg_s,return_out_kg_s,far_out_kg_s,fire_layer,entry_layer',
   ];
-  const push = (t: number, qKw: number) => {
+  const push = (
+    t: number,
+    qKw: number,
+    fireFlows?: OpeningFlows,
+    entryFlows?: OpeningFlows,
+  ) => {
     const specs = twoRoomSpecs(qKw, fire, entry);
     const burned = flowOf(specs.fire, fire.zone);
+    const fireFlow = fireFlows ?? burned;
+    const entryFlow = entryFlows ?? flowOf(specs.entry, entry.zone);
     lines.push(
       [
         num(t, 0),
@@ -175,11 +189,11 @@ function twoRoomCsv(): string {
         num(entry.zone.upperK - AMBIENT_K, 2),
         num(burned.burn.burnedKw, 2),
         num(qKw, 2),
-        num(burned.outByVentKgS[0] ?? 0, 4),
-        num(burned.hotOutByVentKgS[0] ?? 0, 4),
-        num(burned.inKgS, 4),
-        num(flowOf(specs.entry, entry.zone).outByVentKgS[0] ?? 0, 4),
-        num(flowOf(specs.entry, entry.zone).outByVentKgS[1] ?? 0, 4),
+        num(fireFlow.outByVentKgS[0] ?? 0, 4),
+        num(fireFlow.hotOutByVentKgS[0] ?? 0, 4),
+        num(fireFlow.inKgS, 4),
+        num(entryFlow.outByVentKgS[0] ?? 0, 4),
+        num(entryFlow.outByVentKgS[1] ?? 0, 4),
         String(layerFlag(fire.zone, specs.fire)),
         String(layerFlag(entry.zone, specs.entry)),
       ].join(','),
@@ -201,7 +215,7 @@ function twoRoomCsv(): string {
     };
     fire = { zone: fireStep.state, pressurePa: fireStep.floorPressurePa };
     entry = { zone: entryStep.state, pressurePa: entryStep.floorPressurePa };
-    push(t, ramp(t, 10, 110));
+    push(t, ramp(t, 10, 110), fireStep, entryStep);
   }
   return lines.join('\n') + '\n';
 }
@@ -256,10 +270,11 @@ function harbourCsv(): string {
   const lines = [
     't_s,shop_z_m,shop_Tu_C,shop_rise_K,mall_z_m,mall_Tu_C,mall_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,return_out_kg_s,return_hot_kg_s,west_out_kg_s,west_hot_kg_s,north_out_kg_s,north_hot_kg_s,shop_layer,mall_layer',
   ];
-  const push = (t: number, qKw: number) => {
+  const push = (t: number, qKw: number, shopFlows?: OpeningFlows, mallFlows?: OpeningFlows) => {
     const specs = harbourSpecs(qKw, shop, mall);
-    const shopFlow = flowOf(specs.shop, shop.zone);
-    const mallFlow = flowOf(specs.mall, mall.zone);
+    const burned = flowOf(specs.shop, shop.zone);
+    const shopFlow = shopFlows ?? burned;
+    const mallFlow = mallFlows ?? flowOf(specs.mall, mall.zone);
     lines.push(
       [
         num(t, 0),
@@ -269,7 +284,7 @@ function harbourCsv(): string {
         num(mall.zone.interfaceM, 4),
         num(mall.zone.upperK - 273.15, 2),
         num(mall.zone.upperK - AMBIENT_K, 2),
-        num(shopFlow.burn.burnedKw, 1),
+        num(burned.burn.burnedKw, 1),
         num(qKw, 1),
         num(shopFlow.outByVentKgS[1] ?? 0, 4),
         num(shopFlow.hotOutByVentKgS[1] ?? 0, 4),
@@ -300,7 +315,7 @@ function harbourCsv(): string {
     };
     shop = { zone: shopStep.state, pressurePa: shopStep.floorPressurePa };
     mall = { zone: mallStep.state, pressurePa: mallStep.floorPressurePa };
-    push(t, ramp(t, 30, 5000));
+    push(t, ramp(t, 30, 5000), shopStep, mallStep);
   }
   return lines.join('\n') + '\n';
 }
