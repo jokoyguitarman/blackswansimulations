@@ -4,15 +4,15 @@
   "fumeDown": 0,
   "flashoverAtS": 79.88,
   "peakTotalMw": 163.5,
-  "within120": 0.495,
+  "within120": 0.505,
   "crawling": 1,
   "reroutes": 40,
-  "outByT300": 80,
+  "outByT300": 81,
   "reachable": 105,
   "mall": {
     "active": true,
-    "interfaceM": 2.22,
-    "riseK": 102.3
+    "interfaceM": 1.79,
+    "riseK": 159.4
   },
   "marks": {
     "t180": {
@@ -23,15 +23,15 @@
       "burning": 94
     },
     "t240": {
-      "smoke": "0.462",
-      "out": 54,
+      "smoke": "0.453",
+      "out": 55,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94
     },
     "t300": {
-      "smoke": "0.454",
-      "out": 80,
+      "smoke": "0.447",
+      "out": 81,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94

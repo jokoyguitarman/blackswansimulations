@@ -11,8 +11,8 @@
   "reachable": 105,
   "mall": {
     "active": true,
-    "interfaceM": 2.22,
-    "riseK": 102.3
+    "interfaceM": 1.79,
+    "riseK": 159.4
   },
   "marks": {
     "t180": {
@@ -23,14 +23,14 @@
       "burning": 94
     },
     "t240": {
-      "smoke": "0.462",
+      "smoke": "0.453",
       "out": 96,
       "westLit": 72,
       "eastLit": 0,
       "burning": 94
     },
     "t300": {
-      "smoke": "0.454",
+      "smoke": "0.447",
       "out": 102,
       "westLit": 72,
       "eastLit": 0,

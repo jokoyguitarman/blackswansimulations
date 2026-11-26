@@ -32,6 +32,7 @@ import {
   withRememberedSheets,
   oxygenLimitedBurn,
   oxygenMassFraction,
+  spillOriginM,
   steadyLayer,
   stepZone,
   type Boundary,
@@ -221,6 +222,10 @@ export interface DoorJetParcel {
   yKg: number;
   /** Unburned pyrolysate, kilograms. Absent means none. */
   fKg?: number;
+  /** kg times max(sill, source interface), so the mass-weighted origin is originKg / kg. */
+  originKg?: number;
+  /** kg times the vent width, so the mass-weighted width is widthKg / kg. */
+  widthKg?: number;
 }
 
 /**
@@ -251,7 +256,14 @@ export function assignDoorJet(
   room: string,
   members: ReadonlySet<string>,
   ventReceivers: readonly (readonly string[])[],
-  hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[],
+  hotByVent: readonly {
+    kg: number;
+    tempK: number;
+    oxygenY: number;
+    fuelY?: number;
+    originM?: number;
+    widthM?: number;
+  }[],
   rooms: ReadonlyMap<string, string>,
 ): Map<string, DoorJetParcel> {
   const out = new Map<string, DoorJetParcel>();
@@ -271,11 +283,13 @@ export function assignDoorJet(
     if (buckets.size === 0) continue;
     for (const [dest, count] of buckets) {
       const kg = hot.kg * (count / receivers.length);
-      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0 };
+      const cur = out.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0, originKg: 0, widthKg: 0 };
       cur.kg += kg;
       cur.tKg += kg * hot.tempK;
       cur.yKg += kg * hot.oxygenY;
       cur.fKg = (cur.fKg ?? 0) + kg * (hot.fuelY ?? 0);
+      cur.originKg = (cur.originKg ?? 0) + kg * (hot.originM ?? 0);
+      cur.widthKg = (cur.widthKg ?? 0) + kg * (hot.widthM ?? 0);
       out.set(dest, cur);
     }
   }
@@ -299,6 +313,11 @@ export function queueDoorJets(
       tempK,
       oxygenY: cur.yKg / cur.kg,
       fuelY: (cur.fKg ?? 0) / cur.kg,
+      // CFAST entrains each vent on its own width, w^(2/3). Vents that
+      // land in one room are one jet here, so the width is the
+      // mass-weighted mean. One vent, the usual door, is unchanged.
+      originM: (cur.originKg ?? 0) / cur.kg,
+      widthM: (cur.widthKg ?? 0) / cur.kg,
     });
   }
   return ready;
@@ -1755,9 +1774,13 @@ export class SpatialEffectsEngine {
       outByVentKgS: readonly number[];
       hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
     },
+    sourceInterfaceM: number,
     dt: number,
     rooms: ReadonlyMap<string, string>,
-    jets: Map<string, { kg: number; tKg: number; yKg: number; fKg?: number }>,
+    jets: Map<
+      string,
+      { kg: number; tKg: number; yKg: number; fKg?: number; originKg?: number; widthKg?: number }
+    >,
   ): void {
     const shares = stepped.outByVentKgS;
     let totalOut = 0;
@@ -1777,26 +1800,34 @@ export class SpatialEffectsEngine {
     }
     if (!(dt > 0)) return;
     const memberSet = new Set(members);
+    const hot = stepped.hotByVent.map((row, i) => {
+      const vent = enc.spec.vents[i];
+      return {
+        kg: row.kg,
+        tempK: row.tempK,
+        oxygenY: row.oxygenY,
+        fuelY: row.fuelY,
+        originM: spillOriginM(vent?.sillM ?? 0, sourceInterfaceM),
+        widthM: vent?.widthM ?? 0,
+      };
+    });
     if (this.jetAudit) {
       this.jetAudit.push({
         room,
         members: members.slice(),
         receivers: enc.ventReceivers.map((ids) => ids.slice()),
-        hot: stepped.hotByVent.map((row) => ({
-          kg: row.kg,
-          tempK: row.tempK,
-          oxygenY: row.oxygenY,
-          fuelY: row.fuelY,
-        })),
+        hot,
       });
     }
-    const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, stepped.hotByVent, rooms);
+    const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, hot, rooms);
     for (const [dest, parcel] of assigned) {
-      const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0 };
+      const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0, originKg: 0, widthKg: 0 };
       cur.kg += parcel.kg;
       cur.tKg += parcel.tKg;
       cur.yKg += parcel.yKg;
       cur.fKg = (cur.fKg ?? 0) + (parcel.fKg ?? 0);
+      cur.originKg = (cur.originKg ?? 0) + (parcel.originKg ?? 0);
+      cur.widthKg = (cur.widthKg ?? 0) + (parcel.widthKg ?? 0);
       jets.set(dest, cur);
     }
   }
@@ -2042,7 +2073,10 @@ export class SpatialEffectsEngine {
       sootByRoom.set(room, (sootByRoom.get(room) ?? 0) + src.sootGPerS);
     }
     const seen = new Set<string>();
-    const nextJets = new Map<string, { kg: number; tKg: number; yKg: number; fKg?: number }>();
+    const nextJets = new Map<
+      string,
+      { kg: number; tKg: number; yKg: number; fKg?: number; originKg?: number; widthKg?: number }
+    >();
     const pending: Array<{
       boundaries: readonly Boundary[];
       ageS: number;
@@ -2167,7 +2201,7 @@ export class SpatialEffectsEngine {
               owned.add(id);
               this.jetLowerStuds.add(id);
             }
-            this.grantVented(room, members, enc, next, dt, rooms, nextJets);
+            this.grantVented(room, members, enc, next, next.state.interfaceM, dt, rooms, nextJets);
             return { gain: next.sheetGainKjM2 };
           },
         });
@@ -2211,9 +2245,13 @@ export class SpatialEffectsEngine {
       }
       if (prev?.active !== true) this.scoopColumnSoot(members, zone);
       // A room with its own fire already solves the door against ambient.
-      // Adding the neighbour's jet on top of that flow fills the layer.
-      // The step itself waits until every room is known, so a shared
-      // partition is integrated once from both sides.
+      // Adding the neighbour's carrier jet on top of that flow fills the
+      // layer. The fuel in that jet is not the carrier. It burns here on
+      // the oxygen this room's plume has not taken, and what cannot burn
+      // stays in the layer. The step itself waits until every room is
+      // known, so a shared partition is integrated once from both sides.
+      const fuelJet =
+        incoming != null && (incoming.fuelY ?? 0) > 0 ? { ...incoming, fuelOnly: true } : undefined;
       pending.push({
         boundaries: spec.boundaries,
         ageS: zone.ageS,
@@ -2226,7 +2264,7 @@ export class SpatialEffectsEngine {
             spec,
             dt,
             sootRate,
-            undefined,
+            fuelJet,
             hold.size > 0 ? hold : undefined,
           );
           this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
@@ -2247,7 +2285,7 @@ export class SpatialEffectsEngine {
           }
           this.roomPhi.set(room, stepped.phi);
           this.fireSim.setBurnLimit(members, stepped.burnedFraction, stepped.phi);
-          this.grantVented(room, members, enc, stepped, dt, rooms, nextJets);
+          this.grantVented(room, members, enc, stepped, stepped.state.interfaceM, dt, rooms, nextJets);
           return { gain: stepped.sheetGainKjM2 };
         },
       });
