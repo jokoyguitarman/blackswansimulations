@@ -8,11 +8,14 @@
  * burnout. A gas jet and an electrical arc have no yield, so they add none
  * of these gases.
  *
- * Concentration comes from the smoke already on the stud, not from diluting
- * the whole production into one stud. Soot mass is K / σₘ. σₘ is 8.7 m²/g,
- * the Mulholland and Croarkin mass extinction (seed `smoke_mass_extinction`;
- * FDS uses 8700 m²/kg for flaming wood and plastics). K is the extinction
- * the smoke number already maps to. Each gas is that soot mass times
+ * Concentration comes from the soot mass already on the stud, not from
+ * diluting the whole production into one stud. Soot mass is K / σₘ. σₘ is
+ * 8.7 m²/g, the Mulholland and Croarkin mass extinction (seed
+ * `smoke_mass_extinction`; FDS uses 8700 m²/kg for flaming wood and
+ * plastics). K is that mass over the volume it occupies: the layer's
+ * soot grams over the upper-layer volume, or the column's own extinction.
+ * It is not the visibility scale. The smoke number saturates at 6.1 per
+ * metre and is what walking and sight use. Each gas is the soot mass times
  * y_gas / y_soot. Where several fires have reached the stud, the ratio is
  * their production added up: total gas grams per second over total soot
  * grams per second. That split is assumed. This is not a species solver.
@@ -24,7 +27,7 @@
  * in a straight line. No curve was read for that interval, and the line
  * is not fitted. The flashover latch does not choose the yield. The soot
  * yield stays the well-ventilated figure: the under-ventilated soot row
- * is a placeholder, and K already bounds the soot mass.
+ * is a placeholder and is not the mass.
  * Smoke that has not arrived, a solid wall, and another storey with no
  * shaft contribute nothing. A door gap does not block, and a shaft carries
  * fumes only upward, with the smoke.
@@ -215,13 +218,18 @@ export function addFumeGrams(into: FumeGrams, extra: FumeGrams): void {
 }
 
 /**
- * ppm of each gas in this smoke. Soot mass is K / σₘ. The gas mass is that
- * times gas production over soot production. Smoke of 0 is clean air.
+ * ppm of each gas at this extinction. Soot mass is K / σₘ. The gas mass is
+ * that times gas production over soot production. K is the soot's own
+ * extinction, including past the visibility cap. Zero is clean air.
  */
-export function fumesFromSmoke(smoke: number, gasGPerS: FumeGrams, sootGPerS: number): FumeGrams {
+export function fumesFromExtinction(
+  extinctionPerM: number,
+  gasGPerS: FumeGrams,
+  sootGPerS: number,
+): FumeGrams {
   const out: FumeGrams = {};
-  if (!(smoke > 0) || !(sootGPerS > 0)) return out;
-  const sootGPerM3 = extinctionK(smoke) / SOOT_EXTINCTION_M2_PER_G;
+  if (!(extinctionPerM > 0) || !(sootGPerS > 0)) return out;
+  const sootGPerM3 = extinctionPerM / SOOT_EXTINCTION_M2_PER_G;
   if (!(sootGPerM3 > 0)) return out;
   for (const gas of TOXIC_PRODUCTS) {
     const grams = gasGPerS[gas];
@@ -231,6 +239,15 @@ export function fumesFromSmoke(smoke: number, gasGPerS: FumeGrams, sootGPerS: nu
     if (ppm > 0) out[gas] = ppm;
   }
   return out;
+}
+
+/**
+ * ppm from the visibility smoke number. That number saturates at the
+ * visibility cap, so this is not the dose once the soot is denser.
+ */
+export function fumesFromSmoke(smoke: number, gasGPerS: FumeGrams, sootGPerS: number): FumeGrams {
+  if (!(smoke > 0)) return {};
+  return fumesFromExtinction(extinctionK(smoke), gasGPerS, sootGPerS);
 }
 
 /** Volume percent from a mass fraction. CFAST's 29 g/mol air and the species molar mass. */
