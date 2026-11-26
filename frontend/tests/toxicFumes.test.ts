@@ -37,7 +37,7 @@ import {
   SpatialEffectsEngine,
   advanceSootK,
 } from '../src/lib/rts/spatialEffects';
-import { HEAD_HEIGHT_M, blackLayerRadiantKwM2 } from '../src/lib/rts/twoZone';
+import { AMBIENT_K, HEAD_HEIGHT_M, blackLayerRadiantKwM2 } from '../src/lib/rts/twoZone';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -985,7 +985,11 @@ describe('ISO 13571 heat dose', () => {
           engine as unknown as {
             layerState: Map<
               string,
-              { active: boolean; zone: { interfaceM: number; upperK: number }; members: string[] }
+              {
+                active: boolean;
+                zone: { interfaceM: number; upperK: number; lowerK?: number };
+                members: string[];
+              }
             >;
           }
         ).layerState.values(),
@@ -1007,8 +1011,12 @@ describe('ISO 13571 heat dose', () => {
       }
       assert.equal(engine.studStates.get('out')?.radiantKwM2, undefined);
       if (live.zone.interfaceM > HEAD_HEIGHT_M) {
+        // The head is in the lower layer. Ambient air is 19.85 °C and adds
+        // no heat dose; a warm lower layer does.
         above = true;
-        assert.equal(engine.studStates.get('a')?.headTempC, undefined);
+        const lowerC = (live.zone.lowerK ?? AMBIENT_K) - 273.15;
+        const head = engine.studStates.get('a')?.headTempC ?? -1;
+        assert.ok(Math.abs(head - lowerC) < 1e-6, `head ${head} vs lower ${lowerC}`);
       } else {
         immersed = true;
         const temp = live.zone.upperK - 273.15;

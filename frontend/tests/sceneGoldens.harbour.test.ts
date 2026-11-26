@@ -4,12 +4,11 @@
  *
  * Pyrolysis mass is capped at an equivalence ratio of 2, and the spill
  * entrains only the hot outflow below the receiving interface. The shop
- * door solves against the mall layer. Dropping the interface with the
- * expansion brings the oxygen limit forward: at T+180 the shop is
- * 21.5 MW of 46.5 MW prescribed, upper oxygen 0.197, under the 22.1 MW
- * door. It is 27.2 MW at T+200, 19 MW at T+290 and 18.8 MW at T+320,
- * and from T+180 it spans 18.6 to 33.5 MW. The kitchen holds 2.7 MW
- * from T+210 through T+370, against its 6.8 MW door. The tile mall at
+ * door solves against the mall layer. At T+180 the shop burns
+ * 42.4 MW of 46.5 MW prescribed, upper oxygen 0.178, under the 22.1 MW
+ * door. It is 17.2 MW at T+200, 15.3 MW at T+290 and 15 MW at T+320,
+ * and from T+180 it spans 14.6 to 42.4 MW. The kitchen is 4.2 MW at
+ * T+210 and 2.1 MW at T+370, against its 6.8 MW door. The tile mall at
  * T+300 is 1.32 m and 89.7 K. At T+600 the interface is 0.93 m and the
  * rise is 67 K.
  * Heat is a separate ISO 13571 dose. Nobody is down from it at T+180.

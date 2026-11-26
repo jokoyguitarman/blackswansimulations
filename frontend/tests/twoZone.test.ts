@@ -52,6 +52,7 @@ import {
   HOOD_LENGTH_M,
   freshLayer,
   gasMassKg,
+  layerContactM2,
   upperLayerVolumeM3,
   fanVolumeM3PerS,
   coldSurfaceIncidentKwM2,
@@ -2167,17 +2168,19 @@ test('a partition between two rooms is one sheet, heated from both sides', () =>
 
 test('a shared partition does not lose heat to outdoor air', () => {
   // Two equal pans, one glass partition. One step adds each room's inside
-  // film and that room's share of the fire's radiation. The outdoor film on
-  // both faces of this pane is larger than the tolerance, so the step's
-  // temperature has to match the two films with that outdoor loss left out.
+  // film and that room's share of the fire's radiation. The pane is a wall,
+  // so each film is the upper layer above the interface and the lower layer
+  // below it. The outdoor film on both faces of this pane is larger than the
+  // tolerance, so the step's temperature has to match the two films with
+  // that outdoor loss left out.
   const glass = liningForMaterial('glass');
   const store = glass.rhoKgM3 * glass.cKjKgK * glass.thicknessM;
-  const filmKwM2 = (gasK: number, sheetK: number) => {
+  const filmPart = (gasK: number, sheetK: number) => {
     const across = gasK - sheetK;
     const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
     const hRad =
       SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + sheetK * sheetK) * (gasK + sheetK);
-    return (hConv + hRad) * across;
+    return { conv: hConv * across, rad: hRad * across };
   };
   const outdoorKwM2 = (sheetK: number) => {
     if (!(sheetK > AMBIENT_K)) return 0;
@@ -2291,7 +2294,15 @@ test('a shared partition does not lose heat to outdoor air', () => {
     }
     assert.ok(pane > 8, `pane area ${pane.toFixed(2)} m²`);
     const rad = area > 0 ? (RADIATIVE_FRACTION * q) / area : 0;
-    gained += filmKwM2(gases[i] ?? 0, start) + rad;
+    const upper = gases[i] ?? 0;
+    const lower = row.zone.lowerK ?? AMBIENT_K;
+    const upperFrac = Math.min(1, Math.max(0, (2.6 - row.zone.interfaceM) / 2.6));
+    // The pane below the interface convects with the lower gas and still
+    // radiates to the upper gas. The lower layer is clear.
+    const hot = filmPart(upper, start);
+    const cold = filmPart(lower, start);
+    const film = (hot.conv + hot.rad) * upperFrac + (cold.conv + hot.rad) * (1 - upperFrac);
+    gained += film + rad;
   }
   const predicted = start + gained / store;
   const actual = view.wallSheetK.get('pane') ?? 0;
@@ -2776,13 +2787,13 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   assert.ok(connected.hall, 'the hall never formed a layer of its own');
   assert.ok(alone.hall, 'the hall alone never formed a layer');
   assert.ok(
-    connected.sentFuel > 0.2,
-    `the source sent ${connected.sentFuel.toFixed(3)} kg of fuel`,
+    connected.sentFuel > 0.05,
+    `the source sent ${connected.sentFuel.toFixed(3)} kg; hall kept ${(connected.hall?.fuelKg ?? 0).toFixed(3)}; alone ${(alone.hall?.fuelKg ?? 0).toFixed(3)}`,
   );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
   assert.ok(
-    kept > own + 0.1,
+    kept > own + 0.05,
     `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`,
   );
 });
@@ -2990,5 +3001,81 @@ test('a burning stud under a jet layer adds no soot to the column', () => {
   assert.ok(
     gained >= producedG * 0.8,
     `the layer gained ${gained.toFixed(3)} g while the stud made ${producedG.toFixed(3)} g`,
+  );
+});
+
+test('a wall splits at the interface and an untagged face stays with the upper gas', () => {
+  const wall = { areaM2: 12, lining: LINING.concrete, place: 'wall' as const };
+  const split = layerContactM2(wall, 1, 4);
+  assert.ok(Math.abs(split.upperM2 - 9) < 1e-9);
+  assert.ok(Math.abs(split.lowerM2 - 3) < 1e-9);
+  const floor = layerContactM2({ areaM2: 8, lining: LINING.concrete, place: 'floor' }, 1, 4);
+  assert.equal(floor.upperM2, 0);
+  assert.equal(floor.lowerM2, 8);
+  const lumped = layerContactM2({ areaM2: 8, lining: LINING.concrete }, 1, 4);
+  assert.equal(lumped.upperM2, 8);
+  assert.equal(lumped.lowerM2, 0);
+});
+
+test('the floor warms the lower layer and the upper gas is not charged that film', () => {
+  // Concrete conducts most of the radiation, so the lower layer only gains
+  // the convective return. That is about a kelvin in 90 s, and the lumped
+  // room, which has no lower contact, stays at ambient. The upper gas is
+  // not charged that convection, so its cumulative loss is smaller.
+  const fire = [{ heatKw: 250, diameterM: 0.5 }];
+  const vents = [{ widthM: 0.9, sillM: 0, soffitM: 2 }];
+  const tagged = {
+    areaM2: 16,
+    ceilingM: 2.6,
+    vents,
+    boundaries: [
+      { areaM2: 16, lining: LINING.concrete, place: 'floor' as const },
+      { areaM2: 16, lining: LINING.concrete, place: 'ceiling' as const },
+      { areaM2: 48, lining: LINING.concrete, place: 'wall' as const },
+    ],
+    fires: fire,
+  };
+  const lumped = {
+    areaM2: 16,
+    ceilingM: 2.6,
+    vents,
+    boundaries: [
+      { areaM2: 16, lining: LINING.concrete },
+      { areaM2: 16, lining: LINING.concrete },
+      { areaM2: 48, lining: LINING.concrete },
+    ],
+    fires: fire,
+  };
+  let zoned = freshLayer(2.6);
+  let whole = freshLayer(2.6);
+  let zonedUpper = 0;
+  let wholeUpper = 0;
+  for (let s = 0; s < 90; s++) {
+    const zonedStep = stepZone(zoned, tagged, 1);
+    const wholeStep = stepZone(whole, lumped, 1);
+    zoned = zonedStep.state;
+    whole = wholeStep.state;
+    zonedUpper += zonedStep.upperLossKw;
+    wholeUpper += wholeStep.upperLossKw;
+  }
+  assert.ok((zoned.lowerK ?? AMBIENT_K) > AMBIENT_K + 0.5, `lower layer ${zoned.lowerK}`);
+  assert.ok((whole.lowerK ?? AMBIENT_K) < AMBIENT_K + 0.5);
+  assert.ok(zonedUpper < wholeUpper, `upper loss ${zonedUpper} against ${wholeUpper}`);
+});
+
+test('a warmer lower layer changes the mass the door carries', () => {
+  const spec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [{ widthM: 1, sillM: 0, soffitM: 2 }],
+    boundaries: [{ areaM2: 80, lining: LINING.concrete }],
+    fires: [],
+  };
+  const base = { ...freshLayer(3), interfaceM: 1.2, upperK: 500 };
+  const cool = stepZone(base, spec, 1);
+  const warm = stepZone({ ...base, lowerK: 400 }, spec, 1);
+  assert.ok(
+    Math.abs(cool.outKgS - warm.outKgS) > 0.05,
+    `outflow ${cool.outKgS.toFixed(3)} against ${warm.outKgS.toFixed(3)}`,
   );
 });

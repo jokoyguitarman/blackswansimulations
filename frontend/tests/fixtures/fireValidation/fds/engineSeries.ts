@@ -7,9 +7,13 @@
  * with no fire of its own takes that room's upper outflow from the previous
  * step as a door jet, which is the product's coupling. The door flows in
  * the CSV are the last substep of that second. While the layer is warming,
- * that pressure solution carries the ambient-density weight of the volume
- * the upper mass needs at the new temperature, including the plume's own
- * heating, and the interface then drops by the part beyond the exchange.
+ * that pressure solution carries the weight of the volume the upper mass
+ * needs at the new temperature, including the plume's own heating, and the
+ * interface then drops by the part beyond the exchange. A second root takes
+ * the extra hot gas out of that volume. The lower layer is clear, so the
+ * upper gas still radiates to the floor and the wall below the interface.
+ * Convection on those faces is charged to the lower layer, which keeps its
+ * own temperature, and the door uses that density.
  *
  *   node --import tsx frontend/tests/fixtures/fireValidation/fds/engineSeries.ts [outDir]
  */
@@ -66,6 +70,7 @@ function outsideOf(gauge: Gauge): Vent['outside'] {
     interfaceM: gauge.zone.interfaceM,
     upperK: gauge.zone.upperK,
     floorPressurePa: gauge.pressurePa,
+    ...(gauge.zone.lowerK != null ? { lowerK: gauge.zone.lowerK } : {}),
   };
 }
 
@@ -101,6 +106,8 @@ interface OpeningFlows {
   inKgS: number;
   outByVentKgS: number[];
   hotOutByVentKgS: number[];
+  upperLossKw?: number;
+  lowerLossKw?: number;
 }
 
 function flowOf(spec: LayerSpec, state: ZoneState) {
@@ -111,6 +118,9 @@ function flowOf(spec: LayerSpec, state: ZoneState) {
     oxygenMassFraction(state.lowerO2),
     oxygenMassFraction(state.upperO2),
     0.1,
+    false,
+    undefined,
+    state.lowerK ?? AMBIENT_K,
   );
 }
 
@@ -142,9 +152,9 @@ function twoRoomSpecs(qKw: number, fire: Gauge, entry: Gauge): { fire: LayerSpec
       chi: 0.2,
       vents: [withOutside(door, entry)],
       boundaries: [
-        { areaM2: fireArea, lining: nbsBrick },
-        { areaM2: fireArea, lining: nbsCeramic },
-        { areaM2: fireWall, lining: nbsCeramic },
+        { areaM2: fireArea, lining: nbsBrick, place: 'floor' },
+        { areaM2: fireArea, lining: nbsCeramic, place: 'ceiling' },
+        { areaM2: fireWall, lining: nbsCeramic, place: 'wall' },
       ],
       fires: qKw > 0 ? [{ heatKw: qKw, diameterM: circle(0.12) }] : [],
     },
@@ -154,9 +164,9 @@ function twoRoomSpecs(qKw: number, fire: Gauge, entry: Gauge): { fire: LayerSpec
       chi: 0.2,
       vents: [withOutside(door, fire), far],
       boundaries: [
-        { areaM2: entryArea, lining: nbsGypsum },
-        { areaM2: entryArea, lining: nbsMarinite },
-        { areaM2: entryWall, lining: nbsMarinite },
+        { areaM2: entryArea, lining: nbsGypsum, place: 'floor' },
+        { areaM2: entryArea, lining: nbsMarinite, place: 'ceiling' },
+        { areaM2: entryWall, lining: nbsMarinite, place: 'wall' },
       ],
       fires: [],
     },
@@ -168,7 +178,7 @@ function twoRoomCsv(): string {
   let entry: Gauge = { zone: freshLayer(2), pressurePa: 0 };
   let pending: HotParcel | null = null;
   const lines = [
-    't_s,fire_z_m,fire_Tu_C,fire_rise_K,entry_z_m,entry_Tu_C,entry_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,door_in_kg_s,return_out_kg_s,far_out_kg_s,fire_layer,entry_layer',
+    't_s,fire_z_m,fire_Tu_C,fire_rise_K,fire_lower_rise_K,entry_z_m,entry_Tu_C,entry_rise_K,entry_lower_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,door_in_kg_s,return_out_kg_s,far_out_kg_s,fire_layer,entry_layer',
   ];
   const push = (
     t: number,
@@ -186,9 +196,11 @@ function twoRoomCsv(): string {
         num(fire.zone.interfaceM, 4),
         num(fire.zone.upperK - 273.15, 2),
         num(fire.zone.upperK - AMBIENT_K, 2),
+        num((fire.zone.lowerK ?? AMBIENT_K) - AMBIENT_K, 2),
         num(entry.zone.interfaceM, 4),
         num(entry.zone.upperK - 273.15, 2),
         num(entry.zone.upperK - AMBIENT_K, 2),
+        num((entry.zone.lowerK ?? AMBIENT_K) - AMBIENT_K, 2),
         num(burned.burn.burnedKw, 2),
         num(qKw, 2),
         num(fireFlow.outByVentKgS[0] ?? 0, 4),
@@ -236,12 +248,12 @@ function harbourSpecs(qKw: number, shop: Gauge, mall: Gauge): { shop: LayerSpec;
       chi: 0.35,
       vents: [exit, withOutside(door, mall)],
       boundaries: [
-        { areaM2: shopArea, lining: concrete },
-        { areaM2: shopArea, lining: concrete },
-        { areaM2: 32 * 4 - 4, lining: concrete },
-        { areaM2: 21.6 * 4, lining: concrete },
-        { areaM2: 21.6 * 4, lining: gypsum },
-        { areaM2: 32 * 4 - 3.2, lining: gypsum },
+        { areaM2: shopArea, lining: concrete, place: 'floor' },
+        { areaM2: shopArea, lining: concrete, place: 'ceiling' },
+        { areaM2: 32 * 4 - 4, lining: concrete, place: 'wall' },
+        { areaM2: 21.6 * 4, lining: concrete, place: 'wall' },
+        { areaM2: 21.6 * 4, lining: gypsum, place: 'wall' },
+        { areaM2: 32 * 4 - 3.2, lining: gypsum, place: 'wall' },
       ],
       fires: qKw > 0 ? [{ heatKw: qKw, diameterM: circle(16) }] : [],
     },
@@ -251,14 +263,14 @@ function harbourSpecs(qKw: number, shop: Gauge, mall: Gauge): { shop: LayerSpec;
       chi: 0.35,
       vents: [withOutside(door, shop), exit],
       boundaries: [
-        { areaM2: mallArea, lining: concrete },
-        { areaM2: mallArea, lining: concrete },
+        { areaM2: mallArea, lining: concrete, place: 'floor' },
+        { areaM2: mallArea, lining: concrete, place: 'ceiling' },
         // East wall, 40 m, no opening. South wall, 18 m. North wall, 18 m minus the 2 × 2 m exit.
-        { areaM2: 40 * 4, lining: concrete },
-        { areaM2: 18 * 4, lining: concrete },
-        { areaM2: 18 * 4 - 4, lining: concrete },
-        { areaM2: 8 * 4, lining: gypsum },
-        { areaM2: 32 * 4 - 3.2, lining: gypsum },
+        { areaM2: 40 * 4, lining: concrete, place: 'wall' },
+        { areaM2: 18 * 4, lining: concrete, place: 'wall' },
+        { areaM2: 18 * 4 - 4, lining: concrete, place: 'wall' },
+        { areaM2: 8 * 4, lining: gypsum, place: 'wall' },
+        { areaM2: 32 * 4 - 3.2, lining: gypsum, place: 'wall' },
       ],
       fires: [],
     },
@@ -270,7 +282,7 @@ function harbourCsv(): string {
   let mall: Gauge = { zone: freshLayer(4), pressurePa: 0 };
   let pending: HotParcel | null = null;
   const lines = [
-    't_s,shop_z_m,shop_Tu_C,shop_rise_K,mall_z_m,mall_Tu_C,mall_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,return_out_kg_s,return_hot_kg_s,west_out_kg_s,west_hot_kg_s,north_out_kg_s,north_hot_kg_s,shop_layer,mall_layer',
+    't_s,shop_z_m,shop_Tu_C,shop_rise_K,mall_z_m,mall_Tu_C,mall_rise_K,hrr_kW,prescribed_kW,door_out_kg_s,door_hot_kg_s,return_out_kg_s,return_hot_kg_s,west_out_kg_s,west_hot_kg_s,north_out_kg_s,north_hot_kg_s,shop_layer,mall_layer,shop_Tl_C,shop_lower_rise_K,mall_lower_rise_K,shop_upper_loss_kW,shop_lower_loss_kW',
   ];
   const push = (t: number, qKw: number, shopFlows?: OpeningFlows, mallFlows?: OpeningFlows) => {
     const specs = harbourSpecs(qKw, shop, mall);
@@ -298,6 +310,11 @@ function harbourCsv(): string {
         num(mallFlow.hotOutByVentKgS[1] ?? 0, 4),
         String(layerFlag(shop.zone, specs.shop)),
         String(layerFlag(mall.zone, specs.mall)),
+        num((shop.zone.lowerK ?? AMBIENT_K) - 273.15, 2),
+        num((shop.zone.lowerK ?? AMBIENT_K) - AMBIENT_K, 2),
+        num((mall.zone.lowerK ?? AMBIENT_K) - AMBIENT_K, 2),
+        num(shopFlows?.upperLossKw ?? 0, 1),
+        num(shopFlows?.lowerLossKw ?? 0, 1),
       ].join(','),
     );
   };

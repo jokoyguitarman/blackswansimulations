@@ -2218,6 +2218,7 @@ export class SpatialEffectsEngine {
         interfaceM: live.zone.interfaceM,
         upperK: live.zone.upperK,
         floorPressurePa: this.floorPressurePa.get(id) ?? 0,
+        ...(live.zone.lowerK != null ? { lowerK: live.zone.lowerK } : {}),
       });
     }
     const pending: Array<{
@@ -2371,6 +2372,9 @@ export class SpatialEffectsEngine {
         oxygenMassFraction(zone.lowerO2),
         oxygenMassFraction(zone.upperO2),
         dt,
+        false,
+        undefined,
+        zone.lowerK ?? AMBIENT_K,
       ).burn;
       const limitedFires =
         opening.prescribedKw > 0 && opening.fraction < 0.999
@@ -2545,7 +2549,8 @@ export class SpatialEffectsEngine {
         oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
       );
       const radiantKwM2 = blackLayerRadiantKwM2(live.zone.upperK);
-      const headTempC = atHead ? live.zone.upperK - 273.15 : undefined;
+      const headK = atHead ? live.zone.upperK : (live.zone.lowerK ?? AMBIENT_K);
+      const headTempC = headK - 273.15;
       for (const id of live.members) {
         touch.add(id);
         if (!owned.has(id)) continue;

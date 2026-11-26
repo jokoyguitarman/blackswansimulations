@@ -369,6 +369,57 @@ function surfaceFluxKwM2(hk: number, gasK: number, radInKwM2: number, exposed: b
   return (hConv + hRad) * across;
 }
 
+function convectionKwM2(gasK: number, sheetK: number): number {
+  const across = gasK - sheetK;
+  const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
+  return hConv * across;
+}
+
+function radiationKwM2(gasK: number, sheetK: number): number {
+  const hRad =
+    SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + sheetK * sheetK) * (gasK + sheetK);
+  return hRad * (gasK - sheetK);
+}
+
+/**
+ * A lower-layer surface. Convection is with the gas that touches it. The
+ * lower layer is clear, so the upper gas still radiates to that face, and
+ * the sheet temperature is the balance of those two films.
+ */
+function lowerSurfaceFilms(
+  hk: number,
+  upperK: number,
+  lowerK: number,
+  radInKwM2: number,
+  exposed: boolean,
+): { toUpperKwM2: number; toLowerKwM2: number } {
+  if (!(hk > 0)) return { toUpperKwM2: 0, toLowerKwM2: 0 };
+  if (!(upperK > AMBIENT_K + 0.05) && !(lowerK > AMBIENT_K + 0.05) && !(radInKwM2 > 0)) {
+    return { toUpperKwM2: 0, toLowerKwM2: 0 };
+  }
+  const convC = SURFACE_CONVECTION_C_W / 1000;
+  const sigmaE = SURFACE_EMISSIVITY * SIGMA_KW_M2K4;
+  const upper2 = upperK * upperK;
+  let lo = AMBIENT_K;
+  let hi = Math.max(upperK, lowerK, AMBIENT_K) + 2000;
+  for (let i = 0; i < 32; i++) {
+    const surfaceK = 0.5 * (lo + hi);
+    const convAcross = lowerK - surfaceK;
+    const radAcross = upperK - surfaceK;
+    const hConv = convC * Math.cbrt(Math.abs(convAcross));
+    const hRad = sigmaE * (upper2 + surfaceK * surfaceK) * (upperK + surfaceK);
+    const intoSlab = exposed ? sheetThroughKwM2(surfaceK, hk) : hk * (surfaceK - AMBIENT_K);
+    const residual = hConv * convAcross + hRad * radAcross + radInKwM2 - intoSlab;
+    if (residual > 0) lo = surfaceK;
+    else hi = surfaceK;
+  }
+  const surfaceK = 0.5 * (lo + hi);
+  return {
+    toUpperKwM2: radiationKwM2(upperK, surfaceK),
+    toLowerKwM2: convectionKwM2(lowerK, surfaceK),
+  };
+}
+
 const FLUX_TABLE_N = 96;
 const FLUX_T_MAX = 1500;
 
@@ -550,6 +601,8 @@ export interface VentOutside {
   interfaceM: number;
   upperK: number;
   floorPressurePa: number;
+  /** Lower-layer temperature. Absent means that layer is ambient. */
+  lowerK?: number;
 }
 
 export interface Vent {
@@ -915,6 +968,10 @@ export interface LimitedBurn {
   farUpperInKgS: number;
   fanUpperKgS: number;
   fanLowerKgS: number;
+  /** Inflow that enters the lower layer, kg/s. Already inside `inKgS`. */
+  lowerInKgS: number;
+  /** Temperature of that inflow, kelvin. */
+  lowerInK: number;
   /** Neutral plane of this opening, m. The hot outflow starts here. */
   neutralM: number;
   /** Solved floor gauge of this room, Pa. A neighbour's door reads it. */
@@ -929,6 +986,10 @@ interface PressureScalars {
   farUpperInKgS: number;
   fanUpperKgS: number;
   fanLowerKgS: number;
+  /** Inflow below this room's interface, kg/s. Already inside `inKgS`. */
+  lowerInKgS: number;
+  /** That inflow times its temperature, kg·K/s. */
+  lowerInKT: number;
 }
 
 /** A steady balance. Heating and cooling pass the mass the step actually gains. */
@@ -985,6 +1046,8 @@ export function oxygenLimitedBurn(
    * inside the root makes the outflow run away.
    */
   massRateKgS?: (flows: PressureScalars) => number,
+  /** Lower-layer temperature. Absent means ambient, and the door keeps ρ(Ta). */
+  lowerK = AMBIENT_K,
 ): LimitedBurn {
   const flows = balancedFlows(
     spec.vents,
@@ -992,8 +1055,9 @@ export function oxygenLimitedBurn(
     upperK,
     spec.fans ?? [],
     massRateKgS ?? ZERO_MASS_RATE,
+    lowerK,
   );
-  return limitedFrom(spec, interfaceM, upperK, yLower, yUpper, dt, jetBringsUpper, flows);
+  return limitedFrom(spec, interfaceM, upperK, yLower, yUpper, dt, jetBringsUpper, flows, lowerK);
 }
 
 function limitedFrom(
@@ -1005,6 +1069,7 @@ function limitedFrom(
   dt: number,
   jetBringsUpper: boolean,
   flows: Flows & { floorPressurePa: number },
+  lowerK = AMBIENT_K,
 ): LimitedBurn {
   const supplied = flameSupply(spec, interfaceM, upperK, yLower, yUpper, dt, jetBringsUpper, flows);
   return {
@@ -1017,7 +1082,9 @@ function limitedFrom(
     farUpperInKgS: flows.farUpperInKgS,
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
-    neutralM: neutralPlaneM(interfaceM, upperK, flows.floorPressurePa),
+    lowerInKgS: flows.lowerInKgS,
+    lowerInK: flows.lowerInKgS > 0 ? flows.lowerInKT / flows.lowerInKgS : AMBIENT_K,
+    neutralM: neutralPlaneM(interfaceM, upperK, flows.floorPressurePa, lowerK),
     floorPressurePa: flows.floorPressurePa,
   };
 }
@@ -1123,6 +1190,31 @@ export interface Boundary {
    * A face with no id is not remembered.
    */
   id?: string;
+  /**
+   * Which part of the room this face is. The floor exchanges with the lower
+   * layer, the ceiling with the upper layer, and a wall is split at the
+   * interface. Absent means the whole face is charged to the upper gas.
+   */
+  place?: 'floor' | 'ceiling' | 'wall';
+}
+
+/** Area of one face in each layer, m². An untagged face is all upper. */
+export function layerContactM2(
+  boundary: Boundary,
+  interfaceM: number,
+  ceilingM: number,
+): { upperM2: number; lowerM2: number } {
+  const area = boundary.areaM2 > 0 ? boundary.areaM2 : 0;
+  if (!(area > 0)) return { upperM2: 0, lowerM2: 0 };
+  if (boundary.place === 'floor') return { upperM2: 0, lowerM2: area };
+  if (boundary.place === 'ceiling') return { upperM2: area, lowerM2: 0 };
+  if (boundary.place === 'wall') {
+    const height = ceilingM > 1e-6 ? ceilingM : 0;
+    const upperFrac = height > 0 ? Math.min(1, Math.max(0, (height - interfaceM) / height)) : 1;
+    const upper = area * upperFrac;
+    return { upperM2: upper, lowerM2: area - upper };
+  }
+  return { upperM2: area, lowerM2: 0 };
 }
 
 export interface FirePlume {
@@ -1188,6 +1280,12 @@ export interface ZoneState {
   lowerO2?: number;
   /** Oxygen mass fraction in the upper layer. Absent on an old state means ambient. */
   upperO2?: number;
+  /**
+   * Lower-layer temperature, kelvin. Absent means ambient. The floor and
+   * the wall below the interface exchange with this gas, and a door uses
+   * its density.
+   */
+  lowerK?: number;
   /**
    * Temperature of each isothermal sheet, kelvin, keyed by wall id.
    * Absent means every such sheet is still at ambient. A board is not
@@ -1388,12 +1486,20 @@ interface BoundLoss {
   tS: number;
   rad: number;
   gen: number;
-  terms: Array<{ area: number; at: FluxAt }>;
+  terms: Array<{ boundary: Boundary; at: FluxAt; hk: number; exposed: boolean }>;
 }
 
 let boundLoss: BoundLoss | null = null;
 
-function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number): number {
+/** Steady film of each layer's contact, kW. An untagged face is all upper. */
+function contactLossKw(
+  boundaries: readonly Boundary[],
+  tS: number,
+  upperK: number,
+  lowerK: number,
+  interfaceM: number,
+  ceilingM: number,
+): { upperKw: number; lowerKw: number; lowerM2: number } {
   const rad = fireRadiantKwM2;
   let bound = boundLoss;
   if (
@@ -1403,21 +1509,36 @@ function lossPowerKw(boundaries: readonly Boundary[], tS: number, gasK: number):
     bound.rad !== rad ||
     bound.gen !== fluxGen
   ) {
-    const terms: Array<{ area: number; at: FluxAt }> = [];
+    const terms: Array<{ boundary: Boundary; at: FluxAt; hk: number; exposed: boolean }> = [];
     for (const boundary of boundaries) {
       if (!(boundary.areaM2 > 0)) continue;
-      terms.push({ area: boundary.areaM2, at: fluxAt(boundary.lining, tS) });
+      terms.push({
+        boundary,
+        at: fluxAt(boundary.lining, tS),
+        hk: effectiveHeatLossKwM2K(boundary.lining, tS),
+        exposed: backFaceExposed(boundary.lining, tS),
+      });
     }
     bound = { boundaries, tS, rad, gen: fluxGen, terms };
     boundLoss = bound;
   }
-  let sum = 0;
+  let upperKw = 0;
+  let lowerKw = 0;
+  let lowerM2 = 0;
   const terms = bound.terms;
   for (let i = 0; i < terms.length; i++) {
     const term = terms[i];
-    if (term) sum += term.area * term.at(gasK);
+    if (!term) continue;
+    const contact = layerContactM2(term.boundary, interfaceM, ceilingM);
+    if (contact.upperM2 > 0) upperKw += contact.upperM2 * term.at(upperK);
+    if (contact.lowerM2 > 0) {
+      const parts = lowerSurfaceFilms(term.hk, upperK, lowerK, rad, term.exposed);
+      upperKw += contact.lowerM2 * parts.toUpperKwM2;
+      lowerKw += contact.lowerM2 * parts.toLowerKwM2;
+      lowerM2 += contact.lowerM2;
+    }
   }
-  return sum;
+  return { upperKw, lowerKw, lowerM2 };
 }
 
 /**
@@ -1453,11 +1574,14 @@ function stepSheetLoss(
   boundaries: readonly Boundary[],
   sheetK: Readonly<Record<string, number>> | undefined,
   tS: number,
-  gasK: number,
+  upperK: number,
+  lowerK: number,
+  interfaceM: number,
+  ceilingM: number,
   slice: number,
   hold?: ReadonlySet<string>,
   gainKjM2?: Record<string, number>,
-): { lossKw: number; sheetK?: Readonly<Record<string, number>> } {
+): { lossKw: number; lowerLossKw: number; lowerM2: number; sheetK?: Readonly<Record<string, number>> } {
   let exposed = false;
   for (const boundary of boundaries) {
     if (boundary.areaM2 > 0 && boundary.id && backFaceExposed(boundary.lining, tS)) {
@@ -1465,32 +1589,56 @@ function stepSheetLoss(
       break;
     }
   }
-  if (!exposed) return { lossKw: lossPowerKw(boundaries, tS, gasK), sheetK };
+  if (!exposed) {
+    const steady = contactLossKw(boundaries, tS, upperK, lowerK, interfaceM, ceilingM);
+    return { lossKw: steady.upperKw, lowerLossKw: steady.lowerKw, lowerM2: steady.lowerM2, sheetK };
+  }
   const rad = fireRadiantKwM2;
   const next: Record<string, number> = sheetK ? { ...sheetK } : {};
-  let sum = 0;
+  let upperKw = 0;
+  let lowerKw = 0;
+  let lowerM2 = 0;
   for (const boundary of boundaries) {
     if (!(boundary.areaM2 > 0)) continue;
+    const contact = layerContactM2(boundary, interfaceM, ceilingM);
+    const area = contact.upperM2 + contact.lowerM2;
+    if (!(area > 0)) continue;
+    lowerM2 += contact.lowerM2;
     if (!boundary.id || !backFaceExposed(boundary.lining, tS)) {
-      sum += boundary.areaM2 * fluxAt(boundary.lining, tS)(gasK);
+      const at = fluxAt(boundary.lining, tS);
+      if (contact.upperM2 > 0) upperKw += contact.upperM2 * at(upperK);
+      if (contact.lowerM2 > 0) {
+        const parts = lowerSurfaceFilms(
+          effectiveHeatLossKwM2K(boundary.lining, tS),
+          upperK,
+          lowerK,
+          rad,
+          backFaceExposed(boundary.lining, tS),
+        );
+        upperKw += contact.lowerM2 * parts.toUpperKwM2;
+        lowerKw += contact.lowerM2 * parts.toLowerKwM2;
+      }
       continue;
     }
     const stored = next[boundary.id];
     const ts = stored != null && stored > 0 ? stored : AMBIENT_K;
-    const fromGas = sheetFilmKwM2(gasK, ts);
+    const filmU = sheetFilmKwM2(upperK, ts);
+    const convL = convectionKwM2(lowerK, ts);
+    const radL = radiationKwM2(upperK, ts);
+    const perM2 = (filmU * contact.upperM2 + (convL + radL) * contact.lowerM2) / area;
+    upperKw += filmU * contact.upperM2 + radL * contact.lowerM2;
+    lowerKw += convL * contact.lowerM2;
     if (hold?.has(boundary.id)) {
-      sum += boundary.areaM2 * fromGas;
       if (gainKjM2) {
-        gainKjM2[boundary.id] = (gainKjM2[boundary.id] ?? 0) + (fromGas + rad) * slice;
+        gainKjM2[boundary.id] = (gainKjM2[boundary.id] ?? 0) + (perM2 + rad) * slice;
       }
       continue;
     }
     const store = boundary.lining.rhoKgM3 * boundary.lining.cKjKgK * boundary.lining.thicknessM;
-    const warmed = ts + (slice * (fromGas + rad - exteriorFluxKwM2(ts))) / Math.max(store, 1e-6);
+    const warmed = ts + (slice * (perM2 + rad - exteriorFluxKwM2(ts))) / Math.max(store, 1e-6);
     next[boundary.id] = Math.min(1500, Math.max(AMBIENT_K, warmed));
-    sum += boundary.areaM2 * fromGas;
   }
-  return { lossKw: sum, sheetK: next };
+  return { lossKw: upperKw, lowerLossKw: lowerKw, lowerM2, sheetK: next };
 }
 
 /**
@@ -1626,8 +1774,13 @@ export function upperLayerVolumeM3(spec: LayerSpec, interfaceM: number): number 
  * the hydrostatic slope is (ρ_lower − ρ_upper) g, CFAST Eq. 4.1. A floor
  * pressure below the outside air puts the plane above the interface.
  */
-export function neutralPlaneM(interfaceM: number, upperK: number, floorPressurePa: number): number {
-  const slope = (densityKgM3(AMBIENT_K) - densityKgM3(upperK)) * LEVEL.G;
+export function neutralPlaneM(
+  interfaceM: number,
+  upperK: number,
+  floorPressurePa: number,
+  lowerK = AMBIENT_K,
+): number {
+  const slope = (densityKgM3(lowerK) - densityKgM3(upperK)) * LEVEL.G;
   if (!(slope > 1e-9)) return interfaceM;
   return interfaceM - floorPressurePa / slope;
 }
@@ -1670,6 +1823,10 @@ interface SliceFlows {
   hotOutKgS: number;
   /** Inflow from above a neighbour's interface, kg/s. Already inside `inKgS`. */
   farUpperInKgS: number;
+  /** Inflow that enters below this room's interface, kg/s. Already inside `inKgS`. */
+  lowerInKgS: number;
+  /** That inflow times its temperature, kg·K/s. */
+  lowerInKT: number;
 }
 
 interface Flows extends SliceFlows {
@@ -1698,7 +1855,7 @@ function pressureAt(
  * Which layer a fan draws, and the mass that leaves. The intake centre is
  * CFAST TN 1889v2 §6.1. Above the interface it is in the upper layer, so the
  * density is the hot gas. At or below the interface it is in the lower
- * layer, which this model keeps at ambient. The mass flow is that density
+ * layer, at that layer's temperature. The mass flow is that density
  * times the volume still moving at the room pressure. Soot leaves only with
  * the upper-layer stream. CFAST filtering starts off (TN 1889v1 §4.3), so
  * none of that soot is caught.
@@ -1708,10 +1865,11 @@ export function mechanicalExtract(
   interfaceM: number,
   upperK: number,
   floorPressurePa: number,
+  lowerK = AMBIENT_K,
 ): { upperKgS: number; lowerKgS: number } {
   let upper = 0;
   let lower = 0;
-  const rhoL = densityKgM3(AMBIENT_K);
+  const rhoL = densityKgM3(lowerK);
   const rhoU = densityKgM3(upperK);
   for (const fan of fans) {
     if (!(fan.flowM3PerS > 0) || !(fan.intakeM >= 0)) continue;
@@ -1729,7 +1887,14 @@ function withFans(door: Flows, fans: { upperKgS: number; lowerKgS: number }): Fl
 }
 
 const ventMarks = [0, 0, 0, 0];
-const ventScratch: SliceFlows = { inKgS: 0, outKgS: 0, hotOutKgS: 0, farUpperInKgS: 0 };
+const ventScratch: SliceFlows = {
+  inKgS: 0,
+  outKgS: 0,
+  hotOutKgS: 0,
+  farUpperInKgS: 0,
+  lowerInKgS: 0,
+  lowerInKT: 0,
+};
 
 function addSliceFlows(
   into: SliceFlows,
@@ -1746,13 +1911,14 @@ function addSliceFlows(
   if (!(z1 > z0 + 1e-9)) return;
   const p0in = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
   const p1in = pressureAt(z1, interfaceM, dP0, rhoL, rhoU);
+  const farLower =
+    outside?.lowerK != null && outside.lowerK > 0 ? densityKgM3(outside.lowerK) : rhoA;
+  const farUpper = outside ? densityKgM3(outside.upperK) : rhoU;
   const p0 = outside
-    ? p0in -
-      pressureAt(z0, outside.interfaceM, outside.floorPressurePa, rhoL, densityKgM3(outside.upperK))
+    ? p0in - pressureAt(z0, outside.interfaceM, outside.floorPressurePa, farLower, farUpper)
     : p0in;
   const p1 = outside
-    ? p1in -
-      pressureAt(z1, outside.interfaceM, outside.floorPressurePa, rhoL, densityKgM3(outside.upperK))
+    ? p1in - pressureAt(z1, outside.interfaceM, outside.floorPressurePa, farLower, farUpper)
     : p1in;
   if (p0 * p1 < 0 && p1 !== p0) {
     const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
@@ -1780,17 +1946,22 @@ function addSliceFlows(
     : outside
       ? mid > outside.interfaceM
         ? densityKgM3(outside.upperK)
-        : rhoL
+        : farLower
       : rhoA;
   const mass = orificeSliceKgS(widthM, z1 - z0, p0, p1, rho);
   if (outflow) {
     into.outKgS += mass;
     // Above the interface the gas is the hot layer. Below it the outflow
-    // is lower-layer air at ambient, and that is not a door jet.
+    // is lower-layer air, and that is not a door jet.
     if (mid > interfaceM) into.hotOutKgS += mass;
   } else {
     into.inKgS += mass;
     if (outside && mid > outside.interfaceM) into.farUpperInKgS += mass;
+    else if (mid <= interfaceM) {
+      into.lowerInKgS += mass;
+      const tin = outside?.lowerK != null && outside.lowerK > 0 ? outside.lowerK : AMBIENT_K;
+      into.lowerInKT += mass * tin;
+    }
   }
 }
 
@@ -1860,19 +2031,27 @@ function accumulateVent(
   }
 }
 
-function ventFlows(vents: readonly Vent[], interfaceM: number, upperK: number, dP0: number): Flows {
+function ventFlows(
+  vents: readonly Vent[],
+  interfaceM: number,
+  upperK: number,
+  dP0: number,
+  lowerK = AMBIENT_K,
+): Flows {
   const flows: Flows = {
     inKgS: 0,
     outKgS: 0,
     hotOutKgS: 0,
     farUpperInKgS: 0,
+    lowerInKgS: 0,
+    lowerInKT: 0,
     outByVent: vents.map(() => 0),
     hotOutByVent: vents.map(() => 0),
     fanUpperKgS: 0,
     fanLowerKgS: 0,
   };
   const rhoU = densityKgM3(upperK);
-  const rhoL = densityKgM3(AMBIENT_K);
+  const rhoL = densityKgM3(lowerK);
   const rhoA = LEVEL.RHO_AIR;
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
@@ -1896,17 +2075,20 @@ function pressureNet(
   rhoU: number,
   rhoA: number,
   massRateKgS: (flows: PressureScalars) => number,
+  lowerK = AMBIENT_K,
 ): number {
   ventScratch.inKgS = 0;
   ventScratch.outKgS = 0;
   ventScratch.hotOutKgS = 0;
   ventScratch.farUpperInKgS = 0;
+  ventScratch.lowerInKgS = 0;
+  ventScratch.lowerInKT = 0;
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
     if (!vent) continue;
     accumulateVent(ventScratch, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
   }
-  const extracted = mechanicalExtract(fans, interfaceM, upperK, dP0);
+  const extracted = mechanicalExtract(fans, interfaceM, upperK, dP0, lowerK);
   // Copy before the mass callback. It solves the burn and the sheet loss,
   // and a nested vent pass would reuse this scratch.
   const scalars: PressureScalars = {
@@ -1916,6 +2098,8 @@ function pressureNet(
     farUpperInKgS: ventScratch.farUpperInKgS,
     fanUpperKgS: extracted.upperKgS,
     fanLowerKgS: extracted.lowerKgS,
+    lowerInKgS: ventScratch.lowerInKgS,
+    lowerInKT: ventScratch.lowerInKT,
   };
   // CFAST's pressure equation. in − out − fans = dM/dt. The caller
   // passes dM/dt, and it does not depend on this candidate. A steady
@@ -1935,11 +2119,12 @@ function balancedFlows(
   upperK: number,
   fans: readonly MechanicalVent[] = [],
   massRateKgS: (flows: PressureScalars) => number = ZERO_MASS_RATE,
+  lowerK = AMBIENT_K,
 ): Flows & { floorPressurePa: number } {
   const at = (p: number) => ({
     ...withFans(
-      ventFlows(vents, interfaceM, upperK, p),
-      mechanicalExtract(fans, interfaceM, upperK, p),
+      ventFlows(vents, interfaceM, upperK, p, lowerK),
+      mechanicalExtract(fans, interfaceM, upperK, p, lowerK),
     ),
     floorPressurePa: p,
   });
@@ -1948,10 +2133,10 @@ function balancedFlows(
   // climb until the fan stalled; this model does not grow that pressure.
   if (vents.length === 0) return at(0);
   const rhoU = densityKgM3(upperK);
-  const rhoL = densityKgM3(AMBIENT_K);
+  const rhoL = densityKgM3(lowerK);
   const rhoA = LEVEL.RHO_AIR;
   const netAt = (p: number) =>
-    pressureNet(vents, interfaceM, upperK, p, fans, rhoL, rhoU, rhoA, massRateKgS);
+    pressureNet(vents, interfaceM, upperK, p, fans, rhoL, rhoU, rhoA, massRateKgS, lowerK);
   let lo = -80;
   let hi = 20;
   let nLo = netAt(lo);
@@ -1999,9 +2184,18 @@ interface Balance {
   neutralM: number;
 }
 
-function energyKw(spec: LayerSpec, tS: number, plumeKgS: number, riseK: number): number {
+function energyKw(
+  spec: LayerSpec,
+  tS: number,
+  plumeKgS: number,
+  riseK: number,
+  interfaceM: number,
+): number {
   const gas = AMBIENT_K + Math.max(0, riseK);
-  return plumeKgS * CP_KJ_KGK * Math.max(0, riseK) + lossPowerKw(spec.boundaries, tS, gas);
+  // The steady check has no lower temperature. Only the upper contact is
+  // in this balance, and an untagged slab is still the whole face.
+  const loss = contactLossKw(spec.boundaries, tS, gas, AMBIENT_K, interfaceM, spec.ceilingM);
+  return plumeKgS * CP_KJ_KGK * Math.max(0, riseK) + loss.upperKw;
 }
 
 export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Balance {
@@ -2010,10 +2204,10 @@ export function balanceAt(spec: LayerSpec, interfaceM: number, tS: number): Bala
   // Loss rises with temperature, so the rise that spends the fire is unique.
   let lo = 0;
   let hi = 20;
-  while (energyKw(spec, tS, plume, hi) < q && hi < 4000) hi *= 2;
+  while (energyKw(spec, tS, plume, hi, interfaceM) < q && hi < 4000) hi *= 2;
   for (let i = 0; i < 32; i++) {
     const mid = 0.5 * (lo + hi);
-    if (energyKw(spec, tS, plume, mid) < q) lo = mid;
+    if (energyKw(spec, tS, plume, mid, interfaceM) < q) lo = mid;
     else hi = mid;
   }
   const rise = 0.5 * (lo + hi);
@@ -2126,15 +2320,20 @@ export interface DoorJetInflow {
 
 /**
  * Gas in both layers, kg. Upper mass is ρ(T) times the layer volume the
- * energy step uses, and the lower layer stays at ambient density. This is
- * the mass the pressure balance conserves.
+ * energy step uses. The lower layer is at `lowerK`, and ambient when the
+ * caller leaves it out. This is the mass the pressure balance conserves.
  */
-export function gasMassKg(spec: LayerSpec, interfaceM: number, upperK: number): number {
+export function gasMassKg(
+  spec: LayerSpec,
+  interfaceM: number,
+  upperK: number,
+  lowerK = AMBIENT_K,
+): number {
   const upper = densityKgM3(upperK) * upperLayerVolumeM3(spec, interfaceM);
   const lower = spec.crossSection
     ? volumeBetweenM3(spec, 0, interfaceM)
     : Math.max(spec.areaM2, 0) * Math.max(interfaceM, 0);
-  return upper + densityKgM3(AMBIENT_K) * lower;
+  return upper + densityKgM3(lowerK) * lower;
 }
 
 interface LayerAdvance {
@@ -2163,6 +2362,9 @@ interface LayerAdvance {
   sheetK?: Readonly<Record<string, number>>;
   tempNext: number;
   zNext: number;
+  lowerK: number;
+  upperLossKw: number;
+  lowerLossKw: number;
 }
 
 /**
@@ -2182,6 +2384,7 @@ function layerAdvance(
     spec: LayerSpec;
     z: number;
     temp: number;
+    lowerK: number;
     yL: number;
     yU: number;
     slice: number;
@@ -2242,7 +2445,7 @@ function layerAdvance(
     spillKgS > 0
   ) {
     const lowerM3 = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
-    const lowerKg = densityKgM3(AMBIENT_K) * lowerM3;
+    const lowerKg = densityKgM3(ctx.lowerK) * lowerM3;
     const offered = spillPlumeEntrainmentKgS(spillKgS, ctx.jetT, ctx.jetWidth, rise);
     const busy = plume + scalars.fanLowerKgS;
     const free = Math.max(0, (slice > 0 ? lowerKg / slice : 0) - busy);
@@ -2263,20 +2466,32 @@ function layerAdvance(
   const hotSum = scalars.hotOutKgS;
   const extraKgS = hotSum > 0 ? newFuelKgS : 0;
   const storeKgS = hotSum > 0 ? 0 : newFuelKgS;
-  const loss = stepSheetLoss(spec.boundaries, ctx.sheets, ctx.age, temp, slice, ctx.hold, ctx.gain);
+  const lowerK = ctx.lowerK;
+  const loss = stepSheetLoss(
+    spec.boundaries,
+    ctx.sheets,
+    ctx.age,
+    temp,
+    lowerK,
+    z,
+    spec.ceilingM,
+    slice,
+    ctx.hold,
+    ctx.gain,
+  );
   const qLoss = loss.lossKw;
   const denom = Math.max(mass * CP_KJ_KGK, 1e-3);
   const qGas = ctx.q * burnedFraction;
-  let dT = (qGas - plume * CP_KJ_KGK * (temp - AMBIENT_K) - qLoss) / denom;
+  const atInterface = Math.max(sectionAreaM2(spec, z), 1e-6);
+  let dT = (qGas - plume * CP_KJ_KGK * (temp - lowerK) - qLoss) / denom;
   if (ctx.depositKgS > 0) dT += (ctx.depositKgS * CP_KJ_KGK * (ctx.jetT - temp)) / denom;
   if (mEnt > 0 || qDoorKw > 0) {
-    dT += (qDoorKw - mEnt * CP_KJ_KGK * (temp - AMBIENT_K)) / denom;
+    dT += (qDoorKw - mEnt * CP_KJ_KGK * (temp - lowerK)) / denom;
   }
   if (extraKgS > 0) dT += (extraKgS * CP_KJ_KGK * (AMBIENT_K - temp)) / denom;
   if (storeKgS > 0) dT += (storeKgS * CP_KJ_KGK * (AMBIENT_K - temp)) / denom;
   if (dT > 400) dT = 400;
   if (dT < -400) dT = -400;
-  const atInterface = Math.max(sectionAreaM2(spec, z), 1e-6);
   const areaRho = Math.max(LEVEL.RHO_AIR * atInterface, 1e-3);
   const skipFar = ctx.depositKgS > 0 ? scalars.farUpperInKgS : 0;
   const makeupKgS = Math.max(0, scalars.inKgS - skipFar);
@@ -2290,9 +2505,20 @@ function layerAdvance(
   if (storeKgS > 0) dZ -= storeKgS / Math.max(densityKgM3(temp) * atInterface, 1e-3);
   if (dZ > 2) dZ = 2;
   if (dZ < -2) dZ = -2;
+  const lowerM3 = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
+  const mLower = densityKgM3(lowerK) * lowerM3;
+  const denomL = Math.max(mLower * CP_KJ_KGK, 1e-3);
+  const tin = scalars.lowerInKgS > 0 ? scalars.lowerInKT / scalars.lowerInKgS : lowerK;
+  let dTl = (-loss.lowerLossKw + scalars.lowerInKgS * CP_KJ_KGK * (tin - lowerK)) / denomL;
+  if (dTl > 400) dTl = 400;
+  if (dTl < -400) dTl = -400;
+  const lowerNext = Math.min(1500, Math.max(AMBIENT_K, lowerK + dTl * slice));
   const tempNext = Math.min(1500, Math.max(AMBIENT_K, temp + dT * slice));
   const zNext = Math.min(spec.ceilingM - 0.02, Math.max(0.05, z + dZ * slice));
-  const gained = slice > 0 ? (gasMassKg(spec, zNext, tempNext) - gasMassKg(spec, z, temp)) / slice : 0;
+  const gained =
+    slice > 0
+      ? (gasMassKg(spec, zNext, tempNext, lowerNext) - gasMassKg(spec, z, temp, lowerK)) / slice
+      : 0;
   // The jet mass the orifice did not already count, and fuel that stays in
   // the layer, are sources. The vents carry the rest of the mass change.
   // Jet mass the orifice did not already import. Once the opening's upper
@@ -2324,6 +2550,9 @@ function layerAdvance(
     sheetK: loss.sheetK,
     tempNext,
     zNext,
+    lowerK: lowerNext,
+    upperLossKw: qLoss,
+    lowerLossKw: loss.lowerLossKw,
   };
 }
 
@@ -2378,6 +2607,10 @@ export function stepZone(
   fanLowerKgS: number;
   /** Last substep's upper-layer fan extract, kg/s. */
   fanUpperKgS: number;
+  /** Mean upper-layer boundary loss over the step, kW. */
+  upperLossKw: number;
+  /** Mean lower-layer boundary loss over the step, kW. */
+  lowerLossKw: number;
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -2392,6 +2625,7 @@ function stepZoneNow(
 ) {
   let z = state.interfaceM;
   let temp = state.upperK;
+  let lower = state.lowerK != null && state.lowerK > 0 ? state.lowerK : AMBIENT_K;
   let soot = state.sootG;
   let fuel = state.fuelKg != null && state.fuelKg > 0 ? state.fuelKg : 0;
   let age = state.ageS;
@@ -2414,6 +2648,9 @@ function stepZoneNow(
   let lastPlume = 0;
   let lastFanL = 0;
   let lastFanU = 0;
+  let upperLossSum = 0;
+  let lowerLossSum = 0;
+  let lossSlices = 0;
   let left = Math.max(0, dt);
   const gainKjM2 = hold && hold.size > 0 ? ({} as Record<string, number>) : undefined;
   const split = fireSplit(spec);
@@ -2445,6 +2682,7 @@ function stepZoneNow(
         spec,
         z,
         temp,
+        lowerK: lower,
         yL,
         yU,
         slice,
@@ -2478,7 +2716,17 @@ function stepZoneNow(
     // by that volume after the root. The drop is not an input. A step whose
     // upper volume would shrink keeps the exchange mass change: raising the
     // interface would hand the flame the lower layer's stored air.
-    const exchange = oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0);
+    const exchange = oxygenLimitedBurn(
+      spec,
+      z,
+      temp,
+      yL,
+      yU,
+      slice,
+      depositKgS > 0,
+      undefined,
+      lower,
+    );
     let exchangeHot = 0;
     for (const rate of exchange.hotOutByVentKgS) exchangeHot += rate ?? 0;
     const advance = advanceOf(
@@ -2489,14 +2737,19 @@ function stepZoneNow(
         farUpperInKgS: exchange.farUpperInKgS,
         fanUpperKgS: exchange.fanUpperKgS,
         fanLowerKgS: exchange.fanLowerKgS,
+        lowerInKgS: exchange.lowerInKgS,
+        lowerInKT: exchange.lowerInKgS * exchange.lowerInK,
       },
       true,
     );
     const rhoNew = densityKgM3(advance.tempNext);
     const vExchange = upperLayerVolumeM3(spec, advance.zNext);
+    const lowerNext = advance.lowerK;
     const gained =
       slice > 0
-        ? (gasMassKg(spec, advance.zNext, advance.tempNext) - gasMassKg(spec, z, temp)) / slice
+        ? (gasMassKg(spec, advance.zNext, advance.tempNext, lowerNext) -
+            gasMassKg(spec, z, temp, lower)) /
+          slice
         : 0;
     // Jets the orifice missed, and fuel that stays in the layer, are
     // sources. They sit in the upper mass and are not a vent flow.
@@ -2522,7 +2775,9 @@ function stepZoneNow(
         const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
         let predicted = gained;
         if (slice > 0 && !hitsClamp) {
-          predicted = (gasMassKg(spec, zExp, advance.tempNext) - gasMassKg(spec, z, temp)) / slice;
+          predicted =
+            (gasMassKg(spec, zExp, advance.tempNext, lowerNext) - gasMassKg(spec, z, temp, lower)) /
+            slice;
         } else if (slice > 0) {
           // The floor clamp will stop the interface. The rate still carries
           // the unclipped volume, which is the known residual once the layer
@@ -2532,8 +2787,8 @@ function stepZoneNow(
             ? volumeBetweenM3(spec, 0, z)
             : Math.max(spec.areaM2, 0) * Math.max(z, 0);
           const lowerFinal = lowerStart - (vTarget - vStart);
-          const massFinal = mUpperNew + densityKgM3(AMBIENT_K) * lowerFinal;
-          predicted = (massFinal - gasMassKg(spec, z, temp)) / slice;
+          const massFinal = mUpperNew + densityKgM3(lowerNext) * lowerFinal;
+          predicted = (massFinal - gasMassKg(spec, z, temp, lower)) / slice;
         }
         volumeRate = predicted - held;
       }
@@ -2549,6 +2804,7 @@ function stepZoneNow(
       slice,
       depositKgS > 0,
       () => planned.volumeRate,
+      lower,
     );
     {
       let hot1 = 0;
@@ -2565,6 +2821,7 @@ function stepZoneNow(
           slice,
           depositKgS > 0,
           () => planned.volumeRate,
+          lower,
         );
       }
     }
@@ -2599,6 +2856,9 @@ function stepZoneNow(
     const extraKgS = advance.extraKgS;
     const storeKgS = advance.storeKgS;
     sheets = advance.sheetK;
+    upperLossSum += advance.upperLossKw;
+    lowerLossSum += advance.lowerLossKw;
+    lossSlices += 1;
     lastIn = limited.inKgS;
     lastOut = limited.outKgS;
     lastHot = hotSum;
@@ -2619,7 +2879,7 @@ function stepZoneNow(
       hotF[v] = (hotF[v] ?? 0) + dm * yF;
     }
     const lowerVol = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
-    const mL = densityKgM3(AMBIENT_K) * lowerVol;
+    const mL = densityKgM3(lower) * lowerVol;
     const slicePlume = plume * slice;
     const sliceIn = flows.inKgS * slice;
     const sliceFanL = flows.fanLowerKgS * slice;
@@ -2650,6 +2910,7 @@ function stepZoneNow(
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = advance.tempNext;
+    lower = advance.lowerK;
     // The root already fixed the outflow. Move the interface by the
     // expansion volume only when that outflow is the one the root asked
     // for. A same-sign bracket falls back to inflow = outflow and keeps
@@ -2709,6 +2970,7 @@ function stepZoneNow(
       ageS: age,
       lowerO2: yL,
       upperO2: yU,
+      ...(lower > AMBIENT_K + 1e-3 ? { lowerK: lower } : {}),
       ...(sheets ? { sheetK: sheets } : {}),
     },
     ventedSootG: vented,
@@ -2731,6 +2993,8 @@ function stepZoneNow(
     plumeKgS: lastPlume,
     fanLowerKgS: lastFanL,
     fanUpperKgS: lastFanU,
+    upperLossKw: lossSlices > 0 ? upperLossSum / lossSlices : 0,
+    lowerLossKw: lossSlices > 0 ? lowerLossSum / lossSlices : 0,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }
@@ -2943,10 +3207,10 @@ export function enclosureFromGrid(
   const boundaries: Boundary[] = [];
   const area = memberIds.length * STUD_AREA_M2;
   // Floor and ceiling. Assumed to be the concrete row: the slab, not the finish.
-  boundaries.push({ areaM2: area, lining: LINING.concrete });
-  boundaries.push({ areaM2: area, lining: LINING.concrete });
+  boundaries.push({ areaM2: area, lining: LINING.concrete, place: 'floor' });
+  boundaries.push({ areaM2: area, lining: LINING.concrete, place: 'ceiling' });
   for (const wallArea of facadeWalls) {
-    if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining: LINING.concrete });
+    if (wallArea > 0) boundaries.push({ areaM2: wallArea, lining: LINING.concrete, place: 'wall' });
   }
 
   const receiversForDoor = (wall: GridWall): string[] => {
@@ -2991,7 +3255,7 @@ export function enclosureFromGrid(
         ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
       }
       const kept = (length - openWidth) * ceilingM;
-      if (kept > 0) boundaries.push({ id: wall.id, areaM2: kept, lining });
+      if (kept > 0) boundaries.push({ id: wall.id, areaM2: kept, lining, place: 'wall' });
       continue;
     }
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
@@ -3005,14 +3269,14 @@ export function enclosureFromGrid(
       vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
       ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
-      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining });
+      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining, place: 'wall' });
     } else if (doorWidth > 0) {
       spillWidth += doorWidth;
       spillReceivers.push(...across);
       const wallArea = Math.max(0, (length - doorWidth) * ceilingM);
-      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining });
+      if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining, place: 'wall' });
     } else {
-      boundaries.push({ id: wall.id, areaM2: length * ceilingM, lining });
+      boundaries.push({ id: wall.id, areaM2: length * ceilingM, lining, place: 'wall' });
     }
   }
   if (spillWidth > 0) {
