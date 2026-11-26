@@ -7,8 +7,9 @@
  * with no fire of its own takes that room's upper outflow from the previous
  * step as a door jet, which is the product's coupling. The door flows in
  * the CSV are the last substep of that second. While the layer is warming,
- * that pressure solution carries the ambient-density weight of the
- * expansion volume, and the interface then drops by that volume.
+ * that pressure solution carries the ambient-density weight of the volume
+ * the upper mass needs at the new temperature, including the plume's own
+ * heating, and the interface then drops by the part beyond the exchange.
  *
  *   node --import tsx frontend/tests/fixtures/fireValidation/fds/engineSeries.ts [outDir]
  */

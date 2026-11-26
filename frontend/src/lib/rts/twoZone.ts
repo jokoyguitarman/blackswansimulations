@@ -977,11 +977,12 @@ export function oxygenLimitedBurn(
   jetBringsUpper = false,
   /**
    * Gas mass the vents must carry, kg/s. Absent means a steady balance,
-   * inflow equal to outflow. A heating step passes the ambient-density
-   * weight of the expansion volume plus the exchange interface move,
-   * including a deposited jet. The candidate flows must not be fed back
-   * into that rate, and the interface drop is applied after the root.
-   * Counting the drop inside the root makes the outflow run away.
+   * inflow equal to outflow. A heating step passes the mass change of
+   * the upper volume m/ρ(T): the plume, the spill, a deposited jet and
+   * stored fuel, at the new temperature, not only the gas already
+   * upstairs. The candidate flows must not be fed back into that rate,
+   * and the interface drop is applied after the root. Counting the drop
+   * inside the root makes the outflow run away.
    */
   massRateKgS?: (flows: PressureScalars) => number,
 ): LimitedBurn {
@@ -2168,11 +2169,12 @@ interface LayerAdvance {
  * Temperature, interface, and gas-mass change one substep produces from
  * these vent flows. The applied step calls it once, on the exchange
  * (inflow = outflow), and reads the temperature and the plume's
- * interface move. The pressure root carries the thermal expansion on
- * volume: that ΔV leaves as lower-layer air at ambient density, and
- * the interface drops by ΔV after the root. Recomputing the rate on
- * each pressure candidate, or feeding the drop back into it, counts
- * the same outflow twice and the root runs away.
+ * interface move. The pressure root then carries the upper volume
+ * m/ρ(T), so the plume's own heating leaves as lower-layer air at
+ * ambient density. The interface drops by that extra volume after the
+ * root. Recomputing the rate on each pressure candidate, or feeding
+ * the drop back into it, counts the same outflow twice and the root
+ * runs away.
  */
 function layerAdvance(
   scalars: PressureScalars,
@@ -2465,14 +2467,17 @@ function stepZoneNow(
         jetSoffit,
         fuelOnly: jet != null && jet.fuelOnly === true,
       });
-    // Layer motion at inflow = outflow. Heating expands the upper layer
-    // at constant pressure (CFAST's vlayd, with the room pressure left
-    // at the quasi-steady opening). While that expansion leaves as
-    // lower-layer air its mass is ρ_a·ΔV, not the upper density drop,
-    // and the interface drops by ΔV after the root. The drop is not an
-    // input to the root. Cooling keeps the exchange mass change: raising
-    // the interface by the contraction would hand the flame the lower
-    // layer's stored air.
+    // Layer motion at inflow = outflow. The exchange admits entrained air
+    // at the volume it had in the lower layer. The upper mass after the
+    // step is that plume, the spill, a deposited jet and stored fuel, less
+    // the hot gas and the upper fan the exchange already sent out. At
+    // constant pressure the layer occupies m/ρ(T), which is CFAST's vlayd
+    // taken from the heat the upper gas keeps, with the room pressure left
+    // at the quasi-steady opening. The volume beyond the exchange move
+    // leaves as lower-layer air, and the interface drops by that volume
+    // after the root. The drop is not an input to the root. A step whose
+    // upper volume would shrink keeps the exchange mass change: raising
+    // the interface would hand the flame the lower layer's stored air.
     const exchange = oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0);
     let exchangeHot = 0;
     for (const rate of exchange.hotOutByVentKgS) exchangeHot += rate ?? 0;
@@ -2487,24 +2492,49 @@ function stepZoneNow(
       },
       true,
     );
-    const vUpper = upperLayerVolumeM3(spec, z);
-    const deltaV = temp > 0 ? (vUpper * (advance.tempNext - temp)) / temp : 0;
-    const zOnly =
-      slice > 0
-        ? (gasMassKg(spec, advance.zNext, advance.tempNext) -
-            gasMassKg(spec, z, advance.tempNext)) /
-          slice
-        : 0;
+    const rhoNew = densityKgM3(advance.tempNext);
+    const vExchange = upperLayerVolumeM3(spec, advance.zNext);
+    const upperGainKgS =
+      advance.plumeKgS +
+      advance.mEnt +
+      (depositKgS > 0 ? depositKgS : 0) +
+      advance.storeKgS -
+      exchangeHot -
+      exchange.fanUpperKgS;
+    const mUpperNew = Math.max(0, advance.mass + upperGainKgS * slice);
+    const vTarget = rhoNew > 1e-9 ? mUpperNew / rhoNew : vExchange;
+    const deltaV = vTarget - vExchange;
     const gained =
       slice > 0
         ? (gasMassKg(spec, advance.zNext, advance.tempNext) - gasMassKg(spec, z, temp)) / slice
         : 0;
     // Jets the orifice missed, and fuel that stays in the layer, are
-    // sources. They sit in the exchange rate and are not part of ΔV.
+    // sources. They sit in the upper mass and are not a vent flow.
     const held = gained - advance.massRateKgS;
-    const expandKgS = slice > 0 ? (-densityKgM3(AMBIENT_K) * deltaV) / slice : 0;
     const heating = deltaV > 0;
-    const volumeRate = heating ? zOnly + expandKgS - held : advance.massRateKgS;
+    let volumeRate = advance.massRateKgS;
+    let zExp = advance.zNext;
+    if (heating) {
+      const area = Math.max(sectionAreaM2(spec, advance.zNext), 1e-6);
+      zExp = advance.zNext - deltaV / area;
+      const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
+      let predicted = gained;
+      if (slice > 0 && !hitsClamp) {
+        predicted = (gasMassKg(spec, zExp, advance.tempNext) - gasMassKg(spec, z, temp)) / slice;
+      } else if (slice > 0) {
+        // The floor clamp will stop the interface. The rate still carries
+        // the unclipped volume, which is the known residual once the layer
+        // is on the floor.
+        const vStart = upperLayerVolumeM3(spec, z);
+        const lowerStart = spec.crossSection
+          ? volumeBetweenM3(spec, 0, z)
+          : Math.max(spec.areaM2, 0) * Math.max(z, 0);
+        const lowerFinal = lowerStart - (vTarget - vStart);
+        const massFinal = mUpperNew + densityKgM3(AMBIENT_K) * lowerFinal;
+        predicted = (massFinal - gasMassKg(spec, z, temp)) / slice;
+      }
+      volumeRate = predicted - held;
+    }
     const limited = oxygenLimitedBurn(
       spec,
       z,
@@ -2602,8 +2632,6 @@ function stepZoneNow(
     const relieved = Math.abs(net - volumeRate) <= 0.05 + 0.01 * Math.abs(volumeRate);
     z = advance.zNext;
     if (heating && relieved) {
-      const area = Math.max(sectionAreaM2(spec, advance.zNext), 1e-6);
-      let zExp = advance.zNext - deltaV / area;
       if (zExp < 0.05) zExp = 0.05;
       if (zExp > spec.ceilingM - 0.02) zExp = spec.ceilingM - 0.02;
       z = zExp;

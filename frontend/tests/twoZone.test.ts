@@ -175,8 +175,9 @@ test('a deposited jet keeps the lower-layer air budget', () => {
   let expectZ = start.interfaceM;
   const dt = 0.1;
   for (let i = 0; i < 20; i++) {
-    // The exchange move, plus the volume heating then displaces. The
-    // step's vent report is the expansion solution and is not this height.
+    // The exchange move, then the volume the deposited mass occupies at
+    // the new temperature. The step's vent report is the expansion
+    // solution and is not this height.
     const exchange = oxygenLimitedBurn(
       spec,
       state.interfaceM,
@@ -197,15 +198,18 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     if (dZ > 2) dZ = 2;
     if (dZ < -2) dZ = -2;
     expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ + dZ * dt));
+    const mass0 = (353 / state.upperK) * upperLayerVolumeM3(spec, state.interfaceM);
     const stepped = stepZone(state, spec, dt, 0, jet);
-    const grown =
-      state.upperK > 0
-        ? (upperLayerVolumeM3(spec, state.interfaceM) * (stepped.state.upperK - state.upperK)) /
-          state.upperK
-        : 0;
-    // Heating displaces this volume of lower air after the exchange move.
-    if (grown > 0) {
-      expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ - grown / spec.areaM2));
+    const hotLeft = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
+    const mNew = Math.max(
+      0,
+      mass0 + (jet.kgS - hotLeft - exchange.fanUpperKgS) * dt,
+    );
+    const vExchange = upperLayerVolumeM3(spec, expectZ);
+    const extra = mNew / (353 / stepped.state.upperK) - vExchange;
+    // The jet's mass at the new temperature, beyond the exchange volume.
+    if (extra > 0) {
+      expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ - extra / spec.areaM2));
     }
     state = stepped.state;
   }
@@ -251,9 +255,9 @@ test('a single vent expels the gas mass the step adds', () => {
 
 test('expansion above the soffit leaves with the lower layer', () => {
   // The opening is entirely in the lower layer, so the displaced volume
-  // is lower-layer air. The lower layer loses that air and the plume's
-  // air. Heating grows the upper volume and does not remove upper mass;
-  // the upper mass changes by the plume volume filled at the upper density.
+  // is lower-layer air. The lower layer loses that air and the whole
+  // plume mass. The upper layer gains the whole plume mass: entrained
+  // air is heated, and the extra volume leaves downstairs.
   const spec: LayerSpec = {
     areaM2: 40,
     ceilingM: 3,
@@ -289,11 +293,9 @@ test('expansion above the soffit leaves with the lower layer', () => {
     const ventLower = stepped.inKgS - stepped.outKgS - stepped.fanLowerKgS;
     const dLower = (after.lower - before.lower) / dt;
     const dUpper = (after.upper - before.upper) / dt;
-    // The plume's volume is the ambient-density slice the interface
-    // already moved. Filled at the upper density, that is the upper mass
-    // it adds, and the same mass is what the lower layer loses on top of
-    // the air the vent expelled. Heating adds none.
-    const plumeMass = stepped.plumeKgS * (rhoAt(t1) / rhoAt(AMBIENT_K));
+    // The plume mass itself changes layers. Heating does not add a
+    // second, smaller copy at the upper density.
+    const plumeMass = stepped.plumeKgS;
     worstLower = Math.max(worstLower, Math.abs(dLower - (ventLower - plumeMass)));
     worstUpper = Math.max(worstUpper, Math.abs(dUpper - plumeMass));
     state = stepped.state;
