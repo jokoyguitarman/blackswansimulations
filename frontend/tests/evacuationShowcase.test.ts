@@ -313,6 +313,41 @@ describe('evacuation showcase', () => {
     const picked = chooseExit({ x: 0, y: 20 }, [smoky, clear], box, smoked, null);
     assert.equal(picked?.id, 'far');
 
+    // Someone on the smoky exit and already in that smoke crawls on to it. From clear air they leave.
+    const smokedHere = field(
+      [
+        { id: 's', simPos: smokyApproach, indoor: true },
+        { id: 'p', simPos: { x: 190, y: 20 }, indoor: true },
+      ],
+      { s: { smoke: 0.46, fire: 'none' }, p: { smoke: 0.46, fire: 'none' } },
+    );
+    const kept = chooseExit({ x: 190, y: 20 }, [smoky, clear], box, smokedHere, {
+      id: 'near',
+      cost: 40,
+    });
+    assert.equal(kept?.id, 'near');
+    assert.equal(kept?.forced, true);
+    const left = chooseExit({ x: 150, y: 20 }, [smoky, clear], box, smokedHere, {
+      id: 'near',
+      cost: 80,
+    });
+    assert.equal(left?.id, 'far');
+    assert.equal(
+      chooseExit({ x: 190, y: 20 }, [smoky, clear], box, smokedHere, null)?.id,
+      'far',
+    );
+    // That crawl-only hold gets no hysteresis. A cheaper usable exit inside the margin wins.
+    const inMargin = exit({ id: 'alt', center: { x: 200, y: 70 }, edgeIndex: 1 });
+    const heldCost = exitCost({ x: 190, y: 20 }, smoky, box, smokedHere, undefined, undefined, false, true);
+    const altCost = exitCost({ x: 190, y: 20 }, inMargin, box, smokedHere, undefined, undefined, true);
+    assert.ok(altCost < heldCost && altCost > heldCost * (1 - SHOWCASE.REROUTE_HYSTERESIS));
+    const switched = chooseExit({ x: 190, y: 20 }, [smoky, inMargin], box, smokedHere, {
+      id: 'near',
+      cost: heldCost,
+    });
+    assert.equal(switched?.id, 'alt');
+    assert.equal(switched?.forced, false);
+
     const appA = exitApproachInside(smoky, box);
     const appB = exitApproachInside(clear, box);
     const bothBurn = field(
@@ -774,6 +809,57 @@ test('people who turned back do not return to that exit', () => {
     eng.destroy();
   }
   assert.equal(found, true);
+});
+
+test('a retargeted crawler in contact walks toward its new exit, not with its neighbour', () => {
+  const eng = showcaseEngine(2);
+  const studs: HazardStud[] = [];
+  const states: Record<string, { smoke: number; fire: string }> = {};
+  for (let x = 1.5; x < 40; x += 3) {
+    for (let y = 1.5; y < 20; y += 3) {
+      const id = `s_${x}_${y}`;
+      studs.push({ id, simPos: { x, y }, indoor: true });
+      states[id] = { smoke: 1, fire: 'none' };
+    }
+  }
+  eng.setHazardField(field(studs, states));
+  const [mover, neighbour] = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+  type Label = {
+    state: string;
+    targetExitId: string;
+    exitCost: number;
+    nextCheckAt: number;
+    posture: string;
+    latchedExitId: string | null;
+    smokeRollDone: boolean;
+  };
+  const place = (body: Matter.Body, x: number, target: string) => {
+    Matter.Body.setPosition(body, { x, y: 10 });
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (body as Matter.Body & { __ped: Label }).__ped;
+    ped.state = 'evacuating';
+    ped.targetExitId = target;
+    ped.exitCost = 100;
+    ped.nextCheckAt = 1e9;
+    ped.posture = 'crawl';
+    ped.latchedExitId = target;
+    ped.smokeRollDone = true;
+  };
+  // Both crawl west in contact. Then one turns for the east exit.
+  place(neighbour, 20, 'west');
+  place(mover, 20.47, 'west');
+  for (let i = 0; i < 30; i++) eng.step();
+  const ped = (mover as Matter.Body & { __ped: Label }).__ped;
+  ped.targetExitId = 'east';
+  ped.latchedExitId = 'east';
+  const startX = mover.position.x;
+  for (let i = 0; i < 180; i++) eng.step();
+  assert.ok(mover.velocity.x > 0, `heading east, vx=${mover.velocity.x.toFixed(4)}`);
+  assert.ok(
+    mover.position.x - startX > 0.2,
+    `moved toward the east exit, dx=${(mover.position.x - startX).toFixed(3)}`,
+  );
+  eng.destroy();
 });
 
 test('posture resets outside and crawling counts only evacuating people', () => {

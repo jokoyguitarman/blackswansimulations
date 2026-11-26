@@ -80,6 +80,13 @@ import type { LevelDef, Stairwell } from '../rts/types';
 export type { Posture } from './hazardSensing';
 
 const WALL_THICKNESS = 0.8;
+/**
+ * Matter's default slop is 0.05 world units, sized for pixels. A unit here is
+ * a metre, and the position solver pulls any pair overlapping by less than the
+ * slop back to it, so two people who touch tow each other at the faster one's
+ * pace, whatever exit each is heading for. Without slop a contact only pushes.
+ */
+const BODY_SLOP_M = 0;
 const PED_CATEGORY = 0x0001;
 const WALL_CATEGORY = 0x0002;
 const STATIC_CELL_M = 2;
@@ -427,6 +434,7 @@ export class PolygonEvacuationEngine {
         const body = Matter.Bodies.rectangle(mx, my, segLen, t, {
           isStatic: true,
           angle,
+          slop: BODY_SLOP_M,
         });
         body.collisionFilter = { group: 0, category, mask };
         body.restitution = 0.1;
@@ -465,7 +473,11 @@ export class PolygonEvacuationEngine {
           const mid1 = seg1Len / 2;
           const mx = wall.startX + (dx / len) * mid1;
           const my = wall.startY + (dy / len) * mid1;
-          const body = Matter.Bodies.rectangle(mx, my, seg1Len, t, { isStatic: true, angle });
+          const body = Matter.Bodies.rectangle(mx, my, seg1Len, t, {
+            isStatic: true,
+            angle,
+            slop: BODY_SLOP_M,
+          });
           body.collisionFilter = { group: 0, category, mask };
           body.restitution = 0.1;
           interiorBodies.push(body);
@@ -474,7 +486,11 @@ export class PolygonEvacuationEngine {
           const mid2 = seg2Start + seg2Len / 2;
           const mx = wall.startX + (dx / len) * mid2;
           const my = wall.startY + (dy / len) * mid2;
-          const body = Matter.Bodies.rectangle(mx, my, seg2Len, t, { isStatic: true, angle });
+          const body = Matter.Bodies.rectangle(mx, my, seg2Len, t, {
+            isStatic: true,
+            angle,
+            slop: BODY_SLOP_M,
+          });
           body.collisionFilter = { group: 0, category, mask };
           body.restitution = 0.1;
           interiorBodies.push(body);
@@ -482,7 +498,11 @@ export class PolygonEvacuationEngine {
       } else {
         const mx = (wall.startX + wall.endX) / 2;
         const my = (wall.startY + wall.endY) / 2;
-        const body = Matter.Bodies.rectangle(mx, my, len, t, { isStatic: true, angle });
+        const body = Matter.Bodies.rectangle(mx, my, len, t, {
+          isStatic: true,
+          angle,
+          slop: BODY_SLOP_M,
+        });
         body.collisionFilter = { group: 0, category, mask };
         body.restitution = 0.1;
         interiorBodies.push(body);
@@ -515,6 +535,7 @@ export class PolygonEvacuationEngine {
         friction: 0.3,
         frictionAir: 0.15,
         density: 50,
+        slop: BODY_SLOP_M,
         label: 'pedestrian',
       });
 
@@ -2521,6 +2542,7 @@ export class PolygonEvacuationEngine {
         friction: 0.3,
         frictionAir: 0.15,
         density: 50,
+        slop: BODY_SLOP_M,
         label: 'pedestrian',
       });
       body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
@@ -2899,6 +2921,7 @@ export class PolygonEvacuationEngine {
       friction: 0.3,
       frictionAir: 0.15,
       density: 50,
+      slop: BODY_SLOP_M,
       label: 'pedestrian',
     });
     body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
