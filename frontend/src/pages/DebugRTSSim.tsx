@@ -306,6 +306,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 // ── Feature flags (set to true to re-enable hidden UI) ──────────────────
+/** Screen pixels a right-press must travel before it pans instead of ordering a move. */
+const PAN_THRESHOLD_PX = 5;
+
 const ENABLE_CASUALTY_PLACEMENT = false;
 const ENABLE_AI_ENRICHMENT = false;
 const ENABLE_MICROSOFT_FOOTPRINT = false;
@@ -608,6 +611,18 @@ export function DebugRTSSim() {
   const [pedestrianCount, setPedestrianCount] = useState(120);
   const [newExitWidth, setNewExitWidth] = useState(3);
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
+
+  // ── Layout: collapsible panels and the floating levels box ────────────
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [levelsBoxOpen, setLevelsBoxOpen] = useState(true);
+  const focusMode = !leftPanelOpen && !rightPanelOpen && !levelsBoxOpen;
+  const toggleFocusMode = useCallback(() => {
+    const open = focusMode;
+    setLeftPanelOpen(open);
+    setRightPanelOpen(open);
+    setLevelsBoxOpen(open);
+  }, [focusMode]);
 
   // ── Saved maps ────────────────────────────────────────────────────────
   const [savedMaps, setSavedMaps] = useState<SavedMap[]>(() => loadSavedMaps());
@@ -2968,7 +2983,24 @@ export function DebugRTSSim() {
   const dragStartRef = useRef<Vec2 | null>(null);
   const isDraggingRef = useRef(false);
   const elementDragRef = useRef<{ type: string; id: string } | null>(null);
-  const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
+  /**
+   * Map pan gesture. Middle-drag and Space+left-drag pan at once; a right
+   * press in select mode only pans once it moves past PAN_THRESHOLD_PX, so a
+   * still right-click still issues the move order on release.
+   */
+  const mapPanRef = useRef<{
+    button: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    active: boolean;
+    sim: Vec2;
+    shift: boolean;
+  } | null>(null);
+  const spaceHeldRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const [panCursor, setPanCursor] = useState<'none' | 'grab' | 'grabbing'>('none');
 
   const placeVerticalLink = useCallback((pos: Vec2, stud: SimStud | null) => {
     const lv = levelsRef.current;
@@ -3078,10 +3110,23 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
-      // Middle mouse button = pan map
-      if (e.button === 1) {
+      const startPan = (active: boolean) => {
+        mapPanRef.current = {
+          button: e.button,
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          active,
+          sim,
+          shift: e.shiftKey,
+        };
+        if (active) setPanCursor('grabbing');
+      };
+
+      if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
         e.preventDefault();
-        mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+        startPan(true);
         return;
       }
 
@@ -3090,10 +3135,7 @@ export function DebugRTSSim() {
       if (mode.type === 'select') {
         if (e.button === 2) {
           e.preventDefault();
-          const selected = [...rts.state.selection.selectedUnitIds];
-          if (selected.length > 0) {
-            rts.issueMove(selected, sim, e.shiftKey);
-          }
+          startPan(false);
           return;
         }
 
@@ -3122,17 +3164,8 @@ export function DebugRTSSim() {
       const sim = toSim(cx, cy);
       hoverSimPosRef.current = sim;
 
-      // Map panning (middle mouse button)
-      if (mapPanRef.current) {
-        const map = leafletMapRef.current;
-        if (map) {
-          const dx = e.clientX - mapPanRef.current.startX;
-          const dy = e.clientY - mapPanRef.current.startY;
-          map.panBy([-dx, -dy], { animate: false });
-          mapPanRef.current = { startX: e.clientX, startY: e.clientY };
-        }
-        return;
-      }
+      // Map panning runs from window listeners so it survives leaving the canvas.
+      if (mapPanRef.current) return;
 
       // Element dragging
       if (elementDragRef.current && dragStartRef.current) {
@@ -3158,11 +3191,7 @@ export function DebugRTSSim() {
 
   const handleCanvasMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      // End map pan
-      if (mapPanRef.current) {
-        mapPanRef.current = null;
-        return;
-      }
+      if (mapPanRef.current) return;
 
       if (!renderCtxRef.current) return;
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -3531,14 +3560,96 @@ export function DebugRTSSim() {
     e.preventDefault();
     e.stopPropagation();
     const map = leafletMapRef.current;
-    if (!map) return;
-    if (e.deltaY < 0) map.zoomIn();
-    else map.zoomOut();
+    if (!map || e.deltaY === 0) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const zoom = Math.min(
+      map.getMaxZoom(),
+      Math.max(map.getMinZoom(), map.getZoom() + (e.deltaY < 0 ? 1 : -1)),
+    );
+    if (rect) map.setZoomAround(L.point(e.clientX - rect.left, e.clientY - rect.top), zoom);
+    else map.setZoom(zoom);
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
   }, []);
+
+  // ── Map pan: window listeners, Space modifier, click suppression ──────
+  useEffect(() => {
+    if (phase !== 'rts') return;
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      const tag = el?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || isTyping(e.target)) return;
+      e.preventDefault();
+      if (spaceHeldRef.current) return;
+      spaceHeldRef.current = true;
+      if (!mapPanRef.current) setPanCursor('grab');
+    };
+    const releaseSpace = () => {
+      spaceHeldRef.current = false;
+      if (!mapPanRef.current?.active) setPanCursor('none');
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') releaseSpace();
+    };
+    const onMove = (e: MouseEvent) => {
+      const pan = mapPanRef.current;
+      if (!pan) return;
+      if (!pan.active) {
+        if (Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) < PAN_THRESHOLD_PX) return;
+        pan.active = true;
+        setPanCursor('grabbing');
+      }
+      leafletMapRef.current?.panBy([pan.lastX - e.clientX, pan.lastY - e.clientY], {
+        animate: false,
+      });
+      pan.lastX = e.clientX;
+      pan.lastY = e.clientY;
+    };
+    const onUp = (e: MouseEvent) => {
+      const pan = mapPanRef.current;
+      if (!pan || e.button !== pan.button) return;
+      mapPanRef.current = null;
+      if (pan.active) {
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      } else if (pan.button === 2) {
+        const rts = rtsRef.current;
+        const selected = [...rts.state.selection.selectedUnitIds];
+        if (selected.length > 0) rts.issueMove(selected, pan.sim, pan.shift);
+      }
+      setPanCursor(spaceHeldRef.current ? 'grab' : 'none');
+    };
+    const canvas = canvasRef.current;
+    const swallowClick = (e: MouseEvent) => {
+      if (!suppressClickRef.current) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', releaseSpace);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas?.addEventListener('click', swallowClick, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', releaseSpace);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      canvas?.removeEventListener('click', swallowClick, true);
+      mapPanRef.current = null;
+      spaceHeldRef.current = false;
+      setPanCursor('none');
+    };
+  }, [phase]);
 
   // ── Touch support ─────────────────────────────────────────────────────
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -4219,6 +4330,23 @@ export function DebugRTSSim() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          <button
+            type="button"
+            onClick={toggleFocusMode}
+            aria-pressed={focusMode}
+            title={
+              focusMode
+                ? 'Show the side panels and levels box'
+                : 'Collapse everything around the map'
+            }
+            className={`text-xs border rounded px-2 py-1 ${
+              focusMode
+                ? 'text-cyan-300 border-cyan-600 bg-cyan-900/30 hover:text-cyan-200'
+                : 'text-green-600 hover:text-green-400 border-green-800'
+            }`}
+          >
+            {focusMode ? '⤡ Exit focus' : '⤢ Focus'}
+          </button>
           {phase === 'rts' && (
             <>
               <span className="text-amber-300 text-sm font-bold">{clockDisplay}</span>
@@ -4455,10 +4583,24 @@ export function DebugRTSSim() {
       {/* MAIN AREA */}
       <div className={`flex ${isPortrait ? 'flex-col' : 'flex-row'} flex-1 overflow-hidden`}>
         {/* Left sidebar: team palette (RTS only, hidden in warroom mode) — below map on mobile */}
+        {phase === 'rts' && !isWarroomMode && !leftPanelOpen && (
+          <PanelEdgeTab
+            side="left"
+            label="Teams"
+            portrait={isPortrait}
+            orderClass={isPortrait ? 'order-3' : 'order-1'}
+            onOpen={() => setLeftPanelOpen(true)}
+          />
+        )}
         {phase === 'rts' && !isWarroomMode && (
           <div
-            className={`${isPortrait ? 'order-3 w-full border-t' : 'order-1 w-56 border-r flex-shrink-0'} border-green-800 overflow-y-auto p-2 space-y-2 min-h-0`}
+            className={`${isPortrait ? 'order-3 w-full border-t' : 'order-1 w-56 border-r flex-shrink-0'} border-green-800 overflow-y-auto p-2 space-y-2 min-h-0${leftPanelOpen ? '' : ' hidden'}`}
           >
+            <PanelCollapseButton
+              side="left"
+              portrait={isPortrait}
+              onClick={() => setLeftPanelOpen(false)}
+            />
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
               {ALL_TEAMS.map((t) => (
@@ -4709,7 +4851,13 @@ export function DebugRTSSim() {
                   zIndex: 1000,
                   touchAction: 'none',
                 }}
-                className="cursor-crosshair"
+                className={
+                  panCursor === 'grabbing'
+                    ? 'cursor-grabbing'
+                    : panCursor === 'grab'
+                      ? 'cursor-grab'
+                      : 'cursor-crosshair'
+                }
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={handleCanvasMouseUp}
@@ -4719,42 +4867,56 @@ export function DebugRTSSim() {
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               />
-              <LevelSwitcher
-                levels={levels}
-                activeLevel={activeLevel}
-                interiorWalls={interiorWalls}
-                exits={exits}
-                hazardZones={hazardZones}
-                casualtyPins={casualtyPins}
-                stairwells={stairwells}
-                pedestrians={pedestrians}
-                studs={allSimStuds}
-                effectStates={effectStates}
-                copyTargets={copyTargets}
-                onActive={setActiveLevel}
-                onLevels={setLevels}
-                onCopyTargets={setCopyTargets}
-                onCopy={(from, targets) => {
-                  if (targets.length === 0) return;
-                  setInteriorWalls((prev) => [
-                    ...prev,
-                    ...targets.flatMap((to) =>
-                      prev
-                        .filter((w) => levelOf(w) === from)
-                        .map((w) => ({ ...w, id: `${w.id}-${to}-${Date.now()}`, level: to })),
-                    ),
-                  ]);
-                  setExits((prev) => [
-                    ...prev,
-                    ...targets.flatMap((to) =>
-                      prev
-                        .filter((e) => levelOf(e) === from)
-                        .map((e) => ({ ...e, id: `${e.id}-${to}-${Date.now()}`, level: to })),
-                    ),
-                  ]);
-                }}
-                pedestrianCount={pedestrianCount}
-              />
+              {levelsBoxOpen ? (
+                <LevelSwitcher
+                  onClose={() => setLevelsBoxOpen(false)}
+                  levels={levels}
+                  activeLevel={activeLevel}
+                  interiorWalls={interiorWalls}
+                  exits={exits}
+                  hazardZones={hazardZones}
+                  casualtyPins={casualtyPins}
+                  stairwells={stairwells}
+                  pedestrians={pedestrians}
+                  studs={allSimStuds}
+                  effectStates={effectStates}
+                  copyTargets={copyTargets}
+                  onActive={setActiveLevel}
+                  onLevels={setLevels}
+                  onCopyTargets={setCopyTargets}
+                  onCopy={(from, targets) => {
+                    if (targets.length === 0) return;
+                    setInteriorWalls((prev) => [
+                      ...prev,
+                      ...targets.flatMap((to) =>
+                        prev
+                          .filter((w) => levelOf(w) === from)
+                          .map((w) => ({ ...w, id: `${w.id}-${to}-${Date.now()}`, level: to })),
+                      ),
+                    ]);
+                    setExits((prev) => [
+                      ...prev,
+                      ...targets.flatMap((to) =>
+                        prev
+                          .filter((e) => levelOf(e) === from)
+                          .map((e) => ({ ...e, id: `${e.id}-${to}-${Date.now()}`, level: to })),
+                      ),
+                    ]);
+                  }}
+                  pedestrianCount={pedestrianCount}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLevelsBoxOpen(true)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title="Show the levels box"
+                  className="absolute top-2 left-2 bg-black/85 border border-slate-600 hover:border-slate-400 rounded px-2 py-1 text-xs text-slate-200"
+                  style={{ zIndex: 1100 }}
+                >
+                  ▤ Levels · {levels.find((l) => l.id === activeLevel)?.name ?? activeLevel}
+                </button>
+              )}
               {banner && performance.now() < banner.until && (
                 <div
                   role="status"
@@ -4772,13 +4934,13 @@ export function DebugRTSSim() {
                 {gameState.interactionMode.type !== 'select' ? (
                   <span className="text-amber-400">
                     Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
-                    to place, ESC to cancel
+                    to place, middle or Space+drag pan, ESC to cancel
                   </span>
                 ) : (
                   <span>
-                    Mouse: click select · drag box · right-click move · scroll zoom · middle-drag
-                    pan | Touch: tap select · long-press move · drag box · pinch zoom · 2-finger
-                    drag pan
+                    Mouse: click select · drag box · right-click move · scroll zoom · right/middle
+                    or Space+drag pan | Touch: tap select · long-press move · drag box · pinch zoom
+                    · 2-finger drag pan
                   </span>
                 )}
               </div>
@@ -5702,11 +5864,25 @@ export function DebugRTSSim() {
         </div>
 
         {/* Right sidebar */}
+        {!rightPanelOpen && (
+          <PanelEdgeTab
+            side="right"
+            label={phase === 'map' ? 'Buildings' : 'Controls'}
+            portrait={isPortrait}
+            orderClass={isPortrait ? 'order-2' : 'order-3'}
+            onOpen={() => setRightPanelOpen(true)}
+          />
+        )}
         {phase === 'map' ? (
           /* Building list (map phase) */
           <div
-            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
+            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0${rightPanelOpen ? '' : ' hidden'}`}
           >
+            <PanelCollapseButton
+              side="right"
+              portrait={isPortrait}
+              onClick={() => setRightPanelOpen(false)}
+            />
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
                 RTS Prototype
@@ -5903,8 +6079,13 @@ export function DebugRTSSim() {
         ) : (
           /* RTS controls (rts phase) */
           <div
-            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
+            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0${rightPanelOpen ? '' : ' hidden'}`}
           >
+            <PanelCollapseButton
+              side="right"
+              portrait={isPortrait}
+              onClick={() => setRightPanelOpen(false)}
+            />
             {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
@@ -7769,6 +7950,59 @@ function StairEditor({
   );
 }
 
+function PanelCollapseButton({
+  side,
+  portrait,
+  onClick,
+}: {
+  side: 'left' | 'right';
+  portrait: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className={`flex ${side === 'left' ? 'justify-end' : 'justify-start'} -mb-1`}>
+      <button
+        type="button"
+        onClick={onClick}
+        title="Collapse panel"
+        className="text-xs text-green-700 hover:text-green-400 border border-green-900 hover:border-green-700 rounded px-1.5 leading-tight"
+      >
+        {portrait ? '▾' : side === 'left' ? '«' : '»'}
+      </button>
+    </div>
+  );
+}
+
+function PanelEdgeTab({
+  side,
+  label,
+  portrait,
+  orderClass,
+  onOpen,
+}: {
+  side: 'left' | 'right';
+  label: string;
+  portrait: boolean;
+  orderClass: string;
+  onOpen: () => void;
+}) {
+  const edge = portrait
+    ? 'w-full h-6 border-t'
+    : `w-6 ${side === 'left' ? 'border-r' : 'border-l'}`;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`Show ${label.toLowerCase()} panel`}
+      className={`${orderClass} ${edge} flex-shrink-0 border-green-800 bg-black text-green-600 hover:text-green-400 hover:bg-green-950/40 text-[10px] uppercase tracking-widest flex items-center justify-center`}
+    >
+      <span style={portrait ? undefined : { writingMode: 'vertical-rl' }}>
+        {portrait ? '▴' : side === 'left' ? '»' : '«'} {label}
+      </span>
+    </button>
+  );
+}
+
 function LevelSwitcher({
   levels,
   activeLevel,
@@ -7786,6 +8020,7 @@ function LevelSwitcher({
   onCopyTargets,
   onCopy,
   pedestrianCount,
+  onClose,
 }: {
   levels: LevelDef[];
   activeLevel: string;
@@ -7803,6 +8038,7 @@ function LevelSwitcher({
   onCopyTargets: (ids: string[]) => void;
   onCopy: (from: string, targets: string[]) => void;
   pedestrianCount: number;
+  onClose: () => void;
 }) {
   const ordered = [...levels].sort((a, b) => b.index - a.index);
   const active = levels.find((l) => l.id === activeLevel) ?? levels[0];
@@ -7837,6 +8073,17 @@ function LevelSwitcher({
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
+      <div className="flex items-center justify-between gap-2 text-slate-400">
+        <span className="uppercase tracking-wider text-[10px]">Levels</span>
+        <button
+          type="button"
+          onClick={onClose}
+          title="Hide the levels box"
+          className="text-slate-400 hover:text-white px-1 leading-none"
+        >
+          ✕
+        </button>
+      </div>
       {ordered.map((lv) => {
         const plan = effectiveLevelPlan(lv.id, levels, { walls: interiorWalls, exits });
         const title = lv.designed
