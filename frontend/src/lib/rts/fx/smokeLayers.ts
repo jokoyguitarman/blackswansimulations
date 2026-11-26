@@ -19,6 +19,11 @@ export function createLayerShade(n: number): LayerShade {
  * Looking down through a layer of depth d and extinction K lets through
  * exp(-K d) of the floor, so 1 - exp(-K d) is how much of the room is hidden.
  * Fuller rooms read heavier, and the gas near a burning stud reads darker.
+ *
+ * Only that opacity term and the fill factor come from the layer. The
+ * opacity floor (FX.LAYER_ALPHA_MIN) and the darkening and extra opacity
+ * near burning studs are display choices for the top view. The tint is
+ * not a soot-density map, so do not read one off it.
  */
 export function shadeLayers(
   indexOf: ReadonlyMap<string, number>,
