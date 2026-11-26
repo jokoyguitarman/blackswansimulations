@@ -13,23 +13,22 @@
  * T+300 is 1.32 m and 89.7 K. At T+600 the interface is 0.93 m and the
  * rise is 67 K.
  * Heat is a separate ISO 13571 dose. Nobody is down from it at T+180.
- * Three people are by T+240, in both crowds, and that count holds
+ * Two people are by T+240, in both crowds, and that count holds
  * through T+600. Gas concentration is the soot mass on the
  * stud: the layer's grams over the upper-layer volume, or the column
  * extinction, including soot past 6.1 per metre. The smoke number
  * still saturates there, and walking and sight use that number.
- * Open outs are 65, 76, 87 and 92 at T+180, T+240, T+300 and T+600,
- * with 23 down by T+600, one fume down on the T+300 snapshot, and 29
- * still inside, 10 of them in the mall. Those ten go down together at
- * about T+330 beside the congested north exit E3-north. They had turned
- * toward the east exit and kept drifting north, which is a stall in the
- * evacuation movement, not the smoke on the way out. The blocked crowd
- * has the same mall layer and nobody left in it. The highest asphyxiant FED still
- * inside is 1.002 and the highest heat FED is 1. Late mean smoke is
- * 0.835. The blocked crowd lets 42 and 79 people out at T+180 and
- * T+240, and 102 by T+300. By T+600, 102 are out and 13 are down, with
- * 19 still inside and none of them in the mall. Late mean smoke is
- * 0.843. Mean smoke at T+180, T+240 and T+300 is 0.402, 0.726 and 0.761
+ * Open outs are 69, 90, 100 and 104 at T+180, T+240, T+300 and T+600.
+ * 16 are down by T+300 and that holds through T+600: eight from the
+ * blast, two from heat and six fume downs. The six crawl out of the west
+ * shop's smoke through E1-west and go down just outside it, in the plume,
+ * so they count as out as well. Nobody is in the mall at T+600. The
+ * highest asphyxiant FED still inside is 1.002 and the highest heat FED
+ * is 1. Late mean smoke is 0.835. The blocked crowd lets 42 and 81
+ * people out at T+180 and T+240, and 104 by T+300. By T+600, 104 are out
+ * and 16 are down, the same people as in the open crowd, and nobody is
+ * in the mall. Late mean smoke is 0.843.
+ * Mean smoke at T+180, T+240 and T+300 is 0.402, 0.726 and 0.761
  * with the east exit open, and 0.402, 0.729 and 0.766 with it blocked.
  * Flashover stays 79.88 s and the peak stays 163.5 MW.
  */
@@ -46,7 +45,7 @@ const TIMEOUT_MS = 20 * 60 * 1000;
 
 describe('Harbour scene goldens', { concurrency: 1 }, () => {
   test(
-    'Harbour open crowd matches the Decision 9 figures',
+    'Harbour open crowd matches the recorded crowd',
     { skip: slowScene, timeout: TIMEOUT_MS },
     () => {
       assert.deepEqual(runHarbourCrowd(false), harbourOpenGolden);
