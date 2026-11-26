@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
-import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import {
   HOOD_HEIGHT_M,
@@ -149,8 +148,8 @@ test('orifice slice matches the 400 K door example', () => {
 
 test('a deposited jet keeps the lower-layer air budget', () => {
   // The inflow is the neighbour's upper layer, and the jet is that stream.
-  // The orifice already balances it, so the interface moves only by the
-  // lower-layer outflow and by whatever jet mass the orifice did not see.
+  // The lower layer keeps the root's own inflow and loses the jet volume
+  // the orifice did not match.
   const outside = { interfaceM: 0.3, upperK: 700, floorPressurePa: 0 };
   const spec: LayerSpec = {
     areaM2: 20,
@@ -171,50 +170,28 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     'the inflow was not all from the neighbour layer',
   );
   const jet = { kgS: far.farUpperInKgS, tempK: 700, oxygenY: 0.12 };
-  const rhoJet = 353 / jet.tempK;
+  const rhoAt = (tempK: number) => 353 / tempK;
   let state = start;
-  let expectZ = start.interfaceM;
   const dt = 0.1;
+  let residualKg = 0;
   for (let i = 0; i < 20; i++) {
-    // The exchange move, then the volume the deposited mass occupies at
-    // the new temperature. The step's vent report is the expansion
-    // solution and is not this height.
-    const exchange = oxygenLimitedBurn(
-      spec,
-      state.interfaceM,
-      state.upperK,
-      state.lowerO2,
-      state.upperO2,
-      dt,
-      true,
-    );
-    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const makeup = Math.max(0, exchange.inKgS - exchange.farUpperInKgS);
-    const lowerOut = Math.max(0, exchange.outKgS - hot);
-    const unmatched = jet.kgS - exchange.farUpperInKgS;
-    let dZ =
-      (makeup - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) /
-      (LEVEL.RHO_AIR * spec.areaM2);
-    dZ -= unmatched / (rhoJet * spec.areaM2);
-    if (dZ > 2) dZ = 2;
-    if (dZ < -2) dZ = -2;
-    expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ + dZ * dt));
-    const mass0 = (353 / state.upperK) * upperLayerVolumeM3(spec, state.interfaceM);
+    // The lower layer is the root's inflow, its own outflow and the plume,
+    // at the lower-layer density. The jet's unmatched volume comes out of
+    // that layer and is not a second copy of the exchange makeup.
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
     const stepped = stepZone(state, spec, dt, 0, jet);
-    const hotLeft = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const mNew = Math.max(
-      0,
-      mass0 + (jet.kgS - hotLeft - exchange.fanUpperKgS) * dt,
-    );
-    const vExchange = upperLayerVolumeM3(spec, expectZ);
-    const extra = mNew / (353 / stepped.state.upperK) - vExchange;
-    // The jet's mass at the new temperature, beyond the exchange volume.
-    if (extra > 0) {
-      expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ - extra / spec.areaM2));
-    }
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const flow =
+      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const unmatched = Math.max(0, jet.kgS - stepped.farUpperInKgS);
+    const jetVolume = (unmatched * dt) / rhoAt(jet.tempK);
+    residualKg += m1 - (m0 + flow * dt - rhoAt(lower1) * jetVolume);
     state = stepped.state;
   }
-  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - expectZ);
   assert.ok(Math.abs(start.interfaceM - state.interfaceM) > 0.05, 'the interface did not move');
   assert.ok(
     Math.abs(residualKg) < 0.05,
@@ -344,50 +321,42 @@ test('a burning room books outflow from below its interface', () => {
   );
   assert.ok(opened.burn.burnedKw > 1000, 'the room is burning');
   let state = start;
-  let bookedZ = start.interfaceM;
   let omittedZ = start.interfaceM;
   const dt = 0.1;
-  for (let i = 0; i < 30; i++) {
-    // Same split the step uses to move the interface. The returned vents
-    // also carry the expansion, so they are not this balance.
-    const exchange = oxygenLimitedBurn(
-      spec,
-      state.interfaceM,
-      state.upperK,
-      state.lowerO2,
-      state.upperO2,
-      dt,
-      false,
-    );
-    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const lowerOut = Math.max(0, exchange.outKgS - hot);
+  const rhoAt = (tempK: number) => 353 / tempK;
+  let residualKg = 0;
+  for (let i = 0; i < 80; i++) {
+    // The interface follows the root's inflow, the lower-layer outflow and
+    // the plume. The parallel height credits the same inflow and drops the
+    // lower outflow, which is the booking this test exists to keep.
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
+    const stepped = stepZone(state, spec, dt, 0, null);
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const flow =
+      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    residualKg += m1 - (m0 + flow * dt);
     const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
-    const areaRho = LEVEL.RHO_AIR * spec.areaM2;
-    bookedZ = Math.min(
-      spec.ceilingM - 0.02,
-      Math.max(
-        0.05,
-        bookedZ +
-          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) / areaRho) *
-            dt,
-      ),
-    );
+    const areaRho = rhoAt(lower0) * spec.areaM2;
     omittedZ = Math.min(
       spec.ceilingM - 0.02,
       Math.max(
         0.05,
         omittedZ +
-          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS) / areaRho) * dt,
+          clamp((stepped.lowerInKgS - stepped.plumeKgS - stepped.fanLowerKgS) / areaRho) * dt,
       ),
     );
-    state = stepZone(state, spec, dt, 0, null).state;
+    state = stepped.state;
   }
-  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - bookedZ);
-  const omittedKg = LEVEL.RHO_AIR * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(
     Math.abs(residualKg) < 0.05,
     `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
   );
+  const omittedKg =
+    rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
 });
 

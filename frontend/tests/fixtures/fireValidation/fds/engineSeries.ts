@@ -8,10 +8,12 @@
  * step as a door jet, which is the product's coupling. The door flows in
  * the CSV are the last substep of that second. While the layer is warming,
  * that pressure solution carries the weight of the volume the upper mass
- * needs at the new temperature, including the plume's own heating, and the
- * interface then drops by the part beyond the exchange. A second root takes
- * the extra hot gas out of that volume. The lower layer is clear, so the
- * upper gas still radiates to the floor and the wall below the interface.
+ * needs at the new temperature, including the plume's own heating. A second
+ * root takes the extra hot gas out of that volume. The lower layer is the
+ * root's inflow, the outflow from below the interface, the plume and the
+ * spill, at the lower-layer density, and the interface is that volume. The
+ * lower layer is clear, so the upper gas still radiates to the floor and the
+ * wall below the interface.
  * Convection on those faces is charged to the lower layer, which keeps its
  * own temperature, and the door uses that density.
  *

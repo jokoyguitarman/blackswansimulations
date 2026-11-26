@@ -386,13 +386,16 @@ function radiationKwM2(gasK: number, sheetK: number): number {
  * lower layer is clear, so the upper gas still radiates to that face, and
  * the sheet temperature is the balance of those two films.
  */
-function lowerSurfaceFilms(
+type LowerFilms = { toUpperKwM2: number; toLowerKwM2: number };
+
+/** Sheet temperature where lower-gas convection and upper-gas radiation balance the slab. */
+function solveLowerFilms(
   hk: number,
   upperK: number,
   lowerK: number,
   radInKwM2: number,
   exposed: boolean,
-): { toUpperKwM2: number; toLowerKwM2: number } {
+): LowerFilms {
   if (!(hk > 0)) return { toUpperKwM2: 0, toLowerKwM2: 0 };
   if (!(upperK > AMBIENT_K + 0.05) && !(lowerK > AMBIENT_K + 0.05) && !(radInKwM2 > 0)) {
     return { toUpperKwM2: 0, toLowerKwM2: 0 };
@@ -418,6 +421,80 @@ function lowerSurfaceFilms(
     toUpperKwM2: radiationKwM2(upperK, surfaceK),
     toLowerKwM2: convectionKwM2(lowerK, surfaceK),
   };
+}
+
+/**
+ * Films versus upper-layer temperature, for one hk and one lower-layer
+ * temperature. Knots the step never samples stay unsolved. A repeated wall
+ * with the same lining reads the knot instead of bisecting again.
+ */
+function lowerFilmTable(
+  hk: number,
+  lowerK: number,
+  radInKwM2: number,
+  exposed: boolean,
+): (upperK: number) => LowerFilms {
+  const toUpper = new Float64Array(FLUX_TABLE_N + 1);
+  const toLower = new Float64Array(FLUX_TABLE_N + 1);
+  const ready = new Uint8Array(FLUX_TABLE_N + 1);
+  const span = (FLUX_T_MAX - AMBIENT_K) / FLUX_TABLE_N;
+  const knot = (i: number) => {
+    if (ready[i] === 1) return;
+    ready[i] = 1;
+    const gas = AMBIENT_K + ((FLUX_T_MAX - AMBIENT_K) * i) / FLUX_TABLE_N;
+    const y = solveLowerFilms(hk, gas, lowerK, radInKwM2, exposed);
+    toUpper[i] = y.toUpperKwM2;
+    toLower[i] = y.toLowerKwM2;
+  };
+  return (upperK: number) => {
+    if (!(upperK > AMBIENT_K + 0.05) && !(lowerK > AMBIENT_K + 0.05) && !(radInKwM2 > 0)) {
+      return { toUpperKwM2: 0, toLowerKwM2: 0 };
+    }
+    const x = (Math.min(Math.max(upperK, AMBIENT_K), FLUX_T_MAX) - AMBIENT_K) / span;
+    const i = Math.min(FLUX_TABLE_N - 1, Math.floor(x));
+    knot(i);
+    knot(i + 1);
+    const t = x - i;
+    const up0 = toUpper[i] ?? 0;
+    const up1 = toUpper[i + 1] ?? 0;
+    const lo0 = toLower[i] ?? 0;
+    const lo1 = toLower[i + 1] ?? 0;
+    return { toUpperKwM2: up0 + (up1 - up0) * t, toLowerKwM2: lo0 + (lo1 - lo0) * t };
+  };
+}
+
+/**
+ * A lower-layer surface. Convection is with the gas that touches it. The
+ * lower layer is clear, so the upper gas still radiates to that face, and
+ * the sheet temperature is the balance of those two films. Inside a balance
+ * the 32-step solve is tabulated on upper-layer temperature, one table per
+ * lining, the way the single-gas film is.
+ */
+function lowerFilmLookup(
+  hk: number,
+  lowerK: number,
+  radInKwM2: number,
+  exposed: boolean,
+): (upperK: number) => LowerFilms {
+  if (!lowerFilmMemo) return (upperK) => solveLowerFilms(hk, upperK, lowerK, radInKwM2, exposed);
+  const key = `${fluxGroup(hk)}|${fluxGroup(lowerK)}|${fluxGroup(radInKwM2)}|${exposed ? 1 : 0}`;
+  let at = lowerFilmMemo.get(key);
+  if (!at) {
+    at = lowerFilmTable(hk, lowerK, radInKwM2, exposed);
+    lowerFilmMemo.set(key, at);
+  }
+  return at;
+}
+
+function lowerSurfaceFilms(
+  hk: number,
+  upperK: number,
+  lowerK: number,
+  radInKwM2: number,
+  exposed: boolean,
+): LowerFilms {
+  if (!(hk > 0)) return { toUpperKwM2: 0, toLowerKwM2: 0 };
+  return lowerFilmLookup(hk, lowerK, radInKwM2, exposed)(upperK);
 }
 
 const FLUX_TABLE_N = 96;
@@ -486,6 +563,13 @@ interface HotFlux {
 const hotFlux = new WeakMap<Lining, HotFlux>();
 /** Lining name, then grouped hk, then 1 once the back face is exposed, then grouped radiant flux. */
 let fluxMemo: Map<string, Map<number, Map<number, Map<number, FluxAt>>>> | null = null;
+/**
+ * Lower-surface films for one balance. Keyed by grouped hk, lower-layer
+ * temperature, radiant flux and the exposed flag. The table is upper-layer
+ * temperature, filled lazily, the same way `fluxAt` is.
+ */
+let lowerFilmMemo: Map<string, (upperK: number) => { toUpperKwM2: number; toLowerKwM2: number }> | null =
+  null;
 let fluxSerial = 0;
 let fluxGen = 0;
 /** χQ / AT for the fire currently being solved, kW/m². Zero outside a balance. */
@@ -550,16 +634,19 @@ export function liningFluxKwM2(lining: Lining, tS: number, gasK: number): number
 
 function withFluxMemo<T>(body: () => T): T {
   const prevMemo = fluxMemo;
+  const prevLower = lowerFilmMemo;
   const prevRad = fireRadiantKwM2;
   const prevGen = fluxGen;
   fluxSerial += 1;
   fluxGen = fluxSerial;
   fluxMemo = new Map();
+  lowerFilmMemo = new Map();
   fireRadiantKwM2 = 0;
   try {
     return body();
   } finally {
     fluxMemo = prevMemo;
+    lowerFilmMemo = prevLower;
     fireRadiantKwM2 = prevRad;
     fluxGen = prevGen;
   }
@@ -1481,12 +1568,22 @@ function plumeKgS(spec: LayerSpec, interfaceM: number): number {
   return mass;
 }
 
+interface BoundTerm {
+  boundary: Boundary;
+  at: FluxAt;
+  hk: number;
+  exposed: boolean;
+  /** Lower-layer temperature the cached film table was built for. */
+  filmLower: number;
+  filmAt: ((upperK: number) => LowerFilms) | null;
+}
+
 interface BoundLoss {
   boundaries: readonly Boundary[];
   tS: number;
   rad: number;
   gen: number;
-  terms: Array<{ boundary: Boundary; at: FluxAt; hk: number; exposed: boolean }>;
+  terms: BoundTerm[];
 }
 
 let boundLoss: BoundLoss | null = null;
@@ -1509,7 +1606,7 @@ function contactLossKw(
     bound.rad !== rad ||
     bound.gen !== fluxGen
   ) {
-    const terms: Array<{ boundary: Boundary; at: FluxAt; hk: number; exposed: boolean }> = [];
+    const terms: BoundTerm[] = [];
     for (const boundary of boundaries) {
       if (!(boundary.areaM2 > 0)) continue;
       terms.push({
@@ -1517,6 +1614,8 @@ function contactLossKw(
         at: fluxAt(boundary.lining, tS),
         hk: effectiveHeatLossKwM2K(boundary.lining, tS),
         exposed: backFaceExposed(boundary.lining, tS),
+        filmLower: Number.NaN,
+        filmAt: null,
       });
     }
     bound = { boundaries, tS, rad, gen: fluxGen, terms };
@@ -1532,7 +1631,16 @@ function contactLossKw(
     const contact = layerContactM2(term.boundary, interfaceM, ceilingM);
     if (contact.upperM2 > 0) upperKw += contact.upperM2 * term.at(upperK);
     if (contact.lowerM2 > 0) {
-      const parts = lowerSurfaceFilms(term.hk, upperK, lowerK, rad, term.exposed);
+      // The balance samples this face at dozens of upper temperatures.
+      // The table is built once for the lower temperature; the later
+      // samples read a knot, the same way `term.at` does.
+      let filmAt = term.filmAt;
+      if (!filmAt || term.filmLower !== lowerK) {
+        filmAt = lowerFilmLookup(term.hk, lowerK, rad, term.exposed);
+        term.filmAt = filmAt;
+        term.filmLower = lowerK;
+      }
+      const parts = filmAt(upperK);
       upperKw += contact.lowerM2 * parts.toUpperKwM2;
       lowerKw += contact.lowerM2 * parts.toLowerKwM2;
       lowerM2 += contact.lowerM2;
@@ -2336,6 +2444,27 @@ export function gasMassKg(
   return upper + densityKgM3(lowerK) * lower;
 }
 
+/** Lower-layer volume, m³. A rectangular room is the floor area times the height. */
+function lowerVolumeM3(spec: LayerSpec, interfaceM: number): number {
+  if (spec.crossSection) return volumeBetweenM3(spec, 0, Math.max(interfaceM, 0));
+  return Math.max(spec.areaM2, 0) * Math.max(interfaceM, 0);
+}
+
+/** Height whose lower volume is `volumeM3`. Negative volume is a height below the floor. */
+function interfaceForLowerVolume(spec: LayerSpec, volumeM3: number): number {
+  const area = Math.max(spec.areaM2, 1e-9);
+  if (!(volumeM3 > 0)) return volumeM3 / area;
+  if (!spec.crossSection) return volumeM3 / area;
+  let lo = 0;
+  let hi = spec.ceilingM;
+  for (let i = 0; i < 32; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (volumeBetweenM3(spec, 0, mid) < volumeM3) lo = mid;
+    else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
 interface LayerAdvance {
   massRateKgS: number;
   burnedFraction: number;
@@ -2368,15 +2497,13 @@ interface LayerAdvance {
 }
 
 /**
- * Temperature, interface, and gas-mass change one substep produces from
- * these vent flows. The applied step calls it once, on the exchange
- * (inflow = outflow), and reads the temperature and the plume's
- * interface move. The pressure root then carries the upper volume
- * m/ρ(T), so the plume's own heating leaves as lower-layer air at
- * ambient density. The interface drops by that extra volume after the
- * root. Recomputing the rate on each pressure candidate, or feeding
- * the drop back into it, counts the same outflow twice and the root
- * runs away.
+ * Temperature and plume one substep produces from these vent flows. The
+ * applied step calls it once, on the exchange (inflow = outflow), and
+ * reads the temperature and the plume. The interface is not this height.
+ * It is the lower-layer volume of the pressure root's own flows, at
+ * ρ(T_L). Recomputing the rate on each pressure candidate, or feeding
+ * that candidate's flows back into it, counts the same outflow twice
+ * and the root runs away.
  */
 function layerAdvance(
   scalars: PressureScalars,
@@ -2611,6 +2738,11 @@ export function stepZone(
   upperLossKw: number;
   /** Mean lower-layer boundary loss over the step, kW. */
   lowerLossKw: number;
+  /**
+   * Last substep's inflow booked to the lower layer, kg/s. The root's vent
+   * inflow, with a deposited jet left out. Already in `inKgS`.
+   */
+  lowerInKgS: number;
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -2648,6 +2780,7 @@ function stepZoneNow(
   let lastPlume = 0;
   let lastFanL = 0;
   let lastFanU = 0;
+  let lastLowerIn = 0;
   let upperLossSum = 0;
   let lowerLossSum = 0;
   let lossSlices = 0;
@@ -2705,17 +2838,18 @@ function stepZoneNow(
         jetSoffit,
         fuelOnly: jet != null && jet.fuelOnly === true,
       });
-    // Layer motion at inflow = outflow. The exchange admits entrained air
-    // at the volume it had in the lower layer. The upper mass after the
-    // step is that plume, the spill, a deposited jet and stored fuel, less
-    // the hot gas and the upper fan that leave. At constant pressure the
-    // layer occupies m/ρ(T). The first root can send more hot gas than the
-    // exchange did. That extra is taken out of the upper mass and the root
-    // is solved once more, still at the exchange height. The volume beyond
-    // the exchange move leaves as lower-layer air, and the interface drops
-    // by that volume after the root. The drop is not an input. A step whose
-    // upper volume would shrink keeps the exchange mass change: raising the
-    // interface would hand the flame the lower layer's stored air.
+    // The exchange is inflow = outflow. It sets the temperature and the
+    // plume. Its makeup is not the air that arrives: the pressure root
+    // admits less whenever the room is expelling hot gas. The lower layer
+    // is booked from that root: its inflow, the lower-layer outflow, the
+    // plume and the spill, at ρ(T_L). The interface is the volume of that
+    // mass. The root is solved again at the geometric
+    // mass of that interface when the vents can carry it. On the floor the
+    // rate still carries the unclipped volume. The candidate's own flows
+    // stay out of the bisection: feeding them back in counts the outflow
+    // twice and the root runs away. The first root can send more hot gas
+    // than the exchange. That extra is taken out of the upper mass and the
+    // root is solved once more, still at the exchange height.
     const exchange = oxygenLimitedBurn(
       spec,
       z,
@@ -2825,11 +2959,85 @@ function stepZoneNow(
         );
       }
     }
-    const heating = planned.heating;
-    const volumeRate = planned.volumeRate;
-    let zExp = planned.zExp;
-    let hotSum = 0;
-    for (const rate of limited.hotOutByVentKgS) hotSum += rate ?? 0;
+    const solveAt = (rateKgS: number) =>
+      oxygenLimitedBurn(
+        spec,
+        z,
+        temp,
+        yL,
+        yU,
+        slice,
+        depositKgS > 0,
+        () => rateKgS,
+        lower,
+      );
+    const hotOf = (flows: LimitedBurn) => {
+      let hot = 0;
+      for (const rate of flows.hotOutByVentKgS) hot += rate ?? 0;
+      return hot;
+    };
+    const rootRelieved = (flows: LimitedBurn, rateKgS: number) => {
+      const net = flows.inKgS - flows.outKgS - flows.fanUpperKgS - flows.fanLowerKgS;
+      return Math.abs(net - rateKgS) <= 0.05 + 0.01 * Math.abs(rateKgS);
+    };
+    // Lower-layer volume after `flows`, and the mass the vents must carry
+    // so the geometric total matches it. The inflow is the root's, with the
+    // deposited jet left out: the same stream the exchange had been
+    // crediting, which is larger than the slice that enters below the
+    // interface whenever the neutral plane sits above it. Below the floor
+    // the mass keeps the unclipped volume.
+    const bookOf = (flows: LimitedBurn, hot: number) => {
+      const lowerOut = Math.max(0, flows.outKgS - hot);
+      const makeup = Math.max(0, flows.inKgS - (depositKgS > 0 ? flows.farUpperInKgS : 0));
+      const below = flows.lowerInKgS;
+      const rho0 = densityKgM3(lower);
+      const v0 = lowerVolumeM3(spec, z);
+      const m0 = rho0 * v0;
+      const flowKgS = makeup - lowerOut - advance.plumeKgS - flows.fanLowerKgS - advance.mEnt;
+      const tin = below > 0 ? flows.lowerInK : lower;
+      let dTl =
+        (-advance.lowerLossKw + below * CP_KJ_KGK * (tin - lower)) /
+        (Math.max(m0, 1e-6) * CP_KJ_KGK);
+      if (dTl > 400) dTl = 400;
+      if (dTl < -400) dTl = -400;
+      const lowerNext = Math.min(1500, Math.max(AMBIENT_K, lower + dTl * slice));
+      const rho1 = densityKgM3(lowerNext);
+      let vEnd = (m0 + flowKgS * slice) / Math.max(rho1, 1e-9);
+      if (depositKgS > 0) {
+        const unmatched = Math.max(0, depositKgS - flows.farUpperInKgS);
+        vEnd -= (unmatched * slice) / Math.max(densityKgM3(jetT), 1e-6);
+      }
+      if (advance.storeKgS > 0) {
+        vEnd -= (advance.storeKgS * slice) / Math.max(densityKgM3(advance.tempNext), 1e-6);
+      }
+      const area = Math.max(spec.areaM2, 1e-9);
+      let zFlow = vEnd > 0 ? interfaceForLowerVolume(spec, vEnd) : vEnd / area;
+      const capZ = 2 * slice;
+      if (zFlow > z + capZ) zFlow = z + capZ;
+      if (zFlow < z - capZ) zFlow = z - capZ;
+      const floor = 0.05;
+      const ceil = spec.ceilingM - 0.02;
+      const zApplied = Math.min(ceil, Math.max(floor, zFlow));
+      const vMass = zFlow < floor ? area * zFlow : lowerVolumeM3(spec, zApplied);
+      const upperMass = densityKgM3(advance.tempNext) * upperLayerVolumeM3(spec, zApplied);
+      const lowerMass = densityKgM3(lowerNext) * vMass;
+      const massRateKgS =
+        (upperMass + lowerMass - gasMassKg(spec, z, temp, lower)) / Math.max(slice, 1e-9);
+      return { z: zApplied, lowerK: lowerNext, lowerInKgS: makeup, lowerOutKgS: lowerOut, massRateKgS };
+    };
+    let rate = planned.volumeRate;
+    let hotSum = hotOf(limited);
+    let book = bookOf(limited, hotSum);
+    for (let pass = 0; pass < 3; pass++) {
+      if (!rootRelieved(limited, rate)) break;
+      if (Math.abs(book.massRateKgS - rate) <= 0.02) break;
+      const next = solveAt(book.massRateKgS);
+      if (!rootRelieved(next, book.massRateKgS)) break;
+      rate = book.massRateKgS;
+      limited = next;
+      hotSum = hotOf(limited);
+      book = bookOf(limited, hotSum);
+    }
     const burn = advance.burn;
     burnedFraction = advance.burnedFraction;
     phi = advance.phi;
@@ -2837,16 +3045,12 @@ function stepZoneNow(
     floorPressurePa = limited.floorPressurePa;
     const mass = advance.mass;
     const plume = advance.plumeKgS;
-    // The layer's own oxygen, soot, and fuel follow the exchange, plus any
-    // extra upper-layer gas the expansion sends out. Lower-layer expansion
-    // is ambient air and does not debit the upper layer.
-    const extraHot = Math.max(0, hotSum - exchangeHot);
-    const flows = {
-      inKgS: Math.max(0, exchange.inKgS - (depositKgS > 0 ? exchange.farUpperInKgS : 0)),
-      outKgS: exchange.outKgS + extraHot,
-      fanLowerKgS: exchange.fanLowerKgS,
-      fanUpperKgS: exchange.fanUpperKgS,
-    };
+    // Oxygen, soot and fuel follow the root's flows. Hot gas and the
+    // upper fan leave the upper layer. The lower layer gains the root's
+    // vent inflow, with a deposited jet left out, and loses the outflow
+    // from below the interface, the plume and the spill.
+    const lowerOutKgS = book.lowerOutKgS;
+    const lowerInKgS = book.lowerInKgS;
     outByVent = limited.outByVentKgS;
     const yF = advance.yF;
     const unburnedKgS = advance.unburnedKgS;
@@ -2867,6 +3071,7 @@ function stepZoneNow(
     lastPlume = advance.plumeKgS;
     lastFanL = limited.fanLowerKgS;
     lastFanU = limited.fanUpperKgS;
+    lastLowerIn = lowerInKgS;
     const rates = limited.hotOutByVentKgS;
     for (let v = 0; v < hotKg.length; v++) {
       const doorDm = (rates[v] ?? 0) * slice;
@@ -2881,27 +3086,31 @@ function stepZoneNow(
     const lowerVol = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
     const mL = densityKgM3(lower) * lowerVol;
     const slicePlume = plume * slice;
-    const sliceIn = flows.inKgS * slice;
-    const sliceFanL = flows.fanLowerKgS * slice;
-    const sliceOut = flows.outKgS * slice;
-    const sliceFanU = flows.fanUpperKgS * slice;
+    const sliceIn = lowerInKgS * slice;
+    const sliceLowerOut = lowerOutKgS * slice;
+    const sliceFanL = limited.fanLowerKgS * slice;
+    const sliceHot = hotSum * slice;
+    const sliceFanU = limited.fanUpperKgS * slice;
     const sliceEnt = mEnt * slice;
     const sliceExtra = extraKgS * slice;
     const sliceStore = storeKgS * slice;
     const useL = Math.min(burn.oxygenLowerKgS * slice, slicePlume * yL, yL * mL);
     const useU = Math.min(burn.oxygenUpperKgS * slice, yU * mass);
     const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
-    const o2L = yL * mL - (slicePlume + sliceFanL) * yL - sliceEnt * yL + sliceIn * O2_AMBIENT_MASS;
+    const o2L =
+      yL * mL -
+      (slicePlume + sliceFanL + sliceEnt + sliceLowerOut) * yL +
+      sliceIn * O2_AMBIENT_MASS;
     let o2U =
       yU * mass -
-      (sliceOut + sliceFanU) * yU -
+      (sliceHot + sliceFanU) * yU -
       useU +
       (slicePlume * yL - useL) +
       sliceEnt * yL -
       doorO2 -
       sliceExtra * yU;
-    const mL2 = mL - slicePlume - sliceFanL + sliceIn - sliceEnt;
-    let mU2 = mass - sliceOut - sliceFanU + slicePlume + sliceEnt + sliceStore;
+    const mL2 = mL - slicePlume - sliceFanL - sliceEnt - sliceLowerOut + sliceIn;
+    let mU2 = mass - sliceHot - sliceFanU + slicePlume + sliceEnt + sliceStore;
     if (depositKgS > 0) {
       const sliceJet = depositKgS * slice;
       o2U += sliceJet * jetY;
@@ -2910,26 +3119,15 @@ function stepZoneNow(
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     temp = advance.tempNext;
-    lower = advance.lowerK;
-    // The root already fixed the outflow. Move the interface by the
-    // expansion volume only when that outflow is the one the root asked
-    // for. A same-sign bracket falls back to inflow = outflow and keeps
-    // the exchange height.
-    const net = limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS;
-    const relieved = Math.abs(net - volumeRate) <= 0.05 + 0.01 * Math.abs(volumeRate);
-    z = advance.zNext;
-    if (heating && relieved) {
-      if (zExp < 0.05) zExp = 0.05;
-      if (zExp > spec.ceilingM - 0.02) zExp = spec.ceilingM - 0.02;
-      z = zExp;
-    }
-    const carried = mass > 1e-6 ? (soot / mass) * flows.outKgS * slice : 0;
-    const extracted = mass > 1e-6 ? (soot / mass) * flows.fanUpperKgS * slice : 0;
+    lower = book.lowerK;
+    z = book.z;
+    const carried = mass > 1e-6 ? (soot / mass) * hotSum * slice : 0;
+    const extracted = mass > 1e-6 ? (soot / mass) * limited.fanUpperKgS * slice : 0;
     const displacedSoot = mass > 1e-6 ? (soot / mass) * sliceExtra : 0;
     const made = Math.max(0, sootGPerS) * slice;
     soot = Math.max(0, soot + made - carried - extracted - displacedSoot);
-    const carriedF = yF * (exchangeHot + extraHot) * slice;
-    const extractedF = yF * flows.fanUpperKgS * slice;
+    const carriedF = yF * hotSum * slice;
+    const extractedF = yF * limited.fanUpperKgS * slice;
     const displacedF = yF * sliceExtra;
     fuel = Math.max(
       0,
@@ -2995,6 +3193,7 @@ function stepZoneNow(
     fanUpperKgS: lastFanU,
     upperLossKw: lossSlices > 0 ? upperLossSum / lossSlices : 0,
     lowerLossKw: lossSlices > 0 ? lowerLossSum / lossSlices : 0,
+    lowerInKgS: lastLowerIn,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }
