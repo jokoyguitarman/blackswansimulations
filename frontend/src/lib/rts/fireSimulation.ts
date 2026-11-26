@@ -947,9 +947,9 @@ export class FireSimulation {
       fState.approach = 1;
       // Above φ = 2 the ledger ends the stud. The schedule seconds run
       // long on the αt² rise, so they do not. φ ≤ 2 keeps the free-burn clock.
-      const tracked = pyro < 1 && meta.fuelKj != null;
-      const fuelSpent = tracked && !(meta.fuelKj > 0);
-      if (fuelSpent || (!tracked && fState.timer <= 0)) {
+      const fuelKj = meta.fuelKj;
+      const onLedger = pyro < 1 && fuelKj != null;
+      if ((onLedger ? fuelKj <= 0 : fState.timer <= 0)) {
         fState.state = 'burnt_out';
         fState.timer = 0;
         fState.approach = 0;
