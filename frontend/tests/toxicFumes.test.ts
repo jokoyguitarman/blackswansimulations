@@ -35,7 +35,7 @@ import {
   SpatialEffectsEngine,
   advanceSootK,
 } from '../src/lib/rts/spatialEffects';
-import { HEAD_HEIGHT_M } from '../src/lib/rts/twoZone';
+import { HEAD_HEIGHT_M, blackLayerRadiantKwM2 } from '../src/lib/rts/twoZone';
 import { FX } from '../src/lib/rts/fx/fxConstants';
 import { createAccumulator, stepEffectsFixed } from '../src/lib/rts/fx/simClock';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing';
@@ -47,8 +47,17 @@ import {
   INCAP_DOSE,
   MOLAR_VOLUME_L,
   SOOT_EXTINCTION_M2_PER_G,
+  HEAT_AMBIENT_C,
+  HEAT_CONV_COEFF,
+  HEAT_CONV_EXP,
+  HEAT_RAD_COEFF,
+  HEAT_RAD_EXP,
+  HEAT_RAD_LIMIT_KW_M2,
   advanceFed,
+  advanceHeatFed,
+  exposureIncapacitates,
   fecImpairs,
+  heatFedPerMin,
   fecOf,
   fedIncapacitates,
   co2Hyperventilation,
@@ -377,114 +386,118 @@ describe('smoke carries the gases', () => {
     assert.ok(open > unset * 5, `exit ${open}, no exits ${unset}`);
   });
 
-  test('a closed food court keeps most of a 1 MW fire indoors', { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' }, () => {
-    const polygon = foodCourtSample.scene.buildingPolygon.map(
-      (pair) => [pair[0], pair[1]] as [number, number],
-    );
-    const verts = projectPolygon(polygon);
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const vertex of verts) {
-      minX = Math.min(minX, vertex.x);
-      minY = Math.min(minY, vertex.y);
-      maxX = Math.max(maxX, vertex.x);
-      maxY = Math.max(maxY, vertex.y);
-    }
-    const pad = 12;
-    const studs: FireSimStud[] = [];
-    for (const stud of projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']))) {
-      if (stud.simPos.x < minX - pad || stud.simPos.x > maxX + pad) continue;
-      if (stud.simPos.y < minY - pad || stud.simPos.y > maxY + pad) continue;
-      studs.push({
-        id: stud.id,
-        simPos: stud.simPos,
-        spatialContext: stud.spatialContext,
-        level: stud.floor ?? 'G',
-      });
-    }
-    const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
-    let cx = 0;
-    let cy = 0;
-    for (const stud of indoor) {
-      cx += stud.simPos.x;
-      cy += stud.simPos.y;
-    }
-    cx /= indoor.length;
-    cy /= indoor.length;
-    let fire = indoor[0];
-    let best = Infinity;
-    for (const stud of indoor) {
-      const d = Math.hypot(stud.simPos.x - cx, stud.simPos.y - cy);
-      if (d < best) {
-        best = d;
-        fire = stud;
+  test(
+    'a closed food court keeps most of a 1 MW fire indoors',
+    { skip: !process.env.RUN_SLOW_TESTS && 'slow scene run: nightly, or npm run test:slow' },
+    () => {
+      const polygon = foodCourtSample.scene.buildingPolygon.map(
+        (pair) => [pair[0], pair[1]] as [number, number],
+      );
+      const verts = projectPolygon(polygon);
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const vertex of verts) {
+        minX = Math.min(minX, vertex.x);
+        minY = Math.min(minY, vertex.y);
+        maxX = Math.max(maxX, vertex.x);
+        maxY = Math.max(maxY, vertex.y);
       }
-    }
-    const height = foodCourtSample.scene.levels[0].heightM;
-    const walls = foodCourtSample.scene.interiorWalls as InteriorWall[];
-    const exits = (foodCourtSample.scene.exits as ExitDef[]).map((exit) => ({
-      ...exit,
-      status: 'blocked' as const,
-    }));
-    const engine = new SpatialEffectsEngine(undefined, 1);
-    engine.init(studs);
-    engine.setStoreyHeights({ G: height });
-    engine.setBuildingEnvelope(verts, exits);
-    engine.setFuelCells(new Map([[fire.id, WOOD]]));
-    const sim = (engine as unknown as { fireSim: FireSimulation }).fireSim;
-    sim.ignite([fire.id]);
-    const dt = 0.1;
-    const horizon = 300;
-    let made = 0;
-    let expected = 0;
-    for (let t = 0; t < horizon - 1e-9; t += dt) {
-      let soot = 0;
-      for (const source of sim.burningSoot()) soot += source.sootGPerS;
-      made += soot * dt;
-      expected = advanceSootK(expected, soot, SMOKE_LEAK_PER_S, dt);
-      engine.step(dt, walls, []);
-    }
-    const volume = STUD_AREA_M2 * height;
-    let indoorG = 0;
-    let outdoorG = 0;
-    let sumK = 0;
-    for (const cell of studs) {
-      const k = extinctionK(engine.studStates.get(cell.id)?.smoke ?? 0);
-      const grams = (k * volume) / SOOT_EXTINCTION_M2_PER_G;
-      if (cell.spatialContext === 'inside_building') {
-        indoorG += grams;
-        sumK += k;
-      } else outdoorG += grams;
-    }
-    const meanK = sumK / indoor.length;
-    const balancedK = (expected * SOOT_EXTINCTION_M2_PER_G) / (indoor.length * volume);
-    const release = engine.fuelReleaseKw(fire.id) ?? 0;
-    // A layer holds its soot above the head, so the column K is clear air.
-    // That mass is still indoors. It is not a leak through the wall.
-    const layers = (
-      engine as unknown as {
-        layerState: Map<string, { active: boolean; zone: { sootG: number; interfaceM: number } }>;
+      const pad = 12;
+      const studs: FireSimStud[] = [];
+      for (const stud of projectSceneStuds(polygon, generateSceneStuds(polygon, 0, ['G']))) {
+        if (stud.simPos.x < minX - pad || stud.simPos.x > maxX + pad) continue;
+        if (stud.simPos.y < minY - pad || stud.simPos.y > maxY + pad) continue;
+        studs.push({
+          id: stud.id,
+          simPos: stud.simPos,
+          spatialContext: stud.spatialContext,
+          level: stud.floor ?? 'G',
+        });
       }
-    ).layerState;
-    let layerG = 0;
-    let aboveHead = false;
-    for (const row of layers.values()) {
-      if (!row.active) continue;
-      layerG += row.zone.sootG;
-      if (row.zone.interfaceM > HEAD_HEIGHT_M) aboveHead = true;
-    }
-    assert.ok(indoor.length > 50, `indoor studs ${indoor.length}`);
-    assert.ok(release > 800, `release ${release} kW`);
-    assert.ok(
-      (indoorG + layerG) / made >= 0.6,
-      `indoors ${indoorG + layerG} g of ${made} g, outdoors ${outdoorG} g`,
-    );
-    if (!aboveHead) {
-      assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
-    }
-  });
+      const indoor = studs.filter((stud) => stud.spatialContext === 'inside_building');
+      let cx = 0;
+      let cy = 0;
+      for (const stud of indoor) {
+        cx += stud.simPos.x;
+        cy += stud.simPos.y;
+      }
+      cx /= indoor.length;
+      cy /= indoor.length;
+      let fire = indoor[0];
+      let best = Infinity;
+      for (const stud of indoor) {
+        const d = Math.hypot(stud.simPos.x - cx, stud.simPos.y - cy);
+        if (d < best) {
+          best = d;
+          fire = stud;
+        }
+      }
+      const height = foodCourtSample.scene.levels[0].heightM;
+      const walls = foodCourtSample.scene.interiorWalls as InteriorWall[];
+      const exits = (foodCourtSample.scene.exits as ExitDef[]).map((exit) => ({
+        ...exit,
+        status: 'blocked' as const,
+      }));
+      const engine = new SpatialEffectsEngine(undefined, 1);
+      engine.init(studs);
+      engine.setStoreyHeights({ G: height });
+      engine.setBuildingEnvelope(verts, exits);
+      engine.setFuelCells(new Map([[fire.id, WOOD]]));
+      const sim = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+      sim.ignite([fire.id]);
+      const dt = 0.1;
+      const horizon = 300;
+      let made = 0;
+      let expected = 0;
+      for (let t = 0; t < horizon - 1e-9; t += dt) {
+        let soot = 0;
+        for (const source of sim.burningSoot()) soot += source.sootGPerS;
+        made += soot * dt;
+        expected = advanceSootK(expected, soot, SMOKE_LEAK_PER_S, dt);
+        engine.step(dt, walls, []);
+      }
+      const volume = STUD_AREA_M2 * height;
+      let indoorG = 0;
+      let outdoorG = 0;
+      let sumK = 0;
+      for (const cell of studs) {
+        const k = extinctionK(engine.studStates.get(cell.id)?.smoke ?? 0);
+        const grams = (k * volume) / SOOT_EXTINCTION_M2_PER_G;
+        if (cell.spatialContext === 'inside_building') {
+          indoorG += grams;
+          sumK += k;
+        } else outdoorG += grams;
+      }
+      const meanK = sumK / indoor.length;
+      const balancedK = (expected * SOOT_EXTINCTION_M2_PER_G) / (indoor.length * volume);
+      const release = engine.fuelReleaseKw(fire.id) ?? 0;
+      // A layer holds its soot above the head, so the column K is clear air.
+      // That mass is still indoors. It is not a leak through the wall.
+      const layers = (
+        engine as unknown as {
+          layerState: Map<string, { active: boolean; zone: { sootG: number; interfaceM: number } }>;
+        }
+      ).layerState;
+      let layerG = 0;
+      let aboveHead = false;
+      for (const row of layers.values()) {
+        if (!row.active) continue;
+        layerG += row.zone.sootG;
+        if (row.zone.interfaceM > HEAD_HEIGHT_M) aboveHead = true;
+      }
+      assert.ok(indoor.length > 50, `indoor studs ${indoor.length}`);
+      assert.ok(release > 800, `release ${release} kW`);
+      assert.ok(
+        (indoorG + layerG) / made >= 0.6,
+        `indoors ${indoorG + layerG} g of ${made} g, outdoors ${outdoorG} g`,
+      );
+      if (!aboveHead) {
+        assert.ok(meanK > balancedK * 0.5, `mean K ${meanK}, leak-only well mixed ${balancedK}`);
+      }
+    },
+  );
 
   test('a wall stops the gases and a door gap does not', () => {
     const blocked = new SpatialEffectsEngine(undefined, 1);
@@ -605,9 +618,11 @@ describe('smoke carries the gases', () => {
       spatialContext: 'open_air',
       level: 'G',
     };
-    const hooded = effects(new Map([['a', OIL]]), [stud('b', 3, 0), outside], [
-      head('c', 0, 0, 'wet_chemical'),
-    ]);
+    const hooded = effects(
+      new Map([['a', OIL]]),
+      [stud('b', 3, 0), outside],
+      [head('c', 0, 0, 'wet_chemical')],
+    );
     const bare = effects(new Map([['a', OIL]]), [stud('b', 3, 0), outside]);
     let t = 0;
     while (hooded.suppressionState('c')?.open !== true && t < 180) {
@@ -621,9 +636,16 @@ describe('smoke carries the gases', () => {
       bare.step(1, walls, []);
     }
     const layerOf = (engine: SpatialEffectsEngine) =>
-      [...(engine as unknown as { layerState: Map<string, { active: boolean; zone: { interfaceM: number; sootG: number } }> }).layerState.values()].find(
-        (row) => row.active,
-      );
+      [
+        ...(
+          engine as unknown as {
+            layerState: Map<
+              string,
+              { active: boolean; zone: { interfaceM: number; sootG: number } }
+            >;
+          }
+        ).layerState.values(),
+      ].find((row) => row.active);
     const held = layerOf(hooded);
     const free = layerOf(bare);
     assert.ok(held, 'the hood removed the layer');
@@ -723,7 +745,10 @@ describe('smoke carries the gases', () => {
     const pyrolysis = limited.fuelReleaseKw('rich') ?? 0;
     const fumes = limited.fumeSources()[0];
     const full = speciesProductionGPerS(WOOD, pyrolysis, 2);
-    assert.ok(Math.abs((fumes?.gramsPerS.CO ?? 0) - (full.CO ?? 0)) < 1e-6, 'CO follows the fuel mass lost');
+    assert.ok(
+      Math.abs((fumes?.gramsPerS.CO ?? 0) - (full.CO ?? 0)) < 1e-6,
+      'CO follows the fuel mass lost',
+    );
     assert.ok(Math.abs((fumes?.sootGPerS ?? 0) - sootProductionGPerS(WOOD, pyrolysis)) < 1e-6);
     const burnedOnly = speciesProductionGPerS(WOOD, pyrolysis * 0.35, 2);
     assert.ok((fumes?.gramsPerS.CO ?? 0) > (burnedOnly.CO ?? 0) * 2);
@@ -777,6 +802,107 @@ describe('smoke carries the gases', () => {
     assert.ok(nbr.smoke > 0, 'neighbour gained no smoke');
     assert.ok(src.smoke < 1, 'source did not lose the smoke it gave away');
     assert.ok(src.smoke + nbr.smoke <= 1 + 1e-6, 'spread created smoke');
+  });
+});
+
+describe('ISO 13571 heat dose', () => {
+  test('180 °C convects a dose of 1 on the lightly clothed clock, and 2.5 kW/m² is the radiant gate', () => {
+    const minutes = HEAT_CONV_COEFF / 180 ** HEAT_CONV_EXP;
+    assert.ok(minutes > 1 && minutes < 1.5, `convective life ${minutes} min`);
+    const clothed = 4.1e8 / 180 ** 3.61;
+    assert.ok(clothed > minutes * 2, `clothed life ${clothed} is not the longer fit`);
+    assert.ok(Math.abs(advanceHeatFed(0, 180, 0, minutes * 60) - 1) < 1e-9);
+    assert.ok(advanceHeatFed(0, 180, 0, (minutes - 0.02) * 60) < 1);
+    assert.equal(advanceHeatFed(0, HEAT_AMBIENT_C, 0, 600), 0);
+    assert.equal(heatFedPerMin(undefined, HEAT_RAD_LIMIT_KW_M2 - 0.01), 0);
+    const flux = blackLayerRadiantKwM2(200 + 273.15);
+    assert.ok(flux > HEAT_RAD_LIMIT_KW_M2 && flux < 3.2, `200 °C layer ${flux} kW/m²`);
+    const burnMin = HEAT_RAD_COEFF / 10 ** HEAT_RAD_EXP;
+    assert.ok(Math.abs(advanceHeatFed(0, undefined, 10, burnMin * 60) - 1) < 1e-9);
+    assert.equal(exposureIncapacitates(0.6, 0.6), false);
+    assert.equal(exposureIncapacitates(1, 0), true);
+    assert.equal(exposureIncapacitates(0, 1), true);
+  });
+
+  test('heat at the head puts them down, and the two doses are not added', () => {
+    const minutes = HEAT_CONV_COEFF / 180 ** HEAT_CONV_EXP;
+    const steps = Math.ceil(minutes * 3600);
+    const early = walk([{ headTempC: 180, radiantKwM2: 0, steps: steps - 1 }]);
+    assert.equal(early.state, 'evacuating', `down after ${steps - 1} steps`);
+    const down = walk([{ headTempC: 180, radiantKwM2: 0, steps }]);
+    assert.equal(down.state, 'down');
+    assert.equal(down.heatDown, true);
+    assert.notEqual(down.fumeDown, true);
+    assert.ok((down.fed ?? 0) < 1e-6, `asphyxiant ${down.fed}`);
+
+    const both = walk([
+      { fumes: { CO: 35000 }, headTempC: 180, radiantKwM2: 0, steps: Math.round(0.6 * 3600) },
+    ]);
+    assert.equal(both.state, 'evacuating', `fed ${both.fed}, heat ${both.heatFed}`);
+    assert.ok((both.fed ?? 0) > 0.5 && (both.fed ?? 0) < 1, `asphyxiant ${both.fed}`);
+    assert.ok((both.heatFed ?? 0) > 0.5 && (both.heatFed ?? 0) < 1, `heat ${both.heatFed}`);
+
+    const radSteps = Math.ceil((HEAT_RAD_COEFF / 10 ** HEAT_RAD_EXP) * 3600);
+    const cool = walk([{ radiantKwM2: 2.4, steps: radSteps }]);
+    assert.equal(cool.state, 'evacuating', 'flux under 2.5 kW/m² put them down');
+    const burned = walk([{ radiantKwM2: 10, steps: radSteps }]);
+    assert.equal(burned.state, 'down');
+    assert.equal(burned.heatDown, true);
+    assert.notEqual(burned.fumeDown, true);
+  });
+
+  test('a room layer writes the head temperature and the flux from the layer above', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0), stud('b', 3, 0), stud('out', 6, 0)]);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(
+      new Map([['a', { ...WOOD, alphaKwS2: 2, spreadMPerMin: 0, fuelLoadKgM2: 40 }]]),
+    );
+    const walls = [
+      wall(-1.5, 1.5, 4.5, 1.5),
+      wall(-1.5, -1.5, 4.5, -1.5),
+      wall(-1.5, -1.5, -1.5, 1.5),
+      wall(4.5, -1.5, 4.5, 1.5, true),
+    ];
+    (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite(['a']);
+    const layerOf = () =>
+      [
+        ...(
+          engine as unknown as {
+            layerState: Map<
+              string,
+              { active: boolean; zone: { interfaceM: number; upperK: number }; members: string[] }
+            >;
+          }
+        ).layerState.values(),
+      ].find((row) => row.active);
+    let above = false;
+    let immersed = false;
+    for (let t = 0; t < 180 && !immersed; t++) {
+      engine.step(1, walls, []);
+      const live = layerOf();
+      if (!live) continue;
+      const flux = blackLayerRadiantKwM2(live.zone.upperK);
+      for (const id of live.members) {
+        const state = engine.studStates.get(id);
+        assert.ok(state, id);
+        assert.ok(
+          Math.abs((state.radiantKwM2 ?? -1) - flux) < 1e-6,
+          `${id} flux ${state.radiantKwM2} vs ${flux}`,
+        );
+      }
+      assert.equal(engine.studStates.get('out')?.radiantKwM2, undefined);
+      if (live.zone.interfaceM > HEAD_HEIGHT_M) {
+        above = true;
+        assert.equal(engine.studStates.get('a')?.headTempC, undefined);
+      } else {
+        immersed = true;
+        const temp = live.zone.upperK - 273.15;
+        assert.ok(Math.abs((engine.studStates.get('a')?.headTempC ?? 0) - temp) < 1e-6);
+      }
+    }
+    assert.ok(above, 'the layer was never above the head');
+    assert.ok(immersed, 'the layer never reached the head');
   });
 });
 
@@ -942,7 +1068,10 @@ describe('capped pyrolysis for soot, gas, and burnout', () => {
     const capped = release * (2 / 7);
     const expectedSoot = sootProductionGPerS(cell, capped);
     const expectedCo = speciesProductionGPerS(cell, capped, 7).CO ?? 0;
-    assert.ok(Math.abs(soot - expectedSoot) / expectedSoot < 1e-6, `soot ${soot} vs ${expectedSoot}`);
+    assert.ok(
+      Math.abs(soot - expectedSoot) / expectedSoot < 1e-6,
+      `soot ${soot} vs ${expectedSoot}`,
+    );
     assert.ok(Math.abs(co - expectedCo) / expectedCo < 1e-6, `CO ${co} vs ${expectedCo}`);
     const full = sootProductionGPerS(cell, release);
     const burned = sootProductionGPerS(cell, release * 0.1);
@@ -1127,13 +1256,21 @@ function doseOver(frameDt: number, frames: number): { fed: number; ppm: number; 
 }
 
 function walk(
-  phases: Array<{ fumes?: { CO?: number; acrolein?: number }; steps: number }>,
+  phases: Array<{
+    fumes?: { CO?: number; acrolein?: number };
+    headTempC?: number;
+    radiantKwM2?: number;
+    steps: number;
+  }>,
   opts: { injury?: 'minor'; wet?: boolean; showcase?: boolean } = {},
 ): {
   moved: number;
   state: string;
   fumeHeld?: boolean;
   fumeDown?: boolean;
+  heatDown?: boolean;
+  fed?: number;
+  heatFed?: number;
   injury?: string;
   posture?: Posture;
   fumeHeldCount: number;
@@ -1169,7 +1306,13 @@ function walk(
   const studs = [];
   const states = new Map<
     string,
-    { smoke: number; fire: { state: string }; fumes?: { CO?: number; acrolein?: number } }
+    {
+      smoke: number;
+      fire: { state: string };
+      fumes?: { CO?: number; acrolein?: number };
+      headTempC?: number;
+      radiantKwM2?: number;
+    }
   >();
   for (let x = 0; x <= 40; x += 3) {
     const id = `s${x}`;
@@ -1192,6 +1335,9 @@ function walk(
         posture: Posture;
         fumeHeld?: boolean;
         fumeDown?: boolean;
+        heatDown?: boolean;
+        fed?: number;
+        heatFed?: number;
         injury?: 'none' | 'minor' | 'serious' | 'lethal';
         level?: string;
       };
@@ -1208,6 +1354,10 @@ function walk(
     for (const state of states.values()) {
       if (phase.fumes) state.fumes = phase.fumes;
       else delete state.fumes;
+      if (phase.headTempC != null) state.headTempC = phase.headTempC;
+      else delete state.headTempC;
+      if (phase.radiantKwM2 != null) state.radiantKwM2 = phase.radiantKwM2;
+      else delete state.radiantKwM2;
     }
     for (let i = 0; i < phase.steps; i++) eng.step();
   }
@@ -1217,6 +1367,9 @@ function walk(
     state: ped.state,
     fumeHeld: ped.fumeHeld,
     fumeDown: ped.fumeDown,
+    heatDown: ped.heatDown,
+    fed: ped.fed,
+    heatFed: ped.heatFed,
     injury: ped.injury,
     posture: ped.posture,
     fumeHeldCount: metrics?.fumeHeld ?? 0,

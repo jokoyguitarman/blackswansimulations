@@ -23,6 +23,10 @@ export interface HazardSample {
   oxygenVolumePercent?: number;
   /** Carbon dioxide volume percent at the head. Absent is none. */
   co2VolumePercent?: number;
+  /** Gas temperature at the head, °C. Absent is the lower layer, at ambient. */
+  headTempC?: number;
+  /** Incident flux from the upper layer, kW/m². Absent is none. */
+  radiantKwM2?: number;
 }
 
 export interface HazardStud {
@@ -38,6 +42,8 @@ interface StudStateLike {
   fumes?: FumeGrams;
   oxygenVolumePercent?: number;
   co2VolumePercent?: number;
+  headTempC?: number;
+  radiantKwM2?: number;
 }
 
 function asFireCell(state: string | undefined): FireCell {
@@ -78,6 +84,8 @@ export class HazardField {
       fumes: st?.fumes ?? {},
       oxygenVolumePercent: st?.oxygenVolumePercent,
       co2VolumePercent: st?.co2VolumePercent,
+      headTempC: st?.headTempC,
+      radiantKwM2: st?.radiantKwM2,
     };
   }
 

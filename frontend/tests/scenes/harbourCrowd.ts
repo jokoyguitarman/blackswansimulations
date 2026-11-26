@@ -2,8 +2,9 @@
  * Harbour House crowd, open or with the east exit blocked at 120 s.
  * Same loop as the review `fire-mall` run: 120 people, plan walls, to T+600.
  * The counts on the result are the T+300 snapshot. `late` is T+600, past
- * the head-height crossing, so the crowd effect is pinned. The crowd
- * model has no ISO 13571 heat dose: FED and the down count are fumes.
+ * the head-height crossing, so the crowd effect is pinned. FED is the
+ * asphyxiant dose. Heat is a separate ISO 13571 dose, and either one at 1
+ * puts a person down.
  */
 import { heatReleaseKw } from '../../src/lib/rts/flameFront.ts';
 import { confirmedFuelCells } from '../../src/lib/rts/materialLibrary.ts';
@@ -19,6 +20,8 @@ const MARKS = [180, 240, 300] as const;
 export interface HarbourMark {
   smoke: string;
   out: number;
+  down: number;
+  heatDown: number;
   westLit: number;
   eastLit: number;
   burning: number;
@@ -30,15 +33,19 @@ export interface HarbourMallLayer {
   riseK: number;
 }
 
-/** T+600, after the layer has passed head height. Fumes only: no heat dose. */
+/** T+600, after the layer has passed head height. */
 export interface HarbourLate {
   inside: number;
   down: number;
   out: number;
   /** People whose nearest mall stud is within 2 m. */
   inMall: number;
-  /** Highest FED among people still inside, including anyone down. */
+  /** Highest asphyxiant FED among people still inside, including anyone down. */
   maxFed: number;
+  /** Highest heat FED among people still inside, including anyone down. */
+  maxHeatFed: number;
+  /** People the heat dose has put down. They are included in `down`. */
+  heatDown: number;
   /** Highest FED among the people standing in the mall. */
   mallFed: number;
   mall: HarbourMallLayer;
@@ -49,6 +56,7 @@ export interface HarbourCrowdResult {
   blocked: boolean;
   down: number;
   fumeDown: number;
+  heatDown: number;
   flashoverAtS: number | null;
   peakTotalMw: number;
   within120: number;
@@ -67,6 +75,9 @@ interface CrowdBody {
     pedId: number;
     state?: string;
     fumeDown?: boolean;
+    heatDown?: boolean;
+    fed?: number;
+    heatFed?: number;
     fed?: number;
     spawn?: { x: number; y: number };
   };
@@ -142,6 +153,7 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
   let at300: {
     down: number;
     fumeDown: number;
+    heatDown: number;
     within120: number;
     crawling: number;
     reroutes: number;
@@ -179,9 +191,12 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
     for (const mark of MARKS) {
       if (marks.has(mark) || t < mark) continue;
       const stats = run.effects.getStats();
+      const bodiesNow = bodiesOf(run);
       marks.set(mark, {
         smoke: run.meanIndoorSmoke().toFixed(3),
         out: outAt.size,
+        down: bodiesNow.filter((body) => body.__ped.state === 'down').length,
+        heatDown: bodiesNow.filter((body) => body.__ped.heatDown).length,
         westLit: run.studs.filter((stud) => lit(run, stud, 'west')).length,
         eastLit: run.studs.filter((stud) => lit(run, stud, 'east')).length,
         burning: stats.fire.burning,
@@ -203,6 +218,7 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
       at300 = {
         down: bodies.filter((body) => body.__ped.state === 'down').length,
         fumeDown: bodies.filter((body) => body.__ped.fumeDown).length,
+        heatDown: bodies.filter((body) => body.__ped.heatDown).length,
         within120: reachable > 0 ? fixed(within / reachable, 3) : 0,
         crawling: showcase?.crawling ?? 0,
         reroutes: showcase?.reroutes ?? 0,
@@ -224,15 +240,20 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
   let inside = 0;
   let inMall = 0;
   let maxFed = 0;
+  let maxHeatFed = 0;
   let mallFed = 0;
   let downLate = 0;
+  let heatDownLate = 0;
   for (const body of bodiesOf(run)) {
     const ped = body.__ped;
     if (ped.state === 'down') downLate += 1;
+    if (ped.heatDown) heatDownLate += 1;
     if (ped.state === 'outside' || ped.state === 'arrived' || ped.state === 'left_map') continue;
     inside += 1;
     const fed = ped.fed ?? 0;
     if (fed > maxFed) maxFed = fed;
+    const heat = ped.heatFed ?? 0;
+    if (heat > maxHeatFed) maxHeatFed = heat;
     const pos = body.position;
     if (!pos) continue;
     let best = Infinity;
@@ -256,6 +277,7 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
     blocked,
     down: at300.down,
     fumeDown: at300.fumeDown,
+    heatDown: at300.heatDown,
     flashoverAtS: at300.flashoverAtS,
     peakTotalMw: at300.peakTotalMw,
     within120: at300.within120,
@@ -271,6 +293,8 @@ export function runHarbourCrowd(blocked: boolean): HarbourCrowdResult {
       out: outAt.size,
       inMall,
       maxFed: fixed(maxFed, 3),
+      maxHeatFed: fixed(maxHeatFed, 3),
+      heatDown: heatDownLate,
       mallFed: fixed(mallFed, 3),
       mall: mallLayer(run),
       smoke: run.meanIndoorSmoke().toFixed(3),

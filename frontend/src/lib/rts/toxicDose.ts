@@ -43,6 +43,15 @@
  * 1000 ppm, acrolein 30 ppm. FED at 1 puts the person down, and that stays.
  * FEC at 1 makes them crawl while the smoke is that thick, and they walk
  * again once it falls below 1. The standard's 0.3 example is not the default.
+ *
+ * Heat is a second FED, ISO 13571:2012 clause 8. Eq. (10) is the convective
+ * time for lightly clothed people. Eq. (9) is the fully clothed fit and is
+ * not used: the head and the hands are bare. Eq. (7) is the radiant time to
+ * second-degree burning. Below 2.5 kW/m² that term is zero. Eq. (8) is time
+ * to pain and is not this dose. Eq. (11) adds the two reciprocals. The
+ * asphyxiant FED is not added to it. Compromised tenability is whichever
+ * FED reaches 1 first. The sum is the exposure already taken. It does not
+ * fall if the gas cools.
  */
 
 import { extinctionK } from '../evacuation/hazardSensing';
@@ -74,6 +83,26 @@ export const FEC_F_PPM: Record<'HCl' | 'acrolein', number> = {
 };
 /** Same threshold for FED and FEC. Not the 0.3 susceptible-population example. */
 export const INCAP_DOSE = 1;
+
+/**
+ * ISO 13571:2012 Eq. (10), clause 8.3.2. Lightly clothed convective time,
+ * minutes, is this coefficient times T to the power −HEAT_CONV_EXP.
+ */
+export const HEAT_CONV_COEFF = 5e7;
+export const HEAT_CONV_EXP = 3.4;
+/**
+ * ISO 13571:2012 Eq. (7), clause 8.2. Radiant time to second-degree burning,
+ * minutes, is this coefficient times q to the power −HEAT_RAD_EXP.
+ */
+export const HEAT_RAD_COEFF = 6.9;
+export const HEAT_RAD_EXP = 1.56;
+/** ISO 13571:2012 clause 8.2. Radiant flux below this does not enter the dose. */
+export const HEAT_RAD_LIMIT_KW_M2 = 2.5;
+/**
+ * No convective dose at or below this. It is the zone ambient, 293 K.
+ * The equation is a fire exposure, and room air is not one.
+ */
+export const HEAT_AMBIENT_C = 19.85;
 
 /**
  * Mass-specific extinction of flaming soot, m²/g. Mulholland and Croarkin
@@ -239,7 +268,10 @@ export function co2Hyperventilation(volumePercentCo2: number): number {
 }
 
 /** What a head in this layer breathes. The deficit from ambient oxygen is the CO2. */
-export function layerBreath(o2MassFraction: number): { oxygenVolumePercent: number; co2VolumePercent: number } {
+export function layerBreath(o2MassFraction: number): {
+  oxygenVolumePercent: number;
+  co2VolumePercent: number;
+} {
   const oxygen = volumePercent(o2MassFraction, 32);
   return {
     oxygenVolumePercent: oxygen,
@@ -288,9 +320,42 @@ export function fecOf(fumes: FumeGrams | undefined): number {
   return fec;
 }
 
+/**
+ * ISO 13571:2012 Eq. (11), per minute. Convection from the gas at the head,
+ * radiation from the hot layer. Either argument may be absent.
+ */
+export function heatFedPerMin(tempC?: number, radiantKwM2?: number): number {
+  let rate = 0;
+  if (tempC != null && tempC > HEAT_AMBIENT_C) {
+    rate += tempC ** HEAT_CONV_EXP / HEAT_CONV_COEFF;
+  }
+  const flux = radiantKwM2 ?? 0;
+  if (flux >= HEAT_RAD_LIMIT_KW_M2) rate += flux ** HEAT_RAD_EXP / HEAT_RAD_COEFF;
+  return rate;
+}
+
+/** Accumulate the heat FED. `dtSec` is physical time. Constant exposure is exact in dt. */
+export function advanceHeatFed(
+  fed: number,
+  tempC: number | undefined,
+  radiantKwM2: number | undefined,
+  dtSec: number,
+): number {
+  if (!(dtSec > 0)) return fed;
+  return fed + heatFedPerMin(tempC, radiantKwM2) * (dtSec / 60);
+}
+
 /** FED at 1 latches the person down. FEC does not. */
 export function fedIncapacitates(fed: number): boolean {
   return fed >= INCAP_DOSE;
+}
+
+/**
+ * ISO 13571 keeps the heat FED apart from the asphyxiant FED. Either one
+ * at 1 is compromised tenability. The two doses are not added.
+ */
+export function exposureIncapacitates(asphyxiantFed: number, heatFed: number): boolean {
+  return fedIncapacitates(asphyxiantFed) || fedIncapacitates(heatFed);
 }
 
 /** FEC at 1 stops the person while it lasts. It does not latch. */

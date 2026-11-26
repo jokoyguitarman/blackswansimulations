@@ -617,7 +617,8 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
 
   if (ped.state === 'down') {
     const arm = base * 2;
-    ctx.strokeStyle = ped.fumeDown ? '#d97706' : ped.injury === 'lethal' ? '#000000' : '#ef4444';
+    ctx.strokeStyle =
+      ped.fumeDown || ped.heatDown ? '#d97706' : ped.injury === 'lethal' ? '#000000' : '#ef4444';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(p.cx - arm, p.cy - arm);
