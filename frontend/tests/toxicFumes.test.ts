@@ -10,6 +10,7 @@ import {
   STUD_AREA_M2,
   WET_FLOOR_SPEED,
   WOOD_HEAT_KJ_KG,
+  burnoutSec,
 } from '../src/lib/rts/flameFront';
 import { LEVEL } from '../src/lib/evacuation/levelConstants';
 import { SHOWCASE } from '../src/lib/evacuation/showcaseConstants';
@@ -923,6 +924,146 @@ describe('people', () => {
     assert.ok(Math.abs(dry - dryExpected) < 1e-6, `dry stair ${dry} vs ${dryExpected}`);
     assert.ok(Math.abs(hurt - hurtExpected) < 1e-6, `hurt stair ${hurt} vs ${hurtExpected}`);
     assert.ok(hurt > dry * 2, `stair crawl did not slow (${hurt} vs ${dry})`);
+  });
+});
+
+describe('capped pyrolysis for soot, gas, and burnout', () => {
+  test('φ above 2 scales the soot and the gas, and φ of 2 does not', () => {
+    const cell = { ...WOOD, alphaKwS2: 1, spreadMPerMin: 0 };
+    const rich = fireSim(new Map([['rich', cell]]));
+    // The oxygen share is 0.1 and φ is 7, so a test that scales by the
+    // burned fraction instead of 2/φ fails this on purpose.
+    rich.setBurnLimit(['rich'], 0.1, 7);
+    rich.step(2, [], []);
+    const release = rich.fuelReleaseKw('rich') ?? 0;
+    assert.ok(release > 1, `release ${release}`);
+    const soot = rich.burningSoot()[0]?.sootGPerS ?? 0;
+    const co = rich.fumeSources()[0]?.gramsPerS.CO ?? 0;
+    const capped = release * (2 / 7);
+    const expectedSoot = sootProductionGPerS(cell, capped);
+    const expectedCo = speciesProductionGPerS(cell, capped, 7).CO ?? 0;
+    assert.ok(Math.abs(soot - expectedSoot) / expectedSoot < 1e-6, `soot ${soot} vs ${expectedSoot}`);
+    assert.ok(Math.abs(co - expectedCo) / expectedCo < 1e-6, `CO ${co} vs ${expectedCo}`);
+    const full = sootProductionGPerS(cell, release);
+    const burned = sootProductionGPerS(cell, release * 0.1);
+    assert.ok(soot < full * 0.5, `soot stayed on the free-burn release (${soot} vs ${full})`);
+    assert.ok(soot > burned * 2, `soot followed the burned fraction (${soot} vs ${burned})`);
+
+    const atCap = fireSim(new Map([['cap', cell]]));
+    atCap.setBurnLimit(['cap'], 0.5, 2);
+    atCap.step(2, [], []);
+    const capRelease = atCap.fuelReleaseKw('cap') ?? 0;
+    const capSoot = atCap.burningSoot()[0]?.sootGPerS ?? 0;
+    assert.ok(
+      Math.abs(capSoot - sootProductionGPerS(cell, capRelease)) < 1e-6,
+      'φ = 2 reduced the mass',
+    );
+
+    const mild = fireSim(new Map([['mild', cell]]));
+    mild.setBurnLimit(['mild'], 0.9, 1.2);
+    mild.step(2, [], []);
+    const mildRelease = mild.fuelReleaseKw('mild') ?? 0;
+    const mildSoot = mild.burningSoot()[0]?.sootGPerS ?? 0;
+    assert.ok(
+      Math.abs(mildSoot - sootProductionGPerS(cell, mildRelease)) < 1e-6,
+      'φ under 2 reduced the mass',
+    );
+  });
+
+  test('no fresh air pyrolyses nothing, and the fuel timer waits', () => {
+    const cell = { ...WOOD, alphaKwS2: 1, spreadMPerMin: 0 };
+    const sim = fireSim(new Map([['a', cell]]));
+    sim.setBurnLimit(['a'], 0, Number.POSITIVE_INFINITY);
+    const timer = sim.states.get('a')?.timer ?? 0;
+    sim.step(5, [], []);
+    assert.equal(sim.states.get('a')?.state, 'burning');
+    assert.equal(sim.states.get('a')?.timer, timer);
+    assert.equal(sim.burningSoot().length, 0);
+    assert.equal(sim.fumeSources().length, 0);
+  });
+
+  test('a starved stud burns out on the capped schedule, not the free-burn clock', () => {
+    const cell = { ...WOOD, alphaKwS2: 0.05, fuelLoadKgM2: 0.02, spreadMPerMin: 0 };
+    const life = burnoutSec(cell);
+    assert.ok(life > 5 && life < 120, `burnout ${life}`);
+    const free = fireSim(new Map([['free', cell]]));
+    const rich = fireSim(new Map([['rich', cell]]));
+    rich.setBurnLimit(['rich'], 0.1, 4);
+    const steps = Math.ceil(life);
+    runSim(free, steps);
+    runSim(rich, steps);
+    assert.equal(free.states.get('free')?.state, 'burnt_out');
+    assert.equal(rich.states.get('rich')?.state, 'burning');
+    const left = rich.states.get('rich')?.timer ?? 0;
+    assert.ok(
+      Math.abs(left - (life - steps * 0.5)) < 1e-6,
+      `timer ${left}, schedule ${life - steps * 0.5}`,
+    );
+    let n = steps;
+    while (rich.states.get('rich')?.state === 'burning' && n < steps * 4) {
+      rich.step(1, [], []);
+      n += 1;
+    }
+    assert.equal(rich.states.get('rich')?.state, 'burnt_out');
+    assert.ok(Math.abs(n - life / 0.5) < 2, `burned out at ${n}s, free-burn life ${life}`);
+  });
+
+  test('the layer soot is the capped pyrolysis after the limit is cleared', () => {
+    const cell = {
+      ...WOOD,
+      alphaKwS2: 2,
+      sootYieldGPerG: 0.2,
+      spreadMPerMin: 0,
+      fuelLoadKgM2: 40,
+    };
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0), stud('b', 3, 0), stud('out', 6, 0)]);
+    engine.setStoreyHeights({ G: 2.6 });
+    engine.setFuelCells(new Map([['a', cell]]));
+    const walls = [
+      wall(-1.5, 1.5, 4.5, 1.5),
+      wall(-1.5, -1.5, 4.5, -1.5),
+      wall(-1.5, -1.5, -1.5, 1.5),
+      wall(4.5, -1.5, 4.5, 1.5, true),
+    ];
+    const fire = (
+      engine as unknown as {
+        fireSim: {
+          ignite: (ids: string[]) => void;
+          setBurnLimit: (ids: string[], fraction: number, phi: number) => void;
+          fuelReleaseKw: (id: string) => number | null;
+        };
+      }
+    ).fireSim;
+    fire.ignite(['a']);
+    const layerOf = () =>
+      [
+        ...(
+          engine as unknown as {
+            layerState: Map<string, { active: boolean; zone: { sootG: number } }>;
+          }
+        ).layerState.values(),
+      ].find((row) => row.active);
+    let formed = false;
+    for (let t = 0; t < 40 && !formed; t++) {
+      engine.step(1, walls, []);
+      formed = layerOf() != null;
+    }
+    assert.ok(formed, 'the room did not form a layer');
+    const live = layerOf();
+    assert.ok(live);
+    live.zone.sootG = 0;
+    fire.setBurnLimit(['a'], 0.1, 8);
+    engine.step(1, walls, []);
+    const release = fire.fuelReleaseKw('a') ?? 0;
+    const capped = sootProductionGPerS(cell, release * (2 / 8));
+    const full = sootProductionGPerS(cell, release);
+    const gained = layerOf()?.zone.sootG ?? 0;
+    assert.ok(full > capped * 2, `uncapped ${full} is not above the cap ${capped}`);
+    assert.ok(
+      Math.abs(gained - capped) / capped < 0.08,
+      `layer soot ${gained}, capped ${capped}, free-burn ${full}`,
+    );
   });
 });
 

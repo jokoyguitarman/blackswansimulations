@@ -107,8 +107,11 @@ export function massLossKgPerS(heatKw: number, dHcKjKg: number): number {
 }
 
 /**
- * ISO 19706 stage 2 is well-ventilated flaming at Φ < 0.75. Purser's
- * post-flashover yields (ISO/TS 19700, Φ 1.5 to 2) are the other end.
+ * ISO 19706 stage 2 is well-ventilated flaming at Φ < 0.75. The other
+ * end is Purser's post-flashover yield, measured in the ISO/TS 19700
+ * tube furnace at Φ 1.5 to 2. Those values are the test condition for
+ * the yield row. ISO 19706 gives post-flashover only as φ > 1, and
+ * neither document caps a real compartment at 2.
  */
 export const PHI_WELL_VENT = 0.75;
 export const PHI_UNDER_VENT = 1.5;

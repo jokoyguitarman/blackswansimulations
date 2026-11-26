@@ -10,7 +10,7 @@ import {
 } from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
 import { leafWidthM } from './doorLeaf';
-import { HOOD_FAN_WHEN, type HoodFanWhen } from './twoZone';
+import { HOOD_FAN_WHEN, pyrolysisFraction, type HoodFanWhen } from './twoZone';
 import {
   ELECTRICAL_ARC_SEC,
   ELECTRICAL_DAMAGE_KPA,
@@ -176,6 +176,12 @@ interface BurnRuntime {
   age: number;
   qAct: number | null;
   suppressAge: number;
+  /**
+   * Share of the prescribed release pyrolysed this step. Taken while the
+   * layer's limit is still the one this step burns on. The layer clears
+   * that limit before it reads the soot.
+   */
+  pyrolysis?: number;
 }
 
 interface HeatSlot {
@@ -329,8 +335,8 @@ export class FireSimulation {
   private flashedStuds = new Set<string>();
   /**
    * Oxygen limit from the last layer step. `fraction` scales the heat that
-   * spreads and the gas that is made. `phi` is the equivalence ratio the
-   * yields read. A stud with no entry is burning in free air.
+   * spreads. `phi` is the equivalence ratio the yields read, and above 2
+   * it scales the pyrolysed mass. A stud with no entry is burning in free air.
    */
   private burnLimit = new Map<string, { fraction: number; phi: number }>();
   /** Survives setGasLines, so a shut valve stays shut when the page refreshes the list. */
@@ -671,6 +677,15 @@ export class FireSimulation {
     return this.burnLimit.get(id)?.phi ?? 0;
   }
 
+  /**
+   * Share of this stud's prescribed release that leaves as pyrolysis.
+   * The step records it before the layer clears the limit. A caller that
+   * has not stepped yet reads the limit directly.
+   */
+  private pyrolysisShare(id: string, meta: BurnRuntime): number {
+    return meta.pyrolysis ?? pyrolysisFraction(this.burnPhi(id));
+  }
+
   /** The oxygen limit on the stud nearest this point, for a jet or an arc. */
   private burnFractionNear(x: number, y: number, level: string): number {
     let best = 1;
@@ -688,14 +703,17 @@ export class FireSimulation {
   }
 
   /**
-   * Soot grams per second from each burning cell, yield times mass loss.
-   * The release is the decayed one. A cell with no soot yield, a jet, and
-   * an arc are absent.
+   * Soot grams per second from each burning cell. The yield is the
+   * well-ventilated figure, times the pyrolysis the φ ≤ 2 cap allows.
+   * The release is the decayed one. A cell with no soot yield, a jet,
+   * and an arc are absent.
    */
   burningSoot(): Array<{ id: string; sootGPerS: number }> {
     const sources: Array<{ id: string; sootGPerS: number }> = [];
     for (const fire of this.liveFires()) {
-      const sootGPerS = sootProductionGPerS(fire.cell, this.releaseKw(fire.cell, fire.meta));
+      const release =
+        this.releaseKw(fire.cell, fire.meta) * this.pyrolysisShare(fire.id, fire.meta);
+      const sootGPerS = sootProductionGPerS(fire.cell, release);
       if (sootGPerS > 0) sources.push({ id: fire.id, sootGPerS });
     }
     return sources;
@@ -704,10 +722,11 @@ export class FireSimulation {
   /**
    * Grams per second each burning cell is putting into the smoke, and the
    * soot that splits them. Heating, burnt-out, a jet, and an arc are absent.
-   * The release is the prescribed pyrolysis, the fuel the timer is
-   * consuming. The yield follows the stud's equivalence ratio. The oxygen
-   * limit cuts the heat, not this mass. No layer means the well-ventilated
-   * set. The flashover latch does not choose it.
+   * The mass is the pyrolysis the φ ≤ 2 cap allows. The yield still follows
+   * the stud's equivalence ratio, so a richer room keeps the under-ventilated
+   * yield on less fuel. The oxygen limit cuts the heat, not this mass. No
+   * layer means the well-ventilated set and the full prescription. The
+   * flashover latch does not choose it.
    */
   fumeSources(): Array<{
     id: string;
@@ -724,7 +743,8 @@ export class FireSimulation {
       sootGPerS: number;
     }> = [];
     for (const fire of this.liveFires()) {
-      const release = this.releaseKw(fire.cell, fire.meta);
+      const release =
+        this.releaseKw(fire.cell, fire.meta) * this.pyrolysisShare(fire.id, fire.meta);
       const gramsPerS = speciesProductionGPerS(fire.cell, release, this.burnPhi(fire.id));
       const sootGPerS = sootProductionGPerS(fire.cell, release);
       if (!fumesPresent(gramsPerS) || !(sootGPerS > 0)) continue;
@@ -887,12 +907,19 @@ export class FireSimulation {
       const fState = this.states.get(id);
       if (!fState || fState.state !== 'burning') continue;
       meta.age += dt;
+      // Age still walks the prescribed curve, so the αt² demand and the
+      // flame-front reach are not slowed. The fuel timer is that schedule
+      // in seconds, and a second of it is spent only as the pyrolysed share.
+      // While the stud is still on the t² rise, one second of the schedule
+      // is not a constant power.
+      const pyro = pyrolysisFraction(this.burnPhi(id));
+      meta.pyrolysis = pyro;
       const heatKw = this.releaseKw(cell, meta) * this.burnFraction(id);
       const bare = heatReleaseKw(cell, meta.age);
       fState.output = bare > 0 ? Math.min(1, heatKw / bare) : 1;
       const room = this.compartmentOf.get(id);
       if (room) roomHeat.set(room, (roomHeat.get(room) ?? 0) + heatKw);
-      fState.timer -= dt;
+      fState.timer -= dt * pyro;
       fState.approach = 1;
       if (fState.timer <= 0) {
         fState.state = 'burnt_out';

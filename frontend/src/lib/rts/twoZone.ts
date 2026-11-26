@@ -61,12 +61,14 @@
  *
  * The mass that is created is capped so the compartment equivalence
  * ratio stays at or below 2. φ is the prescribed heat over the
- * fresh-air oxygen supply this step already computes. Purser's
- * post-flashover yields (ISO/TS 19700) sit at Φ 1.5–2, and 2 is the
- * top of the window the yield curve already uses. Kawagoe's 0.09 A√H
- * and Eurocode EN 1991-1-2 Eq. E.6 are the oxygen-limited heat
- * release, so neither is the pyrolysis cap: either one would remove
- * the fuel the doorway still carries. CFAST does not reduce a
+ * fresh-air oxygen supply this step already computes. 2 is an
+ * engineering bound, the top of this model's yield blend. ISO/TS
+ * 19700's 2 ± 0.2 is the tube-furnace test condition those yields
+ * were measured at, and ISO 19706 gives post-flashover only as φ > 1.
+ * Neither publishes 2 as a cap on a real compartment. Kawagoe's
+ * 0.09 A√H and Eurocode EN 1991-1-2 Eq. E.6 are the oxygen-limited
+ * heat release, so neither is the pyrolysis cap: either one would
+ * remove the fuel the doorway still carries. CFAST does not reduce a
  * prescribed mass-loss rate when the room is starved, and its guides
  * say that prescription has to be the actual fire. The free-burn sum
  * of the fuel cells is not that prescription.
@@ -737,10 +739,12 @@ export function equivalenceRatio(prescribedKw: number, supplyKw: number): number
 }
 
 /**
- * Top of the post-flashover equivalence ratio for the mass that is
- * created. Purser, SFPE Handbook, and the ISO/TS 19700 yields this
- * model already uses sit at Φ 1.5–2. Above 2 the prescription is the
- * free-burn sum, which a starved room does not pyrolyse.
+ * Engineering bound on the equivalence ratio of the mass that is
+ * created. 2 is the top of this model's yield blend. ISO/TS 19700's
+ * 2 ± 0.2 is the tube-furnace condition those yields were measured
+ * at, not a bound on a compartment. ISO 19706 gives post-flashover
+ * only as φ > 1. Above 2 the free-burn prescription is more mass
+ * than a starved room pyrolyses.
  */
 export const POST_FLASHOVER_PHI_MAX = 2;
 
@@ -754,6 +758,19 @@ export function cappedPyrolysisKw(prescribedKw: number, supplyKw: number): numbe
   if (!(prescribedKw > 0)) return 0;
   const supply = supplyKw > 0 && Number.isFinite(supplyKw) ? supplyKw : 0;
   return Math.min(prescribedKw, POST_FLASHOVER_PHI_MAX * supply);
+}
+
+/**
+ * Share of a prescribed release that is actually pyrolysed. No recorded
+ * ratio (φ of 0) keeps the prescription, which is also the first frame.
+ * Above 2 the mass is 2/φ of the release. No fresh air (φ infinite)
+ * pyrolyses nothing.
+ */
+export function pyrolysisFraction(phi: number): number {
+  if (!(phi > 0)) return 1;
+  if (!Number.isFinite(phi)) return 0;
+  if (phi <= POST_FLASHOVER_PHI_MAX) return 1;
+  return POST_FLASHOVER_PHI_MAX / phi;
 }
 
 /** 1500 A√H, kW. A is the vent area, m², and H is the vent height, m. */
@@ -879,8 +896,8 @@ export interface LimitedBurn {
  * rate for a step. The extra pyrolysis is carried as fuel and can burn
  * where a door jet meets oxygen. It is not a larger flame in this room.
  * The mass of that extra fuel is capped at twice the fresh-air supply
- * (`cappedPyrolysisKw`), so a free-burn prescription cannot push the
- * compartment past φ = 2.
+ * (`cappedPyrolysisKw`). φ = 2 there is an engineering bound, the
+ * ceiling of the yield blend, not a published limit on a compartment.
  * Upper-layer gas can still finish a flame
  * the fresh air already accounts for. It cannot raise the release above
  * that air.
@@ -1937,8 +1954,9 @@ function stepZoneNow(
     // that stored it beside the gas is cut back to the mixture.
     if (fuel > mass) fuel = mass;
     const yF = mass > 1e-6 ? fuel / mass : 0;
-    // φ = prescribed / fresh-air supply. The created mass stops at φ = 2.
-    // The flame itself stays on burnedKw, the oxygen the plume took.
+    // φ = prescribed / fresh-air supply. The created mass stops at the
+    // engineering bound φ = 2. The flame itself stays on burnedKw, the
+    // oxygen the plume took.
     const supplyKw = burn.phi > 0 && Number.isFinite(burn.phi) ? burn.prescribedKw / burn.phi : 0;
     const pyrolysisKw = cappedPyrolysisKw(burn.prescribedKw, supplyKw);
     const unburnedKgS =

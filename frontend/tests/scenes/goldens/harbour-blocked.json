@@ -42,13 +42,13 @@
     "down": 9,
     "out": 105,
     "inMall": 0,
-    "maxFed": 0.064,
+    "maxFed": 0.042,
     "mallFed": 0,
     "mall": {
       "active": true,
       "interfaceM": 0.81,
       "riseK": 58.5
     },
-    "smoke": "0.851"
+    "smoke": "0.840"
   }
 }
