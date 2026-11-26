@@ -13,6 +13,8 @@ import {
 } from './hazardRaster';
 import { headSmoke } from '../../evacuation/hazardSensing';
 import { makeValueNoiseTexture } from './noise';
+import { createLayerShade, shadeLayers, type LayerShade } from './smokeLayers';
+import type { SmokeLayerView } from '../spatialEffects';
 
 export interface HazardFxContext {
   quality: FxQuality;
@@ -22,6 +24,8 @@ export interface HazardFxContext {
   states: ReadonlyMap<string, { smoke: number; fire: { state: string } }> | null;
   buildingVerts: readonly { x: number; y: number }[];
   cellM: number;
+  /** Room upper layers. A new array means a new effects step. */
+  layers?: readonly SmokeLayerView[] | null;
 }
 
 export interface HazardFxStats {
@@ -112,6 +116,11 @@ export class HazardFxRenderer {
   private readonly dirtyFire: DirtyBox = { minC: 0, minR: 0, maxC: -1, maxR: -1, any: false };
   private phi = new Float32Array(0);
   private bound: RasterLayout | null = null;
+  private studIndex = new Map<string, number>();
+  private layerShade: LayerShade = createLayerShade(0);
+  private shadedLayers: readonly SmokeLayerView[] | null | undefined = undefined;
+  private shadedLayout: RasterLayout | null = null;
+  private shadedNearFire = false;
   /** The next upload replaces the whole raster. Set when the storey layout changes. */
   private forceUpload = false;
   private cols = 0;
@@ -164,6 +173,7 @@ export class HazardFxRenderer {
     const cover = { smoke: 0, fire: 0 };
     if (layout && states && layout.cols > 0 && layout.rows > 0) {
       this.bind(layout);
+      this.shade(layout, states, fx);
       this.writeRasters(layout, states, cover);
       this.paintGround(ctx, rc, fx, layout);
       this.drew = true;
@@ -226,14 +236,17 @@ export class HazardFxRenderer {
   }
 
   private bind(layout: RasterLayout): void {
-    const same =
-      this.bound === layout && this.cols === layout.cols && this.rows === layout.rows;
+    const same = this.bound === layout && this.cols === layout.cols && this.rows === layout.rows;
     if (same) return;
     const switched = this.bound != null && this.bound !== layout;
     this.bound = layout;
     const n = layout.studIds.length;
     if (this.phi.length < n) this.phi = new Float32Array(n);
     for (let i = 0; i < n; i++) this.phi[i] = hashStud(layout.studIds[i]);
+    this.studIndex = new Map();
+    for (let i = 0; i < n; i++) this.studIndex.set(layout.studIds[i], i);
+    this.layerShade = createLayerShade(n);
+    this.shadedLayout = null;
     this.ensureSize(layout.cols, layout.rows);
     if (switched) {
       this.smokeImage.data.fill(0);
@@ -263,6 +276,27 @@ export class HazardFxRenderer {
     this.halfFire.height = hh;
   }
 
+  /** Low quality skips the darkening near the fire. */
+  private shade(
+    layout: RasterLayout,
+    states: ReadonlyMap<string, { fire: { state: string } }>,
+    fx: HazardFxContext,
+  ): void {
+    const layers = fx.layers ?? null;
+    const nearFire = fx.quality === 'high';
+    if (
+      this.shadedLayers === layers &&
+      this.shadedLayout === layout &&
+      this.shadedNearFire === nearFire
+    ) {
+      return;
+    }
+    this.shadedLayers = layers;
+    this.shadedLayout = layout;
+    this.shadedNearFire = nearFire;
+    shadeLayers(this.studIndex, layout.xs, layout.ys, layers, states, this.layerShade, nearFire);
+  }
+
   private writeRasters(
     layout: RasterLayout,
     states: ReadonlyMap<string, { smoke: number; fire: { state: string } }>,
@@ -277,11 +311,28 @@ export class HazardFxRenderer {
       headSmoke,
       this.dirtySmoke,
       cover,
+      this.layerShade,
     );
     dilateEmpty(this.smokeImage.data, layout.cols, layout.rows, layout.occupied);
     const fireChanged = writeFireRGBA(layout, states, this.fireImage.data, this.dirtyFire, cover);
-    this.upload(this.smokeCanvas, this.smokeImage, this.dirtySmoke, smokeChanged, layout.cols, layout.rows, 1);
-    this.upload(this.fireCanvas, this.fireImage, this.dirtyFire, fireChanged, layout.cols, layout.rows, 0);
+    this.upload(
+      this.smokeCanvas,
+      this.smokeImage,
+      this.dirtySmoke,
+      smokeChanged,
+      layout.cols,
+      layout.rows,
+      1,
+    );
+    this.upload(
+      this.fireCanvas,
+      this.fireImage,
+      this.dirtyFire,
+      fireChanged,
+      layout.cols,
+      layout.rows,
+      0,
+    );
     this.forceUpload = false;
   }
 
@@ -421,9 +472,7 @@ export class HazardFxRenderer {
     punch.globalAlpha = 1;
     punch.clearRect(0, 0, mw, mh);
     const t = fx.nowMs / 1000;
-    const speed = fx.reducedMotion
-      ? 0
-      : FX.DRIFT_SPEED_PX_S * (fx.quality === 'low' ? 0.5 : 1);
+    const speed = fx.reducedMotion ? 0 : FX.DRIFT_SPEED_PX_S * (fx.quality === 'low' ? 0.5 : 1);
     const ang = (FX.DRIFT_DIR * Math.PI) / 180;
     const tile = FX.NOISE_SCALE_M * rc.scale * sx;
     this.tileNoise(

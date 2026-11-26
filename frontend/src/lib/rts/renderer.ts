@@ -21,6 +21,8 @@ import { isInsidePolygon, polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
 import { getIcon, preloadIcons, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
 import type { HazardFxContext, HazardFxRenderer } from './fx/drawHazardFx';
+import { createLayerShade, layerRgb, shadeLayers, type LayerShade } from './fx/smokeLayers';
+import type { SmokeLayerView } from './spatialEffects';
 
 export interface RenderContext {
   scale: number;
@@ -731,14 +733,59 @@ function drawFlameFront(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: Sh
   }
 }
 
+const classicShade: {
+  layers: readonly SmokeLayerView[] | null;
+  studs: ReadonlyArray<{ id: string }> | null;
+  first: string | undefined;
+  shade: LayerShade;
+} = { layers: null, studs: null, first: undefined, shade: createLayerShade(0) };
+
+/** Flat room tint for the classic field, rebuilt when the layers or the stud list change. */
+function classicLayerShade(fx: ShowcaseRenderFx): LayerShade | null {
+  const layers = fx.hazardFx?.ctx.layers ?? null;
+  if (!layers || layers.length === 0) return null;
+  const studs = fx.hazardStuds;
+  const cache = classicShade;
+  if (
+    cache.layers === layers &&
+    cache.studs?.length === studs.length &&
+    cache.first === studs[0]?.id
+  ) {
+    return cache.shade;
+  }
+  const n = studs.length;
+  const indexOf = new Map<string, number>();
+  const xs = new Float32Array(n);
+  const ys = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    indexOf.set(studs[i].id, i);
+    xs[i] = studs[i].simPos.x;
+    ys[i] = studs[i].simPos.y;
+  }
+  if (cache.shade.alpha.length !== n) cache.shade = createLayerShade(n);
+  shadeLayers(indexOf, xs, ys, layers, null, cache.shade, false);
+  cache.layers = layers;
+  cache.studs = studs;
+  cache.first = studs[0]?.id;
+  return cache.shade;
+}
+
 function drawHazardField(ctx: CanvasRenderingContext2D, rc: RenderContext, fx: ShowcaseRenderFx) {
   const states = fx.effectStates;
   if (!states) return;
   const size = mToCanvas(fx.cellM, rc);
-  for (const stud of fx.hazardStuds) {
+  const shade = classicLayerShade(fx);
+  for (let i = 0; i < fx.hazardStuds.length; i++) {
+    const stud = fx.hazardStuds[i];
     const st = states.get(stud.id);
     if (!st) continue;
     const c = toCanvas(stud.simPos.x, stud.simPos.y, rc);
+    const la = shade ? shade.alpha[i] : 0;
+    if (shade && la > 0) {
+      const dk = shade.dark[i];
+      ctx.fillStyle = `rgba(${Math.round(layerRgb(dk, 0))}, ${Math.round(layerRgb(dk, 1))}, ${Math.round(layerRgb(dk, 2))}, ${la.toFixed(3)})`;
+      ctx.fillRect(c.cx - size / 2, c.cy - size / 2, size, size);
+    }
     const d = st.smoke ?? 0;
     if (d >= 0.05) {
       ctx.fillStyle = `rgba(90, 90, 100, ${0.15 + 0.65 * headSmoke(d)})`;

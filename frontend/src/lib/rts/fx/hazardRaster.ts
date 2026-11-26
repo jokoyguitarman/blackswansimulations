@@ -1,4 +1,5 @@
 import { FX } from './fxConstants';
+import { layerRgb, type LayerShade } from './smokeLayers';
 
 export interface RasterLayout {
   minX: number;
@@ -195,9 +196,11 @@ export function writeSmokeRGBA(
   headSmoke: (d: number) => number,
   dirty?: DirtyBox,
   cover?: { smoke: number },
+  layer?: LayerShade | null,
 ): number {
   let changed = 0;
   const cols = layout.cols;
+  const withLayer = layer != null && layer.count > 0;
   for (let i = 0; i < layout.index.length; i++) {
     const p = layout.index[i];
     if (p < 0) continue;
@@ -209,12 +212,22 @@ export function writeSmokeRGBA(
     let b = 0;
     if (d >= 0.05) {
       const h = headSmoke(d);
-      a = Math.round(
-        255 * (FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h),
-      );
+      a = Math.round(255 * (FX.SMOKE_ALPHA_MIN + (FX.SMOKE_ALPHA_MAX - FX.SMOKE_ALPHA_MIN) * h));
       r = smokeRgb(h, 0);
       g = smokeRgb(h, 1);
       b = smokeRgb(h, 2);
+    }
+    const la = withLayer ? layer.alpha[i] : 0;
+    if (layer && la > 0) {
+      // Head-height smoke over the layer tint, as straight alpha.
+      const ha = a / 255;
+      const lw = la * (1 - ha);
+      const sum = ha + lw;
+      const dk = layer.dark[i];
+      r = Math.round((r * ha + layerRgb(dk, 0) * lw) / sum);
+      g = Math.round((g * ha + layerRgb(dk, 1) * lw) / sum);
+      b = Math.round((b * ha + layerRgb(dk, 2) * lw) / sum);
+      a = Math.round(255 * sum);
     }
     if (a > 0 && cover) cover.smoke++;
     const o = p * 4;

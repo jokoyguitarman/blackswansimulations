@@ -141,6 +141,19 @@ export interface StudEffectState {
   radiantKwM2?: number;
 }
 
+/** One room's upper smoke layer, as `smokeLayers()` reports it. */
+export interface SmokeLayerView {
+  room: string;
+  /** Stud ids in the room. Shared with the engine, so do not mutate. */
+  members: readonly string[];
+  ceilingM: number;
+  interfaceM: number;
+  depthM: number;
+  /** Soot extinction of the upper layer, 1/m. */
+  extinctionK: number;
+  upperK: number;
+}
+
 // ── Spatial effect instance ──────────────────────────────────────────────
 
 interface ActiveEffect {
@@ -1570,6 +1583,30 @@ export class SpatialEffectsEngine {
   /** Walls of rooms that have flashed. The door rating clock reads this. */
   exposedDoorIds(): ReadonlySet<string> {
     return this.exposedDoors;
+  }
+
+  /**
+   * Copy of every active upper layer, for drawing. A layer above head height
+   * leaves its studs' `smoke` at zero, so the picture needs the room itself.
+   * Reading it does not touch the simulation.
+   */
+  smokeLayers(): SmokeLayerView[] {
+    const out: SmokeLayerView[] = [];
+    for (const [room, live] of this.layerState) {
+      if (!live.active) continue;
+      const depthM = Math.max(0, live.ceilingM - live.zone.interfaceM);
+      const volume = Math.max(live.areaM2 * Math.max(0.02, depthM), 1e-6);
+      out.push({
+        room,
+        members: live.members,
+        ceilingM: live.ceilingM,
+        interfaceM: live.zone.interfaceM,
+        depthM,
+        extinctionK: (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / volume,
+        upperK: live.zone.upperK,
+      });
+    }
+    return out;
   }
 
   private liningMem(wallId: string): {

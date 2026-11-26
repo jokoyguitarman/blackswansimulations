@@ -5,6 +5,17 @@
 export const FX = {
   SMOKE_ALPHA_MIN: 0.15,
   SMOKE_ALPHA_MAX: 0.8,
+  /** Faintest tint of a room that has a layer at all. */
+  LAYER_ALPHA_MIN: 0.1,
+  LAYER_ALPHA_MAX: 0.82,
+  /** Share of the layer tint a thin layer keeps before the room fills. */
+  LAYER_FILL_FLOOR: 0.45,
+  /** Upper-layer rise above ambient that reads fully hot. */
+  LAYER_HOT_RISE_K: 600,
+  /** Darkening falls to 1/e this far from a burning stud. */
+  LAYER_NEAR_FIRE_M: 6,
+  /** Burning studs sampled per room for the darkening. */
+  LAYER_FIRE_SAMPLES: 48,
   NOISE_SIZE: 128,
   NOISE_SCALE_M: 12,
   NOISE_STRENGTH: 0.35,
