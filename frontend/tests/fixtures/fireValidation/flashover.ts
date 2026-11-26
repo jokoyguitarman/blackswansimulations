@@ -25,9 +25,9 @@ export function room(qKw: number): LayerSpec {
     ceilingM: 2.6,
     vents: [{ widthM: 0.9, sillM: 0, soffitM: 2 }],
     boundaries: [
-      { areaM2: 20, lining: LINING.concrete },
-      { areaM2: 20, lining: LINING.concrete },
-      { areaM2: 2 * (4 + 5) * 2.6 - 0.9 * 2, lining: LINING.concrete },
+      { areaM2: 20, lining: LINING.concrete, place: 'floor' },
+      { areaM2: 20, lining: LINING.concrete, place: 'ceiling' },
+      { areaM2: 2 * (4 + 5) * 2.6 - 0.9 * 2, lining: LINING.concrete, place: 'wall' },
     ],
     fires: qKw > 0 ? [{ heatKw: qKw, diameterM: diameterForReleaseKw(qKw) }] : [],
   };

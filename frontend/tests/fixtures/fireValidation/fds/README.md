@@ -16,7 +16,7 @@ node --import tsx frontend/tests/fixtures/fireValidation/fds/reduce.ts harbour \
 
 `run-fds.sh` sources `~/FDS/FDS6/bin/FDS6VARS.sh` when that file is present. FDS layer height and upper and lower temperature are the two-layer reduction of a vertical column. Upper temperature in the device file is °C. Rise in the series is that value minus the 20 °C ambient. `MASS FLOW +` is the positive coordinate direction. `MASS FLOW -` is stored negative in the device file, and the series carries its magnitude. On the fire-room door, +x leaves the fire room.
 
-The zone series steps once per second. A burning room solves its doors against the neighbour's layer. A room with no fire of its own takes the previous second's upper outflow as a door jet, which is the product's coupling. The door flows in the tables are the last substep of that second. While the layer is warming, the pressure solution carries the ambient-density weight of the volume the upper mass needs at the new temperature. That mass includes the plume, so entrained air is not left at the volume it had downstairs. The interface then drops by the part of that volume beyond the exchange move. A room whose upper volume would shrink is unchanged. The engine keeps the lower layer at ambient, so its lower rise is 0.
+The zone series steps once per second. A burning room solves its doors against the neighbour's layer. A room with no fire of its own takes the previous second's upper outflow as a door jet, which is the product's coupling. The door flows in the tables are the last substep of that second. While the layer is warming, the pressure solution carries the weight of the volume the upper mass needs at the new temperature. That mass includes the plume, so entrained air is not left at the volume it had downstairs. A second root takes the extra hot gas out of that volume. The lower layer is then the root's inflow, the outflow from below the interface, the plume and the spill, at the lower-layer density, and the interface is that volume. The root is solved again at the geometric mass when the vents can carry it. On the floor the rate still carries the unclipped volume. The lower layer is clear. The upper gas still radiates to the floor and the wall below the interface, and convection on those faces is charged to the lower layer, which keeps its own temperature. The door uses that density.
 
 ## Two rooms
 
@@ -28,18 +28,18 @@ Means over 60–180 s, 121 samples. The interface band for a 2.2 m ceiling is 0.
 
 | Quantity | Engine | FDS | FDS − engine |
 | --- | ---: | ---: | ---: |
-| Fire interface | 0.85 m | 0.60 m | −0.25 m |
-| Fire rise | 162 K | 167 K | +5 K |
-| Fire lower rise | 0 K | 2 K | +2 K |
-| Entry interface | 1.01 m | 0.97 m | −0.04 m |
-| Entry rise | 123 K | 164 K | +41 K |
-| Entry lower rise | 0 K | 0.4 K | +0.4 K |
+| Fire interface | 0.83 m | 0.60 m | −0.23 m |
+| Fire rise | 173 K | 167 K | −6 K |
+| Fire lower rise | 14.5 K | 2 K | −12 K |
+| Entry interface | 1.03 m | 0.97 m | −0.07 m |
+| Entry rise | 136 K | 164 K | +28 K |
+| Entry lower rise | 0.1 K | 0.4 K | +0.3 K |
 | Heat release | 110 kW | 110 kW | 0 |
-| Door, fire to entry | 0.37 kg/s | 0.40 kg/s | +0.03 kg/s |
-| Door, entry to fire | 0.36 kg/s | 0.40 kg/s | +0.04 kg/s |
-| Far door, out of the entry | 0.37 kg/s | 0.47 kg/s | +0.10 kg/s |
+| Door, fire to entry | 0.35 kg/s | 0.40 kg/s | +0.05 kg/s |
+| Door, entry to fire | 0.35 kg/s | 0.40 kg/s | +0.05 kg/s |
+| Far door, out of the entry | 0.36 kg/s | 0.47 kg/s | +0.12 kg/s |
 
-Both rooms form a layer, and the lower gas stays near ambient, so the columns are real two-layer profiles. The fire-room rise, both interfaces, the heat release, and both directions of the connecting door sit inside the Decision 5 scale. The far-door outflow is 22% higher in FDS, inside the 25% flow scale. The entry is the gap: FDS is 41 K hotter, a quarter of its own rise, which is outside the 20% rise scale. At 180 s the same split is still there. The fire room is 0.85 m and 171 K in the engine and 0.61 m and 172 K in FDS. The entry is 1.01 m and 130 K in the engine and 0.95 m and 168 K in FDS. Over this window both models are steady. The connecting door is balanced to 0.002 kg/s, and the far door stays at 0.37 kg/s against FDS at 0.47 kg/s. That shortfall is not the expansion term.
+Both rooms form a layer. The fire-room rise, both interfaces, the heat release, and both directions of the connecting door sit inside the Decision 5 scale. The entry rise is 28 K short, 17% of the FDS rise, inside the 20% scale. Before the layer split it was 41 K short. The fire room's lower gas is 14.5 K warm against FDS at 2 K: the floor of this small room convects back into a layer of about 5 m³. That is the other way from the Harbour shop. The floor's convection is the only lower-layer source here, and in this small volume it overshoots FDS. FDS warms a lower layer by mixing at the plume and the door, plus coarse-mesh diffusion, which this step does not have. The far-door outflow is 0.36 kg/s against 0.47 kg/s, 24% low, inside the 25% flow scale. At 180 s the fire room is 0.83 m, 183 K and a lower rise of 18 K in the engine, and 0.61 m and 172 K in FDS. The entry is 1.04 m and 143 K in the engine and 0.95 m and 168 K in FDS. The far door is 0.35 kg/s against 0.48 kg/s. That shortfall is the steady vent, not the expansion term.
 
 The far opening in the input is an OPEN vent on the mesh boundary. Moving that boundary 1 m out, past a real wall, changes the far-door outflow from 0.471 kg/s to 0.459 kg/s. The 0.1 m mesh is about D*/dx of 4 for 110 kW.
 
@@ -58,38 +58,36 @@ Means over 60–120 s, 61 samples. The interface band for a 4 m ceiling is 0.60 
 | Quantity | Engine | FDS | FDS − engine |
 | --- | ---: | ---: | ---: |
 | Shop interface | 1.27 m | 1.43 m | +0.16 m |
-| Shop rise | 84 K | 89 K | +5 K |
-| Shop lower rise | 0 K | 36 K | +36 K |
-| Mall-center rise | 2.8 K | 3.9 K | +1.0 K |
+| Shop rise | 91 K | 89 K | −1 K |
+| Shop lower rise | 1.0 K | 36 K | +35 K |
+| Mall-center rise | 3.5 K | 3.9 K | +0.3 K |
 | Heat release | 5000 kW | 5000 kW | +0.4 kW |
-| Door, shop to mall | 1.80 kg/s | 2.33 kg/s | +0.53 kg/s |
-| Door, mall to shop | 0.14 kg/s | 0.44 kg/s | +0.30 kg/s |
-| West exit, outward | 2.99 kg/s | 4.72 kg/s | +1.7 kg/s |
-| North exit, outward | 1.87 kg/s | 2.26 kg/s | +0.39 kg/s |
-| Rise 2 m into the mall | 2.8 K | 21 K | +19 K |
+| Door, shop to mall | 1.88 kg/s | 2.33 kg/s | +0.45 kg/s |
+| Door, mall to shop | 0.13 kg/s | 0.44 kg/s | +0.31 kg/s |
+| West exit, outward | 3.16 kg/s | 4.72 kg/s | +1.6 kg/s |
+| North exit, outward | 2.01 kg/s | 2.26 kg/s | +0.26 kg/s |
+| Rise 2 m into the mall | 3.5 K | 21 K | +18 K |
 
-The shop layer forms on both sides. The interface and the upper rise over this window sit inside the Decision 5 scale, and the heat release matches. FDS also warms the shop's lower gas by 36 K. The zone model has no warm lower layer. At 120 s the interfaces are 0.90 m in the engine and 1.21 m in FDS, and the rises are 95 K and 114 K. The FDS lower gas is then 66 °C.
+The shop layer forms on both sides. The interface and the upper rise over this window sit inside the Decision 5 scale, and the heat release matches. The upper rise is 91 K against 89 K. FDS warms the shop's lower gas by 36 K. The engine's lower rise is 1.0 K. The main remaining sink is grey-gas radiation at the surface emissivity, 0.9 (`SURFACE_EMISSIVITY`), from the upper gas to every face, including the floor and the wall below the interface. FDS's smoke radiation sits in `Q_RADI`, so its 857 kW `Q_COND` is close to convection alone. The convective return from the lower faces is about 24 kW, which does not warm a lower volume of several hundred cubic metres by 36 K. FDS's 36 K comes from mixing at the plume and the door, plus coarse-mesh diffusion. A lower-layer equation with only wall convection and inflow enthalpy does not produce that mixing. The small NBS fire room, above, runs the other way: 14.5 K warm against FDS at 2 K. At 120 s the engine is 0.92 m, 103 K and a lower rise of 1.8 K, against FDS at 1.21 m, 114 K and a lower gas of 66 °C. The mall center is 7.8 K in the engine and 5.6 K in FDS.
 
 FDS's outflow is the expansion of the heat left in the gas. Over 60–120 s `Q_TOTAL` is 2,056 kW. At constant pressure an open volume expels Q·R/(cp·P). That predicts 5.79 m³/s, and the devices measure 5.67 m³/s at ambient density. Over 30–60 s the same check is 8.51 m³/s predicted and 8.36 m³/s measured. The openings, from `MASS FLOW`, `MASS FLOW +` and `MASS FLOW -`:
 
 | Opening, 60–120 s | FDS out | FDS in | Engine out | Engine in |
 | --- | ---: | ---: | ---: | ---: |
-| West exit | 4.72 kg/s | 0.15 kg/s | 2.99 kg/s | 0 |
-| Door | 2.33 kg/s | 0.44 kg/s | 1.80 kg/s | 0.14 kg/s |
-| North exit | 2.26 kg/s | 0.00 kg/s | 1.87 kg/s | 0 |
+| West exit | 4.72 kg/s | 0.15 kg/s | 3.16 kg/s | 0 |
+| Door | 2.33 kg/s | 0.44 kg/s | 1.88 kg/s | 0.13 kg/s |
+| North exit | 2.26 kg/s | 0.00 kg/s | 2.01 kg/s | 0 |
 
 The shop's FDS openings are nearly one-way, 6.45 kg/s net. The mall passes that on: 1.89 kg/s net in through the door and 2.26 kg/s out the north exit.
 
-The engine pressure balance is in − out − fans = dM/dt. While the layer is warming, the upper volume after the step is the mass that layer keeps divided by ρ(T). That mass is the plume as well as the gas already upstairs, so ΔV is the heat the upper gas keeps and not only V·ΔT/T of the gas that was already hot. The openings carry ρ_a times the part of that volume beyond the exchange move, and the interface drops by that part after the root. The drop is not an input. Over 60–120 s the door and the west exit carry 4.65 kg/s net (2.99 out the west, 1.80 out the door, 0.14 back in). Over 30–60 s the same two openings carry 7.26 kg/s, against FDS at about 9.9 kg/s. The mall sends 1.87 kg/s out the north exit over 60–120 s.
+The engine pressure balance is in − out − fans = dM/dt. While the layer is warming, the upper volume after the step is the mass that layer keeps divided by ρ(T). That mass is the plume as well as the gas already upstairs, so ΔV is the heat the upper gas keeps and not only V·ΔT/T of the gas that was already hot. The openings carry that mass change. The interface is the lower-layer volume of the root's inflow, the outflow from below the interface, the plume and the spill, not the exchange makeup. Over 60–120 s the door and the west exit carry 4.91 kg/s net (3.16 out the west, 1.88 out the door, 0.13 back in). Over 30–60 s the same two openings carry 7.83 kg/s, against FDS at about 9.9 kg/s. The mall sends 2.01 kg/s out the north exit over 60–120 s.
 
-FDS still moves more gas. The engine west flow is 2.99 kg/s against 4.72, and the door is 1.80 kg/s against 2.33. Two bookings make the rest of that gap. Every gas-to-solid loss is charged to the upper gas, 1,732 kW over 60–120 s against FDS `Q_COND` of 857 kW, so less of the fire stays in the gas to expand. FDS also holds the shop's lower gas 36 K above ambient, and this engine has no lower-layer energy. Door coefficients are unchanged. The two-room far door, above, is the steady shortfall and is not this term.
+FDS still moves more gas. The engine west flow is 3.16 kg/s against 4.72, and the door is 1.88 kg/s against 2.33. The upper gas loses 1,585 kW to the surfaces over 60–120 s, and the lower faces return 24 kW by convection, so the net film is 1,561 kW against FDS `Q_COND` of 857 kW. Most of that 1,585 kW is grey-gas radiation at emissivity 0.9, not the convective film. The floor and the lower wall are not a second copy of that film: the lower layer is clear, so the upper gas still radiates to them, and only the convection is charged downstairs. Giving those faces' whole film to the cold lower gas removed the radiative sink. On that trial the shop rise over this window was 103 K against 89 K, and Steckler and BE#3 left their bands, so that split is not the one in the series. The lower layer here is 1.0 K warm against FDS at 36 K. The missing term on the FDS side of that gap is mixing at the plume and the door, and diffusion on the 0.4 m mesh, not a larger wall coefficient. Door coefficients are unchanged. The two-room far door, above, is the steady shortfall and is not this term.
 
-Once the interface is on the 0.05 m floor, the same rate still asks for the unclipped volume. The plume keeps drawing lower-layer air the room does not hold, and the vents can expel a volume the interface cannot give up. On the production Harbour shop that residual is 566 kg, all of it on the clamped substeps. Above the clamp the total mass closes. The previous expansion head measured 572 kg on the same clamp. The clamp is older than this booking, and the rate is not clipped to hide the residual.
-
-Above the clamp, the comparison shop still has a 42 kg lower-layer residual over 0–120 s (1.5 kg in the first minute, 40.4 kg in the second). It equals the extra hot gas the expanded root sends beyond the exchange. The target volume subtracts only the exchange's hot outflow, so once the interface is in the door and part of the expansion leaves hot, the interface still drops by the full extra volume. That is about 0.05 m of this shop's interface over two minutes. Total mass stays exact. A second root that removes that hot gas before setting the volume closes the 42 kg, and it also lifts the VTT Case 1 interface from 3.93 m to 4.14 m, so the correction is not in this series.
+Once the interface is on the 0.05 m floor, the plume may take only the lower inflow plus the mass still above the floor. The rest of the Heskestad draw is upper gas recirculating, and it moves no mass. Any other shortfall still carries the unclipped volume. On the production Harbour shop the residual on those steps is 35 kg: 14 kg on steps that were already on the floor, where the plume draw matches the inflow (374 kg against 375 kg), and 21 kg on the descent onto the floor. Above the clamp the lower-layer budget closes within 5 kg. The previous expansion head measured 572 kg on the same clamp, the exchange booking measured 566 kg, and booking the root's flows without this cap left 1753 kg. The rate is not clipped to hide the residual. The jet-fed mall in the crowd scene still closes in total and not per layer: over the 224 s it spends above the floor the lower layer is 246 kg below the flows booked to it, while the room total against the vents closes within 0.5 kg. The unmatched jet volume still displaces lower-layer air that no vent carries, which is the displacement the deposited-jet test keeps.
 
 ## The mall layer
 
-A hall layer does not form. The FDS column at the mall center stays within 8 K of ambient for the whole 120 s, and the highest center rise in the window is 7 K. The engine's mall rise is 6.3 K at 120 s, under the 20 K line `formsSustainedLayer` uses, so the layer gate stays off. The north exit is carrying the shop's expansion out, and the one mall temperature does not climb into a layer.
+A hall layer does not form. The FDS column at the mall center stays within 8 K of ambient for the whole 120 s, and the highest center rise in the window is 7 K. The engine's mall rise is 7.8 K at 120 s, under the 20 K line `formsSustainedLayer` uses, so the layer gate stays off. The north exit is carrying the shop's expansion out, and the one mall temperature does not climb into a layer.
 
 FDS does warm the gas just inside the door. A column 2.2 m into the mall averages a 21 K rise over 60–120 s, and its peak on that window is 30 K. The zone model has one temperature for the whole 720 m² mall, and that average is the center of the hall rather than the doorway. The hall in this box stays on the flame front.

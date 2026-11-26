@@ -269,6 +269,9 @@ export interface DoorJetBook {
   members: readonly string[];
   receivers: readonly (readonly string[])[];
   hot: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
+  /** Last substep's orifice inflow and outflow, kg/s. Set when a test is watching. */
+  inKgS?: number;
+  outKgS?: number;
 }
 
 /**
@@ -608,8 +611,16 @@ export class SpatialEffectsEngine {
    * outflow. One step behind, so room order does not matter.
    */
   private doorJets = new Map<string, DoorJetInflow>();
-  /** Floor gauge of each active layer, Pa. The next step's neighbour doors read it. */
+  /**
+   * Floor gauge of each active layer, Pa. The next step's neighbour doors
+   * read it. This is the mean of the last two solved roots, not the raw
+   * root: each room solves against the other's previous gauge, and
+   * publishing the raw root runs a period-2 cycle once the interface is
+   * on the floor.
+   */
   private floorPressurePa = new Map<string, number>();
+  /** The previous solved floor root, Pa. The published gauge averages it. */
+  private floorPressurePrevPa = new Map<string, number>();
   /** The jet actually passed into `stepZone` this step, for rooms that take one. */
   private jetTaken = new Map<string, DoorJetInflow>();
   /**
@@ -685,6 +696,8 @@ export class SpatialEffectsEngine {
     this.exposedDoors = new Set();
     this.layerGrants = [];
     this.doorJets = new Map();
+    this.floorPressurePa.clear();
+    this.floorPressurePrevPa.clear();
     this.jetTaken = new Map();
     this.jetLowerStuds = new Set();
     this.fallenGlass.clear();
@@ -1876,6 +1889,8 @@ export class SpatialEffectsEngine {
       outByVentKgS: readonly number[];
       hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
       neutralM?: number;
+      inKgS: number;
+      outKgS: number;
     },
     sourceInterfaceM: number,
     dt: number,
@@ -1927,6 +1942,8 @@ export class SpatialEffectsEngine {
         members: members.slice(),
         receivers: enc.ventReceivers.map((ids) => ids.slice()),
         hot,
+        inKgS: stepped.inKgS,
+        outKgS: stepped.outKgS,
       });
     }
     const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, hot, rooms);
@@ -2156,7 +2173,20 @@ export class SpatialEffectsEngine {
   }
 
   private rememberFloorPressure(room: string, floorPressurePa: number): void {
-    this.floorPressurePa.set(room, floorPressurePa);
+    const prev = this.floorPressurePrevPa.get(room);
+    this.floorPressurePrevPa.set(room, floorPressurePa);
+    // A steady root is unchanged. A period-2 pair A, B becomes (A + B) / 2,
+    // which is what the neighbour reads, so the next solve does not
+    // overshoot back to the other root. The first step has no history.
+    this.floorPressurePa.set(
+      room,
+      prev == null ? floorPressurePa : 0.5 * (floorPressurePa + prev),
+    );
+  }
+
+  private forgetFloorPressure(room: string): void {
+    this.floorPressurePa.delete(room);
+    this.floorPressurePrevPa.delete(room);
   }
 
   private stepLayers(dt: number, walls: InteriorWall[]): Set<string> {
@@ -2218,6 +2248,7 @@ export class SpatialEffectsEngine {
         interfaceM: live.zone.interfaceM,
         upperK: live.zone.upperK,
         floorPressurePa: this.floorPressurePa.get(id) ?? 0,
+        ...(live.zone.lowerK != null ? { lowerK: live.zone.lowerK } : {}),
       });
     }
     const pending: Array<{
@@ -2304,7 +2335,11 @@ export class SpatialEffectsEngine {
       };
       const zone = this.zoneWithSheets(prev?.zone ?? freshLayer(ceiling), spec.boundaries);
       const sootRate = sootByRoom.get(room) ?? 0;
-      if (hasJet && heat < MIN_LAYER_FIRE_KW) {
+      // A paused jet leaves a fireless room on this path. The step judges
+      // the layer from the zone it already holds. A room with no fire and
+      // no jet of its own has a cold steady layer, which would retire a
+      // ceiling that is still hot.
+      if ((hasJet || prev?.active === true) && heat < MIN_LAYER_FIRE_KW) {
         // The only heat is the neighbour's jet. The steady fire correlation
         // does not see it, so the layer is the integrated upper layer.
         if (incoming) this.jetTaken.set(room, incoming);
@@ -2334,7 +2369,7 @@ export class SpatialEffectsEngine {
             const active = layerHold || formsSustainedLayer(depth, ceiling, rise, true);
             if (!active) {
               retire();
-              this.floorPressurePa.delete(room);
+              this.forgetFloorPressure(room);
               this.layerState.set(room, {
                 active: false,
                 zone: next.state,
@@ -2371,6 +2406,9 @@ export class SpatialEffectsEngine {
         oxygenMassFraction(zone.lowerO2),
         oxygenMassFraction(zone.upperO2),
         dt,
+        false,
+        undefined,
+        zone.lowerK ?? AMBIENT_K,
       ).burn;
       const limitedFires =
         opening.prescribedKw > 0 && opening.fraction < 0.999
@@ -2387,7 +2425,7 @@ export class SpatialEffectsEngine {
       const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
       if (!active) {
         retire();
-        this.floorPressurePa.delete(room);
+        this.forgetFloorPressure(room);
         this.layerState.set(room, {
           active: false,
           zone,
@@ -2499,7 +2537,7 @@ export class SpatialEffectsEngine {
       if (seen.has(room) || !live.active) continue;
       this.dumpLayer(live.members, live.zone, live.areaM2, live.ceilingM);
       live.active = false;
-      this.floorPressurePa.delete(room);
+      this.forgetFloorPressure(room);
     }
     this.commitGlass(dt);
     return owned;
@@ -2545,7 +2583,8 @@ export class SpatialEffectsEngine {
         oxygenMassFraction(atHead ? live.zone.upperO2 : live.zone.lowerO2),
       );
       const radiantKwM2 = blackLayerRadiantKwM2(live.zone.upperK);
-      const headTempC = atHead ? live.zone.upperK - 273.15 : undefined;
+      const headK = atHead ? live.zone.upperK : (live.zone.lowerK ?? AMBIENT_K);
+      const headTempC = headK - 273.15;
       for (const id of live.members) {
         touch.add(id);
         if (!owned.has(id)) continue;

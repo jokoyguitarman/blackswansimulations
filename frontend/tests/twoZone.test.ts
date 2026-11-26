@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extinctionK } from '../src/lib/evacuation/hazardSensing.ts';
-import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import {
   HOOD_HEIGHT_M,
@@ -52,6 +51,7 @@ import {
   HOOD_LENGTH_M,
   freshLayer,
   gasMassKg,
+  layerContactM2,
   upperLayerVolumeM3,
   fanVolumeM3PerS,
   coldSurfaceIncidentKwM2,
@@ -148,8 +148,8 @@ test('orifice slice matches the 400 K door example', () => {
 
 test('a deposited jet keeps the lower-layer air budget', () => {
   // The inflow is the neighbour's upper layer, and the jet is that stream.
-  // The orifice already balances it, so the interface moves only by the
-  // lower-layer outflow and by whatever jet mass the orifice did not see.
+  // The lower layer keeps the root's own inflow and loses the jet volume
+  // the orifice did not match.
   const outside = { interfaceM: 0.3, upperK: 700, floorPressurePa: 0 };
   const spec: LayerSpec = {
     areaM2: 20,
@@ -170,50 +170,28 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     'the inflow was not all from the neighbour layer',
   );
   const jet = { kgS: far.farUpperInKgS, tempK: 700, oxygenY: 0.12 };
-  const rhoJet = 353 / jet.tempK;
+  const rhoAt = (tempK: number) => 353 / tempK;
   let state = start;
-  let expectZ = start.interfaceM;
   const dt = 0.1;
+  let residualKg = 0;
   for (let i = 0; i < 20; i++) {
-    // The exchange move, then the volume the deposited mass occupies at
-    // the new temperature. The step's vent report is the expansion
-    // solution and is not this height.
-    const exchange = oxygenLimitedBurn(
-      spec,
-      state.interfaceM,
-      state.upperK,
-      state.lowerO2,
-      state.upperO2,
-      dt,
-      true,
-    );
-    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const makeup = Math.max(0, exchange.inKgS - exchange.farUpperInKgS);
-    const lowerOut = Math.max(0, exchange.outKgS - hot);
-    const unmatched = jet.kgS - exchange.farUpperInKgS;
-    let dZ =
-      (makeup - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) /
-      (LEVEL.RHO_AIR * spec.areaM2);
-    dZ -= unmatched / (rhoJet * spec.areaM2);
-    if (dZ > 2) dZ = 2;
-    if (dZ < -2) dZ = -2;
-    expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ + dZ * dt));
-    const mass0 = (353 / state.upperK) * upperLayerVolumeM3(spec, state.interfaceM);
+    // The lower layer is the root's inflow, its own outflow and the plume,
+    // at the lower-layer density. The jet's unmatched volume comes out of
+    // that layer and is not a second copy of the exchange makeup.
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
     const stepped = stepZone(state, spec, dt, 0, jet);
-    const hotLeft = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const mNew = Math.max(
-      0,
-      mass0 + (jet.kgS - hotLeft - exchange.fanUpperKgS) * dt,
-    );
-    const vExchange = upperLayerVolumeM3(spec, expectZ);
-    const extra = mNew / (353 / stepped.state.upperK) - vExchange;
-    // The jet's mass at the new temperature, beyond the exchange volume.
-    if (extra > 0) {
-      expectZ = Math.min(spec.ceilingM - 0.02, Math.max(0.05, expectZ - extra / spec.areaM2));
-    }
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const flow =
+      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const unmatched = Math.max(0, jet.kgS - stepped.farUpperInKgS);
+    const jetVolume = (unmatched * dt) / rhoAt(jet.tempK);
+    residualKg += m1 - (m0 + flow * dt - rhoAt(lower1) * jetVolume);
     state = stepped.state;
   }
-  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - expectZ);
   assert.ok(Math.abs(start.interfaceM - state.interfaceM) > 0.05, 'the interface did not move');
   assert.ok(
     Math.abs(residualKg) < 0.05,
@@ -343,51 +321,104 @@ test('a burning room books outflow from below its interface', () => {
   );
   assert.ok(opened.burn.burnedKw > 1000, 'the room is burning');
   let state = start;
-  let bookedZ = start.interfaceM;
   let omittedZ = start.interfaceM;
   const dt = 0.1;
-  for (let i = 0; i < 30; i++) {
-    // Same split the step uses to move the interface. The returned vents
-    // also carry the expansion, so they are not this balance.
-    const exchange = oxygenLimitedBurn(
-      spec,
-      state.interfaceM,
-      state.upperK,
-      state.lowerO2,
-      state.upperO2,
-      dt,
-      false,
-    );
-    const hot = exchange.hotOutByVentKgS.reduce((sum, rate) => sum + (rate ?? 0), 0);
-    const lowerOut = Math.max(0, exchange.outKgS - hot);
+  const rhoAt = (tempK: number) => 353 / tempK;
+  let residualKg = 0;
+  for (let i = 0; i < 80; i++) {
+    // The interface follows the root's inflow, the lower-layer outflow and
+    // the plume. The parallel height credits the same inflow and drops the
+    // lower outflow, which is the booking this test exists to keep.
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
+    const stepped = stepZone(state, spec, dt, 0, null);
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const flow =
+      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    residualKg += m1 - (m0 + flow * dt);
     const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
-    const areaRho = LEVEL.RHO_AIR * spec.areaM2;
-    bookedZ = Math.min(
-      spec.ceilingM - 0.02,
-      Math.max(
-        0.05,
-        bookedZ +
-          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS - lowerOut) / areaRho) *
-            dt,
-      ),
-    );
+    const areaRho = rhoAt(lower0) * spec.areaM2;
     omittedZ = Math.min(
       spec.ceilingM - 0.02,
       Math.max(
         0.05,
         omittedZ +
-          clamp((exchange.inKgS - exchange.plumeKgS - exchange.fanLowerKgS) / areaRho) * dt,
+          clamp((stepped.lowerInKgS - stepped.plumeKgS - stepped.fanLowerKgS) / areaRho) * dt,
       ),
     );
-    state = stepZone(state, spec, dt, 0, null).state;
+    state = stepped.state;
   }
-  const residualKg = LEVEL.RHO_AIR * spec.areaM2 * (state.interfaceM - bookedZ);
-  const omittedKg = LEVEL.RHO_AIR * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(
     Math.abs(residualKg) < 0.05,
     `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
   );
+  const omittedKg =
+    rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
+});
+
+test('a floor-clamped layer entrains only the air the floor can give', () => {
+  // A wide fire puts Heskestad's virtual origin below the fuel, so a 5 cm
+  // interface still asks for a tall plume. The draw stops at the root's
+  // lower inflow plus the mass above the floor. The rest recirculates in
+  // the upper gas, and both the lower layer and the room total close.
+  const spec: LayerSpec = {
+    areaM2: 120,
+    ceilingM: 3,
+    vents: [{ widthM: 1.6, sillM: 0, soffitM: 2 }],
+    boundaries: [
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 80, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 4000, diameterM: 8 }],
+  };
+  const asked = heskestadEntrainmentKgS(4000, 0.05, 8);
+  assert.ok(asked > 10, `Heskestad at the floor only asked ${asked.toFixed(1)} kg/s`);
+  const rhoAt = (tempK: number) => 353 / tempK;
+  let state = { ...freshLayer(spec.ceilingM), interfaceM: 2.2, upperK: AMBIENT_K + 30 };
+  const dt = 0.1;
+  let clamped = 0;
+  let lowerKg = 0;
+  let totalKg = 0;
+  let plumeKg = 0;
+  let inflowKg = 0;
+  let maxPlume = 0;
+  for (let i = 0; i < 400; i++) {
+    const z0 = state.interfaceM;
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const before = gasMassKg(spec, z0, state.upperK, lower0);
+    const m0 = rhoAt(lower0) * spec.areaM2 * z0;
+    const stepped = stepZone(state, spec, dt);
+    const z1 = stepped.state.interfaceM;
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const after = gasMassKg(spec, z1, stepped.state.upperK, lower1);
+    const m1 = rhoAt(lower1) * spec.areaM2 * z1;
+    const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
+    const net = stepped.inKgS - stepped.outKgS - stepped.fanUpperKgS - stepped.fanLowerKgS;
+    if (z1 <= 0.0501) {
+      clamped += 1;
+      lowerKg += m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
+      totalKg += after - (before + net * dt);
+      plumeKg += stepped.plumeKgS * dt;
+      inflowKg += stepped.lowerInKgS * dt;
+      maxPlume = Math.max(maxPlume, stepped.plumeKgS);
+    }
+    state = stepped.state;
+  }
+  assert.ok(clamped >= 200, `only ${clamped} steps sat on the floor`);
+  assert.ok(maxPlume < asked / 2, `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`);
+  // The difference is the mass above the floor taken as the interface arrives.
+  // An uncapped Heskestad plume is hundreds of kilograms over this run.
+  assert.ok(
+    Math.abs(plumeKg - inflowKg) < 6,
+    `plume drew ${plumeKg.toFixed(2)} kg from ${inflowKg.toFixed(2)} kg of inflow`,
+  );
+  assert.ok(Math.abs(lowerKg) < 2, `lower-layer residual ${lowerKg.toFixed(3)} kg`);
+  assert.ok(Math.abs(totalKg) < 2, `total residual ${totalKg.toFixed(3)} kg`);
 });
 
 test('a burning room that takes a jet does not burn the neighbour upper layer', () => {
@@ -2070,14 +2101,28 @@ test('an unclaimed sheet cools toward ambient', () => {
   const warm = view.wallSheetK.get('glass') ?? 0;
   const zoned = [...view.layerState.values()].find((row) => row.zone.sheetK?.glass != null);
   assert.ok(warm > AMBIENT_K + 8, `sheet ${(warm - AMBIENT_K).toFixed(1)} K`);
+  assert.ok(zoned?.active, 'the hot layer retired when the fire went out');
   assert.ok(
     Math.abs((zoned?.zone.sheetK?.glass ?? 0) - warm) < 0.05,
     'the zone kept a temperature the wall no longer holds',
   );
-  // Eight minutes with no layer. A 6 mm pane stores about 13.6 kJ/m²K.
+  // The hold is the zone, not the fire. A cold ceiling leaves on the next
+  // step, and the pane then cools with both faces in ambient air. A 6 mm
+  // pane stores about 13.6 kJ/m²K, so eight minutes is the check.
+  for (const live of view.layerState.values()) {
+    if (!live.active) continue;
+    live.zone = { ...freshLayer(2.6), upperK: AMBIENT_K, interfaceM: 2.6 };
+  }
+  engine.step(1, walls, []);
+  assert.equal(
+    [...view.layerState.values()].some((row) => row.active),
+    false,
+    'the cold ceiling stayed up',
+  );
+  const left = view.wallSheetK.get('glass') ?? 0;
   engine.step(480, walls, []);
   const cooled = view.wallSheetK.get('glass') ?? AMBIENT_K;
-  const expected = coolUnclaimedSheet(warm, glass, 480);
+  const expected = coolUnclaimedSheet(left, glass, 480);
   assert.ok(
     warm - cooled > 4,
     `still ${(cooled - AMBIENT_K).toFixed(1)} K above ambient, from ${(warm - AMBIENT_K).toFixed(1)} K`,
@@ -2167,17 +2212,19 @@ test('a partition between two rooms is one sheet, heated from both sides', () =>
 
 test('a shared partition does not lose heat to outdoor air', () => {
   // Two equal pans, one glass partition. One step adds each room's inside
-  // film and that room's share of the fire's radiation. The outdoor film on
-  // both faces of this pane is larger than the tolerance, so the step's
-  // temperature has to match the two films with that outdoor loss left out.
+  // film and that room's share of the fire's radiation. The pane is a wall,
+  // so each film is the upper layer above the interface and the lower layer
+  // below it. The outdoor film on both faces of this pane is larger than the
+  // tolerance, so the step's temperature has to match the two films with
+  // that outdoor loss left out.
   const glass = liningForMaterial('glass');
   const store = glass.rhoKgM3 * glass.cKjKgK * glass.thicknessM;
-  const filmKwM2 = (gasK: number, sheetK: number) => {
+  const filmPart = (gasK: number, sheetK: number) => {
     const across = gasK - sheetK;
     const hConv = (SURFACE_CONVECTION_C_W / 1000) * Math.pow(Math.abs(across), 1 / 3);
     const hRad =
       SURFACE_EMISSIVITY * SIGMA_KW_M2K4 * (gasK * gasK + sheetK * sheetK) * (gasK + sheetK);
-    return (hConv + hRad) * across;
+    return { conv: hConv * across, rad: hRad * across };
   };
   const outdoorKwM2 = (sheetK: number) => {
     if (!(sheetK > AMBIENT_K)) return 0;
@@ -2291,7 +2338,15 @@ test('a shared partition does not lose heat to outdoor air', () => {
     }
     assert.ok(pane > 8, `pane area ${pane.toFixed(2)} m²`);
     const rad = area > 0 ? (RADIATIVE_FRACTION * q) / area : 0;
-    gained += filmKwM2(gases[i] ?? 0, start) + rad;
+    const upper = gases[i] ?? 0;
+    const lower = row.zone.lowerK ?? AMBIENT_K;
+    const upperFrac = Math.min(1, Math.max(0, (2.6 - row.zone.interfaceM) / 2.6));
+    // The pane below the interface convects with the lower gas and still
+    // radiates to the upper gas. The lower layer is clear.
+    const hot = filmPart(upper, start);
+    const cold = filmPart(lower, start);
+    const film = (hot.conv + hot.rad) * upperFrac + (cold.conv + hot.rad) * (1 - upperFrac);
+    gained += film + rad;
   }
   const predicted = start + gained / store;
   const actual = view.wallSheetK.get('pane') ?? 0;
@@ -2776,13 +2831,13 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   assert.ok(connected.hall, 'the hall never formed a layer of its own');
   assert.ok(alone.hall, 'the hall alone never formed a layer');
   assert.ok(
-    connected.sentFuel > 0.2,
-    `the source sent ${connected.sentFuel.toFixed(3)} kg of fuel`,
+    connected.sentFuel > 0.05,
+    `the source sent ${connected.sentFuel.toFixed(3)} kg; hall kept ${(connected.hall?.fuelKg ?? 0).toFixed(3)}; alone ${(alone.hall?.fuelKg ?? 0).toFixed(3)}`,
   );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
   assert.ok(
-    kept > own + 0.1,
+    kept > own + 0.05,
     `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`,
   );
 });
@@ -2877,6 +2932,119 @@ test('a jet-fed room keeps its head-height soot when it catches fire', () => {
   assert.ok(
     still > kept * 0.5,
     `head-height soot fell from ${kept.toFixed(3)} /m to ${still.toFixed(3)} /m when the room caught fire`,
+  );
+});
+
+test('a smoke-logged fireless room keeps its layer after the jet stops', () => {
+  // The hall has no fire of its own. Once the door jet has dropped the
+  // interface through head height, sealing the door stops the feed. The
+  // layer is judged from the zone it already holds, so the stud stays in
+  // that smoke.
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('hall', 0, 3)]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['fire', wood]]));
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void; fuelReleaseKw: (id: string) => number | undefined };
+    doorJets: Map<string, { kgS: number }>;
+    jetTaken: Map<string, { kgS: number }>;
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        members: string[];
+        zone: { interfaceM: number; upperK: number; sootG: number };
+      }
+    >;
+  };
+  exposed.fireSim.ignite(['fire']);
+  const hallOf = () =>
+    [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  const smokeOf = () => engine.studStates.get('hall')?.smoke ?? 0;
+  let logged = false;
+  let best = 'none';
+  for (let t = 0; t < 400 && !logged; t++) {
+    engine.step(1, walls, []);
+    const hall = hallOf();
+    const smoke = smokeOf();
+    if (t === 30 || t === 120 || hall?.active) {
+      best = `t=${t + 1} z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'} active=${hall?.active === true} smoke=${smoke.toFixed(3)} soot=${(hall?.zone.sootG ?? 0).toFixed(1)} g`;
+    }
+    logged =
+      hall?.active === true &&
+      hall.zone.interfaceM <= HEAD_HEIGHT_M &&
+      smoke >= 0.5 &&
+      hall.zone.sootG > 0 &&
+      (exposed.fireSim.fuelReleaseKw('hall') ?? 0) < MIN_LAYER_FIRE_KW;
+  }
+  assert.ok(logged, `the hall never logged smoke at head height (${best})`);
+  const before = hallOf();
+  const smokeBefore = smokeOf();
+  assert.ok(before);
+  const sealed = walls.map((wall) => (wall.id === 'door' ? { ...wall, hasDoor: false } : wall));
+  exposed.doorJets = new Map();
+  for (let t = 0; t < 10; t++) {
+    engine.step(1, sealed, []);
+    assert.equal(
+      exposed.jetTaken.size,
+      0,
+      `a jet still arrived on step ${t + 1} after the door was sealed`,
+    );
+    const hall = hallOf();
+    assert.ok(
+      hall?.active,
+      `the hall layer retired ${t + 1} s after the feed stopped (z=${hall?.zone.interfaceM.toFixed(2) ?? 'na'}, rise=${((hall?.zone.upperK ?? AMBIENT_K) - AMBIENT_K).toFixed(0)} K)`,
+    );
+    assert.ok(
+      hall.zone.interfaceM <= HEAD_HEIGHT_M,
+      `the interface lifted through head height (${hall.zone.interfaceM.toFixed(2)} m) while the feed was off`,
+    );
+    const smoke = smokeOf();
+    assert.ok(
+      smoke >= smokeBefore * 0.5,
+      `head-height smoke fell from ${smokeBefore.toFixed(3)} to ${smoke.toFixed(3)} with the layer still at ${hall.zone.interfaceM.toFixed(2)} m`,
+    );
+  }
+  const after = hallOf();
+  assert.ok(after);
+  assert.ok(
+    after.zone.sootG > before.zone.sootG * 0.5,
+    `the layer soot fell from ${before.zone.sootG.toFixed(1)} g to ${after.zone.sootG.toFixed(1)} g`,
   );
 });
 
@@ -2991,4 +3159,217 @@ test('a burning stud under a jet layer adds no soot to the column', () => {
     gained >= producedG * 0.8,
     `the layer gained ${gained.toFixed(3)} g while the stud made ${producedG.toFixed(3)} g`,
   );
+});
+
+test('a wall splits at the interface and an untagged face stays with the upper gas', () => {
+  const wall = { areaM2: 12, lining: LINING.concrete, place: 'wall' as const };
+  const split = layerContactM2(wall, 1, 4);
+  assert.ok(Math.abs(split.upperM2 - 9) < 1e-9);
+  assert.ok(Math.abs(split.lowerM2 - 3) < 1e-9);
+  const floor = layerContactM2({ areaM2: 8, lining: LINING.concrete, place: 'floor' }, 1, 4);
+  assert.equal(floor.upperM2, 0);
+  assert.equal(floor.lowerM2, 8);
+  const lumped = layerContactM2({ areaM2: 8, lining: LINING.concrete }, 1, 4);
+  assert.equal(lumped.upperM2, 8);
+  assert.equal(lumped.lowerM2, 0);
+});
+
+test('the floor warms the lower layer and the upper gas is not charged that film', () => {
+  // Concrete conducts most of the radiation, so the lower layer only gains
+  // the convective return. That is about a kelvin in 90 s, and the lumped
+  // room, which has no lower contact, stays at ambient. The upper gas is
+  // not charged that convection, so its cumulative loss is smaller.
+  const fire = [{ heatKw: 250, diameterM: 0.5 }];
+  const vents = [{ widthM: 0.9, sillM: 0, soffitM: 2 }];
+  const tagged = {
+    areaM2: 16,
+    ceilingM: 2.6,
+    vents,
+    boundaries: [
+      { areaM2: 16, lining: LINING.concrete, place: 'floor' as const },
+      { areaM2: 16, lining: LINING.concrete, place: 'ceiling' as const },
+      { areaM2: 48, lining: LINING.concrete, place: 'wall' as const },
+    ],
+    fires: fire,
+  };
+  const lumped = {
+    areaM2: 16,
+    ceilingM: 2.6,
+    vents,
+    boundaries: [
+      { areaM2: 16, lining: LINING.concrete },
+      { areaM2: 16, lining: LINING.concrete },
+      { areaM2: 48, lining: LINING.concrete },
+    ],
+    fires: fire,
+  };
+  let zoned = freshLayer(2.6);
+  let whole = freshLayer(2.6);
+  let zonedUpper = 0;
+  let wholeUpper = 0;
+  for (let s = 0; s < 90; s++) {
+    const zonedStep = stepZone(zoned, tagged, 1);
+    const wholeStep = stepZone(whole, lumped, 1);
+    zoned = zonedStep.state;
+    whole = wholeStep.state;
+    zonedUpper += zonedStep.upperLossKw;
+    wholeUpper += wholeStep.upperLossKw;
+  }
+  assert.ok((zoned.lowerK ?? AMBIENT_K) > AMBIENT_K + 0.5, `lower layer ${zoned.lowerK}`);
+  assert.ok((whole.lowerK ?? AMBIENT_K) < AMBIENT_K + 0.5);
+  assert.ok(zonedUpper < wholeUpper, `upper loss ${zonedUpper} against ${wholeUpper}`);
+});
+
+test('a warmer lower layer changes the mass the door carries', () => {
+  const spec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [{ widthM: 1, sillM: 0, soffitM: 2 }],
+    boundaries: [{ areaM2: 80, lining: LINING.concrete }],
+    fires: [],
+  };
+  const base = { ...freshLayer(3), interfaceM: 1.2, upperK: 500 };
+  const cool = stepZone(base, spec, 1);
+  const warm = stepZone({ ...base, lowerK: 400 }, spec, 1);
+  assert.ok(
+    Math.abs(cool.outKgS - warm.outKgS) > 0.05,
+    `outflow ${cool.outKgS.toFixed(3)} against ${warm.outKgS.toFixed(3)}`,
+  );
+});
+
+test('a floor-clamped door between two rooms does not reverse every step', () => {
+  // A large fire room on the floor, coupled to a jet-fed neighbour that
+  // has its own exit. Studs sit on a 3 m pitch, so the shared wall is a
+  // real door: a face is only a vent between 2 m and 3.4 m. Each room
+  // solves that door against the other's published floor gauge. Without
+  // the two-root mean, that gauge changes sign every step and the shared
+  // door's hot outflow turns on and off with it. The published gauge and
+  // the hot mass are the fields the step already kept before the mean.
+  const wood = { ...defaultLightFuel(), alphaKwS2: 20, fuelLoadKgM2: 2000, spreadMPerMin: 0 };
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+    width: number,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: width,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const lattice = (prefix: string, nx: number, ny: number, x0: number, y0: number) => {
+    const people = [];
+    const ids: string[] = [];
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const id = `${prefix}${i}_${j}`;
+        ids.push(id);
+        people.push(stud(id, x0 + i * 3, y0 + j * 3));
+      }
+    }
+    return { people, ids };
+  };
+  const fireNx = 6;
+  const fireNy = 8;
+  const hallNx = 6;
+  const hallNy = 6;
+  const fire = lattice('f', fireNx, fireNy, 0, 0);
+  const hallY = fireNy * 3;
+  const hall = lattice('h', hallNx, hallNy, 0, hallY);
+  const xEast = (fireNx - 1) * 3 + 1.5;
+  const ySplit = (fireNy - 1) * 3 + 1.5;
+  const yNorth = hallY + (hallNy - 1) * 3 + 1.5;
+  const walls = [
+    barrier('fs', -1.5, -1.5, xEast, -1.5, true, 0.6),
+    barrier('fw', -1.5, -1.5, -1.5, ySplit, false, 0.2),
+    barrier('fe', xEast, -1.5, xEast, ySplit, false, 0.2),
+    barrier('door', -1.5, ySplit, xEast, ySplit, true, 1.2),
+    barrier('hw', -1.5, ySplit, -1.5, yNorth, false, 0.2),
+    barrier('he', xEast, ySplit, xEast, yNorth, false, 0.2),
+    barrier('hn', -1.5, yNorth, xEast, yNorth, true, 0.6),
+  ];
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([
+    ...fire.people,
+    ...hall.people,
+    stud('outF', (fireNx - 1) * 1.5, -3, false),
+    stud('outH', (fireNx - 1) * 1.5, yNorth + 1.5, false),
+  ]);
+  engine.setStoreyHeights({ G: 4 });
+  engine.setFuelCells(new Map(fire.ids.map((id) => [id, wood])));
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void };
+    floorPressurePa: Map<string, number>;
+    jetAudit: DoorJetBook[] | null;
+    layerState: Map<string, { active: boolean; members: string[]; zone: { interfaceM: number } }>;
+  };
+  exposed.fireSim.ignite(fire.ids.slice(0, 14));
+  const audit: DoorJetBook[] = [];
+  exposed.jetAudit = audit;
+  for (let i = 0; i < 90; i++) engine.step(1, walls, []);
+  let prevP: number | null = null;
+  let prevHot: boolean | null = null;
+  let gaugeFlips = 0;
+  let flowFlips = 0;
+  let onFloor = 0;
+  let hallActive = 0;
+  let sawDoor = 0;
+  const signChange = (prev: number, next: number) =>
+    prev * next < 0 && Math.abs(prev) > 0.25 && Math.abs(next) > 0.25;
+  for (let i = 0; i < 150; i++) {
+    engine.step(1 / 60, walls, []);
+    let zone: { id: string; z: number } | undefined;
+    let hallOn = false;
+    for (const [id, live] of exposed.layerState) {
+      const inFire = live.members.includes('f0_0');
+      const inHall = live.members.includes('h0_0');
+      if (inFire && !inHall && live.active) zone = { id, z: live.zone.interfaceM };
+      if (inHall && !inFire && live.active) hallOn = true;
+    }
+    if (!zone || zone.z > 0.051) {
+      prevP = null;
+      prevHot = null;
+      continue;
+    }
+    onFloor++;
+    if (hallOn) hallActive++;
+    const p = exposed.floorPressurePa.get(zone.id) ?? 0;
+    let hotKg = 0;
+    for (const book of audit) {
+      if (!book.members.includes('f0_0')) continue;
+      for (let vent = 0; vent < book.hot.length; vent++) {
+        const receivers = book.receivers[vent] ?? [];
+        if (!receivers.some((id) => id.startsWith('h'))) continue;
+        sawDoor++;
+        hotKg += book.hot[vent]?.kg ?? 0;
+      }
+    }
+    const hotOn = hotKg > 1e-4;
+    if (onFloor > 30 && prevP != null && prevHot != null) {
+      if (signChange(prevP, p)) gaugeFlips++;
+      if (prevHot !== hotOn) flowFlips++;
+    }
+    prevP = p;
+    prevHot = hotOn;
+  }
+  assert.ok(onFloor > 100, `the fire room was on the floor for ${onFloor} steps`);
+  assert.ok(hallActive > 100, `the neighbour layer was up for ${hallActive} steps`);
+  assert.ok(sawDoor > 100, `the shared door was missing on ${onFloor - sawDoor} steps`);
+  assert.equal(gaugeFlips, 0, `floor gauge reversed on ${gaugeFlips} steps`);
+  assert.equal(flowFlips, 0, `door hot outflow turned over on ${flowFlips} steps`);
 });

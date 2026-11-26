@@ -93,9 +93,9 @@ function box(
   let openings = 0;
   for (const vent of vents) openings += vent.widthM * (vent.soffitM - vent.sillM);
   const boundaries: Boundary[] = [
-    { areaM2: area, lining: floor },
-    { areaM2: area, lining: ceiling },
-    { areaM2: 2 * (widthM + depthM) * heightM - openings, lining: walls },
+    { areaM2: area, lining: floor, place: 'floor' },
+    { areaM2: area, lining: ceiling, place: 'ceiling' },
+    { areaM2: 2 * (widthM + depthM) * heightM - openings, lining: walls, place: 'wall' },
   ];
   return { areaM2: area, ceilingM: heightM, vents, boundaries };
 }
@@ -163,6 +163,7 @@ export function runNbsFireRoom(endS: number): ZoneState[] {
               interfaceM: entry.interfaceM,
               upperK: entry.upperK,
               floorPressurePa: entryPressure,
+              ...(entry.lowerK != null ? { lowerK: entry.lowerK } : {}),
             },
           },
         ],
@@ -191,9 +192,9 @@ export function runNbsFireRoom(endS: number): ZoneState[] {
         chi: NBS_FIRE_ROOM.chi,
         vents: [{ ...nbsDoor }],
         boundaries: [
-          { areaM2: entryArea, lining: gypsumNbs },
-          { areaM2: entryArea, lining: mariniteNbs },
-          { areaM2: entryWalls, lining: mariniteNbs },
+          { areaM2: entryArea, lining: gypsumNbs, place: 'floor' },
+          { areaM2: entryArea, lining: mariniteNbs, place: 'ceiling' },
+          { areaM2: entryWalls, lining: mariniteNbs, place: 'wall' },
         ],
         fires: [],
       },
@@ -259,13 +260,9 @@ export const BE3_TEST_3: ValidationCase = {
 const steelBe2 = matl('Steel ICFMP BE2', 54, 7850, 0.425, 0.001);
 const concreteBe2 = matl('Concrete ICFMP BE2', 2, 2300, 0.9, 0.15);
 const vttVent = 0.71;
-const vttSteelM2 =
-  2 * (27 + 13.8) * 12 +
-  2 * 27 * Math.hypot(5.1, (13.8 - 1.9) / 2) +
-  (13.8 + 1.9) * 5.1 +
-  2 * (27 + 1.9) * 1.9 +
-  27 * 1.9 -
-  4 * vttVent * vttVent;
+const vttWallM2 = 2 * (27 + 13.8) * 12 + 2 * (27 + 1.9) * 1.9 - 4 * vttVent * vttVent;
+const vttRoofM2 =
+  2 * 27 * Math.hypot(5.1, (13.8 - 1.9) / 2) + (13.8 + 1.9) * 5.1 + 27 * 1.9;
 const vttFloorM2 = 27 * 13.8;
 const vttSpec: Omit<LayerSpec, 'fires'> = {
   areaM2: vttFloorM2,
@@ -283,8 +280,9 @@ const vttSpec: Omit<LayerSpec, 'fires'> = {
     { widthM: vttVent, sillM: 12, soffitM: 12 + vttVent },
   ],
   boundaries: [
-    { areaM2: vttFloorM2, lining: concreteBe2 },
-    { id: 'vtt-steel', areaM2: vttSteelM2, lining: steelBe2 },
+    { areaM2: vttFloorM2, lining: concreteBe2, place: 'floor' },
+    { id: 'vtt-roof', areaM2: vttRoofM2, lining: steelBe2, place: 'ceiling' },
+    { id: 'vtt-walls', areaM2: vttWallM2, lining: steelBe2, place: 'wall' },
   ],
 };
 
