@@ -400,6 +400,22 @@ describe('smoke carries the gases', () => {
     assert.ok((state.fumes?.CO ?? 0) > (capped.CO ?? 0) * 2, `dose stayed on the cap`);
   });
 
+  test('soot past the visibility cap still crosses to the next stud', () => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([stud('a', 0, 0), stud('b', 3, 0)]);
+    const sim = engine as unknown as { sootK: Map<string, number> };
+    // One second of the open exchange, 0.025, carries 10 per metre off a
+    // column of 400. A transport cap at the visibility scale would leave
+    // the neighbour on that scale.
+    sim.sootK.set('a', 400);
+    engine.step(1, [], []);
+    const cap = extinctionK(1);
+    const received = sim.sootK.get('b') ?? 0;
+    const smoke = engine.studStates.get('b')?.smoke ?? 0;
+    assert.ok(received > cap, `neighbour extinction ${received} stayed at the cap ${cap}`);
+    assert.ok(smoke > 0.99 && smoke <= 1, `neighbour smoke ${smoke}`);
+  });
+
   test('a sustained fire fills its room and reaches a stud 10 m away', () => {
     const studs: FireSimStud[] = [];
     for (let x = 0; x <= 12; x += 3) {

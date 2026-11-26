@@ -16,11 +16,15 @@
  * Open outs are 64, 93, 99 and 101 at T+180, T+240, T+300 and T+600,
  * with 13 down, fume downs at 0, and 19 still inside. The highest
  * asphyxiant FED still inside is 0.098 and the highest heat FED is
- * 1.001. Late mean smoke is 0.837. The blocked crowd lets 41, 52 and
- * 82 people out at the first three marks, and 100 by T+600, with 14
- * down and 20 still inside. One person is in the mall with asphyxiant
- * FED 1.001. Heat downs stay 4. Late mean smoke is 0.843. Mean smoke
- * at T+180, T+240 and T+300 is 0.424, 0.451 and 0.443 in both crowds.
+ * 1.001. Late mean smoke is 0.837. The blocked crowd lets 41 and 52
+ * people out at T+180 and T+240, and 82 by T+300. Soot past 6.1 per
+ * metre is conserved and exported. Outdoor studs west of the building
+ * saturate from about T+210. At T+300, 126 studs are over the cap,
+ * against 0 before, and the blocked outs diverge from T+270. By T+600,
+ * 100 are out and 14 are down, with 20 still inside. One person is in
+ * the mall with asphyxiant FED 1.001. Heat downs stay 4. Late mean
+ * smoke is 0.843. Mean smoke at T+180, T+240 and T+300 is 0.424,
+ * 0.451 and 0.443 in both crowds.
  * A mall fuel stock of 0 kg before about T+376 means the spill burned
  * the fuel the shop jet has carried since about T+159. It does not mean
  * the jet was clean. Soot and gas use the same φ ≤ 2 pyrolysis.
