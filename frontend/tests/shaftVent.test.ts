@@ -403,6 +403,57 @@ describe('shaft between two storeys', () => {
       `mass residual ${run.residual.toFixed(1)} kg at T+240 (peak ${run.peak.toFixed(1)} kg)`,
     );
   });
+
+  test('a fuelled landing keeps the shaft inflow enthalpy', () => {
+    const { engine, walls } = shaftRoom();
+    const fuel = hotFuel();
+    engine.setFuelCells(
+      new Map([
+        ['g0', fuel],
+        ['g1', fuel],
+        ['u0', defaultLightFuel()],
+      ]),
+    );
+    const fire = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    fire.ignite(['g0', 'g1']);
+    const eng = engine as unknown as {
+      stepThroughShafts: (...args: unknown[]) => {
+        stepped: { inKT: number; outKT: number; upperLossKw: number; lowerLossKw: number };
+      };
+      layerState: Map<string, BudgetLayer>;
+    };
+    const orig = eng.stepThroughShafts.bind(eng);
+    let energyKj = 0;
+    eng.stepThroughShafts = (...args: unknown[]) => {
+      const solved = orig(...args);
+      const members = args[1] as readonly string[];
+      if (args[12] !== false && members.includes('u0')) {
+        const stepped = solved.stepped;
+        if (Number.isFinite(stepped.inKT) && Number.isFinite(stepped.outKT)) {
+          energyKj += stepped.inKT - stepped.outKT - (stepped.upperLossKw + stepped.lowerLossKw);
+        }
+      }
+      return solved;
+    };
+    let riseAt120 = 0;
+    for (let t = 1; t <= 240; t++) {
+      engine.step(1, walls, []);
+      if (t === 120) {
+        const upper = [...eng.layerState.values()].find(
+          (row) => row.active && row.members.includes('u0'),
+        );
+        riseAt120 = (upper?.zone.upperK ?? AMBIENT_K) - AMBIENT_K;
+      }
+    }
+    // The shaft is feeding gas hundreds of kelvin hotter. Booking that
+    // inflow as cool makeup drops the rise from about 400 K to about 60 K
+    // and leaves about +280 MJ unaccounted by T+240.
+    assert.ok(riseAt120 > 200, `L1 rise ${riseAt120.toFixed(0)} K at T+120`);
+    assert.ok(
+      energyKj / 1000 < 40,
+      `L1 energy residual ${(energyKj / 1000).toFixed(0)} MJ at T+240`,
+    );
+  });
 });
 
 interface BudgetLayer {

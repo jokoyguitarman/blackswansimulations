@@ -12,12 +12,12 @@
   "reachable": 102,
   "mall": {
     "active": true,
-    "interfaceM": 1.6,
-    "riseK": 69
+    "interfaceM": 1.69,
+    "riseK": 62
   },
   "marks": {
     "t180": {
-      "smoke": "0.384",
+      "smoke": "0.382",
       "out": 93,
       "down": 12,
       "heatDown": 5,
@@ -26,7 +26,7 @@
       "burning": 94
     },
     "t240": {
-      "smoke": "0.385",
+      "smoke": "0.387",
       "out": 101,
       "down": 12,
       "heatDown": 5,
@@ -35,7 +35,7 @@
       "burning": 94
     },
     "t300": {
-      "smoke": "0.681",
+      "smoke": "0.702",
       "out": 101,
       "down": 12,
       "heatDown": 5,
@@ -50,14 +50,14 @@
     "out": 101,
     "inMall": 1,
     "maxFed": 1,
-    "maxHeatFed": 1,
+    "maxHeatFed": 1.001,
     "heatDown": 5,
     "mallFed": 1,
     "mall": {
       "active": true,
       "interfaceM": 1.12,
-      "riseK": 81.4
+      "riseK": 81.8
     },
-    "smoke": "0.779"
+    "smoke": "0.775"
   }
 }

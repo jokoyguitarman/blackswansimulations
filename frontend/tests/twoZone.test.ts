@@ -185,8 +185,7 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     const lower1 = stepped.state.lowerK ?? AMBIENT_K;
     const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
     const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
-    const flow =
-      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const flow = stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
     const unmatched = Math.max(0, jet.kgS - stepped.farUpperInKgS);
     const jetVolume = (unmatched * dt) / rhoAt(jet.tempK);
     residualKg += m1 - (m0 + flow * dt - rhoAt(lower1) * jetVolume);
@@ -280,7 +279,10 @@ test('expansion above the soffit leaves with the lower layer', () => {
     checked += 1;
   }
   assert.ok(checked >= 10, `only ${checked} steps stayed above the soffit`);
-  assert.ok(worstLower < 0.02, `lower layer missed the expelled air by ${worstLower.toFixed(4)} kg/s`);
+  assert.ok(
+    worstLower < 0.02,
+    `lower layer missed the expelled air by ${worstLower.toFixed(4)} kg/s`,
+  );
   assert.ok(worstUpper < 0.02, `upper layer missed the plume by ${worstUpper.toFixed(4)} kg/s`);
 });
 
@@ -336,8 +338,7 @@ test('a burning room books outflow from below its interface', () => {
     const lower1 = stepped.state.lowerK ?? AMBIENT_K;
     const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
     const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
-    const flow =
-      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const flow = stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
     residualKg += m1 - (m0 + flow * dt);
     const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
     const areaRho = rhoAt(lower0) * spec.areaM2;
@@ -355,8 +356,7 @@ test('a burning room books outflow from below its interface', () => {
     Math.abs(residualKg) < 0.05,
     `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
   );
-  const omittedKg =
-    rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
+  const omittedKg = rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
 });
 
@@ -401,7 +401,8 @@ test('a floor-clamped layer entrains only the air the floor can give', () => {
     const net = stepped.inKgS - stepped.outKgS - stepped.fanUpperKgS - stepped.fanLowerKgS;
     if (z1 <= 0.0501) {
       clamped += 1;
-      lowerKg += m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
+      lowerKg +=
+        m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
       totalKg += after - (before + net * dt);
       plumeKg += stepped.plumeKgS * dt;
       inflowKg += stepped.lowerInKgS * dt;
@@ -410,7 +411,10 @@ test('a floor-clamped layer entrains only the air the floor can give', () => {
     state = stepped.state;
   }
   assert.ok(clamped >= 200, `only ${clamped} steps sat on the floor`);
-  assert.ok(maxPlume < asked / 2, `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`);
+  assert.ok(
+    maxPlume < asked / 2,
+    `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`,
+  );
   // The difference is the mass above the floor taken as the interface arrives.
   // An uncapped Heskestad plume is hundreds of kilograms over this run.
   assert.ok(
@@ -460,6 +464,126 @@ test('a burning room that takes a jet does not burn the neighbour upper layer', 
     stepped.burnedFraction < 0.01,
     `the flame burned ${(stepped.burnedFraction * 5000).toFixed(0)} kW on the neighbour layer`,
   );
+});
+
+test('a fire room keeps the enthalpy of a neighbour upper inflow', () => {
+  // No deposited jet: this is the fire-room path, where the orifice carries
+  // the neighbour's upper gas. That inflow used to enter as cool makeup.
+  const spec: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [
+      {
+        widthM: 1.2,
+        sillM: 0,
+        soffitM: 2,
+        outside: { interfaceM: 0.2, upperK: 900, floorPressurePa: 4 },
+      },
+    ],
+    boundaries: [{ areaM2: 80, lining: LINING.concrete }],
+    fires: [{ heatKw: 200, diameterM: 0.5 }],
+  };
+  let state = { ...freshLayer(3), interfaceM: 1.5, upperK: AMBIENT_K + 80 };
+  let energy = 0;
+  for (let i = 0; i < 20; i++) {
+    const stepped = stepZone(state, spec, 0.5);
+    energy += stepped.inKT - stepped.outKT - (stepped.upperLossKw + stepped.lowerLossKw) * 0.5;
+    state = stepped.state;
+  }
+  const rise = state.upperK - AMBIENT_K;
+  // Without the inflow enthalpy the layer stays near its 80 K rise.
+  assert.ok(rise > 150, `upper rise ${rise.toFixed(0)} K after 10 s of 900 K inflow`);
+  assert.ok(energy / 1000 < 1, `energy residual ${(energy / 1000).toFixed(1)} MJ`);
+});
+
+test('a clamped fire room fed near-fresh air keeps burning', () => {
+  // The neighbour layer is only slightly warm, so the door inflow is that
+  // layer. On the floor the plume cap used to drop it, and its oxygen never
+  // reached the flame, so the fire collapsed. Near-fresh air should burn
+  // close to the model's fresh 0.23, and a vitiated stream should not.
+  const fires = [{ heatKw: 15000, diameterM: 1.4 }];
+  const room = {
+    areaM2: 40,
+    ceilingM: 3,
+    boundaries: [{ areaM2: 140, lining: LINING.concrete }],
+  };
+  const door = { widthM: 2, sillM: 0, soffitM: 2 };
+  const spec = (upperO2: number): LayerSpec => ({
+    ...room,
+    fires,
+    vents: [
+      {
+        ...door,
+        outside: { interfaceM: 0.1, upperK: AMBIENT_K + 35, floorPressurePa: 0, upperO2 },
+      },
+    ],
+  });
+  const start = { ...freshLayer(3), interfaceM: 0.05, upperK: 500 };
+  const released = (upperO2: number) => {
+    let state = start;
+    let kw = 0;
+    for (let i = 0; i < 20; i++) {
+      const stepped = stepZone(state, spec(upperO2), 0.5);
+      kw += stepped.burnedFraction * 15000;
+      state = stepped.state;
+    }
+    return kw;
+  };
+  const near = released(0.21);
+  const fresh = released(0.23);
+  const vitiated = released(0.05);
+  assert.ok(fresh > 50000, `fresh stream only released ${fresh.toFixed(0)} kW·s`);
+  assert.ok(
+    near > fresh * 0.8,
+    `near-fresh released ${near.toFixed(0)} kW·s against fresh ${fresh.toFixed(0)}`,
+  );
+  assert.ok(
+    near < fresh * 1.02,
+    `near-fresh released ${near.toFixed(0)} kW·s, above the fresh stream ${fresh.toFixed(0)}`,
+  );
+  assert.ok(
+    near > vitiated * 3,
+    `near-fresh released ${near.toFixed(0)} kW·s against vitiated ${vitiated.toFixed(0)}`,
+  );
+});
+
+test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
+  // No fire, so the stream is not consumed. Its oxygen, soot and fuel
+  // arrive with the mass. CO is not a layer species; the stud dose reads
+  // it from this soot.
+  const door = { widthM: 2, sillM: 0, soffitM: 2 };
+  const spec = (upperO2?: number): LayerSpec => ({
+    areaM2: 8,
+    ceilingM: 2.5,
+    vents: [
+      {
+        ...door,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 30,
+          floorPressurePa: -4,
+          sootGPerKg: 2,
+          fuelY: 0.05,
+          ...(upperO2 != null ? { upperO2 } : {}),
+        },
+      },
+    ],
+    boundaries: [{ areaM2: 40, lining: LINING.concrete }],
+    fires: [],
+  });
+  const start = { ...freshLayer(2.5), interfaceM: 0.05, upperK: AMBIENT_K + 30 };
+  let lean = start;
+  let fresh = start;
+  for (let i = 0; i < 40; i++) {
+    lean = stepZone(lean, spec(0.21), 0.5).state;
+    fresh = stepZone(fresh, spec(), 0.5).state;
+  }
+  const yLean = lean.upperO2 ?? 0;
+  const yFresh = fresh.upperO2 ?? 0;
+  assert.ok(yFresh - yLean > 0.003, `lean ${yLean.toFixed(3)} fresh ${yFresh.toFixed(3)}`);
+  assert.ok(yLean > 0.18, `upper oxygen fell to ${yLean.toFixed(3)}`);
+  assert.ok(lean.sootG > 1, `soot ${lean.sootG.toFixed(3)} g`);
+  assert.ok((lean.fuelKg ?? 0) > 0.05, `fuel ${lean.fuelKg ?? 0}`);
 });
 
 test('a hot neighbour on the door cuts the outflow', () => {
@@ -2836,10 +2960,7 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
-  assert.ok(
-    kept > own + 0.05,
-    `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`,
-  );
+  assert.ok(kept > own + 0.05, `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`);
 });
 
 test('a jet-fed room keeps its head-height soot when it catches fire', () => {
@@ -2993,8 +3114,7 @@ test('a smoke-logged fireless room keeps its layer after the jet stops', () => {
     >;
   };
   exposed.fireSim.ignite(['fire']);
-  const hallOf = () =>
-    [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  const hallOf = () => [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
   const smokeOf = () => engine.studStates.get('hall')?.smoke ?? 0;
   let logged = false;
   let best = 'none';
@@ -3372,4 +3492,119 @@ test('a floor-clamped door between two rooms does not reverse every step', () =>
   assert.ok(sawDoor > 100, `the shared door was missing on ${onFloor - sawDoor} steps`);
   assert.equal(gaugeFlips, 0, `floor gauge reversed on ${gaugeFlips} steps`);
   assert.equal(flowFlips, 0, `door hot outflow turned over on ${flowFlips} steps`);
+});
+
+test('an oxygen-limited fire room keeps its layer and burns again', () => {
+  // Harbour's kitchen at T+270. The inflow is the shop's spent gas, at the
+  // 0.15 extinction limit, so the steady correlation predicts no layer.
+  // The live layer is floor-deep and hot. Retiring it dumps the soot into
+  // the columns and the room never steps again. The layer stays, the burn
+  // falls to nothing, and fresher air brings the flame back.
+  const fuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 40 };
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 2,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('shop', 0, 3)]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['fire', fuel]]));
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void; burnFraction: (id: string) => number };
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        members: string[];
+        zone: {
+          interfaceM: number;
+          upperK: number;
+          sootG: number;
+          upperO2?: number;
+          lowerO2?: number;
+        };
+      }
+    >;
+  };
+  exposed.fireSim.ignite(['fire']);
+  const of = (id: string) => [...exposed.layerState.values()].find((row) => row.members.includes(id));
+  for (let t = 0; t < 80; t++) engine.step(1, walls, []);
+  const fire = of('fire');
+  const shop = of('shop');
+  assert.ok(fire?.active && shop?.active, 'the two rooms never formed layers');
+  fire.zone.interfaceM = 0.05;
+  fire.zone.upperK = AMBIENT_K + 124;
+  fire.zone.sootG = 300;
+  fire.zone.upperO2 = 0.152;
+  fire.zone.lowerO2 = 0.152;
+  shop.active = true;
+  shop.zone.interfaceM = 0.1;
+  shop.zone.upperK = AMBIENT_K + 50;
+  shop.zone.upperO2 = 0.152;
+  shop.zone.lowerO2 = 0.23;
+  shop.zone.sootG = 20;
+  engine.step(1, walls, []);
+  const starved = of('fire');
+  assert.ok(starved?.active, 'the oxygen-limited layer was retired');
+  assert.ok(
+    starved.zone.sootG > 200,
+    `the layer soot was dumped (${starved.zone.sootG.toFixed(1)} g)`,
+  );
+  assert.ok(starved.zone.interfaceM <= 0.1, `interface ${starved.zone.interfaceM.toFixed(2)} m`);
+  assert.ok(
+    starved.zone.upperK - AMBIENT_K > 90,
+    `rise ${(starved.zone.upperK - AMBIENT_K).toFixed(0)} K`,
+  );
+  assert.ok(
+    exposed.fireSim.burnFraction('fire') < 0.05,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} at the extinction limit`,
+  );
+  for (let t = 0; t < 3; t++) {
+    const liveFire = of('fire');
+    const liveShop = of('shop');
+    assert.ok(liveFire && liveShop);
+    liveFire.zone.upperO2 = 0.23;
+    liveFire.zone.lowerO2 = 0.23;
+    liveShop.zone.upperO2 = 0.23;
+    liveShop.zone.lowerO2 = 0.23;
+    liveShop.zone.interfaceM = 0.1;
+    engine.step(1, walls, []);
+  }
+  const recovered = of('fire');
+  assert.ok(recovered?.active, 'the layer did not survive the fresh air');
+  assert.ok(
+    exposed.fireSim.burnFraction('fire') > 0.3,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} after fresh air`,
+  );
+  assert.ok(recovered.zone.sootG > 100, `soot ${recovered.zone.sootG.toFixed(1)} g`);
 });
