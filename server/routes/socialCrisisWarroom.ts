@@ -72,9 +72,50 @@ import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js'
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
+import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const compileBuilds = new SupabaseBuildStore();
+
+/**
+ * The fenced success missed, so this scenario is not the build's. Remove it.
+ * Returns the scenario the winning compile stored, or this id when the delete
+ * itself failed. Null means the client should follow the build: the winner has
+ * not stored a scenario yet.
+ *
+ * A heartbeat write can commit and still lose its response. This process then
+ * holds a stale heartbeat and deletes the only scenario, because that row looks
+ * the same as a takeover that has not stored one yet. The charge is kept, and a
+ * compile after 90 seconds reuses it.
+ */
+async function dropOrphanScenario(scenarioId: string, buildId: string): Promise<string | null> {
+  const { error } = await supabaseAdmin.from('scenarios').delete().eq('id', scenarioId);
+  if (error) {
+    logger.error({ err: error, scenarioId, buildId }, 'compile_orphan_scenario_delete_failed');
+    return scenarioId;
+  }
+  logger.warn({ scenarioId, buildId }, 'compile_orphan_scenario');
+  try {
+    const fresh = await compileBuilds.get(buildId);
+    return fresh?.scenario_id ?? null;
+  } catch (err) {
+    logger.warn({ err, buildId }, 'compile_orphan_reread_failed');
+    return null;
+  }
+}
+
+/** The ledger points at a scenario only after that scenario is the build's. */
+async function attachLedgerScenario(ledgerId: string, scenarioId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('credit_ledger')
+    .update({ scenario_id: scenarioId })
+    .eq('id', ledgerId);
+  if (error) {
+    logger.warn({ err: error, ledgerId, scenarioId }, 'compile_ledger_scenario_failed');
+  }
+}
 
 const router = Router();
 
@@ -278,7 +319,7 @@ function beginNdjson(res: import('express').Response): () => void {
 const aiJobs = new Map<
   string,
   {
-    status: 'generating' | 'completed' | 'failed';
+    status: 'generating' | 'completed' | 'failed' | 'superseded';
     data?: unknown;
     error?: string;
     startedAt: number;
@@ -458,6 +499,9 @@ router.get('/job-status/:jobId', requireAuth, async (req: AuthenticatedRequest, 
   }
   if (job.status === 'failed') {
     return res.json({ status: 'failed', error: job.error });
+  }
+  if (job.status === 'superseded') {
+    return res.json({ status: 'superseded', error: job.error });
   }
   return res.json({ status: 'generating' });
 });
@@ -961,6 +1005,8 @@ router.post(
         // Cast-generated notification SOP steps + planner hints (organic-decisions plan §4.1).
         sop_steps: z.array(z.unknown()).optional(),
         decision_context: z.record(z.string(), z.unknown()).optional(),
+        // Durable builds: one scenario credit per build. Omitted on the legacy path.
+        build_id: z.string().uuid().optional(),
       }),
     }),
   ),
@@ -1010,11 +1056,71 @@ router.post(
       compileRoster = rosterCheck.roster;
     }
 
-    // The compile consumes the scenario credit. Consume up-front (race-safe)
-    // before starting the async job; refund if compilation fails.
+    // The compile consumes the scenario credit. Without a build id this is the
+    // legacy path: consume up-front and refund if compilation fails. With a
+    // build id the charge is claimed on the build, once, and a crash reuses it.
     let creditInvoiceId: string | null = null;
     let creditLedgerId: string | null = null;
-    if (!isAdmin(user)) {
+    const durableBuildId = (req.body.build_id as string | undefined) ?? null;
+    let compileHeartbeatAt: string | null = null;
+    if (durableBuildId) {
+      try {
+        const begun = await beginCompileCharge({
+          store: compileBuilds,
+          buildId: durableBuildId,
+          userId: user.id,
+          isAdmin: isAdmin(user),
+          now: new Date(),
+          consume: async () => {
+            const consumed = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+            if (!consumed.ok || !consumed.ledgerId) return { ok: false };
+            return {
+              ok: true,
+              ledgerId: consumed.ledgerId,
+              invoiceId: consumed.fundingInvoiceId ?? null,
+            };
+          },
+          refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+        });
+        if (begun.outcome === 'not_found') {
+          return res.status(404).json({ error: 'Build not found', code: 'BUILD_NOT_FOUND' });
+        }
+        if (begun.outcome === 'not_done') {
+          return res.status(409).json({ error: 'Build is not finished', code: 'BUILD_NOT_DONE' });
+        }
+        if (begun.outcome === 'completed') {
+          return res.status(200).json({
+            job_id: null,
+            status: 'completed',
+            data: { scenario_id: begun.scenarioId },
+          });
+        }
+        if (begun.outcome === 'in_progress') {
+          return res.status(409).json({
+            error: 'Compilation is already running — wait a moment and reopen this draft.',
+            code: 'COMPILE_IN_PROGRESS',
+          });
+        }
+        if (begun.outcome === 'no_credit') {
+          return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+        }
+        if (begun.outcome === 'unavailable') {
+          return res.status(503).json({
+            error: 'Compile could not be claimed. Try again.',
+            code: 'COMPILE_UNAVAILABLE',
+          });
+        }
+        creditLedgerId = begun.ledgerId;
+        creditInvoiceId = begun.invoiceId;
+        compileHeartbeatAt = begun.heartbeatAt;
+      } catch (err) {
+        logger.error({ err, buildId: durableBuildId }, 'compile_claim_failed');
+        return res.status(503).json({
+          error: 'Compile could not be claimed. Try again.',
+          code: 'COMPILE_UNAVAILABLE',
+        });
+      }
+    } else if (!isAdmin(user)) {
       const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
       if (!consume.ok) {
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
@@ -1030,6 +1136,29 @@ router.post(
     const body = req.body;
 
     void (async () => {
+      let myHeartbeat = compileHeartbeatAt;
+      let timer: ReturnType<typeof setInterval> | null = null;
+      if (durableBuildId && myHeartbeat) {
+        timer = setInterval(() => {
+          const expected = myHeartbeat;
+          if (!expected) return;
+          void compileBuilds
+            .touchCompileHeartbeat(durableBuildId, expected, new Date())
+            .then((next) => {
+              if (next) myHeartbeat = next;
+              else if (timer) clearInterval(timer);
+            })
+            .catch((err) => {
+              // The update may have committed. myHeartbeat then stays on the
+              // previous value, and the fence miss below can delete this
+              // process's own scenario. See dropOrphanScenario.
+              logger.warn({ err, buildId: durableBuildId }, 'compile_heartbeat_failed');
+            });
+        }, 30_000);
+        timer.unref?.();
+      }
+      let scenarioWritten = false;
+      let scenarioId = '';
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
@@ -1202,7 +1331,8 @@ router.post(
 
         // Persistence runs the contract §9 checklist first and throws MultiOrgValidationError
         // before writing anything; the trainer sees the failing rule (handled below).
-        const scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+        scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+        scenarioWritten = true;
         if (multiArtifacts) {
           logCompileSummary(
             scenarioId,
@@ -1213,12 +1343,11 @@ router.post(
           );
         }
 
-        // Backfill the scenario id onto the credit spend row for auditing.
-        if (creditLedgerId) {
-          await supabaseAdmin
-            .from('credit_ledger')
-            .update({ scenario_id: scenarioId })
-            .eq('id', creditLedgerId);
+        // A durable compile attaches the ledger only after the fenced write
+        // lands, so a lost race cannot point the shared charge at a scenario
+        // this process is about to delete. The legacy compile has no fence.
+        if (creditLedgerId && !durableBuildId) {
+          await attachLedgerScenario(creditLedgerId, scenarioId);
         }
 
         // Pre-generate images in background (doesn't block compile result)
@@ -1273,23 +1402,107 @@ router.post(
           }
         })();
 
-        aiJobs.set(jobId, {
-          status: 'completed',
-          data: {
-            scenario_id: scenarioId,
-            title: payload.scenario.title,
-            inject_count:
-              payload.time_injects.length +
-              payload.condition_injects.length +
-              payload.decision_injects.length,
-          },
-          startedAt: Date.now(),
-        });
-        logger.info({ jobId, scenarioId }, 'Compile completed');
+        let reportedScenarioId: string | null = scenarioId;
+        if (durableBuildId && myHeartbeat) {
+          try {
+            const wrote = await compileBuilds.succeedCompile(
+              durableBuildId,
+              scenarioId,
+              myHeartbeat,
+            );
+            if (wrote) {
+              if (creditLedgerId) await attachLedgerScenario(creditLedgerId, scenarioId);
+            } else {
+              reportedScenarioId = await dropOrphanScenario(scenarioId, durableBuildId);
+            }
+          } catch (err) {
+            // The scenario rows exist. Refunding here would hand the trainer a
+            // free scenario, or race a process that has taken over the charge.
+            logger.error(
+              { err, buildId: durableBuildId, scenarioId },
+              'compile_succeed_write_failed',
+            );
+          }
+        }
+        const injectCount =
+          payload.time_injects.length +
+          payload.condition_injects.length +
+          payload.decision_injects.length;
+        if (reportedScenarioId) {
+          aiJobs.set(jobId, {
+            status: 'completed',
+            data: {
+              scenario_id: reportedScenarioId,
+              title: payload.scenario.title,
+              inject_count: injectCount,
+            },
+            startedAt: Date.now(),
+          });
+          logger.info({ jobId, scenarioId: reportedScenarioId }, 'Compile completed');
+        } else {
+          aiJobs.set(jobId, {
+            status: 'superseded',
+            error: 'Another compile took this build. Reopen the draft to open its scenario.',
+            startedAt: Date.now(),
+          });
+          logger.info({ jobId, buildId: durableBuildId }, 'compile_superseded');
+        }
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
-        if (creditLedgerId) {
-          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        if (!scenarioWritten) {
+          try {
+            if (durableBuildId && myHeartbeat) {
+              await failCompileCharge({
+                store: compileBuilds,
+                buildId: durableBuildId,
+                heartbeatAt: myHeartbeat,
+                ledgerId: creditLedgerId,
+                invoiceId: creditInvoiceId,
+                refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+              });
+            } else if (creditLedgerId) {
+              await refundCredit(user.id, 'scenario', creditInvoiceId);
+            }
+          } catch (settleErr) {
+            logger.error({ err: settleErr, jobId }, 'compile_settle_failed');
+          }
+        } else {
+          logger.error({ err, jobId, scenarioId }, 'compile_after_persist_failed');
+          if (durableBuildId && myHeartbeat && scenarioId) {
+            try {
+              const wrote = await compileBuilds.succeedCompile(
+                durableBuildId,
+                scenarioId,
+                myHeartbeat,
+              );
+              if (wrote) {
+                if (creditLedgerId) await attachLedgerScenario(creditLedgerId, scenarioId);
+              } else {
+                const kept = await dropOrphanScenario(scenarioId, durableBuildId);
+                if (!kept) {
+                  aiJobs.set(jobId, {
+                    status: 'superseded',
+                    error:
+                      'Another compile took this build. Reopen the draft to open its scenario.',
+                    startedAt: Date.now(),
+                  });
+                  return;
+                }
+                scenarioId = kept;
+              }
+            } catch (writeErr) {
+              logger.error(
+                { err: writeErr, buildId: durableBuildId, scenarioId },
+                'compile_succeed_write_failed',
+              );
+            }
+          }
+          aiJobs.set(jobId, {
+            status: 'completed',
+            data: { scenario_id: scenarioId, title: '', inject_count: 0 },
+            startedAt: Date.now(),
+          });
+          return;
         }
         // Contract §9 violations surface their rule so the trainer/editor can act on them;
         // a lagging database migration is named rather than hidden behind a generic failure.
@@ -1301,8 +1514,16 @@ router.post(
               ? `Compilation failed: database ${MIGRATION_197_HINT}`
               : 'Compilation failed';
         aiJobs.set(jobId, { status: 'failed', error, startedAt: Date.now() });
+      } finally {
+        try {
+          if (timer) clearInterval(timer);
+        } catch (err) {
+          logger.error({ err, jobId }, 'compile_heartbeat_stop_failed');
+        }
       }
-    })();
+    })().catch((err) => {
+      logger.error({ err, jobId }, 'compile_job_unhandled');
+    });
   },
 );
 

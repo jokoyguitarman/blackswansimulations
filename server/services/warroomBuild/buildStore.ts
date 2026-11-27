@@ -130,6 +130,45 @@ export interface BuildStore {
   touchSeen(buildId: string): Promise<void>;
   countActive(userId: string): Promise<number>;
   sweep(retentionDays: number): Promise<number>;
+  /**
+   * Claim a succeeded build for compile. Null when another compile holds a
+   * fresh lease (running and heartbeat within 90s) or the build is not succeeded.
+   * A failed compile, or a running one whose heartbeat is older than 90s, is claimable.
+   */
+  claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null>;
+  /** False when this process no longer holds the heartbeat it claimed. */
+  saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+    heartbeatAt: string,
+  ): Promise<boolean>;
+  /**
+   * Advance the heartbeat only if it is still the value this process wrote.
+   * Returns the stored timestamp when the row matched, otherwise null.
+   */
+  touchCompileHeartbeat(buildId: string, heartbeatAt: string, now: Date): Promise<string | null>;
+  /** False when a newer compile already owns the build. Does not overwrite that owner. */
+  succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean>;
+  /** False when a newer compile already owns the build. Clears the charge only for this heartbeat. */
+  failCompile(buildId: string, heartbeatAt: string): Promise<boolean>;
+}
+
+/** A compile can start, or take over a run whose heartbeat is older than 90s. */
+export function compileClaimable(
+  row: { compile_status: BuildRow['compile_status']; compile_heartbeat_at: string | null },
+  now: Date,
+): boolean {
+  if (row.compile_status == null || row.compile_status === 'failed') return true;
+  if (row.compile_status !== 'running' || row.compile_heartbeat_at == null) return false;
+  return Date.parse(row.compile_heartbeat_at) < now.getTime() - 90_000;
 }
 
 const ACTIVE: BuildStatus[] = ['queued', 'running'];
@@ -611,6 +650,87 @@ export class MemoryBuildStore implements BuildStore {
       return removed;
     });
   }
+
+  claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.status !== 'succeeded' || !compileClaimable(row, now)) return null;
+      const iso = now.toISOString();
+      row.compile_status = 'running';
+      row.compile_heartbeat_at = iso;
+      row.updated_at = iso;
+      return {
+        credit_ledger_id: row.credit_ledger_id,
+        credit_invoice_id: row.credit_invoice_id,
+        compile_heartbeat_at: iso,
+      };
+    });
+  }
+
+  saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+    heartbeatAt: string,
+  ): Promise<boolean> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
+      row.credit_ledger_id = ledgerId;
+      row.credit_invoice_id = invoiceId;
+      row.updated_at = this.iso();
+      return true;
+    });
+  }
+
+  touchCompileHeartbeat(buildId: string, heartbeatAt: string, now: Date): Promise<string | null> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return null;
+      }
+      const iso = now.toISOString();
+      row.compile_heartbeat_at = iso;
+      row.updated_at = iso;
+      return iso;
+    });
+  }
+
+  succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
+      row.compile_status = 'succeeded';
+      row.scenario_id = scenarioId;
+      row.updated_at = this.iso();
+      return true;
+    });
+  }
+
+  failCompile(buildId: string, heartbeatAt: string): Promise<boolean> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
+      row.compile_status = 'failed';
+      row.credit_ledger_id = null;
+      row.credit_invoice_id = null;
+      row.updated_at = this.iso();
+      return true;
+    });
+  }
 }
 
 function asRows<T>(data: T[] | T | null): T[] {
@@ -1088,5 +1208,113 @@ export class SupabaseBuildStore implements BuildStore {
       .select('id, status, finished_at');
     if (error) throw error;
     return data?.length ?? 0;
+  }
+
+  async claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null> {
+    const writtenHeartbeat = now.toISOString();
+    const cutoff = new Date(now.getTime() - 90_000).toISOString();
+    // The affected-row count is the claim. Two calls in the same millisecond
+    // write the same heartbeat, so a re-read that matches that instant lets
+    // both of them through. PostgREST also returns an empty body for this
+    // `or` filter on 12 and 13. `count: 'exact'` is 1 for the winner and 0
+    // for a racer on 12, 13 and 14, with no `.select()`.
+    const { count, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update(
+        {
+          compile_status: 'running',
+          compile_heartbeat_at: writtenHeartbeat,
+        },
+        { count: 'exact' },
+      )
+      .eq('id', buildId)
+      .eq('status', 'succeeded')
+      .or(
+        `compile_status.is.null,compile_status.eq.failed,and(compile_status.eq.running,compile_heartbeat_at.lt.${cutoff})`,
+      );
+    if (error) throw error;
+    if (count !== 1) return null;
+    const { data, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('compile_heartbeat_at, credit_ledger_id, credit_invoice_id')
+      .eq('id', buildId)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!data?.compile_heartbeat_at) {
+      throw new Error('compile claim re-read missed the heartbeat');
+    }
+    return {
+      credit_ledger_id: data.credit_ledger_id ?? null,
+      credit_invoice_id: data.credit_invoice_id ?? null,
+      compile_heartbeat_at: data.compile_heartbeat_at,
+    };
+  }
+
+  async saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+    heartbeatAt: string,
+  ): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ credit_ledger_id: ledgerId, credit_invoice_id: invoiceId })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
+  }
+
+  async touchCompileHeartbeat(
+    buildId: string,
+    heartbeatAt: string,
+    now: Date,
+  ): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ compile_heartbeat_at: now.toISOString() })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
+    if (error) throw error;
+    return data?.[0]?.compile_heartbeat_at ?? null;
+  }
+
+  async succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ compile_status: 'succeeded', scenario_id: scenarioId })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
+  }
+
+  async failCompile(buildId: string, heartbeatAt: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({
+        compile_status: 'failed',
+        credit_ledger_id: null,
+        credit_invoice_id: null,
+      })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 }
