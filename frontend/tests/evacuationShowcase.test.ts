@@ -993,6 +993,58 @@ test('route regions pass any door a body fits through, wherever it falls on the 
   }
 });
 
+test('a carved doorway does not open a solid wall behind it or across it', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 6 },
+    { x: 0, y: 6 },
+  ];
+  const offsets = [0, 0.07, 0.125, 0.19];
+  // A solid wall parallel to the door wall, just behind it: the door opens onto a slot.
+  const midExit = [exit({ id: 'e', center: { x: 10, y: 3 }, edgeIndex: 1, width: 1 })];
+  for (const gap of [0.25, 0.3, 0.4, 0.45]) {
+    for (const off of offsets) {
+      for (const width of [0.6, 0.9]) {
+        const x = 5 + off;
+        const door = { startX: x, startY: 0, endX: x, endY: 6, hasDoor: true, doorWidth: width, doorPosition: 0.5 };
+        const behind = { startX: x + gap, startY: 0, endX: x + gap, endY: 6, hasDoor: false, doorWidth: 0, doorPosition: 0.5 };
+        const regions = new RouteRegions(verts, [door, behind]);
+        assert.equal(
+          regions.hasRouteOut({ x: 2, y: 3 }, midExit, verts),
+          false,
+          `solid wall ${gap} m behind a ${width} m door at x=${x}`,
+        );
+      }
+    }
+  }
+  // A solid wall meeting the door wall inside its opening splits the doorway.
+  // The 0.2 m slice is no route into the south room; the rest still leads north.
+  const southExit = [exit({ id: 'e', center: { x: 10, y: 1 }, edgeIndex: 1, width: 1.2 })];
+  for (const overlap of [0, 0.05, 0.1, 0.2]) {
+    for (const off of offsets) {
+      for (const width of [0.8, 0.9]) {
+        const x = 5 + off;
+        const lo = 2 - overlap;
+        const door = {
+          startX: x,
+          startY: 0,
+          endX: x,
+          endY: 6,
+          hasDoor: true,
+          doorWidth: width,
+          doorPosition: (lo + width / 2) / 6,
+        };
+        const split = { startX: x, startY: 2, endX: 10, endY: 2, hasDoor: false, doorWidth: 0, doorPosition: 0.5 };
+        const regions = new RouteRegions(verts, [door, split]);
+        const where = `overlap ${overlap}, ${width} m door at x=${x}`;
+        assert.equal(regions.hasRouteOut({ x: 2, y: 3 }, southExit, verts), false, where);
+        assert.equal(regions.regionAt({ x: 2, y: 3 }), regions.regionAt({ x: 8, y: 4 }), where);
+      }
+    }
+  }
+});
+
 test('someone pressed against a wall keeps their own side of it', () => {
   const verts: Vec2[] = [
     { x: 0, y: 0 },
