@@ -27,6 +27,7 @@ import {
   type FacadeOpening,
   formsSustainedLayer,
   freshLayer,
+  ignitionOxygenY,
   hasSmokeReservoir,
   coolUnclaimedSheet,
   isothermalSheet,
@@ -1189,6 +1190,7 @@ export class SpatialEffectsEngine {
   }
 
   private stepFire(dt: number, walls: InteriorWall[], hazards: HazardZone[]) {
+    this.fireSim.setIgnitionOxygen(this.ignitionOxygenByStud());
     this.fireSim.step(dt, walls, hazards);
 
     const wet = new Set(this.fireSim.wetStuds(walls).map((stud) => stud.id));
@@ -1199,6 +1201,17 @@ export class SpatialEffectsEngine {
         state.wet = wet.has(id);
       }
     }
+  }
+
+  /** Oxygen a new stud would stand in, from the layer left by the previous step. */
+  private ignitionOxygenByStud(): Map<string, number> {
+    const oxygen = new Map<string, number>();
+    for (const live of this.layerState.values()) {
+      if (!live.active) continue;
+      const y = ignitionOxygenY(live.zone.interfaceM, live.zone.upperO2, live.zone.lowerO2);
+      for (const id of live.members) oxygen.set(id, y);
+    }
+    return oxygen;
   }
 
   private stepGas(dt: number, walls: InteriorWall[]) {

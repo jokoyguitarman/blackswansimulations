@@ -1088,6 +1088,30 @@ function floorLayerWeight(interfaceM: number): number {
   return 1 - x * x * (3 - 2 * x);
 }
 
+/**
+ * Oxygen a new floor flame would stand in. Inside the clamp fade the
+ * flame stands in the upper layer once that credit is at least half.
+ * Above that it stands in the lower air. A missing fraction is ambient.
+ */
+export function ignitionOxygenY(
+  interfaceM: number,
+  upperY: number | undefined,
+  lowerY: number | undefined,
+): number {
+  const standsInUpper = floorLayerWeight(interfaceM) >= 0.5;
+  return oxygenMassFraction(standsInUpper ? upperY : lowerY);
+}
+
+/**
+ * A new stud may light when that oxygen is on the burning side of CFAST's
+ * cutoff. The logistic is one half at the centre of the cutoff. At and
+ * below that centre the sealed room's own flame has already gone out, and
+ * the front must not light another stud in the room.
+ */
+export function oxygenAllowsFlame(yO2: number): boolean {
+  return lowerOxygenCoefficient(yO2) > 0.5;
+}
+
 export interface LimitedBurn {
   burn: LayerBurn;
   plumeKgS: number;
@@ -1629,6 +1653,12 @@ export interface ZoneState {
    * the heat the wall still holds.
    */
   sheetK?: Readonly<Record<string, number>>;
+  /**
+   * Burned fraction of the previous slice. A flame that has gone out in a
+   * layer past the oxygen cutoff must not relight for one slice. Absent
+   * means the flame was not out.
+   */
+  lastBurnFraction?: number;
 }
 
 export interface SteadyLayer {
@@ -3248,6 +3278,7 @@ function stepZoneNow(
   let lowerLossSum = 0;
   let lossSlices = 0;
   let left = Math.max(0, dt);
+  let lastFraction = state.lastBurnFraction ?? 1;
   const gainKjM2 = hold && hold.size > 0 ? ({} as Record<string, number>) : undefined;
   const split = fireSplit(spec);
   const q = split.convectedKw;
@@ -3657,7 +3688,7 @@ function stepZoneNow(
     const useWanted = burn.oxygenLowerKgS * book.burnScale * slice;
     const fromLower = Math.min(useWanted, slicePlume * yL, yL * mL);
     const fromStream = Math.min(Math.max(0, useWanted - fromLower), o2Stream);
-    const useL = fromLower + fromStream;
+    let useL = fromLower + fromStream;
     // On the floor the flame stands in the upper layer. The lower and
     // stream share was already taken out of the upper term, but the sliver
     // and the bare inflow often cannot hand that oxygen over. Leaving the
@@ -3676,6 +3707,20 @@ function stepZoneNow(
         burnScaled = true;
       }
     }
+    // The cutoff is steep. Once the flame is out and the layer is still on
+    // the extinguished side, one twitch of the door inflow lights a slice
+    // and the next slices put it out. That is the kitchen's period-3 at
+    // the end of the burn. Hold the fraction where it went out until the
+    // oxygen is back on the burning side. A flame that has not gone out,
+    // and a layer with oxygen, are unchanged.
+    const yStand = floorLayerWeight(z) >= 0.5 ? yU : yL;
+    if (lastFraction < 0.05 && burnedFraction > 0.05 && !oxygenAllowsFlame(yStand)) {
+      const keep = 0.05 / burnedFraction;
+      burnedFraction *= keep;
+      useL *= keep;
+      useU *= keep;
+    }
+    lastFraction = burnedFraction;
     flameOxygenKg += useL + useU;
     const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
     const o2L =
@@ -3720,13 +3765,21 @@ function stepZoneNow(
     // A sliver a few millimetres deep is one substep of air. Burning it
     // drops the interface to the floor, the next substep grows it back,
     // and the door's hot flow follows. The midpoint is the steady height,
-    // the same mean the floor gauge already publishes.
+    // the same mean the floor gauge already publishes. That move does not
+    // cross a vent, so the upper temperature is refit to the kilograms the
+    // book had already balanced. A room that then sits exactly on the
+    // floor still cannot move the interface to the mass the vents
+    // balanced; a shaft refits that remainder below, and that fit wins.
+    const zBooked = z;
     if (
       zStart < INTERFACE_FLOOR_M + 0.003 &&
-      z < INTERFACE_FLOOR_M + 0.003 &&
-      Math.abs(z - zStart) > 1e-6
+      zBooked < INTERFACE_FLOOR_M + 0.003 &&
+      Math.abs(zBooked - zStart) > 1e-6
     ) {
-      z = 0.5 * (z + zStart);
+      z = 0.5 * (zBooked + zStart);
+      const kept = gasMassKg(spec, zBooked, temp, lower);
+      const fitted = upperTemperatureForMassKg(spec, z, lower, kept);
+      if (fitted != null) temp = fitted;
     }
     if (spec.vents.some((vent) => vent.shaft) && z <= INTERFACE_FLOOR_M + 1e-9) {
       const net =
@@ -3791,6 +3844,7 @@ function stepZoneNow(
       upperO2: yU,
       ...(lower > AMBIENT_K + 1e-3 ? { lowerK: lower } : {}),
       ...(sheets ? { sheetK: sheets } : {}),
+      lastBurnFraction: lastFraction,
     },
     ventedSootG: vented,
     bareSootG,
