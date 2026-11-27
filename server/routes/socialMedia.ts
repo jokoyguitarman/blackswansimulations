@@ -20,7 +20,7 @@ import {
   generateVideoThumbnail,
   getImageStyleForFormat,
 } from '../services/mediaGenerationService.js';
-import { evaluateConditionKey } from '../services/conditionEvaluatorService.js';
+import { describeConditionKey } from '../services/conditionEvaluatorService.js';
 import { buildConditionEvaluationContext } from '../services/conditions/conditionContextService.js';
 import {
   attributeEmailHandling,
@@ -1326,6 +1326,11 @@ router.post(
           createdAt:
             typeof email.created_at === 'string' ? email.created_at : new Date().toISOString(),
           actorRole: user.role,
+          forwardRecipientTeams: forwarded_email_id
+            ? playerRecipients
+                .map((player) => player.team_name)
+                .filter((team): team is string => !!team)
+            : undefined,
         });
       } catch (err) {
         logger.warn({ err, emailId: email.id }, 'Failed to attribute email handling');
@@ -2825,10 +2830,10 @@ router.get(
           threshold = Math.max(1, condAppear.threshold ?? 1);
         }
 
-        const conditions = keys.map((key) => ({
-          key,
-          met: evaluateConditionKey(key, evalContext),
-        }));
+        const conditions = keys.map((key) => {
+          const described = describeConditionKey(key, evalContext);
+          return { key, met: described.met, label: described.label, detail: described.detail };
+        });
 
         const metCount = conditions.filter((c) => c.met).length;
 

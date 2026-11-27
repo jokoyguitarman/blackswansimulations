@@ -41,6 +41,8 @@ import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/ca
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
 import { loadCommsState } from './ledger/injectLedgerService.js';
 import { sweepCalls } from './calls/callService.js';
+import { selectPublishable } from './conditions/commsConditionsCore.js';
+import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /** Sessions for which the decision-template dormancy notice has been logged (once per process). */
@@ -976,6 +978,14 @@ export class InjectSchedulerService {
           },
         );
 
+        const ready: Array<{
+          condInject: (typeof condInjects)[number];
+          id: string;
+          severity: string | null;
+          eligible_after_minutes: number | null;
+          inject_key: string;
+        }> = [];
+
         for (const condInject of condInjects) {
           const result = evaluateInjectConditions(
             condInject.conditions_to_appear as ConditionsToAppear | null,
@@ -998,111 +1008,143 @@ export class InjectSchedulerService {
           }
 
           if (result.status === 'appear_met') {
-            if (!this.io) {
-              const { io } = await import('../index.js');
-              this.io = io;
-            }
+            const deliveryConfig =
+              (condInject as { delivery_config?: { inject_key?: unknown } | null })
+                .delivery_config ?? null;
+            ready.push({
+              condInject,
+              id: condInject.id,
+              severity: (condInject.severity as string | null) ?? null,
+              eligible_after_minutes:
+                (condInject as { eligible_after_minutes?: number | null }).eligible_after_minutes ??
+                null,
+              inject_key: injectKeyOf({ id: condInject.id, delivery_config: deliveryConfig }),
+            });
+          }
+        }
 
-            const stakeholderGate = await this.applyStakeholderGate(
-              session,
+        const selected = selectPublishable(ready, env.conditionPublishMaxPerTick);
+        for (const deferred of selected.deferred) {
+          logger.info(
+            {
+              event: 'condition_publish_deferred',
+              sessionId: session.id,
+              injectId: deferred.id,
+              injectKey: deferred.inject_key,
+            },
+            'Conditional inject deferred to a later tick',
+          );
+        }
+
+        for (const item of selected.publish) {
+          const condInject = item.condInject;
+          if (publishedInjectIds.has(condInject.id) || cancelledInjectIds.has(condInject.id)) {
+            continue;
+          }
+          if (!this.io) {
+            const { io } = await import('../index.js');
+            this.io = io;
+          }
+
+          const stakeholderGate = await this.applyStakeholderGate(
+            session,
+            {
+              id: condInject.id,
+              trigger_time_minutes: null,
+              title: condInject.title ?? null,
+              content: condInject.content as string | undefined,
+              type: (condInject as { type?: string | null }).type ?? null,
+              severity: condInject.severity as string | null,
+              target_teams: condInject.target_teams as string[] | null,
+              inject_scope: condInject.inject_scope as string | null,
+              delivery_config:
+                (condInject as { delivery_config?: Record<string, unknown> | null })
+                  .delivery_config ?? null,
+            },
+            elapsedMinutes,
+            publishedInjectIds,
+            cancelledInjectIds,
+          );
+          if (stakeholderGate === 'handled') continue;
+
+          const gate = cancellationGateFor({
+            simMode: session.sim_mode,
+            boothWorld,
+            socialInjectCancelGate: env.socialInjectCancelGate,
+            stakeholderPublishAsIs: stakeholderGate === 'publish_as_is',
+          });
+          let cancelled = false;
+          if (gate === 'social') {
+            const { data: playerActions } = await supabaseAdmin
+              .from('player_actions')
+              .select('action_type, content, created_at, metadata')
+              .eq('session_id', session.id)
+              .order('created_at', { ascending: false })
+              .limit(30);
+            const sentiment = await computeSessionSentiment(session.id);
+            const { count: pendingCount } = await supabaseAdmin
+              .from('social_posts')
+              .select('id', { count: 'exact', head: true })
+              .eq('session_id', session.id)
+              .eq('requires_response', true)
+              .is('responded_at', null);
+            const researchGuidelines =
+              ((session.current_state as Record<string, unknown>)?.research_guidelines as Record<
+                string,
+                unknown
+              >) || undefined;
+            const socialResult = await shouldCancelSocialInject(
+              {
+                title: condInject.title ?? '',
+                content: (condInject.content as string | undefined) ?? '',
+              },
+              (playerActions || []).map((a) => ({
+                action_type: a.action_type as string,
+                content: a.content as string | null,
+                created_at: a.created_at as string,
+                metadata: (a.metadata || {}) as Record<string, unknown>,
+              })),
+              sentiment,
+              pendingCount ?? 0,
+              researchGuidelines as Parameters<typeof shouldCancelSocialInject>[4],
+            );
+            cancelled = socialResult.cancel;
+          } else if (gate === 'warroom') {
+            cancelled = await runAiCancellationGate(
               {
                 id: condInject.id,
-                trigger_time_minutes: null,
                 title: condInject.title ?? null,
                 content: condInject.content as string | undefined,
-                type: (condInject as { type?: string | null }).type ?? null,
-                severity: condInject.severity as string | null,
                 target_teams: condInject.target_teams as string[] | null,
+                severity: condInject.severity as string | null,
                 inject_scope: condInject.inject_scope as string | null,
-                delivery_config:
-                  (condInject as { delivery_config?: Record<string, unknown> | null })
-                    .delivery_config ?? null,
               },
-              elapsedMinutes,
-              publishedInjectIds,
-              cancelledInjectIds,
-            );
-            if (stakeholderGate === 'handled') continue;
-
-            const gate = cancellationGateFor({
-              simMode: session.sim_mode,
-              boothWorld,
-              socialInjectCancelGate: env.socialInjectCancelGate,
-              stakeholderPublishAsIs: stakeholderGate === 'publish_as_is',
-            });
-            let cancelled = false;
-            if (gate === 'social') {
-              const { data: playerActions } = await supabaseAdmin
-                .from('player_actions')
-                .select('action_type, content, created_at, metadata')
-                .eq('session_id', session.id)
-                .order('created_at', { ascending: false })
-                .limit(30);
-              const sentiment = await computeSessionSentiment(session.id);
-              const { count: pendingCount } = await supabaseAdmin
-                .from('social_posts')
-                .select('id', { count: 'exact', head: true })
-                .eq('session_id', session.id)
-                .eq('requires_response', true)
-                .is('responded_at', null);
-              const researchGuidelines =
-                ((session.current_state as Record<string, unknown>)?.research_guidelines as Record<
-                  string,
-                  unknown
-                >) || undefined;
-              const socialResult = await shouldCancelSocialInject(
-                {
-                  title: condInject.title ?? '',
-                  content: (condInject.content as string | undefined) ?? '',
-                },
-                (playerActions || []).map((a) => ({
-                  action_type: a.action_type as string,
-                  content: a.content as string | null,
-                  created_at: a.created_at as string,
-                  metadata: (a.metadata || {}) as Record<string, unknown>,
-                })),
-                sentiment,
-                pendingCount ?? 0,
-                researchGuidelines as Parameters<typeof shouldCancelSocialInject>[4],
-              );
-              cancelled = socialResult.cancel;
-            } else if (gate === 'warroom') {
-              cancelled = await runAiCancellationGate(
-                {
-                  id: condInject.id,
-                  title: condInject.title ?? null,
-                  content: condInject.content as string | undefined,
-                  target_teams: condInject.target_teams as string[] | null,
-                  severity: condInject.severity as string | null,
-                  inject_scope: condInject.inject_scope as string | null,
-                },
-                {
-                  id: session.id,
-                  scenario_id: session.scenario_id,
-                  trainer_id: session.trainer_id,
-                  sim_mode: session.sim_mode,
-                },
-                allDecisionsForAi,
-                userIdToTeam,
-                this.io,
-              );
-            }
-            if (cancelled) continue;
-
-            logger.info(
               {
-                sessionId: session.id,
-                injectId: condInject.id,
-                injectTitle: condInject.title,
-                elapsedMinutes,
+                id: session.id,
+                scenario_id: session.scenario_id,
+                trainer_id: session.trainer_id,
+                sim_mode: session.sim_mode,
               },
-              'Auto-publishing condition-based inject',
+              allDecisionsForAi,
+              userIdToTeam,
+              this.io,
             );
-
-            await publishInjectToSession(condInject.id, session.id, session.trainer_id, this.io);
-            publishedInjectIds.add(condInject.id);
-            timing.published++;
           }
+          if (cancelled) continue;
+
+          logger.info(
+            {
+              sessionId: session.id,
+              injectId: condInject.id,
+              injectTitle: condInject.title,
+              elapsedMinutes,
+            },
+            'Auto-publishing condition-based inject',
+          );
+
+          await publishInjectToSession(condInject.id, session.id, session.trainer_id, this.io);
+          publishedInjectIds.add(condInject.id);
+          timing.published++;
         }
       }
     } catch (condErr) {

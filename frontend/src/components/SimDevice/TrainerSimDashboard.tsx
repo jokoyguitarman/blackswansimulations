@@ -513,7 +513,7 @@ interface OrchestrationInject {
   severity: string;
   status: 'published' | 'cancelled' | 'eligible' | 'waiting';
   published_at?: string;
-  conditions: Array<{ key: string; met: boolean }>;
+  conditions: Array<{ key: string; met: boolean; label?: string; detail?: string }>;
   met_count: number;
   total_count: number;
   mode: 'all' | 'threshold';
@@ -570,7 +570,8 @@ const CONDITION_LABELS: Record<string, string> = {
   player_posted_personal_story: 'Personal story posted',
 };
 
-function conditionLabel(key: string): string {
+function conditionLabel(key: string, apiLabel?: string): string {
+  if (apiLabel && apiLabel.trim()) return apiLabel;
   if (key.startsWith('intel_shared:')) {
     return `Intel shared: ${key.slice('intel_shared:'.length).replace(/_/g, ' ')}`;
   }
@@ -994,12 +995,17 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
                 style={{ backgroundColor: '#FAF8F4', border: '1px solid #E4DFD4' }}
               >
                 {inj.conditions.map((c) => (
-                  <div key={c.key} className="flex items-center gap-2">
+                  <div key={c.key} className="flex items-start gap-2">
                     <span style={{ color: c.met ? '#15803D' : '#B91C1C', fontSize: 11 }}>
                       {c.met ? '✓' : '✗'}
                     </span>
                     <span className="text-[11px]" style={{ color: c.met ? '#172033' : '#64748b' }}>
-                      {conditionLabel(c.key)}
+                      <span className="block">{conditionLabel(c.key, c.label)}</span>
+                      {c.detail ? (
+                        <span className="block text-[10px]" style={{ color: '#64748b' }}>
+                          {c.detail}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 ))}

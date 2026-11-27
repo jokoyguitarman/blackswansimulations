@@ -31,8 +31,11 @@ import { canEditScenario } from '../services/scenarioEditService.js';
 import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
 import {
   collectConditionKeys,
+  CONDITION_CATALOG,
+  slugifyTeamName,
   unknownConditionKeys,
 } from '../services/conditions/conditionCatalog.js';
+import { isValidInjectKey } from '../lib/injectKey.js';
 import {
   triggerShapeForPatch,
   validateInjectTriggerShape,
@@ -356,6 +359,107 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+function denyUnlessTrainer(req: AuthenticatedRequest, res: Response): boolean {
+  const user = req.user!;
+  if (user.role !== 'trainer' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Access denied' });
+    return true;
+  }
+  return false;
+}
+
+// Full condition catalogue. Registered before /:id so the slug is not captured as an id.
+router.get('/condition-catalog', requireAuth, (req: AuthenticatedRequest, res) => {
+  if (denyUnlessTrainer(req, res)) return;
+  res.json({ data: CONDITION_CATALOG });
+});
+
+router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (denyUnlessTrainer(req, res)) return;
+    const { id } = req.params;
+    const { data: scenario, error } = await supabaseAdmin
+      .from('scenarios')
+      .select('id, initial_state')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      logger.error(
+        { error, scenarioId: id },
+        'Failed to load scenario for the condition catalogue',
+      );
+      return res.status(500).json({ error: 'Failed to load scenario' });
+    }
+    if (!scenario) return res.status(404).json({ error: 'Scenario not found' });
+
+    const { data: injects, error: injectError } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('id, title, delivery_config')
+      .eq('scenario_id', id)
+      .is('session_id', null);
+    if (injectError) {
+      logger.error(
+        { error: injectError, scenarioId: id },
+        'Failed to load injects for the condition catalogue',
+      );
+      return res.status(500).json({ error: 'Failed to load injects' });
+    }
+
+    const { data: teams, error: teamError } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', id)
+      .order('team_name', { ascending: true });
+    if (teamError) {
+      logger.error(
+        { error: teamError, scenarioId: id },
+        'Failed to load teams for the condition catalogue',
+      );
+      return res.status(500).json({ error: 'Failed to load teams' });
+    }
+
+    const initial = scenario.initial_state as { stakeholders?: unknown } | null;
+    const stakeholders = Array.isArray(initial?.stakeholders)
+      ? initial.stakeholders.flatMap((raw) => {
+          if (!raw || typeof raw !== 'object') return [];
+          const row = raw as { id?: unknown; name?: unknown };
+          if (typeof row.id !== 'string') return [];
+          return [{ id: row.id, name: typeof row.name === 'string' ? row.name : row.id }];
+        })
+      : [];
+
+    const inject_keys = (injects ?? []).flatMap((row) => {
+      const config = row.delivery_config as { inject_key?: unknown; app?: unknown } | null;
+      const injectKey = config?.inject_key;
+      if (typeof injectKey !== 'string' || !isValidInjectKey(injectKey)) return [];
+      return [
+        {
+          inject_key: injectKey,
+          title: typeof row.title === 'string' ? row.title : '',
+          app: typeof config?.app === 'string' ? config.app : '',
+          inject_id: row.id,
+        },
+      ];
+    });
+
+    return res.json({
+      data: {
+        defs: CONDITION_CATALOG,
+        inject_keys,
+        stakeholders,
+        teams: (teams ?? []).flatMap((row) => {
+          const name = typeof row.team_name === 'string' ? row.team_name : '';
+          if (!name) return [];
+          return [{ name, slug: slugifyTeamName(name) }];
+        }),
+      },
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/condition-catalog');
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
