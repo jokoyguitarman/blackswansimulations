@@ -27,6 +27,7 @@ export interface CommsDelivery {
   call_state: string | null;
   call_group_id: string | null;
   attempt_no: number;
+  chain_root_delivery_id?: string | null;
   chain_root_key: string | null;
   chain_step: number | null;
   urgency: string | null;
@@ -47,13 +48,49 @@ export interface CommsDelivery {
     attribution: string;
     judgement_status: string;
     judgement: JudgementV1 | null;
+    meta?: Record<string, unknown>;
   }>;
+}
+
+export interface StakeholderContactSummary {
+  first_minute: number;
+  channels: string[];
+}
+
+export interface ActionCountBucket {
+  action_type: string;
+  /** Slug of team_at_action. Null when the action had no team. */
+  team_slug: string | null;
+  count: number;
+  first_minute: number;
 }
 
 export interface CommsState {
   by_key: Record<string, CommsDelivery[]>;
   generated_at_minute: number;
   truncated: boolean;
+  /**
+   * False when `sim_calls` does not exist. Unset means the caller handed in
+   * deliveries directly (tests) and call keys may be evaluated.
+   */
+  calls_available?: boolean;
+  stakeholder_contacts?: Record<string, StakeholderContactSummary>;
+  /** Latest reconsideration verdict per stakeholder. */
+  stakeholder_verdicts?: Record<string, string>;
+  /** First session minute an email_sent reached this stakeholder. */
+  email_sent_minutes?: Record<string, number>;
+  action_counts?: ActionCountBucket[];
+  /**
+   * False when the action, email, or contact read failed or the table is missing.
+   * Unset means the read succeeded, or the caller supplied the facts directly.
+   */
+  action_facts_known?: boolean;
+  email_facts_known?: boolean;
+  contact_facts_known?: boolean;
+  /** True when a read hit its cap, so absence cannot be proved. */
+  action_counts_truncated?: boolean;
+  email_facts_truncated?: boolean;
+  contact_facts_truncated?: boolean;
 }
 
 export const COMMS_DELIVERY_CAP = 2000;
@@ -355,6 +392,7 @@ export interface LedgerDeliveryRow {
   call_state?: string | null;
   call_group_id?: string | null;
   attempt_no?: number | null;
+  chain_root_delivery_id?: string | null;
   chain_root_key?: string | null;
   chain_step?: number | null;
   urgency?: string | null;
@@ -374,11 +412,17 @@ export interface LedgerResponseRow {
   judgement_status?: string | null;
   judgement?: unknown;
   responded_at?: string | null;
+  meta?: unknown;
 }
 
 function asJudgement(value: unknown): JudgementV1 | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as JudgementV1;
+}
+
+function responseMeta(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
 }
 
 function newestFirst<T extends { at?: string | null; minute: number; id: string }>(
@@ -489,6 +533,7 @@ export function buildCommsState(args: {
       call_state: row.call_state ?? null,
       call_group_id: row.call_group_id ?? null,
       attempt_no: row.attempt_no ?? 1,
+      chain_root_delivery_id: row.chain_root_delivery_id ?? null,
       chain_root_key: row.chain_root_key ?? null,
       chain_step: row.chain_step ?? null,
       urgency: row.urgency ?? null,
@@ -497,15 +542,19 @@ export function buildCommsState(args: {
       first_response_minute: firstMinute,
       first_response_team: firstTeam,
       first_response_by_team: firstResponseByTeam,
-      responses: responsesForDelivery.map((response) => ({
-        minute: response.response_minute,
-        team: response.team_name ?? null,
-        user_id: response.user_id ?? null,
-        is_bot: response.is_bot === true,
-        attribution: response.attribution,
-        judgement_status: response.judgement_status ?? 'pending',
-        judgement: asJudgement(response.judgement),
-      })),
+      responses: responsesForDelivery.map((response) => {
+        const meta = responseMeta(response.meta);
+        return {
+          minute: response.response_minute,
+          team: response.team_name ?? null,
+          user_id: response.user_id ?? null,
+          is_bot: response.is_bot === true,
+          attribution: response.attribution,
+          judgement_status: response.judgement_status ?? 'pending',
+          judgement: asJudgement(response.judgement),
+          ...(meta ? { meta } : {}),
+        };
+      }),
     };
   });
 

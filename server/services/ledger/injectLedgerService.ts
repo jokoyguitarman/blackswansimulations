@@ -29,7 +29,16 @@ import {
   type LedgerDeliveryRow,
   type LedgerResponseRow,
 } from './injectLedgerCore.js';
-import { failLedger, ledgerTablesMissing } from './ledgerSchema.js';
+import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
+import { slugifyTeamName } from '../conditions/conditionCatalog.js';
+import {
+  firstEmailMinuteByStakeholder,
+  summariseActionCounts,
+  summariseStakeholderContacts,
+  type PlayerActionFact,
+  type StakeholderContactRow,
+} from '../conditions/commsConditionsCore.js';
+import type { ActionCountBucket } from './injectLedgerCore.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -122,7 +131,7 @@ interface SessionClock {
 }
 
 const DELIVERY_COLUMNS =
-  'id, inject_id, inject_key, channel, delivered_minute, delivered_at, recipient_teams, recipient_user_ids, stakeholder_id, call_state, call_group_id, attempt_no, chain_root_key, chain_step, urgency, mood_rung, first_opened_at, first_response_minute, first_response_team, ref_id, chat_channel_id, thread_id, response_window_minutes, first_response_at';
+  'id, inject_id, inject_key, channel, delivered_minute, delivered_at, recipient_teams, recipient_user_ids, stakeholder_id, call_state, call_group_id, attempt_no, chain_root_delivery_id, chain_root_key, chain_step, urgency, mood_rung, first_opened_at, first_response_minute, first_response_team, ref_id, chat_channel_id, thread_id, response_window_minutes, first_response_at';
 
 export async function recordDelivery(input: RecordDeliveryInput): Promise<string | null> {
   if (ledgerTablesMissing()) return null;
@@ -338,7 +347,9 @@ export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,
 ): Promise<CommsState> {
-  if (ledgerTablesMissing()) return emptyCommsState(elapsedMinutes);
+  if (ledgerTablesMissing()) {
+    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+  }
   try {
     const [deliveriesResult, responsesResult, clock] = await Promise.all([
       supabaseAdmin
@@ -350,7 +361,7 @@ export async function loadCommsState(
       supabaseAdmin
         .from('inject_responses')
         .select(
-          'delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at',
+          'delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, meta',
         )
         .eq('session_id', sessionId)
         .order('responded_at', { ascending: false })
@@ -358,21 +369,407 @@ export async function loadCommsState(
       loadSessionClock(sessionId),
     ]);
     if (failLedger(deliveriesResult.error, 'loadCommsState.deliveries')) {
-      return emptyCommsState(elapsedMinutes);
+      return attachCommsFacts(
+        sessionId,
+        elapsedMinutes,
+        clock.startTime,
+        emptyCommsState(elapsedMinutes),
+      );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
-      return emptyCommsState(elapsedMinutes);
+      return attachCommsFacts(
+        sessionId,
+        elapsedMinutes,
+        clock.startTime,
+        emptyCommsState(elapsedMinutes),
+      );
     }
-    return buildCommsState({
+    const built = buildCommsState({
       deliveries: (deliveriesResult.data ?? []) as LedgerDeliveryRow[],
       responses: (responsesResult.data ?? []) as LedgerResponseRow[],
       elapsedMinutes,
       sessionStartedAt: clock.startTime,
       countBots: env.injectLedgerCountBots,
     });
+    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built);
   } catch (err) {
     failLedger(err, 'loadCommsState');
-    return emptyCommsState(elapsedMinutes);
+    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+  }
+}
+
+const ACTION_FACT_CAP = 8000;
+const CONTACT_FACT_CAP = 5000;
+const factWarned = new Set<string>();
+
+function warnFactOnce(key: string, err: unknown, message: string): void {
+  if (factWarned.has(key)) return;
+  factWarned.add(key);
+  logger.warn({ err, event: key }, message);
+}
+
+let simCallsKnown: boolean | null = null;
+
+async function simCallsAvailable(): Promise<boolean> {
+  if (simCallsKnown != null) return simCallsKnown;
+  try {
+    const { error } = await supabaseAdmin.from('sim_calls').select('id').limit(1);
+    if (!error) {
+      simCallsKnown = true;
+      return true;
+    }
+    if (isLedgerSchemaMissing(error)) {
+      simCallsKnown = false;
+      warnFactOnce(
+        'sim_calls_unavailable',
+        error,
+        'Call condition keys stay false until sim_calls exists',
+      );
+      return false;
+    }
+    warnFactOnce(
+      'sim_calls_probe_failed',
+      error,
+      'Call condition keys stay false; sim_calls could not be read',
+    );
+    return false;
+  } catch (err) {
+    warnFactOnce(
+      'sim_calls_probe_failed',
+      err,
+      'Call condition keys stay false; sim_calls could not be read',
+    );
+    return false;
+  }
+}
+
+async function attachCommsFacts(
+  sessionId: string,
+  elapsedMinutes: number,
+  startTime: string | null,
+  state: CommsState,
+): Promise<CommsState> {
+  try {
+    const clockStart = startTime ?? (await loadSessionClock(sessionId)).startTime;
+    const [contacts, verdicts, actions, stakeholders, callsAvailable] = await Promise.all([
+      loadPlayerContacts(sessionId),
+      loadLatestVerdicts(sessionId),
+      loadActionCounts(sessionId, clockStart),
+      loadScenarioStakeholders(sessionId),
+      simCallsAvailable(),
+    ]);
+    const email = actions.email ?? (await loadEmailSentFacts(sessionId));
+    const emailKnown = email.known && stakeholders.known && actions.known;
+    return {
+      ...state,
+      calls_available: callsAvailable,
+      stakeholder_contacts: contacts.known
+        ? summariseStakeholderContacts(contacts.rows, clockStart)
+        : {},
+      contact_facts_known: contacts.known,
+      contact_facts_truncated: contacts.truncated,
+      stakeholder_verdicts: verdicts,
+      email_sent_minutes: emailKnown
+        ? firstEmailMinuteByStakeholder(email.rows, stakeholders.stakeholders, clockStart)
+        : {},
+      email_facts_known: emailKnown,
+      email_facts_truncated: emailKnown && email.truncated,
+      action_counts: actions.known ? actions.counts : [],
+      action_facts_known: actions.known,
+      action_counts_truncated: actions.known && actions.truncated,
+    };
+  } catch (err) {
+    warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');
+    return {
+      ...state,
+      calls_available: false,
+      action_facts_known: false,
+      email_facts_known: false,
+      contact_facts_known: false,
+    };
+  }
+}
+
+async function loadPlayerContacts(sessionId: string): Promise<{
+  rows: StakeholderContactRow[];
+  known: boolean;
+  truncated: boolean;
+}> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('stakeholder_conversations')
+      .select('stakeholder_id, channel, created_at')
+      .eq('session_id', sessionId)
+      .eq('direction', 'player')
+      .order('created_at', { ascending: true })
+      .limit(CONTACT_FACT_CAP + 1);
+    if (error) {
+      warnFactOnce(
+        'stakeholder_contacts_unavailable',
+        error,
+        'Stakeholder contact conditions are off for this process',
+      );
+      return { rows: [], known: false, truncated: false };
+    }
+    const rows = (data ?? []) as StakeholderContactRow[];
+    if (rows.length > CONTACT_FACT_CAP) {
+      warnFactOnce(
+        'stakeholder_contacts_truncated',
+        null,
+        'Stakeholder contact history exceeded the condition-key cap; absence keys stay false',
+      );
+      return { rows: rows.slice(0, CONTACT_FACT_CAP), known: true, truncated: true };
+    }
+    return { rows, known: true, truncated: false };
+  } catch (err) {
+    warnFactOnce(
+      'stakeholder_contacts_unavailable',
+      err,
+      'Stakeholder contact conditions are off for this process',
+    );
+    return { rows: [], known: false, truncated: false };
+  }
+}
+
+async function loadLatestVerdicts(sessionId: string): Promise<Record<string, string>> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inject_verdicts')
+      .select('stakeholder_id, verdict, created_at')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(2000);
+    if (error) {
+      warnFactOnce(
+        'stakeholder_verdicts_unavailable',
+        error,
+        'Stakeholder verdict conditions are off for this process',
+      );
+      return {};
+    }
+    const verdicts: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const id = typeof row.stakeholder_id === 'string' ? row.stakeholder_id : '';
+      if (!id || verdicts[id]) continue;
+      verdicts[id] = typeof row.verdict === 'string' ? row.verdict : '';
+    }
+    return verdicts;
+  } catch (err) {
+    warnFactOnce(
+      'stakeholder_verdicts_unavailable',
+      err,
+      'Stakeholder verdict conditions are off for this process',
+    );
+    return {};
+  }
+}
+
+interface ActionCountLoad {
+  counts: ActionCountBucket[];
+  known: boolean;
+  truncated: boolean;
+  /** Set when the grouped query was unavailable and the row scan already loaded email rows. */
+  email?: { rows: PlayerActionFact[]; known: boolean; truncated: boolean };
+}
+
+async function loadActionCounts(
+  sessionId: string,
+  startTime: string | null,
+): Promise<ActionCountLoad> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('action_type, team_at_action, count:id.count(), first_at:created_at.min()')
+      .eq('session_id', sessionId);
+    if (!error) {
+      return {
+        counts: bucketsFromActionAggregate(
+          (data ?? []) as Array<Record<string, unknown>>,
+          startTime,
+        ),
+        known: true,
+        truncated: false,
+      };
+    }
+    if (isLedgerSchemaMissing(error)) {
+      warnFactOnce(
+        'action_counts_unavailable',
+        error,
+        'Action-count conditions are off for this process',
+      );
+      return {
+        counts: [],
+        known: false,
+        truncated: false,
+        email: { rows: [], known: false, truncated: false },
+      };
+    }
+    warnFactOnce(
+      'action_count_aggregate_failed',
+      error,
+      'Grouped action counts failed; scanning player_actions instead',
+    );
+  } catch (err) {
+    warnFactOnce(
+      'action_count_aggregate_failed',
+      err,
+      'Grouped action counts failed; scanning player_actions instead',
+    );
+  }
+  return scanActionRows(sessionId, startTime);
+}
+
+function bucketsFromActionAggregate(
+  rows: readonly Record<string, unknown>[],
+  startTime: string | null,
+): ActionCountBucket[] {
+  const buckets: ActionCountBucket[] = [];
+  for (const row of rows) {
+    const actionType = typeof row.action_type === 'string' ? row.action_type : '';
+    if (!actionType) continue;
+    const teamRaw = typeof row.team_at_action === 'string' ? row.team_at_action : '';
+    const count = Number(row.count);
+    const firstAt = typeof row.first_at === 'string' ? row.first_at : '';
+    buckets.push({
+      action_type: actionType,
+      team_slug: teamRaw ? slugifyTeamName(teamRaw) || null : null,
+      count: Number.isFinite(count) ? count : 0,
+      first_minute: firstAt ? sessionMinuteAt(startTime, firstAt) : 0,
+    });
+  }
+  return buckets;
+}
+
+async function scanActionRows(
+  sessionId: string,
+  startTime: string | null,
+): Promise<ActionCountLoad> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('action_type, team_at_action, created_at, metadata')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .limit(ACTION_FACT_CAP + 1);
+    if (error) {
+      warnFactOnce(
+        'action_counts_unavailable',
+        error,
+        'Action-count conditions are off for this process',
+      );
+      return {
+        counts: [],
+        known: false,
+        truncated: false,
+        email: { rows: [], known: false, truncated: false },
+      };
+    }
+    const rows = (data ?? []) as PlayerActionFact[];
+    const truncated = rows.length > ACTION_FACT_CAP;
+    const kept = truncated ? rows.slice(0, ACTION_FACT_CAP) : rows;
+    if (truncated) {
+      warnFactOnce(
+        'action_counts_truncated',
+        null,
+        'Action history exceeded the condition-key cap; absence keys stay false',
+      );
+    }
+    return {
+      counts: summariseActionCounts(kept, startTime),
+      known: true,
+      truncated,
+      email: {
+        rows: kept.filter((row) => row.action_type === 'email_sent'),
+        known: true,
+        truncated,
+      },
+    };
+  } catch (err) {
+    warnFactOnce(
+      'action_counts_unavailable',
+      err,
+      'Action-count conditions are off for this process',
+    );
+    return {
+      counts: [],
+      known: false,
+      truncated: false,
+      email: { rows: [], known: false, truncated: false },
+    };
+  }
+}
+
+async function loadEmailSentFacts(
+  sessionId: string,
+): Promise<{ rows: PlayerActionFact[]; known: boolean; truncated: boolean }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('action_type, team_at_action, created_at, metadata')
+      .eq('session_id', sessionId)
+      .eq('action_type', 'email_sent')
+      .order('created_at', { ascending: true })
+      .limit(ACTION_FACT_CAP + 1);
+    if (error) {
+      warnFactOnce(
+        'email_facts_unavailable',
+        error,
+        'Email condition keys are off for this process',
+      );
+      return { rows: [], known: false, truncated: false };
+    }
+    const rows = (data ?? []) as PlayerActionFact[];
+    if (rows.length > ACTION_FACT_CAP) {
+      warnFactOnce(
+        'email_facts_truncated',
+        null,
+        'Email history exceeded the condition-key cap; absence keys stay false',
+      );
+      return { rows: rows.slice(0, ACTION_FACT_CAP), known: true, truncated: true };
+    }
+    return { rows, known: true, truncated: false };
+  } catch (err) {
+    warnFactOnce('email_facts_unavailable', err, 'Email condition keys are off for this process');
+    return { rows: [], known: false, truncated: false };
+  }
+}
+
+async function loadScenarioStakeholders(sessionId: string): Promise<{
+  stakeholders: Array<{ id: string; email?: string | null }>;
+  known: boolean;
+}> {
+  try {
+    const { data: session, error } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (error) return { stakeholders: [], known: false };
+    if (!session?.scenario_id) return { stakeholders: [], known: true };
+    const { data: scenario, error: scenarioError } = await supabaseAdmin
+      .from('scenarios')
+      .select('initial_state')
+      .eq('id', session.scenario_id as string)
+      .maybeSingle();
+    if (scenarioError) return { stakeholders: [], known: false };
+    if (!scenario) return { stakeholders: [], known: true };
+    const initial = scenario.initial_state as { stakeholders?: unknown } | null;
+    if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
+    const stakeholders: Array<{ id: string; email?: string | null }> = [];
+    for (const raw of initial.stakeholders) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as { id?: unknown; email?: unknown };
+      if (typeof row.id !== 'string') continue;
+      stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
+    }
+    return { stakeholders, known: true };
+  } catch (err) {
+    warnFactOnce(
+      'stakeholder_roster_unavailable',
+      err,
+      'Email-to-stakeholder conditions are off for this process',
+    );
+    return { stakeholders: [], known: false };
   }
 }
 
@@ -541,6 +938,7 @@ export async function attributeEmailHandling(input: {
   forwardedEmailId: string | null;
   createdAt: string;
   actorRole?: string | null;
+  forwardRecipientTeams?: string[] | null;
 }): Promise<void> {
   if (ledgerTablesMissing()) return;
   if (!input.repliedToId && !input.forwardedEmailId) return;
@@ -555,8 +953,11 @@ export async function attributeEmailHandling(input: {
     const lookupIds = new Set<string>(starts);
     for (const startId of starts) lookupIds.add(resolveEmailRootId(emails, startId));
     const deliveries = await loadEmailDeliveries(input.sessionId, [...lookupIds]);
-    const resolved: Array<{ deliveryId: string; attribution: 'email_reply' | 'email_forward' }> =
-      [];
+    const resolved: Array<{
+      deliveryId: string;
+      attribution: 'email_reply' | 'email_forward';
+      meta?: Record<string, unknown>;
+    }> = [];
     const seen = new Set<string>();
     if (input.repliedToId) {
       const root = resolveEmailRootId(emails, input.repliedToId);
@@ -570,7 +971,11 @@ export async function attributeEmailHandling(input: {
       const root = resolveEmailRootId(emails, input.forwardedEmailId);
       const deliveryId = matchEmailDelivery(deliveries, root, input.forwardedEmailId);
       if (deliveryId && !seen.has(deliveryId)) {
-        resolved.push({ deliveryId, attribution: 'email_forward' });
+        resolved.push({
+          deliveryId,
+          attribution: 'email_forward',
+          meta: { recipient_teams: input.forwardRecipientTeams ?? [] },
+        });
       }
     }
     const rows = await loadDeliveriesById(
@@ -672,7 +1077,11 @@ async function recordAttributed(
   },
   actor: Actor,
   rows: DeliveryRecord[],
-  attributions: Array<{ deliveryId: string; attribution: LedgerAttribution }>,
+  attributions: Array<{
+    deliveryId: string;
+    attribution: LedgerAttribution;
+    meta?: Record<string, unknown>;
+  }>,
   refTable: string,
 ): Promise<void> {
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -691,6 +1100,7 @@ async function recordAttributed(
       teamName: actor.teamName,
       isBot: actor.isBot,
       attribution: attribution.attribution,
+      meta: attribution.meta,
       contentExcerpt: input.content,
       respondedAt: input.createdAt,
       responseMinute: actor.minute,

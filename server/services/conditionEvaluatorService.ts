@@ -6,7 +6,13 @@
  */
 
 import { logger } from '../lib/logger.js';
-import { isKnownConditionKey } from './conditions/conditionCatalog.js';
+import {
+  formatConditionLabel,
+  isKnownConditionKey,
+  parseConditionKey,
+} from './conditions/conditionCatalog.js';
+import { evaluateCommsKey, explainCommsKey } from './conditions/commsConditionsCore.js';
+import { emptyCommsState, type CommsState } from './ledger/injectLedgerCore.js';
 
 // ---------------------------------------------------------------------------
 // Types (contract with inject engine)
@@ -522,11 +528,23 @@ conditionRegistry.player_pinned_verified_update = (ctx) =>
 conditionRegistry.player_is_actively_moderating_hate_speech = (ctx) =>
   getSocialState(ctx).player_is_actively_moderating_hate_speech === true;
 
-conditionRegistry.player_message_is_consistent_across_channels = (ctx) =>
-  getSocialState(ctx).player_message_is_consistent_across_channels === true;
+conditionRegistry.player_message_is_consistent_across_channels = (ctx) => {
+  const score = consistencyScore(ctx);
+  const bothPlatforms = getSocialState(ctx).player_message_is_consistent_across_channels === true;
+  return score != null && score >= 70 && bothPlatforms;
+};
 
-conditionRegistry.player_message_inconsistent_across_channels = (ctx) =>
-  getSocialState(ctx).player_message_inconsistent_across_channels === true;
+conditionRegistry.player_message_inconsistent_across_channels = (ctx) => {
+  const score = consistencyScore(ctx);
+  return score != null && score < 40;
+};
+
+function consistencyScore(ctx: EvaluationContext): number | null {
+  const standards = ctx.currentState?.crisis_standards as
+    { consistency?: { score?: unknown } } | undefined;
+  const score = standards?.consistency?.score;
+  return typeof score === 'number' && Number.isFinite(score) ? score : null;
+}
 
 /** Keys with a hand-written evaluator. The catalogue must match this list. */
 export const REGISTERED_CONDITION_KEYS: readonly string[] = Object.keys(conditionRegistry);
@@ -558,7 +576,19 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
+function commsStateOf(context: EvaluationContext): CommsState {
+  const raw = context.currentState?.comms_state;
+  if (!raw || typeof raw !== 'object') return emptyCommsState(context.elapsedMinutes);
+  return raw as CommsState;
+}
+
 function evaluateKey(key: string, context: EvaluationContext): boolean {
+  const parsed = parseConditionKey(key);
+  if (!('error' in parsed)) {
+    const comms = evaluateCommsKey(parsed, commsStateOf(context), context.elapsedMinutes);
+    if (comms !== undefined) return comms;
+  }
+
   const prefixPathway = 'prior_pathway_outcome_fired:';
   if (key.startsWith(prefixPathway)) {
     const consequenceKey = key.slice(prefixPathway.length);
@@ -664,6 +694,31 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
  */
 export function evaluateConditionKey(key: string, context: EvaluationContext): boolean {
   return evaluateKey(key, context);
+}
+
+/** Label and a one-line explanation for the trainer orchestration panel. */
+export function describeConditionKey(
+  key: string,
+  context: EvaluationContext,
+): { met: boolean; label: string; detail: string } {
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed) return { met: false, label: key, detail: parsed.error };
+  const label = formatConditionLabel(parsed);
+  const explained = explainCommsKey(parsed, commsStateOf(context), context.elapsedMinutes);
+  if (explained) return { met: explained.met, label, detail: explained.detail };
+  const met = evaluateKey(key, context);
+  if (
+    parsed.def.id === 'player_message_is_consistent_across_channels' ||
+    parsed.def.id === 'player_message_inconsistent_across_channels'
+  ) {
+    const score = consistencyScore(context);
+    return {
+      met,
+      label,
+      detail: score == null ? 'No consistency score yet' : `Consistency score ${score}`,
+    };
+  }
+  return { met, label, detail: met ? 'Met' : 'Not met' };
 }
 
 /**

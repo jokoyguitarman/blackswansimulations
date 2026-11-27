@@ -58,6 +58,10 @@ describe('condition catalogue matches the evaluator', () => {
     ]) {
       assert.equal(ids.has(id), true, id);
     }
+    const inconsistent = deprecated.find(
+      (def) => def.id === 'player_message_inconsistent_across_channels',
+    );
+    assert.equal(inconsistent?.deprecated?.use, 'player_message_inconsistent_across_channels');
   });
 });
 

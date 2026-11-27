@@ -169,6 +169,8 @@ export const env = {
   realtimeMaxMinutesPerSession: envInt('REALTIME_MAX_MINUTES_PER_SESSION', 60),
   // Default "gave up" threshold for WP11. It does not block call-backs.
   callbackWindowMinutes: envInt('CALLBACK_WINDOW_MINUTES', 30),
+  // How many conditional injects one session may publish in a single scheduler tick.
+  conditionPublishMaxPerTick: envInt('CONDITION_PUBLISH_MAX_PER_TICK', 3),
   // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.
