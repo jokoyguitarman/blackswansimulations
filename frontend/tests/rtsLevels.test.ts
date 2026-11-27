@@ -818,21 +818,23 @@ describe('multi-floor crowd sensing and storey walls', () => {
     walls?: Array<Record<string, unknown> & { startX: number }>;
     stairs?: Stairwell[];
     counts: { G: number; L1: number };
+    groundExits?: ExitDef[];
   }) {
     const walls = (opts.walls ?? []) as unknown as Parameters<
       PolygonEvacuationEngine['setInteriorWalls']
     >[0];
     const byLevel = (id: string) =>
       walls.filter((wall) => ((wall as { level?: string }).level ?? 'G') === id);
+    const groundExits = opts.groundExits ?? [exitOn('out', 'G')];
     const eng = new PolygonEvacuationEngine(
       { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 0 },
-      [exitOn('out', 'G')],
+      groundExits,
       walls,
       [],
       { afterExit: 'zone', zones: [], seed: 2 },
       {
         ids: ['G', 'L1'],
-        exitsByLevel: { G: [exitOn('out', 'G')], L1: [] },
+        exitsByLevel: { G: groundExits, L1: [] },
         wallsByLevel: { G: byLevel('G'), L1: byLevel('L1') },
         stairs: opts.stairs ?? [],
         counts: opts.counts,
@@ -844,10 +846,13 @@ describe('multi-floor crowd sensing and storey walls', () => {
     return { eng, inner: eng as unknown as Inner };
   }
 
-  function burningAt(id: string, pos: Vec2) {
+  function burningAt(id: string, pos: Vec2, headTempC?: number) {
     return {
       stud: { id, simPos: pos, indoor: true },
-      state: [id, { smoke: 1, fire: { state: 'burning' } }] as const,
+      state: [
+        id,
+        { smoke: 1, fire: { state: 'burning' }, ...(headTempC != null ? { headTempC } : {}) },
+      ] as const,
     };
   }
 
@@ -895,9 +900,12 @@ describe('multi-floor crowd sensing and storey walls', () => {
     ped.state = 'evacuating';
     ped.nextCheckAt = 0;
     eng.step();
-    // The only stair stands in fire on this storey, so there is no route.
-    assert.equal(ped.targetStairId, null);
-    assert.equal(ped.sheltering, true);
+    // The only stair stands in fire on this storey, so no route has a finite
+    // cost. Blind to the field, it would be an ordinary walk to the stair.
+    // The fire carries no heat at the head here, so the crawl is survivable.
+    assert.equal(ped.targetStairId, 's');
+    assert.equal(ped.forcedCrawl, true);
+    assert.equal(ped.sheltering, false);
     eng.destroy();
   });
 
@@ -995,6 +1003,158 @@ describe('multi-floor crowd sensing and storey walls', () => {
     const body = inner.pedestrians[0];
     const ped = labelOf(body);
     Matter.Body.setPosition(body, { x: 35, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    assert.equal(ped.sheltering, true);
+    eng.destroy();
+  });
+
+  /** A full-height wall at x = 20, and two north doors: the nearer one behind it. */
+  const SPLIT_WALL = {
+    id: 'split',
+    startX: 20,
+    startY: 0,
+    endX: 20,
+    endY: 20,
+    hasDoor: false,
+    doorWidth: 0,
+    doorPosition: 0.5,
+    level: 'G',
+  };
+  function northDoor(id: string, x: number): ExitDef {
+    return { ...exitOn(id, 'G'), center: { x, y: 0 }, edgeIndex: 0, width: 1.2 };
+  }
+  const BOTH_DOORS_ON_FIRE = [burningAt('w', { x: 18, y: 2 }), burningAt('e', { x: 38, y: 2 })];
+
+  it('the forced crawl on one storey picks a door inside its walls, not the nearest', () => {
+    const { eng, inner } = twoStorey({
+      walls: [SPLIT_WALL],
+      counts: { G: 1, L1: 0 },
+      groundExits: [northDoor('west', 18), northDoor('east', 38)],
+    });
+    eng.setHazardFields(
+      new Map([
+        [
+          'G',
+          new HazardField(
+            BOTH_DOORS_ON_FIRE.map((f) => f.stud),
+            3,
+          ),
+        ],
+        ['L1', new HazardField([], 3)],
+      ]),
+    );
+    eng.setHazardStates(new Map(BOTH_DOORS_ON_FIRE.map((f) => f.state)));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 21, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    assert.equal(ped.forcedCrawl, true);
+    assert.equal(ped.targetExitId, 'east');
+    eng.destroy();
+  });
+
+  it('the single-floor forced crawl also picks a door inside its walls', () => {
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 1 },
+      [northDoor('west', 18), northDoor('east', 38)],
+      [SPLIT_WALL],
+      [],
+      { afterExit: 'zone', zones: [], seed: 2 },
+    );
+    const field = new HazardField(
+      BOTH_DOORS_ON_FIRE.map((f) => f.stud),
+      3,
+    );
+    eng.setHazardField(field);
+    eng.setHazardStates(new Map(BOTH_DOORS_ON_FIRE.map((f) => f.state)));
+    const body = (eng as unknown as Inner).pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 21, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    assert.equal(ped.forcedCrawl, true);
+    assert.equal(ped.targetExitId, 'east');
+    eng.destroy();
+  });
+
+  function upperDeadEnd(headTempC?: number, prep?: (ped: Label & Record<string, unknown>) => void) {
+    const { eng, inner } = twoStorey({
+      counts: { G: 0, L1: 1 },
+      stairs: [stairAt({ x: 10, y: 10 })],
+    });
+    // The ground door's inside approach is (2, 10): no finite route from L1.
+    const fire = burningAt('g', { x: 2, y: 10 }, headTempC);
+    eng.setHazardFields(
+      new Map([
+        ['G', new HazardField([fire.stud], 3)],
+        ['L1', new HazardField([], 3)],
+      ]),
+    );
+    eng.setHazardStates(new Map([fire.state]));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 20, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    prep?.(ped as Label & Record<string, unknown>);
+    eng.step();
+    return { eng, ped };
+  }
+
+  it('crawls down a stair to a reachable door when the crawl is survivable', () => {
+    const { eng, ped } = upperDeadEnd();
+    assert.equal(ped.sheltering, false);
+    assert.equal(ped.forcedCrawl, true);
+    assert.equal(ped.targetStairId, 's');
+    eng.destroy();
+  });
+
+  it('defends in place when the crawl down the stair would be lethal', () => {
+    // 300 °C at the head is an ISO 13571 heat FED of about 1.6 a minute.
+    const { eng, ped } = upperDeadEnd(300);
+    assert.equal(ped.sheltering, true);
+    assert.equal(ped.targetStairId, null);
+    eng.destroy();
+  });
+
+  it('keeps a stair crawl already under way until the projection is lethal', () => {
+    // 250 °C at the door projects about 0.8: too much to start, not enough to stop.
+    const fresh = upperDeadEnd(250);
+    assert.equal(fresh.ped.sheltering, true);
+    fresh.eng.destroy();
+    const underway = upperDeadEnd(250, (ped) => {
+      ped.forcedCrawl = true;
+      ped.targetStairId = 's';
+      ped.stairDir = 'down';
+      ped.stairToLevel = 'G';
+    });
+    assert.equal(underway.ped.sheltering, false);
+    assert.equal(underway.ped.targetStairId, 's');
+    underway.eng.destroy();
+  });
+
+  it('does not crawl down a stair whose landing is walled off from the door', () => {
+    const { eng, inner } = twoStorey({
+      walls: [{ ...SPLIT_WALL, startX: 6, endX: 6 }],
+      counts: { G: 0, L1: 1 },
+      stairs: [stairAt({ x: 10, y: 10 })],
+    });
+    const fire = burningAt('g', { x: 2, y: 10 });
+    eng.setHazardFields(
+      new Map([
+        ['G', new HazardField([fire.stud], 3)],
+        ['L1', new HazardField([], 3)],
+      ]),
+    );
+    eng.setHazardStates(new Map([fire.state]));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 20, y: 10 });
     ped.state = 'evacuating';
     ped.nextCheckAt = 0;
     eng.step();

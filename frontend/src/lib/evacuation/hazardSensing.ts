@@ -142,6 +142,16 @@ export class HazardField {
     return best;
   }
 
+  /** Id of the stud `sample` reads at this point, or null where it reads clean air. */
+  nearestId(x: number, y: number): string | null {
+    return this.nearest(x, y, 1.5 * this.cellM)?.id ?? null;
+  }
+
+  /** Every stud with the position `sample` reads it at. */
+  forEachStud(fn: (stud: HazardStud) => void): void {
+    for (const list of this.buckets.values()) for (const stud of list) fn(stud);
+  }
+
   private nearest(x: number, y: number, limit: number): HazardStud | null {
     const cx = Math.floor(x / this.cellM);
     const cy = Math.floor(y / this.cellM);
@@ -2426,6 +2436,19 @@ export class RouteRegions {
       if (this.regionAt(exitApproachInside(exit, verts, 1)) === here) return true;
     }
     return false;
+  }
+
+  /** The exits whose inside approach shares `pos`'s region. Off the floor, every exit. */
+  reachableExits<T extends ExitDef>(pos: Vec2, exits: readonly T[], verts: Vec2[]): T[] {
+    const here = this.regionAt(pos);
+    if (here < 0) return [...exits];
+    return exits.filter((exit) => this.regionAt(exitApproachInside(exit, verts, 1)) === here);
+  }
+
+  /** True when `b` is in `a`'s region, or `a` is off the floor. */
+  connects(a: Vec2, b: Vec2): boolean {
+    const here = this.regionAt(a);
+    return here < 0 || this.regionAt(b) === here;
   }
 
   private centre(c: number, r: number): Vec2 {

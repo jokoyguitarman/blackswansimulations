@@ -20,11 +20,23 @@ export const LEVEL = {
   STAIR_FIRE_HEAT_S: 60,
   CROUCH_SPEED_FACTOR: 0.6,
   STAIR_CRAWL_FACTOR: 0.5,
+  /**
+   * Dead-end crawl down a stair: the most either FED may reach by the far
+   * door, estimated on today's smoke and heat. Above it the person stays put.
+   */
+  DEAD_END_CRAWL_MAX_FED: 0.5,
+  /** Seconds between the per-stud dose-rate samples the projection extrapolates from. */
+  DOSE_TREND_S: 2,
+  /** Multiplier on the projected dose for what the linear trend misses. */
+  DEAD_END_DOSE_MARGIN: 2,
   GHOST_ALPHA: 0.15,
   MAX_LEVELS: 12,
 } as const;
 
-export const LEVEL_SOURCES: Record<keyof typeof LEVEL, { status: 'seed_pending' | 'assumed'; ref: string }> = {
+export const LEVEL_SOURCES: Record<
+  keyof typeof LEVEL,
+  { status: 'seed_pending' | 'assumed'; ref: string }
+> = {
   STAIR_SPEED_DOWN: {
     status: 'seed_pending',
     ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#stair_speed_down_free',
@@ -93,6 +105,15 @@ export const LEVEL_SOURCES: Record<keyof typeof LEVEL, { status: 'seed_pending' 
     ref: 'knowledge-seeds/fire-smoke-tenability/#crouch_speed_factor_gap',
   },
   STAIR_CRAWL_FACTOR: { status: 'assumed', ref: 'assumed: no stair crawl speed in any seed' },
+  DOSE_TREND_S: { status: 'assumed', ref: 'assumed: four route checks' },
+  DEAD_END_DOSE_MARGIN: {
+    status: 'assumed',
+    ref: 'calibrated: stair shaft test, blasts at the centre, (4, 1.5), (-3, 0) and (-3, -2). With the trend and no margin, realised/projected FED for crawlers carrying 0.005 or more was 0.96 to 1.44; present-state only it was 2.7 to 4.3. Two leaves headroom over 1.44',
+  },
+  DEAD_END_CRAWL_MAX_FED: {
+    status: 'assumed',
+    ref: 'assumed: half the ISO 13571 incapacitating dose, applied to the trend projection after DEAD_END_DOSE_MARGIN, so a crawl is refused once about a quarter of the dose is projected unscaled',
+  },
   GHOST_ALPHA: { status: 'assumed', ref: 'assumed: UX' },
   MAX_LEVELS: { status: 'assumed', ref: 'PR #23 LAYOUT_LIMITS.maxStoreys' },
 };
