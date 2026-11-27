@@ -460,6 +460,13 @@ const dimensionParam: ConditionParam = {
 };
 const criterionIndexParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 100 };
 const scoreParam: ConditionParam = { name: 'n', type: 'int', min: 0, max: 100 };
+const stepParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 6 };
+const followupCountParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 100 };
+const urgencyParam: ConditionParam = {
+  name: 'urgency',
+  type: 'enum',
+  enum: ['reminder', 'follow_up', 'urgent', 'final', 'escalated'],
+};
 
 function comms(
   id: string,
@@ -999,6 +1006,69 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'negative',
     '{role_id} has been offline for {N} minutes',
     'Every player in the role has been offline past the grace for at least this long.',
+  ),
+  comms(
+    'chain_active',
+    [injectParam],
+    'cross',
+    'neutral',
+    'A follow-up chain for {inject} is still running',
+    'An in-scope escalation chain has not stopped or run out.',
+    true,
+  ),
+  comms(
+    'chain_stopped',
+    [injectParam],
+    'cross',
+    'positive',
+    'A follow-up chain for {inject} stopped because someone replied',
+    'An in-scope chain stopped on a reply or on contact elsewhere.',
+    true,
+  ),
+  comms(
+    'chain_exhausted',
+    [injectParam],
+    'cross',
+    'negative',
+    'A follow-up chain for {inject} ran out',
+    'An in-scope chain sent every step without a reply.',
+    true,
+  ),
+  comms(
+    'chain_step_reached',
+    [injectParam, stepParam],
+    'cross',
+    'neutral',
+    'A follow-up chain for {inject} reached step {n}',
+    'An in-scope chain has sent at least this many steps.',
+    true,
+  ),
+  comms(
+    'followups_sent_gte',
+    [injectParam, followupCountParam],
+    'cross',
+    'neutral',
+    'At least {n} follow-ups were sent for {inject}',
+    'The follow-ups sent across in-scope chains are at least {n}.',
+    true,
+  ),
+  comms(
+    'chain_stopped_by_step',
+    [injectParam, stepParam],
+    'cross',
+    'positive',
+    'A follow-up chain for {inject} was answered by step {n}',
+    'An in-scope chain stopped on a reply at or before this step.',
+    true,
+  ),
+  comms(
+    'urgency_reached',
+    [injectParam, urgencyParam],
+    'cross',
+    'neutral',
+    'A follow-up chain for {inject} reached {urgency}',
+    'The highest follow-up sent on an in-scope chain is at least this urgency.',
+    true,
   ),
 ];
 

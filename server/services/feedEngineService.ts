@@ -18,6 +18,7 @@ import {
 } from '../lib/injectChatMessages.js';
 import { injectKeyOf, isValidInjectKey } from '../lib/injectKey.js';
 import { recordDelivery, type RecordDeliveryInput } from './ledger/injectLedgerService.js';
+import { chainLedgerFields } from './escalation/escalationCore.js';
 import { startInjectCall } from './calls/callService.js';
 import { routeRoleMessage } from './roles/messageRouting.js';
 import {
@@ -67,6 +68,17 @@ export interface DeliveryConfig {
   inject_key?: string;
   /** Minutes after delivery in which a chat message can still count as the reply. */
   response_window_minutes?: number;
+  /** Root inject only. Chain steps omit this and set `chain` instead. */
+  escalation?: unknown;
+  chain?: {
+    chain_id?: string;
+    root_delivery_id: string;
+    root_key: string;
+    step: number;
+    urgency: 'reminder' | 'follow_up' | 'urgent' | 'final' | 'escalated';
+    thread_id?: string;
+    replied_to_id?: string;
+  };
 }
 
 /** Chat-line fallback when the Phone app is off or migration 269 is not applied. */
@@ -415,7 +427,7 @@ async function routeToSocialFeed(
       requiresResponse: inject.requires_response === true,
       responseWindowMinutes: responseWindowMinutes(config),
       deliveredAt: timestampOf(post.created_at),
-    });
+    }, config);
   }
 
   if (config.spawn_replies && config.spawn_replies > 0 && env.aiEnabled) {
@@ -606,6 +618,12 @@ async function routeToEmail(
       body_text: bodyText,
       priority: config.priority || 'normal',
       email_category: sanitizeEmailCategory(config.email_category),
+      ...(config.chain?.thread_id
+        ? {
+            thread_id: config.chain.thread_id,
+            replied_to_id: config.chain.replied_to_id ?? config.chain.thread_id,
+          }
+        : {}),
       // Team-scoped emails are addressed to the resolved members only; null
       // means visible to the whole session (legacy behaviour).
       ...(effectiveTargeting?.playerIds
@@ -636,7 +654,7 @@ async function routeToEmail(
     channel: 'email',
     refTable: 'sim_emails',
     refId: String(email.id),
-    threadId: String(email.id),
+    threadId: config.chain?.thread_id ?? String(email.id),
     ...roleLedger(effectiveTargeting),
     recipientUserIds: effectiveTargeting?.playerIds ?? null,
     recipientTeams,
@@ -645,7 +663,7 @@ async function routeToEmail(
     requiresResponse: inject.requires_response === true,
     responseWindowMinutes: responseWindowMinutes(config),
     deliveredAt: timestampOf(email.created_at),
-  });
+  }, config);
 
   await emitScoped(sessionId, effectiveTargeting?.playerIds ?? null, {
     type: 'sim_email.received',
@@ -695,7 +713,7 @@ async function routeToNews(
     senderName: config.outlet_name || 'News Wire',
     requiresResponse: false,
     responseWindowMinutes: responseWindowMinutes(config),
-  });
+  }, config);
 
   getWebSocketService().broadcastToSession(sessionId, {
     type: 'news_article.published',
@@ -903,7 +921,7 @@ async function postNpcChatMessage(
       requiresResponse: options.requiresResponse,
       responseWindowMinutes: responseWindowMinutes(options.config),
       deliveredAt: timestampOf(row.created_at),
-    });
+    }, options.config);
     written++;
     getWebSocketService().messageSent(channel.id, row);
   }
@@ -1175,7 +1193,7 @@ async function routeToMessengerDm(
       requiresResponse: inject.requires_response === true,
       responseWindowMinutes: responseWindowMinutes(config),
       deliveredAt: timestampOf(inserted.created_at),
-    });
+    }, config);
     await emitScoped(sessionId, [row.recipient_user_id], {
       type: 'messenger.received',
       data: { user_id: row.recipient_user_id, message: inserted },
@@ -1244,7 +1262,7 @@ async function routeToNpcDm(
       requiresResponse: inject.requires_response === true,
       responseWindowMinutes: responseWindowMinutes(config),
       deliveredAt: timestampOf(row.created_at),
-    });
+    }, config);
     getWebSocketService().emitToUser(userId, {
       type: 'message.sent',
       data: { message: row },
@@ -1285,9 +1303,12 @@ function timestampOf(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-async function ledgerDelivery(input: RecordDeliveryInput): Promise<void> {
+async function ledgerDelivery(
+  input: RecordDeliveryInput,
+  config?: DeliveryConfig | null,
+): Promise<void> {
   try {
-    await recordDelivery(input);
+    await recordDelivery({ ...input, ...chainLedgerFields(config) });
   } catch (err) {
     logger.warn(
       { err, injectId: input.injectId, refId: input.refId },

@@ -18,6 +18,7 @@ import {
   setDeliveryCallState,
   type LedgerCallState,
 } from '../ledger/injectLedgerService.js';
+import { chainLedgerFields } from '../escalation/escalationCore.js';
 import { recordPlayerAction } from '../sopCheckerService.js';
 import { getPlayerTeamName } from '../teamCharterService.js';
 import { isBotUser } from '../teammates/accounts.js';
@@ -532,6 +533,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         lineTeam: call.lineTeam,
         targetRoleId: call.targetRoleId,
         fallbackReason: call.script.fallback_reason ?? null,
+        ...chainLedgerFields(call.script.ledger_config),
       });
     if (deliveryId) deliveryIds.set(call.id, deliveryId);
   }
@@ -1835,6 +1837,7 @@ function baseScript(script: ReturnType<typeof deriveCallScript>, redial: ReturnT
     inject_target_mode: injectMode,
     role_fallback: fallback.fallback,
     role_fallback_minutes: fallback.minutes,
+    ledger_config: config,
   };
 }
 

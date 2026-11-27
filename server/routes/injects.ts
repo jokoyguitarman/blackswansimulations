@@ -18,8 +18,13 @@ import {
   type DeliveryConfig,
 } from '../services/feedEngineService.js';
 import type { Server as SocketServer } from 'socket.io';
+import { urgencyEffects, type Urgency } from '../services/escalation/escalationCore.js';
 
 const router = Router();
+
+function isChainUrgency(value: string): value is Urgency {
+  return value === 'reminder' || value === 'follow_up' || value === 'urgent' || value === 'final' || value === 'escalated';
+}
 
 function dmNotificationSender(config: DeliveryConfig): string {
   const sender =
@@ -43,6 +48,8 @@ export interface PublishInjectOptions {
    * inject twice (docs/session-bugfix-spec-2026-09-20.md §12).
    */
   force?: boolean;
+  /** Chain steps wait until the delivery row exists so the call group id can be stored. */
+  awaitDelivery?: boolean;
 }
 
 /**
@@ -196,7 +203,7 @@ export async function publishInjectToSession(
   // Route inject to simulated device apps if delivery_config is present
   const deliveryConfig = (inject as Record<string, unknown>).delivery_config;
   if (deliveryConfig && typeof deliveryConfig === 'object') {
-    void routeInjectToApp(sessionId, injectId, {
+    const routing = routeInjectToApp(sessionId, injectId, {
       title: inject.title,
       content: inject.content,
       type: inject.type,
@@ -207,6 +214,7 @@ export async function publishInjectToSession(
       inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
       target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || [],
     }).catch((err) => logger.error({ err, sessionId, injectId }, 'Feed engine routing failed'));
+    if (options.awaitDelivery) await routing;
   }
 
   // Broadcast generic event (the session_events insert was already done above)
@@ -252,10 +260,13 @@ export async function publishInjectToSession(
       high: 'high',
       critical: 'critical',
     };
-    const priority = priorityMap[inject.severity] || 'medium';
-
     const notifDeliveryConfig = (inject as Record<string, unknown>).delivery_config as
       DeliveryConfig | null | undefined;
+    const chainUrgency = notifDeliveryConfig?.chain?.urgency;
+    const priority =
+      chainUrgency && isChainUrgency(chainUrgency)
+        ? urgencyEffects(chainUrgency).notificationPriority
+        : priorityMap[inject.severity] || 'medium';
 
     if (notifDeliveryConfig && typeof notifDeliveryConfig === 'object') {
       // Simulated-device inject (email / feed / news / chat / call): the notification must reach

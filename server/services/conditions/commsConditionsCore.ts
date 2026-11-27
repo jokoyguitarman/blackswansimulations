@@ -12,6 +12,7 @@ import {
   type CommsState,
   type JudgementV1,
 } from '../ledger/injectLedgerCore.js';
+import { evaluateChainKey, type ChainSnapshot } from '../escalation/escalationCore.js';
 
 export interface ParsedCommsKey {
   def: ConditionDef;
@@ -24,6 +25,7 @@ type ResponseRow = CommsDelivery['responses'][number];
 interface KeyInput {
   args: string[];
   team?: string;
+  role?: string;
   state: CommsState;
   elapsed: number;
 }
@@ -77,6 +79,7 @@ export function explainCommsKey(
     return resolve({
       args: parsed.args,
       team: parsed.scope?.team,
+      role: parsed.scope?.role,
       state,
       elapsed: elapsedMinutes,
     });
@@ -356,7 +359,25 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
     const minutes = fact?.offline_minutes ?? -1;
     return { met: minutes >= numberArg(args, 1), detail: `${Math.max(minutes, 0)} minutes offline` };
   },
+  chain_active: (input) => chainKey('chain_active', input),
+  chain_stopped: (input) => chainKey('chain_stopped', input),
+  chain_exhausted: (input) => chainKey('chain_exhausted', input),
+  chain_step_reached: (input) => chainKey('chain_step_reached', input),
+  followups_sent_gte: (input) => chainKey('followups_sent_gte', input),
+  chain_stopped_by_step: (input) => chainKey('chain_stopped_by_step', input),
+  urgency_reached: (input) => chainKey('urgency_reached', input),
 };
+
+function chainKey(id: string, input: KeyInput): KeyResult {
+  const rows = (input.state.chains?.[input.args[0] ?? ''] ?? []) as ChainSnapshot[];
+  return evaluateChainKey({
+    id,
+    args: input.args,
+    team: input.team,
+    role: input.role,
+    chains: rows,
+  });
+}
 
 type ReplyKind =
   | 'passed'
@@ -1041,16 +1062,17 @@ export interface StakeholderContactRow {
 export function summariseStakeholderContacts(
   rows: readonly StakeholderContactRow[],
   startTime: string | null,
-): Record<string, { first_minute: number; channels: string[] }> {
-  const out: Record<string, { first_minute: number; channels: string[] }> = {};
+): Record<string, { first_minute: number; latest_minute: number; channels: string[] }> {
+  const out: Record<string, { first_minute: number; latest_minute: number; channels: string[] }> = {};
   for (const row of rows) {
     const minute = sessionMinuteAt(startTime, row.created_at);
     const current = out[row.stakeholder_id];
     if (!current) {
-      out[row.stakeholder_id] = { first_minute: minute, channels: [row.channel] };
+      out[row.stakeholder_id] = { first_minute: minute, latest_minute: minute, channels: [row.channel] };
       continue;
     }
     if (minute < current.first_minute) current.first_minute = minute;
+    if (minute > current.latest_minute) current.latest_minute = minute;
     if (!current.channels.includes(row.channel)) current.channels.push(row.channel);
   }
   return out;

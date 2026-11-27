@@ -532,6 +532,12 @@ function endedDescription(reason: IdleReason, settings: IdleSettings): string {
 async function runEndHooks(sessionId: string): Promise<void> {
   await snapshotFinalStateOnCompletion(sessionId);
   try {
+    const { cancelSessionChains } = await import('./escalation/escalationService.js');
+    await cancelSessionChains(sessionId);
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'escalation cancel on idle end failed');
+  }
+  try {
     const { getTeammateBotService } = await import('./teammates/teammateBotService.js');
     await getTeammateBotService().onBotsChanged(sessionId);
   } catch (err) {

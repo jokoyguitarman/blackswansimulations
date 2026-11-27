@@ -40,6 +40,7 @@ import {
   type StakeholderContactRow,
 } from '../conditions/commsConditionsCore.js';
 import type { ActionCountBucket } from './injectLedgerCore.js';
+import type { EscalationConfig } from '../escalation/escalationCore.js';
 
 const UNIQUE_VIOLATION = '23505';
 let deliveryRoleColumns = true;
@@ -99,6 +100,8 @@ export interface RecordDeliveryInput {
   lineTeam?: string | null;
   targetRoleId?: string | null;
   fallbackReason?: string | null;
+  /** Set on a root delivery whose inject carries delivery_config.escalation. */
+  escalation?: EscalationConfig | null;
 }
 
 export interface RecordOpenInput {
@@ -211,6 +214,25 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
         team: input.recipientTeams?.length === 1 ? input.recipientTeams[0] : undefined,
         at: deliveredAt,
       });
+      if (input.escalation && input.chainStep == null && (input.attemptNo == null || input.attemptNo <= 1)) {
+        try {
+          const { startChainForDelivery } = await import('../escalation/escalationService.js');
+          await startChainForDelivery({
+            sessionId: input.sessionId,
+            deliveryId: id,
+            injectId: input.injectId,
+            injectKey: input.injectKey,
+            deliveredMinute,
+            recipientTeams: input.recipientTeams ?? [],
+            stakeholderId: input.stakeholderId ?? null,
+            targetRoleId: input.targetRoleId ?? null,
+            lineTeam: input.lineTeam ?? null,
+            escalation: input.escalation,
+          });
+        } catch (chainErr) {
+          logger.warn({ err: chainErr, deliveryId: id }, 'escalation chain was not started');
+        }
+      }
     }
     return id;
   } catch (err) {
@@ -512,6 +534,16 @@ async function simCallsAvailable(): Promise<boolean> {
   }
 }
 
+async function loadChainIndexSafe(sessionId: string): Promise<CommsState['chains']> {
+  try {
+    const { loadChainIndex } = await import('../escalation/escalationService.js');
+    return await loadChainIndex(sessionId);
+  } catch (err) {
+    warnFactOnce('escalation_chains_unavailable', err, 'Escalation chains could not be loaded');
+    return {};
+  }
+}
+
 async function attachCommsFacts(
   sessionId: string,
   elapsedMinutes: number,
@@ -529,6 +561,7 @@ async function attachCommsFacts(
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
     const emailKnown = email.known && stakeholders.known && actions.known;
+    const chains = await loadChainIndexSafe(sessionId);
     return {
       ...state,
       calls_available: callsAvailable,
@@ -546,6 +579,7 @@ async function attachCommsFacts(
       action_counts: actions.known ? actions.counts : [],
       action_facts_known: actions.known,
       action_counts_truncated: actions.known && actions.truncated,
+      chains,
     };
   } catch (err) {
     warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');
