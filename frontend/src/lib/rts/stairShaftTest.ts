@@ -1,9 +1,10 @@
 /**
  * Two-storey shaft test. One room on each floor, 12 m by 9 m, ceilings
  * 3 m. The ground floor is furnished. The upper floor is bare, so anything
- * up there came through the stair or the lift. Each floor has one door to
- * the outside, below the ceiling, so a layer can form. Detonate on the
- * ground floor.
+ * up there came through the stair or the lift. Each floor has one opening
+ * to the outside, below the ceiling, so a layer can form: a door on the
+ * ground and a window upstairs, so the upper crowd walks down the stair.
+ * Detonate on the ground floor.
  *
  * Outdoor studs are copied onto the upper floor. The generator only builds
  * them on the ground, and a storey with no outside neighbour has no
@@ -55,8 +56,8 @@ function rectanglePolygon(
 }
 
 const LEVELS: LevelDef[] = [
-  { id: 'G', name: 'Ground', index: 0, heightM: 3, designed: true, pedestrianCount: 0 },
-  { id: 'L1', name: 'Level 1', index: 1, heightM: 3, designed: true, pedestrianCount: 0 },
+  { id: 'G', name: 'Ground', index: 0, heightM: 3, designed: true, pedestrianCount: 20 },
+  { id: 'L1', name: 'Level 1', index: 1, heightM: 3, designed: true, pedestrianCount: 20 },
 ];
 
 function shaftLink(
@@ -134,7 +135,7 @@ export const stairShaftSample = {
     centerLat: CENTER_LAT,
     centerLng: CENTER_LNG,
     locationDescription:
-      'Two storeys, 12 m by 9 m, 3 m ceilings. The ground floor is furnished and the upper floor is empty, with no fuel, so the landing cannot ignite. A stair at the north-west and a lift at the north-east connect them. Each floor has one open door to the outside. Detonate on the ground floor, then switch to Level 1: smoke in the bare room came up the shaft.',
+      'Two storeys, 12 m by 9 m, 3 m ceilings. The ground floor is furnished and the upper floor is empty, with no fuel, so the landing cannot ignite. A stair at the north-west and a lift at the north-east connect them. Each floor has one opening to the outside: an open door on the ground floor and an open window upstairs, so the 20 occupants upstairs must take the stair down. Twenty more start on the ground floor. Detonate on the ground floor, then switch to Level 1: smoke in the bare room came up the shaft.',
     pedestrianCount: 0,
     hoodFanWhen: 'discharge' as const,
     levels: LEVELS,
@@ -155,11 +156,11 @@ export const stairShaftSample = {
         center: fromPlan({ x: 6, y: 9 }, 'editor'),
         width: 1.2,
         edgeIndex: 0,
-        description: 'Upper floor north door, open.',
+        description: 'Upper floor north window, open. Smoke leaves by it; people cannot.',
         status: 'open',
         photos: [],
         level: 'L1',
-        exitType: 'public',
+        exitType: 'service',
       },
     ],
     interiorWalls: [],
