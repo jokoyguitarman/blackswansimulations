@@ -258,15 +258,25 @@ export function nextPosture(current: Posture, d: number, f: Familiarity): Postur
   return 'stand';
 }
 
+/**
+ * Unimpeded level speed after panic and before smoke or injury.
+ * The draw is already clamped; this stops panic from commanding a jog.
+ */
+export function unimpededWalkMps(freeWalk: number, panic: number): number {
+  const commanded = Math.max(0, freeWalk) * (1 + 0.6 * panic);
+  return Math.min(SHOWCASE.WALK_SPEED_CAP, commanded);
+}
+
 /** Indoor speed (m/s). Panic is the caller's factor; the showcase passes SHOWCASE_PANIC. */
 export function walkingSpeed(
   K: number,
   posture: Posture,
   panic: number,
   injuryFactor: number,
+  freeWalk: number = SHOWCASE.FREE_WALK_SPEED,
 ): number {
   if (posture === 'crawl') return SHOWCASE.CRAWL_SPEED * injuryFactor;
-  const stand = SHOWCASE.FREE_WALK_SPEED * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
+  const stand = unimpededWalkMps(freeWalk, panic) * jinFactor(K) * injuryFactor;
   if (posture === 'crouch') return stand * SHOWCASE.CROUCH_SPEED_FACTOR;
   return stand;
 }
@@ -293,6 +303,22 @@ export function lognormalFromPercentiles(p1: number, p99: number): { mu: number;
   const sigma = Math.log(p99 / p1) / (2 * z);
   const mu = (Math.log(p1) + Math.log(p99)) / 2;
   return { mu, sigma };
+}
+
+/**
+ * One person's unimpeded level speed. The draw is a normal around the
+ * SFPE mean, with the Weidmann spread scaled to that mean, clamped to two
+ * standard deviations. Its salt is not the freeze roll's and not the
+ * turn-back roll's, so a freeze does not pick the speed.
+ */
+export function sampleWalkSpeedMps(seed: number, pedId: number): number {
+  // 0x9e3779b1 is the freeze roll. 0x85ebca6b ^ 0x5bd1e995 is the turn-back roll.
+  const rng = mulberry32((seed ^ Math.imul(pedId + 1, 0x6c078965) ^ 0x27d4eb2d) >>> 0);
+  let u1 = rng();
+  if (u1 < 1e-12) u1 = 1e-12;
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rng());
+  const raw = SHOWCASE.WALK_SPEED_MEAN + SHOWCASE.WALK_SPEED_SD * z;
+  return Math.min(SHOWCASE.WALK_SPEED_MAX, Math.max(SHOWCASE.WALK_SPEED_MIN, raw));
 }
 
 export function samplePremovementS(rng: () => number): number {

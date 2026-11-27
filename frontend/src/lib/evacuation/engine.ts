@@ -43,6 +43,8 @@ import {
   routeAroundOutline,
   walkedRouteHazard,
   smokeAheadAction,
+  sampleWalkSpeedMps,
+  unimpededWalkMps,
   walkingSpeed,
   RouteRegions,
   type ExitChoice,
@@ -180,6 +182,8 @@ interface PedLabel {
   posture?: Posture;
   familiarity?: Familiarity;
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  /** Unimpeded level speed, m/s. Drawn once. Stairs keep the stair timer. */
+  freeWalkMps?: number;
   /** Asphyxiant dose so far. It does not fall when the person walks clear. */
   fed?: number;
   /** Heat dose so far. It does not fall when the person walks clear. */
@@ -224,6 +228,14 @@ interface PedLabel {
   jitterUntil?: number;
   disperse?: boolean;
   lastDir?: Vec2 | null;
+  /**
+   * Forced-crawl command, in the same units as Matter velocity. Held while a
+   * corner aim flips, so the body is not reversed every step.
+   */
+  crawlVx?: number;
+  crawlVy?: number;
+  /** Sim time when the aim first opposed `crawlVx`/`crawlVy`. */
+  crawlOpposeAt?: number;
   /** Storey id when a scene has more than one. Unset on the single floor. */
   level?: string;
   targetStairId?: string | null;
@@ -289,6 +301,7 @@ export class PolygonEvacuationEngine {
   private elapsed = 0;
   private exitCounts = new Map<string, number>();
   private pedIdCounter = 0;
+  private walkSeed: number = SHOWCASE.RNG_SEED;
   private obstacles: ObstaclePoint[] = [];
   private showcase: EvacShowcaseOptions | null = null;
   private rng: (() => number) | null = null;
@@ -371,9 +384,10 @@ export class PolygonEvacuationEngine {
     this.exits = exits;
     this.obstacles = obstacles ?? [];
     this.interiorWalls = interiorWalls ? interiorWalls.map((w) => ({ ...w })) : [];
+    this.walkSeed = showcase?.seed ?? SHOWCASE.RNG_SEED;
     if (showcase) {
       this.showcase = showcase;
-      this.rng = mulberry32(showcase.seed ?? SHOWCASE.RNG_SEED);
+      this.rng = mulberry32(this.walkSeed);
       this.zones = showcase.zones.map((z) => ({ ...z, pos: { ...z.pos } }));
       if (showcase.buildingHeightM != null) this.buildingHeightM = showcase.buildingHeightM;
     }
@@ -527,6 +541,27 @@ export class PolygonEvacuationEngine {
     Matter.Composite.add(this.engine.world, interiorBodies);
   }
 
+  /**
+   * Air drag stays at 0. A frictionAir of 0.15, combined with the 0.4 s
+   * steering blend, settled near a fifth of the commanded speed. The blend
+   * is the damping: each step relaxes the body toward the velocity it was
+   * given, so a contact leftover fades without holding the walk under that speed.
+   */
+  private personBody(x: number, y: number, r: number): Matter.Body {
+    return Matter.Bodies.circle(x, y, r, {
+      restitution: 0.05,
+      friction: 0.3,
+      frictionAir: 0,
+      density: 50,
+      slop: BODY_SLOP_M,
+      label: 'pedestrian',
+    });
+  }
+
+  private walkMps(pedId: number): number {
+    return sampleWalkSpeedMps(this.walkSeed, pedId);
+  }
+
   private spawnPedestrians() {
     const { vertices, pedestrianCount, pedestrianRadius: r } = this.config;
     const bounds = polygonBounds(vertices);
@@ -544,14 +579,7 @@ export class PolygonEvacuationEngine {
 
       if (!isInsidePolygon(x, y, vertices)) continue;
 
-      const body = Matter.Bodies.circle(x, y, r, {
-        restitution: 0.05,
-        friction: 0.3,
-        frictionAir: 0.15,
-        density: 50,
-        slop: BODY_SLOP_M,
-        label: 'pedestrian',
-      });
+      const body = this.personBody(x, y, r);
 
       body.collisionFilter = {
         group: 0,
@@ -559,10 +587,13 @@ export class PolygonEvacuationEngine {
         mask: PED_CATEGORY | WALL_CATEGORY,
       };
 
+      const pedId = this.pedIdCounter++;
+      const freeWalkMps = this.walkMps(pedId);
       const pedLabel: PedLabel = this.showcase
         ? {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: '',
             state: 'idle',
@@ -594,7 +625,8 @@ export class PolygonEvacuationEngine {
           }
         : {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: this.pickNearestExit(x, y),
           };
@@ -641,7 +673,6 @@ export class PolygonEvacuationEngine {
     }
     const { dt, desiredSpeed, panicFactor } = this.config;
     this.tickStairs(dt);
-    const targetSpeed = desiredSpeed * (1 + panicFactor * 0.6);
     const tau = 0.4;
 
     for (const body of this.pedestrians) {
@@ -649,10 +680,15 @@ export class PolygonEvacuationEngine {
       if (ped.evacuated || ped.state === 'down' || ped.state === 'left_map') continue;
       // FEC at 1 is the seeded crawl toward the exit, not a stop. Injury
       // and a wet floor slow that crawl the same way they slow a walk.
+      // The seeded free speed is scaled so a crowd's mean matches desiredSpeed.
+      const personal =
+        ped.freeWalkMps != null
+          ? ped.freeWalkMps * (desiredSpeed / SHOWCASE.WALK_SPEED_MEAN)
+          : desiredSpeed;
       const pace = ped.fumeHeld
         ? SHOWCASE.CRAWL_SPEED *
           this.irritantFooting(ped, body.position.x, body.position.y, ped.level)
-        : targetSpeed;
+        : unimpededWalkMps(personal, panicFactor);
       if (ped.fumeHeld) ped.posture = 'crawl';
       if (this.levelPlan && ped.level) {
         this.stepPlainLevel(body, ped, pace, dt, tau);
@@ -1143,6 +1179,7 @@ export class PolygonEvacuationEngine {
         ped.posture ?? 'stand',
         SHOWCASE.SHOWCASE_PANIC,
         injuryFactor,
+        ped.freeWalkMps ?? SHOWCASE.FREE_WALK_SPEED,
       ) * footing;
 
     const blockedDoors = this.blockedDoorsFor(ped);
@@ -1266,8 +1303,9 @@ export class PolygonEvacuationEngine {
           : provisional;
     // A forced crawl has no safe exit, so it keeps moving. A released person
     // finishes the opening: repulsion may slide them sideways, not back out.
-    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
-    this.steer(body, target, speed, field, keepForward);
+    const granted = this.mouthGrant.has(ped.pedId);
+    const keepForward = ped.forcedCrawl === true || granted;
+    this.steer(body, target, speed, field, keepForward, granted);
   }
 
   /**
@@ -2385,6 +2423,8 @@ export class PolygonEvacuationEngine {
     targetSpeed: number,
     fireField: HazardField | null,
     keepForward = false,
+    /** A mouth grant takes the commanded step at once. A forced crawl does not. */
+    takeStep = false,
   ) {
     const dt = this.config.dt;
     const steered = this.aimAroundBodies(body, target);
@@ -2436,11 +2476,48 @@ export class PolygonEvacuationEngine {
     const bodies = this.pushFromBodies(body, steered.near, targetSpeed, dt);
     repX += bodies.x;
     repY += bodies.y;
-    // The 0.4 s blend never catches the air drag, so a crawler held on a
-    // shell creeps. A released crossing takes the step it was given.
-    const blend = keepForward ? 1 : Math.min(1, dt / 0.4);
-    let newVx = body.velocity.x + (nx * targetSpeed * dt + repX - body.velocity.x) * blend;
-    let newVy = body.velocity.y + (ny * targetSpeed * dt + repY - body.velocity.y) * blend;
+    // Relax toward the commanded step. With no air drag this reaches that
+    // speed. A released crossing takes the step at once. A forced crawl keeps
+    // its last command while a corner aim opposes it. On the stall corner the
+    // two ends trade about once a second, and the wall contact zeroes the
+    // body velocity, so a short blend follows the trade and the crawl never
+    // leaves. A reverse has to persist before it is taken.
+    const cmdVx = nx * targetSpeed * dt + repX;
+    const cmdVy = ny * targetSpeed * dt + repY;
+    const crawler = this.pedOf(body);
+    let newVx: number;
+    let newVy: number;
+    if (keepForward && !takeStep) {
+      const px = crawler.crawlVx;
+      const py = crawler.crawlVy;
+      const has = px != null && py != null;
+      const oppose = has && px * cmdVx + py * cmdVy < 0;
+      if (!has || !oppose) {
+        newVx = cmdVx;
+        newVy = cmdVy;
+        crawler.crawlOpposeAt = undefined;
+      } else {
+        const since = crawler.crawlOpposeAt ?? this.elapsed;
+        crawler.crawlOpposeAt = since;
+        if (this.elapsed - since >= 2) {
+          const relax = Math.min(1, dt / 0.4);
+          newVx = px + (cmdVx - px) * relax;
+          newVy = py + (cmdVy - py) * relax;
+        } else {
+          newVx = px;
+          newVy = py;
+        }
+      }
+      crawler.crawlVx = newVx;
+      crawler.crawlVy = newVy;
+    } else {
+      crawler.crawlVx = undefined;
+      crawler.crawlVy = undefined;
+      crawler.crawlOpposeAt = undefined;
+      const blend = takeStep ? 1 : Math.min(1, dt / 0.4);
+      newVx = body.velocity.x + (cmdVx - body.velocity.x) * blend;
+      newVy = body.velocity.y + (cmdVy - body.velocity.y) * blend;
+    }
     const currentSpeed = Math.hypot(newVx, newVy);
     const maxSpeed = targetSpeed * dt * 1.3;
     if (currentSpeed > maxSpeed && currentSpeed > 0) {
@@ -2662,20 +2739,16 @@ export class PolygonEvacuationEngine {
       const x = bounds.minX + margin + rnd() * (bounds.width - 2 * margin);
       const y = bounds.minY + margin + rnd() * (bounds.height - 2 * margin);
       if (!isInsidePolygon(x, y, vertices)) continue;
-      const body = Matter.Bodies.circle(x, y, r, {
-        restitution: 0.05,
-        friction: 0.3,
-        frictionAir: 0.15,
-        density: 50,
-        slop: BODY_SLOP_M,
-        label: 'pedestrian',
-      });
+      const body = this.personBody(x, y, r);
       body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
       const exits = this.exits.filter((e) => levelOf(e) === levelId && e.exitType !== 'service');
+      const pedId = this.pedIdCounter++;
+      const freeWalkMps = this.walkMps(pedId);
       const label: PedLabel = this.showcase
         ? {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: '',
             state: 'idle',
@@ -2707,7 +2780,8 @@ export class PolygonEvacuationEngine {
           }
         : {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: exits[0]?.id ?? '',
             level: levelId,
@@ -2765,6 +2839,7 @@ export class PolygonEvacuationEngine {
         ped.posture ?? 'stand',
         SHOWCASE.SHOWCASE_PANIC,
         injuryFactor,
+        ped.freeWalkMps ?? SHOWCASE.FREE_WALK_SPEED,
       ) * footing;
     if (
       this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) ||
@@ -2793,8 +2868,9 @@ export class PolygonEvacuationEngine {
     const aim = exit
       ? this.exitSteerTarget(pos, exit, held, walls)
       : steerToTarget(pos, this.routeTarget(ped) ?? pos, walls);
-    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
-    this.steer(body, aim, speed, field, keepForward);
+    const granted = this.mouthGrant.has(ped.pedId);
+    const keepForward = ped.forcedCrawl === true || granted;
+    this.steer(body, aim, speed, field, keepForward, granted);
   }
 
   /**
@@ -3028,14 +3104,7 @@ export class PolygonEvacuationEngine {
     }
     const bits = levelCategories(slot);
     const r = this.config.pedestrianRadius;
-    const body = Matter.Bodies.circle(x, y, r, {
-      restitution: 0.05,
-      friction: 0.3,
-      frictionAir: 0.15,
-      density: 50,
-      slop: BODY_SLOP_M,
-      label: 'pedestrian',
-    });
+    const body = this.personBody(x, y, r);
     body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
     const ped = occ.label;
     const fumeDown = ped.fumeDown === true || ped.heatDown === true;

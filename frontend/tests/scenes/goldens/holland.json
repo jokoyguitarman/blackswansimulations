@@ -1,12 +1,17 @@
 {
-  "bomb": { "x": -5.718545478756136, "y": -13.804289212757112 },
+  "bomb": {
+    "x": -5.718545478756136,
+    "y": -13.804289212757112
+  },
   "walls": 65,
   "exits": 3,
   "fuelStuds": 124,
   "marks": [
     {
       "tSec": 30,
-      "states": { "idle": 120 },
+      "states": {
+        "idle": 120
+      },
       "out": 0,
       "lethal": 0,
       "serious": 0,
@@ -22,11 +27,14 @@
     },
     {
       "tSec": 60,
-      "states": { "down": 4, "reacting": 116 },
+      "states": {
+        "down": 5,
+        "reacting": 115
+      },
       "out": 0,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 0,
       "fumeDown": 0,
       "heatDown": 0,
@@ -38,12 +46,17 @@
     },
     {
       "tSec": 90,
-      "states": { "down": 4, "evacuating": 55, "outside": 2, "reacting": 59 },
-      "out": 2,
+      "states": {
+        "down": 5,
+        "evacuating": 37,
+        "outside": 19,
+        "reacting": 59
+      },
+      "out": 19,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
-      "crawling": 3,
+      "serious": 2,
+      "minor": 8,
+      "crawling": 2,
       "fumeDown": 0,
       "heatDown": 0,
       "burning": 23,
@@ -54,12 +67,18 @@
     },
     {
       "tSec": 120,
-      "states": { "down": 4, "evacuating": 67, "outside": 19, "reacting": 30 },
-      "out": 19,
+      "states": {
+        "down": 5,
+        "evacuating": 19,
+        "left_map": 29,
+        "outside": 43,
+        "reacting": 24
+      },
+      "out": 72,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
-      "crawling": 4,
+      "serious": 2,
+      "minor": 8,
+      "crawling": 3,
       "fumeDown": 0,
       "heatDown": 0,
       "burning": 24,
@@ -70,12 +89,18 @@
     },
     {
       "tSec": 150,
-      "states": { "down": 4, "evacuating": 51, "outside": 46, "reacting": 19 },
-      "out": 46,
+      "states": {
+        "down": 5,
+        "evacuating": 8,
+        "left_map": 74,
+        "outside": 20,
+        "reacting": 13
+      },
+      "out": 94,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
-      "crawling": 0,
+      "serious": 2,
+      "minor": 8,
+      "crawling": 2,
       "fumeDown": 0,
       "heatDown": 0,
       "burning": 24,
@@ -86,11 +111,17 @@
     },
     {
       "tSec": 180,
-      "states": { "down": 4, "evacuating": 32, "outside": 72, "reacting": 12 },
-      "out": 72,
+      "states": {
+        "down": 5,
+        "evacuating": 8,
+        "left_map": 97,
+        "outside": 3,
+        "reacting": 7
+      },
+      "out": 100,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 0,
       "fumeDown": 0,
       "heatDown": 0,
@@ -102,11 +133,16 @@
     },
     {
       "tSec": 210,
-      "states": { "down": 4, "evacuating": 27, "left_map": 5, "outside": 84 },
-      "out": 89,
+      "states": {
+        "down": 5,
+        "evacuating": 8,
+        "left_map": 101,
+        "outside": 6
+      },
+      "out": 107,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 1,
       "fumeDown": 0,
       "heatDown": 0,
@@ -118,11 +154,16 @@
     },
     {
       "tSec": 240,
-      "states": { "down": 4, "evacuating": 14, "left_map": 12, "outside": 90 },
-      "out": 102,
+      "states": {
+        "down": 5,
+        "evacuating": 3,
+        "left_map": 106,
+        "outside": 6
+      },
+      "out": 112,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 0,
       "fumeDown": 0,
       "heatDown": 0,
@@ -134,11 +175,15 @@
     },
     {
       "tSec": 270,
-      "states": { "down": 4, "evacuating": 9, "left_map": 38, "outside": 69 },
-      "out": 107,
+      "states": {
+        "down": 5,
+        "evacuating": 3,
+        "left_map": 112
+      },
+      "out": 112,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 0,
       "fumeDown": 0,
       "heatDown": 0,
@@ -150,11 +195,15 @@
     },
     {
       "tSec": 300,
-      "states": { "down": 4, "evacuating": 5, "left_map": 63, "outside": 48 },
-      "out": 111,
+      "states": {
+        "down": 5,
+        "evacuating": 3,
+        "left_map": 112
+      },
+      "out": 112,
       "lethal": 3,
-      "serious": 1,
-      "minor": 7,
+      "serious": 2,
+      "minor": 8,
       "crawling": 0,
       "fumeDown": 0,
       "heatDown": 0,
