@@ -460,7 +460,8 @@ export type InteractionMode =
   | { type: 'place_door' }
   | { type: 'place_hazard'; hazardType: HazardType }
   | { type: 'place_stairwell' }
-  | { type: 'place_blast_site' };
+  | { type: 'place_blast_site' }
+  | { type: 'place_staging' };
 
 // ── Full game state ───────────────────────────────────────────────────────
 export interface RTSGameState {
