@@ -44,6 +44,8 @@ export interface ConvergenceStageInput {
   teamStorylines: Record<string, SocialInject[]>;
   personas: NPCPersona[];
   factSheet: CharactersOutput['fact_sheet'];
+  stakeholders: StorylineOutput['stakeholders'];
+  stakeholderInjects: SocialInject[];
 }
 
 export interface PagesStageInput {
@@ -128,6 +130,8 @@ export function stageInput(
       },
       personas: personasAfterStoryline(characters, storyline),
       factSheet: characters.fact_sheet,
+      stakeholders: storyline.stakeholders ?? [],
+      stakeholderInjects: storyline.stakeholder_injects ?? [],
     };
   }
   return {

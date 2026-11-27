@@ -1033,6 +1033,38 @@ export function isKnownConditionKey(key: string): boolean {
   return !('error' in parseConditionKey(key));
 }
 
+/**
+ * Prompt block of catalogue defs whose platform is in `platforms`.
+ * One line each: plain-English label and the key syntax. Deprecated aliases are omitted.
+ * War-room keys appear only when `warroom` is requested.
+ */
+export function catalogPromptBlock(platforms: readonly string[]): string {
+  const want = new Set(platforms);
+  const lines: string[] = [];
+  for (const def of CONDITION_CATALOG) {
+    if (def.deprecated) continue;
+    if (!want.has(def.platform)) continue;
+    lines.push(`- ${def.label} (${conditionKeySyntax(def)})`);
+  }
+  return lines.join('\n');
+}
+
+function conditionKeySyntax(def: ConditionDef): string {
+  if (def.kind === 'fixed' || !def.params || def.params.length === 0) return def.id;
+  const args = def.params.map((param) => `<${syntaxToken(param)}>`).join(':');
+  return `${def.id}:${args}`;
+}
+
+function syntaxToken(param: ConditionParam): string {
+  if (param.type === 'inject_key') return 'inject_key';
+  if (param.type === 'minutes') return 'N';
+  if (param.type === 'seconds') return 'S';
+  if (param.type === 'stakeholder') return 'stakeholder_id';
+  if (param.type === 'tone') return 'tone';
+  if (param.type === 'int') return param.name === 'N' ? 'N' : 'n';
+  return param.name;
+}
+
 /** Catalogue keys plus scenario-defined keys (state_path defs) supplied by the caller. */
 export function unknownConditionKeys(
   keys: readonly string[],

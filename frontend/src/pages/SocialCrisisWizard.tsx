@@ -1865,6 +1865,7 @@ export const SocialCrisisWizard = () => {
             pressure_organisations: pressureOrganisationsPayload,
             team_charters: chartersIn.length > 0 ? chartersIn : undefined,
             stakeholders: stakeholdersIn.length > 0 ? stakeholdersIn : undefined,
+            stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
           }),
         });
 
@@ -1935,6 +1936,7 @@ export const SocialCrisisWizard = () => {
       teamStorylines,
       teamCharters,
       stakeholders,
+      stakeholderInjects,
       blueprint,
       organisationsPayload,
       competitorsPayload,

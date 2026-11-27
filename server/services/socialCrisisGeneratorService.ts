@@ -14,6 +14,26 @@ import {
 } from './teamCharterService.js';
 import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
 import { matchGeneratedOrgsToRoster } from './orgNameMatch.js';
+import { catalogPromptBlock } from './conditions/conditionCatalog.js';
+import type { ResponseRubric } from './judging/judgeCore.js';
+
+/** Catalogue platforms a social-crisis scenario can actually deliver on. War-room keys stay out. */
+const SCENARIO_CONDITION_PLATFORMS = [
+  'social',
+  'email',
+  'chat',
+  'dm',
+  'call',
+  'news',
+  'stakeholder',
+  'cross',
+] as const;
+
+const CONSEQUENCE_CHANNEL_GUIDANCE =
+  'A consequence lands where a real one would — an ignored supplier emails again, then phones; a community leader posts publicly; a regulator writes a formal email.';
+
+const DELIVERY_APP_SYNTAX =
+  'social_feed|email|group_chat|phone_call|news|messenger_dm|npc_dm';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +83,14 @@ export interface TeamDef {
 }
 
 export interface SocialInjectDeliveryConfig {
-  app: 'social_feed' | 'email' | 'news' | 'group_chat' | 'phone_call';
+  app:
+    | 'social_feed'
+    | 'email'
+    | 'news'
+    | 'group_chat'
+    | 'phone_call'
+    | 'messenger_dm'
+    | 'npc_dm';
   platform?: string;
   author_handle?: string;
   author_display_name?: string;
@@ -105,6 +132,27 @@ export interface SocialInjectDeliveryConfig {
   inject_key?: string;
   /** Second-order chaining: the inject_key this one follows (runtime cascade, organic decisions). */
   parent_inject_key?: string;
+  /** Response-branch kind. Set on generated conditional follow-ups. */
+  branch?: 'no_reply' | 'poor_reply' | 'good_reply' | 'risky_admission';
+  /** Title of the parent inject, so a later compile can reattach keys. */
+  parent_title?: string;
+  parent_app?: string;
+  parent_target_teams?: string[];
+  /** Rubric carried on a branch until compile copies it onto the parent. */
+  parent_response_rubric?: ResponseRubric;
+  /** Minutes the player has to answer before unresponded/unreplied keys fire. */
+  response_window_minutes?: number;
+  /** Authored judge rubric (WP4). The generator fills one for every response parent. */
+  response_rubric?: ResponseRubric;
+  call_script?: {
+    opening?: string;
+    beats?: Array<{ id?: string; say?: string; must_ask?: boolean }>;
+    closing?: string;
+    language?: string;
+    redial_openings?: string[];
+  };
+  /** Round-trip and generator fields the runtime ignores. */
+  [key: string]: unknown;
   /** Runtime cascade linkage: the detected executive decision this inject belongs to. */
   decision_id?: string;
   /** Page-authored inject (contract v3.2): author fields are the page's identity; stakeholder_id = spokesperson. */
@@ -1172,20 +1220,8 @@ export async function generateConvergenceLayer(
 
 3. SHARED SOCIAL MEDIA CHAOS: 10-15 social posts that ALL teams see in their feeds. These create the ambient environment of a social media crisis — outrage, misinformation, supportive voices, breaking news, stakeholder reactions. The content should be appropriate to the specific crisis type described. These injects have inject_scope: "universal" and target_teams: []. IMPORTANT: For each social_feed inject, set "platform" in delivery_config to either "x_twitter" or "facebook". Aim for roughly 60% X/Twitter posts and 40% Facebook posts. X/Twitter posts should be short, punchy, hashtag-heavy. Facebook posts should be longer, more personal, community-oriented.
 
-4. CONVERGENCE GATES: 5-8 condition-based injects that create CROSS-TEAM consequences. These fire based on what players do or don't do. Use these condition keys:
-   - hate_post_unaddressed_count_gt_3
-   - misinformation_unaddressed_10min
-   - sentiment_below_30
-   - sentiment_above_60
-   - team_published_counter_narrative
-   - team_flagged_misinformation
-   - community_leader_contacted
-   - player_post_count_gt_3
-   - player_post_count_gt_5
-   - rally_call_active
-   - sop_step_monitor_completed / sop_step_monitor_overdue
-   - sop_step_draft_completed / sop_step_draft_overdue
-   - sop_step_publish_completed / sop_step_publish_overdue
+4. CONVERGENCE GATES: 5-8 condition-based injects that create CROSS-TEAM consequences. These fire based on what players do or don't do. ${CONSEQUENCE_CHANNEL_GUIDANCE} Include conditional injects on email, group_chat, phone_call and social_feed, not only social posts. delivery_config.app is one of ${DELIVERY_APP_SYNTAX}. Use only these condition keys:
+${catalogPromptBlock(SCENARIO_CONDITION_PLATFORMS)}
 
    Each convergence gate should be a MAJOR escalation or de-escalation moment that feels like an organic consequence.
 
@@ -1210,7 +1246,7 @@ Return ONLY valid JSON:
   "narrative": { "title": "...", "description": "...", "briefing": "..." },
   "objectives": [{ "objective_id": "...", "objective_name": "...", "description": "...", "weight": 25 }],
   "shared_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "...", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "platform": "x_twitter|facebook", ... } }],
-  "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }],
+  "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post|email_inbound|group_chat_message|phone_call|dm", "severity": "critical", "inject_scope": "universal|team_specific", "target_teams": [], "delivery_config": { "app": "${DELIVERY_APP_SYNTAX}", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", ... }, "conditions_to_appear": { "all": ["<key from the catalogue>"] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }],
   "dimension_labels": { "public_trust": "...", "community_safety": "...", "narrative_control": "...", "escalation_risk": "..." }
 }`,
     `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}${buildConvergenceGuidance(blueprint)}`,
@@ -1303,6 +1339,9 @@ interface RawIntelItem {
     author_display_name?: string;
     author_type?: string;
     platform?: string;
+    app?: string;
+    private_title?: string;
+    private_content?: string;
   };
 }
 
@@ -1408,7 +1447,7 @@ Create ${itemCount} intel items — ${multiOrg ? 'holders spread across organisa
 5. "intel_summary": one sentence a trainer reads describing why another team needs this.
 6. "detection_keywords": 3-6 distinctive strings from the fact (codes, numbers, proper nouns) that would appear when a player relays it in their own words.
 7. "positive_gate": a social post or news beat that appears AFTER the intel was relayed and acted on — the situation visibly improves (e.g. a journalist notes the response was specific and accurate). Provide title, content, author_handle/author_display_name/author_type from the NPC list, platform.
-8. "negative_gate": the organic consequence if the intel was NOT relayed by the deadline — the dependent team's blind spot becomes public (e.g. a vague or wrong statement gets torn apart, a customer exposes the contradiction). Same fields.
+8. "negative_gate": the organic consequence if the intel was NOT relayed by the deadline. ${CONSEQUENCE_CHANNEL_GUIDANCE} Prefer a direct email or phone_call to the dependent team (set "app" to "email" or "phone_call", plus "private_title" and "private_content"), AND a public social_feed beat (title, content, author fields, platform) where the blind spot becomes public.
 
 Facts to build on (stay consistent, do not contradict): ${factSheet.confirmed_facts.slice(0, 8).join('; ')}
 
@@ -1532,6 +1571,30 @@ Return ONLY valid JSON:
     }
 
     if (item.negative_gate?.content) {
+      const privateApp = item.negative_gate.app === 'phone_call' ? 'phone_call' : 'email';
+      intelGates.push({
+        type: privateApp === 'phone_call' ? 'phone_call' : 'email_inbound',
+        title: String(
+          item.negative_gate.private_title ||
+            item.negative_gate.title ||
+            `Intel withheld: ${key}`,
+        ),
+        content: String(item.negative_gate.private_content || item.negative_gate.content),
+        severity: 'high',
+        inject_scope: 'team_specific',
+        target_teams: neededBy,
+        delivery_config: {
+          app: privateApp,
+          from_name: String(item.from_name || 'Operations Desk'),
+          from_address: String(item.from_address || 'operations@sim.local'),
+          priority: 'urgent',
+          stakeholder_team: neededBy[0],
+          ...gateScope,
+        } as SocialInjectDeliveryConfig,
+        conditions_to_appear: { threshold: 1, conditions: [`intel_missing:${key}`] },
+        conditions_to_cancel: [`intel_shared:${key}`],
+        eligible_after_minutes: deadline,
+      });
       intelGates.push({
         type: 'social_post',
         title: String(item.negative_gate.title || `Intel withheld: ${key}`),
@@ -1849,8 +1912,8 @@ export async function generateStrategyWindows(
     `You are designing STRATEGY WINDOWS for a social media crisis simulation. Strategy windows define what happens when the player team tries different communication strategies.
 
 For each strategy below, generate:
-1. SUCCESS BRANCH: 3 social media posts that appear as organic consequences when the strategy is well-timed (prerequisites met). These should feel like genuine public reactions.
-2. BACKLASH BRANCH: 3 social media posts that appear when the strategy is poorly timed (prerequisites NOT met). These should feel like genuine backlash.
+1. SUCCESS BRANCH: 3 injects that appear as organic consequences when the strategy is well-timed (prerequisites met). These should feel like genuine reactions, on the channel a real consequence would use.
+2. BACKLASH BRANCH: 3 injects that appear when the strategy is poorly timed (prerequisites NOT met). These should feel like genuine backlash.
 
 Strategies to cover:
 - "humor_creative": Team posts humor/meme content
@@ -1861,22 +1924,26 @@ Strategies to cover:
 NPCs available: ${npcHandles}
 Facts: ${factSheet.confirmed_facts.slice(0, 5).join('; ')}
 
-Each inject should have: title, content (the social media post text), severity, delivery_config with app="social_feed" and appropriate author details from the NPC list.
+Each inject has a title, content, severity and delivery_config. ${CONSEQUENCE_CHANNEL_GUIDANCE} app is one of ${DELIVERY_APP_SYNTAX}, with author fields from the NPC list when the inject is a social post or a news beat.
 
-SUCCESS injects should have conditions_to_appear requiring the strategy format + prerequisites (fact_check completed, official statement published, etc).
-BACKLASH injects should fire when the strategy format is used WITHOUT prerequisites.
+Condition keys (use only these):
+${catalogPromptBlock(SCENARIO_CONDITION_PLATFORMS)}
+
+SUCCESS injects appear when the strategy signal and its prerequisites both hold (fact-check completed, official statement published, and the strategy's own key).
+BACKLASH injects appear when the strategy is used without those prerequisites.
+Cover every strategy id above. Do not make every consequence a social post.
 
 Return ONLY valid JSON:
 {
   "windows": [
     {
-      "strategy_id": "humor_creative",
-      "strategy_name": "Humor/Creative Format",
+      "strategy_id": "humor_creative|leader_amplification|multi_platform_blitz|strategic_silence",
+      "strategy_name": "...",
       "success_injects": [
-        { "title": "...", "content": "...", "type": "social_post", "severity": "medium", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "virality_score": 70 }, "conditions_to_appear": { "threshold": 3, "conditions": ["player_posted_creative_format", "sop_step_fact_check_completed", "official_response_exists"] }, "conditions_to_cancel": [], "eligible_after_minutes": 15 }
+        { "title": "...", "content": "...", "type": "social_post|email_inbound|group_chat_message|phone_call|dm", "severity": "medium", "inject_scope": "universal|team_specific", "target_teams": [], "delivery_config": { "app": "${DELIVERY_APP_SYNTAX}" }, "conditions_to_appear": { "all": ["<catalogue key>"] }, "conditions_to_cancel": [], "eligible_after_minutes": 15 }
       ],
       "backlash_injects": [
-        { "title": "...", "content": "...", "type": "social_post", "severity": "high", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "virality_score": 80 }, "conditions_to_appear": { "threshold": 1, "conditions": ["player_posted_creative_format"] }, "conditions_to_cancel": ["sop_step_fact_check_completed", "official_response_exists"] }
+        { "title": "...", "content": "...", "type": "social_post|email_inbound|phone_call", "severity": "high", "inject_scope": "universal|team_specific", "target_teams": [], "delivery_config": { "app": "${DELIVERY_APP_SYNTAX}" }, "conditions_to_appear": { "all": ["<catalogue key>"] }, "conditions_to_cancel": ["<prerequisite key>"], "eligible_after_minutes": 10 }
       ]
     }
   ]
