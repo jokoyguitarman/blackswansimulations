@@ -67,7 +67,12 @@ import {
   shouldAutoDowngrade,
   type FxQuality,
 } from '../lib/rts/fx/fxConstants';
-import { createAccumulator, stepEffectsFixed, takeSteps } from '../lib/rts/fx/simClock';
+import {
+  advanceSharedFrame,
+  cappedFrameDt,
+  createSharedClock,
+  resetSharedClock,
+} from '../lib/rts/fx/simClock';
 import {
   activeRasterLayout,
   createRasterLayoutCache,
@@ -1050,9 +1055,7 @@ export function DebugRTSSim() {
   }>({ engine: null, layers: null });
   const rasterCacheRef = useRef(createRasterLayoutCache());
   const rasterLayoutRef = useRef<RasterLayout | null>(null);
-  const evacAccRef = useRef(createAccumulator());
-  const effectsAccRef = useRef(createAccumulator());
-  const evacStepsDoneRef = useRef(0);
+  const simClockRef = useRef(createSharedClock());
   const [showcaseHud, setShowcaseHud] = useState<{
     metrics: ShowcaseMetrics | null;
     burning: number;
@@ -2698,104 +2701,38 @@ export function DebugRTSSim() {
       lastTimeRef.current = time;
 
       const rts = rtsRef.current;
-      rts.tick(dt);
+      const clock = rts.state.clock;
+      rts.tick(clock.phase === 'setup' || clock.paused ? dt : cappedFrameDt(dt, clock.speed));
 
       const showcaseOn = showcaseRef.current;
 
       const evac = evacEngRef.current;
-      const simRunning = !rts.state.clock.paused && rts.state.clock.phase !== 'setup';
-      if (evac && simRunning) {
-        const moveDoors = (doorDt: number) => {
-          const bodies = pedestriansRef.current
-            .filter((person) => person.state !== 'left_map')
-            .map((person) => ({ x: person.x, y: person.y, level: person.level }));
-          stepDoorLeaves(
-            interiorWallsRef.current,
-            bodies,
-            effectsEngineRef.current?.exposedDoorIds() ?? new Set<string>(),
-            doorDt,
-            MOUTH_APPROACH_M,
-          );
-          evac.syncDoorLeaves(interiorWallsRef.current);
-        };
-        if (showcaseOn) {
-          const liveEffects = effectsEngineRef.current;
-          if (liveEffects) evac.setHazardStates(liveEffects.studStates);
-          evac.syncExits(exitsRef.current);
-          evac.setZones(
-            rts.state.equipment
-              .filter((e) => e.def.kind === 'assembly_point' && e.active)
-              .map((e) => ({
-                id: e.id,
-                pos: e.pos,
-                radius: e.def.radius,
-                label: e.def.label,
-                kind: zoneKindsRef.current[e.id] ?? 'assembly',
-              })),
-          );
-          evac.setResponders(
-            rts.state.units
-              .filter((u) => u.def.abilities.includes('unfreeze'))
-              .map((u) => ({ id: u.id, pos: u.pos })),
-          );
-          const evacSteps = takeSteps(
-            evacAccRef.current,
-            dt,
-            rts.state.clock.speed,
-            FX.FIXED_DT,
-            FX.MAX_STEPS_PER_FRAME,
-          );
-          moveDoors(evacSteps * FX.FIXED_DT);
-          const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
-          let cursor = 0;
-          if (!blastFiredRef.current && evacStepsDoneRef.current + evacSteps >= blastStep) {
-            const pre = Math.max(0, Math.min(evacSteps, blastStep - evacStepsDoneRef.current));
-            for (; cursor < pre; cursor++) evac.step();
-            blastFiredRef.current = true;
-            const site = blastSiteRef.current;
-            if (site) {
-              const manual = manualRadiusRef.current;
-              const spec = chargeRef.current;
-              evac.triggerBlast(
-                site,
-                manual
-                  ? blastRadiusRef.current
-                  : {
-                      mode: 'pressure',
-                      spec,
-                      heightM: spec.burst === 'free_air' ? spec.heightM : 0,
-                    },
-              );
-            }
-            explosionStartRef.current = performance.now();
-            setBanner({
-              until: performance.now() + SHOWCASE.BANNER_S * 1000,
-              text: `EXPLOSION · ${rts.formatClock()}`,
-            });
-          }
-          for (; cursor < evacSteps; cursor++) evac.step();
-          evacStepsDoneRef.current += evacSteps;
-          rts.limitElapsed(evacStepsDoneRef.current * FX.FIXED_DT);
-        } else {
-          const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
-          moveDoors(stepsPerFrame * DEFAULT_POLYGON_CONFIG.dt);
-          for (let i = 0; i < stepsPerFrame; i++) evac.step();
-        }
-        const snaps = evac.getSnapshots();
-        pedestriansRef.current = snaps;
-        setPedestrians(snaps);
-        if (showcaseOn && performance.now() - hudAtRef.current >= 250) {
-          hudAtRef.current = performance.now();
-          const stats = effectsEngineRef.current?.getStats();
-          setShowcaseHud({
-            metrics: evac.getMetrics().showcase ?? null,
-            burning: stats?.fire.burning ?? 0,
-            smoke: stats?.smokeAffected ?? 0,
-          });
-        }
+      const effectsEng = effectsEngineRef.current;
+      const simRunning = !clock.paused && clock.phase !== 'setup';
+      if (evac && simRunning && showcaseOn) {
+        const liveEffects = effectsEngineRef.current;
+        if (liveEffects) evac.setHazardStates(liveEffects.studStates);
+        evac.syncExits(exitsRef.current);
+        evac.setZones(
+          rts.state.equipment
+            .filter((e) => e.def.kind === 'assembly_point' && e.active)
+            .map((e) => ({
+              id: e.id,
+              pos: e.pos,
+              radius: e.def.radius,
+              label: e.def.label,
+              kind: zoneKindsRef.current[e.id] ?? 'assembly',
+            })),
+        );
+        evac.setResponders(
+          rts.state.units
+            .filter((u) => u.def.abilities.includes('unfreeze'))
+            .map((u) => ({ id: u.id, pos: u.pos })),
+        );
       }
 
-      const effectsEng = effectsEngineRef.current;
+      const walls = interiorWallsRef.current;
+      const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
       if (effectsEng && simRunning) {
         const studsNow = simStudsRef.current;
         if (effectsEng.studStates.size < studsNow.length) {
@@ -2825,8 +2762,6 @@ export function DebugRTSSim() {
           hazardFieldRef.current = ground;
           evacEngRef.current?.setHazardField(ground);
         }
-        const walls = interiorWallsRef.current;
-        const hazards = hazardsForEffects(hazardZonesRef.current, blastDirectZoneRef.current);
         effectsEng.setHoodFanWhen(hoodFanWhenRef.current);
         effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
         effectsEng.setStoreyHeights(
@@ -2840,14 +2775,80 @@ export function DebugRTSSim() {
           chargeRef.current,
           levelsRef.current,
         );
-        const effectSteps = stepEffectsFixed(
-          effectsEng,
-          effectsAccRef.current,
-          dt,
-          rts.state.clock.speed,
-          walls,
-          hazards,
-        );
+      }
+
+      let effectSteps = 0;
+      if (simRunning && (evac || effectsEng)) {
+        const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
+        const fireBlast = () => {
+          blastFiredRef.current = true;
+          const site = blastSiteRef.current;
+          if (site && evac) {
+            const manual = manualRadiusRef.current;
+            const spec = chargeRef.current;
+            evac.triggerBlast(
+              site,
+              manual
+                ? blastRadiusRef.current
+                : {
+                    mode: 'pressure',
+                    spec,
+                    heightM: spec.burst === 'free_air' ? spec.heightM : 0,
+                  },
+            );
+          }
+          explosionStartRef.current = performance.now();
+          setBanner({
+            until: performance.now() + SHOWCASE.BANNER_S * 1000,
+            text: `EXPLOSION · ${rts.formatClock()}`,
+          });
+        };
+        const ran = advanceSharedFrame(simClockRef.current, dt, clock.speed, {
+          beforeSteps: evac
+            ? (doorDt) => {
+                const bodies = pedestriansRef.current
+                  .filter((person) => person.state !== 'left_map')
+                  .map((person) => ({ x: person.x, y: person.y, level: person.level }));
+                stepDoorLeaves(
+                  walls,
+                  bodies,
+                  effectsEng?.exposedDoorIds() ?? new Set<string>(),
+                  doorDt,
+                  MOUTH_APPROACH_M,
+                );
+                evac.syncDoorLeaves(walls);
+              }
+            : undefined,
+          crowdStep: evac
+            ? (stepNo) => {
+                evac.step();
+                if (showcaseOn && !blastFiredRef.current && stepNo >= blastStep) fireBlast();
+              }
+            : undefined,
+          effectsStep: effectsEng
+            ? () => effectsEng.step(FX.EFFECTS_DT, walls, hazards)
+            : undefined,
+        });
+        effectSteps = ran.effectSteps;
+        rts.syncElapsed(simClockRef.current.crowdSteps * FX.FIXED_DT);
+      }
+
+      if (evac && simRunning) {
+        const snaps = evac.getSnapshots();
+        pedestriansRef.current = snaps;
+        setPedestrians(snaps);
+        if (showcaseOn && performance.now() - hudAtRef.current >= 250) {
+          hudAtRef.current = performance.now();
+          const stats = effectsEngineRef.current?.getStats();
+          setShowcaseHud({
+            metrics: evac.getMetrics().showcase ?? null,
+            burning: stats?.fire.burning ?? 0,
+            smoke: stats?.smokeAffected ?? 0,
+          });
+        }
+      }
+
+      if (effectsEng && simRunning) {
         const effectDt = effectSteps * FX.EFFECTS_DT;
         effectStatesRef.current = new Map(effectsEng.studStates);
         if (effectSteps > 0 || smokeLayersRef.current.engine !== effectsEng) {
@@ -4676,11 +4677,7 @@ export function DebugRTSSim() {
     setBanner(null);
     setShowcaseHud(null);
     hudAtRef.current = 0;
-    evacAccRef.current.acc = 0;
-    evacAccRef.current.dropped = 0;
-    effectsAccRef.current.acc = 0;
-    effectsAccRef.current.dropped = 0;
-    evacStepsDoneRef.current = 0;
+    resetSharedClock(simClockRef.current);
 
     if (!enrichResult && hazardZones.length > 0) {
       setDetonationLoading(true);
