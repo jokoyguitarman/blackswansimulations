@@ -708,29 +708,44 @@ export interface VentOutside {
 }
 
 /**
- * Wall pressure coefficients for a square plan, applied to the 90° sector
- * the face owns. ASCE/SEI 7-22 Figure 27.3-1: windward wall +0.8, leeward
- * wall −0.5 at L/B = 1, side walls −0.7. The figure is for wind normal to
- * a wall. A face takes the windward value when the wind blows onto it
- * within 45° of its outward normal, the leeward value when the wind blows
- * off it within 45°, and the side value in between.
+ * Pressure coefficient at zero incidence for a vertical wall of a low-rise
+ * building. Swami and Chandra recommend 0.6; their fit then scales it by
+ * the wind angle. ASHRAE Transactions 94(1), 1988.
  */
-export const FACADE_CP_WINDWARD = 0.8;
-export const FACADE_CP_LEEWARD = -0.5;
-export const FACADE_CP_SIDE = -0.7;
+export const FACADE_CP_NORMAL = 0.6;
+
+/**
+ * Normalized wall coefficient, square plan. Swami and Chandra, FSEC-CR-163-86
+ * Eq. 2.1, published as ASHRAE Transactions 94(1):243–266 (1988). α is the
+ * angle between the outward normal and the direction the wind comes from,
+ * 0 when the wind blows straight onto the face, π when it blows off it.
+ * The side ratio is 1, so G = ln(S) is 0 and those terms drop out. The
+ * result is 1 at α = 0, within the fit.
+ */
+export function swamiChandraNormalCp(incidenceRad: number): number {
+  const alpha = Math.abs(incidenceRad);
+  const half = alpha / 2;
+  const s = Math.sin(alpha);
+  const arg =
+    1.248 -
+    0.703 * Math.sin(half) -
+    1.175 * s * s +
+    0.769 * Math.cos(half) +
+    0.717 * Math.cos(half) * Math.cos(half);
+  if (!(arg > 0)) return 0;
+  return Math.log(arg);
+}
 
 /**
  * Coefficient for one outdoor face. `windFaceRad` is the outward normal,
  * 0 along +x, counter-clockwise. `windToRad` is the direction the wind
- * travels, the same convention.
+ * travels, the same convention. The value follows the wind angle instead
+ * of switching at 45°.
  */
 export function facadeCp(windFaceRad: number, windToRad: number): number {
   const from = windToRad + Math.PI;
   const incidence = Math.atan2(Math.sin(from - windFaceRad), Math.cos(from - windFaceRad));
-  const a = Math.abs(incidence);
-  if (a <= Math.PI / 4 + 1e-12) return FACADE_CP_WINDWARD;
-  if (a >= (3 * Math.PI) / 4 - 1e-12) return FACADE_CP_LEEWARD;
-  return FACADE_CP_SIDE;
+  return FACADE_CP_NORMAL * swamiChandraNormalCp(incidence);
 }
 
 /**
@@ -4190,6 +4205,12 @@ export interface FacadeOpening {
   kind: 'wall' | 'exit';
   exitKey?: string;
   widthM?: number;
+  /**
+   * Outward normal of the polygon edge this exit cuts, radians, 0 along +x.
+   * An exit uses this instead of the direction from the room centroid to
+   * the receivers, which skews on an L-shaped plan.
+   */
+  outwardRad?: number;
 }
 
 export interface Enclosure {
@@ -4281,7 +4302,7 @@ export function enclosureFromGrid(
   const doorLinks = new Map<string, Array<{ id: string; t: number; from: string }>>();
   const faceLinks = new Map<string, string[]>();
   const spillReceivers: string[] = [];
-  const exitSlots = new Map<string, { widthM: number; receivers: string[] }>();
+  const exitSlots = new Map<string, { widthM: number; receivers: string[]; outwardRad?: number }>();
   const facadeWalls: number[] = [];
   const exteriorWalls = new Set<string>();
   let spillWidth = 0;
@@ -4306,7 +4327,12 @@ export function enclosureFromGrid(
       if (reach > FACE_MAX_M && reach <= DIAGONAL_FACE_MAX_M) {
         const diag = facade?.(id, nId) ?? null;
         if (diag?.kind === 'exit' && diag.exitKey && (diag.widthM ?? 0) > 0) {
-          const slot = exitSlots.get(diag.exitKey) ?? { widthM: diag.widthM ?? 0, receivers: [] };
+          const slot = exitSlots.get(diag.exitKey) ?? {
+            widthM: diag.widthM ?? 0,
+            receivers: [],
+            outwardRad: diag.outwardRad,
+          };
+          if (slot.outwardRad == null && diag.outwardRad != null) slot.outwardRad = diag.outwardRad;
           slot.receivers.push(nId);
           exitSlots.set(diag.exitKey, slot);
         }
@@ -4358,7 +4384,12 @@ export function enclosureFromGrid(
           // is the reader. The stud outside the wall is not a receiver.
           facadeWalls.push(reach * ceilingM);
         } else if (face?.kind === 'exit' && face.exitKey && (face.widthM ?? 0) > 0) {
-          const slot = exitSlots.get(face.exitKey) ?? { widthM: face.widthM ?? 0, receivers: [] };
+          const slot = exitSlots.get(face.exitKey) ?? {
+            widthM: face.widthM ?? 0,
+            receivers: [],
+            outwardRad: face.outwardRad,
+          };
+          if (slot.outwardRad == null && face.outwardRad != null) slot.outwardRad = face.outwardRad;
           slot.receivers.push(nId);
           exitSlots.set(face.exitKey, slot);
         } else {
@@ -4426,13 +4457,17 @@ export function enclosureFromGrid(
     return windFace == null ? vent : { ...vent, windFace };
   };
 
-  const pushHead = (widthM: number, receivers: readonly string[]) => {
+  const pushHead = (widthM: number, receivers: readonly string[], edgeRad?: number) => {
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
     const bare: Vent =
       soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M
         ? { widthM, sillM: 0, soffitM: soffit }
         : { widthM, sillM: 0, soffitM: ceilingM };
-    vents.push(ventWithFace(bare, receivers, true));
+    const faced =
+      edgeRad != null && Number.isFinite(edgeRad)
+        ? { ...bare, windFace: edgeRad }
+        : ventWithFace(bare, receivers, true);
+    vents.push(faced);
     ventReceivers.push([...new Set(receivers)]);
   };
 
@@ -4490,7 +4525,7 @@ export function enclosureFromGrid(
     );
     ventReceivers.push(receivers);
   }
-  for (const slot of exitSlots.values()) pushHead(slot.widthM, slot.receivers);
+  for (const slot of exitSlots.values()) pushHead(slot.widthM, slot.receivers, slot.outwardRad);
 
   return {
     spec: {

@@ -39,11 +39,11 @@ import {
   diameterForReleaseKw,
   effectiveHeatLossKwM2K,
   enclosureFromGrid,
-  FACADE_CP_LEEWARD,
-  FACADE_CP_SIDE,
-  FACADE_CP_WINDWARD,
+  FACADE_CP_NORMAL,
   facadeCp,
   facadeWindPa,
+  neutralPlaneM,
+  swamiChandraNormalCp,
   formsSustainedLayer,
   FAN_FULL_FLOW_PA,
   FAN_ZERO_FLOW_PA,
@@ -1953,18 +1953,30 @@ test("Harbour's kitchen keeps its own door and the west shop keeps its exit", ()
   );
 });
 
-test('facade pressure follows the square-plan wall coefficients', () => {
-  // A face looking along +x. Wind toward −x blows onto it.
-  assert.equal(facadeCp(0, Math.PI), FACADE_CP_WINDWARD);
-  assert.equal(facadeCp(0, 0), FACADE_CP_LEEWARD);
-  assert.equal(facadeCp(0, Math.PI / 2), FACADE_CP_SIDE);
-  assert.equal(facadeCp(0, -Math.PI / 2), FACADE_CP_SIDE);
+test('facade pressure follows the wind angle instead of a 45 degree step', () => {
+  // A face looking along +x. Adding α to π is wind coming from α off that normal.
+  const onto = (alpha: number) => facadeCp(0, Math.PI + alpha);
+  const headOn = FACADE_CP_NORMAL * swamiChandraNormalCp(0);
+  close(onto(0), headOn, 1e-12, 'head-on');
+  assert.ok(headOn > 0.55 && headOn < 0.65, `head-on Cp ${headOn}`);
+  assert.ok(onto(Math.PI) < 0, `leeward ${onto(Math.PI)}`);
+  assert.ok(
+    onto(Math.PI / 2) < onto(Math.PI),
+    `side ${onto(Math.PI / 2)} should pull harder than leeward ${onto(Math.PI)}`,
+  );
+  const across = onto((46 * Math.PI) / 180) - onto((44 * Math.PI) / 180);
+  assert.ok(Math.abs(across) < 0.05, `Cp jumped by ${across} across 45°`);
+  let prev = onto(0);
+  for (let deg = 5; deg <= 180; deg += 5) {
+    const cp = onto((deg * Math.PI) / 180);
+    assert.ok(Math.abs(cp - prev) < 0.12, `Cp jumped at ${deg}° from ${prev} to ${cp}`);
+    prev = cp;
+  }
+  close(onto(0.4), onto(-0.4), 1e-12, 'the fit does not care which way the wind turns');
   assert.equal(facadeWindPa(0, Math.PI, 0), 0);
   assert.equal(facadeWindPa(0, Math.PI, -4), 0);
   const q = 0.5 * 1.2 * 25;
-  close(facadeWindPa(0, Math.PI, 5), FACADE_CP_WINDWARD * q, 1e-9, 'windward');
-  close(facadeWindPa(0, 0, 5), FACADE_CP_LEEWARD * q, 1e-9, 'leeward');
-  close(facadeWindPa(0, Math.PI / 2, 5), FACADE_CP_SIDE * q, 1e-9, 'side');
+  close(facadeWindPa(0, Math.PI, 5), headOn * q, 1e-9, 'dynamic pressure');
 });
 
 test('an exit faces the weather and an internal opening does not', () => {
@@ -2172,6 +2184,163 @@ test('wind across two open sides carries smoke out the leeward opening', () => {
   assert.ok(
     gust.east > gust.west * 5,
     `leeward east ${gust.east} should hold more smoke than windward west ${gust.west}`,
+  );
+});
+
+test('an exit keeps the wall normal when the room centroid would skew it', () => {
+  const studs = new Map<string, GridStud>([
+    ['a', { id: 'a', x: 2, y: 0, level: 'G' }],
+    ['b', { id: 'b', x: 5, y: 0, level: 'G' }],
+    ['c', { id: 'c', x: 5, y: 6, level: 'G' }],
+    ['out', { id: 'out', x: -1, y: 0, level: 'G' }],
+  ]);
+  const neighbors = new Map<string, readonly string[]>([
+    ['a', ['b', 'out']],
+    ['b', ['a', 'c']],
+    ['c', ['b']],
+    ['out', ['a']],
+  ]);
+  const facade = (member: string, outside: string) => {
+    if (member === 'a' && outside === 'out') {
+      return { kind: 'exit' as const, exitKey: 'W', widthM: 2, outwardRad: Math.PI };
+    }
+    return null;
+  };
+  const enc = enclosureFromGrid(['a', 'b', 'c'], studs, neighbors, [], 4, facade);
+  const vent = enc?.spec.vents.find((row) => row.windFace != null);
+  assert.ok(vent?.windFace != null);
+  close(vent.windFace, Math.PI, 1e-9, 'edge normal');
+  const skewed = Math.atan2(-2, -5);
+  const miss = Math.atan2(Math.sin(skewed - Math.PI), Math.cos(skewed - Math.PI));
+  assert.ok(Math.abs(miss) > 0.2, `centroid normal should not already be the wall, off by ${miss}`);
+});
+
+test('the building edge, not the room centroid, faces an exit', () => {
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  engine.init([stud('a', 2, 0), stud('b', 5, 0), stud('c', 5, 6), stud('out', -1, 0, false)]);
+  engine.setStoreyHeights({ G: 4 });
+  const verts: Vec2[] = [
+    { x: 0, y: -2 },
+    { x: 6, y: -2 },
+    { x: 6, y: 8 },
+    { x: 0, y: 8 },
+  ];
+  const west: ExitDef = {
+    id: 'west',
+    center: { x: 0, y: 0 },
+    width: 2,
+    edgeIndex: 3,
+    description: 'west',
+    status: 'open',
+    photos: [],
+    level: 'G',
+  };
+  engine.setBuildingEnvelope(verts, [west]);
+  const enc = (
+    engine as unknown as {
+      enclosureOf: (
+        room: string,
+        members: string[],
+        walls: InteriorWall[],
+        ceiling: number,
+      ) => { spec: { vents: { widthM: number; windFace?: number }[] } } | null;
+    }
+  ).enclosureOf('room', ['a', 'b', 'c'], [], 4);
+  const vent = enc?.spec.vents.find((row) => Math.abs(row.widthM - 2) < 0.05);
+  assert.ok(vent?.windFace != null, 'the exit should face the weather');
+  const turn = Math.atan2(Math.sin(vent.windFace - Math.PI), Math.cos(vent.windFace - Math.PI));
+  close(turn, 0, 1e-6, 'west edge');
+});
+
+test('wind shifts a tall opening off the stack neutral plane', () => {
+  const ceiling = 6;
+  const interfaceM = 3;
+  const upperK = AMBIENT_K + 80;
+  const boundaries = [
+    { areaM2: 40, lining: LINING.concrete, place: 'floor' as const },
+    { areaM2: 40, lining: LINING.concrete, place: 'ceiling' as const },
+    { areaM2: 96, lining: LINING.concrete, place: 'wall' as const },
+  ];
+  const room = (eastPa?: number, westPa?: number) => {
+    const vent = (windPa?: number) =>
+      windPa == null
+        ? { widthM: 2, sillM: 0, soffitM: ceiling }
+        : { widthM: 2, sillM: 0, soffitM: ceiling, windPa };
+    return stepZone(
+      { ...freshLayer(ceiling), interfaceM, upperK, sootG: 10 },
+      { areaM2: 40, ceilingM: ceiling, vents: [vent(eastPa), vent(westPa)], boundaries, fires: [] },
+      0.2,
+    );
+  };
+  const calm = room();
+  const gust = room(20, -12);
+  const stack = neutralPlaneM(interfaceM, upperK, calm.floorPressurePa);
+  const windward = neutralPlaneM(interfaceM, upperK, gust.floorPressurePa - 20);
+  const leeward = neutralPlaneM(interfaceM, upperK, gust.floorPressurePa - -12);
+  assert.ok(windward > stack, `windward plane ${windward}, stack ${stack}`);
+  assert.ok(leeward < stack, `leeward plane ${leeward}, stack ${stack}`);
+  assert.ok(
+    (gust.inKgByVent[0] ?? 0) > (calm.inKgByVent[0] ?? 0),
+    `windward inflow ${gust.inKgByVent[0]} against stack ${calm.inKgByVent[0]}`,
+  );
+  assert.ok(
+    (gust.hotByVent[1]?.kg ?? 0) > (calm.hotByVent[1]?.kg ?? 0),
+    `leeward hot outflow ${gust.hotByVent[1]?.kg} against stack ${calm.hotByVent[1]?.kg}`,
+  );
+});
+
+test('a shaft vent ignores a wind pressure that moves an outdoor vent', () => {
+  const ceiling = 4;
+  const boundaries = [
+    { areaM2: 30, lining: LINING.concrete, place: 'floor' as const },
+    { areaM2: 30, lining: LINING.concrete, place: 'ceiling' as const },
+    { areaM2: 48, lining: LINING.concrete, place: 'wall' as const },
+  ];
+  // A lone opening absorbs a uniform wind into its floor gauge, so the
+  // comparison needs a second opening that does not move. Wind is written
+  // only on the second opening.
+  const once = (shaft: boolean, windOnSecond: boolean) => {
+    const second = {
+      widthM: 1.2,
+      sillM: 0,
+      soffitM: 2,
+      ...(shaft ? { shaft: true } : {}),
+      ...(windOnSecond ? { windPa: 40 } : {}),
+    };
+    const step = stepZone(
+      { ...freshLayer(ceiling), interfaceM: 1.2, upperK: AMBIENT_K + 80 },
+      {
+        areaM2: 30,
+        ceilingM: ceiling,
+        vents: [{ widthM: 1.2, sillM: 0, soffitM: 2 }, second],
+        boundaries,
+        fires: [],
+      },
+      0.2,
+    );
+    return {
+      inn: step.inKgByVent[1] ?? 0,
+      out: step.outKgByVent[1] ?? 0,
+      hot: step.hotByVent[1]?.kg ?? 0,
+    };
+  };
+  const still = once(true, false);
+  const blown = once(true, true);
+  close(blown.out, still.out, 1e-9, 'shaft outflow');
+  close(blown.inn, still.inn, 1e-9, 'shaft inflow');
+  close(blown.hot, still.hot, 1e-9, 'shaft hot gas');
+  const outdoor = once(false, false);
+  const outdoorWind = once(false, true);
+  const moved = Math.abs(outdoorWind.out - outdoor.out) + Math.abs(outdoorWind.inn - outdoor.inn);
+  assert.ok(
+    moved > 1e-4,
+    `the same opening without the shaft flag should feel 40 Pa, moved ${moved}`,
   );
 });
 

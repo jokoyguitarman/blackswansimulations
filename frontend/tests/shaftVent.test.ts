@@ -93,6 +93,19 @@ function stairPreviewInput(wired: boolean): PreviewInput {
   };
 }
 
+test('the preview engine is given the wind the page has set', () => {
+  const calm = buildPreviewEngine(stairPreviewInput(false));
+  const gust = buildPreviewEngine({
+    ...stairPreviewInput(false),
+    wind: { speedMs: 8, directionRad: 0.4 },
+  });
+  const windOf = (engine: SpatialEffectsEngine) =>
+    engine as unknown as { windSpeedMs: number; windToRad: number };
+  assert.equal(windOf(calm.engine).windSpeedMs, 0);
+  assert.equal(windOf(gust.engine).windSpeedMs, 8);
+  assert.equal(windOf(gust.engine).windToRad, 0.4);
+});
+
 describe('shaft vent', () => {
   test('a hot lower floor drives flow up, and a deep upper floor drives it down', () => {
     assert.equal(shaftOpeningM(3), 2);
