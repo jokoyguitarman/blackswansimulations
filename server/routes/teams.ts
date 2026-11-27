@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
+import { normalizeSessionTeamName } from '../lib/sessionTeamName.js';
 
 const router = Router();
 
@@ -118,7 +119,8 @@ router.post(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const { user_id, team_name, team_role } = req.body;
+      const { user_id, team_name: requestedTeam, team_role } = req.body;
+      const team_name = normalizeSessionTeamName(requestedTeam);
 
       // Only trainers and admins can assign teams
       if (user.role !== 'trainer' && user.role !== 'admin') {
@@ -234,7 +236,8 @@ router.delete(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const { user_id, team_name } = req.body;
+      const { user_id, team_name: requestedTeam } = req.body;
+      const team_name = normalizeSessionTeamName(requestedTeam);
 
       // Only trainers and admins can remove team assignments
       if (user.role !== 'trainer' && user.role !== 'admin') {

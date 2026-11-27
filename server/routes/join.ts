@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { normalizeSessionTeamName } from '../lib/sessionTeamName.js';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -107,7 +108,8 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { join_token, display_name, team_name } = req.body;
+      const { join_token, display_name, team_name: requestedTeam } = req.body;
+      const team_name = normalizeSessionTeamName(requestedTeam);
 
       // 1. Resolve session by join_token
       const { data: session, error: sessionError } = await supabaseAdmin

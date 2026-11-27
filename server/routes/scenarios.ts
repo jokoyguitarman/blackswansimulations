@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -29,6 +29,14 @@ import {
 } from '../lib/participantProjections.js';
 import { canEditScenario } from '../services/scenarioEditService.js';
 import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
+import {
+  collectConditionKeys,
+  unknownConditionKeys,
+} from '../services/conditions/conditionCatalog.js';
+import {
+  validateInjectTriggerShape,
+  type InjectTriggerShape,
+} from '../services/conditions/injectTriggerShape.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import {
   benchmarksFromCharters,
@@ -833,6 +841,47 @@ const createInjectSchema = z.object({
   }),
 });
 
+const TIMED_WITH_CONDITIONS =
+  'An inject is either timed or conditional. Use eligible_after_minutes for "not before".';
+const CONDITIONAL_WITHOUT_CONDITIONS = 'A conditional inject needs at least one condition.';
+
+function rejectInjectTriggerShape(res: Response, shape: InjectTriggerShape): boolean {
+  if (shape === 'timed_with_conditions') {
+    res.status(400).json({ error: TIMED_WITH_CONDITIONS });
+    return true;
+  }
+  if (shape === 'conditional_without_conditions') {
+    res.status(400).json({ error: CONDITIONAL_WITHOUT_CONDITIONS });
+    return true;
+  }
+  return false;
+}
+
+async function scenarioConditionKeys(scenarioId: string): Promise<string[]> {
+  try {
+    const config = await getConditionConfigForScenario(scenarioId);
+    return (config.condition_keys ?? []).map((entry) => entry.key).filter(Boolean);
+  } catch (err) {
+    logger.warn(
+      { err, scenarioId },
+      'Condition config unavailable; validating catalogue keys only',
+    );
+    return [];
+  }
+}
+
+function rejectUnknownConditionKeys(
+  res: Response,
+  appear: unknown,
+  cancel: unknown,
+  extraKeys: readonly string[],
+): boolean {
+  const unknown = unknownConditionKeys(collectConditionKeys(appear, cancel), extraKeys);
+  if (unknown.length === 0) return false;
+  res.status(400).json({ error: 'Unknown condition key', unknown_keys: unknown });
+  return true;
+}
+
 /** Load the scenario's team names for inject targeting validation. */
 async function loadTeamNames(scenarioId: string): Promise<Set<string>> {
   const { data, error } = await supabaseAdmin
@@ -857,7 +906,9 @@ router.patch(
 
       const { data: existing, error: fetchErr } = await supabaseAdmin
         .from('scenario_injects')
-        .select('id, inject_scope, target_teams, title')
+        .select(
+          'id, inject_scope, target_teams, title, trigger_time_minutes, trigger_condition, conditions_to_appear, conditions_to_cancel',
+        )
         .eq('id', injectId)
         .eq('scenario_id', id)
         .is('session_id', null)
@@ -871,6 +922,42 @@ router.patch(
       }
 
       const updates: Record<string, unknown> = { ...req.body };
+
+      const resultingTime =
+        updates.trigger_time_minutes !== undefined
+          ? (updates.trigger_time_minutes as number | null)
+          : (existing.trigger_time_minutes as number | null);
+      const resultingCondition =
+        updates.trigger_condition !== undefined
+          ? (updates.trigger_condition as string | null)
+          : (existing.trigger_condition as string | null);
+      const resultingAppear =
+        updates.conditions_to_appear !== undefined
+          ? updates.conditions_to_appear
+          : existing.conditions_to_appear;
+      if (
+        rejectInjectTriggerShape(
+          res,
+          validateInjectTriggerShape({
+            trigger_time_minutes: resultingTime,
+            trigger_condition: resultingCondition,
+            conditions_to_appear: resultingAppear,
+          }),
+        )
+      ) {
+        return;
+      }
+      if (
+        updates.conditions_to_appear !== undefined ||
+        updates.conditions_to_cancel !== undefined
+      ) {
+        const extraKeys = await scenarioConditionKeys(id);
+        const appear =
+          updates.conditions_to_appear !== undefined ? updates.conditions_to_appear : null;
+        const cancel =
+          updates.conditions_to_cancel !== undefined ? updates.conditions_to_cancel : null;
+        if (rejectUnknownConditionKeys(res, appear, cancel, extraKeys)) return;
+      }
 
       // Validate team targeting against the scenario's real team names so an
       // edit can never make an inject silently undeliverable.
@@ -924,6 +1011,29 @@ router.post(
       if (!(await guardScenarioEdit(id, req, res))) return;
 
       const body = req.body;
+      if (
+        rejectInjectTriggerShape(
+          res,
+          validateInjectTriggerShape({
+            trigger_time_minutes: body.trigger_time_minutes ?? null,
+            trigger_condition: body.trigger_condition ?? null,
+            conditions_to_appear: body.conditions_to_appear ?? null,
+          }),
+        )
+      ) {
+        return;
+      }
+      const extraKeys = await scenarioConditionKeys(id);
+      if (
+        rejectUnknownConditionKeys(
+          res,
+          body.conditions_to_appear ?? null,
+          body.conditions_to_cancel ?? null,
+          extraKeys,
+        )
+      ) {
+        return;
+      }
       const teamNames = await loadTeamNames(id);
       const sanitized = sanitizeTeamTargeting(
         {

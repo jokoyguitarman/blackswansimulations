@@ -49,6 +49,35 @@ export class MultiOrgValidationError extends Error {
 }
 
 const MIN_STAKEHOLDER_INJECT_MINUTES = 10;
+
+/**
+ * team_specific injects aimed at a team players cannot join are withheld at
+ * runtime. Playable teams are the scenario's own team list. An empty list
+ * means the set could not be determined, so this stays quiet.
+ */
+export function unplayedTeamTargetWarnings(
+  injects: ReadonlyArray<{
+    title?: string;
+    inject_scope?: string;
+    target_teams?: readonly string[] | null;
+  }>,
+  playableTeamNames: ReadonlySet<string> | null | undefined,
+): ValidationIssue[] {
+  if (!playableTeamNames || playableTeamNames.size === 0) return [];
+  const warnings: ValidationIssue[] = [];
+  injects.forEach((inj, index) => {
+    if (inj.inject_scope !== 'team_specific') return;
+    for (const team of inj.target_teams ?? []) {
+      if (!team || playableTeamNames.has(team)) continue;
+      warnings.push({
+        code: 'MO-INJ-009',
+        path: `injects.${index}`,
+        message: `Inject "${inj.title ?? ''}" targets "${team}", which is outside this scenario's playable teams. It will be withheld while nobody is on that team. Point it at a playable team and keep the sender in delivery_config.`,
+      });
+    }
+  });
+  return warnings;
+}
 const MIN_PAGE_STATEMENT_MINUTES = 15;
 const NOTE_LEAK =
   /(\bT\+\d+|\b\d{1,3}\s*(min|mins|minutes)\b|\bwill\s+(post|publish|leak|escalate|go public)|\b(plans?|about|threaten\w*)\s+to\b)/i;
@@ -419,6 +448,11 @@ export function validateScenarioPayload(
             `Inject "${inj.title}" targets unknown team "${t}" (sanitizer will downgrade)`,
           );
       }
+    }
+  }
+  if (teamNames.size > 0) {
+    for (const warning of unplayedTeamTargetWarnings(injects, teamNames)) {
+      warn(warning.code, warning.path, warning.message);
     }
   }
   for (const [k, n] of injectKeys)
