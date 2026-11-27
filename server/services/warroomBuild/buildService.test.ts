@@ -5,7 +5,7 @@ import { runWithAbortSignal } from '../ai/abortContext.js';
 import { env } from '../../env.js';
 import { assembleReview } from './assemble.js';
 import { formatProgress, restartLine } from './buildCore.js';
-import { BuildService, ManualClock } from './buildService.js';
+import { BuildService, ManualClock, type Clock } from './buildService.js';
 import { MemoryBuildStore } from './buildStore.js';
 import type { StageRunner } from './stageRunners.js';
 import { buildRequestSchema, type BuildRequest, type BuildStage } from './buildTypes.js';
@@ -94,14 +94,18 @@ const pagesOut = {
 interface HarnessOptions {
   instanceId?: string;
   store?: MemoryBuildStore;
-  clock?: ManualClock;
+  clock?: Clock;
   maxConcurrent?: number;
   maxActivePerUser?: number;
+  renewEveryMs?: number;
+  leaseSeconds?: number;
   runners?: Partial<Record<BuildStage, StageRunner>>;
 }
 
-function harness(options: HarnessOptions = {}) {
-  const clock = options.clock ?? new ManualClock();
+function harness<C extends Clock = ManualClock>(
+  options: Omit<HarnessOptions, 'clock'> & { clock?: C } = {},
+) {
+  const clock = (options.clock ?? new ManualClock()) as C;
   const store = options.store ?? new MemoryBuildStore(() => clock.now());
   const calls = { characters: 0, storyline: 0, convergence: 0, pages: 0 };
   const order: BuildStage[] = [];
@@ -138,6 +142,8 @@ function harness(options: HarnessOptions = {}) {
     clock,
     maxConcurrent: options.maxConcurrent,
     maxActivePerUser: options.maxActivePerUser ?? 10,
+    renewEveryMs: options.renewEveryMs,
+    leaseSeconds: options.leaseSeconds,
   });
   return { clock, store, calls, order, service, runners };
 }
@@ -852,5 +858,90 @@ describe('build service', () => {
     assert.equal(await store.get(finished.buildId!), null);
     assert.equal((await store.get(running.buildId!))?.status, 'running');
     hold();
+  });
+
+  test('ticks run one at a time', async () => {
+    const { service, store } = harness();
+    let active = 0;
+    let max = 0;
+    const original = store.claim.bind(store);
+    store.claim = async (...args) => {
+      active += 1;
+      max = Math.max(max, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return original(...args);
+    };
+    await Promise.all([service.tick(), service.tick()]);
+    assert.equal(max, 1);
+  });
+
+  test('a running build renews its lease without another tick', async () => {
+    let release: () => void = () => undefined;
+    const { service, store } = harness({
+      clock: { now: () => new Date() },
+      renewEveryMs: 30,
+      leaseSeconds: 60,
+      runners: {
+        storyline: async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-renew',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'renew',
+    });
+    const id = started.buildId!;
+    const original = Date.parse((await store.get(id))!.lease_expires_at!);
+    const deadline = Date.now() + 1000;
+    let renewed = false;
+    while (Date.now() < deadline) {
+      const expires = Date.parse((await store.get(id))!.lease_expires_at!);
+      if (expires > original + 20) {
+        renewed = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(renewed, true);
+    release();
+    await service.whenIdle();
+    await service.shutdown();
+  });
+
+  test('a cancel requested as a stage finishes does not start the next stage', async () => {
+    let storylineCalls = 0;
+    const { service, store } = harness({
+      runners: {
+        storyline: async () => {
+          storylineCalls += 1;
+          return storylineOut;
+        },
+      },
+    });
+    const original = store.completeStage.bind(store);
+    store.completeStage = async (args) => {
+      const wrote = await original(args);
+      if (args.stage === 'characters') await store.requestCancel(args.buildId, 'user');
+      return wrote;
+    };
+    const started = await service.start({
+      draftId: 'draft-cancel',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'cancel-between',
+    });
+    await service.whenIdle();
+    const row = await store.get(started.buildId!);
+    assert.equal(row?.status, 'cancelled');
+    assert.equal(storylineCalls, 0);
+    const log = await store.listLog(started.buildId!, 0, 50);
+    assert.ok(log.some((line) => line.message === 'Build cancelled.'));
   });
 });

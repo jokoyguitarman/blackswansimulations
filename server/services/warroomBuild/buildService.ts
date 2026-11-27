@@ -57,6 +57,8 @@ export interface BuildServiceOptions {
   maxConcurrent?: number;
   maxActivePerUser?: number;
   leaseSeconds?: number;
+  /** Wall-clock renew interval. Defaults to a quarter of the lease. */
+  renewEveryMs?: number;
   unwatchedPauseMin?: number;
   maxInterruptions?: number;
   retentionDays?: number;
@@ -96,6 +98,12 @@ export class BuildService {
   private readonly inflight = new Set<Promise<void>>();
   private readonly seenAt = new Map<string, number>();
   private shuttingDown = false;
+  private queue: Promise<void> = Promise.resolve();
+  private renewTimer: ReturnType<typeof setInterval> | null = null;
+  private claimTimer: ReturnType<typeof setInterval> | null = null;
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** Set when the process asks for renewal even if it is not the claim worker. */
+  private leaseRenewalRequested = false;
 
   constructor(options: BuildServiceOptions) {
     this.store = options.store;
@@ -106,7 +114,7 @@ export class BuildService {
     this.maxConcurrent = options.maxConcurrent ?? 2;
     this.maxActivePerUser = options.maxActivePerUser ?? 2;
     this.leaseSeconds = options.leaseSeconds ?? 60;
-    this.renewMs = (this.leaseSeconds * 1000) / 4;
+    this.renewMs = options.renewEveryMs ?? (this.leaseSeconds * 1000) / 4;
     this.unwatchedPauseMin = options.unwatchedPauseMin ?? 45;
     this.maxInterruptions = options.maxInterruptions ?? 3;
     this.retentionDays = options.retentionDays ?? 7;
@@ -164,6 +172,14 @@ export class BuildService {
     return assembleReview(row.request, await this.store.getOutputs(buildId));
   }
 
+  getRow(buildId: string): Promise<BuildRow | null> {
+    return this.store.get(buildId);
+  }
+
+  latestForDraft(draftId: string): Promise<BuildRow | null> {
+    return this.store.latestForDraft(draftId);
+  }
+
   async resume(buildId: string): Promise<BuildRow> {
     const row = await this.store.get(buildId);
     if (!row) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
@@ -207,8 +223,62 @@ export class BuildService {
     await this.store.touchSeen(buildId);
   }
 
-  /** Renew leases this instance holds, then claim until the concurrency cap. */
+  /**
+   * Renew leases this instance holds, then claim until the concurrency cap.
+   * Overlapping calls queue: two ticks cannot both pass the concurrency check.
+   */
   async tick(): Promise<void> {
+    return this.enqueue(() => this.tickBody());
+  }
+
+  /** Keep leases alive for builds this process is running, even when it does not claim. */
+  startLeaseRenewal(): void {
+    this.leaseRenewalRequested = true;
+    this.ensureRenewLoop();
+  }
+
+  /** Background claim loop. Only the worker process should start this. */
+  startClaimLoop(pollMs: number): void {
+    if (this.claimTimer || this.shuttingDown) return;
+    const timer = setInterval(() => {
+      void this.tick();
+    }, pollMs);
+    timer.unref?.();
+    this.claimTimer = timer;
+  }
+
+  /** Hourly deletion of old terminal builds. Only the worker process should start this. */
+  startSweepLoop(): void {
+    if (this.sweepTimer || this.shuttingDown) return;
+    const timer = setInterval(
+      () => {
+        void this.sweep();
+      },
+      60 * 60 * 1000,
+    );
+    timer.unref?.();
+    this.sweepTimer = timer;
+  }
+
+  private enqueue(fn: () => Promise<void>): Promise<void> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private ensureRenewLoop(): void {
+    if (this.renewTimer || this.shuttingDown) return;
+    const timer = setInterval(() => {
+      void this.enqueue(() => this.renewDue());
+    }, this.renewMs);
+    timer.unref?.();
+    this.renewTimer = timer;
+  }
+
+  private async tickBody(): Promise<void> {
     if (this.shuttingDown) return;
     await this.renewDue();
     while (this.running.size < this.maxConcurrent) {
@@ -237,6 +307,12 @@ export class BuildService {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    if (this.claimTimer) clearInterval(this.claimTimer);
+    if (this.renewTimer) clearInterval(this.renewTimer);
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    this.claimTimer = null;
+    this.renewTimer = null;
+    this.sweepTimer = null;
     const jobs = [...this.running.entries()];
     for (const [, job] of jobs) job.controller.abort(new ShutdownError());
     // A runner that ignores the abort must not hold the release past the 5 s
@@ -296,6 +372,7 @@ export class BuildService {
       done,
     };
     this.running.set(row.id, job);
+    this.ensureRenewLoop();
     const buffer: LogDraft[] = [];
     const log = (kind: LogDraft['kind'], message: string, stage: string | null) => {
       buffer.push({ kind, stage, message });
@@ -305,6 +382,11 @@ export class BuildService {
       while (!this.shuttingDown && !controller.signal.aborted) {
         const fresh = await this.store.get(row.id);
         if (!fresh || fresh.lease_token !== token || fresh.status !== 'running') return;
+        if (this.shuttingDown || controller.signal.reason instanceof ShutdownError) return;
+        if (fresh.cancel_requested_at || controller.signal.aborted) {
+          await this.settleRequestedCancel(row.id, token, states, job.stage);
+          return;
+        }
         const paused = await this.pauseIfUnwatched(fresh, token);
         if (paused) return;
         const stage = nextStage(states);
@@ -364,13 +446,49 @@ export class BuildService {
           finalStatus: next ? null : 'succeeded',
         });
         if (!wrote) return;
+        if (this.shuttingDown || controller.signal.reason instanceof ShutdownError) return;
+        if (controller.signal.aborted || (await this.cancelWasRequested(row.id, token))) {
+          await this.settleRequestedCancel(row.id, token, states, job.stage);
+          return;
+        }
         if (!next) return;
       }
     } finally {
       await this.flush(row.id, buffer, token);
       this.running.delete(row.id);
+      if (this.running.size === 0 && !this.leaseRenewalRequested && this.renewTimer) {
+        clearInterval(this.renewTimer);
+        this.renewTimer = null;
+      }
       resolveDone();
     }
+  }
+
+  private async cancelWasRequested(buildId: string, token: string): Promise<boolean> {
+    const fresh = await this.store.get(buildId);
+    return Boolean(
+      fresh &&
+      fresh.lease_token === token &&
+      fresh.status === 'running' &&
+      fresh.cancel_requested_at,
+    );
+  }
+
+  /** Cancel that landed after a stage finished, before the next one started. */
+  private async settleRequestedCancel(
+    buildId: string,
+    token: string,
+    states: StageStates,
+    stage: BuildStage | null,
+  ): Promise<void> {
+    const runningStage = STAGES.find((name) => states[name]?.status === 'running') ?? null;
+    const stageStates = runningStage ? markInterrupted(states, runningStage, this.iso()) : states;
+    await this.store.appendLog(
+      buildId,
+      [{ kind: 'system', stage: runningStage ?? stage, message: 'Build cancelled.' }],
+      token,
+    );
+    await this.store.settleCancel(buildId, token, stageStates, 'user');
   }
 
   /** The last stage that actually finished. Not the stage a claim is about to run. */

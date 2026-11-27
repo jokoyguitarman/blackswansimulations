@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import os from 'node:os';
 import { readSessionIdleSettings } from './lib/sessionIdleSettings.js';
 
 const required = (value: string | undefined, name: string): string => {
@@ -16,6 +17,18 @@ const validatePort = (port: number): number => {
 };
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
+
+/** Positive integer from the environment, or the fallback when unset or invalid. */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const runBackgroundEngines =
+  process.env.RUN_BACKGROUND_ENGINES === 'true' ||
+  (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false');
 
 // ---------- AI provider switch (docs/AWS_BEDROCK_MIGRATION_v2.md §6) ----------
 // `openai` reproduces today's requests exactly; `bedrock` routes every chat call to the
@@ -112,9 +125,24 @@ export const env = {
   // ran them against production for 38 minutes and every inject fired twice
   // (docs/session-bugfix-spec-2026-09-20.md §2). Semantics: ON in production unless
   // RUN_BACKGROUND_ENGINES=false; OFF everywhere else unless RUN_BACKGROUND_ENGINES=true.
-  runBackgroundEngines:
-    process.env.RUN_BACKGROUND_ENGINES === 'true' ||
-    (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false'),
+  runBackgroundEngines,
+  // Durable scenario builds (durable-scenario-builds-spec.md §4.5). Off until the
+  // owner applies migration 267 and sets WARROOM_DURABLE_BUILDS=true. The worker
+  // follows the background-engine switch so a dev server does not claim production builds.
+  warroomDurableBuilds: process.env.WARROOM_DURABLE_BUILDS === 'true',
+  warroomBuildWorker:
+    process.env.WARROOM_BUILD_WORKER === 'true' ||
+    (process.env.WARROOM_BUILD_WORKER !== 'false' && runBackgroundEngines),
+  warroomBuildPool:
+    process.env.WARROOM_BUILD_POOL ||
+    (nodeEnv === 'production' ? 'production' : `dev-${os.hostname()}`),
+  warroomBuildMaxConcurrent: envInt('WARROOM_BUILD_MAX_CONCURRENT', 2),
+  warroomBuildMaxActivePerUser: envInt('WARROOM_BUILD_MAX_ACTIVE_PER_USER', 2),
+  warroomBuildLeaseSeconds: envInt('WARROOM_BUILD_LEASE_SECONDS', 60),
+  warroomBuildPollMs: envInt('WARROOM_BUILD_POLL_MS', 5000),
+  warroomBuildUnwatchedPauseMin: envInt('WARROOM_BUILD_UNWATCHED_PAUSE_MIN', 45),
+  warroomBuildMaxInterruptions: envInt('WARROOM_BUILD_MAX_INTERRUPTIONS', 3),
+  warroomBuildRetentionDays: envInt('WARROOM_BUILD_RETENTION_DAYS', 7),
   // Inject scheduler configuration
   // Auto-injects enabled if: explicitly set to 'true' OR (in production and not explicitly 'false')
   // In development: defaults to false unless ENABLE_AUTO_INJECTS='true'

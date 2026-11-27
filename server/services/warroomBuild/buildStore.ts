@@ -98,11 +98,19 @@ export interface BuildStore {
     buildId: string,
     stageStates: StageStates,
   ): Promise<'ok' | 'active_conflict' | 'missing' | 'not_resumable'>;
+  /** Newest build for a draft, or null when the draft has none. */
+  latestForDraft(draftId: string): Promise<BuildRow | null>;
   get(buildId: string): Promise<BuildRow | null>;
   getOutputs(buildId: string): Promise<StageOutputs>;
   /**
    * When `leaseToken` is set, write only while that lease is still held.
    * A stale owner then cannot append lines after the lease moved on.
+   *
+   * The Supabase path cannot do the lease check, the insert, and the
+   * `log_count` update as one statement: PostgREST has no nested write, and
+   * migration 267 is not extended with a helper function. The check and the
+   * count update are both filtered by the token. A stale owner can still win
+   * the gap between them; that only affects the trainer-visible log.
    */
   appendLog(buildId: string, lines: LogDraft[], leaseToken?: string): Promise<LogLine[]>;
   listLog(buildId: string, after: number, limit: number): Promise<LogLine[]>;
@@ -155,6 +163,8 @@ export class MemoryBuildStore implements BuildStore {
 
   start(args: StartArgs): Promise<StartResult> {
     return this.lock(() => {
+      // Same idempotency key returns the original build as `replayed`, even when
+      // the request body differs. The key is the client's identity for one press of Build.
       const byKey = [...this.rows.values()].find(
         (row) => row.draft_id === args.draftId && row.idempotency_key === args.idempotencyKey,
       );
@@ -471,6 +481,17 @@ export class MemoryBuildStore implements BuildStore {
     return this.lock(() => {
       const row = this.rows.get(buildId);
       return row ? this.copy(row) : null;
+    });
+  }
+
+  latestForDraft(draftId: string): Promise<BuildRow | null> {
+    return this.lock(() => {
+      const rows = [...this.rows.values()]
+        .filter((row) => row.draft_id === draftId)
+        .sort(
+          (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id),
+        );
+      return rows[0] ? this.copy(rows[0]) : null;
     });
   }
 
@@ -855,6 +876,18 @@ export class SupabaseBuildStore implements BuildStore {
       .maybeSingle();
     if (readError) throw readError;
     return existing ? 'not_resumable' : 'missing';
+  }
+
+  async latestForDraft(draftId: string): Promise<BuildRow | null> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('*')
+      .eq('draft_id', draftId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as BuildRow | null) ?? null;
   }
 
   async get(buildId: string): Promise<BuildRow | null> {
