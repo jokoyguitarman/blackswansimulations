@@ -37,7 +37,11 @@
  * interface is the same stream the jet deposits. A room that takes the
  * jet leaves that inflow out of the makeup air. The orifice already
  * includes it, so the interface takes jet volume only for the deposited
- * mass the orifice did not balance. Subtracting the whole jet volume as
+ * mass the orifice did not balance. A fire room does not deposit that
+ * jet. The orifice stream still enters the upper layer, and it brings
+ * its own oxygen, soot and fuel. The flame is credited with that oxygen
+ * at the stream's fraction. CO is not a layer species: the stud dose
+ * derives it from the soot this stream carries. Subtracting the whole jet volume as
  * well counts that volume twice. Outflow from below the interface is
  * booked in every room, including one that does not take the jet.
  * Unburned fuel and the spill plume stay on the jet.
@@ -692,6 +696,15 @@ export interface VentOutside {
   floorPressurePa: number;
   /** Lower-layer temperature. Absent means that layer is ambient. */
   lowerK?: number;
+  /**
+   * Upper-layer oxygen mass fraction. Absent means ambient. The bare
+   * stream is credited at this fraction, not as fresh air and not as none.
+   */
+  upperO2?: number;
+  /** Soot in that layer, grams per kilogram of mixture. Absent means none. */
+  sootGPerKg?: number;
+  /** Unburned fuel mass fraction in that layer. Absent means none. */
+  fuelY?: number;
 }
 
 export interface Vent {
@@ -1072,6 +1085,12 @@ export interface LimitedBurn {
   farUpperInKgS: number;
   /** Temperature of that inflow, kelvin. Ambient when there is none. */
   farUpperInK: number;
+  /** Oxygen in that inflow, kg/s. Already inside `farUpperInKgS`. */
+  farUpperO2KgS: number;
+  /** Soot in that inflow, g/s. */
+  farUpperSootGPerS: number;
+  /** Unburned fuel in that inflow, kg/s. */
+  farUpperFuelKgS: number;
   /** Inflow enthalpy, kg·K/s. Mass times the temperature it arrived at. */
   inKT: number;
   /** Outflow enthalpy, kg·K/s. Mass times the layer it left. */
@@ -1105,6 +1124,8 @@ interface PressureScalars {
    * kg·K/s. Already inside the mass of `farUpperInKgS`.
    */
   farUpperInKT: number;
+  /** Oxygen in the far upper inflow, kg/s. Already inside `farUpperInKgS`. */
+  farUpperInO2KgS: number;
 }
 
 /** A steady balance. Heating and cooling pass the mass the step actually gains. */
@@ -1197,6 +1218,9 @@ function limitedFrom(
     hotOutByVentKgS: flows.hotOutByVent,
     farUpperInKgS: flows.farUpperInKgS,
     farUpperInK: flows.farUpperInKgS > 0 ? flows.farUpperInKT / flows.farUpperInKgS : AMBIENT_K,
+    farUpperO2KgS: flows.farUpperInO2KgS,
+    farUpperSootGPerS: flows.farUpperInSootGPerS,
+    farUpperFuelKgS: flows.farUpperInFuelKgS,
     inKT: flows.inKT,
     outKT: flows.outKT,
     fanUpperKgS: flows.fanUpperKgS,
@@ -1306,11 +1330,26 @@ function flameSupply(
   let prescribed = 0;
   for (const fire of spec.fires) if (fire.heatKw > 0) prescribed += fire.heatKw;
   const yL = yLower > 0 ? yLower : 0;
+  // The cap's mass is unchanged. A fire room's far stream is part of it,
+  // and that part is not lower-layer air: its oxygen is its own fraction.
+  // A deposited jet has already left the stream out of `freshIn`.
+  const stream = jetBringsUpper ? 0 : Math.max(0, flows.farUpperInKgS);
+  const yStream =
+    stream > 0 && flows.farUpperInKgS > 0
+      ? Math.max(0, flows.farUpperInO2KgS) / flows.farUpperInKgS
+      : yL;
+  const streamInCap = Math.min(stream, airCap);
+  const yMix = airCap > 1e-9 ? (yL * (airCap - streamInCap) + yStream * streamInCap) / airCap : yL;
   // lowerAirKgS is the lower-layer stream the prescribed plumes entrain,
   // shared down to airCap. The oxygen in it is the flame. The burned
   // kilowatts of this call are not used: they still include upper-layer gas.
-  const entrained = layerBurn(spec.fires, interfaceM, yLower, yUpper, chi, airCap);
-  const freshKw = oxygenCapacityKw(entrained.lowerAirKgS, yL);
+  // On the floor that entrainment is only the last few centimetres, so a
+  // neighbour stream sitting in the cap would not reach the flame. The part
+  // of the stream the plume did not already entrain is still its air.
+  const entrained = layerBurn(spec.fires, interfaceM, yMix, yUpper, chi, airCap);
+  const extraMass = Math.max(0, streamInCap - entrained.lowerAirKgS);
+  const freshKw =
+    oxygenCapacityKw(entrained.lowerAirKgS, yMix) + oxygenCapacityKw(extraMass, yStream);
   const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
   const flames =
     freshFraction < 1
@@ -1320,15 +1359,24 @@ function flameSupply(
           baseM: fire.baseM,
         }))
       : spec.fires;
-  const raw = layerBurn(flames, interfaceM, yLower, yUpper, chi, airCap);
+  const raw = layerBurn(flames, interfaceM, yMix, yUpper, chi, airCap);
+  const extraAfter = Math.max(0, streamInCap - raw.lowerAirKgS);
+  const streamKw = Math.min(
+    oxygenCapacityKw(extraAfter, yStream),
+    Math.max(0, raw.burnedKw - oxygenCapacityKw(raw.lowerAirKgS, yMix)),
+  );
+  const streamO2 = DELTA_H_O2_KJ_PER_KG > 0 ? streamKw / DELTA_H_O2_KJ_PER_KG : 0;
   const burn: LayerBurn = {
     prescribedKw: prescribed,
     burnedKw: raw.burnedKw,
-    phi: equivalenceRatio(prescribed, oxygenSupplyKw(raw.lowerAirKgS, yL)),
+    phi: equivalenceRatio(
+      prescribed,
+      oxygenSupplyKw(raw.lowerAirKgS, yMix) + oxygenSupplyKw(extraAfter, yStream),
+    ),
     fraction: prescribed > 0 ? raw.burnedKw / prescribed : 1,
     lowerAirKgS: raw.lowerAirKgS,
-    oxygenLowerKgS: raw.oxygenLowerKgS,
-    oxygenUpperKgS: raw.oxygenUpperKgS,
+    oxygenLowerKgS: raw.oxygenLowerKgS + streamO2,
+    oxygenUpperKgS: Math.max(0, raw.oxygenUpperKgS - streamO2),
   };
   // Mass taken from the lower layer. Heskestad at the interface, for
   // the flame the fresh air can support. It cannot exceed the air the
@@ -2060,6 +2108,12 @@ interface SliceFlows {
   farUpperInKgS: number;
   /** That inflow times its temperature, kg·K/s. */
   farUpperInKT: number;
+  /** Oxygen in that inflow, kg/s. Already inside `farUpperInKgS`. */
+  farUpperInO2KgS: number;
+  /** Soot in that inflow, g/s. */
+  farUpperInSootGPerS: number;
+  /** Unburned fuel in that inflow, kg/s. */
+  farUpperInFuelKgS: number;
   /** Inflow that enters below this room's interface, kg/s. Already inside `inKgS`. */
   lowerInKgS: number;
   /** That inflow times its temperature, kg·K/s. */
@@ -2136,11 +2190,29 @@ const ventScratch: SliceFlows = {
   hotOutKgS: 0,
   farUpperInKgS: 0,
   farUpperInKT: 0,
+  farUpperInO2KgS: 0,
+  farUpperInSootGPerS: 0,
+  farUpperInFuelKgS: 0,
   lowerInKgS: 0,
   lowerInKT: 0,
   inKT: 0,
   outKT: 0,
 };
+
+/** Species of a neighbour upper layer. Absent oxygen is ambient; soot and fuel are none. */
+function farMix(outside: VentOutside | undefined): {
+  yO2: number;
+  sootGPerKg: number;
+  fuelY: number;
+} {
+  const yO2 =
+    outside?.upperO2 != null && outside.upperO2 >= 0
+      ? Math.min(1, outside.upperO2)
+      : O2_AMBIENT_MASS;
+  const sootGPerKg = outside?.sootGPerKg != null && outside.sootGPerKg > 0 ? outside.sootGPerKg : 0;
+  const fuelY = outside?.fuelY != null && outside.fuelY > 0 ? Math.min(1, outside.fuelY) : 0;
+  return { yO2, sootGPerKg, fuelY };
+}
 
 function addSliceFlows(
   into: SliceFlows,
@@ -2236,6 +2308,10 @@ function addSliceFlows(
     if (outside && mid > outside.interfaceM) {
       into.farUpperInKgS += mass;
       into.farUpperInKT += mass * outside.upperK;
+      const mix = farMix(outside);
+      into.farUpperInO2KgS += mass * mix.yO2;
+      into.farUpperInSootGPerS += mass * mix.sootGPerKg;
+      into.farUpperInFuelKgS += mass * mix.fuelY;
       into.inKT += mass * outside.upperK;
     } else if (mid <= interfaceM) {
       into.lowerInKgS += mass;
@@ -2268,6 +2344,10 @@ function accumulateVent(
       const tin =
         vent.outside?.upperK != null && vent.outside.upperK > 0 ? vent.outside.upperK : AMBIENT_K;
       into.farUpperInKT += rate * tin;
+      const mix = farMix(vent.outside);
+      into.farUpperInO2KgS += rate * mix.yO2;
+      into.farUpperInSootGPerS += rate * mix.sootGPerKg;
+      into.farUpperInFuelKgS += rate * mix.fuelY;
       into.inKT += rate * tin;
     } else {
       into.outKgS += -rate;
@@ -2347,6 +2427,9 @@ function ventFlows(
     hotOutKgS: 0,
     farUpperInKgS: 0,
     farUpperInKT: 0,
+    farUpperInO2KgS: 0,
+    farUpperInSootGPerS: 0,
+    farUpperInFuelKgS: 0,
     lowerInKgS: 0,
     lowerInKT: 0,
     inKT: 0,
@@ -2391,6 +2474,9 @@ function pressureNet(
   ventScratch.hotOutKgS = 0;
   ventScratch.farUpperInKgS = 0;
   ventScratch.farUpperInKT = 0;
+  ventScratch.farUpperInO2KgS = 0;
+  ventScratch.farUpperInSootGPerS = 0;
+  ventScratch.farUpperInFuelKgS = 0;
   ventScratch.lowerInKgS = 0;
   ventScratch.lowerInKT = 0;
   ventScratch.inKT = 0;
@@ -2413,6 +2499,7 @@ function pressureNet(
     lowerInKgS: ventScratch.lowerInKgS,
     lowerInKT: ventScratch.lowerInKT,
     farUpperInKT: ventScratch.farUpperInKT,
+    farUpperInO2KgS: ventScratch.farUpperInO2KgS,
   };
   // CFAST's pressure equation. in − out − fans = dM/dt. The caller
   // passes dM/dt, and it does not depend on this candidate. A steady
@@ -2936,6 +3023,13 @@ export function stepZone(
 ): {
   state: ZoneState;
   ventedSootG: number;
+  /**
+   * Soot the bare neighbour stream mixed into the layer this step, grams.
+   * The vent grant moves the same soot. The caller subtracts this so the
+   * layer does not receive it twice. CO follows this soot: the stud dose
+   * derives it from extinction, and the layer does not store CO.
+   */
+  bareSootG: number;
   outByVentKgS: number[];
   /** Upper-layer outflow of each vent over the step, for the next room. */
   hotByVent: VentedHotGas[];
@@ -3017,6 +3111,7 @@ function stepZoneNow(
   let yU = oxygenMassFraction(state.upperO2);
   let sheets = state.sheetK;
   let vented = 0;
+  let bareSootG = 0;
   let outByVent = spec.vents.map(() => 0);
   const hotKg = spec.vents.map(() => 0);
   const hotT = spec.vents.map(() => 0);
@@ -3132,6 +3227,7 @@ function stepZoneNow(
         lowerInKgS: exchange.lowerInKgS,
         lowerInKT: exchange.lowerInKgS * exchange.lowerInK,
         farUpperInKT: exchange.farUpperInKgS * exchange.farUpperInK,
+        farUpperInO2KgS: exchange.farUpperO2KgS,
       },
       true,
     );
@@ -3258,13 +3354,27 @@ function stepZoneNow(
       // the oxygen in the draw that remains.
       let tempNext = advance.tempNext;
       let burnScale = 1;
+      let supplyKw = 0;
       if (recirc > 0 && advance.plumeKgS > 0) {
         const freshScale = plumeDraw / advance.plumeKgS;
         const y = yL > 0 ? yL : 0;
+        // The plume cap is the lower layer. The bare far stream is not in
+        // that layer, but the flame still takes its oxygen, at its own
+        // fraction. Leaving it out of the cap is what starved the shop.
+        const deposited = depositKgS > 0 ? depositKgS : 0;
+        const bare = Math.max(0, flows.farUpperInKgS - deposited);
+        const yStream =
+          flows.farUpperInKgS > 1e-9 ? Math.max(0, flows.farUpperO2KgS) / flows.farUpperInKgS : y;
+        const streamTaken = Math.min(bare, recirc);
         if (advance.burn.burnedKw > 0) {
-          const capacity = oxygenCapacityKw(advance.burn.lowerAirKgS * freshScale, y);
+          const capacity =
+            oxygenCapacityKw(advance.burn.lowerAirKgS * freshScale, y) +
+            oxygenCapacityKw(streamTaken, yStream);
           const newBurned = Math.min(advance.burn.burnedKw, capacity);
           burnScale = newBurned / advance.burn.burnedKw;
+          supplyKw =
+            oxygenSupplyKw(advance.burn.lowerAirKgS * freshScale, y) +
+            oxygenSupplyKw(streamTaken, yStream);
         }
         if (advance.mass > 1e-6) {
           tempNext += (recirc * Math.max(0, temp - lower) * slice) / advance.mass;
@@ -3319,6 +3429,7 @@ function stepZoneNow(
         plumeKgS: plumeDraw,
         tempNext,
         burnScale,
+        supplyKw,
       };
     };
     let rate = planned.volumeRate;
@@ -3337,12 +3448,7 @@ function stepZoneNow(
     const burn = advance.burn;
     burnedFraction = advance.burnedFraction * book.burnScale;
     if (book.burnScale < 1 && advance.plumeKgS > 0) {
-      const freshScale = book.plumeKgS / advance.plumeKgS;
-      const y = yL > 0 ? yL : 0;
-      phi = equivalenceRatio(
-        advance.burn.prescribedKw,
-        oxygenSupplyKw(advance.burn.lowerAirKgS * freshScale, y),
-      );
+      phi = equivalenceRatio(advance.burn.prescribedKw, book.supplyKw);
     } else {
       phi = advance.phi;
     }
@@ -3367,10 +3473,7 @@ function stepZoneNow(
     // Pyrolysis follows the fresh air that remains. The exchange still
     // carries the larger plume's fuel, and that fuel is not in the room.
     if (book.burnScale < 1 && advance.plumeKgS > 0) {
-      const freshScale = book.plumeKgS / advance.plumeKgS;
-      const y = yL > 0 ? yL : 0;
-      const supply = oxygenSupplyKw(advance.burn.lowerAirKgS * freshScale, y);
-      const pyrolysis = cappedPyrolysisKw(advance.burn.prescribedKw, supply);
+      const pyrolysis = cappedPyrolysisKw(advance.burn.prescribedKw, book.supplyKw);
       const newBurned = advance.burn.burnedKw * book.burnScale;
       unburnedKgS = pyrolysis > newBurned ? (pyrolysis - newBurned) / WOOD_HEAT_KJ_KG : 0;
       extraKgS = hotSum > 0 ? unburnedKgS : 0;
@@ -3428,7 +3531,17 @@ function stepZoneNow(
     const sliceEnt = mEnt * slice;
     const sliceExtra = extraKgS * slice;
     const sliceStore = storeKgS * slice;
-    const useL = Math.min(burn.oxygenLowerKgS * book.burnScale * slice, slicePlume * yL, yL * mL);
+    const farKgS = limited.farUpperInKgS;
+    const bareKgS = Math.max(0, farKgS - (depositKgS > 0 ? depositKgS : 0));
+    const bareSlice = bareKgS * slice;
+    const yFar = farKgS > 1e-9 ? Math.max(0, limited.farUpperO2KgS) / farKgS : O2_AMBIENT_MASS;
+    const o2Stream = bareSlice * yFar;
+    // The lower plume's oxygen is lower-layer air. The bare stream's oxygen
+    // is its own, and the flame takes that before any leftover stays upstairs.
+    const useWanted = burn.oxygenLowerKgS * book.burnScale * slice;
+    const fromLower = Math.min(useWanted, slicePlume * yL, yL * mL);
+    const fromStream = Math.min(Math.max(0, useWanted - fromLower), o2Stream);
+    const useL = fromLower + fromStream;
     const useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, yU * mass);
     const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
     const o2L =
@@ -3450,6 +3563,18 @@ function stepZoneNow(
       o2U += sliceJet * jetY;
       mU2 += sliceJet;
     }
+    if (bareSlice > 0 && farKgS > 0) {
+      o2U += o2Stream;
+      mU2 += bareSlice;
+      // A hot jet already mixed its fuel. Only the part it did not cover
+      // is still on the orifice stream. Soot is mixed after the outflow
+      // of this slice, so the gas that just arrived is not vented in the
+      // same slice. CO is not stored: the stud dose reads it from that soot.
+      const streamFuel = (limited.farUpperFuelKgS / farKgS) * bareSlice;
+      const already = incomingFuelKgS * slice;
+      const extraFuel = streamFuel - already;
+      if (extraFuel > 0) fuel += extraFuel;
+    }
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
     const zStart = z;
@@ -3470,6 +3595,13 @@ function stepZoneNow(
     const displacedSoot = mass > 1e-6 ? (soot / mass) * sliceExtra : 0;
     const made = Math.max(0, sootGPerS) * slice;
     soot = Math.max(0, soot + made - carried - extracted - displacedSoot);
+    if (bareSlice > 0 && farKgS > 0) {
+      const sootIn = (limited.farUpperSootGPerS / farKgS) * bareSlice;
+      if (sootIn > 0) {
+        soot += sootIn;
+        bareSootG += sootIn;
+      }
+    }
     const carriedF = yF * hotSum * slice;
     const extractedF = yF * limited.fanUpperKgS * slice;
     const displacedF = yF * sliceExtra;
@@ -3516,6 +3648,7 @@ function stepZoneNow(
       ...(sheets ? { sheetK: sheets } : {}),
     },
     ventedSootG: vented,
+    bareSootG,
     outByVentKgS: outByVent,
     hotByVent: hotKg.map((kg, v) => ({
       kg,

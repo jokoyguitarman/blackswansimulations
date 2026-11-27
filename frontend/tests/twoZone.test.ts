@@ -496,6 +496,96 @@ test('a fire room keeps the enthalpy of a neighbour upper inflow', () => {
   assert.ok(energy / 1000 < 1, `energy residual ${(energy / 1000).toFixed(1)} MJ`);
 });
 
+test('a clamped fire room fed near-fresh air keeps burning', () => {
+  // The neighbour layer is only slightly warm, so the door inflow is that
+  // layer. On the floor the plume cap used to drop it, and its oxygen never
+  // reached the flame, so the fire collapsed. Near-fresh air should burn
+  // close to the model's fresh 0.23, and a vitiated stream should not.
+  const fires = [{ heatKw: 15000, diameterM: 1.4 }];
+  const room = {
+    areaM2: 40,
+    ceilingM: 3,
+    boundaries: [{ areaM2: 140, lining: LINING.concrete }],
+  };
+  const door = { widthM: 2, sillM: 0, soffitM: 2 };
+  const spec = (upperO2: number): LayerSpec => ({
+    ...room,
+    fires,
+    vents: [
+      {
+        ...door,
+        outside: { interfaceM: 0.1, upperK: AMBIENT_K + 35, floorPressurePa: 0, upperO2 },
+      },
+    ],
+  });
+  const start = { ...freshLayer(3), interfaceM: 0.05, upperK: 500 };
+  const released = (upperO2: number) => {
+    let state = start;
+    let kw = 0;
+    for (let i = 0; i < 20; i++) {
+      const stepped = stepZone(state, spec(upperO2), 0.5);
+      kw += stepped.burnedFraction * 15000;
+      state = stepped.state;
+    }
+    return kw;
+  };
+  const near = released(0.21);
+  const fresh = released(0.23);
+  const vitiated = released(0.05);
+  assert.ok(fresh > 50000, `fresh stream only released ${fresh.toFixed(0)} kW·s`);
+  assert.ok(
+    near > fresh * 0.8,
+    `near-fresh released ${near.toFixed(0)} kW·s against fresh ${fresh.toFixed(0)}`,
+  );
+  assert.ok(
+    near < fresh * 1.02,
+    `near-fresh released ${near.toFixed(0)} kW·s, above the fresh stream ${fresh.toFixed(0)}`,
+  );
+  assert.ok(
+    near > vitiated * 3,
+    `near-fresh released ${near.toFixed(0)} kW·s against vitiated ${vitiated.toFixed(0)}`,
+  );
+});
+
+test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
+  // No fire, so the stream is not consumed. Its oxygen, soot and fuel
+  // arrive with the mass. CO is not a layer species; the stud dose reads
+  // it from this soot.
+  const door = { widthM: 2, sillM: 0, soffitM: 2 };
+  const spec = (upperO2?: number): LayerSpec => ({
+    areaM2: 8,
+    ceilingM: 2.5,
+    vents: [
+      {
+        ...door,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 30,
+          floorPressurePa: -4,
+          sootGPerKg: 2,
+          fuelY: 0.05,
+          ...(upperO2 != null ? { upperO2 } : {}),
+        },
+      },
+    ],
+    boundaries: [{ areaM2: 40, lining: LINING.concrete }],
+    fires: [],
+  });
+  const start = { ...freshLayer(2.5), interfaceM: 0.05, upperK: AMBIENT_K + 30 };
+  let lean = start;
+  let fresh = start;
+  for (let i = 0; i < 40; i++) {
+    lean = stepZone(lean, spec(0.21), 0.5).state;
+    fresh = stepZone(fresh, spec(), 0.5).state;
+  }
+  const yLean = lean.upperO2 ?? 0;
+  const yFresh = fresh.upperO2 ?? 0;
+  assert.ok(yFresh - yLean > 0.003, `lean ${yLean.toFixed(3)} fresh ${yFresh.toFixed(3)}`);
+  assert.ok(yLean > 0.18, `upper oxygen fell to ${yLean.toFixed(3)}`);
+  assert.ok(lean.sootG > 1, `soot ${lean.sootG.toFixed(3)} g`);
+  assert.ok((lean.fuelKg ?? 0) > 0.05, `fuel ${lean.fuelKg ?? 0}`);
+});
+
 test('a hot neighbour on the door cuts the outflow', () => {
   // CFAST Eq. 4.1 on both sides. The same hot layer opening onto ambient
   // drives a door. Opening onto a neighbour at the same temperature does not.

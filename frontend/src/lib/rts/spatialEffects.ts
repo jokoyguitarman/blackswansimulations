@@ -34,6 +34,7 @@ import {
   O2_AMBIENT_MASS,
   oxygenLimitedBurn,
   oxygenMassFraction,
+  upperMixtureKg,
   spillOriginM,
   steadyLayer,
   stepZone,
@@ -381,6 +382,23 @@ export function neighbourVentOutside(
   return best ? gauges.get(best) : undefined;
 }
 
+/** Oxygen, soot and fuel of a layer, for the far side of a door. */
+function neighbourSpecies(
+  zone: ZoneState,
+  areaM2: number,
+  ceilingM: number,
+): Pick<VentOutside, 'upperO2' | 'sootGPerKg' | 'fuelY'> {
+  const depth = Math.max(0, ceilingM - zone.interfaceM);
+  const mass = upperMixtureKg(zone.upperK, areaM2, depth);
+  const upperO2 = oxygenMassFraction(zone.upperO2);
+  if (!(mass > 0)) return { upperO2, sootGPerKg: 0, fuelY: 0 };
+  return {
+    upperO2,
+    sootGPerKg: zone.sootG > 0 ? zone.sootG / mass : 0,
+    fuelY: zone.fuelKg != null && zone.fuelKg > 0 ? zone.fuelKg / mass : 0,
+  };
+}
+
 /** The parcels the next step passes into `stepZone`, after the dust filter. */
 export function queueDoorJets(
   parcels: ReadonlyMap<string, DoorJetParcel>,
@@ -671,6 +689,12 @@ export class SpatialEffectsEngine {
   private layerGridWalls: GridWall[] = [];
   private layerGrants: Array<{ receivers: string[]; grams: number }> = [];
   /**
+   * Soot the orifice already mixed into each room this step, grams. The
+   * vent grant carries the same soot, and `commitLayers` subtracts this
+   * so a fire room does not take it twice.
+   */
+  private orificeSootG = new Map<string, number>();
+  /**
    * Door jet arriving this step, from the previous step's upper-layer
    * outflow. One step behind, so room order does not matter.
    */
@@ -764,6 +788,7 @@ export class SpatialEffectsEngine {
     this.layerWalls = null;
     this.exposedDoors = new Set();
     this.layerGrants = [];
+    this.orificeSootG.clear();
     this.doorJets = new Map();
     this.floorPressurePa.clear();
     this.floorPressurePrevPa.clear();
@@ -2266,6 +2291,7 @@ export class SpatialEffectsEngine {
     this.droppedSheets.clear();
     const owned = new Set<string>();
     this.layerGrants = [];
+    this.orificeSootG.clear();
     const keptLower = this.jetLowerStuds;
     this.jetLowerStuds = new Set();
     this.jetTaken = new Map();
@@ -2325,6 +2351,7 @@ export class SpatialEffectsEngine {
         upperK: live.zone.upperK,
         floorPressurePa: this.floorPressurePa.get(id) ?? 0,
         ...(live.zone.lowerK != null ? { lowerK: live.zone.lowerK } : {}),
+        ...neighbourSpecies(live.zone, live.areaM2, live.ceilingM),
       });
     }
     const pending: Array<{
@@ -2764,6 +2791,9 @@ export class SpatialEffectsEngine {
       groups,
     );
     const stepped = stepZone(state, planned.spec, dt, sootGPerS, jet, hold);
+    if (commit && stepped.bareSootG > 0) {
+      this.orificeSootG.set(room, (this.orificeSootG.get(room) ?? 0) + stepped.bareSootG);
+    }
     if (!commit) {
       this.noteShaftPreview(room, planned.moves, stepped, dt);
       this.shaftMoves.length = movesBefore;
@@ -2828,6 +2858,7 @@ export class SpatialEffectsEngine {
       upperK: next.upperK,
       floorPressurePa: solved.stepped.floorPressurePa,
       ...(next.lowerK != null ? { lowerK: next.lowerK } : {}),
+      ...neighbourSpecies(next, spec.areaM2, spec.ceilingM),
     };
   }
 
@@ -2921,6 +2952,9 @@ export class SpatialEffectsEngine {
             upperK: other.upperK,
             lowerK: other.lowerK,
             floorPressurePa: other.floorPressurePa + (thisIsLower ? -stack : stack),
+            ...(other.upperO2 != null ? { upperO2: other.upperO2 } : {}),
+            ...(other.sootGPerKg != null ? { sootGPerKg: other.sootGPerKg } : {}),
+            ...(other.fuelY != null ? { fuelY: other.fuelY } : {}),
           }
         : {
             interfaceM: opening + 1,
@@ -3259,11 +3293,14 @@ export class SpatialEffectsEngine {
         this.sootK.set(id, k);
       }
     }
-    for (const live of this.layerState.values()) {
+    for (const [room, live] of this.layerState) {
       if (!live.active) continue;
       let extra = 0;
       for (const id of live.members) extra += incoming.get(id) ?? 0;
-      if (extra > 0) live.zone.sootG += extra;
+      // The orifice already mixed the bare stream's soot. The grant is
+      // that same soot, so only the part the orifice did not carry is added.
+      const net = extra - (this.orificeSootG.get(room) ?? 0);
+      if (net > 0) live.zone.sootG += net;
       const depth = Math.max(0.02, live.ceilingM - live.zone.interfaceM);
       const upper = Math.max(live.areaM2 * depth, 1e-6);
       const k = (SOOT_EXTINCTION_M2_PER_G * live.zone.sootG) / upper;
