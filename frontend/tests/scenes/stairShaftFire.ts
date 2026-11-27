@@ -55,6 +55,17 @@ export interface StairShaftResult {
   perFloor: Record<string, FloorTally>;
   /** Steps on which someone's move crossed a wall on their own storey. */
   wallCrossings: number;
+  /**
+   * Everyone who took a dead-end crawl down a stair: the FED projected when
+   * they took it, and the larger FED they carried when they got out or went down.
+   */
+  crawlers: Array<{
+    pedId: number;
+    projected: number;
+    realised: number;
+    outcome: string;
+    frozen: boolean;
+  }>;
   marks: StairShaftMark[];
   /** Seconds after the blast each person first sheltered, by pedId. */
   shelteredAt: Map<number, number>;
@@ -68,6 +79,10 @@ interface Label {
   sheltering?: boolean;
   heatDown?: boolean;
   fumeDown?: boolean;
+  fed?: number;
+  heatFed?: number;
+  frozen?: boolean;
+  crawlProjection?: number;
 }
 
 const OUT_STATES = new Set(['outside', 'left_map', 'arrived']);
@@ -255,6 +270,8 @@ export function runStairShaft(
   const durationS = opts.durationS ?? 180;
   const last = new Map<number, { level: string; x: number; y: number }>();
   let wallCrossings = 0;
+  const crawlers: StairShaftResult['crawlers'] = [];
+  const settled = new Set<number>();
   for (let step = 1; step <= durationS * fps; step += 1) {
     evac.setHazardStates(effects.studStates);
     evac.syncExits(exits);
@@ -281,6 +298,17 @@ export function runStairShaft(
     for (const { ped } of everyone()) {
       if (ped.sheltering && !shelteredAt.has(ped.pedId)) shelteredAt.set(ped.pedId, sinceBlast);
       if (OUT_STATES.has(ped.state ?? '')) outIds.add(ped.pedId);
+      const done = OUT_STATES.has(ped.state ?? '') || ped.state === 'down';
+      if (!done || settled.has(ped.pedId)) continue;
+      settled.add(ped.pedId);
+      if (ped.crawlProjection == null) continue;
+      crawlers.push({
+        pedId: ped.pedId,
+        projected: ped.crawlProjection,
+        realised: Math.max(ped.fed ?? 0, ped.heatFed ?? 0),
+        outcome: ped.state ?? 'unknown',
+        frozen: ped.frozen === true,
+      });
     }
     if (step % (15 * fps) !== 0) continue;
     const byLevel: Record<string, Record<string, number>> = {};
@@ -312,5 +340,5 @@ export function runStairShaft(
     if (ped.sheltering && ped.state !== 'down') row.sheltering++;
   }
   evac.destroy();
-  return { site, perFloor, wallCrossings, marks, shelteredAt, outIds };
+  return { site, perFloor, wallCrossings, crawlers, marks, shelteredAt, outIds };
 }

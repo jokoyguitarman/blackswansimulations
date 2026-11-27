@@ -35,6 +35,25 @@ function wall(id: string, level: string, a: [number, number], b: [number, number
   };
 }
 
+/**
+ * Everyone who took the dead-end crawl down the stair arrives carrying no
+ * more FED than was projected when they took it. Someone who decided before
+ * the fire had grown at all was projected about 0 and picks up a trace, so
+ * 0.01 (a hundredth of the incapacitating dose) is allowed on top. Anyone
+ * who froze in fear on the way is left out: they stopped where the plan
+ * said they would keep crawling, and freezing is not the projection's job.
+ */
+function assertProjectionHolds(run: ReturnType<typeof runStairShaft>, minCrawlers: number) {
+  const checked = run.crawlers.filter((crawler) => !crawler.frozen);
+  assert.ok(checked.length >= minCrawlers, `${checked.length} stair crawlers`);
+  for (const crawler of checked) {
+    assert.ok(
+      crawler.realised <= crawler.projected + 0.01,
+      `ped ${crawler.pedId}: realised ${crawler.realised.toFixed(3)} over projected ${crawler.projected.toFixed(3)}`,
+    );
+  }
+}
+
 test(
   'central blast: both floors crawl out, and nobody defends in place on the upper floor',
   { skip: slowScene, timeout: 10 * 60 * 1000 },
@@ -47,10 +66,25 @@ test(
     assert.equal(G.heatDown, 0, floors);
     assert.equal(L1.sheltering, 0, floors);
     assert.ok(L1.out >= 18, floors);
+    assertProjectionHolds(run, 15);
 
     const single = runStairShaft({ durationS: 240, groundOnly: true }).marks.at(-1);
     assert.ok(single);
     assert.equal(single.sheltering, 0);
+  },
+);
+
+test(
+  'blast beside the stair: the projection holds where the crawl dose is largest',
+  { skip: slowScene, timeout: 10 * 60 * 1000 },
+  () => {
+    const run = runStairShaft({ durationS: 300, site: { x: -3, y: 0 } });
+    assert.equal(run.perFloor.L1.sheltering, 0, JSON.stringify(run.perFloor));
+    assert.ok(
+      run.crawlers.some((crawler) => crawler.realised >= 0.1),
+      'no crawler carried a dose worth checking',
+    );
+    assertProjectionHolds(run, 15);
   },
 );
 
@@ -76,5 +110,6 @@ test(
     assert.equal(G.out + G.down, 20, floors);
     assert.ok(G.out >= 16, floors);
     assert.ok(L1.out >= 18, floors);
+    assertProjectionHolds(run, 15);
   },
 );

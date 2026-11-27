@@ -142,6 +142,16 @@ export class HazardField {
     return best;
   }
 
+  /** Id of the stud `sample` reads at this point, or null where it reads clean air. */
+  nearestId(x: number, y: number): string | null {
+    return this.nearest(x, y, 1.5 * this.cellM)?.id ?? null;
+  }
+
+  /** Every stud with the position `sample` reads it at. */
+  forEachStud(fn: (stud: HazardStud) => void): void {
+    for (const list of this.buckets.values()) for (const stud of list) fn(stud);
+  }
+
   private nearest(x: number, y: number, limit: number): HazardStud | null {
     const cx = Math.floor(x / this.cellM);
     const cy = Math.floor(y / this.cellM);

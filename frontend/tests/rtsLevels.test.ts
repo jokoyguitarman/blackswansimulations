@@ -1082,7 +1082,7 @@ describe('multi-floor crowd sensing and storey walls', () => {
     eng.destroy();
   });
 
-  function upperDeadEnd(headTempC?: number) {
+  function upperDeadEnd(headTempC?: number, prep?: (ped: Label & Record<string, unknown>) => void) {
     const { eng, inner } = twoStorey({
       counts: { G: 0, L1: 1 },
       stairs: [stairAt({ x: 10, y: 10 })],
@@ -1101,6 +1101,7 @@ describe('multi-floor crowd sensing and storey walls', () => {
     Matter.Body.setPosition(body, { x: 20, y: 10 });
     ped.state = 'evacuating';
     ped.nextCheckAt = 0;
+    prep?.(ped as Label & Record<string, unknown>);
     eng.step();
     return { eng, ped };
   }
@@ -1119,6 +1120,22 @@ describe('multi-floor crowd sensing and storey walls', () => {
     assert.equal(ped.sheltering, true);
     assert.equal(ped.targetStairId, null);
     eng.destroy();
+  });
+
+  it('keeps a stair crawl already under way until the projection is lethal', () => {
+    // 250 °C at the door projects about 0.8: too much to start, not enough to stop.
+    const fresh = upperDeadEnd(250);
+    assert.equal(fresh.ped.sheltering, true);
+    fresh.eng.destroy();
+    const underway = upperDeadEnd(250, (ped) => {
+      ped.forcedCrawl = true;
+      ped.targetStairId = 's';
+      ped.stairDir = 'down';
+      ped.stairToLevel = 'G';
+    });
+    assert.equal(underway.ped.sheltering, false);
+    assert.equal(underway.ped.targetStairId, 's');
+    underway.eng.destroy();
   });
 
   it('does not crawl down a stair whose landing is walled off from the door', () => {
