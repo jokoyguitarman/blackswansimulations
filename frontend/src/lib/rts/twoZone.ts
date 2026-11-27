@@ -723,15 +723,32 @@ export const FACADE_SIDE_RATIO_MIN = 0.25;
 export const FACADE_SIDE_RATIO_MAX = 4;
 
 /**
- * Meteorological reference height and the suburban power-law exponent.
- * ASHRAE Handbook of Fundamentals (2005), Chapter 16: towns, wooded
- * country and urban industrial all use 0.22, and the station speed is
- * at 10 m. Openings below 1 m use 1 m, so a sill on the ground is not
- * a zero. Below grade is sheltered and takes no wind.
+ * Open-country meteorological station and the suburban site.
+ * ASHRAE Handbook of Fundamentals (2005), Chapter 16. The station is
+ * flat open country: exponent 0.14, gradient height 270 m, measured at
+ * 10 m. The site is suburban (the wooded / urban-industrial row):
+ * exponent 0.22, gradient height 370 m. Converting the station speed
+ * to the site multiplies by about 0.72 at 10 m. Openings below 1 m use
+ * 1 m, so a sill on the ground is not a zero. Below grade is sheltered
+ * and takes no wind.
  */
 export const WIND_REF_HEIGHT_M = 10;
+export const WIND_MET_EXPONENT = 0.14;
+export const WIND_MET_GRADIENT_M = 270;
 export const WIND_PROFILE_EXPONENT = 0.22;
+export const WIND_SITE_GRADIENT_M = 370;
 export const WIND_PROFILE_MIN_M = 1;
+
+/**
+ * Local suburban speed divided by the open-country station speed.
+ * U(z) / U_met = (δ_met / 10)^α_met × (z / δ)^α. At 10 m this is about 0.72.
+ */
+export function windTerrainFactor(heightM: number): number {
+  if (!Number.isFinite(heightM) || heightM <= 0) return 0;
+  const z = Math.max(heightM, WIND_PROFILE_MIN_M);
+  const fromStation = Math.pow(WIND_MET_GRADIENT_M / WIND_REF_HEIGHT_M, WIND_MET_EXPONENT);
+  return fromStation * Math.pow(z / WIND_SITE_GRADIENT_M, WIND_PROFILE_EXPONENT);
+}
 
 /**
  * Normalized wall coefficient. Swami and Chandra, FSEC-CR-163-86 Eq. 2.1,
@@ -777,23 +794,22 @@ export function facadeCp(windFaceRad: number, windToRad: number, sideRatio = 1):
 }
 
 /**
- * Speed at `heightM` above grade from the speed at 10 m. The power law is
- * U(z) = U_10 (z / 10)^0.22. Still air stays 0. Below grade stays 0.
+ * Local speed at `heightM` from an open-country station speed at 10 m.
+ * Still air stays 0. Below grade stays 0.
  */
-export function windSpeedAtHeight(refSpeedMs: number, heightM: number): number {
-  if (!(refSpeedMs > 0) || !Number.isFinite(refSpeedMs)) return 0;
-  if (!Number.isFinite(heightM) || heightM <= 0) return 0;
-  const z = Math.max(heightM, WIND_PROFILE_MIN_M);
-  return refSpeedMs * Math.pow(z / WIND_REF_HEIGHT_M, WIND_PROFILE_EXPONENT);
+export function windSpeedAtHeight(metSpeedMs: number, heightM: number): number {
+  if (!(metSpeedMs > 0) || !Number.isFinite(metSpeedMs)) return 0;
+  return metSpeedMs * windTerrainFactor(heightM);
 }
 
 /**
  * Wind pressure on an outdoor opening, Pa. p = Cp · ½ ρ∞ U(z)², the form
  * used for a vent in smoke control (Klote and Milke, Handbook of Smoke
- * Control Engineering). U(z) is the power-law speed at the opening's
- * mid-height. `speedMs` is the speed at 10 m. Leave the height out and the
- * opening is taken at 10 m, so U is the reference speed. Positive pressure
- * is on the windward side, so flow enters that face. Still air is 0.
+ * Control Engineering). U(z) is the suburban speed at the opening's
+ * mid-height, converted from the open-country station. `speedMs` is that
+ * station speed at 10 m. Leave the height out and the opening is taken at
+ * 10 m on the suburban profile. Positive pressure is on the windward side,
+ * so flow enters that face. Still air is 0.
  */
 export function facadeWindPa(
   windFaceRad: number,
