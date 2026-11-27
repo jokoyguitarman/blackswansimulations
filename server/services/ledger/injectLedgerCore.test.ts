@@ -2,10 +2,13 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { injectKeyOf, isValidInjectKey, stampGeneratedInjectKeys } from '../../lib/injectKey.js';
 import {
+  actorRoleSkipsResponse,
   attributeChatResponse,
   buildCommsState,
   matchEmailDelivery,
+  replyToChannelDecision,
   resolveEmailRootId,
+  REPLY_TO_MUST_BE_IN_CHANNEL,
   type OpenChatDelivery,
   type ChatAttributionMessage,
 } from './injectLedgerCore.js';
@@ -60,6 +63,36 @@ describe('chat attribution', () => {
       defaultWindowMinutes: 15,
     });
     assert.deepEqual(result, [{ deliveryId: 'older', attribution: 'chat_reply_to' }]);
+  });
+
+  test('a reply_to outside this channel is rejected and is not chat_reply_to', () => {
+    const otherChannel = '22222222-2222-4222-8222-222222222222';
+    assert.deepEqual(replyToChannelDecision({ channel_id: CHANNEL }, CHANNEL), { ok: true });
+    assert.deepEqual(replyToChannelDecision({ channel_id: otherChannel }, CHANNEL), {
+      ok: false,
+      error: REPLY_TO_MUST_BE_IN_CHANNEL,
+    });
+    assert.deepEqual(replyToChannelDecision(null, CHANNEL), {
+      ok: false,
+      error: REPLY_TO_MUST_BE_IN_CHANNEL,
+    });
+
+    const result = attributeChatResponse({
+      message: message({ reply_to: 'chat-other' }),
+      openDeliveries: [
+        delivery({
+          id: 'other',
+          ref_id: 'chat-other',
+          chat_channel_id: otherChannel,
+        }),
+      ],
+      messageMinute: 10,
+      defaultWindowMinutes: 15,
+    });
+    assert.deepEqual(result, []);
+    assert.equal(actorRoleSkipsResponse('trainer'), true);
+    assert.equal(actorRoleSkipsResponse('admin'), true);
+    assert.equal(actorRoleSkipsResponse('participant'), false);
   });
 
   test('a recipient-team message inside the window is a heuristic response', () => {

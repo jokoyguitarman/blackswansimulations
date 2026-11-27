@@ -23,6 +23,7 @@ import { io } from '../index.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { getPlayerTeamName } from '../services/teamCharterService.js';
 import { attributeChatMessage, recordOpen } from '../services/ledger/injectLedgerService.js';
+import { replyToChannelDecision } from '../services/ledger/injectLedgerCore.js';
 
 /**
  * Chat overview enrichment shared by the channel list and the DM list: last message preview and
@@ -1049,6 +1050,28 @@ router.post(
       }
       const channel: ChannelRow = channelAccess.channel;
 
+      if (reply_to) {
+        const { data: referenced, error: referencedError } = await supabaseAdmin
+          .from('chat_messages')
+          .select('channel_id')
+          .eq('id', reply_to)
+          .maybeSingle();
+        if (referencedError) {
+          logger.warn(
+            { error: referencedError, channelId, replyTo: reply_to },
+            'Failed to load reply_to',
+          );
+          return res.status(500).json({ error: 'Failed to send message' });
+        }
+        const replyDecision = replyToChannelDecision(
+          referenced ? { channel_id: String(referenced.channel_id) } : null,
+          channelId,
+        );
+        if (!replyDecision.ok) {
+          return res.status(400).json({ error: replyDecision.error });
+        }
+      }
+
       // Insert message first
       const { data: insertedMessage, error: insertError } = await supabaseAdmin
         .from('chat_messages')
@@ -1115,23 +1138,23 @@ router.post(
       );
 
       if (channel.session_id) {
-        try {
-          await attributeChatMessage({
-            sessionId: channel.session_id,
-            channelId,
-            channelType: channel.type,
-            messageId: String(messageData.id),
-            senderId: user.id,
-            content,
-            replyTo: reply_to ?? null,
-            createdAt:
-              typeof messageData.created_at === 'string'
-                ? messageData.created_at
-                : new Date().toISOString(),
-          });
-        } catch (err) {
+        const createdAt =
+          typeof messageData.created_at === 'string'
+            ? messageData.created_at
+            : new Date().toISOString();
+        void attributeChatMessage({
+          sessionId: channel.session_id,
+          channelId,
+          channelType: channel.type,
+          messageId: String(messageData.id),
+          senderId: user.id,
+          content,
+          replyTo: reply_to ?? null,
+          createdAt,
+          actorRole: user.role,
+        }).catch((err) => {
           logger.warn({ err, channelId }, 'Failed to attribute chat response');
-        }
+        });
       }
 
       // Ensure sender data exists with fallback

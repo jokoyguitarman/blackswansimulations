@@ -20,6 +20,7 @@ import {
   matchEmailDelivery,
   resolveEmailRootId,
   responseTeamKey,
+  actorRoleSkipsResponse,
   sessionMinuteAt,
   COMMS_DELIVERY_CAP,
   COMMS_RESPONSE_CAP,
@@ -342,25 +343,23 @@ export async function attributeChatMessage(input: {
   content: string;
   replyTo: string | null;
   createdAt: string;
+  actorRole?: string | null;
 }): Promise<void> {
   if (!input.sessionId || ledgerTablesMissing()) return;
   try {
-    const actor = await loadActor(input.sessionId, input.senderId, input.createdAt);
+    const actor = await loadActor(
+      input.sessionId,
+      input.senderId,
+      input.createdAt,
+      input.actorRole,
+    );
     if (!actor || actor.isTrainer) return;
 
-    let query = supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('inject_deliveries')
       .select(DELIVERY_COLUMNS)
       .eq('session_id', input.sessionId)
       .eq('chat_channel_id', input.channelId);
-    if (input.replyTo && isUuid(input.replyTo) && isUuid(input.channelId)) {
-      query = supabaseAdmin
-        .from('inject_deliveries')
-        .select(DELIVERY_COLUMNS)
-        .eq('session_id', input.sessionId)
-        .or(`chat_channel_id.eq.${input.channelId},ref_id.eq.${input.replyTo}`);
-    }
-    const { data, error } = await query;
     if (failLedger(error, 'attributeChatMessage')) return;
     const rows = (data ?? []) as DeliveryRecord[];
     const responded = await respondedTeamKeys(rows.map((row) => row.id));
@@ -405,7 +404,7 @@ export async function attributeChatMessage(input: {
         is_trainer: false,
       },
       openDeliveries: rows
-        .filter((row) => row.channel === 'chat' || row.ref_id === input.replyTo)
+        .filter((row) => row.channel === 'chat')
         .map((row) => ({
           id: row.id,
           ref_id: row.ref_id,
@@ -446,10 +445,11 @@ export async function attributeMessengerReply(input: {
   threadId: string;
   content: string;
   createdAt: string;
+  actorRole?: string | null;
 }): Promise<void> {
   if (ledgerTablesMissing() || !isUuid(input.threadId)) return;
   try {
-    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt, input.actorRole);
     if (!actor || actor.isTrainer) return;
     const { data, error } = await supabaseAdmin
       .from('inject_deliveries')
@@ -498,11 +498,12 @@ export async function attributeEmailHandling(input: {
   repliedToId: string | null;
   forwardedEmailId: string | null;
   createdAt: string;
+  actorRole?: string | null;
 }): Promise<void> {
   if (ledgerTablesMissing()) return;
   if (!input.repliedToId && !input.forwardedEmailId) return;
   try {
-    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt, input.actorRole);
     if (!actor || actor.isTrainer) return;
     const starts = [input.repliedToId, input.forwardedEmailId].filter(
       (id): id is string => !!id && isUuid(id),
@@ -559,10 +560,11 @@ export async function attributeSocialReply(input: {
   parentPostId: string;
   content: string;
   createdAt: string;
+  actorRole?: string | null;
 }): Promise<void> {
   if (ledgerTablesMissing()) return;
   try {
-    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt, input.actorRole);
     if (!actor || actor.isTrainer) return;
     const { data, error } = await supabaseAdmin
       .from('inject_deliveries')
@@ -777,10 +779,15 @@ async function loadDeliveriesById(sessionId: string, ids: string[]): Promise<Del
   return (data ?? []) as DeliveryRecord[];
 }
 
-async function loadActor(sessionId: string, userId: string, at: string): Promise<Actor | null> {
+async function loadActor(
+  sessionId: string,
+  userId: string,
+  at: string,
+  role?: string | null,
+): Promise<Actor | null> {
   const clock = await loadSessionClock(sessionId);
   const minute = sessionMinuteAt(clock.startTime, at);
-  if (clock.trainerId && clock.trainerId === userId) {
+  if ((clock.trainerId && clock.trainerId === userId) || actorRoleSkipsResponse(role)) {
     return { teamName: null, isBot: false, isTrainer: true, minute };
   }
   const [teamName, isBot] = await Promise.all([

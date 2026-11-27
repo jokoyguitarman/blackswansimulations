@@ -261,6 +261,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
         content,
         createdAt:
           typeof message.created_at === 'string' ? message.created_at : new Date().toISOString(),
+        actorRole: user.role,
       });
     } catch (err) {
       logger.warn({ err, messageId: message.id }, 'Failed to attribute messenger reply');

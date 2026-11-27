@@ -85,6 +85,26 @@ export interface OpenChatDelivery {
 
 export type ChatAttribution = 'chat_reply_to' | 'chat_heuristic';
 
+export const REPLY_TO_MUST_BE_IN_CHANNEL = 'reply_to must be a message in this channel';
+
+/**
+ * A reply is accepted only when the referenced message exists in this channel.
+ * A missing row and a row in another channel are the same rejection: the foreign
+ * key would otherwise accept any chat_messages id.
+ */
+export function replyToChannelDecision(
+  referenced: { channel_id: string } | null,
+  channelId: string,
+): { ok: true } | { ok: false; error: typeof REPLY_TO_MUST_BE_IN_CHANNEL } {
+  if (referenced?.channel_id === channelId) return { ok: true };
+  return { ok: false, error: REPLY_TO_MUST_BE_IN_CHANNEL };
+}
+
+/** Trainers and admins are not players, matching chat_message_sent recording. */
+export function actorRoleSkipsResponse(role: string | null | undefined): boolean {
+  return role === 'trainer' || role === 'admin';
+}
+
 /** Team name, or `user:<id>` when the player is not on a team. */
 export function responseTeamKey(
   teamName: string | null | undefined,
@@ -178,7 +198,10 @@ export function attributeChatResponse(args: {
   if (message.is_trainer) return [];
 
   if (message.reply_to) {
-    const explicit = openDeliveries.find((delivery) => delivery.ref_id === message.reply_to);
+    const explicit = openDeliveries.find(
+      (delivery) =>
+        delivery.ref_id === message.reply_to && delivery.chat_channel_id === message.channel_id,
+    );
     if (explicit) return [{ deliveryId: explicit.id, attribution: 'chat_reply_to' }];
   }
 

@@ -471,6 +471,7 @@ router.post(
             content,
             createdAt:
               typeof post.created_at === 'string' ? post.created_at : new Date().toISOString(),
+            actorRole: user.role,
           });
         } catch (err) {
           logger.warn({ err, postId: post.id }, 'Failed to attribute social reply');
@@ -1324,6 +1325,7 @@ router.post(
           forwardedEmailId: forwarded_email_id ?? null,
           createdAt:
             typeof email.created_at === 'string' ? email.created_at : new Date().toISOString(),
+          actorRole: user.role,
         });
       } catch (err) {
         logger.warn({ err, emailId: email.id }, 'Failed to attribute email handling');
