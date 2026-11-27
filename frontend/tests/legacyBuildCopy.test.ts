@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { STAGE_LABEL, legacyErrorCardBody, legacyTransportBody } from '../src/lib/legacyBuildCopy';
 
 const DROPPED_STORYLINE =
-  'The connection dropped during the Storyline stage — the phone may have locked, switched apps or changed network. The server may still be working, but this page can no longer receive it. Retry starts the build again from Characters.';
+  'The connection dropped during the Storyline stage — the phone may have locked, switched apps or changed network. The server stopped this stage when the connection dropped. Retry starts the build again from Characters.';
 
 const UNREACHABLE_STORYLINE =
   "Couldn't reach the server to start the Storyline stage. Check the connection and retry. Retry starts the build again from Characters.";
@@ -22,7 +22,7 @@ describe('legacy build error copy', () => {
   test('organisation pages use the same split, with the stage label', () => {
     assert.equal(
       legacyErrorCardBody(legacyTransportBody(STAGE_LABEL.pages, true)),
-      'The connection dropped during the Organisation pages stage — the phone may have locked, switched apps or changed network. The server may still be working, but this page can no longer receive it. Retry starts the build again from Characters.',
+      'The connection dropped during the Organisation pages stage — the phone may have locked, switched apps or changed network. The server stopped this stage when the connection dropped. Retry starts the build again from Characters.',
     );
     assert.equal(
       legacyErrorCardBody(legacyTransportBody(STAGE_LABEL.pages, false)),

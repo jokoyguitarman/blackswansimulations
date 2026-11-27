@@ -18,9 +18,12 @@ export const LEGACY_RETRY_SUFFIX = 'Retry starts the build again from Characters
 
 const FALLBACK_BODY = 'The generator did not return a result.';
 
-/** Stream cut after at least one NDJSON line. The card appends the retry suffix. */
+/**
+ * Stream cut after at least one NDJSON line. The card appends the retry suffix.
+ * Disconnect aborts the stage on the server, so the card does not say the work continues.
+ */
 export function legacyStreamDroppedBody(stageLabel: string): string {
-  return `The connection dropped during the ${stageLabel} stage — the phone may have locked, switched apps or changed network. The server may still be working, but this page can no longer receive it.`;
+  return `The connection dropped during the ${stageLabel} stage — the phone may have locked, switched apps or changed network. The server stopped this stage when the connection dropped.`;
 }
 
 /** The request failed before any stream line arrived. The card appends the retry suffix. */

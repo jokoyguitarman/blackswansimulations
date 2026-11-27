@@ -67,6 +67,7 @@ import { extractBlueprint } from '../services/blueprint/blueprintExtractionServi
 import { emptyBlueprint, coerceBlueprint } from '../services/blueprint/blueprintTypes.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
+import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 import type { Response, NextFunction } from 'express';
 
@@ -574,24 +575,42 @@ router.post(
           .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
       }
       if (orgsResult && orgsResult.ok) {
+        const ac = new AbortController();
+        res.on('close', () => {
+          if (!res.writableEnded) ac.abort();
+        });
         const stopHeartbeat = beginNdjson(res);
-        const write = (msg: Record<string, unknown>) => res.write(JSON.stringify(msg) + '\n');
+        const write = (msg: Record<string, unknown>) => {
+          if (ac.signal.aborted || res.writableEnded) return;
+          res.write(JSON.stringify(msg) + '\n');
+        };
         try {
-          const result = await runStorylinePipeline(
-            orgsResult,
-            crisisContextFrom(req.body),
-            personas as NPCPersona[],
-            fact_sheet as FactSheet,
-            env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
-            write,
+          const result = await runWithAbortSignal(ac.signal, () =>
+            runStorylinePipeline(
+              orgsResult,
+              crisisContextFrom(req.body),
+              personas as NPCPersona[],
+              fact_sheet as FactSheet,
+              env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+              write,
+            ),
           );
+          if (ac.signal.aborted) {
+            logger.info({ route: 'generate-storyline' }, 'generation_aborted_client_disconnected');
+            return;
+          }
           write({ type: 'complete', ...result });
         } catch (err) {
+          if (ac.signal.aborted) {
+            logger.info({ route: 'generate-storyline' }, 'generation_aborted_client_disconnected');
+            return;
+          }
           logger.error({ err }, 'Multi-org storyline generation failed');
           write({ type: 'error', message: 'Storyline generation failed' });
+        } finally {
+          stopHeartbeat();
+          if (!ac.signal.aborted && !res.writableEnded) res.end();
         }
-        stopHeartbeat();
-        res.end();
         return;
       }
 
@@ -907,33 +926,49 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
+    const ac = new AbortController();
     try {
+      res.on('close', () => {
+        if (!res.writableEnded) ac.abort();
+      });
       beginNdjson(res);
 
       const { crisis_type, context, teams, team_storylines } = req.body;
 
-      const research = await getOrResearchTeamDoctrines(
-        teams as TeamDef[],
-        crisis_type,
-        context,
-        team_storylines as Record<string, Array<Record<string, unknown>>>,
-        async (ct, cx, ts, sl, onComplete) => {
-          return researchBestPractices(
-            ct,
-            cx,
-            ts as TeamDef[],
-            sl as unknown as Record<string, SocialInject[]>,
-            onComplete,
-          );
-        },
-        (teamName: string) => {
-          res.write(JSON.stringify({ type: 'team_research_complete', team: teamName }) + '\n');
-        },
+      const research = await runWithAbortSignal(ac.signal, () =>
+        getOrResearchTeamDoctrines(
+          teams as TeamDef[],
+          crisis_type,
+          context,
+          team_storylines as Record<string, Array<Record<string, unknown>>>,
+          async (ct, cx, ts, sl, onComplete) => {
+            return researchBestPractices(
+              ct,
+              cx,
+              ts as TeamDef[],
+              sl as unknown as Record<string, SocialInject[]>,
+              onComplete,
+            );
+          },
+          (teamName: string) => {
+            if (ac.signal.aborted || res.writableEnded) return;
+            res.write(JSON.stringify({ type: 'team_research_complete', team: teamName }) + '\n');
+          },
+        ),
       );
+
+      if (ac.signal.aborted) {
+        logger.info({ route: 'research' }, 'generation_aborted_client_disconnected');
+        return;
+      }
 
       res.write(JSON.stringify({ type: 'complete', research }) + '\n');
       res.end();
     } catch (err) {
+      if (ac.signal.aborted) {
+        logger.info({ route: 'research' }, 'generation_aborted_client_disconnected');
+        return;
+      }
       logger.error({ err }, 'Failed to research best practices');
       if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to research best practices' });
@@ -1091,8 +1126,7 @@ router.post(
                     | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
                     | undefined) || null,
                 sop_steps: body.sop_steps as
-                  | import('../services/socialCrisisGeneratorService.js').SOPStep[]
-                  | undefined,
+                  import('../services/socialCrisisGeneratorService.js').SOPStep[] | undefined,
                 decision_context:
                   (body.decision_context as Record<string, unknown> | undefined) ?? null,
               })
@@ -1212,8 +1246,8 @@ router.post(
           multiArtifacts
             ? multiArtifacts.orgPage
             : (body.org_page as
-                | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
-                | undefined) || null,
+                import('../services/socialCrisisGeneratorService.js').OrgPageConfig | undefined) ||
+                null,
           body.org_name || undefined,
           env.enableDocumentBlueprint && body.blueprint ? coerceBlueprint(body.blueprint) : null,
           multiArtifacts
@@ -1464,6 +1498,7 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
+    const ac = new AbortController();
     try {
       // Multi-organisation path: every protagonist gets its own page in its own country;
       // competitors carry theirs; pressure orgs get AI-run pages; the registry is returned alongside.
@@ -1482,6 +1517,9 @@ router.post(
           .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
       }
 
+      res.on('close', () => {
+        if (!res.writableEnded) ac.abort();
+      });
       beginNdjson(res);
 
       const {
@@ -1495,25 +1533,34 @@ router.post(
       } = req.body;
 
       if (orgsResult && orgsResult.ok) {
-        const r = await runOrgPagePipeline(
-          orgsResult,
-          crisis_description,
-          logo_url,
-          auto_antagonist !== false,
-          (msg: string) => res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n'),
-          {
-            stakeholders: ((req.body.stakeholders as Stakeholder[]) || []).filter(
-              (s) => s && typeof s === 'object',
-            ),
-            factSheet: (req.body.fact_sheet as FactSheet | undefined) ?? null,
-            crisis: crisisContextFrom({
-              crisis_type: (req.body.crisis_type as string) || crisis_description.slice(0, 80),
-              context: crisis_description,
-              duration: 60,
-              org_name,
-            }),
-          },
+        const r = await runWithAbortSignal(ac.signal, () =>
+          runOrgPagePipeline(
+            orgsResult,
+            crisis_description,
+            logo_url,
+            auto_antagonist !== false,
+            (msg: string) => {
+              if (ac.signal.aborted || res.writableEnded) return;
+              res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+            },
+            {
+              stakeholders: ((req.body.stakeholders as Stakeholder[]) || []).filter(
+                (s) => s && typeof s === 'object',
+              ),
+              factSheet: (req.body.fact_sheet as FactSheet | undefined) ?? null,
+              crisis: crisisContextFrom({
+                crisis_type: (req.body.crisis_type as string) || crisis_description.slice(0, 80),
+                context: crisis_description,
+                duration: 60,
+                org_name,
+              }),
+            },
+          ),
         );
+        if (ac.signal.aborted) {
+          logger.info({ route: 'generate-org-page' }, 'generation_aborted_client_disconnected');
+          return;
+        }
         res.write(
           JSON.stringify({
             type: 'complete',
@@ -1528,20 +1575,31 @@ router.post(
         return;
       }
 
-      const orgPage = await generateOrgPageConfig(
-        crisis_description,
-        country,
-        org_name,
-        (msg: string) => {
-          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-        },
-        logo_url,
-        { allies, competitors, auto_antagonist },
+      const orgPage = await runWithAbortSignal(ac.signal, () =>
+        generateOrgPageConfig(
+          crisis_description,
+          country,
+          org_name,
+          (msg: string) => {
+            if (ac.signal.aborted || res.writableEnded) return;
+            res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+          },
+          logo_url,
+          { allies, competitors, auto_antagonist },
+        ),
       );
 
+      if (ac.signal.aborted) {
+        logger.info({ route: 'generate-org-page' }, 'generation_aborted_client_disconnected');
+        return;
+      }
       res.write(JSON.stringify({ type: 'complete', org_page: orgPage }) + '\n');
       res.end();
     } catch (err) {
+      if (ac.signal.aborted) {
+        logger.info({ route: 'generate-org-page' }, 'generation_aborted_client_disconnected');
+        return;
+      }
       logger.error({ err }, 'Failed to generate org page config');
       if (!res.headersSent) {
         res.status(500).json({ error: 'Org page generation failed' });
