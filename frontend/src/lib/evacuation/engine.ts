@@ -3714,6 +3714,21 @@ export class PolygonEvacuationEngine {
   }
 
   /**
+   * Bodies walking down a flight now: people and responders alike. SFPE
+   * density is bodies per m² of the flight, and a responder in kit takes at
+   * least an evacuee's share of the tread, so both count. The step-on cap
+   * and the per-step re-pace both read this count.
+   */
+  private descendingOn(stairId: string, fromLevel: string): number {
+    let on = 0;
+    for (const o of [...this.stairPeople, ...this.stairResponders]) {
+      if (o.phase !== 'travel' || o.dir !== 'down') continue;
+      if (o.stairId === stairId && o.fromLevel === fromLevel) on++;
+    }
+    return on;
+  }
+
+  /**
    * Most a descent can go at, m/s, from the density on the flight as this
    * person steps on (themselves included): the SFPE hydraulic speed. The
    * density is read on `widthM`, the width this direction has, so people
@@ -3724,11 +3739,8 @@ export class PolygonEvacuationEngine {
     if (occ.dir !== 'down' || !from) return Infinity;
     const stair = this.stairById(occ.stairId);
     if (!stair) return Infinity;
-    let on = 1;
-    for (const o of [...this.stairPeople, ...this.stairResponders]) {
-      if (o === occ || o.phase !== 'travel') continue;
-      if (o.stairId === occ.stairId && o.dir === 'down' && o.fromLevel === occ.fromLevel) on++;
-    }
+    const self = occ.phase === 'travel' ? 0 : 1;
+    const on = this.descendingOn(occ.stairId, occ.fromLevel) + self;
     return stairDensitySpeed(on / flightAreaM2(stair, from, widthM));
   }
 
@@ -3744,13 +3756,7 @@ export class PolygonEvacuationEngine {
       (o) => o.phase === 'travel' && o.ownMps != null && o.paceMps != null,
     );
     if (moving.length === 0) return;
-    const descending = new Map<string, number>();
-    for (const o of moving) {
-      if (o.dir !== 'down') continue;
-      const key = flightKey(o.stairId, 'down', o.fromLevel);
-      descending.set(key, (descending.get(key) ?? 0) + 1);
-    }
-    const loads = descending.size > 0 ? this.flightLoads() : null;
+    const loads = moving.some((o) => o.dir === 'down') ? this.flightLoads() : null;
     const caps = new Map<string, number>();
     for (const o of moving) {
       let cap = Infinity;
@@ -3765,7 +3771,8 @@ export class PolygonEvacuationEngine {
             const own = loads.get(key) ?? NO_LOAD;
             const opp = loads.get(flightKey(o.stairId, 'up', o.toLevel)) ?? NO_LOAD;
             const widthM = flightWidthM(stair, demandOf(own), demandOf(opp));
-            cap = stairDensitySpeed((descending.get(key) ?? 1) / flightAreaM2(stair, from, widthM));
+            const on = this.descendingOn(o.stairId, o.fromLevel);
+            cap = stairDensitySpeed(on / flightAreaM2(stair, from, widthM));
           }
           caps.set(key, cap);
         }

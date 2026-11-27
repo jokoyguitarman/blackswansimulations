@@ -568,6 +568,51 @@ describe('stair flights in the engine', () => {
     }
   });
 
+  it('counts responders walking down in the descent density at the step-on and every step after', () => {
+    // A crew comes down with the crowd. SFPE density is bodies per m², so
+    // the crew packs the flight like anyone else: a person stepping on is
+    // capped at S(D) with the crew counted, and the next re-pace, at the
+    // same instant, leaves them where the step-on put them.
+    const stair = stairOf('s', 'G', 'L1');
+    const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 30 }, [stair]);
+    // The crew joins the queue at 0 s, behind twelve and ahead of the rest.
+    for (let i = 0; i < 30; i++) enqueue(inner, labels[i], 's', 'L1', 'G', i < 12 ? -1 : 1);
+    eng.sendStairResponders('s', 6, { fromLevel: 'L1', toLevel: 'G' });
+    type Walker = Occ & { paceMps?: number; ownMps?: number };
+    const crewInner = inner as unknown as Inner & {
+      stairResponders: Walker[];
+      elapsed: number;
+      repaceFlights(): void;
+    };
+    const area = flightAreaM2(stair, levelDef('L1', 1, 4));
+    let checked = 0;
+    let crewBound = 0;
+    for (let i = 0; i < Math.round(60 / DT); i++) {
+      eng.step();
+      const people = inner.stairPeople as Walker[];
+      const crewOn = crewInner.stairResponders.filter((o) => o.phase === 'travel').length;
+      const all = [...people, ...crewInner.stairResponders].filter((o) => o.phase === 'travel');
+      const fresh = people.filter(
+        (o) => o.phase === 'travel' && o.travelStart >= crewInner.elapsed - DT - 1e-9,
+      );
+      if (fresh.length === 0) continue;
+      const last = fresh.reduce((a, b) => (b.travelStart > a.travelStart ? b : a));
+      const cap = stairDensitySpeed(all.length / area);
+      assert.ok(
+        Math.abs(last.paceMps! - Math.min(last.ownMps!, cap)) < 1e-9,
+        `step-on pace ${last.paceMps} vs ${Math.min(last.ownMps!, cap)} with ${crewOn} crew on`,
+      );
+      const before = last.travelDuration;
+      crewInner.repaceFlights();
+      assert.ok(Math.abs(last.travelDuration - before) < 1e-9, 're-pace moved a fresh walker');
+      checked++;
+      if (crewOn > 0 && cap < last.ownMps!) crewBound++;
+    }
+    eng.destroy();
+    assert.ok(checked >= 10, `${checked} step-ons checked`);
+    assert.ok(crewBound > 0, 'the cap never bound with the crew on the flight');
+  });
+
   it('lets the rest of a flight speed up as the people ahead step off', () => {
     // Twenty step on as fast as the flight takes them; the first are released
     // into an empty flight, the later ones into a packed one. Once the head
