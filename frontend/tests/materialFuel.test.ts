@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { WOOD_HEAT_KJ_KG, flashoverAgeSec } from '../src/lib/rts/flameFront';
+import { ignitionOxygenY, oxygenAllowsFlame } from '../src/lib/rts/twoZone';
 import { FireSimulation, DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects';
 import {
@@ -543,7 +544,7 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'none');
   });
 
-  test('a blast lights a confirmed table, and the sealed room waits for the front', () => {
+  test('a blast lights a confirmed table, and a starved room does not spread', () => {
     const { engine, zone } = blastEngine(new Set(['table', 'next']));
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
@@ -552,9 +553,10 @@ describe('confirmed fuel gate', () => {
     assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
 
     // Three indoor studs, no opening. The flame stands in the upper layer
-    // and burns that oxygen smoothly. The layer reaches the extinction
-    // limit while the wood curve is still under 1 MW, so the room latch
-    // does not fire. The next stud is 3 m away and lights with the front.
+    // and burns that oxygen smoothly. The layer crosses the cutoff while
+    // the wood curve is still under 1 MW, so the latch does not fire. The
+    // front arrives at 360 s with the oxygen still on the extinguished
+    // side of the cutoff, and the next stud stays dark.
     const fuel = defaultLightFuel();
     const flash = flashoverAgeSec(fuel);
     const frontSec =
@@ -563,19 +565,34 @@ describe('confirmed fuel gate', () => {
     assert.ok(frontSec > flash + 30);
     let seconds = 0.1;
     let burningAtLatch = false;
-    while (engine.studStates.get('next')?.fire.state !== 'burning' && seconds < 400) {
+    while (seconds < frontSec + 30) {
       engine.step(1, [], [zone]);
       seconds += 1;
       if (seconds <= flash + 2 && engine.studStates.get('next')?.fire.state === 'burning')
         burningAtLatch = true;
     }
     assert.equal(burningAtLatch, false);
-    assert.ok(
-      seconds > frontSec && seconds < frontSec + 2,
-      `front lit the next stud at ${seconds}s`,
-    );
+    assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
     assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
+    const layers = (
+      engine as unknown as {
+        layerState: Map<
+          string,
+          {
+            active: boolean;
+            zone: { interfaceM: number; upperO2?: number; lowerO2?: number };
+          }
+        >;
+      }
+    ).layerState;
+    let starved = false;
+    for (const live of layers.values()) {
+      if (!live.active) continue;
+      const y = ignitionOxygenY(live.zone.interfaceM, live.zone.upperO2, live.zone.lowerO2);
+      if (!oxygenAllowsFlame(y)) starved = true;
+    }
+    assert.equal(starved, true);
   });
 
   test('without a fuel set the blast lights indoor studs and leaves the yard dark', () => {
@@ -599,6 +616,36 @@ describe('confirmed fuel gate', () => {
     assert.equal(empty.get('table'), 0);
     assert.deepEqual(blastSmokeStudIds(['tile', 'table'], new Set()), []);
     assert.deepEqual(blastSmokeStudIds(['tile', 'table'], null), ['tile', 'table']);
+  });
+
+  test('the front does not light a stud standing past the oxygen cutoff', () => {
+    const sim = new FireSimulation({
+      ...DEFAULT_FIRE_PARAMS,
+      ambientSpread: true,
+      ambientHeatSec: 30,
+    });
+    sim.init([
+      { id: 'src', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
+      { id: 'next', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
+    ]);
+    sim.setFuelStuds(new Set(['src', 'next']));
+    sim.setIgnitionOxygen(
+      new Map([
+        ['src', 0.153],
+        ['next', 0.153],
+      ]),
+    );
+    sim.ignite(['src']);
+    for (let i = 0; i < 400; i++) sim.step(1, [], []);
+    assert.notEqual(sim.states.get('next')?.state, 'burning');
+    sim.setIgnitionOxygen(
+      new Map([
+        ['src', 0.2],
+        ['next', 0.2],
+      ]),
+    );
+    sim.step(1, [], []);
+    assert.equal(sim.states.get('next')?.state, 'burning');
   });
 
   test('igniteRadius on the fire sim refuses a stud that is not confirmed fuel', () => {
