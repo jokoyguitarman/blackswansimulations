@@ -59,6 +59,26 @@ import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon'
 import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
 import { OriginBadge } from '../components/UI/OriginBadge';
 import { SHELL_ART, artFor } from '../lib/scenarioArt';
+import {
+  cancelBuild,
+  getBuild,
+  getLatestBuild,
+  getReview,
+  resumeBuild,
+  startBuild,
+} from '../lib/buildClient';
+import { hashBuildRequest, makeBuildRequest } from '../lib/buildRequest';
+import {
+  buildCardFor,
+  mapToWizardStage,
+  previousFinishedStage,
+  stageMark,
+  type BuildCard,
+  type BuildLogLine,
+  type BuildView,
+  type PollState,
+} from '../lib/buildStatus';
+import { useBuildPolling } from '../lib/useBuildPolling';
 import { STAGE_LABEL, legacyErrorCardBody, legacyTransportBody } from '../lib/legacyBuildCopy';
 import { useWakeLock } from '../lib/useWakeLock';
 
@@ -287,6 +307,26 @@ function apiUrl(path: string) {
   const clean = path.startsWith('/') ? path : `/${path}`;
   return API_BASE ? `${API_BASE}${clean}` : clean;
 }
+
+function readSession(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(key: string, value: string | null): void {
+  try {
+    if (value == null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    /* private mode */
+  }
+}
+
+const durableBuildKey = (draftId: string) => `warroom-build:${draftId}`;
+const durableIdempotencyKey = (draftId: string) => `warroom-build-key:${draftId}`;
 
 async function authHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../lib/supabase')).supabase.auth.getSession();
@@ -786,15 +826,29 @@ export const SocialCrisisWizard = () => {
   const [buildError, setBuildError] = useState<
     'characters' | 'storyline' | 'convergence' | 'pages' | null
   >(null);
-  // Legacy path: keep the screen on for the whole chained build. A phone that
-  // locks mid-storyline drops the one open NDJSON response.
-  useWakeLock(
+  const [activeBuildId, setActiveBuildId] = useState<string | null>(null);
+  const [pollNonce, setPollNonce] = useState(0);
+  const [buildLog, setBuildLog] = useState<BuildLogLine[]>([]);
+  const [durableView, setDurableView] = useState<BuildView | null>(null);
+  const [durableCard, setDurableCard] = useState<BuildCard | null>(null);
+  const [conflictBuildId, setConflictBuildId] = useState<string | null>(null);
+  const [lastBuildId, setLastBuildId] = useState<string | null>(null);
+  const appliedBuildRef = useRef<string | null>(null);
+  const startingRef = useRef(false);
+  const requestHashRef = useRef<string | null>(null);
+  const durableLive =
+    activeBuildId != null &&
+    (durableView == null || durableView.status === 'queued' || durableView.status === 'running');
+  const legacyLive =
+    activeBuildId == null &&
     (buildStage === 'characters' ||
       buildStage === 'storyline' ||
       buildStage === 'convergence' ||
       buildStage === 'pages') &&
-      buildError == null,
-  );
+    buildError == null;
+  // Legacy keeps the screen on for the chained NDJSON build. Durable does the
+  // same while the server is still working, and says the trainer can leave.
+  const wakeLock = useWakeLock(durableLive || legacyLive);
 
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
@@ -845,6 +899,7 @@ export const SocialCrisisWizard = () => {
       per_country_counts: perCountryCounts,
       sop_steps: sopSteps,
       decision_context: decisionContext,
+      last_build_id: lastBuildId,
     }),
     [
       crisisDescription,
@@ -882,6 +937,7 @@ export const SocialCrisisWizard = () => {
       perCountryCounts,
       sopSteps,
       decisionContext,
+      lastBuildId,
     ],
   );
 
@@ -940,6 +996,234 @@ export const SocialCrisisWizard = () => {
     void saveDraftState(7);
   }, [step, saveDraftState]);
 
+  /** Draft input and a durable review share these keys (§9.4). */
+  const applyGenerated = useCallback((input: Record<string, unknown>) => {
+    if (input.org_name) setOrgName(String(input.org_name));
+    if (input.brand_logo_url) setBrandLogoUrl(String(input.brand_logo_url));
+    if (input.country) setCountry(String(input.country));
+    if (input.context) setContext(String(input.context));
+    if (input.uploaded_doc_text) setUploadedDocText(String(input.uploaded_doc_text));
+    if (input.uploaded_doc_name) setUploadedDocName(String(input.uploaded_doc_name));
+    if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
+    if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
+    if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
+    if (Array.isArray(input.storyline_injects))
+      setStorylineInjects(input.storyline_injects as SocialInject[]);
+    if (input.team_storylines && typeof input.team_storylines === 'object')
+      setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
+    if (Array.isArray(input.team_charters))
+      setTeamCharters(input.team_charters as TeamCharterWire[]);
+    if (Array.isArray(input.team_roster) && input.team_roster.length > 0)
+      setTeamRoster(migrateLegacyRoster(input.team_roster as RosterEntry[]));
+    if (Array.isArray(input.shared_injects))
+      setSharedInjects(input.shared_injects as SocialInject[]);
+    if (Array.isArray(input.convergence_gates))
+      setConvergenceGates(input.convergence_gates as SocialInject[]);
+    if (input.narrative && typeof input.narrative === 'object')
+      setNarrative(input.narrative as { title: string; description: string; briefing: string });
+    if (Array.isArray(input.objectives)) setObjectives(input.objectives as ObjectiveDef[]);
+    if (input.dimension_labels && typeof input.dimension_labels === 'object')
+      setDimensionLabels(input.dimension_labels as Record<string, string>);
+    if (input.org_page && typeof input.org_page === 'object')
+      setOrgPage(input.org_page as Record<string, unknown>);
+    const savedCountry = input.country ? String(input.country) : 'Singapore';
+    // Legacy drafts: "allied pages" become additional organisations in the primary's
+    // country with the default roster; competitors gain the primary's country.
+    const extras: OrganisationDraft[] = Array.isArray(input.extra_organisations)
+      ? (input.extra_organisations as OrganisationDraft[]).map((o) => ({
+          ...o,
+          team_roster: migrateLegacyRoster(o.team_roster || []),
+        }))
+      : [];
+    if (extras.length === 0 && Array.isArray(input.ally_entries)) {
+      for (const a of input.ally_entries as Array<{
+        name: string;
+        facebook_handle?: string;
+        x_handle?: string;
+      }>) {
+        extras.push({
+          ...newOrganisationDraft(savedCountry),
+          display_name: a.name,
+          facebook_handle: a.facebook_handle || '',
+          x_handle: a.x_handle || '',
+        });
+      }
+    }
+    if (extras.length > 0) setExtraOrganisations(extras);
+    if (Array.isArray(input.pressure_organisations))
+      setPressureOrgs(input.pressure_organisations as PressureOrgDraft[]);
+    setDismissedProposals(parseDismissedProposals(input.dismissed_proposals));
+    if (input.footprint && typeof input.footprint === 'object') {
+      setFootprint(input.footprint as FootprintWire);
+      footprintRanFor.current =
+        `${String(input.crisis_description || '')} ${String(input.context || '')}`.trim();
+    }
+    if (Array.isArray(input.competitor_entries))
+      setCompetitorEntries(
+        (
+          input.competitor_entries as Array<{
+            name: string;
+            country?: string;
+            facebook_handle?: string;
+            x_handle?: string;
+          }>
+        ).map((c) => ({ ...c, country: c.country || savedCountry })),
+      );
+    if (typeof input.auto_antagonist === 'boolean') setAutoAntagonist(input.auto_antagonist);
+    if (input.primary_city) setPrimaryCity(String(input.primary_city));
+    if (input.primary_kind && typeof input.primary_kind === 'string')
+      setPrimaryKind(input.primary_kind as OrgKind);
+    if (input.primary_short_name) setPrimaryShortName(String(input.primary_short_name));
+    if (Array.isArray(input.stakeholders)) setStakeholders(input.stakeholders as StakeholderWire[]);
+    if (Array.isArray(input.stakeholder_injects))
+      setStakeholderInjects(input.stakeholder_injects as SocialInject[]);
+    if (Array.isArray(input.org_registry)) setOrgRegistry(input.org_registry as OrgRegistryWire[]);
+    if (input.per_country_counts && typeof input.per_country_counts === 'object')
+      setPerCountryCounts(input.per_country_counts as Record<string, number>);
+    if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps as SopStepWire[]);
+    if (input.decision_context && typeof input.decision_context === 'object')
+      setDecisionContext(input.decision_context as Record<string, unknown>);
+
+    if (typeof input.last_build_id === 'string' && input.last_build_id) {
+      setLastBuildId(input.last_build_id);
+    }
+  }, []);
+
+  const finishSucceeded = useCallback(
+    async (buildId: string) => {
+      if (appliedBuildRef.current === buildId) return;
+      appliedBuildRef.current = buildId;
+      const review = await getReview(buildId, authHeaders);
+      if (!review.ok || !review.data) {
+        appliedBuildRef.current = null;
+        return;
+      }
+      applyGenerated(review.data);
+      const links = (review.data as { pressure_links?: unknown }).pressure_links;
+      if (Array.isArray(links)) {
+        setPressureOrgs((prev) =>
+          mergeSpokespersonLinks(
+            prev,
+            links as Array<{
+              display_name: string;
+              org_key: string;
+              spokesperson_stakeholder_id?: string;
+            }>,
+          ),
+        );
+      }
+      setLastBuildId(buildId);
+      setActiveBuildId(null);
+      setDurableView(null);
+      const draftId = wizardDraftIdRef.current;
+      if (draftId) writeSession(durableBuildKey(draftId), null);
+      pendingBuildSave.current = true;
+      setStep(7);
+    },
+    [applyGenerated],
+  );
+
+  const showDurableView = useCallback(
+    (view: BuildView, poll: PollState) => {
+      const mapped = mapToWizardStage(view);
+      setDurableView(view);
+      setBuildLog(poll.log);
+      setBuildStage(mapped.buildStage);
+      setBuildError(mapped.buildError);
+      const setupChanged =
+        requestHashRef.current != null && requestHashRef.current !== view.request_hash;
+      setDurableCard(buildCardFor(view, previousFinishedStage(view), { setupChanged }));
+      if (view.status === 'succeeded') void finishSucceeded(view.id);
+    },
+    [finishSucceeded],
+  );
+
+  const onBuildLost = useCallback(() => {
+    setActiveBuildId(null);
+    setDurableView(null);
+    setBuildStage(null);
+    setBuildError(null);
+    setDurableCard({
+      heading: 'This build no longer exists',
+      body: 'This build no longer exists (the draft may have been deleted).',
+      actions: ['start_over'],
+      primaryLabel: 'Start over',
+    });
+  }, []);
+
+  const polling = useBuildPolling(
+    activeBuildId,
+    pollNonce,
+    authHeaders,
+    showDurableView,
+    onBuildLost,
+  );
+
+  useEffect(() => {
+    const request = makeBuildRequest({
+      crisis_type: crisisDescription,
+      context: crisisDescription,
+      country,
+      org_name: orgName || undefined,
+      brand_logo_url: brandLogoUrl || undefined,
+      blueprint: blueprint ?? undefined,
+      organisations: organisationsPayload,
+      competitors: competitorsPayload,
+      pressure_organisations: pressureOrganisationsPayload,
+      auto_antagonist: autoAntagonist,
+      duration: 60,
+    });
+    let cancelled = false;
+    void hashBuildRequest(request).then((hex) => {
+      if (!cancelled) requestHashRef.current = hex;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    crisisDescription,
+    country,
+    orgName,
+    brandLogoUrl,
+    blueprint,
+    organisationsPayload,
+    competitorsPayload,
+    pressureOrganisationsPayload,
+    autoAntagonist,
+  ]);
+
+  const attachLatestBuild = useCallback(
+    async (draftId: string, savedStep: number) => {
+      const latest = await getLatestBuild(draftId, authHeaders);
+      if (latest.status === 501 || !latest.ok || !latest.data?.build) {
+        setStep(2);
+        return;
+      }
+      const row = latest.data.build;
+      const keep = () => {
+        setActiveBuildId(row.id);
+        writeSession(durableBuildKey(draftId), row.id);
+        setPollNonce((n) => n + 1);
+      };
+      if (row.status === 'queued' || row.status === 'running') {
+        setStep(2);
+        keep();
+        return;
+      }
+      if (row.status === 'succeeded' && savedStep === 2) {
+        await finishSucceeded(row.id);
+        return;
+      }
+      if (row.status === 'failed' || row.status === 'paused' || row.status === 'cancelled') {
+        setStep(2);
+        keep();
+        return;
+      }
+      setStep(2);
+    },
+    [finishSucceeded],
+  );
+
   useEffect(() => {
     if (resumedRef.current) return;
     const draftParam = searchParams.get('draft');
@@ -963,94 +1247,11 @@ export const SocialCrisisWizard = () => {
         const savedStep = Number(draft.current_step) || 1;
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
-        if (input.org_name) setOrgName(String(input.org_name));
-        if (input.brand_logo_url) setBrandLogoUrl(String(input.brand_logo_url));
-        if (input.country) setCountry(String(input.country));
-        if (input.context) setContext(String(input.context));
-        if (input.uploaded_doc_text) setUploadedDocText(String(input.uploaded_doc_text));
-        if (input.uploaded_doc_name) setUploadedDocName(String(input.uploaded_doc_name));
-        if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
-        if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
-        if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
-        if (Array.isArray(input.storyline_injects))
-          setStorylineInjects(input.storyline_injects as SocialInject[]);
-        if (input.team_storylines && typeof input.team_storylines === 'object')
-          setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
-        if (Array.isArray(input.team_charters))
-          setTeamCharters(input.team_charters as TeamCharterWire[]);
-        if (Array.isArray(input.team_roster) && input.team_roster.length > 0)
-          setTeamRoster(migrateLegacyRoster(input.team_roster as RosterEntry[]));
-        if (Array.isArray(input.shared_injects))
-          setSharedInjects(input.shared_injects as SocialInject[]);
-        if (Array.isArray(input.convergence_gates))
-          setConvergenceGates(input.convergence_gates as SocialInject[]);
-        if (input.narrative && typeof input.narrative === 'object')
-          setNarrative(input.narrative as { title: string; description: string; briefing: string });
-        if (Array.isArray(input.objectives)) setObjectives(input.objectives as ObjectiveDef[]);
-        if (input.dimension_labels && typeof input.dimension_labels === 'object')
-          setDimensionLabels(input.dimension_labels as Record<string, string>);
-        if (input.org_page && typeof input.org_page === 'object')
-          setOrgPage(input.org_page as Record<string, unknown>);
-        const savedCountry = input.country ? String(input.country) : 'Singapore';
-        // Legacy drafts: "allied pages" become additional organisations in the primary's
-        // country with the default roster; competitors gain the primary's country.
-        const extras: OrganisationDraft[] = Array.isArray(input.extra_organisations)
-          ? (input.extra_organisations as OrganisationDraft[]).map((o) => ({
-              ...o,
-              team_roster: migrateLegacyRoster(o.team_roster || []),
-            }))
-          : [];
-        if (extras.length === 0 && Array.isArray(input.ally_entries)) {
-          for (const a of input.ally_entries as Array<{
-            name: string;
-            facebook_handle?: string;
-            x_handle?: string;
-          }>) {
-            extras.push({
-              ...newOrganisationDraft(savedCountry),
-              display_name: a.name,
-              facebook_handle: a.facebook_handle || '',
-              x_handle: a.x_handle || '',
-            });
-          }
+        applyGenerated(input);
+        if (validStep === 2) {
+          await attachLatestBuild(draftParam, savedStep);
+          return;
         }
-        if (extras.length > 0) setExtraOrganisations(extras);
-        if (Array.isArray(input.pressure_organisations))
-          setPressureOrgs(input.pressure_organisations as PressureOrgDraft[]);
-        setDismissedProposals(parseDismissedProposals(input.dismissed_proposals));
-        if (input.footprint && typeof input.footprint === 'object') {
-          setFootprint(input.footprint as FootprintWire);
-          footprintRanFor.current =
-            `${String(input.crisis_description || '')} ${String(input.context || '')}`.trim();
-        }
-        if (Array.isArray(input.competitor_entries))
-          setCompetitorEntries(
-            (
-              input.competitor_entries as Array<{
-                name: string;
-                country?: string;
-                facebook_handle?: string;
-                x_handle?: string;
-              }>
-            ).map((c) => ({ ...c, country: c.country || savedCountry })),
-          );
-        if (typeof input.auto_antagonist === 'boolean') setAutoAntagonist(input.auto_antagonist);
-        if (input.primary_city) setPrimaryCity(String(input.primary_city));
-        if (input.primary_kind && typeof input.primary_kind === 'string')
-          setPrimaryKind(input.primary_kind as OrgKind);
-        if (input.primary_short_name) setPrimaryShortName(String(input.primary_short_name));
-        if (Array.isArray(input.stakeholders))
-          setStakeholders(input.stakeholders as StakeholderWire[]);
-        if (Array.isArray(input.stakeholder_injects))
-          setStakeholderInjects(input.stakeholder_injects as SocialInject[]);
-        if (Array.isArray(input.org_registry))
-          setOrgRegistry(input.org_registry as OrgRegistryWire[]);
-        if (input.per_country_counts && typeof input.per_country_counts === 'object')
-          setPerCountryCounts(input.per_country_counts as Record<string, number>);
-        if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps as SopStepWire[]);
-        if (input.decision_context && typeof input.decision_context === 'object')
-          setDecisionContext(input.decision_context as Record<string, unknown>);
-
         setStep(validStep);
       } catch (err) {
         console.error('Failed to resume social crisis draft', err);
@@ -1793,7 +1994,7 @@ export const SocialCrisisWizard = () => {
    * in sequence (threading results, since React state is not updated mid-chain),
    * then auto-advances to Compile. Stops on a failed stage and surfaces a retry.
    */
-  const generateAll = useCallback(async () => {
+  const legacyGenerateAll = useCallback(async () => {
     setBuildError(null);
 
     setBuildStage('characters');
@@ -1831,6 +2032,143 @@ export const SocialCrisisWizard = () => {
     pendingBuildSave.current = true;
     setStep(7);
   }, [generateNPCs, generateStoryline, generateConvergence, generateOrgPage]);
+
+  const generateAll = useCallback(
+    async (opts?: { replaceActive?: boolean }) => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      try {
+        setConflictBuildId(null);
+        setDurableCard(null);
+        setBuildError(null);
+        const draftId = wizardDraftIdRef.current ?? (await saveDraftState(2));
+        if (!draftId) {
+          await legacyGenerateAll();
+          return;
+        }
+        const request = makeBuildRequest({
+          crisis_type: crisisDescription,
+          context: crisisDescription,
+          country,
+          org_name: orgName || undefined,
+          brand_logo_url: brandLogoUrl || undefined,
+          blueprint: blueprint ?? undefined,
+          organisations: organisationsPayload,
+          competitors: competitorsPayload,
+          pressure_organisations: pressureOrganisationsPayload,
+          auto_antagonist: autoAntagonist,
+          duration: 60,
+        });
+        const storageKey = durableIdempotencyKey(draftId);
+        let key = opts?.replaceActive ? null : readSession(storageKey);
+        if (!key) {
+          key = crypto.randomUUID();
+          writeSession(storageKey, key);
+        }
+        const result = await startBuild(
+          {
+            draft_id: draftId,
+            idempotency_key: key,
+            request,
+            replace_active: Boolean(opts?.replaceActive),
+          },
+          authHeaders,
+        );
+        if (result.status > 0) writeSession(storageKey, null);
+        if (result.status === 501) {
+          await legacyGenerateAll();
+          return;
+        }
+        const showStartError = (message: string) => {
+          setStep(2);
+          setBuildStage('characters');
+          setBuildError('characters');
+          setStep2Error(message);
+        };
+        if (result.status === 400) {
+          if (showServerIssues(result.body)) {
+            setStep(1);
+            return;
+          }
+          showStartError(result.error || 'The setup could not be built.');
+          return;
+        }
+        if (result.status === 402 || result.status === 403 || result.status === 429) {
+          showStartError(result.error || 'The build could not be started.');
+          return;
+        }
+        if (result.status === 409 && result.code === 'BUILD_ACTIVE' && result.buildId) {
+          const existing = await getBuild(result.buildId, 0, authHeaders);
+          const view = existing.data?.build;
+          const ours = await hashBuildRequest(request);
+          if (view && view.request_hash === ours) {
+            setStep(2);
+            setActiveBuildId(view.id);
+            writeSession(durableBuildKey(draftId), view.id);
+            setPollNonce((n) => n + 1);
+            return;
+          }
+          setStep(2);
+          setBuildStage(null);
+          setConflictBuildId(result.buildId);
+          return;
+        }
+        const created = result.data?.build;
+        if ((result.status === 200 || result.status === 202) && created?.id) {
+          setStep(2);
+          setBuildError(null);
+          setBuildStage(created.current_stage ?? 'characters');
+          setActiveBuildId(created.id);
+          writeSession(durableBuildKey(draftId), created.id);
+          setPollNonce((n) => n + 1);
+          return;
+        }
+        showStartError(result.error || 'The build could not be started.');
+      } finally {
+        startingRef.current = false;
+      }
+    },
+    [
+      legacyGenerateAll,
+      saveDraftState,
+      crisisDescription,
+      country,
+      orgName,
+      brandLogoUrl,
+      blueprint,
+      organisationsPayload,
+      competitorsPayload,
+      pressureOrganisationsPayload,
+      autoAntagonist,
+      showServerIssues,
+    ],
+  );
+
+  const resumeDurable = useCallback(async () => {
+    if (!activeBuildId) return;
+    const res = await resumeBuild(activeBuildId, authHeaders);
+    if (!res.ok || !res.data?.build) {
+      setStep2Error(res.error || 'Could not resume this build.');
+      return;
+    }
+    setDurableCard(null);
+    setBuildError(null);
+    setBuildStage(res.data.build.current_stage ?? res.data.build.resume_from ?? 'characters');
+    setPollNonce((n) => n + 1);
+  }, [activeBuildId]);
+
+  const cancelDurable = useCallback(async () => {
+    if (!activeBuildId) return;
+    const res = await cancelBuild(activeBuildId, authHeaders);
+    if (res.ok && res.data?.build) {
+      showDurableView(res.data.build, {
+        log: buildLog,
+        nextAfter: buildLog.at(-1)?.seq ?? 0,
+        consecutiveErrors: 0,
+        reconnecting: false,
+      });
+    }
+  }, [activeBuildId, buildLog, showDurableView]);
 
   const compileScenario = useCallback(async () => {
     if (!crisisDescription) return;
@@ -1872,11 +2210,17 @@ export const SocialCrisisWizard = () => {
           stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
           sop_steps: sopSteps.length > 0 ? sopSteps : undefined,
           decision_context: decisionContext ?? undefined,
+          build_id: lastBuildId ?? undefined,
         }),
       });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
+        if (res.status === 409 && errJson?.code === 'COMPILE_IN_PROGRESS') {
+          addProgress('Compilation is already running — wait a moment and reopen this draft.');
+          setCompiling(false);
+          return;
+        }
         addProgress(`Error: ${errJson?.error || 'Failed to compile scenario.'}`);
         setCompiling(false);
         return;
@@ -1970,6 +2314,7 @@ export const SocialCrisisWizard = () => {
     stakeholderInjects,
     sopSteps,
     decisionContext,
+    lastBuildId,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -3153,9 +3498,13 @@ export const SocialCrisisWizard = () => {
       pages: buildStage === 'pages',
     };
     const errorMsg = step2Error || step3Error || step4Error;
-    const doneCount = stages.filter(
-      (s) => buildStage === 'done' || (curIdx > -1 && curIdx > order.indexOf(s.key)),
-    ).length;
+    const markOf = (key: (typeof stages)[number]['key']) =>
+      durableView ? stageMark(durableView, key) : null;
+    const doneCount = durableView
+      ? stages.filter((s) => markOf(s.key) === 'done').length
+      : stages.filter(
+          (s) => buildStage === 'done' || (curIdx > -1 && curIdx > order.indexOf(s.key)),
+        ).length;
     return (
       <div>
         <div className="wr-phase" aria-hidden>
@@ -3179,9 +3528,15 @@ export const SocialCrisisWizard = () => {
         <div className="wr-groups" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
           {stages.map((s) => {
             const idx = order.indexOf(s.key);
-            const isDone = buildStage === 'done' || (curIdx > -1 && curIdx > idx);
-            const isRunning = buildStage === s.key && !buildError && loadingByKey[s.key] !== false;
-            const isErrored = buildError === s.key;
+            const mark = markOf(s.key);
+            const isDone = mark
+              ? mark === 'done'
+              : buildStage === 'done' || (curIdx > -1 && curIdx > idx);
+            const isContinuing = mark === 'continuing';
+            const isRunning = mark
+              ? mark === 'running' || isContinuing
+              : buildStage === s.key && !buildError && loadingByKey[s.key] !== false;
+            const isErrored = mark ? mark === 'failed' : buildError === s.key;
             const family = isErrored
               ? 'var(--danger)'
               : isDone
@@ -3201,7 +3556,15 @@ export const SocialCrisisWizard = () => {
                 }
               >
                 <div className="kicker">
-                  {isErrored ? 'failed' : isDone ? 'done' : isRunning ? 'running' : 'queued'}
+                  {isErrored
+                    ? 'failed'
+                    : isDone
+                      ? 'done'
+                      : isContinuing
+                        ? 'continuing'
+                        : isRunning
+                          ? 'running'
+                          : 'queued'}
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div
@@ -3224,23 +3587,134 @@ export const SocialCrisisWizard = () => {
           })}
         </div>
 
-        {/* Live storyline generation log */}
-        {buildStage === 'storyline' && step3Progress.length > 0 && (
+        {wakeLock.held && durableLive && (
+          <p className="mt-3 text-xs text-muted">
+            Screen kept on while building. You can also leave — the build continues on the server.
+          </p>
+        )}
+
+        {polling.reconnecting && (
+          <p className="mt-3 text-sm text-muted">
+            Lost contact with the server — the build continues there. Reconnecting…
+          </p>
+        )}
+
+        {durableView && stages.some((s) => markOf(s.key) === 'continuing') && (
+          <p className="mt-3 text-sm text-muted">
+            The server restarted. Finished stages are kept, and the interrupted stage runs again.
+          </p>
+        )}
+
+        {/* Durable log for every stage. Legacy still shows storyline lines only. */}
+        {buildLog.length > 0 ? (
           <div
             className="mt-4 rounded-2xl p-4 font-mono text-xs space-y-1 max-h-48 overflow-y-auto"
             style={{ background: 'var(--wr-deep)', color: 'rgba(255,255,255,.75)' }}
           >
-            {step3Progress.map((msg, i) => (
-              <div key={i}>
-                <span style={{ color: 'var(--accent)' }}>[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
-              </div>
-            ))}
-            <div className="animate-pulse">&#9612;</div>
+            {buildLog.map((entry, i) => {
+              const stageLabel =
+                entry.stage && entry.stage !== buildLog[i - 1]?.stage
+                  ? STAGE_LABEL[entry.stage as keyof typeof STAGE_LABEL]
+                  : null;
+              return (
+                <div key={entry.seq}>
+                  <span style={{ color: 'var(--accent)' }}>
+                    [{String(entry.seq).padStart(2, '0')}]
+                  </span>{' '}
+                  {stageLabel ? `${stageLabel} — ` : ''}
+                  {entry.message}
+                </div>
+              );
+            })}
+            {durableLive && <div className="animate-pulse">&#9612;</div>}
           </div>
+        ) : (
+          buildStage === 'storyline' &&
+          step3Progress.length > 0 && (
+            <div
+              className="mt-4 rounded-2xl p-4 font-mono text-xs space-y-1 max-h-48 overflow-y-auto"
+              style={{ background: 'var(--wr-deep)', color: 'rgba(255,255,255,.75)' }}
+            >
+              {step3Progress.map((msg, i) => (
+                <div key={i}>
+                  <span style={{ color: 'var(--accent)' }}>[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                  {msg}
+                </div>
+              ))}
+              <div className="animate-pulse">&#9612;</div>
+            </div>
+          )
         )}
 
-        {buildError ? (
+        {conflictBuildId ? (
+          <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+            <div className="wr-tile">
+              <WrIcon name="alert" size={24} />
+            </div>
+            <div>
+              <h4>A build with different settings is already running</h4>
+              <p>Watch that build, or cancel it and build these settings.</p>
+            </div>
+            <button
+              onClick={() => {
+                const draftId = wizardDraftIdRef.current;
+                setConflictBuildId(null);
+                setActiveBuildId(conflictBuildId);
+                if (draftId) writeSession(durableBuildKey(draftId), conflictBuildId);
+                setPollNonce((n) => n + 1);
+              }}
+              className="wr-btn ghost"
+            >
+              Watch it
+            </button>
+            <button
+              onClick={() => void generateAll({ replaceActive: true })}
+              className="wr-btn accent"
+            >
+              Cancel it and build these settings
+            </button>
+          </div>
+        ) : durableCard ? (
+          <div
+            className="wr-empty mt-4"
+            style={
+              {
+                '--g': durableCard.actions.includes('retry') ? 'var(--danger)' : 'var(--accent)',
+              } as CSSProperties
+            }
+          >
+            <div className="wr-tile">
+              <WrIcon name="alert" size={24} />
+            </div>
+            <div>
+              <h4>{durableCard.heading}</h4>
+              <p>{durableCard.body}</p>
+            </div>
+            {durableCard.actions[0] !== 'start_over' && (
+              <button
+                onClick={() => {
+                  const action = durableCard.actions[0];
+                  if (action === 'build_again' || action === 'start_over') {
+                    void generateAll({ replaceActive: true });
+                    return;
+                  }
+                  void resumeDurable();
+                }}
+                className="wr-btn accent"
+              >
+                <WrIcon name="refresh" /> {durableCard.primaryLabel}
+              </button>
+            )}
+            {durableCard.actions.includes('start_over') && (
+              <button
+                onClick={() => void generateAll({ replaceActive: true })}
+                className="wr-btn ghost"
+              >
+                Start over
+              </button>
+            )}
+          </div>
+        ) : buildError ? (
           <div className="wr-empty mt-4" style={{ '--g': 'var(--danger)' } as CSSProperties}>
             <div className="wr-tile">
               <WrIcon name="alert" size={24} />
@@ -3253,7 +3727,11 @@ export const SocialCrisisWizard = () => {
               <WrIcon name="refresh" /> Retry
             </button>
           </div>
-        ) : buildStage === null && !step2Loading && !step3Loading && !step4Loading ? (
+        ) : buildStage === null &&
+          !activeBuildId &&
+          !step2Loading &&
+          !step3Loading &&
+          !step4Loading ? (
           <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
             <div className="wr-tile">
               <WrIcon name="bolt" size={24} />
@@ -3275,6 +3753,11 @@ export const SocialCrisisWizard = () => {
             <Spinner
               text={`Building scenario — ${doneCount} of ${stages.length} stages complete…`}
             />
+            {durableLive && (
+              <button onClick={() => void cancelDurable()} className="wr-btn ghost mt-3">
+                Cancel build
+              </button>
+            )}
           </div>
         )}
       </div>
