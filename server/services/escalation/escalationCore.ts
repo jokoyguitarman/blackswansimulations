@@ -3,6 +3,7 @@
  * No database access. The service applies whatever this module returns.
  */
 
+import { createHash } from 'node:crypto';
 import { slugifyTeamName } from '../conditions/conditionCatalog.js';
 
 export const URGENCIES = ['reminder', 'follow_up', 'urgent', 'final', 'escalated'] as const;
@@ -965,4 +966,45 @@ export function followUpSystemSuffix(input: {
 
 export function isResponseStop(reason: string | null): boolean {
   return reason != null && RESPONSE_STOPS.has(reason);
+}
+
+/**
+ * A lost step claim is left alone until the row is this old. That is long enough
+ * for the process that inserted it to finish publishing, including a deploy overlap.
+ */
+export const STEP_CLAIM_ABANDON_MS = 60_000;
+
+/**
+ * Stable id for the runtime inject of one chain step. A second insert of the same
+ * step hits the primary key and reuses this row instead of delivering a copy.
+ */
+export function runtimeStepInjectId(chainId: string, stepNo: number): string {
+  const digest = createHash('sha256').update(`escalation-step:${chainId}:${stepNo}`).digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export type StepMaterialisation = 'create' | 'resume' | 'publish_existing' | 'stop';
+
+/**
+ * Who may create or publish a step inject.
+ * A lost claim with no inject id stops. The owner that inserted the step row
+ * is the only sender until the row is old enough to be abandoned.
+ */
+export function planStepMaterialisation(input: {
+  claim: 'won' | 'lost' | 'unavailable';
+  existingInjectId: string | null;
+  stepAgeMs: number | null;
+  abandonAfterMs?: number;
+}): StepMaterialisation {
+  if (input.claim === 'unavailable') return 'stop';
+  if (input.claim === 'won') return 'create';
+  if (input.existingInjectId) return 'publish_existing';
+  const age = input.stepAgeMs ?? 0;
+  const abandon = input.abandonAfterMs ?? STEP_CLAIM_ABANDON_MS;
+  if (age >= abandon) return 'resume';
+  return 'stop';
 }

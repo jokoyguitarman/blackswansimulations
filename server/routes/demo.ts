@@ -274,6 +274,10 @@ router.post(
         .update({ status: 'completed', end_time: new Date().toISOString() })
         .eq('id', sessionId);
 
+      void import('../services/escalation/escalationService.js')
+        .then(({ cancelSessionChains }) => cancelSessionChains(sessionId))
+        .catch((err) => logger.warn({ err, sessionId }, 'escalation cancel on demo stop failed'));
+
       snapshotFinalStateOnCompletion(sessionId).catch((err) =>
         logger.warn({ err, sessionId }, 'Demo: snapshot on stop failed'),
       );

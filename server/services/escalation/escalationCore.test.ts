@@ -9,8 +9,11 @@ import {
   decideChainAction,
   extractAsk,
   nextDueAfterSend,
+  planStepMaterialisation,
   renderChainTemplate,
   resolveStep,
+  runtimeStepInjectId,
+  STEP_CLAIM_ABANDON_MS,
   urgencyEffects,
   validateEscalation,
   type ChainClock,
@@ -458,6 +461,44 @@ describe('escalation validation', () => {
   });
 });
 
+describe('planStepMaterialisation', () => {
+  test('a lost claim does not create a second inject while the owner is still publishing', () => {
+    assert.equal(
+      planStepMaterialisation({ claim: 'lost', existingInjectId: null, stepAgeMs: 0 }),
+      'stop',
+    );
+    assert.equal(
+      planStepMaterialisation({
+        claim: 'lost',
+        existingInjectId: null,
+        stepAgeMs: STEP_CLAIM_ABANDON_MS - 1,
+      }),
+      'stop',
+    );
+    assert.equal(planStepMaterialisation({ claim: 'won', existingInjectId: null, stepAgeMs: null }), 'create');
+    assert.equal(
+      planStepMaterialisation({ claim: 'lost', existingInjectId: 'already', stepAgeMs: 0 }),
+      'publish_existing',
+    );
+    assert.equal(
+      planStepMaterialisation({
+        claim: 'lost',
+        existingInjectId: null,
+        stepAgeMs: STEP_CLAIM_ABANDON_MS,
+      }),
+      'resume',
+    );
+  });
+
+  test('the runtime inject id is stable for a chain step and different for the next step', () => {
+    const chainId = '11111111-1111-4111-8111-111111111111';
+    const first = runtimeStepInjectId(chainId, 1);
+    assert.equal(runtimeStepInjectId(chainId, 1), first);
+    assert.notEqual(runtimeStepInjectId(chainId, 2), first);
+    assert.match(first, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+});
+
 describe('sendStep', () => {
   test('two sends of the same step create one runtime inject', async () => {
     const created: string[] = [];
@@ -469,19 +510,21 @@ describe('sendStep', () => {
         claimed = true;
         return 'claimed';
       },
-      async existingInjectId() {
-        return injectId;
+      async existingStep() {
+        return { injectId, ageMs: 0 };
       },
-      async insertInject() {
-        injectId = 'runtime-1';
+      async insertInject(row) {
+        injectId = String(row.id);
         created.push(injectId);
-        return injectId;
+        return 'inserted';
       },
-      async attachInject() {},
+      async attachInject() {
+        return true;
+      },
       async publish() {},
     };
     const draft: StepDraft = {
-      chainId: 'chain-1',
+      chainId: '11111111-1111-4111-8111-111111111111',
       stepNo: 1,
       urgency: 'follow_up',
       app: 'email',
@@ -492,6 +535,44 @@ describe('sendStep', () => {
     const second = await sendStep(draft, store);
     assert.equal(first.created, true);
     assert.equal(second.created, false);
-    assert.deepEqual(created, ['runtime-1']);
+    assert.equal(second.injectId, first.injectId);
+    assert.equal(created.length, 1);
+  });
+
+  test('a sender that loses the claim before inject_id is written does not publish', async () => {
+    let inserted = 0;
+    let published = 0;
+    const store: ChainStepStore = {
+      async claim() {
+        return 'exists';
+      },
+      async existingStep() {
+        return { injectId: null, ageMs: 1_000 };
+      },
+      async insertInject() {
+        inserted += 1;
+        return 'inserted';
+      },
+      async attachInject() {
+        return true;
+      },
+      async publish() {
+        published += 1;
+      },
+    };
+    const result = await sendStep(
+      {
+        chainId: '11111111-1111-4111-8111-111111111111',
+        stepNo: 1,
+        urgency: 'follow_up',
+        app: 'email',
+        contentMode: 'template',
+        inject: { title: 'Following up' },
+      },
+      store,
+    );
+    assert.deepEqual(result, { created: false, injectId: null });
+    assert.equal(inserted, 0);
+    assert.equal(published, 0);
   });
 });

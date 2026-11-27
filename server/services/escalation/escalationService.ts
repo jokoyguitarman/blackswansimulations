@@ -27,8 +27,10 @@ import {
   maxUrgencySent,
   nextDueAfterSend,
   parseEscalation,
+  planStepMaterialisation,
   renderChainTemplate,
   resolveStep,
+  runtimeStepInjectId,
   textLimit,
   appNoun,
   urgencyEffects,
@@ -56,9 +58,17 @@ export interface ChainStepStore {
     app: string;
     contentMode: string;
   }): Promise<'claimed' | 'exists' | 'unavailable'>;
-  existingInjectId(chainId: string, stepNo: number): Promise<string | null>;
-  insertInject(row: Record<string, unknown>): Promise<string | null>;
-  attachInject(chainId: string, stepNo: number, injectId: string): Promise<void>;
+  /** The step row after a lost insert. Age is how long ago it was claimed. */
+  existingStep(chainId: string, stepNo: number): Promise<{ injectId: string | null; ageMs: number } | null>;
+  /**
+   * Insert the runtime inject. `exists` means this deterministic id is already stored.
+   * `failed` means the row was not written and must not be published.
+   */
+  insertInject(row: Record<string, unknown>): Promise<'inserted' | 'exists' | 'failed'>;
+  /**
+   * Set inject_id only while it is null. False means another sender owns the step.
+   */
+  attachInject(chainId: string, stepNo: number, injectId: string): Promise<boolean>;
   publish(injectId: string): Promise<void>;
 }
 
@@ -71,7 +81,11 @@ export interface StepDraft {
   inject: Record<string, unknown>;
 }
 
-/** Claim the step, then create one runtime inject. A second call for the same step does not. */
+/**
+ * The insert that returns a new step row is the only sender allowed to create the
+ * inject. A conflicting claim stops. An abandoned row (no inject id, old enough)
+ * may be resumed through the same deterministic inject id.
+ */
 export async function sendStep(draft: StepDraft, store: ChainStepStore): Promise<{ created: boolean; injectId: string | null }> {
   const claim = await store.claim({
     chainId: draft.chainId,
@@ -80,19 +94,25 @@ export async function sendStep(draft: StepDraft, store: ChainStepStore): Promise
     app: draft.app,
     contentMode: draft.contentMode,
   });
-  if (claim === 'unavailable') return { created: false, injectId: null };
-  if (claim === 'exists') {
-    const existing = await store.existingInjectId(draft.chainId, draft.stepNo);
-    if (existing) {
-      await store.publish(existing);
-      return { created: false, injectId: existing };
-    }
+  const existing = claim === 'claimed' ? null : await store.existingStep(draft.chainId, draft.stepNo);
+  const plan = planStepMaterialisation({
+    claim: claim === 'claimed' ? 'won' : claim === 'exists' ? 'lost' : 'unavailable',
+    existingInjectId: existing?.injectId ?? null,
+    stepAgeMs: existing?.ageMs ?? null,
+  });
+  if (plan === 'stop') return { created: false, injectId: null };
+  if (plan === 'publish_existing') {
+    if (!existing?.injectId) return { created: false, injectId: null };
+    await store.publish(existing.injectId);
+    return { created: false, injectId: existing.injectId };
   }
-  const injectId = await store.insertInject(draft.inject);
-  if (!injectId) return { created: false, injectId: null };
-  await store.attachInject(draft.chainId, draft.stepNo, injectId);
+  const injectId = runtimeStepInjectId(draft.chainId, draft.stepNo);
+  const wrote = await store.insertInject({ ...draft.inject, id: injectId });
+  if (wrote === 'failed') return { created: false, injectId: null };
+  const attached = await store.attachInject(draft.chainId, draft.stepNo, injectId);
+  if (!attached) return { created: false, injectId: null };
   await store.publish(injectId);
-  return { created: true, injectId };
+  return { created: wrote === 'inserted', injectId };
 }
 
 export async function startChainForDelivery(input: {
@@ -624,13 +644,19 @@ async function applyDecision(input: {
       );
       return 0;
     }
-    await patchChain(id, { status: 'exhausted', next_due_minute: null, waiting_on_call_group_id: null });
-    emitTrainer(input.trainerId, 'escalation.exhausted', { chain_id: id, root_key: input.clock.root_key });
     if (key) {
       const published = await publishTemplateKey(input, key);
-      return published ? 1 : 0;
+      if (!published) {
+        logger.warn(
+          { event: 'escalation_exhaust_retry', sessionId: input.sessionId, chainId: id, key },
+          'Exhausted chain stays active until its consequence inject is published',
+        );
+        return 0;
+      }
     }
-    return 0;
+    await patchChain(id, { status: 'exhausted', next_due_minute: null, waiting_on_call_group_id: null });
+    emitTrainer(input.trainerId, 'escalation.exhausted', { chain_id: id, root_key: input.clock.root_key });
+    return key ? 1 : 0;
   }
   if (input.remaining <= 0) {
     logger.info(
@@ -705,6 +731,7 @@ async function deliverStep(
       ? {
           content_flags: { ...(base.content_flags as object | undefined), is_organized_pressure: false },
           virality_score: effects.viralityScore,
+          ...(await socialAuthor(root.scenario_id || input.scenarioId, senderId)),
         }
       : {}),
     chain: {
@@ -878,29 +905,35 @@ function supabaseStepStore(sessionId: string, trainerId: string | null, io: Sock
       }
       return 'claimed';
     },
-    async existingInjectId(chainId, stepNo) {
+    async existingStep(chainId, stepNo) {
       const { data } = await supabaseAdmin
         .from('escalation_chain_steps')
-        .select('inject_id')
+        .select('inject_id, created_at')
         .eq('chain_id', chainId)
         .eq('step_no', stepNo)
         .maybeSingle();
-      return (data?.inject_id as string | null) ?? null;
+      if (!data) return null;
+      const created = Date.parse(String(data.created_at ?? ''));
+      const ageMs = Number.isFinite(created) ? Math.max(0, Date.now() - created) : 0;
+      return { injectId: (data.inject_id as string | null) ?? null, ageMs };
     },
     async insertInject(row) {
       const { data, error } = await supabaseAdmin.from('scenario_injects').insert(row).select('id').maybeSingle();
-      if (error || !data) {
-        logger.warn({ err: error, sessionId }, 'escalation runtime inject was not created');
-        return null;
-      }
-      return String(data.id);
+      if (!error && data) return 'inserted';
+      if (error?.code === '23505') return 'exists';
+      logger.warn({ err: error, sessionId }, 'escalation runtime inject was not created');
+      return 'failed';
     },
     async attachInject(chainId, stepNo, injectId) {
-      await supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from('escalation_chain_steps')
         .update({ inject_id: injectId })
         .eq('chain_id', chainId)
-        .eq('step_no', stepNo);
+        .eq('step_no', stepNo)
+        .is('inject_id', null)
+        .select('step_no');
+      if (error) return false;
+      return (data?.length ?? 0) > 0;
     },
     async publish(injectId) {
       await publishInjectToSession(injectId, sessionId, trainerId ?? injectId, io, { awaitDelivery: true });
@@ -921,9 +954,33 @@ async function publishTemplateKey(
     .limit(1)
     .maybeSingle();
   if (error || !data || data.trigger_time_minutes != null) return false;
-  const io = await resolveIo(input.io);
-  await publishInjectToSession(String(data.id), input.sessionId, input.trainerId ?? String(data.id), io);
-  return true;
+  try {
+    const io = await resolveIo(input.io);
+    await publishInjectToSession(String(data.id), input.sessionId, input.trainerId ?? String(data.id), io);
+    return true;
+  } catch (err) {
+    logger.warn({ err, sessionId: input.sessionId, key }, 'exhaust inject publish failed');
+    return false;
+  }
+}
+
+async function socialAuthor(
+  scenarioId: string,
+  stakeholderId: string | null,
+): Promise<Record<string, string>> {
+  if (!stakeholderId) return {};
+  try {
+    const stakeholder = await findById(scenarioId, stakeholderId);
+    if (!stakeholder?.handle || !stakeholder.name) return {};
+    return {
+      author_handle: stakeholder.handle,
+      author_display_name: stakeholder.name,
+      author_type: 'npc_public',
+    };
+  } catch (err) {
+    logger.warn({ err, scenarioId, stakeholderId }, 'social follow-up could not load its stakeholder');
+    return {};
+  }
 }
 
 async function emailThread(rootDeliveryId: string): Promise<{ threadId: string | null; repliedToId: string | null } | null> {

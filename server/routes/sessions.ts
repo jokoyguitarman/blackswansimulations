@@ -1555,6 +1555,9 @@ router.patch(
       if (status === 'completed' || status === 'cancelled') {
         void endLines(id).catch((err) => logger.warn({ err, sessionId: id }, 'end lines failed'));
         void endRoles(id).catch((err) => logger.warn({ err, sessionId: id }, 'end roles failed'));
+        void import('../services/escalation/escalationService.js')
+          .then(({ cancelSessionChains }) => cancelSessionChains(id))
+          .catch((err) => logger.warn({ err, sessionId: id }, 'escalation cancel on session end failed'));
       }
       if (
         previousStatus === 'in_progress' &&
@@ -1563,11 +1566,6 @@ router.patch(
         void settleCallsForSession(id).catch((err) => {
           logger.warn({ err, sessionId: id }, 'call settle on session status failed');
         });
-        if (status === 'completed' || status === 'cancelled') {
-          void import('../services/escalation/escalationService.js')
-            .then(({ cancelSessionChains }) => cancelSessionChains(id))
-            .catch((err) => logger.warn({ err, sessionId: id }, 'escalation cancel on session end failed'));
-        }
       }
 
       if (claimingStart && data) {
