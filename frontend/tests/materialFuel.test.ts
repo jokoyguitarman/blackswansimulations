@@ -551,16 +551,16 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'burning');
     assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
 
-    // Three indoor studs, no opening. The oxygen in that room is used up
-    // before the burned release reaches 1 MW, so the latch does not light
-    // the next stud at the unlimited age. The next stud is 3 m from the
-    // table. The light-fuel front covers that distance at the entry's speed.
+    // Three indoor studs, no opening. The flame stands in the upper layer
+    // and burns that oxygen smoothly. The layer reaches the extinction
+    // limit while the wood curve is still under 1 MW, so the room latch
+    // does not fire. The next stud is 3 m away and lights with the front.
     const fuel = defaultLightFuel();
     const flash = flashoverAgeSec(fuel);
     const frontSec =
       fuel.spreadMPerMin != null && fuel.spreadMPerMin > 0 ? (3 / fuel.spreadMPerMin) * 60 : null;
     assert.ok(flash != null && frontSec != null);
-    assert.ok(frontSec > flash + 2);
+    assert.ok(frontSec > flash + 30);
     let seconds = 0.1;
     let burningAtLatch = false;
     while (engine.studStates.get('next')?.fire.state !== 'burning' && seconds < 400) {

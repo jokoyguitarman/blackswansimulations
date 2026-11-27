@@ -3,26 +3,26 @@
     "doorMw": 22.1,
     "at180": {
       "prescribedMw": 46.5,
-      "burnedMw": 12.8,
-      "o2Upper": 0.198
+      "burnedMw": 27.1,
+      "o2Upper": 0.189
     },
     "burnedMw": {
-      "t200": 14.2,
-      "t290": 15.9,
-      "t320": 16.1,
-      "minFrom180": 12.8,
-      "maxFrom180": 16.1
+      "t200": 50.2,
+      "t290": 15.1,
+      "t320": 12,
+      "minFrom180": 12,
+      "maxFrom180": 50.2
     }
   },
   "kitchen": {
     "doorMw": 6.8,
     "burnedMw": {
-      "t210": 0.8,
-      "t250": 1.6,
-      "t290": 0,
+      "t210": 4.2,
+      "t250": 4.2,
+      "t290": 4.2,
       "t370": 0,
       "minFrom210": 0,
-      "maxFrom210": 1.6
+      "maxFrom210": 4.2
     }
   }
 }
