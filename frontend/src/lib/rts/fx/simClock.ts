@@ -78,10 +78,10 @@ export interface SharedSimClock extends StepAccumulator {
   effectSteps: number;
   /**
    * Smoothed wall time of one crowd step with its share of effects, ms.
-   * Starts at SIM_STEP_SEED_MS; the first measurement replaces the seed.
+   * Starts at SIM_STEP_SEED_MS and eases from there, so the slow JIT-warm-up
+   * steps of a cold start don't starve the frames after it.
    */
   msPerStep: number;
-  costMeasured: boolean;
 }
 
 export function createSharedClock(): SharedSimClock {
@@ -91,7 +91,6 @@ export function createSharedClock(): SharedSimClock {
     crowdSteps: 0,
     effectSteps: 0,
     msPerStep: FX.SIM_STEP_SEED_MS,
-    costMeasured: false,
   };
 }
 
@@ -161,10 +160,7 @@ export function advanceSharedFrame(
   }
   if (budget && n > 0) {
     const perStep = (budget.now() - startMs) / n;
-    clock.msPerStep = clock.costMeasured
-      ? clock.msPerStep + STEP_COST_SMOOTHING * (perStep - clock.msPerStep)
-      : perStep;
-    clock.costMeasured = true;
+    clock.msPerStep += STEP_COST_SMOOTHING * (perStep - clock.msPerStep);
   }
   return { crowdSteps: n, effectSteps };
 }

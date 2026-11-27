@@ -3211,6 +3211,17 @@ export function DebugRTSSim() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, loop]);
 
+  useEffect(() => {
+    // A hidden tab gets no frames. Without this, the first frame back spans the
+    // whole hidden time and the speed reading shows e.g. "running 0.1x".
+    const onVisibility = () => {
+      lastTimeRef.current = 0;
+      speedMeterRef.current = createSpeedMeter();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
   // ── Wall inspection point click ────────────────────────────────────────
   const handleWallPointClick = useCallback(async (wp: WallInspectionPoint) => {
     setActiveWallPoint(wp);
