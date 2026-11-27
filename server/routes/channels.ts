@@ -20,6 +20,8 @@ import {
   type ChannelRow,
 } from '../lib/channelAccess.js';
 import { io } from '../index.js';
+import { recordPlayerAction } from '../services/sopCheckerService.js';
+import { getPlayerTeamName } from '../services/teamCharterService.js';
 
 /**
  * Chat overview enrichment shared by the channel list and the DM list: last message preview and
@@ -1087,6 +1089,15 @@ router.post(
 
       logger.info({ messageId: insertedMessage.id, channelId, userId: user.id }, 'Message sent');
 
+      recordChatMessageSent(
+        channel,
+        user,
+        channelId,
+        String(messageData.id),
+        content,
+        message_type,
+      );
+
       // Ensure sender data exists with fallback
       const senderData = messageData.sender || {
         id: user.id,
@@ -1233,5 +1244,49 @@ router.post(
     }
   },
 );
+
+/**
+ * Player text in a session channel counts as chat_message_sent. NPC DMs are
+ * already scored as dm_sent. Trainers, admins and bots are not players.
+ * team_at_action is stamped inside recordPlayerAction from session_teams.
+ */
+function recordChatMessageSent(
+  channel: ChannelRow,
+  user: { id: string; role?: string },
+  channelId: string,
+  messageId: string,
+  content: string,
+  messageType: string | undefined,
+): void {
+  if (!channel.session_id) return;
+  if (channel.type === 'npc_direct') return;
+  if ((messageType || 'text') !== 'text') return;
+  if (user.role === 'trainer' || user.role === 'admin') return;
+
+  void (async () => {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('is_bot')
+      .eq('id', user.id)
+      .maybeSingle();
+    if ((profile as { is_bot?: boolean } | null)?.is_bot === true) return;
+    const teamName = await getPlayerTeamName(channel.session_id, user.id);
+    await recordPlayerAction(
+      channel.session_id,
+      user.id,
+      'chat_message_sent',
+      messageId,
+      content.slice(0, 2000),
+      {
+        channel_id: channelId,
+        channel_type: channel.type,
+        team_name: teamName ?? channel.team_name ?? null,
+        stakeholder_id: channel.stakeholder_id ?? null,
+      },
+    );
+  })().catch((err) => {
+    logger.warn({ err, channelId, messageId }, 'Failed to record chat_message_sent');
+  });
+}
 
 export { router as channelsRouter };

@@ -26,6 +26,7 @@ interface InjectRow {
   id: string;
   trigger_time_minutes: number | null;
   trigger_condition: string | null;
+  conditions_to_appear?: unknown;
   type: string;
   title: string;
   content: string;
@@ -1732,6 +1733,22 @@ const InjectCard = ({
   );
 };
 
+function injectHasConditions(inject: InjectRow | null): boolean {
+  if (!inject) return false;
+  const appear = inject.conditions_to_appear;
+  if (Array.isArray(appear)) return appear.length > 0;
+  if (appear && typeof appear === 'object') {
+    const record = appear as { all?: unknown; conditions?: unknown };
+    const list = Array.isArray(record.all)
+      ? record.all
+      : Array.isArray(record.conditions)
+        ? record.conditions
+        : [];
+    return list.length > 0;
+  }
+  return false;
+}
+
 const InjectForm = ({
   scenarioId,
   inject,
@@ -1780,11 +1797,18 @@ const InjectForm = ({
       : '',
   );
   const [intelSummary, setIntelSummary] = useState(String(dcInit.intel_summary ?? ''));
+  const [conditionsCleared, setConditionsCleared] = useState(false);
 
   const contentChanged =
     inject !== null &&
     (content !== inject.content || authorHandle !== String(dcInit.author_handle ?? ''));
   const imageStale = contentChanged && mediaUrls.length > 0;
+  const timeBlank = time.trim() === '';
+  const hasConditions = injectHasConditions(inject) && !conditionsCleared;
+  const timedWithConditions = !timeBlank && hasConditions;
+  const conditionalWithoutConditions =
+    timeBlank && !hasConditions && !inject?.trigger_condition?.trim();
+  const triggerBlocked = timedWithConditions || conditionalWithoutConditions;
 
   const buildDeliveryConfig = (): Record<string, unknown> => {
     const persona = personas.find((p) => String(p.handle || '') === authorHandle);
@@ -1821,6 +1845,7 @@ const InjectForm = ({
   };
 
   const save = async () => {
+    if (triggerBlocked) return;
     setSaving(true);
     setMsg(null);
     try {
@@ -1834,6 +1859,7 @@ const InjectForm = ({
         trigger_time_minutes: time.trim() === '' ? null : Number(time),
         delivery_config: buildDeliveryConfig(),
       };
+      if (conditionsCleared) fields.conditions_to_appear = null;
       if (inject === null) {
         fields.type = app === 'social_feed' ? 'social_post' : app;
         const res = await api.scenarios.createInject(scenarioId, fields);
@@ -1865,7 +1891,7 @@ const InjectForm = ({
   };
 
   const regenerateImage = async () => {
-    if (!inject) return;
+    if (!inject || triggerBlocked) return;
     setRegenerating(true);
     setMsg(null);
     try {
@@ -1881,6 +1907,7 @@ const InjectForm = ({
         trigger_time_minutes: time.trim() === '' ? null : Number(time),
         delivery_config: buildDeliveryConfig(),
       };
+      if (conditionsCleared) fields.conditions_to_appear = null;
       await api.scenarios.updateInject(scenarioId, inject.id, fields);
       const res = await api.scenarios.regenerateInjectImage(scenarioId, inject.id);
       const updated = res.data as unknown as InjectRow;
@@ -1918,7 +1945,7 @@ const InjectForm = ({
               min={0}
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder={inject?.trigger_condition ? 'decision-driven' : 'empty = conditional'}
+              placeholder={inject?.trigger_condition ? 'decision-driven' : 'required'}
               className={inputCls}
             />
           </div>
@@ -1938,6 +1965,26 @@ const InjectForm = ({
           </div>
         </div>
       </div>
+      {timedWithConditions && (
+        <p className="text-[11px] text-warning mt-1">
+          An inject is either timed or conditional. Clear the trigger time to keep the conditions,
+          or{' '}
+          <button type="button" className="underline" onClick={() => setConditionsCleared(true)}>
+            clear the conditions
+          </button>{' '}
+          to keep the time. Use eligible-after minutes for &quot;not before&quot;.
+        </p>
+      )}
+      {conditionsCleared && !timeBlank && (
+        <p className="text-[11px] text-muted mt-1">
+          Conditions will be removed when you save. The inject stays timed.
+        </p>
+      )}
+      {conditionalWithoutConditions && (
+        <p className="text-[11px] text-warning mt-1">
+          A conditional inject needs at least one condition. Enter a trigger time.
+        </p>
+      )}
 
       <label className={`${labelCls} mt-2`}>Content</label>
       <textarea
@@ -2122,7 +2169,7 @@ const InjectForm = ({
               <button
                 type="button"
                 onClick={regenerateImage}
-                disabled={regenerating || saving}
+                disabled={regenerating || saving || triggerBlocked}
                 className="text-xs text-brand hover:underline disabled:opacity-40"
               >
                 {regenerating ? 'Regenerating…' : 'Regenerate image'}
@@ -2155,7 +2202,9 @@ const InjectForm = ({
       <div className="flex items-center gap-2 mt-3">
         <button
           onClick={save}
-          disabled={saving || deleting || regenerating || !title.trim() || !content.trim()}
+          disabled={
+            saving || deleting || regenerating || triggerBlocked || !title.trim() || !content.trim()
+          }
           className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-40"
         >
           {saving ? 'Saving…' : inject === null ? 'Create inject' : 'Save inject'}

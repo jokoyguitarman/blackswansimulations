@@ -4,6 +4,8 @@ import { logger } from '../lib/logger.js';
 import { hiveRosterFor } from './extremistDoctrine.js';
 import { detectIntelSharing } from './intelSharingService.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
+import { communityLeaderContactedCore } from './socialState/communityLeaderContactedCore.js';
+import { planConsequenceTriggers } from './socialState/consequenceTriggersCore.js';
 
 export interface SocialState {
   total_posts: number;
@@ -169,6 +171,7 @@ export async function computeSocialState(
     victim_centring?: { match?: string; score?: number };
   };
   let npcHandles: Set<string> = new Set();
+  let scenarioStakeholders: Array<{ email?: string | null; relationship?: string | null }> = [];
   // Per-session agitator handles, weighted 3x like designed NPCs. Defaults to the
   // fixed cell (value-equal to the old EXTREMIST_HANDLES); overridden from the
   // blueprint below so synthetic hive personas score correctly.
@@ -190,6 +193,10 @@ export async function computeSocialState(
       .single();
 
     const is = (scenario?.initial_state || {}) as Record<string, unknown>;
+    scenarioStakeholders = (is.stakeholders || []) as Array<{
+      email?: string | null;
+      relationship?: string | null;
+    }>;
     const personas = (is.npc_personas || []) as Array<Record<string, unknown>>;
     npcHandles = new Set(personas.map((p) => String(p.handle || '')).filter(Boolean));
     agitatorHandles = hiveRosterFor(
@@ -360,12 +367,14 @@ export async function computeSocialState(
   const totalActions = tier1 + tier2 + tier3;
   const strategicRatio = totalActions > 0 ? (tier2 + tier3) / totalActions : 0;
 
-  const communityLeaderContacted = allActions.some(
-    (a) =>
-      a.action_type === 'email_sent' &&
-      /leader|imam|pastor|rabbi|priest|community|interfaith|ceo|chairman|director|regulator|commissioner|spokesperson|counsel|attorney|board|stakeholder|governor|mayor|minister/i.test(
-        String(a.content || '') + String(a.target_id || ''),
-      ),
+  const communityLeaderContacted = communityLeaderContactedCore(
+    allActions.map((a) => ({
+      action_type: String(a.action_type),
+      content: a.content as string | null,
+      target_id: a.target_id as string | null,
+      metadata: (a.metadata ?? null) as Record<string, unknown> | null,
+    })),
+    scenarioStakeholders,
   );
   // Fix 9.1: the legacy draft_created/draft_published actions are no longer emitted (the
   // draft->approve->publish workflow was replaced by direct posting). Derive these from the
@@ -725,7 +734,15 @@ export async function computeSocialState(
   };
 
   const currentState = (sessionRow?.current_state as Record<string, unknown>) || {};
-  const updatedState = { ...currentState, social_state: state };
+  const firedBefore = Array.isArray(currentState.consequence_triggers_fired)
+    ? currentState.consequence_triggers_fired.filter((id): id is string => typeof id === 'string')
+    : [];
+  const triggerPlan = planConsequenceTriggers(state, elapsedMinutes, firedBefore);
+  const updatedState = {
+    ...currentState,
+    social_state: state,
+    consequence_triggers_fired: triggerPlan.fired,
+  };
 
   await supabaseAdmin.from('sessions').update({ current_state: updatedState }).eq('id', sessionId);
 
@@ -735,136 +752,72 @@ export async function computeSocialState(
     timestamp: new Date().toISOString(),
   });
 
-  void evaluateConsequenceTriggers(sessionId, state, elapsedMinutes).catch((err) =>
+  void fireConsequenceInjects(sessionId, triggerPlan.fire).catch((err) =>
     logger.warn({ err, sessionId }, 'Consequence trigger evaluation failed'),
   );
 
   return state;
 }
 
-const previousStates = new Map<string, Record<string, unknown>>();
+const CONSEQUENCE_COPY: Record<string, { text: string; sentiment: string; positive: boolean }> = {
+  hate_unaddressed_10min: {
+    text: 'A concerned stakeholder posts about feeling abandoned. Harmful content has been circulating for over 10 minutes with no official response or flagging from the response team.',
+    sentiment: 'negative',
+    positive: false,
+  },
+  misinfo_unaddressed_10min: {
+    text: 'Someone shares the unaddressed misinformation as if it were confirmed fact. "Just saw that [the false claim] is true! Why isn\'t anyone saying anything?"',
+    sentiment: 'negative',
+    positive: false,
+  },
+  no_statement_20min: {
+    text: 'A journalist or media commentator notes that 20 minutes have passed since the crisis began and there has been no official response from the response team.',
+    sentiment: 'negative',
+    positive: false,
+  },
+  no_statement_35min: {
+    text: 'A senior journalist tweets about the conspicuous silence from the official response team, questioning whether anyone is managing the situation at all.',
+    sentiment: 'inflammatory',
+    positive: false,
+  },
+  trench_warfare: {
+    text: 'A media observer notes that the response team seems to be stuck replying to individual posts rather than publishing an official coordinated response.',
+    sentiment: 'negative',
+    positive: false,
+  },
+  rally_gaining_traction: {
+    text: 'People are sharing and responding positively to a call for organized collective action. The movement is gaining traction online.',
+    sentiment: 'inflammatory',
+    positive: false,
+  },
+  leader_contacted: {
+    text: 'A key stakeholder posts a message of support and calm after being contacted by the response team. They thank the team for reaching out and urge the public to remain measured.',
+    sentiment: 'supportive',
+    positive: true,
+  },
+  statement_published: {
+    text: 'A news outlet or verified media account shares the official statement from the response team, noting it as the first official response to the crisis.',
+    sentiment: 'positive',
+    positive: true,
+  },
+  narrative_recovering: {
+    text: 'A regular citizen posts something supportive: "Finally seeing some clarity in this feed. Facts matter. Don\'t let the noise drown out the truth."',
+    sentiment: 'supportive',
+    positive: true,
+  },
+  narrative_collapsing: {
+    text: 'The hostile narrative is now dominant. Concerned stakeholders are expressing alarm. Mainstream media is covering the growing public backlash spiraling out of control.',
+    sentiment: 'negative',
+    positive: false,
+  },
+};
 
-export async function evaluateConsequenceTriggers(
-  sessionId: string,
-  state: SocialState,
-  elapsedMinutes: number,
-): Promise<void> {
+async function fireConsequenceInjects(sessionId: string, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
   const { generateConsequenceInject } = await import('./ambientContentService.js');
-
-  const prev = (previousStates.get(sessionId) || {}) as Partial<SocialState>;
-  previousStates.set(sessionId, { ...state });
-
-  if (
-    state.oldest_unaddressed_hate_minutes > 10 &&
-    (prev.oldest_unaddressed_hate_minutes || 0) <= 10
-  ) {
-    void generateConsequenceInject(
-      sessionId,
-      'hate_unaddressed_10min',
-      'A concerned stakeholder posts about feeling abandoned. Harmful content has been circulating for over 10 minutes with no official response or flagging from the response team.',
-      'negative',
-      false,
-    );
-  }
-
-  if (
-    state.oldest_unaddressed_misinfo_minutes > 10 &&
-    (prev.oldest_unaddressed_misinfo_minutes || 0) <= 10
-  ) {
-    void generateConsequenceInject(
-      sessionId,
-      'misinfo_unaddressed_10min',
-      'Someone shares the unaddressed misinformation as if it were confirmed fact. "Just saw that [the false claim] is true! Why isn\'t anyone saying anything?"',
-      'negative',
-      false,
-    );
-  }
-
-  if (
-    elapsedMinutes > 20 &&
-    !state.official_statement_published &&
-    prev.official_statement_published === undefined
-  ) {
-    void generateConsequenceInject(
-      sessionId,
-      'no_statement_20min',
-      'A journalist or media commentator notes that 20 minutes have passed since the crisis began and there has been no official response from the response team.',
-      'negative',
-      false,
-    );
-  }
-
-  if (elapsedMinutes > 35 && !state.official_statement_published) {
-    void generateConsequenceInject(
-      sessionId,
-      'no_statement_35min',
-      'A senior journalist tweets about the conspicuous silence from the official response team, questioning whether anyone is managing the situation at all.',
-      'inflammatory',
-      false,
-    );
-  }
-
-  if (
-    state.strategic_ratio < 0.2 &&
-    state.tier1_reactive_actions > 6 &&
-    (prev.tier1_reactive_actions || 0) <= 6
-  ) {
-    void generateConsequenceInject(
-      sessionId,
-      'trench_warfare',
-      'A media observer notes that the response team seems to be stuck replying to individual posts rather than publishing an official coordinated response.',
-      'negative',
-      false,
-    );
-  }
-
-  if (state.rally_call_active && !prev.rally_call_active) {
-    void generateConsequenceInject(
-      sessionId,
-      'rally_gaining_traction',
-      'People are sharing and responding positively to a call for organized collective action. The movement is gaining traction online.',
-      'inflammatory',
-      false,
-    );
-  }
-
-  if (state.community_leader_contacted && !prev.community_leader_contacted) {
-    void generateConsequenceInject(
-      sessionId,
-      'leader_contacted',
-      'A key stakeholder posts a message of support and calm after being contacted by the response team. They thank the team for reaching out and urge the public to remain measured.',
-      'supportive',
-      true,
-    );
-  }
-
-  if (state.official_statement_published && !prev.official_statement_published) {
-    void generateConsequenceInject(
-      sessionId,
-      'statement_published',
-      'A news outlet or verified media account shares the official statement from the response team, noting it as the first official response to the crisis.',
-      'positive',
-      true,
-    );
-  }
-
-  if (state.narrative_control > 50 && (prev.narrative_control || 0) <= 50) {
-    void generateConsequenceInject(
-      sessionId,
-      'narrative_recovering',
-      'A regular citizen posts something supportive: "Finally seeing some clarity in this feed. Facts matter. Don\'t let the noise drown out the truth."',
-      'supportive',
-      true,
-    );
-  }
-
-  if (state.narrative_control < 20 && (prev.narrative_control || 0) >= 20) {
-    void generateConsequenceInject(
-      sessionId,
-      'narrative_collapsing',
-      'The hostile narrative is now dominant. Concerned stakeholders are expressing alarm. Mainstream media is covering the growing public backlash spiraling out of control.',
-      'negative',
-      false,
-    );
+  for (const id of ids) {
+    const copy = CONSEQUENCE_COPY[id];
+    if (!copy) continue;
+    void generateConsequenceInject(sessionId, id, copy.text, copy.sentiment, copy.positive);
   }
 }

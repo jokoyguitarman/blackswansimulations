@@ -6,6 +6,7 @@ import { ensureTeamChannels } from '../channelService.js';
 import { invalidatePlayerTeamCache, teamIsPublicVoice } from '../teamCharterService.js';
 import { isBoothJoinToken } from '../../lib/boothLink.js';
 import { getPool, type BotAccount } from './accounts.js';
+import { normalizeSessionTeamName } from '../../lib/sessionTeamName.js';
 
 /**
  * Enrolment: putting a pooled bot account into a session as an ordinary
@@ -94,6 +95,13 @@ export async function addBot(
 ): Promise<
   { ok: true; bot: SessionBotRow; account: BotAccount } | { ok: false; error: EnrolError }
 > {
+  teamName = normalizeSessionTeamName(teamName);
+  if (!teamName) {
+    return {
+      ok: false,
+      error: { code: 'unknown_team', message: 'Unknown team for this scenario' },
+    };
+  }
   if (!env.enableTeammateBots) {
     return { ok: false, error: { code: 'disabled', message: 'AI teammates are disabled' } };
   }

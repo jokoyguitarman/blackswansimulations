@@ -20,10 +20,8 @@ import {
   generateVideoThumbnail,
   getImageStyleForFormat,
 } from '../services/mediaGenerationService.js';
-import {
-  evaluateConditionKey,
-  type EvaluationContext,
-} from '../services/conditionEvaluatorService.js';
+import { evaluateConditionKey } from '../services/conditionEvaluatorService.js';
+import { buildConditionEvaluationContext } from '../services/conditions/conditionContextService.js';
 import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 import { adjudicateDispute } from '../services/contentDisputeService.js';
 import { buildPlayerLedger } from '../services/playerLedgerService.js';
@@ -1301,6 +1299,8 @@ router.post(
                 ),
               }
             : {}),
+          to_addresses: toList,
+          cc_addresses: ccList,
           ...(forwarded_email_id ? { forwarded_email_id } : {}),
         },
         'escalate',
@@ -2414,6 +2414,8 @@ router.get('/handles/session/:sessionId', requireAuth, async (req: Authenticated
 
 // ─── Player Action Recording ─────────────────────────────────────────────────
 
+const CLIENT_REPORTABLE_ACTIONS = ['news_read', 'dm_read'] as const;
+
 const actionSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
@@ -2432,6 +2434,16 @@ router.post(
     try {
       const user = req.user!;
       const { session_id, action_type, target_id, content, sop_step } = req.body;
+      const { assertSessionAccess } = await import('../lib/access.js');
+      const access = await assertSessionAccess(session_id, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      if (
+        !CLIENT_REPORTABLE_ACTIONS.includes(
+          action_type as (typeof CLIENT_REPORTABLE_ACTIONS)[number],
+        )
+      ) {
+        return res.status(400).json({ error: 'Action type is recorded by the server' });
+      }
       await recordPlayerAction(
         session_id,
         user.id,
@@ -2672,7 +2684,7 @@ router.get(
       }
 
       const elapsedMinutes = session.start_time
-        ? Math.round((Date.now() - new Date(session.start_time as string).getTime()) / 60000)
+        ? Math.floor((Date.now() - new Date(session.start_time as string).getTime()) / 60000)
         : 0;
 
       // 2. Fetch all condition-driven injects for this scenario
@@ -2682,6 +2694,7 @@ router.get(
           'id, title, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes',
         )
         .eq('scenario_id', session.scenario_id)
+        .or(`session_id.is.null,session_id.eq.${session.id}`)
         .not('conditions_to_appear', 'is', null)
         .is('trigger_time_minutes', null);
 
@@ -2711,36 +2724,18 @@ router.get(
         }
       }
 
-      // 4. Fetch decisions for context
-      const { data: allDecisions } = await supabaseAdmin
-        .from('decisions')
-        .select('id, title, description, type')
-        .eq('session_id', sessionId)
-        .eq('status', 'executed');
-
-      // 5. Build evaluation context
-      const currentState = (session.current_state as Record<string, unknown>) || {};
-      const publishedKeysOrTags: string[] = [];
-      for (const evt of publishedEvents ?? []) {
-        const meta = evt.metadata as { title?: string; tags?: string[] } | null;
-        if (meta?.title) publishedKeysOrTags.push(meta.title);
-        if (meta?.tags) publishedKeysOrTags.push(...meta.tags);
-      }
-
-      const evalContext: EvaluationContext = {
-        sessionId,
-        scenarioId: session.scenario_id as string,
-        elapsedMinutes,
-        currentState,
-        executedDecisions: (allDecisions ?? []).map((d) => ({
-          id: d.id,
-          title: d.title ?? '',
-          description: d.description ?? '',
-          decision_type: d.type as string | undefined,
-        })),
-        publishedScenarioInjectIds: [...publishedMap.keys()],
-        publishedInjectKeysOrTags: publishedKeysOrTags,
-      };
+      const evalContext = await buildConditionEvaluationContext(
+        {
+          id: session.id as string,
+          scenario_id: session.scenario_id as string,
+          start_time: session.start_time as string | null,
+          current_state: (session.current_state as Record<string, unknown>) || {},
+        },
+        {
+          elapsedMinutes,
+          conditionSources: condInjects,
+        },
+      );
 
       // 6. Evaluate each inject's conditions individually
       const results = condInjects.map((inj) => {

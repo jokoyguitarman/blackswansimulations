@@ -2239,7 +2239,7 @@ export function assemblePayload(
   }
 
   const timeInjects = [
-    ...allStoryInjects.filter((i) => i.trigger_time_minutes != null),
+    ...allStoryInjects.filter((i) => i.trigger_time_minutes != null && !i.trigger_condition),
     ...extra.filter((i) => i.trigger_time_minutes != null && !i.trigger_condition),
     ...sharedInjects,
   ];

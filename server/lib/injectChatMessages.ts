@@ -17,6 +17,8 @@ export interface ChatInjectConfig {
   callback_number?: string;
   number?: string;
   caller_id?: unknown;
+  /** Stable slug from delivery_config, when the author set one. */
+  inject_key?: string;
 }
 
 export interface NpcChatMessage {
@@ -94,8 +96,42 @@ export function phoneCaller(config: ChatInjectConfig): {
 
 export const UNKNOWN_CALLER = 'Unknown caller';
 
+/**
+ * Nameless callers must not share one sender. Prefer the inject id, then its
+ * inject_key, then the caller number, then a stable slug of the script.
+ */
+export function unknownCallerStakeholderId(input: {
+  injectId?: string | null;
+  injectKey?: string | null;
+  number?: string | null;
+  title?: string | null;
+  content?: string | null;
+}): string {
+  const injectId = firstString(input.injectId);
+  if (injectId) return `npc:unknown_caller:${callerToken(injectId)}`;
+  const injectKey = firstString(input.injectKey);
+  if (injectKey) return `npc:unknown_caller:${callerToken(injectKey)}`;
+  if (input.number && looksLikePhoneNumber(input.number)) {
+    const digits = input.number.replace(/\D/g, '');
+    if (digits) return `npc:unknown_caller:${digits}`;
+  }
+  const basis = `${input.title ?? ''}\n${input.content ?? ''}`.trim();
+  return `npc:unknown_caller:${callerToken(basis || 'call')}`;
+}
+
+function callerToken(value: string): string {
+  const trimmed = value.trim();
+  if (/^[A-Za-z0-9_.:@+-]{1,80}$/.test(trimmed)) return trimmed;
+  const slug = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+  return slug || 'call';
+}
+
 export function phoneCallMessage(
-  inject: { title: string; content: string },
+  inject: { title: string; content: string; id?: string | null; inject_key?: string | null },
   config: ChatInjectConfig,
 ): NpcChatMessage {
   const caller = phoneCaller(config);
@@ -105,8 +141,19 @@ export function phoneCallMessage(
     : `📞 Incoming call${number}: ${inject.title.trim() || 'no subject'}`;
   const senderName = caller.name ?? UNKNOWN_CALLER;
   const body = inject.content.trim();
+  const senderId = caller.name
+    ? npcSenderStakeholderId(senderName, config.stakeholder_id)
+    : config.stakeholder_id
+      ? config.stakeholder_id
+      : unknownCallerStakeholderId({
+          injectId: inject.id,
+          injectKey: firstString(inject.inject_key, config.inject_key),
+          number: caller.number,
+          title: inject.title,
+          content: inject.content,
+        });
   return {
-    sender_stakeholder_id: npcSenderStakeholderId(senderName, config.stakeholder_id),
+    sender_stakeholder_id: senderId,
     sender_display_name: senderName,
     content: body ? `${header}\n\n${body}` : header,
     type: 'text',

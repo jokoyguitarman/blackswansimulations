@@ -4,6 +4,7 @@ import type { SocialCrisisPayload } from './socialCrisisGeneratorService.js';
 import type { TeamCharter } from './teamCharterService.js';
 import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateScenarioPayload } from './scenarioValidationService.js';
+import { retainKnownConditions } from './conditions/conditionCatalog.js';
 
 const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -214,23 +215,41 @@ export async function persistSocialCrisisScenario(
         ai_generated: true,
         generation_source: 'war_room',
       })),
-      ...condition_injects.map((inj) => ({
-        scenario_id: scenarioId,
-        trigger_time_minutes: null,
-        type: inj.type || 'social_post',
-        title: inj.title,
-        content: inj.content,
-        severity: sanitizeSeverity(inj.severity),
-        ...sanitizeTeamTargeting(inj, validTeamNames),
-        requires_response: inj.requires_response || false,
-        delivery_config: inj.delivery_config || null,
-        conditions_to_appear: inj.conditions_to_appear || null,
-        conditions_to_cancel: inj.conditions_to_cancel || null,
-        eligible_after_minutes: inj.eligible_after_minutes || null,
-        state_effect: inj.state_effect || null,
-        ai_generated: true,
-        generation_source: 'war_room',
-      })),
+      ...condition_injects.flatMap((inj) => {
+        const retained = retainKnownConditions(inj.conditions_to_appear, inj.conditions_to_cancel);
+        for (const key of retained.dropped) {
+          logger.warn(
+            { event: 'generated_unknown_condition_key', key, title: inj.title },
+            'Dropping unknown condition key from generated inject',
+          );
+        }
+        if (retained.emptied) {
+          logger.warn(
+            { event: 'generated_inject_dropped_empty_conditions', title: inj.title },
+            'Dropping generated inject whose conditions were all unknown',
+          );
+          return [];
+        }
+        return [
+          {
+            scenario_id: scenarioId,
+            trigger_time_minutes: null,
+            type: inj.type || 'social_post',
+            title: inj.title,
+            content: inj.content,
+            severity: sanitizeSeverity(inj.severity),
+            ...sanitizeTeamTargeting(inj, validTeamNames),
+            requires_response: inj.requires_response || false,
+            delivery_config: inj.delivery_config || null,
+            conditions_to_appear: retained.conditions_to_appear,
+            conditions_to_cancel: retained.conditions_to_cancel,
+            eligible_after_minutes: inj.eligible_after_minutes || null,
+            state_effect: inj.state_effect || null,
+            ai_generated: true,
+            generation_source: 'war_room',
+          },
+        ];
+      }),
       ...decision_injects.map((inj) => ({
         scenario_id: scenarioId,
         trigger_time_minutes: null,
