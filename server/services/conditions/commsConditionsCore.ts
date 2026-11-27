@@ -10,6 +10,7 @@ import {
   type ActionCountBucket,
   type CommsDelivery,
   type CommsState,
+  type JudgementV1,
 } from '../ledger/injectLedgerCore.js';
 
 export interface ParsedCommsKey {
@@ -299,7 +300,174 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
       detail: stats.first == null ? `None by T+${n}` : `First at T+${stats.first}`,
     };
   },
+  reply_passed: (input) => replyKey('passed', input),
+  reply_failed: (input) => replyKey('failed', input),
+  reply_best_passed: (input) => replyKey('best_passed', input),
+  reply_criterion: (input) => replyKey('criterion', input),
+  reply_missing_criterion: (input) => replyKey('missing_criterion', input),
+  reply_answered_ask: (input) => replyKey('answered_ask', input),
+  reply_missed_ask: (input) => replyKey('missed_ask', input),
+  reply_tone: (input) => replyKey('tone', input),
+  reply_tone_off: (input) => replyKey('tone_off', input),
+  reply_score_below: (input) => replyKey('score_below', input),
+  reply_score_at_least: (input) => replyKey('score_at_least', input),
+  reply_factual_error: (input) => replyKey('factual_error', input),
+  reply_risky_admission: (input) => replyKey('risky', input),
+  reply_irrelevant: (input) => replyKey('irrelevant', input),
+  responded_relevant: (input) => replyKey('relevant', input),
 };
+
+type ReplyKind =
+  | 'passed'
+  | 'failed'
+  | 'best_passed'
+  | 'criterion'
+  | 'missing_criterion'
+  | 'answered_ask'
+  | 'missed_ask'
+  | 'tone'
+  | 'tone_off'
+  | 'score_below'
+  | 'score_at_least'
+  | 'factual_error'
+  | 'risky'
+  | 'irrelevant'
+  | 'relevant';
+
+function replyKey(kind: ReplyKind, input: KeyInput): KeyResult {
+  const view = viewFor(input.state, input.args[0] ?? '', input.team);
+  if (view.roots.length === 0) return { met: false, detail: 'Not delivered' };
+  const judged = judgedResponses(view, acceptResponses(input.team));
+  if (judged.length === 0) return { met: false, detail: 'No judgement yet' };
+  const latest = judged[judged.length - 1];
+  const judgement = latest?.judgement;
+  if (!latest || !judgement) return { met: false, detail: 'No judgement yet' };
+  const line = repliedLine(latest);
+  switch (kind) {
+    case 'passed':
+      return { met: judgement.passed === true, detail: line };
+    case 'failed':
+      return { met: judgement.passed === false, detail: line };
+    case 'best_passed':
+      return { met: judged.some((row) => row.judgement?.passed === true), detail: line };
+    case 'criterion':
+      return { met: flagAt(judgement.criteria, numberArg(input.args, 1), 'met'), detail: line };
+    case 'missing_criterion':
+      return { met: !flagAt(judgement.criteria, numberArg(input.args, 1), 'met'), detail: line };
+    case 'answered_ask':
+      return {
+        met: flagAt(judgement.asks_answered, numberArg(input.args, 1), 'answered'),
+        detail: line,
+      };
+    case 'missed_ask':
+      return {
+        met: !flagAt(judgement.asks_answered, numberArg(input.args, 1), 'answered'),
+        detail: line,
+      };
+    case 'tone':
+      return { met: judgement.tone === (input.args[1] ?? ''), detail: line };
+    case 'tone_off':
+      return { met: judgement.tone_ok === false, detail: line };
+    case 'score_below':
+      return {
+        met: scoreCompare(judgement, input.args[1], numberArg(input.args, 2), 'below'),
+        detail: line,
+      };
+    case 'score_at_least':
+      return {
+        met: scoreCompare(judgement, input.args[1], numberArg(input.args, 2), 'at_least'),
+        detail: line,
+      };
+    case 'factual_error':
+      return { met: (judgement.factual_errors?.length ?? 0) > 0, detail: line };
+    case 'risky':
+      return {
+        met: judged.some((row) => (row.judgement?.risky_admissions?.length ?? 0) > 0),
+        detail: line,
+      };
+    case 'irrelevant':
+      return {
+        met: judged.every((row) => row.judgement?.addresses_inject === false),
+        detail: line,
+      };
+    case 'relevant':
+      return {
+        met: judged.some((row) => row.judgement?.addresses_inject === true),
+        detail: line,
+      };
+    default:
+      return { met: false, detail: line };
+  }
+}
+
+function judgedResponses(
+  view: DeliveryView,
+  accept: (response: ResponseRow) => boolean,
+): ResponseRow[] {
+  return eachDelivery(view)
+    .flatMap((delivery) => delivery.responses)
+    .filter((response) => accept(response) && isJudged(response))
+    .sort((a, b) => a.minute - b.minute);
+}
+
+function isJudged(response: ResponseRow): boolean {
+  return response.judgement_status === 'done' && response.judgement != null;
+}
+
+function latestJudged(
+  view: DeliveryView,
+  accept: (response: ResponseRow) => boolean,
+): ResponseRow | null {
+  const rows = judgedResponses(view, accept);
+  return rows.length === 0 ? null : (rows[rows.length - 1] ?? null);
+}
+
+function withJudgement(
+  view: DeliveryView,
+  accept: (response: ResponseRow) => boolean,
+  detail: string,
+): string {
+  const latest = latestJudged(view, accept);
+  if (!latest?.judgement) return detail;
+  return `${detail} — ${judgementSummary(latest.judgement)}`;
+}
+
+function repliedLine(response: ResponseRow): string {
+  const team = response.team?.trim() || 'Someone';
+  const summary = response.judgement ? judgementSummary(response.judgement) : 'judged';
+  return `${team} replied T+${response.minute} — ${summary}`;
+}
+
+function judgementSummary(judgement: JudgementV1): string {
+  const tone = judgement.tone ? `tone ${judgement.tone}` : 'judged';
+  const list = judgement.criteria ?? [];
+  const total = list.length || judgement.criteria_text?.length || 0;
+  if (total === 0) return tone;
+  const met = list.filter((item) => item.met === true).length;
+  return `${tone}, ${met}/${total} criteria`;
+}
+
+function flagAt(
+  items: ReadonlyArray<{ met?: boolean; answered?: boolean }> | undefined,
+  index: number,
+  field: 'met' | 'answered',
+): boolean {
+  if (!Number.isInteger(index) || index < 1) return false;
+  const item = items?.[index - 1];
+  return item?.[field] === true;
+}
+
+function scoreCompare(
+  judgement: JudgementV1,
+  dimension: string | undefined,
+  threshold: number,
+  mode: 'below' | 'at_least',
+): boolean {
+  if (!dimension || !Number.isFinite(threshold)) return false;
+  const value = judgement.scores?.[dimension];
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+  return mode === 'below' ? value < threshold : value >= threshold;
+}
 
 interface DeliveryView {
   roots: CommsDelivery[];
@@ -411,7 +579,7 @@ function respondedResult(
 ): KeyResult {
   if (view.roots.length === 0) return { met: false, detail: 'Not delivered' };
   const met = view.roots.some((root) => anyResponse(bundleOf(view, root), accept));
-  return { met, detail: deliveryPhrase(view.roots, elapsed, met) };
+  return { met, detail: withJudgement(view, accept, deliveryPhrase(view.roots, elapsed, met)) };
 }
 
 function windowResult(
@@ -428,7 +596,10 @@ function windowResult(
   const satisfied = view.roots.some((root) =>
     repliedBy(bundleOf(view, root), root.delivered_minute + within, accept),
   );
-  return { met, detail: deliveryPhrase(view.roots, elapsed, satisfied) };
+  return {
+    met,
+    detail: withJudgement(view, accept, deliveryPhrase(view.roots, elapsed, satisfied)),
+  };
 }
 
 function respondedWithin(
@@ -442,7 +613,7 @@ function respondedWithin(
     const first = earliest(bundleOf(view, root), accept);
     return first != null && first - root.delivered_minute <= within;
   });
-  return { met, detail: deliveryPhrase(view.roots, elapsed, met) };
+  return { met, detail: withJudgement(view, accept, deliveryPhrase(view.roots, elapsed, met)) };
 }
 
 function eachDelivery(view: DeliveryView): CommsDelivery[] {

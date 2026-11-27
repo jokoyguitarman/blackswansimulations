@@ -3,16 +3,34 @@
  * WP3 reads `comms_state`; this module does not add condition keys.
  */
 
+export interface JudgementCriterion {
+  id?: string;
+  met?: boolean;
+  evidence?: string | null;
+}
+
+export interface JudgementAsk {
+  id?: string;
+  answered?: boolean;
+}
+
 export interface JudgementV1 {
   v?: number;
   addresses_inject?: boolean;
   relevance?: number;
+  criteria?: JudgementCriterion[];
+  asks_answered?: JudgementAsk[];
   tone?: string;
+  tone_confidence?: number;
   passed?: boolean;
   tone_ok?: boolean;
   scores?: Record<string, number>;
   factual_errors?: string[];
   risky_admissions?: string[];
+  commitments?: string[];
+  summary?: string;
+  rubric_source?: 'authored' | 'generic';
+  criteria_text?: string[];
 }
 
 export interface CommsDelivery {

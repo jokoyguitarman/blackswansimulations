@@ -171,6 +171,9 @@ export const env = {
   callbackWindowMinutes: envInt('CALLBACK_WINDOW_MINUTES', 30),
   // How many conditional injects one session may publish in a single scheduler tick.
   conditionPublishMaxPerTick: envInt('CONDITION_PUBLISH_MAX_PER_TICK', 3),
+  // Chat-completion calls that may judge inject replies in one session-hour.
+  // One attempt counts as one unit. A denied budget leaves the reply unjudged.
+  judgeBudgetPerSessionHour: envInt('JUDGE_BUDGET_PER_SESSION_HOUR', 400),
   // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.
