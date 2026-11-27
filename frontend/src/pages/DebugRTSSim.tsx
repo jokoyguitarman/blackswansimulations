@@ -117,10 +117,7 @@ import {
   COMMON_PICKS,
   MATERIAL_LIBRARY,
   absorbLegacyFuelCircles,
-  confirmedElectricalSources,
   confirmedFuelCells,
-  confirmedGasLines,
-  confirmedSuppression,
   entryById,
   entryCanBurn,
   matchFromEntry,
@@ -151,6 +148,12 @@ import {
   type SmokeLayerView,
 } from '../lib/rts/spatialEffects';
 import { attachBuilding, storeyId } from '../lib/rts/effectsBuilding';
+import {
+  blastIgnitionZone,
+  hazardsForEffects,
+  runEffectsPreview,
+  syncIgnition,
+} from '../lib/rts/effectsPreview';
 import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
 import {
   createSceneConfig,
@@ -163,21 +166,6 @@ import {
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-
-/** Effects-only ignition marker. Kept off the renderer: it has no trainer-facing zone. */
-function blastIgnitionZone(pos: Vec2, radius: number, level?: string): HazardZone {
-  return {
-    id: 'blast-direct',
-    pos,
-    radius,
-    hazardType: 'ignitable',
-    severity: 'high',
-    label: 'Blast',
-    description: 'Direct blast ignition',
-    photos: [],
-    ...(level ? { level } : {}),
-  };
-}
 
 function placementCover(
   blast: { x: number; y: number } | null,
@@ -202,11 +190,6 @@ function makeLevel(id: string, people = 0): LevelDef {
     designed: true,
     pedestrianCount: people,
   };
-}
-
-function hazardsForEffects(zones: HazardZone[], blast: HazardZone | null): HazardZone[] {
-  const rest = zones.filter((z) => z.id !== 'blast-direct');
-  return blast ? [...rest, blast] : rest;
 }
 
 function readShowcaseSettings(params: URLSearchParams): {
@@ -441,24 +424,6 @@ function fuelCellsFor(objects: readonly PlacedObject[], studs: readonly SimStud[
       spatialContext: stud.spatialContext,
     })),
   );
-}
-
-/** Charge, gas lines, arcs, and suppression heads. Called every effects step. */
-function syncIgnition(
-  engine: SpatialEffectsEngine,
-  objects: readonly PlacedObject[],
-  zones: readonly HazardZone[],
-  charge: ChargeSpec,
-  levels: readonly { id: string; heightM?: number }[],
-) {
-  engine.setBlastCharge(charge);
-  engine.setGasLines(confirmedGasLines(objects));
-  engine.setElectricalSources(confirmedElectricalSources(objects, zones));
-  const ceilings: Record<string, number> = {};
-  for (const level of levels) {
-    if (typeof level.heightM === 'number' && level.heightM > 0) ceilings[level.id] = level.heightM;
-  }
-  engine.setSuppression(confirmedSuppression(objects, ceilings));
 }
 
 function objectsOnStuds(
@@ -8010,81 +7975,30 @@ export function DebugRTSSim() {
                       <button
                         onClick={() => {
                           if (!blastSite) return;
-                          const preview = new SpatialEffectsEngine(fireParams ?? undefined);
-                          preview.init(
-                            allSimStuds.map((s) => ({
-                              id: s.id,
-                              simPos: s.simPos,
-                              spatialContext: s.spatialContext,
-                              level: storeyId(s.floor),
-                            })),
-                          );
-
-                          if (enrichResult?.hazardAnalysis) {
-                            for (const ha of enrichResult.hazardAnalysis) {
-                              if ((ha.events && ha.events.length > 0) || ha.hazardStates) {
-                                preview.registerHazard(
-                                  ha.hazardId,
-                                  (ha.events ?? []) as HazardEvent[],
-                                  ha.hazardStates ?? {
-                                    initial: 'Unknown',
-                                    triggered: 'Unknown',
-                                    worsening: 'Unknown',
-                                    critical: 'Unknown',
-                                  },
-                                );
-                              }
-                            }
-                          }
-
-                          const hasEvents = enrichResult?.hazardAnalysis?.some(
-                            (ha) => ha.events && ha.events.length > 0,
-                          );
-                          const ignitionR = manualRadius ? blastRadius : rings.ignitionM;
-                          if (!hasEvents) {
-                            preview.registerHazard(
-                              'blast-direct',
-                              [
-                                {
-                                  triggerTimeSec: 0,
-                                  eventType: 'explode',
-                                  spreadType: 'fire',
-                                  spreadRadius: ignitionR,
-                                  spreadRate: 10,
-                                  description: 'Direct blast ignition',
-                                  severity: 'critical',
-                                },
-                              ],
-                              {
-                                initial: 'Pre-detonation',
-                                triggered: 'Blast wave',
-                                worsening: 'Fire spreading',
-                                critical: 'Engulfed',
+                          const spread = manualRadius ? blastRadius : rings.ignitionM;
+                          const preview = runEffectsPreview(
+                            {
+                              studs: allSimStuds.map((s) => ({
+                                id: s.id,
+                                simPos: s.simPos,
+                                spatialContext: s.spatialContext,
+                                level: storeyId(s.floor),
+                              })),
+                              fireParams: fireParams ?? undefined,
+                              building: { stairwells, levels, vertices: projectedVerts, exits },
+                              objects: placedObjects,
+                              hazardZones,
+                              charge,
+                              blast: {
+                                pos: blastSite,
+                                level: levels.length > 1 ? blastLevel : undefined,
+                                spreadRadius: spread,
+                                affectRadius: manualRadius ? blastRadius : rings.minorM,
                               },
-                            );
-                          }
-
-                          preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
-                          attachBuilding(preview, {
-                            stairwells,
-                            levels,
-                            vertices: projectedVerts,
-                            exits,
-                          });
-                          syncIgnition(preview, placedObjects, hazardZones, charge, levels);
-                          preview.runPreview(
+                              hazardAnalysis: enrichResult?.hazardAnalysis,
+                            },
                             effectPreviewTime,
                             interiorWalls,
-                            hazardsForEffects(
-                              hazardZones,
-                              !hasEvents && blastSite
-                                ? blastIgnitionZone(
-                                    blastSite,
-                                    ignitionR,
-                                    levels.length > 1 ? blastLevel : undefined,
-                                  )
-                                : null,
-                            ),
                           );
                           effectsEngineRef.current = preview;
                           setEffectStates(new Map(preview.studStates));
