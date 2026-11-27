@@ -8,15 +8,20 @@ export const SHOWCASE = {
   FX_SHAKE_S: 0.6,
   FX_SHAKE_PX: 8,
   FREE_WALK_SPEED: 1.19,
-  /** Weidmann level walking: mean 1.34 m/s, standard deviation 0.37. */
-  WALK_SPEED_MEAN: 1.34,
-  WALK_SPEED_SD: 0.37,
+  /**
+   * SFPE unimpeded corridor speed. Panic multiplies it by 1.3 in the
+   * showcase, so the evacuating mean is about 1.55 m/s.
+   */
+  WALK_SPEED_MEAN: 1.19,
+  /** Weidmann's 0.37 m/s spread, scaled by 1.19 / 1.34 so the shape is unchanged. */
+  WALK_SPEED_SD: 0.3286,
   /** Mean minus two standard deviations. */
-  WALK_SPEED_MIN: 0.6,
-  /** Mean plus two standard deviations. */
-  WALK_SPEED_MAX: 2.08,
+  WALK_SPEED_MIN: 0.53,
+  /** Mean plus two standard deviations. Kept under 2.0 m/s. */
+  WALK_SPEED_MAX: 1.85,
   OUTDOOR_RUN_SPEED: 2.14,
-  OUTDOOR_WALK_SPEED: 1.44,
+  /** The indoor evacuation mean, so stepping outside does not slow the walk. */
+  OUTDOOR_WALK_SPEED: 1.55,
   RUN_DISTANCE_M: 50,
   RUN_DENSITY_LIMIT: 1.65,
   STAFF_SHARE: 0.1,
@@ -115,27 +120,27 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
   },
   WALK_SPEED_MEAN: {
     status: 'seed_pending',
-    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed_level_mean',
+    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed',
   },
   WALK_SPEED_SD: {
-    status: 'seed_pending',
-    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed_level_mean',
+    status: 'assumed',
+    ref: 'assumed: Weidmann SD 0.37 (movement-parameters.pending.json#free_walk_speed_level_mean) scaled by SFPE 1.19 / Weidmann 1.34',
   },
   WALK_SPEED_MIN: {
     status: 'assumed',
-    ref: 'assumed: Weidmann mean minus two standard deviations',
+    ref: 'assumed: SFPE mean minus two scaled standard deviations',
   },
   WALK_SPEED_MAX: {
     status: 'assumed',
-    ref: 'assumed: Weidmann mean plus two standard deviations',
+    ref: 'assumed: SFPE mean plus two scaled standard deviations, and not above 2.0 m/s',
   },
   OUTDOOR_RUN_SPEED: {
     status: 'seed_pending',
     ref: 'knowledge-seeds/fire-smoke-tenability/outdoor-evacuation.pending.json#running_crowd_speeds',
   },
   OUTDOOR_WALK_SPEED: {
-    status: 'seed_pending',
-    ref: 'knowledge-seeds/fire-smoke-tenability/outdoor-evacuation.pending.json#running_crowd_speeds',
+    status: 'assumed',
+    ref: 'assumed: SFPE free_walk_speed 1.19 m/s times (1 + 0.6 * SHOWCASE_PANIC), the indoor evacuation mean. The 1.44 m/s free-flow walk in outdoor-evacuation.pending.json#running_crowd_speeds is normal walking and would slow people as they step outside',
   },
   RUN_DISTANCE_M: {
     status: 'seed_pending',

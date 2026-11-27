@@ -268,6 +268,127 @@ describe('evacuation showcase', () => {
     eng.destroy();
   });
 
+  test('5a4 walk speed does not share the freeze roll', () => {
+    const eng = showcaseEngine(1);
+    const rolls = eng as unknown as {
+      freezeRoll(id: number): number;
+      turnBackRoll(id: number): number;
+    };
+    const n = 4000;
+    let freezeN = 0;
+    let freezeClamp = 0;
+    let turnN = 0;
+    let turnClamp = 0;
+    let allClamp = 0;
+    let panicSum = 0;
+    const panicked: number[] = [];
+    for (let id = 0; id < n; id++) {
+      const speed = sampleWalkSpeedMps(1, id);
+      const panic = speed * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC);
+      panicSum += panic;
+      panicked.push(panic);
+      const clamped = speed <= SHOWCASE.WALK_SPEED_MIN || speed >= SHOWCASE.WALK_SPEED_MAX;
+      if (clamped) allClamp++;
+      if (rolls.freezeRoll(id) < SHOWCASE.FREEZE_PERMILLE / 1000) {
+        freezeN++;
+        if (clamped) freezeClamp++;
+      }
+      if (rolls.turnBackRoll(id) < SHOWCASE.TURN_BACK_PERMILLE / 1000) {
+        turnN++;
+        if (clamped) turnClamp++;
+      }
+    }
+    const allShare = allClamp / n;
+    const freezeShare = freezeClamp / freezeN;
+    const turnShare = turnClamp / turnN;
+    assert.ok(freezeN > 100, `freezers ${freezeN}`);
+    assert.ok(
+      Math.abs(freezeShare - allShare) < 0.08,
+      `freezer clamp ${(freezeShare * 100).toFixed(1)}% vs ${(allShare * 100).toFixed(1)}%`,
+    );
+    assert.ok(
+      Math.abs(turnShare - allShare) < 0.08,
+      `turn-back clamp ${(turnShare * 100).toFixed(1)}% vs ${(allShare * 100).toFixed(1)}%`,
+    );
+    const mean = panicSum / n;
+    assert.ok(Math.abs(mean - 1.55) < 0.05, `panic mean ${mean.toFixed(3)}`);
+    assert.ok(SHOWCASE.WALK_SPEED_MAX <= 2);
+    panicked.sort((a, b) => a - b);
+    const p90 = panicked[Math.ceil(0.9 * n) - 1];
+    assert.ok(p90 < 2.2, `panic p90 ${p90.toFixed(3)}`);
+    eng.destroy();
+  });
+
+  test('5a5 a forced crawl is not stuck on a stall corner', () => {
+    // Holland ped 17, T+97: south of the stall wall, with the short return
+    // beside them. The corner aim flips every step. With no damping the body
+    // reverses in place (about 0.3 m in 8 s, hundreds of reversals).
+    const verts: Vec2[] = [
+      { x: -30, y: -30 },
+      { x: 30, y: -30 },
+      { x: 30, y: 10 },
+      { x: -30, y: 10 },
+    ];
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: 1,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      [exit({ id: 'exit-public-b', center: { x: 23.2, y: 0.9 }, edgeIndex: 1, width: 2 })],
+      [
+        {
+          startX: -4,
+          startY: -18.7,
+          endX: 7,
+          endY: -18.7,
+          hasDoor: false,
+          doorWidth: 1,
+          doorPosition: 0.5,
+        },
+        {
+          startX: -2.75,
+          startY: -18.7,
+          endX: -2.75,
+          endY: -18.2,
+          hasDoor: false,
+          doorWidth: 1,
+          doorPosition: 0.5,
+        },
+      ],
+      [],
+      { afterExit: 'disperse', zones: [], seed: 1 },
+    );
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    Matter.Body.setPosition(body, { x: -2.97, y: -19.63 });
+    Matter.Body.setVelocity(body, { x: 0.3 / 60, y: -0.1 / 60 });
+    const ped = (body as Matter.Body & { __ped: Record<string, unknown> }).__ped;
+    ped.state = 'evacuating';
+    ped.forcedCrawl = true;
+    ped.posture = 'crawl';
+    ped.targetExitId = 'exit-public-b';
+    ped.nextCheckAt = 1e9;
+    const start = { x: body.position.x, y: body.position.y };
+    let flips = 0;
+    let prev = { x: 0, y: 0 };
+    for (let i = 0; i < 60 * 8; i++) {
+      const x0 = body.position.x;
+      const y0 = body.position.y;
+      eng.step();
+      const vx = (body.position.x - x0) * 60;
+      const vy = (body.position.y - y0) * 60;
+      if (i > 60 && prev.x * vx + prev.y * vy < 0) flips++;
+      prev = { x: vx, y: vy };
+    }
+    const moved = Math.hypot(body.position.x - start.x, body.position.y - start.y);
+    assert.ok(moved > 2, `moved ${moved.toFixed(2)} m, still at the corner`);
+    assert.ok(flips < 30, `reversals ${flips}`);
+    eng.destroy();
+  });
+
   test('5b assembly distance', () => {
     assert.equal(assemblyMinDistanceM(45), 45);
     assert.equal(assemblyMinDistanceM(12), 20);
@@ -282,8 +403,8 @@ describe('evacuation showcase', () => {
 
   test('5d outdoor speed switches', () => {
     assert.equal(outdoorSpeed(10, 0.5, 1), 2.14);
-    assert.equal(outdoorSpeed(60, 0.5, 1), 1.44);
-    assert.equal(outdoorSpeed(10, 2.0, 1), 1.44);
+    assert.equal(outdoorSpeed(60, 0.5, 1), 1.55);
+    assert.equal(outdoorSpeed(10, 2.0, 1), 1.55);
   });
 
   test('5e turn-back share', () => {

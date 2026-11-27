@@ -227,6 +227,14 @@ interface PedLabel {
   jitterUntil?: number;
   disperse?: boolean;
   lastDir?: Vec2 | null;
+  /**
+   * Forced-crawl command, in the same units as Matter velocity. Held while a
+   * corner aim flips, so the body is not reversed every step.
+   */
+  crawlVx?: number;
+  crawlVy?: number;
+  /** Sim time when the aim first opposed `crawlVx`/`crawlVy`. */
+  crawlOpposeAt?: number;
   /** Storey id when a scene has more than one. Unset on the single floor. */
   level?: string;
   targetStairId?: string | null;
@@ -1294,8 +1302,9 @@ export class PolygonEvacuationEngine {
           : provisional;
     // A forced crawl has no safe exit, so it keeps moving. A released person
     // finishes the opening: repulsion may slide them sideways, not back out.
-    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
-    this.steer(body, target, speed, field, keepForward);
+    const granted = this.mouthGrant.has(ped.pedId);
+    const keepForward = ped.forcedCrawl === true || granted;
+    this.steer(body, target, speed, field, keepForward, granted);
   }
 
   /**
@@ -2413,6 +2422,8 @@ export class PolygonEvacuationEngine {
     targetSpeed: number,
     fireField: HazardField | null,
     keepForward = false,
+    /** A mouth grant takes the commanded step at once. A forced crawl does not. */
+    takeStep = false,
   ) {
     const dt = this.config.dt;
     const steered = this.aimAroundBodies(body, target);
@@ -2465,10 +2476,47 @@ export class PolygonEvacuationEngine {
     repX += bodies.x;
     repY += bodies.y;
     // Relax toward the commanded step. With no air drag this reaches that
-    // speed. A released crossing takes the step at once.
-    const blend = keepForward ? 1 : Math.min(1, dt / 0.4);
-    let newVx = body.velocity.x + (nx * targetSpeed * dt + repX - body.velocity.x) * blend;
-    let newVy = body.velocity.y + (ny * targetSpeed * dt + repY - body.velocity.y) * blend;
+    // speed. A released crossing takes the step at once. A forced crawl keeps
+    // its last command while a corner aim opposes it. On the stall corner the
+    // two ends trade about once a second, and the wall contact zeroes the
+    // body velocity, so a short blend follows the trade and the crawl never
+    // leaves. A reverse has to persist before it is taken.
+    const cmdVx = nx * targetSpeed * dt + repX;
+    const cmdVy = ny * targetSpeed * dt + repY;
+    const crawler = this.pedOf(body);
+    let newVx: number;
+    let newVy: number;
+    if (keepForward && !takeStep) {
+      const px = crawler.crawlVx;
+      const py = crawler.crawlVy;
+      const has = px != null && py != null;
+      const oppose = has && px * cmdVx + py * cmdVy < 0;
+      if (!has || !oppose) {
+        newVx = cmdVx;
+        newVy = cmdVy;
+        crawler.crawlOpposeAt = undefined;
+      } else {
+        const since = crawler.crawlOpposeAt ?? this.elapsed;
+        crawler.crawlOpposeAt = since;
+        if (this.elapsed - since >= 2) {
+          const relax = Math.min(1, dt / 0.4);
+          newVx = px + (cmdVx - px) * relax;
+          newVy = py + (cmdVy - py) * relax;
+        } else {
+          newVx = px;
+          newVy = py;
+        }
+      }
+      crawler.crawlVx = newVx;
+      crawler.crawlVy = newVy;
+    } else {
+      crawler.crawlVx = undefined;
+      crawler.crawlVy = undefined;
+      crawler.crawlOpposeAt = undefined;
+      const blend = takeStep ? 1 : Math.min(1, dt / 0.4);
+      newVx = body.velocity.x + (cmdVx - body.velocity.x) * blend;
+      newVy = body.velocity.y + (cmdVy - body.velocity.y) * blend;
+    }
     const currentSpeed = Math.hypot(newVx, newVy);
     const maxSpeed = targetSpeed * dt * 1.3;
     if (currentSpeed > maxSpeed && currentSpeed > 0) {
@@ -2819,8 +2867,9 @@ export class PolygonEvacuationEngine {
     const aim = exit
       ? this.exitSteerTarget(pos, exit, held, walls)
       : steerToTarget(pos, this.routeTarget(ped) ?? pos, walls);
-    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
-    this.steer(body, aim, speed, field, keepForward);
+    const granted = this.mouthGrant.has(ped.pedId);
+    const keepForward = ped.forcedCrawl === true || granted;
+    this.steer(body, aim, speed, field, keepForward, granted);
   }
 
   /**

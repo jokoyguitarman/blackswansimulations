@@ -298,11 +298,13 @@ export function lognormalFromPercentiles(p1: number, p99: number): { mu: number;
 
 /**
  * One person's unimpeded level speed. The draw is a normal around the
- * Weidmann mean, clamped to two standard deviations, and it comes from
- * its own stream so it does not move the premovement draws.
+ * SFPE mean, with the Weidmann spread scaled to that mean, clamped to two
+ * standard deviations. Its salt is not the freeze roll's and not the
+ * turn-back roll's, so a freeze does not pick the speed.
  */
 export function sampleWalkSpeedMps(seed: number, pedId: number): number {
-  const rng = mulberry32((seed ^ Math.imul(pedId + 1, 0x9e3779b1)) >>> 0);
+  // 0x9e3779b1 is the freeze roll. 0x85ebca6b ^ 0x5bd1e995 is the turn-back roll.
+  const rng = mulberry32((seed ^ Math.imul(pedId + 1, 0x6c078965) ^ 0x27d4eb2d) >>> 0);
   let u1 = rng();
   if (u1 < 1e-12) u1 = 1e-12;
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rng());

@@ -1,15 +1,16 @@
 /**
  * Holland Village through T+300. Nightly matrix entry.
  * The job timeout is 60 minutes, so this test's own limit is 55.
- * Pedestrians no longer carry Matter air drag, and each person has a
- * seeded level speed around 1.34 m/s, so the crowd reaches the exits
- * earlier. Outs are 21, 74, 102 and 111 at T+90, T+120, T+180 and T+240,
- * against 2, 19, 72 and 102 before, and T+300 stays 111. The blast is at
- * T+60, after some have started walking, so one more person is caught:
- * 5 down (3 lethal, 2 serious) and 8 minor, against 4 down and 7 minor.
- * Fume and heat downs stay 0, and the burn counts are unchanged. Three
- * people still freeze in fear and, with no marshal, stay frozen through
- * T+300. They are not counted as crawling.
+ * Pedestrians no longer carry Matter air drag. Each person draws an SFPE
+ * unimpeded speed around 1.19 m/s, and panic brings the mean to about
+ * 1.55 m/s. Outs are 19, 72, 100 and 112 at T+90, T+120, T+180 and T+240,
+ * and T+300 is 112. The blast is at T+60: 5 down (3 lethal, 2 serious)
+ * and 8 minor. Fume and heat downs stay 0, and the burn counts are
+ * unchanged. A forced crawl no longer reverses on the stall corner, so
+ * ped 17 is outside by T+210 and off the map by T+240. Three people still
+ * freeze in fear (ped 61 at T+78, ped 101 at T+87, ped 36 at T+102) and,
+ * with no marshal, stay frozen through T+300. They are not counted as
+ * crawling.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

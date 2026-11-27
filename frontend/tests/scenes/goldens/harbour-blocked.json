@@ -7,7 +7,7 @@
   "peakTotalMw": 163.5,
   "within120": 0.99,
   "crawling": 6,
-  "reroutes": 6,
+  "reroutes": 13,
   "outByT300": 101,
   "reachable": 102,
   "mall": {
@@ -18,7 +18,7 @@
   "marks": {
     "t180": {
       "smoke": "0.384",
-      "out": 93,
+      "out": 91,
       "down": 12,
       "heatDown": 5,
       "westLit": 72,
