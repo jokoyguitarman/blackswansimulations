@@ -17,8 +17,8 @@ import { RTSEngine } from '../../src/lib/rts/engine.ts';
 import { FX } from '../../src/lib/rts/fx/fxConstants.ts';
 import {
   advanceSharedFrame,
-  cappedFrameDt,
   createSharedClock,
+  type SharedFrameBudget,
 } from '../../src/lib/rts/fx/simClock.ts';
 import { SpatialEffectsEngine, blastSmokeStudIds } from '../../src/lib/rts/spatialEffects.ts';
 import { DEFAULT_FIRE_PARAMS } from '../../src/lib/rts/fireSimulation.ts';
@@ -45,6 +45,14 @@ export interface OfficeFrameResult {
   burning: number;
 }
 
+export interface OfficeFrameOptions {
+  /** People per storey, G first. Defaults to the sample's counts. */
+  counts?: number[];
+  budget?: SharedFrameBudget;
+  /** After each frame, with the frame's crowd steps. */
+  onFrame?: (crowdSteps: number) => void;
+}
+
 interface PedLabel {
   state?: string;
   sheltering?: boolean;
@@ -52,12 +60,21 @@ interface PedLabel {
 
 /**
  * Play the office scene until the game clock reaches `untilS`, giving the
- * page `frameDt` real seconds per frame at `speed`.
+ * page `frameDt` real seconds per frame at `speed`. A function is asked
+ * once per frame, so a bench can feed back the measured frame time.
  */
-export function runOfficeFrames(speed: number, frameDt: number, untilS: number): OfficeFrameResult {
+export function runOfficeFrames(
+  speed: number,
+  frameDt: number | (() => number),
+  untilS: number,
+  opts: OfficeFrameOptions = {},
+): OfficeFrameResult {
   const scene = officeTowerSample.scene;
   const polygon = scene.buildingPolygon.map((p) => [p[0], p[1]] as [number, number]);
-  const levels = scene.levels.map((l) => ({ ...l })) as LevelDef[];
+  const levels = scene.levels.map((l, i) => ({
+    ...l,
+    pedestrianCount: opts.counts?.[i] ?? l.pedestrianCount,
+  })) as LevelDef[];
   const verts = projectPolygon(polygon);
   const fireStuds = projectSceneStuds(polygon, officeTowerStuds(polygon)).map((s) => ({
     id: s.id,
@@ -184,29 +201,37 @@ export function runOfficeFrames(speed: number, frameDt: number, untilS: number):
   let frames = 0;
   while (rts.state.clock.elapsed < untilS) {
     frames++;
-    rts.tick(cappedFrameDt(frameDt, speed));
+    const dt = typeof frameDt === 'number' ? frameDt : frameDt();
     evac.setHazardStates(effects.studStates);
     evac.syncExits(exits);
     effects.setFuelCells(cells);
     effects.setStoreyHeights(heights);
     effects.setBuildingEnvelope(verts, exits);
-    advanceSharedFrame(shared, frameDt, speed, {
-      beforeSteps: (doorDt) => {
-        const bodies = snaps
-          .filter((p) => p.state !== 'left_map')
-          .map((p) => ({ x: p.x, y: p.y, level: p.level }));
-        stepDoorLeaves(walls, bodies, effects.exposedDoorIds(), doorDt, MOUTH_APPROACH_M);
-        evac.syncDoorLeaves(walls);
+    const ran = advanceSharedFrame(
+      shared,
+      dt,
+      speed,
+      {
+        beforeSteps: (doorDt) => {
+          const bodies = snaps
+            .filter((p) => p.state !== 'left_map')
+            .map((p) => ({ x: p.x, y: p.y, level: p.level }));
+          stepDoorLeaves(walls, bodies, effects.exposedDoorIds(), doorDt, MOUTH_APPROACH_M);
+          evac.syncDoorLeaves(walls);
+        },
+        crowdStep: (stepNo) => {
+          if (!blastFired && stepNo >= blastStep) {
+            blastFired = true;
+            evac.triggerBlast(site, radius);
+          }
+          evac.step();
+        },
+        effectsStep: () => effects.step(FX.EFFECTS_DT, walls, hazards),
       },
-      crowdStep: (stepNo) => {
-        evac.step();
-        if (!blastFired && stepNo >= blastStep) {
-          blastFired = true;
-          evac.triggerBlast(site, radius);
-        }
-      },
-      effectsStep: () => effects.step(FX.EFFECTS_DT, walls, hazards),
-    });
+      opts.budget,
+    );
+    if (ran.crowdSteps > 0) rts.tick((ran.crowdSteps * FX.FIXED_DT) / speed);
+    opts.onFrame?.(ran.crowdSteps);
     rts.syncElapsed(shared.crowdSteps * FX.FIXED_DT);
     snaps = evac.getSnapshots();
   }

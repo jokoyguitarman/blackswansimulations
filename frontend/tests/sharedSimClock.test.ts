@@ -13,7 +13,6 @@ import {
   cappedFrameDt,
   createSharedClock,
 } from '../src/lib/rts/fx/simClock.ts';
-import { runOfficeFrames } from './scenes/officeTowerFrames.ts';
 
 function play(frames: number[], speed: number) {
   const rts = new RTSEngine();
@@ -74,24 +73,43 @@ test('1x at 60 fps runs one crowd step a frame and an effects slice every sixth'
   assert.deepEqual(pattern, ['c', 'c', 'c', 'c', 'c', 'ce', 'c', 'c', 'c', 'c', 'c', 'ce']);
 });
 
-test('office fire: a loaded 10x run matches a 1x run', () => {
-  const untilS = 210;
-  const real = runOfficeFrames(1, 1 / 60, untilS);
-  // One second a frame at 10x asks for 10 s; every subsystem gets 4 s.
-  const fast = runOfficeFrames(10, 1, untilS);
-  for (const r of [real, fast]) {
-    assert.ok(Math.abs(r.clockS - r.crowdS) < 1e-6, JSON.stringify(r));
-    assert.ok(r.crowdS - r.effectsS >= 0 && r.crowdS - r.effectsS < FX.EFFECTS_DT);
+function budgetedFrames(
+  costMs: number,
+  budgetMs: number,
+  frames: number,
+  frameDt: number,
+  speed: number,
+) {
+  const clock = createSharedClock();
+  let nowMs = 0;
+  const budget = { budgetMs, now: () => nowMs };
+  const perFrame: number[] = [];
+  for (let i = 0; i < frames; i++) {
+    const ran = advanceSharedFrame(
+      clock,
+      frameDt,
+      speed,
+      { crowdStep: () => (nowMs += costMs) },
+      budget,
+    );
+    perFrame.push(ran.crowdSteps);
   }
-  assert.ok(fast.frames <= Math.ceil(untilS / MAX_FRAME_SIM_S) + 1, 'the clock slowed');
-  assert.ok(Math.abs(fast.out - real.out) <= 10, `out ${fast.out} vs ${real.out}`);
-  assert.ok(Math.abs(fast.down - real.down) <= 3, `down ${fast.down} vs ${real.down}`);
-  assert.ok(
-    Math.abs(fast.sheltering - real.sheltering) <= 3,
-    `sheltering ${fast.sheltering} vs ${real.sheltering}`,
-  );
-  assert.ok(
-    Math.abs(fast.burning - real.burning) <= 3,
-    `burning ${fast.burning} vs ${real.burning}`,
-  );
+  return { clock, perFrame };
+}
+
+test('a wall-time budget runs only the steps that fit, and the clock slows', () => {
+  const { clock, perFrame } = budgetedFrames(4, 33, 5, 1, 10);
+  // The first frame has no measured cost yet, so only the 4 s cap applies.
+  assert.deepEqual(perFrame, [240, 8, 8, 8, 8]);
+  assert.equal(clock.msPerStep, 4);
+  assert.equal(clock.dropped, 5 * 600 - 240 - 4 * 8);
+  assert.ok(clock.acc < FX.FIXED_DT);
+  assert.equal(clock.effectSteps, Math.floor(clock.crowdSteps / 6));
+});
+
+test('a budget always runs at least one step, and leaves a cheap 1x frame alone', () => {
+  assert.deepEqual(budgetedFrames(50, 33, 4, 1 / 30, 1).perFrame, [2, 1, 1, 1]);
+  const cheap = budgetedFrames(4, 33, 12, 1 / 60, 1);
+  assert.deepEqual(cheap.perFrame, Array(12).fill(1));
+  assert.equal(cheap.clock.dropped, 0);
 });

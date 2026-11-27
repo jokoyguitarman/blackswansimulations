@@ -2436,7 +2436,8 @@ export function DebugRTSSim() {
       pedestrianRadius: DEFAULT_POLYGON_CONFIG.pedestrianRadius,
       desiredSpeed: DEFAULT_POLYGON_CONFIG.desiredSpeed,
       panicFactor: DEFAULT_POLYGON_CONFIG.panicFactor,
-      dt: DEFAULT_POLYGON_CONFIG.dt,
+      // The shared sim clock counts crowd time in FIXED_DT steps.
+      dt: FX.FIXED_DT,
     };
     // Convert interior walls to engine format
     const iwDefs = interiorWalls.map((w) => ({
@@ -2702,13 +2703,15 @@ export function DebugRTSSim() {
 
       const rts = rtsRef.current;
       const clock = rts.state.clock;
-      rts.tick(clock.phase === 'setup' || clock.paused ? dt : cappedFrameDt(dt, clock.speed));
-
       const showcaseOn = showcaseRef.current;
 
       const evac = evacEngRef.current;
       const effectsEng = effectsEngineRef.current;
       const simRunning = !clock.paused && clock.phase !== 'setup';
+      const sharedSteps = simRunning && (evac != null || effectsEng != null);
+      if (!sharedSteps) {
+        rts.tick(clock.phase === 'setup' || clock.paused ? dt : cappedFrameDt(dt, clock.speed));
+      }
       if (evac && simRunning && showcaseOn) {
         const liveEffects = effectsEngineRef.current;
         if (liveEffects) evac.setHazardStates(liveEffects.studStates);
@@ -2778,7 +2781,7 @@ export function DebugRTSSim() {
       }
 
       let effectSteps = 0;
-      if (simRunning && (evac || effectsEng)) {
+      if (sharedSteps) {
         const blastStep = Math.round(SHOWCASE.BLAST_AT_GAME_S / FX.FIXED_DT);
         const fireBlast = () => {
           blastFiredRef.current = true;
@@ -2803,33 +2806,40 @@ export function DebugRTSSim() {
             text: `EXPLOSION · ${rts.formatClock()}`,
           });
         };
-        const ran = advanceSharedFrame(simClockRef.current, dt, clock.speed, {
-          beforeSteps: evac
-            ? (doorDt) => {
-                const bodies = pedestriansRef.current
-                  .filter((person) => person.state !== 'left_map')
-                  .map((person) => ({ x: person.x, y: person.y, level: person.level }));
-                stepDoorLeaves(
-                  walls,
-                  bodies,
-                  effectsEng?.exposedDoorIds() ?? new Set<string>(),
-                  doorDt,
-                  MOUTH_APPROACH_M,
-                );
-                evac.syncDoorLeaves(walls);
-              }
-            : undefined,
-          crowdStep: evac
-            ? (stepNo) => {
-                evac.step();
-                if (showcaseOn && !blastFiredRef.current && stepNo >= blastStep) fireBlast();
-              }
-            : undefined,
-          effectsStep: effectsEng
-            ? () => effectsEng.step(FX.EFFECTS_DT, walls, hazards)
-            : undefined,
-        });
+        const ran = advanceSharedFrame(
+          simClockRef.current,
+          dt,
+          clock.speed,
+          {
+            beforeSteps: evac
+              ? (doorDt) => {
+                  const bodies = pedestriansRef.current
+                    .filter((person) => person.state !== 'left_map')
+                    .map((person) => ({ x: person.x, y: person.y, level: person.level }));
+                  stepDoorLeaves(
+                    walls,
+                    bodies,
+                    effectsEng?.exposedDoorIds() ?? new Set<string>(),
+                    doorDt,
+                    MOUTH_APPROACH_M,
+                  );
+                  evac.syncDoorLeaves(walls);
+                }
+              : undefined,
+            crowdStep: evac
+              ? (stepNo) => {
+                  if (showcaseOn && !blastFiredRef.current && stepNo >= blastStep) fireBlast();
+                  evac.step();
+                }
+              : undefined,
+            effectsStep: effectsEng
+              ? () => effectsEng.step(FX.EFFECTS_DT, walls, hazards)
+              : undefined,
+          },
+          { budgetMs: FX.SIM_BUDGET_MS, now: () => performance.now() },
+        );
         effectSteps = ran.effectSteps;
+        if (ran.crowdSteps > 0) rts.tick((ran.crowdSteps * FX.FIXED_DT) / clock.speed);
         rts.syncElapsed(simClockRef.current.crowdSteps * FX.FIXED_DT);
       }
 
