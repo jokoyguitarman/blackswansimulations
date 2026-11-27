@@ -10,6 +10,7 @@ import { blastEffectsTriggerSec, shiftEvents } from '../evacuation/showcase';
 import type { ChargeSpec } from './blast/blastModel';
 import { attachBuilding, type EffectsBuilding } from './effectsBuilding';
 import type { FireParams } from './fireSimulation';
+import { FX } from './fx/fxConstants';
 import {
   confirmedElectricalSources,
   confirmedFuelCells,
@@ -23,6 +24,7 @@ import {
   type HazardEvent,
   type HazardStateProgression,
 } from './spatialEffects';
+import type { HoodFanWhen } from './twoZone';
 import type { HazardZone, InteriorWall } from './types';
 
 /** Effects-only ignition marker. Kept off the renderer: it has no trainer-facing zone. */
@@ -93,6 +95,8 @@ export interface PreviewInput {
     affectRadius: number;
   };
   hazardAnalysis?: readonly PreviewHazardAnalysis[];
+  /** The scene's kitchen hood-fan rule. Leave out for the engine default. */
+  hoodFanWhen?: HoodFanWhen;
 }
 
 export interface PreviewEngine {
@@ -116,13 +120,12 @@ export function buildPreviewEngine(input: PreviewInput): PreviewEngine {
   const fuelCells = confirmedFuelCells(input.objects, studs);
   engine.setFuelCells(fuelCells);
   attachBuilding(engine, input.building);
+  if (input.hoodFanWhen) engine.setHoodFanWhen(input.hoodFanWhen);
   syncIgnition(engine, input.objects, input.hazardZones, input.charge, input.building.levels);
 
   const t0 = blastEffectsTriggerSec(engine.timeScale);
-  let hasEvents = false;
   for (const ha of input.hazardAnalysis ?? []) {
     const events = (ha.events ?? []) as HazardEvent[];
-    if (events.length > 0) hasEvents = true;
     if (events.length > 0 || ha.hazardStates) {
       engine.registerHazard(
         ha.hazardId,
@@ -132,43 +135,78 @@ export function buildPreviewEngine(input: PreviewInput): PreviewEngine {
     }
   }
 
-  let blastZone: HazardZone | null = null;
-  if (!hasEvents) {
-    const affectedStuds = blastSmokeStudIds(
-      studs
-        .filter(
-          (s) =>
-            (blast.level == null || s.level === blast.level) &&
-            Math.hypot(s.simPos.x - blast.pos.x, s.simPos.y - blast.pos.y) <= blast.affectRadius,
-        )
-        .map((s) => s.id),
-      new Set(fuelCells.keys()),
-    );
-    engine.registerHazard(
-      'blast-direct',
-      [
-        {
-          triggerTimeSec: t0,
-          eventType: 'explode',
-          spreadType: 'fire',
-          spreadRadius: blast.spreadRadius,
-          spreadRate: 10,
-          description: 'Direct blast ignition',
-          severity: 'critical',
-          smokeGeneration: 'heavy',
-          affectedStuds,
-        },
-      ],
+  // The live showcase registers the blast whether or not enrichment added events.
+  const affectedStuds = blastSmokeStudIds(
+    studs
+      .filter(
+        (s) =>
+          (blast.level == null || s.level === blast.level) &&
+          Math.hypot(s.simPos.x - blast.pos.x, s.simPos.y - blast.pos.y) <= blast.affectRadius,
+      )
+      .map((s) => s.id),
+    new Set(fuelCells.keys()),
+  );
+  engine.registerHazard(
+    'blast-direct',
+    [
       {
-        initial: 'Pre-detonation',
-        triggered: 'Blast wave',
-        worsening: 'Fire spreading',
-        critical: 'Engulfed',
+        triggerTimeSec: t0,
+        eventType: 'explode',
+        spreadType: 'fire',
+        spreadRadius: blast.spreadRadius,
+        spreadRate: 10,
+        description: 'Direct blast ignition',
+        severity: 'critical',
+        smokeGeneration: 'heavy',
+        affectedStuds,
       },
-    );
-    blastZone = blastIgnitionZone(blast.pos, blast.spreadRadius, blast.level);
-  }
+    ],
+    {
+      initial: 'Pre-detonation',
+      triggered: 'Blast wave',
+      worsening: 'Fire spreading',
+      critical: 'Engulfed',
+    },
+  );
+  const blastZone = blastIgnitionZone(blast.pos, blast.spreadRadius, blast.level);
   return { engine, t0, hazards: hazardsForEffects(input.hazardZones, blastZone) };
+}
+
+/**
+ * Effects steps of the setup preview, seconds. The live run steps EFFECTS_DT
+ * (0.1 s) throughout, about 10x the cost of the old 1 s preview. Measured on
+ * the office fire against that live stepping:
+ * - before the blast nothing changes, so whole seconds are exact;
+ * - the step that reaches t0 fires the blast and integrates it over the whole
+ *   step, so a 1 s step there put in a second of heavy smoke at once: peak
+ *   ground-floor smoke at T+60 was 0.55 against 0.29 live. The step ending on
+ *   t0 and the first PREVIEW_FINE_S after it are EFFECTS_DT, as live;
+ * - after that, 0.5 s steps keep the peak at T+60 at 0.288 and every smoke
+ *   total within 0.3% to T+300.
+ * About twice the steps of the old preview and a fifth of live stepping.
+ */
+export const PREVIEW_FINE_S = 5;
+export const PREVIEW_COARSE_DT = 0.5;
+export const PREVIEW_PRE_BLAST_DT = 1;
+
+export function previewSteps(t0: number, seconds: number): number[] {
+  const steps: number[] = [];
+  const pushUntil = (end: number, dt: number, from: number) => {
+    let t = from;
+    while (end - t > 1e-9) {
+      const h = Math.min(dt, end - t);
+      steps.push(h);
+      t += h;
+    }
+    return end;
+  };
+  // A step that reaches t0 fires the blast and then integrates it over the whole
+  // step, so the step ending on t0 must already be a fine one.
+  let t = pushUntil(Math.max(0, t0 - FX.EFFECTS_DT), PREVIEW_PRE_BLAST_DT, 0);
+  const end = t0 + Math.max(0, seconds);
+  t = pushUntil(Math.min(end, t0 + PREVIEW_FINE_S), FX.EFFECTS_DT, t);
+  pushUntil(end, PREVIEW_COARSE_DT, t);
+  return steps;
 }
 
 /** Build the preview engine and run it to `seconds` after the blast. */
@@ -178,6 +216,33 @@ export function runEffectsPreview(
   walls: InteriorWall[],
 ): SpatialEffectsEngine {
   const { engine, t0, hazards } = buildPreviewEngine(input);
-  engine.runPreview(t0 + seconds, walls, hazards);
+  for (const dt of previewSteps(t0, seconds)) engine.step(dt, walls, hazards);
   return engine;
+}
+
+/**
+ * runEffectsPreview in slices of about `sliceMs`, yielding to the browser
+ * between them so the page stays responsive. Resolves null if `signal` aborts.
+ */
+export async function runEffectsPreviewAsync(
+  input: PreviewInput,
+  seconds: number,
+  walls: InteriorWall[],
+  opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal; sliceMs?: number } = {},
+): Promise<SpatialEffectsEngine | null> {
+  const { engine, t0, hazards } = buildPreviewEngine(input);
+  const steps = previewSteps(t0, seconds);
+  const sliceMs = opts.sliceMs ?? 40;
+  let i = 0;
+  while (i < steps.length) {
+    if (opts.signal?.aborted) return null;
+    const start = performance.now();
+    while (i < steps.length && performance.now() - start < sliceMs) {
+      engine.step(steps[i], walls, hazards);
+      i++;
+    }
+    opts.onProgress?.(i / steps.length);
+    if (i < steps.length) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return opts.signal?.aborted ? null : engine;
 }

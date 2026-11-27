@@ -28,9 +28,11 @@ import type { HazardZone, InteriorWall, LevelDef } from '../src/lib/rts/types.ts
 import { attachBuilding, storeyId } from '../src/lib/rts/effectsBuilding.ts';
 import {
   buildPreviewEngine,
+  previewSteps,
   runEffectsPreview,
   type PreviewInput,
 } from '../src/lib/rts/effectsPreview.ts';
+import { FX } from '../src/lib/rts/fx/fxConstants.ts';
 import { defaultCharge } from '../src/lib/rts/blast/blastModel.ts';
 import Matter from 'matter-js';
 import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine.ts';
@@ -658,6 +660,80 @@ describe('stair shaft scene', () => {
     assert.equal(burning(), 0, 'fire before the blast');
     engine.runPreview(30, [], hazards);
     assert.ok(burning() > 0, 'no fire after the blast');
+  });
+
+  test('the setup preview steps agree with live 0.1 s stepping', () => {
+    const input = stairPreviewInput(true);
+    const marks = [5, 10, 30, 60, 120];
+    const sample = (steps: (t0: number) => number[]) => {
+      const { engine, t0, hazards } = buildPreviewEngine(input);
+      const schedule = steps(t0);
+      const out: Array<{ G: number; L1: number; burning: number }> = [];
+      let t = 0;
+      let k = 0;
+      for (const mark of marks) {
+        while (k < schedule.length && t < t0 + mark - 1e-9) {
+          engine.step(schedule[k], [], hazards);
+          t += schedule[k];
+          k++;
+        }
+        const row = { G: 0, L1: 0, burning: 0 };
+        for (const stud of input.studs) {
+          const st = engine.studStates.get(stud.id)!;
+          if (stud.level === 'G' || stud.level === 'L1') row[stud.level] += st.smoke;
+          if (st.fire.state === 'burning') row.burning++;
+        }
+        out.push(row);
+      }
+      return out;
+    };
+    const end = marks[marks.length - 1];
+    const live = sample((t0) => Array(Math.round((t0 + end) / FX.EFFECTS_DT)).fill(FX.EFFECTS_DT));
+    const preview = sample((t0) => previewSteps(t0, end));
+    const oldPreview = sample((t0) => Array(Math.ceil(t0 + end)).fill(1));
+    // 3% of the live total, with a 0.01 floor for a storey the smoke has barely reached.
+    const within = (a: number, b: number) => Math.abs(a - b) <= 0.03 * b + 0.01;
+    marks.forEach((mark, i) => {
+      assert.equal(preview[i].burning, live[i].burning, `T+${mark} burning`);
+      for (const level of ['G', 'L1'] as const) {
+        assert.ok(
+          within(preview[i][level], live[i][level]),
+          `T+${mark} ${level} smoke ${preview[i][level]} vs live ${live[i][level]}`,
+        );
+      }
+    });
+    // The old 1 s steps put a second of blast smoke in at once.
+    assert.ok(!within(oldPreview[0].G, live[0].G), 'the 1 s preview should miss at T+5');
+  });
+
+  test('the setup preview keeps the blast with enrichment events, and the hood-fan rule', () => {
+    const input: PreviewInput = {
+      ...stairPreviewInput(true),
+      hoodFanWhen: 'appliances',
+      hazardAnalysis: [
+        {
+          hazardId: 'gas-leak',
+          events: [
+            {
+              triggerTimeSec: 10,
+              eventType: 'rupture',
+              spreadType: 'gas',
+              spreadRadius: 3,
+              spreadRate: 1,
+              description: 'Leak',
+              severity: 'high',
+            },
+          ],
+        },
+      ],
+    };
+    const { engine, t0, hazards } = buildPreviewEngine(input);
+    const blast = engine.hazardStates.get('blast-direct');
+    assert.ok(blast, 'the blast was dropped');
+    assert.equal(blast.events[0].smokeGeneration, 'heavy');
+    assert.equal(engine.hazardStates.get('gas-leak')?.events[0].triggerTimeSec, t0 + 10);
+    assert.ok(hazards.some((zone) => zone.id === 'blast-direct'));
+    assert.equal((engine as unknown as { hoodFanWhen: string }).hoodFanWhen, 'appliances');
   });
 
   test('the upper crowd walks down the stair and the ground crowd uses its door', () => {
