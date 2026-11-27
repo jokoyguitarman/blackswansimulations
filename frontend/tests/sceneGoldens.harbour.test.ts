@@ -18,23 +18,24 @@
  * is the soot mass on the stud: the layer's grams over the upper-layer
  * volume, or the column extinction, including soot past 6.1 per metre.
  * The smoke number still saturates there, and walking and sight use
- * that number. Open outs are 67, 88, 94 and 96 at T+180, T+240, T+300
- * and T+600. Downs are 15 at T+300 and 18 at T+600. No fume downs by
- * T+300, and 24 are still inside at T+600, three of them in the mall. The
- * highest asphyxiant FED still inside is 1 and the highest
- * heat FED is 1.001. Late mean smoke is 0.779. The blocked crowd lets 40,
- * 53 and 94 people out at T+180, T+240 and T+300, and 95 by T+600. Downs
- * are 15 at T+300 and 19 at T+600, with 25 still inside, four of them in
- * the mall. Late mean smoke is 0.786. Mean smoke at T+180, T+240 and
- * T+300 is 0.384, 0.385 and 0.681 in both crowds. Flashover stays 79.88 s
- * and the peak stays 163.5 MW.
+ * that number. Open outs are 67, 88, 95 and 97 at T+180, T+240, T+300
+ * and T+600. Downs are 15 at T+300 and 17 at T+600. No fume downs by
+ * T+300, and 23 are still inside at T+600, two of them in the mall. The
+ * highest asphyxiant FED still inside is 1 and the highest heat FED is
+ * 1.001. Late mean smoke is 0.779. The blocked crowd lets 40, 54 and 94
+ * people out at T+180, T+240 and T+300, and 95 by T+600. Downs are 15 at
+ * T+300 and 19 at T+600, with 25 still inside, four of them in the mall.
+ * Late mean smoke is 0.786. Mean smoke at T+180, T+240 and T+300 is
+ * 0.384, 0.385 and 0.681 in both crowds. Flashover stays 79.88 s and the
+ * peak stays 163.5 MW.
  * Freezing in fear: in the open crowd three people freeze, ped 61 at T+82
  * and ped 109 at T+107 by the west fires and ped 101 at T+282 as smoke
  * reaches the mall. In the blocked crowd peds 80 and 85 freeze at T+282
- * as well. The run has no marshal, so every one of them stays frozen until
- * a dose puts them down: ped 109 by heat, the rest by smoke. That is the
- * extra heat down, the extra late downs (three open, five blocked) and
- * the bodies in the mall. Frozen people are not counted as crawling.
+ * as well. Only a marshal ends a freeze, and these runs have none, so
+ * every one of them stays frozen until a dose puts them down: ped 109 by
+ * heat, the rest by smoke. Frozen people are not counted as crawling.
+ * The freeze roll and the smoke turn-back roll are keyed on the person,
+ * so a frozen person moves nobody else's pre-movement or turn-back draw.
  * The six people in the sealed concrete room have no route to any exit,
  * so they shelter in place, crawling, instead of walking at an exit
  * they cannot reach. The open crowd counts 7 crawling at T+300, those

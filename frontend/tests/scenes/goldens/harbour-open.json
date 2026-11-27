@@ -8,7 +8,7 @@
   "within120": 0.808,
   "crawling": 7,
   "reroutes": 2,
-  "outByT300": 94,
+  "outByT300": 95,
   "reachable": 99,
   "mall": {
     "active": true,
@@ -36,7 +36,7 @@
     },
     "t300": {
       "smoke": "0.681",
-      "out": 94,
+      "out": 95,
       "down": 15,
       "heatDown": 7,
       "westLit": 72,
@@ -45,10 +45,10 @@
     }
   },
   "late": {
-    "inside": 24,
-    "down": 18,
-    "out": 96,
-    "inMall": 3,
+    "inside": 23,
+    "down": 17,
+    "out": 97,
+    "inMall": 2,
     "maxFed": 1,
     "maxHeatFed": 1.001,
     "heatDown": 7,

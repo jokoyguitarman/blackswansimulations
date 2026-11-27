@@ -45,7 +45,10 @@ export const SHOWCASE = {
   TURN_BACK_PERMILLE: 300,
   /** How long a turn-back keeps that exit off the list. The roll itself is one-time. */
   TURN_BACK_HOLD_S: 30,
-  /** Share of evacuees, per thousand, who freeze the first time smoke or fire reaches them. */
+  /**
+   * Share of evacuees, per thousand, who freeze the first time smoke or fire
+   * reaches them. Only a marshal ends a freeze.
+   */
   FREEZE_PERMILLE: 50,
   /** Extinction at the person's position, per metre, that counts as smoke reaching them. */
   FREEZE_TRIGGER_K: 1.0,
@@ -186,7 +189,7 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
   TURN_BACK_HOLD_S: { status: 'assumed', ref: 'assumed: numerical' },
   FREEZE_PERMILLE: {
     status: 'assumed',
-    ref: 'assumed: no seed; freezing or inaction is a small minority of fire occupants',
+    ref: 'assumed: within Leach 2004 (Aviat Space Environ Med 75(6):539-542), 10-15% behave inappropriately incl. freezing, an observational heuristic; above Fahy, Proulx and Aiman 2012 (Fire and Materials 36(5-6):328-342), panic and nonadaptive behaviour rare in fires. A freeze lasts until a marshal arrives; nothing else ends it',
   },
   FREEZE_TRIGGER_K: { status: 'assumed', ref: 'assumed: smoke a person can see around them' },
   FREEZE_RELEASE_M: { status: 'assumed', ref: 'assumed: arm-reach plus a step' },

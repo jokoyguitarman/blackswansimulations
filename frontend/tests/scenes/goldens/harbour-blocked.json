@@ -5,9 +5,9 @@
   "heatDown": 7,
   "flashoverAtS": 79.88,
   "peakTotalMw": 163.5,
-  "within120": 0.465,
+  "within120": 0.475,
   "crawling": 7,
-  "reroutes": 47,
+  "reroutes": 45,
   "outByT300": 94,
   "reachable": 99,
   "mall": {
@@ -27,7 +27,7 @@
     },
     "t240": {
       "smoke": "0.385",
-      "out": 53,
+      "out": 54,
       "down": 15,
       "heatDown": 7,
       "westLit": 72,

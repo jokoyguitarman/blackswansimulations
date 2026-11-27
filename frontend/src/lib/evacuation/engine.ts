@@ -1030,9 +1030,12 @@ export class PolygonEvacuationEngine {
    * stud reaches an evacuee who has a route, a seeded per-person roll may
    * freeze them. They stand still, still breathing the smoke, until a
    * responder comes within FREEZE_RELEASE_M; then they re-choose and go.
-   * The roll is keyed on the person, not drawn from the shared stream, so it
-   * leaves every other seeded draw where it was. Someone sheltering with no
-   * route is not frozen; that is a different state.
+   * Nothing else ends a freeze. The freeze roll and the smoke turn-back roll
+   * are both keyed on the person, not drawn from the shared stream, so
+   * someone held frozen moves nobody else's pre-movement or turn-back draw.
+   * After-exit wander points still come from the shared stream, in arrival
+   * order. Someone sheltering with no route is not frozen; that is a
+   * different state.
    */
   private holdFrozen(body: Matter.Body, ped: PedLabel): boolean {
     if (ped.frozen) {
@@ -1067,6 +1070,12 @@ export class PolygonEvacuationEngine {
   private freezeRoll(pedId: number): number {
     const seed = (this.showcase?.seed ?? SHOWCASE.RNG_SEED) >>> 0;
     return mulberry32((seed ^ Math.imul(pedId + 1, 0x9e3779b1)) >>> 0)();
+  }
+
+  /** One-time smoke turn-back roll, keyed on the person like the freeze roll. */
+  private turnBackRoll(pedId: number): number {
+    const seed = (this.showcase?.seed ?? SHOWCASE.RNG_SEED) >>> 0;
+    return mulberry32((seed ^ Math.imul(pedId + 1, 0x85ebca6b) ^ 0x5bd1e995) >>> 0)();
   }
 
   private responderNear(body: Matter.Body, ped: PedLabel): boolean {
@@ -1178,7 +1187,7 @@ export class PolygonEvacuationEngine {
         let turned = false;
         if (!ped.smokeRollDone) {
           ped.smokeRollDone = true;
-          if (this.rng!() < SHOWCASE.TURN_BACK_PERMILLE / 1000) {
+          if (this.turnBackRoll(ped.pedId) < SHOWCASE.TURN_BACK_PERMILLE / 1000) {
             turned = true;
             this.turnedBackCount++;
             this.rerouteCount++;

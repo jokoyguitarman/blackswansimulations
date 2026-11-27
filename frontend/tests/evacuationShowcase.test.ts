@@ -232,10 +232,22 @@ describe('evacuation showcase', () => {
   });
 
   test('5e turn-back share', () => {
-    const rng = mulberry32(SHOWCASE.RNG_SEED);
+    const eng = showcaseEngine(1);
+    const rolls = eng as unknown as {
+      turnBackRoll(id: number): number;
+      freezeRoll(id: number): number;
+    };
     let n = 0;
-    for (let i = 0; i < 1000; i++) if (rng() < SHOWCASE.TURN_BACK_PERMILLE / 1000) n++;
-    assert.ok(Math.abs(n / 1000 - 0.3) <= 0.03, `share ${n / 1000}`);
+    let both = 0;
+    for (let id = 0; id < 4000; id++) {
+      const turned = rolls.turnBackRoll(id) < SHOWCASE.TURN_BACK_PERMILLE / 1000;
+      if (turned) n++;
+      if (turned && rolls.freezeRoll(id) < SHOWCASE.FREEZE_PERMILLE / 1000) both++;
+    }
+    assert.ok(Math.abs(n / 4000 - 0.3) <= 0.03, `share ${n / 4000}`);
+    // Independent of the freeze roll: about 0.3 × 0.05 of people get both.
+    assert.ok(Math.abs(both / 4000 - 0.015) <= 0.006, `both ${both / 4000}`);
+    eng.destroy();
   });
 
   test('5f reroute rule and exit approach', () => {
@@ -1134,6 +1146,55 @@ describe('freezing in fear', () => {
     assert.notEqual(ped.frozen, true);
     assert.notEqual(eng.getSnapshots()[0].frozen, true);
     eng.destroy();
+  });
+
+  test("a frozen person moves nobody else's turn-back draw", () => {
+    // Everyone walks west in clean air. Then smoke arrives over x 9.5 to 12.5.
+    // The person standing in it freezes on that step instead of rolling;
+    // ten others further east meet it ahead of them and make their roll.
+    const studs: HazardStud[] = [];
+    const smoky = new Map<string, { smoke: number; fire: { state: string } }>();
+    for (let x = 9.5; x <= 12.5; x += 1) {
+      for (let y = 0.5; y < 20; y += 1) {
+        const id = `s_${x}_${y}`;
+        studs.push({ id, simPos: { x, y }, indoor: true });
+        smoky.set(id, { smoke: 0.6, fire: { state: 'none' } });
+      }
+    }
+    const decisions = (permille: number) => {
+      const eng = engine(permille, [], 11);
+      const hazard = field(studs);
+      eng.setHazardField(hazard);
+      const held = start(eng, 0, { x: 11.5, y: 10 });
+      const others = Array.from({ length: 10 }, (_, k) =>
+        start(eng, k + 1, { x: 20 + k, y: 3 + (k % 5) * 3 }),
+      );
+      for (let i = 0; i < 20; i++) eng.step();
+      assert.notEqual((held.ped as { smokeRollDone?: boolean }).smokeRollDone, true);
+      hazard.setStates(smoky);
+      for (let i = 0; i < 90; i++) eng.step();
+      const out = {
+        heldFrozen: held.ped.frozen === true,
+        turned: others.map(({ ped }) => {
+          const p = ped as typeof ped & { smokeRollDone?: boolean; turnedAwayIds?: string[] };
+          assert.equal(p.smokeRollDone, true, `person ${ped.pedId} met the smoke`);
+          return (p.turnedAwayIds ?? []).includes('west');
+        }),
+        expected: others.map(
+          ({ ped }) =>
+            (eng as unknown as { turnBackRoll(id: number): number }).turnBackRoll(ped.pedId) <
+            SHOWCASE.TURN_BACK_PERMILLE / 1000,
+        ),
+      };
+      eng.destroy();
+      return out;
+    };
+    const free = decisions(0);
+    const frozen = decisions(1000);
+    assert.equal(free.heldFrozen, false);
+    assert.equal(frozen.heldFrozen, true);
+    assert.deepEqual(frozen.turned, free.turned);
+    assert.deepEqual(free.turned, free.expected);
   });
 
   test('the default roll is seeded per person at about one in twenty', () => {
