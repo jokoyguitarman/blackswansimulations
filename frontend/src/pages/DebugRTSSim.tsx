@@ -1008,6 +1008,13 @@ export function DebugRTSSim() {
   const placedObjectsRef = useRef<PlacedObject[]>([]);
   /** Discharge-only until the loaded scene says otherwise. */
   const hoodFanWhenRef = useRef<HoodFanWhen>(HOOD_FAN_WHEN);
+  const [windSpeedMs, setWindSpeedMs] = useState(0);
+  const [windDeg, setWindDeg] = useState(0);
+  const windRef = useRef({ speedMs: 0, directionRad: 0 });
+  windRef.current = {
+    speedMs: windSpeedMs,
+    directionRad: (windDeg * Math.PI) / 180,
+  };
   const placeObjectRef = useRef(false);
   const objectIdRef = useRef(0);
   const explosionStartRef = useRef<number | null>(null);
@@ -2799,6 +2806,7 @@ export function DebugRTSSim() {
           evacEngRef.current?.setHazardField(ground);
         }
         effectsEng.setHoodFanWhen(hoodFanWhenRef.current);
+        effectsEng.setWind(windRef.current.speedMs, windRef.current.directionRad);
         effectsEng.setFuelCells(fuelCellsFor(placedObjectsRef.current, simStudsRef.current));
         effectsEng.setStoreyHeights(
           Object.fromEntries(levelsRef.current.map((level) => [level.id, level.heightM])),
@@ -6731,6 +6739,41 @@ export function DebugRTSSim() {
                   {slowedSpeed}: frames are too slow for the chosen speed
                 </div>
               )}
+            </div>
+
+            <div className="bg-gray-900 border border-green-800 rounded p-3 space-y-2">
+              <div className="text-xs text-green-400 font-bold">Wind</div>
+              <label className="block text-xs text-gray-400">
+                Speed at the openings, m/s
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={windSpeedMs}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setWindSpeedMs(Number.isFinite(next) && next > 0 ? next : 0);
+                  }}
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 text-xs rounded"
+                />
+              </label>
+              <label className="block text-xs text-gray-400">
+                Direction the wind travels, degrees from +x
+                <input
+                  type="number"
+                  step={15}
+                  value={windDeg}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setWindDeg(Number.isFinite(next) ? next : 0);
+                  }}
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 text-xs rounded"
+                />
+              </label>
+              <div className="text-xs text-gray-500">
+                0 m/s is still air. A face the wind blows onto takes Cp 0.8, the opposite face −0.5,
+                and the sides −0.7.
+              </div>
             </div>
 
             <div className="space-y-1.5 border border-amber-900 rounded p-2">

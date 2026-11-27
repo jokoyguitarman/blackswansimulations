@@ -39,6 +39,11 @@ import {
   diameterForReleaseKw,
   effectiveHeatLossKwM2K,
   enclosureFromGrid,
+  FACADE_CP_LEEWARD,
+  FACADE_CP_SIDE,
+  FACADE_CP_WINDWARD,
+  facadeCp,
+  facadeWindPa,
   formsSustainedLayer,
   FAN_FULL_FLOW_PA,
   FAN_ZERO_FLOW_PA,
@@ -1928,6 +1933,228 @@ test("Harbour's kitchen keeps its own door and the west shop keeps its exit", ()
   assert.equal(
     shop?.spec.vents.some((vent) => vent.soffitM > 3.9),
     false,
+  );
+});
+
+test('facade pressure follows the square-plan wall coefficients', () => {
+  // A face looking along +x. Wind toward −x blows onto it.
+  assert.equal(facadeCp(0, Math.PI), FACADE_CP_WINDWARD);
+  assert.equal(facadeCp(0, 0), FACADE_CP_LEEWARD);
+  assert.equal(facadeCp(0, Math.PI / 2), FACADE_CP_SIDE);
+  assert.equal(facadeCp(0, -Math.PI / 2), FACADE_CP_SIDE);
+  assert.equal(facadeWindPa(0, Math.PI, 0), 0);
+  assert.equal(facadeWindPa(0, Math.PI, -4), 0);
+  const q = 0.5 * 1.2 * 25;
+  close(facadeWindPa(0, Math.PI, 5), FACADE_CP_WINDWARD * q, 1e-9, 'windward');
+  close(facadeWindPa(0, 0, 5), FACADE_CP_LEEWARD * q, 1e-9, 'leeward');
+  close(facadeWindPa(0, Math.PI / 2, 5), FACADE_CP_SIDE * q, 1e-9, 'side');
+});
+
+test('an exit faces the weather and an internal opening does not', () => {
+  const studs = new Map<string, GridStud>([
+    ['room', { id: 'room', x: 0, y: 0, level: 'G' }],
+    ['east', { id: 'east', x: 3, y: 0, level: 'G' }],
+    ['west', { id: 'west', x: -3, y: 0, level: 'G' }],
+    ['in', { id: 'in', x: 0, y: 3, level: 'G' }],
+  ]);
+  const neighbors = new Map<string, readonly string[]>([
+    ['room', ['east', 'west', 'in']],
+    ['east', ['room']],
+    ['west', ['room']],
+    ['in', ['room']],
+  ]);
+  const facade = (member: string, outside: string) => {
+    if (member === 'room' && outside === 'east')
+      return { kind: 'exit' as const, exitKey: 'E', widthM: 2 };
+    if (member === 'room' && outside === 'west')
+      return { kind: 'exit' as const, exitKey: 'W', widthM: 2 };
+    return null;
+  };
+  const enc = enclosureFromGrid(['room'], studs, neighbors, [], 4, facade);
+  assert.ok(enc);
+  const vents = enc?.spec.vents ?? [];
+  assert.equal(vents.length, 3);
+  const spill = vents.find((vent) => vent.soffitM === 4);
+  assert.equal(spill?.windFace, undefined);
+  const faces = vents.filter((vent) => vent.soffitM === DOOR_SOFFIT_M);
+  assert.equal(faces.length, 2);
+  const a = faces[0]?.windFace;
+  const b = faces[1]?.windFace;
+  assert.ok(a != null && b != null);
+  assert.ok(Math.cos(a) * Math.cos(b) < 0, `faces ${a} and ${b} should oppose`);
+});
+
+function gustRoom(eastPa: number | undefined, westPa: number | undefined): LayerSpec {
+  const vent = (windPa: number | undefined) =>
+    windPa == null
+      ? { widthM: 2, sillM: 0, soffitM: 3 }
+      : { widthM: 2, sillM: 0, soffitM: 3, windPa };
+  return {
+    areaM2: 40,
+    ceilingM: 3,
+    vents: [vent(eastPa), vent(westPa)],
+    boundaries: [
+      { areaM2: 40, lining: LINING.concrete, place: 'floor' },
+      { areaM2: 40, lining: LINING.concrete, place: 'ceiling' },
+      { areaM2: 72, lining: LINING.concrete, place: 'wall' },
+    ],
+    fires: [],
+  };
+}
+
+function blow(spec: LayerSpec, steps: number) {
+  let state: ZoneState = { ...freshLayer(3), interfaceM: 1.5, upperK: AMBIENT_K + 40, sootG: 30 };
+  let eastIn = 0;
+  let eastOut = 0;
+  let westIn = 0;
+  let westOut = 0;
+  let eastHot = 0;
+  let westHot = 0;
+  for (let i = 0; i < steps; i++) {
+    const step = stepZone(state, spec, 0.2);
+    state = step.state;
+    eastIn += step.inKgByVent[0] ?? 0;
+    eastOut += step.outKgByVent[0] ?? 0;
+    westIn += step.inKgByVent[1] ?? 0;
+    westOut += step.outKgByVent[1] ?? 0;
+    eastHot += step.hotByVent[0]?.kg ?? 0;
+    westHot += step.hotByVent[1]?.kg ?? 0;
+  }
+  return { eastIn, eastOut, westIn, westOut, eastHot, westHot, upperK: state.upperK };
+}
+
+test('still air is the same vent whether or not the wind field is zero', () => {
+  const bare = blow(gustRoom(undefined, undefined), 20);
+  const zero = blow(gustRoom(0, 0), 20);
+  close(zero.eastOut, bare.eastOut, 1e-9, 'east out');
+  close(zero.westOut, bare.westOut, 1e-9, 'west out');
+  close(zero.eastIn, bare.eastIn, 1e-9, 'east in');
+  close(zero.westIn, bare.westIn, 1e-9, 'west in');
+  close(zero.upperK, bare.upperK, 1e-9, 'upper K');
+});
+
+test('wind drives cool air in the windward face and hot gas out the leeward face', () => {
+  const calm = blow(gustRoom(undefined, undefined), 40);
+  // East face +20 Pa is windward. West face −12 Pa is leeward.
+  const gust = blow(gustRoom(20, -12), 40);
+  assert.ok(gust.eastIn > gust.westIn, `windward in ${gust.eastIn}, leeward in ${gust.westIn}`);
+  assert.ok(
+    gust.westOut > gust.eastOut,
+    `leeward out ${gust.westOut}, windward out ${gust.eastOut}`,
+  );
+  assert.ok(
+    gust.westHot > gust.eastHot,
+    `leeward hot ${gust.westHot}, windward hot ${gust.eastHot}`,
+  );
+  assert.ok(gust.westHot > calm.westHot, `gust hot ${gust.westHot}, calm ${calm.westHot}`);
+  assert.ok(gust.upperK < calm.upperK, `gust ${gust.upperK} K, calm ${calm.upperK} K`);
+
+  const neighbour = {
+    interfaceM: 1.5,
+    upperK: AMBIENT_K + 40,
+    floorPressurePa: 0,
+    lowerK: AMBIENT_K,
+  };
+  const withWind = blow(
+    {
+      ...gustRoom(undefined, undefined),
+      vents: [
+        { widthM: 2, sillM: 0, soffitM: 3, outside: neighbour, windPa: 40 },
+        { widthM: 2, sillM: 0, soffitM: 3, outside: neighbour },
+      ],
+    },
+    10,
+  );
+  const noWind = blow(
+    {
+      ...gustRoom(undefined, undefined),
+      vents: [
+        { widthM: 2, sillM: 0, soffitM: 3, outside: neighbour },
+        { widthM: 2, sillM: 0, soffitM: 3, outside: neighbour },
+      ],
+    },
+    10,
+  );
+  close(withWind.eastOut, noWind.eastOut, 1e-9, 'neighbour ignores wind');
+  close(withWind.eastIn, noWind.eastIn, 1e-9, 'neighbour inflow ignores wind');
+});
+
+test('wind across two open sides carries smoke out the leeward opening', () => {
+  const wood = defaultLightFuel();
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const verts: Vec2[] = [
+    { x: 0, y: -3 },
+    { x: 7, y: -3 },
+    { x: 7, y: 3 },
+    { x: 0, y: 3 },
+  ];
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    barrier('n', -1, 1.5, 8, 1.5, false),
+    barrier('s', -1, -1.5, 8, -1.5, false),
+    barrier('w', 0.5, -3, 0.5, 3, true),
+    barrier('e', 6.5, -3, 6.5, 3, true),
+  ];
+  const run = (speedMs: number) => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init([
+      stud('inW', 2, 0),
+      stud('inE', 5, 0),
+      stud('outW', -1, 0, false),
+      stud('outE', 8, 0, false),
+    ]);
+    engine.setStoreyHeights({ G: 4 });
+    engine.setBuildingEnvelope(verts, []);
+    engine.setFuelCells(
+      new Map([
+        ['inW', wood],
+        ['inE', wood],
+      ]),
+    );
+    engine.setWind(speedMs, 0);
+    (engine as unknown as { fireSim: { ignite: (ids: string[]) => void } }).fireSim.ignite([
+      'inW',
+      'inE',
+    ]);
+    for (let t = 0; t < 200; t++) engine.step(1, walls, []);
+    return {
+      west: engine.studStates.get('outW')?.smoke ?? 0,
+      east: engine.studStates.get('outE')?.smoke ?? 0,
+    };
+  };
+  const calm = run(0);
+  const gust = run(8);
+  assert.ok(calm.west > 0 && calm.east > 0, `calm smoke west ${calm.west} east ${calm.east}`);
+  assert.ok(
+    Math.abs(calm.east - calm.west) <= 0.02 * Math.max(calm.east, calm.west),
+    `still air should split evenly, west ${calm.west} east ${calm.east}`,
+  );
+  assert.ok(
+    gust.east > gust.west * 5,
+    `leeward east ${gust.east} should hold more smoke than windward west ${gust.west}`,
   );
 });
 
