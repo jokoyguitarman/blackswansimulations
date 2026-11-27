@@ -208,6 +208,7 @@ export function runOfficeFrames(
     frames++;
     const dt = typeof frameDt === 'number' ? frameDt : frameDt();
     evac.setHazardStates(effects.studStates);
+    evac.setShaftColumns(effects.shaftColumns());
     evac.syncExits(exits);
     effects.setFuelCells(cells);
     effects.setStoreyHeights(heights);

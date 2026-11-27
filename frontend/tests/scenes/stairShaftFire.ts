@@ -306,6 +306,7 @@ function runScene(opts: Parameters<typeof runStairShaft>[0] & object): StairShaf
   const settled = new Set<number>();
   for (let step = 1; step <= durationS * fps; step += 1) {
     evac.setHazardStates(effects.studStates);
+    evac.setShaftColumns(effects.shaftColumns());
     evac.syncExits(exits);
     if (step === blastStep) {
       evac.triggerBlast(site, radius);

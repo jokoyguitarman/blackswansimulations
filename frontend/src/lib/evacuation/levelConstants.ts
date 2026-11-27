@@ -47,6 +47,8 @@ export const LEVEL = {
   STAIR_REVERSE_LANE_M: 0.76,
   /** Density at which stair movement stops, persons per m² of flight. */
   STAIR_JAM_DENSITY_PM2: 3.76,
+  /** Fall of stair speed with density, m² per person: S = k(1 − a D). */
+  STAIR_DENSITY_SPEED_COEFF: 0.266,
   GHOST_ALPHA: 0.15,
   MAX_LEVELS: 12,
 } as const;
@@ -130,16 +132,18 @@ export const LEVEL_SOURCES: Record<
   },
   DEAD_END_DOSE_MARGIN: {
     status: 'assumed',
-    ref: 'calibrated: stair shaft test, blasts at the centre, (4, 1.5), (-3, 0) and (-3, -2), and shafts open with the upper floor alarmed at T+240. The flight is breathed as a blend of its two landings by progress, and projected at crawl pace on the worse storey. With the trend and no margin, realised/projected FED for crawlers carrying 0.005 or more is 0.93 to 1.39 at the four blast sites and 1.16 to 1.58 for survivors of the T+240 scene. Two leaves headroom over 1.58. (Before PR 131, a present-state-only projection gave 2.7 to 4.3; not re-measured.)',
+    ref: 'calibrated: stair shaft test, blasts at the centre, (4, 1.5), (-3, 0) and (-3, -2), and shafts open with the upper floor alarmed at T+240. On a flight the gas is the landing blend and the heat is the shaft column (shaftColumns); the projection reads the worse storey at crawl pace. With the trend and no margin, realised/projected FED for crawlers carrying 0.005 or more is 0.75 to 1.14 at the four blast sites and 1.16 to 1.47 for survivors of the T+240 scene. Two leaves headroom over 1.47. (With the landing-blend heat of PR 131 these were 0.93 to 1.39 and 1.16 to 1.58; before PR 131, a present-state-only projection gave 2.7 to 4.3.)',
   },
+
   DEFEND_HORIZON_S: {
     status: 'assumed',
     ref: 'assumed: a receding five-minute look-ahead. The engine has no rescue to wait for, so the question each check asks is whether staying here would incapacitate within the next five minutes, not whether help arrives in time. The linear trend held for 300 s is uncalibrated as a dose; it is read only as at or over 1',
   },
   DEAD_END_OVER_LIMIT_CAP: {
     status: 'assumed',
-    ref: 'calibrated: stair shaft test, shafts open, upper floor alarmed at T+240. Crawls started at 0.59-1.29 got out (1.29 realised 0.91); every crawl started at 2.1 or more went down 30-31 s later on the ground floor, or on L1. The cap sits in that gap. At the worst realised/projected ratio (0.80), a crawl started at 1.5 could realise about 1.2: the cap trades a small incapacitation risk for crawls that save people. Applied only when a crawl starts',
+    ref: 'calibrated: stair shaft test, shafts open, upper floor alarmed at T+240, flight heat from the shaft column. Crawls started at 0.59-1.29 got out (1.29 realised 0.81); every crawl started at 2.1 or more went down, on the ground floor or on L1. The cap sits in that gap. At the worst realised/projected ratio (0.75), a crawl started at 1.5 could realise about 1.1: the cap trades a small incapacitation risk for crawls that save people. Applied only when a crawl starts',
   },
+
   DEAD_END_CRAWL_MAX_FED: {
     status: 'assumed',
     ref: 'assumed: half the ISO 13571 incapacitating dose, applied to the trend projection after DEAD_END_DOSE_MARGIN, so a crawl is refused once about a quarter of the dose is projected unscaled',
@@ -155,6 +159,10 @@ export const LEVEL_SOURCES: Record<
   STAIR_JAM_DENSITY_PM2: {
     status: 'assumed',
     ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing',
+  },
+  STAIR_DENSITY_SPEED_COEFF: {
+    status: 'assumed',
+    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer and Fruin): S = k(1 - a D), a = 0.266 m²/p. The engine takes k = 4 a × STAIR_SPECIFIC_FLOW = 1.075 m/s (the ch. 59 table gives 1.08 for a 7/11 stair), so the peak of S D is exactly STAIR_SPECIFIC_FLOW, at D = 1.88 p/m². Descent runs at the lower of STAIR_SPEED_DOWN (times posture) and S(D), so the slope binds above about 1.33 p/m². As in the hydraulic model, D is read on the uncongested branch, up to 1.88: above that the release cap and the flight storage hold people in a queue rather than slowing the walk',
   },
   GHOST_ALPHA: { status: 'assumed', ref: 'assumed: UX' },
   MAX_LEVELS: { status: 'assumed', ref: 'PR #23 LAYOUT_LIMITS.maxStoreys' },

@@ -84,11 +84,13 @@ import {
 } from '../rts/levels';
 import type { LevelDef, Stairwell } from '../rts/types';
 import {
+  flightAreaM2,
   flightFlowPerS,
   flightKey,
   flightStorage,
   flightWaitS,
   mergePick,
+  stairDensitySpeed,
   stairFlights,
   type FlightWait,
   type StairSource,
@@ -460,6 +462,8 @@ export class PolygonEvacuationEngine {
   /** Flights holding releases for want of room below, by flightKey, last step. */
   private flightFull = new Set<string>();
   private flightWaitCache: { at: number; waits: Map<string, FlightWait> } | null = null;
+  /** Shaft column temperature, kelvin, by `stairId|lowerLevel|upperLevel`. */
+  private shaftColumnK = new Map<string, number>();
   /** Queue places around each stair on each storey, by `stairId:level`. */
   private queueSlots = new Map<string, Vec2[]>();
   private pendingCapture: Matter.Body[] = [];
@@ -3457,12 +3461,15 @@ export class PolygonEvacuationEngine {
     for (const occ of this.stairPeople) {
       const stair = this.stairById(occ.stairId);
       if (!stair) continue;
-      // On a flight the air goes from the landing left to the landing ahead
-      // in step with the walk, so the shaft's gas from the next storey is
-      // breathed on the way down to it. At a door or on a landing it is
-      // that storey's stud.
+      // On a flight the gas goes from the landing left to the landing ahead
+      // in step with the walk; the shaft carries its fumes between the two.
+      // The heat is the shaft column's own temperature when the effects
+      // engine reports it, else the same landing blend. At a door or on a
+      // landing it is that storey's stud.
       let weights: Array<{ level: string; weight: number }> | undefined;
+      let columnC: number | undefined;
       if (occ.phase === 'travel') {
+        columnC = this.columnTempC(occ.stairId, occ.fromLevel, occ.toLevel);
         const p = Math.min(
           1,
           Math.max(0, (this.elapsed - occ.travelStart) / Math.max(1e-6, occ.travelDuration)),
@@ -3472,7 +3479,9 @@ export class PolygonEvacuationEngine {
           { level: occ.toLevel, weight: p },
         ];
       }
-      if (this.breathe(occ.label, stair.pos.x, stair.pos.y, dt, weights)) collapsed.push(occ);
+      if (this.breathe(occ.label, stair.pos.x, stair.pos.y, dt, weights, columnC)) {
+        collapsed.push(occ);
+      }
     }
     for (const occ of collapsed) {
       occ.toLevel = occ.fromLevel;
@@ -3509,7 +3518,8 @@ export class PolygonEvacuationEngine {
    * until the next breath under 1. The asphyxiant FED and the heat FED are
    * separate. Either one at 1 puts them down, and that stays. `weights`
    * blends the studs at (x, y) on several storeys, each dose by its weight;
-   * unset means the person's own storey.
+   * unset means the person's own storey. `heatTempC`, with weights, replaces
+   * the blended heat by convection at that gas temperature.
    */
   private breathe(
     ped: PedLabel,
@@ -3517,6 +3527,7 @@ export class PolygonEvacuationEngine {
     y: number,
     dt: number,
     weights?: ReadonlyArray<{ level: string; weight: number }>,
+    heatTempC?: number,
   ): boolean {
     if (ped.state === 'down' || ped.state === 'left_map') return false;
     if (!weights) {
@@ -3544,9 +3555,12 @@ export class PolygonEvacuationEngine {
         fed +=
           weight *
           (advanceFed(fed0, s.fumes, dt, s.oxygenVolumePercent, s.co2VolumePercent) - fed0);
-        heatFed += weight * (advanceHeatFed(heat0, s.headTempC, s.radiantKwM2, dt) - heat0);
+        if (heatTempC == null) {
+          heatFed += weight * (advanceHeatFed(heat0, s.headTempC, s.radiantKwM2, dt) - heat0);
+        }
         fec += weight * fecOf(s.fumes);
       }
+      if (heatTempC != null) heatFed = advanceHeatFed(heat0, heatTempC, undefined, dt);
       ped.fed = fed;
       ped.heatFed = heatFed;
       ped.fec = fec;
@@ -3644,10 +3658,17 @@ export class PolygonEvacuationEngine {
 
   private beginTravel(occ: FlightOccupant) {
     const from = this.levelDefs.find((l) => l.id === occ.fromLevel);
+    const cap = this.descentCapMps(occ, from);
     occ.phase = 'travel';
     occ.travelStart = this.elapsed;
+    if (!from) {
+      occ.travelDuration = 1;
+      return;
+    }
+    const free = stairTravelS(from, occ.dir);
+    const freeMps = (from.heightM * LEVEL.STAIR_TRAVEL_FACTOR) / free;
     if (!isPerson(occ)) {
-      occ.travelDuration = from ? stairTravelS(from, occ.dir) : 1;
+      occ.travelDuration = free * Math.max(1, freeMps / cap);
       return;
     }
     if (occ.label.fumeHeld) occ.label.posture = 'crawl';
@@ -3663,11 +3684,30 @@ export class PolygonEvacuationEngine {
           ? LEVEL.CROUCH_SPEED_FACTOR
           : 1;
     const factor = postureFactor * footing;
+    const speed = Math.min(freeMps * factor, cap);
+    const unhindered = Math.min(freeMps, cap);
     // The irritant crawl can clear on the stair. Remember the slowdown so
     // the remaining time returns to the pace they had without it.
     occ.fumeStretched = occ.label.fumeHeld === true;
-    occ.fumeStretch = occ.label.fumeHeld ? factor : undefined;
-    occ.travelDuration = from ? stairTravelS(from, occ.dir) / factor : 1;
+    occ.fumeStretch = occ.label.fumeHeld ? speed / unhindered : undefined;
+    occ.travelDuration = free * (freeMps / speed);
+  }
+
+  /**
+   * Most a descent can go at, m/s, from the density on the flight as this
+   * person steps on (themselves included): the SFPE hydraulic speed. Ascent
+   * is not capped.
+   */
+  private descentCapMps(occ: FlightOccupant, from: LevelDef | undefined): number {
+    if (occ.dir !== 'down' || !from) return Infinity;
+    const stair = this.stairById(occ.stairId);
+    if (!stair) return Infinity;
+    let on = 1;
+    for (const o of [...this.stairPeople, ...this.stairResponders]) {
+      if (o === occ || o.phase !== 'travel') continue;
+      if (o.stairId === occ.stairId && o.dir === 'down' && o.fromLevel === occ.fromLevel) on++;
+    }
+    return stairDensitySpeed(on / flightAreaM2(stair, from));
   }
 
   /** The storey after `level` on this stair going `dir`, if the stair goes on. */
@@ -3751,6 +3791,31 @@ export class PolygonEvacuationEngine {
     occ.enqueuedAt = this.elapsed;
     occ.travelStart = this.elapsed;
     occ.travelDuration = 1;
+  }
+
+  /**
+   * Shaft column temperatures from the effects engine
+   * (`SpatialEffectsEngine.shaftColumns()`). A flight with a column breathes
+   * its heat; one without keeps the landing blend.
+   */
+  setShaftColumns(
+    columns: ReadonlyArray<{
+      linkId: string;
+      lowerLevel: string;
+      upperLevel: string;
+      tempK: number;
+    }>,
+  ) {
+    this.shaftColumnK.clear();
+    for (const c of columns) {
+      this.shaftColumnK.set(`${c.linkId}|${c.lowerLevel}|${c.upperLevel}`, c.tempK);
+    }
+  }
+
+  private columnTempC(stairId: string, a: string, b: string): number | undefined {
+    const [lower, upper] = levelIndex(a) < levelIndex(b) ? [a, b] : [b, a];
+    const k = this.shaftColumnK.get(`${stairId}|${lower}|${upper}`);
+    return k == null ? undefined : k - 273.15;
   }
 
   /**

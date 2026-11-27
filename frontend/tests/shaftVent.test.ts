@@ -293,6 +293,44 @@ describe('shaft between two storeys', () => {
     assert.ok((engine.studStates.get('u0')?.fumes?.CO ?? 0) > 0, 'CO did not follow the smoke');
   });
 
+  test('shaftColumns reports the column temperature, read-only', () => {
+    const run = (read: boolean) => {
+      const { engine, walls } = shaftRoom();
+      const fuel = hotFuel();
+      engine.setFuelCells(
+        new Map([
+          ['g0', fuel],
+          ['g1', fuel],
+          ['u0', defaultLightFuel()],
+        ]),
+      );
+      (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g0', 'g1']);
+      const first = engine.shaftColumns();
+      let peakK = AMBIENT_K;
+      for (let t = 0; t < 120; t++) {
+        engine.step(1, walls, []);
+        if (read) peakK = Math.max(peakK, ...engine.shaftColumns().map((c) => c.tempK));
+      }
+      const states = JSON.stringify([...engine.studStates.entries()]);
+      return { first, peakK, states };
+    };
+    const read = run(true);
+    assert.deepEqual(read.first, [
+      {
+        linkId: 'stair',
+        kind: 'stair',
+        lowerStudId: 'g0',
+        upperStudId: 'u0',
+        lowerLevel: 'G',
+        upperLevel: 'L1',
+        tempK: AMBIENT_K,
+      },
+    ]);
+    assert.ok(read.peakK > AMBIENT_K + 20, `column peak ${read.peakK} K`);
+    // Calling the getter every step leaves the fire exactly as it was.
+    assert.equal(read.states, run(false).states);
+  });
+
   test('a deep upper layer sends smoke back down the stair', () => {
     const { engine, walls } = shaftRoom();
     const fuel = hotFuel();
