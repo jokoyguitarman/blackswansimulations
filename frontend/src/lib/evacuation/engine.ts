@@ -347,6 +347,10 @@ interface FlightOccupant {
   enqueuedAt: number;
   travelStart: number;
   travelDuration: number;
+  /** Walking pace on the flight before the density cap, m/s: free speed times posture and footing. */
+  ownMps?: number;
+  /** Pace the remaining travel time is set at: the lower of `ownMps` and the density cap. */
+  paceMps?: number;
 }
 
 interface StairOccupant extends FlightOccupant {
@@ -3501,26 +3505,23 @@ export class PolygonEvacuationEngine {
       this.arriveFromStair(occ);
     }
     for (const occ of this.stairPeople) {
-      if (occ.phase !== 'travel') continue;
+      if (occ.phase !== 'travel' || occ.ownMps == null) continue;
       if (occ.label.fumeHeld && !occ.fumeStretched && occ.label.posture !== 'crawl') {
-        const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
-        const remain = Math.max(0, occ.travelDuration - done);
         const stair = this.stairById(occ.stairId);
         const pos = stair?.pos ?? { x: 0, y: 0 };
         const slow =
           LEVEL.STAIR_CRAWL_FACTOR * this.irritantFooting(occ.label, pos.x, pos.y, occ.fromLevel);
-        occ.travelDuration = done + remain / slow;
+        occ.ownMps *= slow;
         occ.fumeStretch = slow;
         occ.label.posture = 'crawl';
         occ.fumeStretched = true;
       } else if (!occ.label.fumeHeld && occ.fumeStretched) {
-        const done = Math.min(occ.travelDuration, Math.max(0, this.elapsed - occ.travelStart));
-        const remain = Math.max(0, occ.travelDuration - done);
-        occ.travelDuration = done + remain * (occ.fumeStretch ?? LEVEL.STAIR_CRAWL_FACTOR);
+        occ.ownMps /= occ.fumeStretch ?? LEVEL.STAIR_CRAWL_FACTOR;
         occ.fumeStretched = false;
         occ.fumeStretch = undefined;
       }
     }
+    this.repaceFlights();
     this.advanceStairs();
     this.releaseStairs(dt);
   }
@@ -3608,7 +3609,7 @@ export class PolygonEvacuationEngine {
    * this direction has, which a reverse stream narrows. Floor and stair
    * streams waiting at the same head share the releases by
    * STAIR_MERGE_FLOOR_SHARE. Nobody steps on while the flight and the
-   * landing at its foot already hold the flight's storage.
+   * landing at its foot already hold the flight's storage on that width.
    */
   private releaseStairs(dt: number) {
     if (!this.levelPlan) return;
@@ -3637,7 +3638,7 @@ export class PolygonEvacuationEngine {
         const widthM = flightWidthM(stair, demandOf(own), demandOf(opp));
         const headway = 1 / flightFlowPerS(stair, demandOf(own), demandOf(opp));
         const fromDef = this.levelDefs.find((l) => l.id === f.from);
-        const storage = fromDef ? flightStorage(stair, fromDef) : Infinity;
+        const storage = fromDef ? flightStorage(stair, fromDef, widthM) : Infinity;
         const atFoot = loads.get(flightKey(stair.id, f.dir, f.to))?.stream ?? 0;
         let held = own.moving + atFoot;
         const floorQ = waiting.filter((o) => o.source !== 'stream');
@@ -3677,11 +3678,15 @@ export class PolygonEvacuationEngine {
     occ.travelStart = this.elapsed;
     if (!from) {
       occ.travelDuration = 1;
+      occ.ownMps = undefined;
+      occ.paceMps = undefined;
       return;
     }
     const free = stairTravelS(from, occ.dir);
     const freeMps = (from.heightM * LEVEL.STAIR_TRAVEL_FACTOR) / free;
     if (!isPerson(occ)) {
+      occ.ownMps = freeMps;
+      occ.paceMps = Math.min(freeMps, cap);
       occ.travelDuration = free * Math.max(1, freeMps / cap);
       return;
     }
@@ -3699,11 +3704,12 @@ export class PolygonEvacuationEngine {
           : 1;
     const factor = postureFactor * footing;
     const speed = Math.min(freeMps * factor, cap);
-    const unhindered = Math.min(freeMps, cap);
     // The irritant crawl can clear on the stair. Remember the slowdown so
-    // the remaining time returns to the pace they had without it.
+    // the pace returns to what they had without it.
     occ.fumeStretched = occ.label.fumeHeld === true;
-    occ.fumeStretch = occ.label.fumeHeld ? speed / unhindered : undefined;
+    occ.fumeStretch = occ.label.fumeHeld ? factor : undefined;
+    occ.ownMps = freeMps * factor;
+    occ.paceMps = speed;
     occ.travelDuration = free * (freeMps / speed);
   }
 
@@ -3724,6 +3730,53 @@ export class PolygonEvacuationEngine {
       if (o.stairId === occ.stairId && o.dir === 'down' && o.fromLevel === occ.fromLevel) on++;
     }
     return stairDensitySpeed(on / flightAreaM2(stair, from, widthM));
+  }
+
+  /**
+   * Hold everyone on a flight to the descent cap as the flight fills and
+   * empties, not just at the step on: each step the pace is the lower of
+   * their own and the SFPE speed at the density now on the descent's lane,
+   * and the remaining time is rescaled to it. Ascent has no cap, so only a
+   * change of their own pace (the irritant crawl) moves a climber.
+   */
+  private repaceFlights() {
+    const moving = [...this.stairPeople, ...this.stairResponders].filter(
+      (o) => o.phase === 'travel' && o.ownMps != null && o.paceMps != null,
+    );
+    if (moving.length === 0) return;
+    const descending = new Map<string, number>();
+    for (const o of moving) {
+      if (o.dir !== 'down') continue;
+      const key = flightKey(o.stairId, 'down', o.fromLevel);
+      descending.set(key, (descending.get(key) ?? 0) + 1);
+    }
+    const loads = descending.size > 0 ? this.flightLoads() : null;
+    const caps = new Map<string, number>();
+    for (const o of moving) {
+      let cap = Infinity;
+      if (o.dir === 'down' && loads) {
+        const key = flightKey(o.stairId, 'down', o.fromLevel);
+        const known = caps.get(key);
+        if (known != null) cap = known;
+        else {
+          const stair = this.stairById(o.stairId);
+          const from = this.levelDefs.find((l) => l.id === o.fromLevel);
+          if (stair && from) {
+            const own = loads.get(key) ?? NO_LOAD;
+            const opp = loads.get(flightKey(o.stairId, 'up', o.toLevel)) ?? NO_LOAD;
+            const widthM = flightWidthM(stair, demandOf(own), demandOf(opp));
+            cap = stairDensitySpeed((descending.get(key) ?? 1) / flightAreaM2(stair, from, widthM));
+          }
+          caps.set(key, cap);
+        }
+      }
+      const pace = Math.min(o.ownMps!, cap);
+      if (pace === o.paceMps) continue;
+      const done = Math.min(o.travelDuration, Math.max(0, this.elapsed - o.travelStart));
+      const remain = Math.max(0, o.travelDuration - done);
+      o.travelDuration = done + remain * (o.paceMps! / pace);
+      o.paceMps = pace;
+    }
   }
 
   /** The storey after `level` on this stair going `dir`, if the stair goes on. */
@@ -3905,7 +3958,9 @@ export class PolygonEvacuationEngine {
           moving: own.moving,
           responders: own.responders,
           flowPerS: flightFlowPerS(stair, demandOf(own), demandOf(opp)),
-          storage: fromDef ? flightStorage(stair, fromDef) : 0,
+          storage: fromDef
+            ? flightStorage(stair, fromDef, flightWidthM(stair, demandOf(own), demandOf(opp)))
+            : 0,
           counterflow: demandOf(opp) > 0,
           full: this.flightFull.has(key),
         });

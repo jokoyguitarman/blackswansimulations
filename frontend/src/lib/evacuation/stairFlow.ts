@@ -45,12 +45,17 @@ export function flightFlowPerS(sw: Stairwell, demand: number, opposing: number):
 }
 
 /**
- * The most a flight holds at once: its effective area (the same area the
- * descent density is read on) at the stopped density. Counts people walking
- * it and people waiting on the landing at its foot to go on.
+ * The most a flight holds at once: its area at the stopped density, on the
+ * same width the descent density is read on (the whole effective width, or
+ * the direction's lane under counterflow). Counts people walking it and
+ * people waiting on the landing at its foot to go on.
  */
-export function flightStorage(sw: Stairwell, from: LevelDef): number {
-  return Math.max(1, Math.floor(flightAreaM2(sw, from) * LEVEL.STAIR_JAM_DENSITY_PM2));
+export function flightStorage(
+  sw: Stairwell,
+  from: LevelDef,
+  widthM: number = stairEffectiveWidthM(sw),
+): number {
+  return Math.max(1, Math.floor(flightAreaM2(sw, from, widthM) * LEVEL.STAIR_JAM_DENSITY_PM2));
 }
 
 /**
