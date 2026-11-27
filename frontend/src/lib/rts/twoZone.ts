@@ -707,6 +707,44 @@ export interface VentOutside {
   fuelY?: number;
 }
 
+/**
+ * Wall pressure coefficients for a square plan, applied to the 90° sector
+ * the face owns. ASCE/SEI 7-22 Figure 27.3-1: windward wall +0.8, leeward
+ * wall −0.5 at L/B = 1, side walls −0.7. The figure is for wind normal to
+ * a wall. A face takes the windward value when the wind blows onto it
+ * within 45° of its outward normal, the leeward value when the wind blows
+ * off it within 45°, and the side value in between.
+ */
+export const FACADE_CP_WINDWARD = 0.8;
+export const FACADE_CP_LEEWARD = -0.5;
+export const FACADE_CP_SIDE = -0.7;
+
+/**
+ * Coefficient for one outdoor face. `windFaceRad` is the outward normal,
+ * 0 along +x, counter-clockwise. `windToRad` is the direction the wind
+ * travels, the same convention.
+ */
+export function facadeCp(windFaceRad: number, windToRad: number): number {
+  const from = windToRad + Math.PI;
+  const incidence = Math.atan2(Math.sin(from - windFaceRad), Math.cos(from - windFaceRad));
+  const a = Math.abs(incidence);
+  if (a <= Math.PI / 4 + 1e-12) return FACADE_CP_WINDWARD;
+  if (a >= (3 * Math.PI) / 4 - 1e-12) return FACADE_CP_LEEWARD;
+  return FACADE_CP_SIDE;
+}
+
+/**
+ * Wind pressure on an outdoor opening, Pa. p = Cp · ½ ρ∞ U², the form used
+ * for a vent in smoke control (Klote and Milke, Handbook of Smoke Control
+ * Engineering). U is the speed at the opening. There is no height profile.
+ * Positive pressure is on the windward side, so flow enters that face.
+ * Still air is 0.
+ */
+export function facadeWindPa(windFaceRad: number, windToRad: number, speedMs: number): number {
+  if (!(speedMs > 0) || !Number.isFinite(speedMs) || !Number.isFinite(windFaceRad)) return 0;
+  return facadeCp(windFaceRad, windToRad) * 0.5 * LEVEL.RHO_AIR * speedMs * speedMs;
+}
+
 export interface Vent {
   widthM: number;
   sillM: number;
@@ -726,6 +764,19 @@ export interface Vent {
    * itself still carries the hot stream.
    */
   imposedKgS?: number;
+  /**
+   * Gauge the ambient side holds because of wind, Pa. Subtracted from the
+   * inside pressure only when `outside` is absent, so a neighbour room is
+   * never overwritten. Positive is windward. Zero and absent are still air,
+   * and that path is the one the goldens run.
+   */
+  windPa?: number;
+  /**
+   * Outward normal of an opening that sees the weather, radians, 0 along +x.
+   * The engine turns this and the wind into `windPa`. An internal opening
+   * leaves it unset, so wind does not cross a partition.
+   */
+  windFace?: number;
 }
 
 /**
@@ -2351,6 +2402,7 @@ function addSliceFlows(
   outside: VentOutside | undefined,
   upperK: number,
   lowerK: number,
+  windPa: number,
 ): void {
   if (!(z1 > z0 + 1e-9)) return;
   const p0in = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
@@ -2358,12 +2410,18 @@ function addSliceFlows(
   const farLower =
     outside?.lowerK != null && outside.lowerK > 0 ? densityKgM3(outside.lowerK) : rhoA;
   const farUpper = outside ? densityKgM3(outside.upperK) : rhoU;
+  // A neighbour owns the far gauge. Wind is only the ambient side, and a
+  // zero is the same subtraction the vent made before wind existed.
   const p0 = outside
     ? p0in - pressureAt(z0, outside.interfaceM, outside.floorPressurePa, farLower, farUpper)
-    : p0in;
+    : windPa !== 0
+      ? p0in - windPa
+      : p0in;
   const p1 = outside
     ? p1in - pressureAt(z1, outside.interfaceM, outside.floorPressurePa, farLower, farUpper)
-    : p1in;
+    : windPa !== 0
+      ? p1in - windPa
+      : p1in;
   if (p0 * p1 < 0 && p1 !== p0) {
     const zN = z0 + ((z1 - z0) * (0 - p0)) / (p1 - p0);
     // Split whenever the neutral plane is strictly inside the slice.
@@ -2385,6 +2443,7 @@ function addSliceFlows(
         outside,
         upperK,
         lowerK,
+        windPa,
       );
       addSliceFlows(
         into,
@@ -2399,6 +2458,7 @@ function addSliceFlows(
         outside,
         upperK,
         lowerK,
+        windPa,
       );
       return;
     }
@@ -2534,6 +2594,7 @@ function accumulateVent(
       far,
       upperK,
       lowerK,
+      vent.shaft || vent.outside || vent.windPa == null || vent.windPa === 0 ? 0 : vent.windPa,
     );
   }
 }
@@ -4217,17 +4278,24 @@ export function enclosureFromGrid(
   const level = studs.get(memberIds[0] ?? '')?.level ?? 'G';
   const seenPairs = new Set<string>();
   const wallHits = new Map<string, GridWall>();
-  const doorLinks = new Map<string, Array<{ id: string; t: number }>>();
+  const doorLinks = new Map<string, Array<{ id: string; t: number; from: string }>>();
   const faceLinks = new Map<string, string[]>();
   const spillReceivers: string[] = [];
   const exitSlots = new Map<string, { widthM: number; receivers: string[] }>();
   const facadeWalls: number[] = [];
+  const exteriorWalls = new Set<string>();
   let spillWidth = 0;
   let boundaryLinks = 0;
+  let cx = 0;
+  let cy = 0;
+  let cn = 0;
 
   for (const id of memberIds) {
     const stud = studs.get(id);
     if (!stud || stud.level !== level) continue;
+    cx += stud.x;
+    cy += stud.y;
+    cn += 1;
     for (const nId of neighbors.get(id) ?? []) {
       if (members.has(nId)) continue;
       const other = studs.get(nId);
@@ -4277,9 +4345,11 @@ export function enclosureFromGrid(
           faceLinks.set(wall.id, faces);
           if (wall.hasDoor) {
             const across = doorLinks.get(wall.id) ?? [];
-            across.push({ id: nId, t });
+            across.push({ id: nId, t, from: id });
             doorLinks.set(wall.id, across);
           }
+          const shell = facade?.(id, nId);
+          if (shell?.kind === 'wall' || shell?.kind === 'exit') exteriorWalls.add(wall.id);
         }
       } else {
         const face = facade?.(id, nId) ?? null;
@@ -4332,13 +4402,37 @@ export function enclosureFromGrid(
     return best ? [best.id] : [];
   };
 
+  const outwardRad = (receivers: readonly string[]): number | undefined => {
+    if (!(cn > 0)) return undefined;
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const id of receivers) {
+      const stud = studs.get(id);
+      if (!stud) continue;
+      sx += stud.x;
+      sy += stud.y;
+      n += 1;
+    }
+    if (n === 0) return undefined;
+    const dx = sx / n - cx / cn;
+    const dy = sy / n - cy / cn;
+    if (dx * dx + dy * dy < 1e-8) return undefined;
+    return Math.atan2(dy, dx);
+  };
+  const ventWithFace = (vent: Vent, receivers: readonly string[], exposed: boolean): Vent => {
+    if (!exposed) return vent;
+    const windFace = outwardRad(receivers);
+    return windFace == null ? vent : { ...vent, windFace };
+  };
+
   const pushHead = (widthM: number, receivers: readonly string[]) => {
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
-    if (soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
-      vents.push({ widthM, sillM: 0, soffitM: soffit });
-    } else {
-      vents.push({ widthM, sillM: 0, soffitM: ceilingM });
-    }
+    const bare: Vent =
+      soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M
+        ? { widthM, sillM: 0, soffitM: soffit }
+        : { widthM, sillM: 0, soffitM: ceilingM };
+    vents.push(ventWithFace(bare, receivers, true));
     ventReceivers.push([...new Set(receivers)]);
   };
 
@@ -4349,8 +4443,15 @@ export function enclosureFromGrid(
       const lining = liningForMaterial(wall.material);
       const openWidth = length * GLASS_FALLOUT_AREA_FRACTION;
       if (openWidth > 0) {
-        vents.push({ widthM: openWidth, sillM: 0, soffitM: ceilingM });
-        ventReceivers.push([...new Set(faceLinks.get(wall.id) ?? [])]);
+        const receivers = [...new Set(faceLinks.get(wall.id) ?? [])];
+        vents.push(
+          ventWithFace(
+            { widthM: openWidth, sillM: 0, soffitM: ceilingM },
+            receivers,
+            exteriorWalls.has(wall.id) || facade == null,
+          ),
+        );
+        ventReceivers.push(receivers);
       }
       const kept = (length - openWidth) * ceilingM;
       if (kept > 0) boundaries.push({ id: wall.id, areaM2: kept, lining, place: 'wall' });
@@ -4363,8 +4464,11 @@ export function enclosureFromGrid(
     const nominal = wall.doorWidth > 0 ? wall.doorWidth : 0.9;
     const doorWidth = across.length > 0 ? Math.min(length, nominal * doorOpenFraction(wall)) : 0;
     const lining = liningForMaterial(wall.material);
+    const doorExposed = exteriorWalls.has(wall.id) || facade == null;
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
-      vents.push({ widthM: doorWidth, sillM: 0, soffitM: soffit });
+      vents.push(
+        ventWithFace({ widthM: doorWidth, sillM: 0, soffitM: soffit }, across, doorExposed),
+      );
       ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
       if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining, place: 'wall' });
@@ -4378,8 +4482,13 @@ export function enclosureFromGrid(
     }
   }
   if (spillWidth > 0) {
-    vents.push({ widthM: spillWidth, sillM: 0, soffitM: ceilingM });
-    ventReceivers.push([...new Set(spillReceivers)]);
+    const receivers = [...new Set(spillReceivers)];
+    // A spill next to a shell is an internal opening. Without a shell the
+    // open boundary is the weather, and it takes a facing.
+    vents.push(
+      ventWithFace({ widthM: spillWidth, sillM: 0, soffitM: ceilingM }, receivers, facade == null),
+    );
+    ventReceivers.push(receivers);
   }
   for (const slot of exitSlots.values()) pushHead(slot.widthM, slot.receivers);
 

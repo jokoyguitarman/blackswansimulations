@@ -23,6 +23,7 @@ import {
   MIN_LAYER_FIRE_KW,
   diameterForReleaseKw,
   enclosureFromGrid,
+  facadeWindPa,
   heskestadFlameHeightM,
   type FacadeOpening,
   formsSustainedLayer,
@@ -673,6 +674,13 @@ export class SpatialEffectsEngine {
    * That default is an assumption. See HOOD_FAN_WHEN.
    */
   private hoodFanWhen: HoodFanWhen = HOOD_FAN_WHEN;
+  /**
+   * Wind at the openings. Speed 0 is still air: outdoor vents keep the
+   * ambient gauge and the goldens do not move. Direction is where the wind
+   * is going, radians, 0 along +x.
+   */
+  private windSpeedMs = 0;
+  private windToRad = 0;
   /** Null keeps blast smoke on every affected stud. A set limits that source to fuel. */
   private fuelGate: Set<string> | null = null;
   /** Extinction from burning soot, kept apart from blast-event smoke. */
@@ -1077,6 +1085,18 @@ export class SpatialEffectsEngine {
    */
   setHoodFanWhen(when: HoodFanWhen): void {
     this.hoodFanWhen = when;
+  }
+
+  /**
+   * Wind at outdoor openings. `speedMs` is the speed at the face. `directionRad`
+   * is the direction the wind travels, 0 along +x, counter-clockwise. A face
+   * the wind blows onto takes Cp +0.8, the opposite face −0.5, the sides −0.7
+   * (ASCE/SEI 7-22 Figure 27.3-1, square plan). Speed 0, or a speed that is
+   * not a positive number, is still air.
+   */
+  setWind(speedMs: number, directionRad: number): void {
+    this.windSpeedMs = Number.isFinite(speedMs) && speedMs > 0 ? speedMs : 0;
+    this.windToRad = Number.isFinite(directionRad) ? directionRad : 0;
   }
 
   /** Close one jet, or every jet when the id is omitted. */
@@ -2317,7 +2337,11 @@ export class SpatialEffectsEngine {
     const memberSet = new Set(members);
     return vents.map((vent, i) => {
       const outside = neighbourVentOutside(receivers[i] ?? [], room, memberSet, rooms, gauges);
-      return outside ? { ...vent, outside } : vent;
+      if (outside) return { ...vent, outside };
+      if (!(this.windSpeedMs > 0) || vent.windFace == null) return vent;
+      const windPa = facadeWindPa(vent.windFace, this.windToRad, this.windSpeedMs);
+      if (windPa === 0) return vent;
+      return { ...vent, windPa };
     });
   }
 
