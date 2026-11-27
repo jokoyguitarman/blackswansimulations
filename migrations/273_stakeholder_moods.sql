@@ -5,6 +5,7 @@
 --   DROP FUNCTION IF EXISTS claim_mood_consequence(UUID, TEXT, TEXT, TEXT, JSONB);
 --   DROP FUNCTION IF EXISTS bump_mood_recovery(UUID, TEXT, TEXT);
 --   DROP FUNCTION IF EXISTS consume_mood_recovery(UUID, TEXT, TEXT);
+--   DROP FUNCTION IF EXISTS release_mood_consequence(UUID, TEXT, TEXT, TEXT);
 --   DROP TABLE IF EXISTS stakeholder_moods;
 BEGIN;
 
@@ -35,6 +36,7 @@ CREATE OR REPLACE FUNCTION claim_mood_consequence(
   p_patch JSONB
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   updated INT;
@@ -67,6 +69,7 @@ CREATE OR REPLACE FUNCTION bump_mood_recovery(
   p_scope_team TEXT
 ) RETURNS VOID
 LANGUAGE sql
+SET search_path = public, pg_temp
 AS $$
   UPDATE stakeholder_moods
   SET locks = jsonb_set(
@@ -87,6 +90,7 @@ CREATE OR REPLACE FUNCTION consume_mood_recovery(
   p_scope_team TEXT
 ) RETURNS VOID
 LANGUAGE sql
+SET search_path = public, pg_temp
 AS $$
   UPDATE stakeholder_moods
   SET locks = COALESCE(locks, '{}'::jsonb) - 'pending_recovery_steps',
@@ -96,10 +100,31 @@ AS $$
     AND scope_team = p_scope_team;
 $$;
 
+-- Removes one claimed id so a failed publish can be retried. inject_publications still blocks a double publish.
+CREATE OR REPLACE FUNCTION release_mood_consequence(
+  p_session_id UUID,
+  p_stakeholder_id TEXT,
+  p_scope_team TEXT,
+  p_consequence_id TEXT
+) RETURNS VOID
+LANGUAGE sql
+SET search_path = public, pg_temp
+AS $$
+  UPDATE stakeholder_moods
+  SET consequences_fired = array_remove(consequences_fired, p_consequence_id),
+      updated_at = NOW()
+  WHERE session_id = p_session_id
+    AND stakeholder_id = p_stakeholder_id
+    AND scope_team = p_scope_team
+    AND consequences_fired @> ARRAY[p_consequence_id];
+$$;
+
 REVOKE ALL ON FUNCTION claim_mood_consequence(UUID, TEXT, TEXT, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION release_mood_consequence(UUID, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION bump_mood_recovery(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION consume_mood_recovery(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION claim_mood_consequence(UUID, TEXT, TEXT, TEXT, JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION release_mood_consequence(UUID, TEXT, TEXT, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION bump_mood_recovery(UUID, TEXT, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION consume_mood_recovery(UUID, TEXT, TEXT) TO service_role;
 

@@ -13,7 +13,9 @@ import {
   formatTranscript,
   groupMissedCount,
   nextAttempt,
+  normalizeStoredOpening,
   openingForAttempt,
+  spokenOpeningFor,
   pickVoice,
   sweepTerminal,
   unseenMissedBadge,
@@ -342,6 +344,16 @@ describe('missed counts, voicemail and call-back', () => {
     const early = callbackScript(script, 10, 30);
     assert.equal(early.opening.includes(ALMOST_GIVEN_UP), false);
     assert.ok(openingForAttempt(script, 2, 'Pastor Daniel').startsWith("It's Pastor Daniel again"));
+    const rung = 'Finally. 9 minutes. Who is actually in charge?';
+    const reloaded = normalizeStoredOpening({
+      opening: rung,
+      redial_openings: ['old redial line'],
+      mood_opening_applied: true,
+    });
+    assert.equal(reloaded.mood_opening_applied, true);
+    assert.equal(reloaded.opening, rung);
+    assert.equal(reloaded.redial_openings, undefined);
+    assert.equal(spokenOpeningFor(reloaded, 3, 'Pastor Daniel'), rung);
   });
 });
 

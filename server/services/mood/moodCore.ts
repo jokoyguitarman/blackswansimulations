@@ -503,6 +503,35 @@ export function mergeLocks(current: MoodLockState, patch: MoodLockState): MoodLo
   };
 }
 
+/**
+ * Claim, then publish. A failed publish releases the claim so the next tick retries.
+ * A claim that is already held does not publish again; `inject_publications` is the
+ * second guard if a released claim is published twice.
+ */
+export function applyPublishInject(input: {
+  fired: readonly string[];
+  id: string;
+  publish: () => boolean;
+}): { fired: string[]; published: boolean; released: boolean } {
+  if (input.fired.includes(input.id)) {
+    return { fired: [...input.fired], published: false, released: false };
+  }
+  let ok = false;
+  try {
+    ok = input.publish();
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    return {
+      fired: input.fired.filter((item) => item !== input.id),
+      published: false,
+      released: true,
+    };
+  }
+  return { fired: [...input.fired, input.id], published: true, released: false };
+}
+
 /** A good reply adds a recovery step and leaves every other lock in place. */
 export function addPendingRecovery(locks: MoodLockState, steps = 1): MoodLockState {
   return {

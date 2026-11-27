@@ -106,7 +106,7 @@ function errorCode(err: unknown): string | null {
 
 function schemaMissing(err: unknown): boolean {
   const code = errorCode(err);
-  return code != null && (SCHEMA_CODES.has(code) || code === 'PGRST202');
+  return code != null && (SCHEMA_CODES.has(code) || code === 'PGRST202' || code === '42883');
 }
 
 function noteUnavailable(): void {
@@ -428,7 +428,8 @@ async function fireConsequence(
   const claimed = await claim(input, id, patch);
   if (!claimed) return;
   if (consequence.type === 'publish_inject') {
-    await publishConditional(input, consequence.inject_key);
+    const published = await publishConditional(input, consequence.inject_key);
+    if (!published) await releaseClaim(input, id);
     return;
   }
   if (consequence.type === 'stop_chains') {
@@ -533,6 +534,20 @@ async function claim(
     return false;
   }
   return data === true;
+}
+
+async function releaseClaim(
+  input: { sessionId: string; stakeholderId: string; scope: string },
+  id: string,
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc('release_mood_consequence', {
+    p_session_id: input.sessionId,
+    p_stakeholder_id: input.stakeholderId,
+    p_scope_team: input.scope,
+    p_consequence_id: id,
+  });
+  if (error && schemaMissing(error)) noteUnavailable();
+  else if (error) logger.warn({ err: error, id }, 'mood publish claim was not released');
 }
 
 async function consumeRecovery(sessionId: string, stakeholderId: string, scope: string): Promise<void> {

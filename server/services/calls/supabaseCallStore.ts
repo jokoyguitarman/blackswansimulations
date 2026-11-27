@@ -7,7 +7,7 @@ import {
   callTablesMissing,
 } from './callSchema.js';
 import type { CallStore, SimCall, StoredTurn } from './callTypes.js';
-import type { CallScript, CallStatus } from './callCore.js';
+import { normalizeStoredOpening, type CallScript, type CallStatus } from './callCore.js';
 import type { TargetMode } from './lineCore.js';
 
 let extraColumns = true;
@@ -387,12 +387,14 @@ function fromRow(row: Record<string, unknown>, fallback?: SimCall): SimCall {
 
 function normalizeScript(script: CallScript | null | undefined, fallback?: SimCall): SimCall['script'] {
   const base = (script ?? fallback?.script) as SimCall['script'] | undefined;
+  const opening = normalizeStoredOpening(base ?? {});
   return {
-    opening: base?.opening ?? '',
+    opening: opening.opening,
     beats: base?.beats ?? [],
     closing: base?.closing ?? 'Please call me back when you can.',
     language: base?.language ?? 'en',
-    redial_openings: base?.redial_openings,
+    redial_openings: opening.redial_openings,
+    mood_opening_applied: opening.mood_opening_applied,
     redial: base?.redial ?? { attempts: 1, interval_minutes: 2, voicemail_each: false, stop_on_contact: true },
     inject_title: base?.inject_title ?? '',
     inject_content: base?.inject_content ?? '',

@@ -10,6 +10,7 @@ import type { Stakeholder } from '../../lib/stakeholderContract.js';
 import {
   buildMoodBlock,
   addPendingRecovery,
+  applyPublishInject,
   claimConsequences,
   commitClaim,
   type ClaimState,
@@ -282,6 +283,41 @@ describe('consequences and verdict lock', () => {
     assert.equal(recovered.verdict, 'keep');
     assert.equal(recovered.pending_recovery_steps, 1);
     assert.deepEqual(recovered.grievance_append, ['They went to the press.']);
+  });
+
+  test('a failed publish releases the claim and the next attempt publishes once', () => {
+    let attempts = 0;
+    const failed = applyPublishInject({
+      fired: [],
+      id: 'gave_up:0',
+      publish: () => {
+        attempts += 1;
+        return false;
+      },
+    });
+    assert.equal(failed.published, false);
+    assert.equal(failed.released, true);
+    assert.deepEqual(failed.fired, []);
+    const retried = applyPublishInject({
+      fired: failed.fired,
+      id: 'gave_up:0',
+      publish: () => {
+        attempts += 1;
+        return true;
+      },
+    });
+    assert.equal(retried.published, true);
+    assert.deepEqual(retried.fired, ['gave_up:0']);
+    const again = applyPublishInject({
+      fired: retried.fired,
+      id: 'gave_up:0',
+      publish: () => {
+        attempts += 1;
+        return true;
+      },
+    });
+    assert.equal(again.published, false);
+    assert.equal(attempts, 2);
   });
 
   test('verdict_lock coerces cancel to keep', () => {

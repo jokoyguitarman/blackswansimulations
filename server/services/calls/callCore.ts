@@ -221,6 +221,42 @@ export function openingForAttempt(script: CallScript, attemptNo: number, callerN
   return `It's ${callerName} again — I tried you a few minutes ago. ${script.opening}`;
 }
 
+export interface StoredOpening {
+  opening?: string;
+  redial_openings?: string[];
+  mood_opening_applied?: boolean;
+}
+
+/** Fields `normalizeScript` must keep so a reloaded redial still speaks the rung line. */
+export function normalizeStoredOpening<T extends StoredOpening>(
+  script: T,
+): T & { opening: string; mood_opening_applied: boolean; redial_openings?: string[] } {
+  const applied = script.mood_opening_applied === true;
+  return {
+    ...script,
+    opening: script.opening ?? '',
+    mood_opening_applied: applied,
+    redial_openings: applied ? undefined : script.redial_openings,
+  };
+}
+
+/** After a reload, a rung opening replaces the "It's {name} again" redial line on every attempt. */
+export function spokenOpeningFor(script: StoredOpening & { opening: string }, attemptNo: number, callerName: string): string {
+  const normalized = normalizeStoredOpening(script);
+  if (normalized.mood_opening_applied && normalized.opening) return normalized.opening;
+  return openingForAttempt(
+    {
+      opening: normalized.opening,
+      beats: [],
+      closing: '',
+      language: 'en',
+      redial_openings: normalized.redial_openings,
+    },
+    attemptNo,
+    callerName,
+  );
+}
+
 export interface CallerCharacter {
   name: string;
   title?: string;

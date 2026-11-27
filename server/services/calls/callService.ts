@@ -54,7 +54,7 @@ import {
   groupMissedCount,
   LINE_DROPPED,
   nextAttempt,
-  openingForAttempt,
+  spokenOpeningFor,
   openingInstruction,
   parseRedial,
   pickVoice,
@@ -1748,8 +1748,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
 }
 
 function spokenOpening(call: SimCall): string {
-  if (call.script.mood_opening_applied && call.script.opening) return call.script.opening;
-  return openingForAttempt(call.script, call.attemptNo, call.callerName);
+  return spokenOpeningFor(call.script, call.attemptNo, call.callerName);
 }
 
 function callKey(call: SimCall): string {
