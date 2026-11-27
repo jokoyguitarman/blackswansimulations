@@ -647,6 +647,18 @@ export class SpatialEffectsEngine {
    * parcel takes its place. The hold is mass still in the building.
    */
   shellNetKg = 0;
+  /**
+   * Extra pressure books the oxygen heat solve has used since init.
+   * The first book of a slice is not counted. Diagnostics only.
+   */
+  heatSolvePasses = 0;
+  /** Most extra books one slice has used since init. */
+  heatSolvePeak = 0;
+  /**
+   * Heat an oxygen-solve jump left out of the temperature step, kJ,
+   * since init. The oxygen answer still covered it.
+   */
+  jumpUnbackedKj = 0;
   /** Last preview's shaft net, kg/s into the room, by room and link. */
   private previewNets: { room: string; key: string; netKgS: number }[] = [];
   /** Agreed shaft net for the real solve, kg/s into the room. */
@@ -781,6 +793,9 @@ export class SpatialEffectsEngine {
     this.shaftFumeTo.clear();
     this.ventNetKg = 0;
     this.shellNetKg = 0;
+    this.heatSolvePasses = 0;
+    this.heatSolvePeak = 0;
+    this.jumpUnbackedKj = 0;
     this.sootK.clear();
     this.blockedWalls = null;
     this.blockedGen = -1;
@@ -2828,6 +2843,11 @@ export class SpatialEffectsEngine {
       groups,
     );
     const stepped = stepZone(state, planned.spec, dt, sootGPerS, jet, hold);
+    if (commit) {
+      this.heatSolvePasses += stepped.heatSolvePasses;
+      if (stepped.heatSolvePeak > this.heatSolvePeak) this.heatSolvePeak = stepped.heatSolvePeak;
+      this.jumpUnbackedKj += stepped.jumpUnbackedKj;
+    }
     if (commit && stepped.bareSootG > 0) {
       this.orificeSootG.set(room, (this.orificeSootG.get(room) ?? 0) + stepped.bareSootG);
     }

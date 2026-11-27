@@ -3279,6 +3279,21 @@ export function stepZone(
    * given; this is the part that did not become temperature.
    */
   clippedKj: number;
+  /**
+   * Extra pressure-book evaluations the oxygen heat solve used, summed
+   * over this step's slices. The first book is not counted. One starved
+   * slice can take 20.
+   */
+  heatSolvePasses: number;
+  /** Most extra books one slice of this step used. */
+  heatSolvePeak: number;
+  /**
+   * Heat an oxygen-solve jump left out of the temperature step, kJ. The
+   * low end of the bracket is what entered. This is the oxygen answer at
+   * that end minus that heat, so it is heat the oxygen would still have
+   * covered. Zero when every slice landed within 1%.
+   */
+  jumpUnbackedKj: number;
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -3332,6 +3347,9 @@ function stepZoneNow(
   let lossSlices = 0;
   let convectedKj = 0;
   let clippedKj = 0;
+  let heatSolvePasses = 0;
+  let heatSolvePeak = 0;
+  let jumpUnbackedKj = 0;
   let left = Math.max(0, dt);
   let lastFraction = state.lastBurnFraction ?? 1;
   const gainKjM2 = hold && hold.size > 0 ? ({} as Record<string, number>) : undefined;
@@ -3753,6 +3771,7 @@ function stepZoneNow(
     // search keeps a real bracket: residual want − heat is positive at the
     // low end and negative at the pre-scale heat. The secant stays inside
     // that bracket. A stuck end is halved so a steep slope still moves.
+    let slicePasses = 0;
     if (!close(qTry, want) && want < qTry) {
       let hi = qTry;
       let hiW = want;
@@ -3777,6 +3796,7 @@ function stepZoneNow(
         if (!loKnown && !(next >= 0 && next < hi)) next = 0.5 * hi;
         fired = advanceWithFireKw(advance, next, spec, temp, slice);
         settled = backed(fired);
+        slicePasses += 1;
         qTry = fired.qFireKw;
         want = q * settled.burnedFraction;
         if (want >= qTry) {
@@ -3799,6 +3819,7 @@ function stepZoneNow(
           const next = 0.5 * (lo + hi);
           fired = advanceWithFireKw(advance, next, spec, temp, slice);
           settled = backed(fired);
+          slicePasses += 1;
           qTry = fired.qFireKw;
           want = q * settled.burnedFraction;
           if (want >= qTry) {
@@ -3820,8 +3841,11 @@ function stepZoneNow(
         settled = loSettled;
         qTry = lo;
         want = loW;
+        jumpUnbackedKj += Math.max(0, want - qTry) * slice;
       }
     }
+    heatSolvePasses += slicePasses;
+    if (slicePasses > heatSolvePeak) heatSolvePeak = slicePasses;
     oxygenShortKg += settled.shortKg;
     if (settled.scaled) burnScaled = true;
     burnedFraction = settled.burnedFraction;
@@ -4066,6 +4090,9 @@ function stepZoneNow(
     outKT: stepOutKT,
     convectedKj,
     clippedKj,
+    heatSolvePasses,
+    heatSolvePeak,
+    jumpUnbackedKj,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }
