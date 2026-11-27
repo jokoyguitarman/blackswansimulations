@@ -966,8 +966,12 @@ export class SpatialEffectsEngine {
    * Shaft pairs for stairs and lifts. `widthM` and `heightByLevel` are optional;
    * omitted values use the 1.2 m stair and the 4 m storey. The vent uses the
    * landing door and the storey height, not the old 400 K mix. A blocked
-   * stair or lift is shut: no vent, no column, no landing flux. A shut door
-   * is a wall in the layer solve, so a shut shaft gets no leakage either.
+   * stair or lift has its doors shut: no vent, no column, no landing flux.
+   * Gas would have to leak through two closed landing doors in series. Each
+   * leaks about 0.01–0.02 m² of gaps against a 2.4 m² open door, so the
+   * pair passes roughly 1e-4 of the open flow, below anything this step
+   * resolves. The seal does not come from wall treatment: walls still leak
+   * SMOKE_WALL_LEAK in the soot exchange.
    */
   setVerticalLinks(links: ShaftLink[]) {
     this.verticalPairs = shaftPairs([...this.studIndex.values()], links).filter(

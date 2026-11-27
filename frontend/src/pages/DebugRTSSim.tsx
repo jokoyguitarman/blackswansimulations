@@ -8467,13 +8467,16 @@ function StairEditor({
           className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
         />
       </label>
-      <label className="flex items-center gap-2 text-slate-300">
+      <label
+        className="flex items-center gap-2 text-slate-300"
+        title="Landing doors shut: nobody walks it and no smoke or heat passes between storeys"
+      >
         <input
           type="checkbox"
           checked={stair.blocked}
           onChange={(e) => onChange({ ...stair, blocked: e.target.checked })}
         />
-        Blocked
+        Blocked (doors shut)
       </label>
     </div>
   );
