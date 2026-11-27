@@ -1,11 +1,12 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import type { CommsState } from '../ledger/injectLedgerCore.js';
 import { logger } from '../../lib/logger.js';
 import { getWebSocketService } from '../websocketService.js';
 import { parsePlayerRoles, planReroute, shouldPromptUnreachable, timedFallbackDue, validateRoleAssignment, type PendingContact, type PlayerRoleDef } from './roleCore.js';
 import { readFallback, type RoleFallback } from '../calls/lineCore.js';
 import { isRolesSchemaMissing, rolesFeatureReady } from './rolesSchema.js';
 import { inBootGrace, presenceEnginesOn, sessionUserOnline } from '../presence/sessionPresenceService.js';
-import { loadCallPolicy } from '../calls/lineService.js';
+import { listLines, loadCallPolicy } from '../calls/lineService.js';
 
 export interface RolePlayerView {
   user_id: string;
@@ -180,6 +181,31 @@ export async function rerouteRole(input: {
   });
   prompted.delete(promptKey(input.sessionId, input.roleId));
   return { ok: true, rerouted: plan.rerouted.length };
+}
+
+export async function attachCoverageFacts(sessionId: string, state: CommsState): Promise<CommsState> {
+  if (!(await rolesFeatureReady())) return state;
+  const [lines, roles] = await Promise.all([listLines(sessionId), listRoleAssignments(sessionId)]);
+  const now = Date.now();
+  state.line_runtime = lines.map((line) => ({
+    team: line.team_name,
+    online_holders: line.holders.filter((holder) => holder.online && !holder.is_bot).length,
+    unattended_minutes: line.unattended_since
+      ? Math.max(0, Math.floor((now - Date.parse(line.unattended_since)) / 60_000))
+      : null,
+    reassigned: line.holders.some((holder) => holder.source === 'auto_reassign'),
+  }));
+  state.role_runtime = roles.map((role) => {
+    const since = offlineSinceMs.get(promptKey(sessionId, role.role_id));
+    const offline = role.players.length > 0 && role.players.every((player) => !player.online);
+    return {
+      role_id: role.role_id,
+      assigned: role.players.length > 0,
+      fallback_used: false,
+      offline_minutes: offline && since != null ? (now - since) / 60_000 : offline ? 0 : null,
+    };
+  });
+  return state;
 }
 
 export async function sweepRoles(sessionId: string): Promise<void> {

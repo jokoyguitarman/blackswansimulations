@@ -927,6 +927,11 @@ export class InjectSchedulerService {
     try {
       // Recomputed every tick for the evaluator. Not written to sessions.current_state.
       nextState.comms_state = await loadCommsState(session.id, elapsedMinutes);
+      const { attachCoverageFacts } = await import('./roles/roleService.js');
+      nextState.comms_state = await attachCoverageFacts(
+        session.id,
+        nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>>,
+      );
     } catch (err) {
       logger.warn({ err, sessionId: session.id }, 'comms_state load failed');
     }
