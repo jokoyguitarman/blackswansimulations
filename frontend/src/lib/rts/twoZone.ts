@@ -3723,316 +3723,319 @@ function stepZoneNow(
     // pressure book. The temperature step has to be given that
     // oxygen-backed heat, so a slice the oxygen cuts is solved again.
     const backed = (fired: LayerAdvance) => {
-    const rhoNew = densityKgM3(fired.tempNext);
-    const vExchange = upperLayerVolumeM3(spec, fired.zNext);
-    const lowerNext = fired.lowerK;
-    const gained =
-      slice > 0
-        ? (gasMassKg(spec, fired.zNext, fired.tempNext, lowerNext) -
-            gasMassKg(spec, z, temp, lower)) /
-          slice
-        : 0;
-    // Jets the orifice missed, and fuel that stays in the layer, are
-    // sources. They sit in the upper mass and are not a vent flow.
-    const held = gained - fired.massRateKgS;
-    const plan = (extraHotKgS: number) => {
-      const upperGainKgS =
-        fired.plumeKgS +
-        fired.mEnt +
-        (depositKgS > 0 ? depositKgS : 0) +
-        Math.max(0, exchange.farUpperInKgS - (depositKgS > 0 ? depositKgS : 0)) +
-        fired.storeKgS -
-        exchangeHot -
-        extraHotKgS -
-        exchange.fanUpperKgS;
-      const mUpperNew = Math.max(0, fired.mass + upperGainKgS * slice);
-      const vTarget = rhoNew > 1e-9 ? mUpperNew / rhoNew : vExchange;
-      const deltaV = vTarget - vExchange;
-      const heating = deltaV > 0;
-      let volumeRate = fired.massRateKgS;
-      let zExp = fired.zNext;
-      if (heating) {
-        const area = Math.max(sectionAreaM2(spec, fired.zNext), 1e-6);
-        zExp = fired.zNext - deltaV / area;
-        const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
-        let predicted = gained;
-        if (slice > 0 && !hitsClamp) {
-          predicted =
-            (gasMassKg(spec, zExp, fired.tempNext, lowerNext) - gasMassKg(spec, z, temp, lower)) /
-            slice;
-        } else if (slice > 0) {
-          // The floor clamp will stop the interface. The rate still carries
-          // the unclipped volume, which is the known residual once the layer
-          // is on the floor.
-          const vStart = upperLayerVolumeM3(spec, z);
-          const lowerStart = spec.crossSection
-            ? volumeBetweenM3(spec, 0, z)
-            : Math.max(spec.areaM2, 0) * Math.max(z, 0);
-          const lowerFinal = lowerStart - (vTarget - vStart);
-          const massFinal = mUpperNew + densityKgM3(lowerNext) * lowerFinal;
-          predicted = (massFinal - gasMassKg(spec, z, temp, lower)) / slice;
+      const rhoNew = densityKgM3(fired.tempNext);
+      const vExchange = upperLayerVolumeM3(spec, fired.zNext);
+      const lowerNext = fired.lowerK;
+      const gained =
+        slice > 0
+          ? (gasMassKg(spec, fired.zNext, fired.tempNext, lowerNext) -
+              gasMassKg(spec, z, temp, lower)) /
+            slice
+          : 0;
+      // Jets the orifice missed, and fuel that stays in the layer, are
+      // sources. They sit in the upper mass and are not a vent flow.
+      const held = gained - fired.massRateKgS;
+      const plan = (extraHotKgS: number) => {
+        const upperGainKgS =
+          fired.plumeKgS +
+          fired.mEnt +
+          (depositKgS > 0 ? depositKgS : 0) +
+          Math.max(0, exchange.farUpperInKgS - (depositKgS > 0 ? depositKgS : 0)) +
+          fired.storeKgS -
+          exchangeHot -
+          extraHotKgS -
+          exchange.fanUpperKgS;
+        const mUpperNew = Math.max(0, fired.mass + upperGainKgS * slice);
+        const vTarget = rhoNew > 1e-9 ? mUpperNew / rhoNew : vExchange;
+        const deltaV = vTarget - vExchange;
+        const heating = deltaV > 0;
+        let volumeRate = fired.massRateKgS;
+        let zExp = fired.zNext;
+        if (heating) {
+          const area = Math.max(sectionAreaM2(spec, fired.zNext), 1e-6);
+          zExp = fired.zNext - deltaV / area;
+          const hitsClamp = zExp < 0.05 || zExp > spec.ceilingM - 0.02;
+          let predicted = gained;
+          if (slice > 0 && !hitsClamp) {
+            predicted =
+              (gasMassKg(spec, zExp, fired.tempNext, lowerNext) - gasMassKg(spec, z, temp, lower)) /
+              slice;
+          } else if (slice > 0) {
+            // The floor clamp will stop the interface. The rate still carries
+            // the unclipped volume, which is the known residual once the layer
+            // is on the floor.
+            const vStart = upperLayerVolumeM3(spec, z);
+            const lowerStart = spec.crossSection
+              ? volumeBetweenM3(spec, 0, z)
+              : Math.max(spec.areaM2, 0) * Math.max(z, 0);
+            const lowerFinal = lowerStart - (vTarget - vStart);
+            const massFinal = mUpperNew + densityKgM3(lowerNext) * lowerFinal;
+            predicted = (massFinal - gasMassKg(spec, z, temp, lower)) / slice;
+          }
+          volumeRate = predicted - held;
         }
-        volumeRate = predicted - held;
-      }
-      return { heating, volumeRate, zExp };
-    };
-    let planned = plan(0);
-    let limited = oxygenLimitedBurn(
-      spec,
-      z,
-      temp,
-      yL,
-      yU,
-      slice,
-      depositKgS > 0,
-      () => planned.volumeRate,
-      lower,
-    );
-    {
-      let hot1 = 0;
-      for (const rate of limited.hotOutByVentKgS) hot1 += rate ?? 0;
-      const extra = Math.max(0, hot1 - exchangeHot);
-      if (planned.heating && extra > 0) {
-        planned = plan(extra);
-        limited = oxygenLimitedBurn(
-          spec,
-          z,
-          temp,
-          yL,
-          yU,
-          slice,
-          depositKgS > 0,
-          () => planned.volumeRate,
-          lower,
-        );
-      }
-    }
-    const solveAt = (rateKgS: number) =>
-      oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0, () => rateKgS, lower);
-    const hotOf = (flows: LimitedBurn) => {
-      let hot = 0;
-      for (const rate of flows.hotOutByVentKgS) hot += rate ?? 0;
-      return hot;
-    };
-    const rootRelieved = (flows: LimitedBurn, rateKgS: number) => {
-      const net = flows.inKgS - flows.outKgS - flows.fanUpperKgS - flows.fanLowerKgS;
-      return Math.abs(net - rateKgS) <= 0.05 + 0.01 * Math.abs(rateKgS);
-    };
-    // Lower-layer volume after `flows`, and the mass the vents must carry
-    // so the geometric total matches it. The inflow is the root's, with the
-    // deposited jet left out: the same stream the exchange had been
-    // crediting, which is larger than the slice that enters below the
-    // interface whenever the neutral plane sits above it. On the floor the
-    // plume may only take that inflow plus the mass still above the floor.
-    // Heskestad with the virtual origin below the fuel still asks for the
-    // whole flame at a 5 cm interface; the rest is upper gas recirculating,
-    // and it moves no mass. Any other shortfall keeps the unclipped volume.
-    const bookOf = (flows: LimitedBurn, hot: number) => {
-      const lowerOut = Math.max(0, flows.outKgS - hot);
-      const makeup = Math.max(0, flows.inKgS - flows.farUpperInKgS);
-      const below = flows.lowerInKgS;
-      const rho0 = densityKgM3(lower);
-      const v0 = lowerVolumeM3(spec, z);
-      const m0 = rho0 * v0;
-      const aboveM3 = spec.crossSection
-        ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, z)
-        : Math.max(spec.areaM2, 0) * Math.max(0, z - INTERFACE_FLOOR_M);
-      const aboveKgS = slice > 0 ? (rho0 * aboveM3) / slice : 0;
-      const plumeCap = Math.max(0, makeup) + aboveKgS;
-      const plumeDraw = Math.min(fired.plumeKgS, plumeCap);
-      const recirc = fired.plumeKgS - plumeDraw;
-      // The exchange cooled the upper layer as if the whole plume were cold
-      // lower air. Recirculated upper gas does not. The studs record only
-      // the oxygen in the draw that remains.
-      let tempNext = fired.tempNext;
-      let burnScale = 1;
-      let supplyKw = 0;
-      if (recirc > 0 && fired.plumeKgS > 0) {
-        const freshScale = plumeDraw / fired.plumeKgS;
-        const y = yL > 0 ? yL : 0;
-        // The plume cap is the lower layer. The bare far stream is not in
-        // that layer, but the flame still takes its oxygen, at its own
-        // fraction. Leaving it out of the cap is what starved the shop.
-        const deposited = depositKgS > 0 ? depositKgS : 0;
-        const bare = Math.max(0, flows.farUpperInKgS - deposited);
-        const yStream =
-          flows.farUpperInKgS > 1e-9 ? Math.max(0, flows.farUpperO2KgS) / flows.farUpperInKgS : y;
-        const streamTaken = Math.min(bare, recirc);
-        if (fired.burn.burnedKw > 0) {
-          // Across the clamp fade the plume above the floor is still the
-          // room's layer. That oxygen is already on the burn, with the
-          // inflow taken out of it, so the stream term does not count it again.
-          const layerKw =
-            floorLayerWeight(z) > 0 ? fired.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG : 0;
-          const capacity =
-            oxygenCapacityKw(fired.burn.lowerAirKgS * freshScale, y) +
-            oxygenCapacityKw(streamTaken, yStream) +
-            layerKw;
-          const newBurned = Math.min(fired.burn.burnedKw, capacity);
-          burnScale = newBurned / fired.burn.burnedKw;
-          supplyKw =
-            oxygenSupplyKw(fired.burn.lowerAirKgS * freshScale, y) +
-            oxygenSupplyKw(streamTaken, yStream);
-        }
-        if (fired.mass > 1e-6) {
-          tempNext += (recirc * Math.max(0, temp - lower) * slice) / fired.mass;
-          if (tempNext > 1500) tempNext = 1500;
-          if (tempNext < AMBIENT_K) tempNext = AMBIENT_K;
-        }
-      }
-      const flowKgS = makeup - lowerOut - plumeDraw - flows.fanLowerKgS - fired.mEnt;
-      const tin = below > 0 ? flows.lowerInK : lower;
-      let dTl =
-        (-fired.lowerLossKw + below * CP_KJ_KGK * (tin - lower)) /
-        (Math.max(m0, 1e-6) * CP_KJ_KGK);
-      if (dTl > 400) dTl = 400;
-      if (dTl < -400) dTl = -400;
-      const lowerNext = Math.min(1500, Math.max(AMBIENT_K, lower + dTl * slice));
-      const rho1 = densityKgM3(lowerNext);
-      let vEnd = (m0 + flowKgS * slice) / Math.max(rho1, 1e-9);
-      if (depositKgS > 0) {
-        const unmatched = Math.max(0, depositKgS - flows.farUpperInKgS);
-        vEnd -= (unmatched * slice) / Math.max(densityKgM3(jetT), 1e-6);
-      }
-      if (fired.storeKgS > 0) {
-        vEnd -= (fired.storeKgS * slice) / Math.max(densityKgM3(tempNext), 1e-6);
-      }
-      const area = Math.max(spec.areaM2, 1e-9);
-      let zFlow = vEnd > 0 ? interfaceForLowerVolume(spec, vEnd) : vEnd / area;
-      const capZ = 2 * slice;
-      if (zFlow > z + capZ) zFlow = z + capZ;
-      if (zFlow < z - capZ) zFlow = z - capZ;
-      const floor = 0.05;
-      const ceil = spec.ceilingM - 0.02;
-      const zApplied = Math.min(ceil, Math.max(floor, zFlow));
-      // A jet that would push the interface through the floor cannot store
-      // that volume. The root balances the clamped room, and the inflow the
-      // layer cannot hold leaves through the other vents.
-      const throughFloor = depositKgS > 0 && zFlow < floor && spec.vents.some((vent) => vent.shaft);
-      const vMass = throughFloor
-        ? lowerVolumeM3(spec, zApplied)
-        : zFlow < floor
-          ? area * zFlow
-          : lowerVolumeM3(spec, zApplied);
-      const upperMass = densityKgM3(tempNext) * upperLayerVolumeM3(spec, zApplied);
-      const lowerMass = densityKgM3(lowerNext) * vMass;
-      const massRateKgS =
-        (upperMass + lowerMass - gasMassKg(spec, z, temp, lower)) / Math.max(slice, 1e-9);
-      return {
-        z: zApplied,
-        lowerK: lowerNext,
-        lowerInKgS: makeup,
-        lowerOutKgS: lowerOut,
-        massRateKgS,
-        plumeKgS: plumeDraw,
-        tempNext,
-        burnScale,
-        supplyKw,
+        return { heating, volumeRate, zExp };
       };
-    };
-    let rate = planned.volumeRate;
-    let hotSum = hotOf(limited);
-    let book = bookOf(limited, hotSum);
-    for (let pass = 0; pass < 3; pass++) {
-      if (!rootRelieved(limited, rate)) break;
-      if (Math.abs(book.massRateKgS - rate) <= 0.02) break;
-      const next = solveAt(book.massRateKgS);
-      if (!rootRelieved(next, book.massRateKgS)) break;
-      rate = book.massRateKgS;
-      limited = next;
-      hotSum = hotOf(limited);
-      book = bookOf(limited, hotSum);
-    }
-    const burn = fired.burn;
-    burnedFraction = fired.burnedFraction * book.burnScale;
-    if (book.burnScale < 1 && fired.plumeKgS > 0) {
-      phi = equivalenceRatio(fired.burn.prescribedKw, book.supplyKw);
-    } else {
-      phi = fired.phi;
-    }
-    neutralM = limited.neutralM;
-    floorPressurePa = limited.floorPressurePa;
-    const mass = fired.mass;
-    const plume = book.plumeKgS;
-    // Oxygen, soot and fuel follow the root's flows. Hot gas and the
-    // upper fan leave the upper layer. The lower layer gains the root's
-    // vent inflow, with a deposited jet left out, and loses the outflow
-    // from below the interface, the plume and the spill.
-    const lowerOutKgS = book.lowerOutKgS;
-    const lowerInKgS = book.lowerInKgS;
-    outByVent = limited.outByVentKgS;
-    const yF = fired.yF;
-    let unburnedKgS = fired.unburnedKgS;
-    const incomingFuelKgS = fired.incomingFuelKgS;
-    const burnedFuelKgS = fired.burnedFuelKgS;
-    const mEnt = fired.mEnt;
-    let extraKgS = fired.extraKgS;
-    let storeKgS = fired.storeKgS;
-    // Pyrolysis follows the fresh air that remains. The exchange still
-    // carries the larger plume's fuel, and that fuel is not in the room.
-    if (book.burnScale < 1 && fired.plumeKgS > 0) {
-      const pyrolysis = cappedPyrolysisKw(fired.burn.prescribedKw, book.supplyKw);
-      const newBurned = fired.burn.burnedKw * book.burnScale;
-      unburnedKgS = pyrolysis > newBurned ? (pyrolysis - newBurned) / WOOD_HEAT_KJ_KG : 0;
-      extraKgS = hotSum > 0 ? unburnedKgS : 0;
-      storeKgS = hotSum > 0 ? 0 : unburnedKgS;
-    }
-    const lowerVolF = spec.crossSection ? volumeBetweenM3(spec, 0, z) : spec.areaM2 * Math.max(z, 0);
-    const mLF = densityKgM3(lower) * lowerVolF;
-    const slicePlumeF = plume * slice;
-    const farKgSF = limited.farUpperInKgS;
-    const bareKgSF = Math.max(0, farKgSF - (depositKgS > 0 ? depositKgS : 0));
-    const yFarF = farKgSF > 1e-9 ? Math.max(0, limited.farUpperO2KgS) / farKgSF : O2_AMBIENT_MASS;
-    const o2StreamF = bareKgSF * slice * yFarF;
-    const useWanted = burn.oxygenLowerKgS * book.burnScale * slice;
-    const fromLower = Math.min(useWanted, slicePlumeF * yL, yL * mLF);
-    const fromStream = Math.min(Math.max(0, useWanted - fromLower), o2StreamF);
-    let useL = fromLower + fromStream;
-    let useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, Math.max(0, yU * mass));
-    let shortKg = 0;
-    let scaled = false;
-    if (floorLayerWeight(z) > 0) {
-      const short = Math.max(0, useWanted - useL);
-      const room = Math.max(0, yU * mass - useU);
-      const booked = Math.min(short, room);
-      useU += booked;
-      shortKg += booked;
-      const demanded = useWanted + burn.oxygenUpperKgS * book.burnScale * slice;
-      const covered = useL + useU;
-      if (demanded > covered + 1e-9 && demanded > 0 && burnedFraction > 0) {
-        burnedFraction *= covered / demanded;
-        scaled = true;
+      let planned = plan(0);
+      let limited = oxygenLimitedBurn(
+        spec,
+        z,
+        temp,
+        yL,
+        yU,
+        slice,
+        depositKgS > 0,
+        () => planned.volumeRate,
+        lower,
+      );
+      {
+        let hot1 = 0;
+        for (const rate of limited.hotOutByVentKgS) hot1 += rate ?? 0;
+        const extra = Math.max(0, hot1 - exchangeHot);
+        if (planned.heating && extra > 0) {
+          planned = plan(extra);
+          limited = oxygenLimitedBurn(
+            spec,
+            z,
+            temp,
+            yL,
+            yU,
+            slice,
+            depositKgS > 0,
+            () => planned.volumeRate,
+            lower,
+          );
+        }
       }
-    }
-    const yStand = floorLayerWeight(z) >= 0.5 ? yU : yL;
-    if (lastFraction < 0.05 && burnedFraction > 0.05 && !oxygenAllowsFlame(yStand)) {
-      const keep = 0.05 / burnedFraction;
-      burnedFraction *= keep;
-      useL *= keep;
-      useU *= keep;
-    }
-    return {
-      book,
-      limited,
-      hotSum,
-      burnedFraction,
-      phi,
-      scaled,
-      shortKg,
-      useL,
-      useU,
-      unburnedKgS,
-      extraKgS,
-      storeKgS,
-      mass,
-      plume,
-      lowerOutKgS,
-      lowerInKgS,
-      yF,
-      incomingFuelKgS,
-      burnedFuelKgS,
-      mEnt,
-    };
+      const solveAt = (rateKgS: number) =>
+        oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0, () => rateKgS, lower);
+      const hotOf = (flows: LimitedBurn) => {
+        let hot = 0;
+        for (const rate of flows.hotOutByVentKgS) hot += rate ?? 0;
+        return hot;
+      };
+      const rootRelieved = (flows: LimitedBurn, rateKgS: number) => {
+        const net = flows.inKgS - flows.outKgS - flows.fanUpperKgS - flows.fanLowerKgS;
+        return Math.abs(net - rateKgS) <= 0.05 + 0.01 * Math.abs(rateKgS);
+      };
+      // Lower-layer volume after `flows`, and the mass the vents must carry
+      // so the geometric total matches it. The inflow is the root's, with the
+      // deposited jet left out: the same stream the exchange had been
+      // crediting, which is larger than the slice that enters below the
+      // interface whenever the neutral plane sits above it. On the floor the
+      // plume may only take that inflow plus the mass still above the floor.
+      // Heskestad with the virtual origin below the fuel still asks for the
+      // whole flame at a 5 cm interface; the rest is upper gas recirculating,
+      // and it moves no mass. Any other shortfall keeps the unclipped volume.
+      const bookOf = (flows: LimitedBurn, hot: number) => {
+        const lowerOut = Math.max(0, flows.outKgS - hot);
+        const makeup = Math.max(0, flows.inKgS - flows.farUpperInKgS);
+        const below = flows.lowerInKgS;
+        const rho0 = densityKgM3(lower);
+        const v0 = lowerVolumeM3(spec, z);
+        const m0 = rho0 * v0;
+        const aboveM3 = spec.crossSection
+          ? volumeBetweenM3(spec, INTERFACE_FLOOR_M, z)
+          : Math.max(spec.areaM2, 0) * Math.max(0, z - INTERFACE_FLOOR_M);
+        const aboveKgS = slice > 0 ? (rho0 * aboveM3) / slice : 0;
+        const plumeCap = Math.max(0, makeup) + aboveKgS;
+        const plumeDraw = Math.min(fired.plumeKgS, plumeCap);
+        const recirc = fired.plumeKgS - plumeDraw;
+        // The exchange cooled the upper layer as if the whole plume were cold
+        // lower air. Recirculated upper gas does not. The studs record only
+        // the oxygen in the draw that remains.
+        let tempNext = fired.tempNext;
+        let burnScale = 1;
+        let supplyKw = 0;
+        if (recirc > 0 && fired.plumeKgS > 0) {
+          const freshScale = plumeDraw / fired.plumeKgS;
+          const y = yL > 0 ? yL : 0;
+          // The plume cap is the lower layer. The bare far stream is not in
+          // that layer, but the flame still takes its oxygen, at its own
+          // fraction. Leaving it out of the cap is what starved the shop.
+          const deposited = depositKgS > 0 ? depositKgS : 0;
+          const bare = Math.max(0, flows.farUpperInKgS - deposited);
+          const yStream =
+            flows.farUpperInKgS > 1e-9 ? Math.max(0, flows.farUpperO2KgS) / flows.farUpperInKgS : y;
+          const streamTaken = Math.min(bare, recirc);
+          if (fired.burn.burnedKw > 0) {
+            // Across the clamp fade the plume above the floor is still the
+            // room's layer. That oxygen is already on the burn, with the
+            // inflow taken out of it, so the stream term does not count it again.
+            const layerKw =
+              floorLayerWeight(z) > 0 ? fired.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG : 0;
+            const capacity =
+              oxygenCapacityKw(fired.burn.lowerAirKgS * freshScale, y) +
+              oxygenCapacityKw(streamTaken, yStream) +
+              layerKw;
+            const newBurned = Math.min(fired.burn.burnedKw, capacity);
+            burnScale = newBurned / fired.burn.burnedKw;
+            supplyKw =
+              oxygenSupplyKw(fired.burn.lowerAirKgS * freshScale, y) +
+              oxygenSupplyKw(streamTaken, yStream);
+          }
+          if (fired.mass > 1e-6) {
+            tempNext += (recirc * Math.max(0, temp - lower) * slice) / fired.mass;
+            if (tempNext > 1500) tempNext = 1500;
+            if (tempNext < AMBIENT_K) tempNext = AMBIENT_K;
+          }
+        }
+        const flowKgS = makeup - lowerOut - plumeDraw - flows.fanLowerKgS - fired.mEnt;
+        const tin = below > 0 ? flows.lowerInK : lower;
+        let dTl =
+          (-fired.lowerLossKw + below * CP_KJ_KGK * (tin - lower)) /
+          (Math.max(m0, 1e-6) * CP_KJ_KGK);
+        if (dTl > 400) dTl = 400;
+        if (dTl < -400) dTl = -400;
+        const lowerNext = Math.min(1500, Math.max(AMBIENT_K, lower + dTl * slice));
+        const rho1 = densityKgM3(lowerNext);
+        let vEnd = (m0 + flowKgS * slice) / Math.max(rho1, 1e-9);
+        if (depositKgS > 0) {
+          const unmatched = Math.max(0, depositKgS - flows.farUpperInKgS);
+          vEnd -= (unmatched * slice) / Math.max(densityKgM3(jetT), 1e-6);
+        }
+        if (fired.storeKgS > 0) {
+          vEnd -= (fired.storeKgS * slice) / Math.max(densityKgM3(tempNext), 1e-6);
+        }
+        const area = Math.max(spec.areaM2, 1e-9);
+        let zFlow = vEnd > 0 ? interfaceForLowerVolume(spec, vEnd) : vEnd / area;
+        const capZ = 2 * slice;
+        if (zFlow > z + capZ) zFlow = z + capZ;
+        if (zFlow < z - capZ) zFlow = z - capZ;
+        const floor = 0.05;
+        const ceil = spec.ceilingM - 0.02;
+        const zApplied = Math.min(ceil, Math.max(floor, zFlow));
+        // A jet that would push the interface through the floor cannot store
+        // that volume. The root balances the clamped room, and the inflow the
+        // layer cannot hold leaves through the other vents.
+        const throughFloor =
+          depositKgS > 0 && zFlow < floor && spec.vents.some((vent) => vent.shaft);
+        const vMass = throughFloor
+          ? lowerVolumeM3(spec, zApplied)
+          : zFlow < floor
+            ? area * zFlow
+            : lowerVolumeM3(spec, zApplied);
+        const upperMass = densityKgM3(tempNext) * upperLayerVolumeM3(spec, zApplied);
+        const lowerMass = densityKgM3(lowerNext) * vMass;
+        const massRateKgS =
+          (upperMass + lowerMass - gasMassKg(spec, z, temp, lower)) / Math.max(slice, 1e-9);
+        return {
+          z: zApplied,
+          lowerK: lowerNext,
+          lowerInKgS: makeup,
+          lowerOutKgS: lowerOut,
+          massRateKgS,
+          plumeKgS: plumeDraw,
+          tempNext,
+          burnScale,
+          supplyKw,
+        };
+      };
+      let rate = planned.volumeRate;
+      let hotSum = hotOf(limited);
+      let book = bookOf(limited, hotSum);
+      for (let pass = 0; pass < 3; pass++) {
+        if (!rootRelieved(limited, rate)) break;
+        if (Math.abs(book.massRateKgS - rate) <= 0.02) break;
+        const next = solveAt(book.massRateKgS);
+        if (!rootRelieved(next, book.massRateKgS)) break;
+        rate = book.massRateKgS;
+        limited = next;
+        hotSum = hotOf(limited);
+        book = bookOf(limited, hotSum);
+      }
+      const burn = fired.burn;
+      burnedFraction = fired.burnedFraction * book.burnScale;
+      if (book.burnScale < 1 && fired.plumeKgS > 0) {
+        phi = equivalenceRatio(fired.burn.prescribedKw, book.supplyKw);
+      } else {
+        phi = fired.phi;
+      }
+      neutralM = limited.neutralM;
+      floorPressurePa = limited.floorPressurePa;
+      const mass = fired.mass;
+      const plume = book.plumeKgS;
+      // Oxygen, soot and fuel follow the root's flows. Hot gas and the
+      // upper fan leave the upper layer. The lower layer gains the root's
+      // vent inflow, with a deposited jet left out, and loses the outflow
+      // from below the interface, the plume and the spill.
+      const lowerOutKgS = book.lowerOutKgS;
+      const lowerInKgS = book.lowerInKgS;
+      outByVent = limited.outByVentKgS;
+      const yF = fired.yF;
+      let unburnedKgS = fired.unburnedKgS;
+      const incomingFuelKgS = fired.incomingFuelKgS;
+      const burnedFuelKgS = fired.burnedFuelKgS;
+      const mEnt = fired.mEnt;
+      let extraKgS = fired.extraKgS;
+      let storeKgS = fired.storeKgS;
+      // Pyrolysis follows the fresh air that remains. The exchange still
+      // carries the larger plume's fuel, and that fuel is not in the room.
+      if (book.burnScale < 1 && fired.plumeKgS > 0) {
+        const pyrolysis = cappedPyrolysisKw(fired.burn.prescribedKw, book.supplyKw);
+        const newBurned = fired.burn.burnedKw * book.burnScale;
+        unburnedKgS = pyrolysis > newBurned ? (pyrolysis - newBurned) / WOOD_HEAT_KJ_KG : 0;
+        extraKgS = hotSum > 0 ? unburnedKgS : 0;
+        storeKgS = hotSum > 0 ? 0 : unburnedKgS;
+      }
+      const lowerVolF = spec.crossSection
+        ? volumeBetweenM3(spec, 0, z)
+        : spec.areaM2 * Math.max(z, 0);
+      const mLF = densityKgM3(lower) * lowerVolF;
+      const slicePlumeF = plume * slice;
+      const farKgSF = limited.farUpperInKgS;
+      const bareKgSF = Math.max(0, farKgSF - (depositKgS > 0 ? depositKgS : 0));
+      const yFarF = farKgSF > 1e-9 ? Math.max(0, limited.farUpperO2KgS) / farKgSF : O2_AMBIENT_MASS;
+      const o2StreamF = bareKgSF * slice * yFarF;
+      const useWanted = burn.oxygenLowerKgS * book.burnScale * slice;
+      const fromLower = Math.min(useWanted, slicePlumeF * yL, yL * mLF);
+      const fromStream = Math.min(Math.max(0, useWanted - fromLower), o2StreamF);
+      let useL = fromLower + fromStream;
+      let useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, Math.max(0, yU * mass));
+      let shortKg = 0;
+      let scaled = false;
+      if (floorLayerWeight(z) > 0) {
+        const short = Math.max(0, useWanted - useL);
+        const room = Math.max(0, yU * mass - useU);
+        const booked = Math.min(short, room);
+        useU += booked;
+        shortKg += booked;
+        const demanded = useWanted + burn.oxygenUpperKgS * book.burnScale * slice;
+        const covered = useL + useU;
+        if (demanded > covered + 1e-9 && demanded > 0 && burnedFraction > 0) {
+          burnedFraction *= covered / demanded;
+          scaled = true;
+        }
+      }
+      const yStand = floorLayerWeight(z) >= 0.5 ? yU : yL;
+      if (lastFraction < 0.05 && burnedFraction > 0.05 && !oxygenAllowsFlame(yStand)) {
+        const keep = 0.05 / burnedFraction;
+        burnedFraction *= keep;
+        useL *= keep;
+        useU *= keep;
+      }
+      return {
+        book,
+        limited,
+        hotSum,
+        burnedFraction,
+        phi,
+        scaled,
+        shortKg,
+        useL,
+        useU,
+        unburnedKgS,
+        extraKgS,
+        storeKgS,
+        mass,
+        plume,
+        lowerOutKgS,
+        lowerInKgS,
+        yF,
+        incomingFuelKgS,
+        burnedFuelKgS,
+        mEnt,
+      };
     };
     let fired = advance;
     let settled = backed(fired);
@@ -4742,12 +4745,7 @@ export function enclosureFromGrid(
     const doorExposed = exteriorWalls.has(wall.id) || facade == null;
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
       vents.push(
-        ventOnWall(
-          { widthM: doorWidth, sillM: 0, soffitM: soffit },
-          wall,
-          across,
-          doorExposed,
-        ),
+        ventOnWall({ widthM: doorWidth, sillM: 0, soffitM: soffit }, wall, across, doorExposed),
       );
       ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
