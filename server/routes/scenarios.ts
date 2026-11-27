@@ -38,6 +38,7 @@ import {
   validateInjectTriggerShape,
   type InjectTriggerShape,
 } from '../services/conditions/injectTriggerShape.js';
+import { phoneConfigError } from '../services/calls/callCore.js';
 import { dmDeliveryConfigError } from '../services/dm/dmDeliveryCore.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import {
@@ -961,6 +962,11 @@ router.patch(
 
       // Validate team targeting against the scenario's real team names so an
       // edit can never make an inject silently undeliverable.
+      if (updates.delivery_config !== undefined) {
+        const phoneError = phoneConfigError(updates.delivery_config);
+        if (phoneError) return res.status(400).json({ error: phoneError });
+      }
+
       if (updates.inject_scope !== undefined || updates.target_teams !== undefined) {
         const teamNames = await loadTeamNames(id);
         const sanitized = sanitizeTeamTargeting(
@@ -1035,6 +1041,8 @@ router.post(
       ) {
         return;
       }
+      const phoneError = phoneConfigError(body.delivery_config ?? null);
+      if (phoneError) return res.status(400).json({ error: phoneError });
       const teamNames = await loadTeamNames(id);
       const sanitized = sanitizeTeamTargeting(
         {

@@ -292,6 +292,48 @@ export async function recordResponse(input: RecordResponseInput): Promise<string
   }
 }
 
+export async function findDeliveryByRef(
+  refTable: string,
+  refId: string,
+): Promise<{ id: string; injectId: string; injectKey: string } | null> {
+  if (ledgerTablesMissing()) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inject_deliveries')
+      .select('id, inject_id, inject_key')
+      .eq('ref_table', refTable)
+      .eq('ref_id', refId)
+      .maybeSingle();
+    if (failLedger(error, 'findDeliveryByRef') || !data) return null;
+    return {
+      id: String(data.id),
+      injectId: String(data.inject_id),
+      injectKey: String(data.inject_key),
+    };
+  } catch (err) {
+    failLedger(err, 'findDeliveryByRef');
+    return null;
+  }
+}
+
+export async function setDeliveryCallState(input: {
+  refTable: string;
+  refId: string;
+  callState: LedgerCallState;
+}): Promise<void> {
+  if (ledgerTablesMissing()) return;
+  try {
+    const { error } = await supabaseAdmin
+      .from('inject_deliveries')
+      .update({ call_state: input.callState })
+      .eq('ref_table', input.refTable)
+      .eq('ref_id', input.refId);
+    failLedger(error, 'setDeliveryCallState');
+  } catch (err) {
+    failLedger(err, 'setDeliveryCallState');
+  }
+}
+
 export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,

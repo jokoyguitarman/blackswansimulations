@@ -18,6 +18,7 @@ import {
 } from '../lib/injectChatMessages.js';
 import { injectKeyOf, isValidInjectKey } from '../lib/injectKey.js';
 import { recordDelivery, type RecordDeliveryInput } from './ledger/injectLedgerService.js';
+import { startInjectCall } from './calls/callService.js';
 import {
   chatInjectIdColumnMissing,
   directMessageInjectIdColumnMissing,
@@ -67,8 +68,7 @@ export interface DeliveryConfig {
   response_window_minutes?: number;
 }
 
-/** Phone-call injects are also written to chat; see routeToPhoneCall. */
-const CALLS_DELIVERED_TO_CHAT = true;
+/** Chat-line fallback when the Phone app is off or migration 269 is not applied. */
 
 export interface TeamTargeting {
   /** Resolved member user ids; null means universal delivery. */
@@ -908,6 +908,34 @@ async function routeToPhoneCall(
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
+  if (env.simPhoneApp !== 'off') {
+    const started = await startInjectCall(
+      sessionId,
+      {
+        id: injectId,
+        title: inject.title,
+        content: inject.content,
+        requires_response: inject.requires_response,
+        delivery_config: config as unknown as Record<string, unknown>,
+      },
+      targeting,
+    );
+    if (started === 'started') {
+      logger.info({ sessionId, injectId }, 'Inject routed to phone call');
+      return;
+    }
+  }
+  await deliverPhoneChatLine(sessionId, injectId, inject, config, targeting);
+}
+
+/** PR 136 path: a persisted chat line, used when the Phone app is off or the call tables are absent. */
+async function deliverPhoneChatLine(
+  sessionId: string,
+  injectId: string,
+  inject: { title: string; content: string; requires_response?: boolean },
+  config: DeliveryConfig,
+  targeting: TeamTargeting | null,
+): Promise<void> {
   const caller = phoneCaller(config);
   await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'phone_call.incoming',
@@ -920,14 +948,6 @@ async function routeToPhoneCall(
     },
     timestamp: new Date().toISOString(),
   });
-
-  // Until a Phone app consumes phone_call.incoming, the chat line is the only place a player can
-  // see the call. When one lands, turn this off (or make it a missed/answered log line) so calls
-  // aren't delivered twice.
-  if (!CALLS_DELIVERED_TO_CHAT) {
-    logger.info({ sessionId, injectId }, 'Inject routed to phone call');
-    return;
-  }
   const channels = await postNpcChatMessage(
     sessionId,
     injectId,
@@ -936,7 +956,25 @@ async function routeToPhoneCall(
     targeting,
     { requiresResponse: inject.requires_response === true, config },
   );
-  logger.info({ sessionId, injectId, channels }, 'Inject routed to phone call');
+  logger.info({ sessionId, injectId, channels }, 'Inject routed to phone call chat line');
+}
+
+export async function deliverMissedCallLine(input: {
+  sessionId: string;
+  injectId: string;
+  inject: { id?: string; title: string; content: string; requires_response?: boolean };
+  config: DeliveryConfig;
+  targeting: TeamTargeting | null;
+  message: NpcChatMessage;
+}): Promise<number> {
+  return postNpcChatMessage(
+    input.sessionId,
+    input.injectId,
+    input.message,
+    input.config.channel_type,
+    input.targeting,
+    { requiresResponse: input.inject.requires_response === true, config: input.config },
+  );
 }
 
 function isPrivateDeliveryApp(app: DeliveryConfig['app']): boolean {

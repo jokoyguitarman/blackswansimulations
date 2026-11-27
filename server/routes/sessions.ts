@@ -33,6 +33,7 @@ import {
   recordKeepalive,
 } from '../services/sessionIdleSweeper.js';
 import { getSessionPageCoverage } from '../services/pageCoverageService.js';
+import { settleCallsForSession } from '../services/calls/callService.js';
 import { PAGES_UNASSIGNED, pageCoverageMessage } from '../../shared/sessionPageCoverage.js';
 
 const router = Router();
@@ -1506,6 +1507,15 @@ router.patch(
         }
         logger.error({ error, sessionId: id }, 'Failed to update session');
         return res.status(500).json({ error: 'Failed to update session' });
+      }
+
+      if (
+        previousStatus === 'in_progress' &&
+        (status === 'paused' || status === 'completed' || status === 'cancelled')
+      ) {
+        void settleCallsForSession(id).catch((err) => {
+          logger.warn({ err, sessionId: id }, 'call settle on session status failed');
+        });
       }
 
       if (claimingStart && data) {

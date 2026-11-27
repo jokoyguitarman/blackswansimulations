@@ -130,6 +130,43 @@ function callerToken(value: string): string {
   return slug || 'call';
 }
 
+/**
+ * Chat line left after a missed or declined call. `count` above 1 is the group's
+ * collapsed total ("3 missed calls"); each attempt posts its own line only when
+ * `voicemail_each` is set.
+ */
+export function missedCallMessage(
+  inject: { title: string; content: string; id?: string | null; inject_key?: string | null },
+  config: ChatInjectConfig,
+  options?: { count?: number; opening?: string | null },
+): NpcChatMessage {
+  const caller = phoneCaller(config);
+  const senderName = caller.name ?? UNKNOWN_CALLER;
+  const number = caller.number ? ` (${caller.number})` : '';
+  const count = options?.count && options.count > 1 ? Math.floor(options.count) : 1;
+  const label = count > 1 ? `${count} missed calls` : 'Missed call';
+  const openingSource = (options?.opening ?? inject.content).replace(/\s+/g, ' ').trim();
+  const opening = openingSource.slice(0, 300);
+  const header = `📞 ${label} from ${senderName}${number} — voicemail: ${opening}`;
+  const senderId = caller.name
+    ? npcSenderStakeholderId(senderName, config.stakeholder_id)
+    : config.stakeholder_id
+      ? config.stakeholder_id
+      : unknownCallerStakeholderId({
+          injectId: inject.id,
+          injectKey: firstString(inject.inject_key, config.inject_key),
+          number: caller.number,
+          title: inject.title,
+          content: inject.content,
+        });
+  return {
+    sender_stakeholder_id: senderId,
+    sender_display_name: senderName,
+    content: header,
+    type: 'text',
+  };
+}
+
 export function phoneCallMessage(
   inject: { title: string; content: string; id?: string | null; inject_key?: string | null },
   config: ChatInjectConfig,

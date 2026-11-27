@@ -15,7 +15,8 @@ export type NotificationType =
   | 'resource_request'
   | 'resource_approved'
   | 'resource_rejected'
-  | 'system_alert';
+  | 'system_alert'
+  | 'missed_call';
 
 export type NotificationPriority = 'low' | 'medium' | 'high' | 'critical';
 
