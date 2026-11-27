@@ -8,6 +8,22 @@
 --   DROP TABLE IF EXISTS public.warroom_build_log, public.warroom_build_outputs, public.warroom_builds;
 BEGIN;
 
+-- Migration 160 owns warroom_wizard_drafts and the updated_at trigger function.
+-- user_profiles and scenarios are the other foreign keys. Fail here with a
+-- readable error instead of a raw "relation does not exist" mid-statement.
+DO $$
+BEGIN
+  IF to_regclass('public.warroom_wizard_drafts') IS NULL THEN
+    RAISE EXCEPTION 'Apply migrations/160_warroom_wizard_drafts.sql before 267_warroom_durable_builds.sql';
+  END IF;
+  IF to_regclass('public.user_profiles') IS NULL THEN
+    RAISE EXCEPTION 'Apply the user_profiles migration before 267_warroom_durable_builds.sql';
+  END IF;
+  IF to_regclass('public.scenarios') IS NULL THEN
+    RAISE EXCEPTION 'Apply the scenarios migration before 267_warroom_durable_builds.sql';
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.warroom_builds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   draft_id UUID NOT NULL REFERENCES public.warroom_wizard_drafts(id) ON DELETE CASCADE,
@@ -218,8 +234,8 @@ ALTER TABLE public.warroom_builds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.warroom_build_outputs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.warroom_build_log ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.warroom_builds, public.warroom_build_outputs, public.warroom_build_log
-  FROM anon, authenticated;
-REVOKE ALL ON SEQUENCE public.warroom_build_log_seq_seq FROM anon, authenticated;
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SEQUENCE public.warroom_build_log_seq_seq FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION
   public.start_warroom_build(UUID, UUID, TEXT, JSONB, TEXT, TEXT, BOOLEAN),
   public.claim_warroom_build(TEXT, TEXT, INT),
