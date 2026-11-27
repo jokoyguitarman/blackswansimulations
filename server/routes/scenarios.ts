@@ -38,6 +38,7 @@ import {
   validateInjectTriggerShape,
   type InjectTriggerShape,
 } from '../services/conditions/injectTriggerShape.js';
+import { dmDeliveryConfigError } from '../services/dm/dmDeliveryCore.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import {
   benchmarksFromCharters,
@@ -846,6 +847,13 @@ const TIMED_WITH_CONDITIONS =
   'An inject is either timed or conditional. Use eligible_after_minutes for "not before".';
 const CONDITIONAL_WITHOUT_CONDITIONS = 'A conditional inject needs at least one condition.';
 
+function rejectDmDeliveryConfig(res: Response, config: unknown): boolean {
+  const error = dmDeliveryConfigError(config);
+  if (!error) return false;
+  res.status(400).json({ error });
+  return true;
+}
+
 function rejectInjectTriggerShape(res: Response, shape: InjectTriggerShape): boolean {
   if (shape === 'timed_with_conditions') {
     res.status(400).json({ error: TIMED_WITH_CONDITIONS });
@@ -908,7 +916,7 @@ router.patch(
       const { data: existing, error: fetchErr } = await supabaseAdmin
         .from('scenario_injects')
         .select(
-          'id, inject_scope, target_teams, title, trigger_time_minutes, trigger_condition, conditions_to_appear, conditions_to_cancel',
+          'id, inject_scope, target_teams, title, trigger_time_minutes, trigger_condition, conditions_to_appear, conditions_to_cancel, delivery_config',
         )
         .eq('id', injectId)
         .eq('scenario_id', id)
@@ -923,6 +931,10 @@ router.patch(
       }
 
       const updates: Record<string, unknown> = { ...req.body };
+
+      const nextDeliveryConfig =
+        updates.delivery_config !== undefined ? updates.delivery_config : existing.delivery_config;
+      if (rejectDmDeliveryConfig(res, nextDeliveryConfig)) return;
 
       const triggerDecision = triggerShapeForPatch(
         {
@@ -999,6 +1011,7 @@ router.post(
       if (!(await guardScenarioEdit(id, req, res))) return;
 
       const body = req.body;
+      if (rejectDmDeliveryConfig(res, body.delivery_config ?? null)) return;
       if (
         rejectInjectTriggerShape(
           res,

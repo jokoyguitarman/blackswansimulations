@@ -111,3 +111,106 @@ export const ensureTeamChannels = async (
     logger.error({ error: err, sessionId }, 'Error ensuring team channels');
   }
 };
+
+function memberIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === 'string');
+}
+
+async function stakeholderChannelName(sessionId: string, stakeholderId: string): Promise<string> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (!session?.scenario_id) return stakeholderId;
+    const { data: scenario } = await supabaseAdmin
+      .from('scenarios')
+      .select('initial_state')
+      .eq('id', session.scenario_id)
+      .maybeSingle();
+    const stakeholders = (scenario?.initial_state as { stakeholders?: unknown } | null)
+      ?.stakeholders;
+    if (!Array.isArray(stakeholders)) return stakeholderId;
+    for (const item of stakeholders) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as { id?: unknown; name?: unknown };
+      if (row.id !== stakeholderId) continue;
+      if (typeof row.name === 'string' && row.name.trim()) return row.name.trim();
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId, stakeholderId }, 'Stakeholder name lookup failed for NPC DM');
+  }
+  return stakeholderId;
+}
+
+/**
+ * One `npc_direct` channel per (session, player, stakeholder). Reused when the player
+ * already has that conversation open.
+ */
+export async function ensureNpcDirectChannel(
+  sessionId: string,
+  userId: string,
+  stakeholderId: string,
+): Promise<{ id: string; name: string } | null> {
+  const stakeholder = stakeholderId.trim();
+  if (!sessionId || !userId || !stakeholder) return null;
+  try {
+    const { data: existingRows, error: readError } = await supabaseAdmin
+      .from('chat_channels')
+      .select('id, name, members')
+      .eq('session_id', sessionId)
+      .eq('type', 'npc_direct')
+      .eq('stakeholder_id', stakeholder);
+    if (readError) {
+      logger.error(
+        { error: readError, sessionId, stakeholderId: stakeholder },
+        'Failed to look up NPC DM channel',
+      );
+      return null;
+    }
+    const existing = (existingRows ?? []).find((row) =>
+      memberIds((row as { members?: unknown }).members).includes(userId),
+    );
+    if (existing) {
+      const name = (existing as { name?: string | null }).name;
+      return {
+        id: String((existing as { id: string }).id),
+        name: typeof name === 'string' && name.trim() ? name : stakeholder,
+      };
+    }
+
+    const name = await stakeholderChannelName(sessionId, stakeholder);
+    const { data: created, error } = await supabaseAdmin
+      .from('chat_channels')
+      .insert({
+        session_id: sessionId,
+        name,
+        type: 'npc_direct',
+        stakeholder_id: stakeholder,
+        members: [userId],
+        created_by: userId,
+      })
+      .select('id, name')
+      .single();
+    if (error || !created) {
+      logger.error(
+        { error, sessionId, stakeholderId: stakeholder, userId },
+        'Failed to create NPC DM channel',
+      );
+      return null;
+    }
+    const createdName = (created as { name?: string | null }).name;
+    return {
+      id: String((created as { id: string }).id),
+      name: typeof createdName === 'string' && createdName.trim() ? createdName : name,
+    };
+  } catch (err) {
+    logger.error(
+      { err, sessionId, stakeholderId: stakeholder, userId },
+      'Error ensuring NPC DM channel',
+    );
+    return null;
+  }
+}

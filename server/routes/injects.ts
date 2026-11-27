@@ -21,6 +21,13 @@ import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
 
+function dmNotificationSender(config: DeliveryConfig): string {
+  const sender =
+    config.author_display_name || config.sender_name || config.from_name || config.author_handle;
+  const trimmed = typeof sender === 'string' ? sender.trim() : '';
+  return trimmed || 'someone';
+}
+
 /**
  * Publish an inject to a session (reusable function for manual and automatic publishing)
  * @param injectId - The ID of the inject to publish
@@ -248,9 +255,7 @@ export async function publishInjectToSession(
     const priority = priorityMap[inject.severity] || 'medium';
 
     const notifDeliveryConfig = (inject as Record<string, unknown>).delivery_config as
-      | DeliveryConfig
-      | null
-      | undefined;
+      DeliveryConfig | null | undefined;
 
     if (notifDeliveryConfig && typeof notifDeliveryConfig === 'object') {
       // Simulated-device inject (email / feed / news / chat / call): the notification must reach
@@ -281,9 +286,11 @@ export async function publishInjectToSession(
               ? `Incoming call: ${inject.title}`
               : app === 'group_chat'
                 ? `New chat message: ${inject.title}`
-                : app === 'news'
-                  ? `Breaking news: ${inject.title}`
-                  : `New post: ${inject.title}`;
+                : app === 'messenger_dm' || app === 'npc_dm'
+                  ? `New message from ${dmNotificationSender(notifDeliveryConfig)}`
+                  : app === 'news'
+                    ? `Breaking news: ${inject.title}`
+                    : `New post: ${inject.title}`;
         await createNotificationsForUsers(userIds, {
           sessionId,
           type: 'inject_published',
