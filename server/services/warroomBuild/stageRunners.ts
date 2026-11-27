@@ -39,14 +39,17 @@ function assertOrgs(
 }
 
 function blueprintFor(request: BuildRequest) {
-  return env.enableDocumentBlueprint && request.blueprint ? coerceBlueprint(request.blueprint) : null;
+  return env.enableDocumentBlueprint && request.blueprint
+    ? coerceBlueprint(request.blueprint)
+    : null;
 }
 
 /** One runner per stage. Each wraps the existing pipeline and stops if the caller aborted. */
 export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
   return {
     characters: async (input, ctx) => {
-      if (input.stage !== 'characters') throw new Error('characters runner expected characters input');
+      if (input.stage !== 'characters')
+        throw new Error('characters runner expected characters input');
       const request = input.request;
       const orgs = assertOrgs(request);
       const crisis = crisisContextFrom({
@@ -90,13 +93,16 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
       );
       throwIfAborted(ctx.signal);
       if (result.stakeholders.length > 0) {
-        const withConcern = result.stakeholders.filter((stakeholder) => stakeholder.grievance).length;
+        const withConcern = result.stakeholders.filter(
+          (stakeholder) => stakeholder.grievance,
+        ).length;
         ctx.log('progress', stakeholdersReadyLine(result.stakeholders.length, withConcern));
       }
       return result;
     },
     convergence: async (input, ctx) => {
-      if (input.stage !== 'convergence') throw new Error('convergence runner expected convergence input');
+      if (input.stage !== 'convergence')
+        throw new Error('convergence runner expected convergence input');
       const orgs = assertOrgs(input.request);
       const result = await runConvergencePipeline(
         orgs,

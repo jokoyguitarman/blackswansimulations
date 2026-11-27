@@ -132,13 +132,20 @@ export class BuildService {
       replaceActive: input.replaceActive ?? false,
       maxActivePerUser: this.maxActivePerUser,
     });
-    if (result.outcome === 'created' || result.outcome === 'replayed' || result.outcome === 'attached') {
+    if (
+      result.outcome === 'created' ||
+      result.outcome === 'replayed' ||
+      result.outcome === 'attached'
+    ) {
       await this.tick();
     }
     return result;
   }
 
-  async get(buildId: string, after = 0): Promise<{ build: BuildView; log: LogLine[]; next_after: number } | null> {
+  async get(
+    buildId: string,
+    after = 0,
+  ): Promise<{ build: BuildView; log: LogLine[]; next_after: number } | null> {
     await this.touchSeen(buildId);
     const row = await this.store.get(buildId);
     if (!row) return null;
@@ -256,7 +263,9 @@ export class BuildService {
       job.nextRenew = now + this.renewMs;
       const result = await this.store.renewLease(buildId, job.token, this.leaseSeconds);
       if (result === 'ok') continue;
-      job.controller.abort(result === 'cancel_requested' ? new CancelledError() : new LeaseLostError());
+      job.controller.abort(
+        result === 'cancel_requested' ? new CancelledError() : new LeaseLostError(),
+      );
     }
   }
 
@@ -319,7 +328,14 @@ export class BuildService {
         }
         if (controller.signal.aborted) {
           await this.flush(row.id, buffer);
-          await this.onRunnerError(row.id, token, stage, states, controller.signal, controller.signal.reason);
+          await this.onRunnerError(
+            row.id,
+            token,
+            stage,
+            states,
+            controller.signal,
+            controller.signal.reason,
+          );
           return;
         }
         await this.flush(row.id, buffer);
@@ -346,7 +362,11 @@ export class BuildService {
     }
   }
 
-  private async pauseIfUnwatched(row: BuildRow, token: string, previous: BuildStage | null): Promise<boolean> {
+  private async pauseIfUnwatched(
+    row: BuildRow,
+    token: string,
+    previous: BuildStage | null,
+  ): Promise<boolean> {
     const seen = Date.parse(row.last_seen_at);
     const ageMs = this.clock.now().getTime() - seen;
     if (ageMs < this.unwatchedPauseMin * 60_000) return false;
@@ -358,7 +378,11 @@ export class BuildService {
     return true;
   }
 
-  private async finishSucceeded(buildId: string, token: string, states: StageStates): Promise<void> {
+  private async finishSucceeded(
+    buildId: string,
+    token: string,
+    states: StageStates,
+  ): Promise<void> {
     const stage = (['characters', 'storyline', 'convergence', 'pages'] as const).find(
       (name) => states[name]?.status === 'done' || states[name]?.status === 'skipped',
     );
@@ -390,13 +414,17 @@ export class BuildService {
       const interrupted = markInterrupted(states, stage, this.iso());
       const settled = await this.store.settleCancel(buildId, token, interrupted, 'user');
       if (settled) {
-        await this.store.appendLog(buildId, [{ kind: 'system', stage, message: 'Build cancelled.' }]);
+        await this.store.appendLog(buildId, [
+          { kind: 'system', stage, message: 'Build cancelled.' },
+        ]);
       }
       return;
     }
     if (stage === 'pages') {
       const skipped = markSkipped(states, stage, PAGES_SKIP_WARNING, this.iso());
-      await this.store.appendLog(buildId, [{ kind: 'warning', stage, message: PAGES_SKIP_WARNING }]);
+      await this.store.appendLog(buildId, [
+        { kind: 'warning', stage, message: PAGES_SKIP_WARNING },
+      ]);
       const next = nextStage(skipped);
       await this.store.completeStage({
         buildId,

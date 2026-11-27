@@ -213,7 +213,11 @@ describe('build service', () => {
   test('S3 SIGTERM mid-stage lets the other instance finish from storyline', async () => {
     let storylineSignal: AbortSignal | undefined;
     const calls = { characters: 0, storyline: 0 };
-    const { service: owner, store, clock } = harness({
+    const {
+      service: owner,
+      store,
+      clock,
+    } = harness({
       instanceId: 'A',
       runners: {
         characters: async () => {
@@ -300,7 +304,11 @@ describe('build service', () => {
       }
       return storylineOut;
     };
-    const { service: owner, store, clock } = harness({
+    const {
+      service: owner,
+      store,
+      clock,
+    } = harness({
       instanceId: 'A',
       runners: { storyline },
     });
@@ -317,7 +325,8 @@ describe('build service', () => {
     const original = store.completeStage.bind(store);
     store.completeStage = async (stageArgs) => {
       const wrote = await original(stageArgs);
-      if (stageArgs.leaseToken === ownerToken && stageArgs.stage === 'storyline') ownerWrite = wrote;
+      if (stageArgs.leaseToken === ownerToken && stageArgs.stage === 'storyline')
+        ownerWrite = wrote;
       return wrote;
     };
     clock.advance(61_000);
@@ -340,7 +349,12 @@ describe('build service', () => {
 
   test('S5 a renewing owner keeps the build for five simulated minutes', async () => {
     let release: () => void = () => undefined;
-    const { service: owner, store, clock, calls } = harness({
+    const {
+      service: owner,
+      store,
+      clock,
+      calls,
+    } = harness({
       instanceId: 'A',
       runners: {
         storyline: async (_input, ctx) => {
@@ -433,13 +447,19 @@ describe('build service', () => {
     assert.equal(calls.convergence, 1);
     assert.equal(calls.pages, 1);
     const log = await store.listLog(started.buildId!, 0, 200);
-    assert.ok(log.some((line) => line.kind === 'warning' && line.message.includes('compiles without them')));
+    assert.ok(
+      log.some((line) => line.kind === 'warning' && line.message.includes('compiles without them')),
+    );
   });
 
   test('S8 cancel aborts the owner at once and the other instance at the next renewal', async () => {
     let ownerSignal: AbortSignal | undefined;
     let release: () => void = () => undefined;
-    const { service: owner, store, clock } = harness({
+    const {
+      service: owner,
+      store,
+      clock,
+    } = harness({
       instanceId: 'A',
       runners: {
         storyline: async (_input, ctx) => {

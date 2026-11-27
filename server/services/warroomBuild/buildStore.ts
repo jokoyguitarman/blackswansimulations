@@ -75,7 +75,11 @@ export interface BuildStore {
     leaseToken: string,
     patch: Partial<Pick<BuildRow, 'stage_states' | 'current_stage'>>,
   ): Promise<boolean>;
-  releaseForRestart(buildId: string, leaseToken: string, stageStates: StageStates): Promise<boolean>;
+  releaseForRestart(
+    buildId: string,
+    leaseToken: string,
+    stageStates: StageStates,
+  ): Promise<boolean>;
   failRunning(
     buildId: string,
     leaseToken: string,
@@ -164,7 +168,10 @@ export class MemoryBuildStore implements BuildStore {
       ).length;
       // Replacing a queued build frees its slot. A running build stays running until its owner stops.
       const freesSlot = Boolean(
-        active && args.replaceActive && active.created_by === args.userId && active.status === 'queued',
+        active &&
+        args.replaceActive &&
+        active.created_by === args.userId &&
+        active.status === 'queued',
       );
       if (mine - (freesSlot ? 1 : 0) >= args.maxActivePerUser) {
         return { buildId: active?.id ?? null, outcome: 'limit' as const };
@@ -248,7 +255,9 @@ export class MemoryBuildStore implements BuildStore {
             Date.parse(row.lease_expires_at) < nowMs
           );
         })
-        .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id));
+        .sort(
+          (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id),
+        );
       const row = candidates[0];
       if (!row) return null;
       if (row.status === 'running') row.interruptions += 1;
@@ -310,7 +319,11 @@ export class MemoryBuildStore implements BuildStore {
     });
   }
 
-  releaseForRestart(buildId: string, leaseToken: string, stageStates: StageStates): Promise<boolean> {
+  releaseForRestart(
+    buildId: string,
+    leaseToken: string,
+    stageStates: StageStates,
+  ): Promise<boolean> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
       if (!row || row.lease_token !== leaseToken || row.status !== 'running') return false;
@@ -418,7 +431,8 @@ export class MemoryBuildStore implements BuildStore {
       const row = this.rows.get(buildId);
       if (!row) return 'missing';
       const other = [...this.rows.values()].find(
-        (candidate) => candidate.id !== row.id && candidate.draft_id === row.draft_id && isActive(candidate),
+        (candidate) =>
+          candidate.id !== row.id && candidate.draft_id === row.draft_id && isActive(candidate),
       );
       if (other) return 'active_conflict';
       const now = this.iso();
@@ -495,8 +509,9 @@ export class MemoryBuildStore implements BuildStore {
   countActive(userId: string): Promise<number> {
     return this.lock(
       () =>
-        [...this.rows.values()].filter((row) => row.created_by === userId && ACTIVE.includes(row.status))
-          .length,
+        [...this.rows.values()].filter(
+          (row) => row.created_by === userId && ACTIVE.includes(row.status),
+        ).length,
     );
   }
 
@@ -559,7 +574,9 @@ export class SupabaseBuildStore implements BuildStore {
     }
 
     const activeCount = await this.countActive(args.userId);
-    const freesSlot = Boolean(active && active.created_by === args.userId && active.status === 'queued');
+    const freesSlot = Boolean(
+      active && active.created_by === args.userId && active.status === 'queued',
+    );
     if (activeCount - (freesSlot ? 1 : 0) >= args.maxActivePerUser) {
       return { buildId: active ? String(active.id) : null, outcome: 'limit' };
     }
@@ -590,7 +607,11 @@ export class SupabaseBuildStore implements BuildStore {
     return row ?? null;
   }
 
-  async renewLease(buildId: string, leaseToken: string, leaseSeconds: number): Promise<RenewResult> {
+  async renewLease(
+    buildId: string,
+    leaseToken: string,
+    leaseSeconds: number,
+  ): Promise<RenewResult> {
     const { data, error } = await supabaseAdmin.rpc('renew_warroom_build_lease', {
       p_build_id: buildId,
       p_lease_token: leaseToken,
@@ -634,7 +655,11 @@ export class SupabaseBuildStore implements BuildStore {
     return (data?.length ?? 0) > 0;
   }
 
-  async releaseForRestart(buildId: string, leaseToken: string, stageStates: StageStates): Promise<boolean> {
+  async releaseForRestart(
+    buildId: string,
+    leaseToken: string,
+    stageStates: StageStates,
+  ): Promise<boolean> {
     const { data: current, error: readError } = await supabaseAdmin
       .from('warroom_builds')
       .select('interruptions')
@@ -761,7 +786,10 @@ export class SupabaseBuildStore implements BuildStore {
     return (data as BuildRow | null) ?? this.get(buildId);
   }
 
-  async resume(buildId: string, stageStates: StageStates): Promise<'ok' | 'active_conflict' | 'missing'> {
+  async resume(
+    buildId: string,
+    stageStates: StageStates,
+  ): Promise<'ok' | 'active_conflict' | 'missing'> {
     const now = this.iso();
     const { error } = await supabaseAdmin
       .from('warroom_builds')
@@ -873,7 +901,9 @@ export class SupabaseBuildStore implements BuildStore {
   }
 
   async sweep(retentionDays: number): Promise<number> {
-    const cutoff = new Date(this.now().getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(
+      this.now().getTime() - retentionDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .delete()

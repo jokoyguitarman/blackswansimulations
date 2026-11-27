@@ -132,7 +132,9 @@ describe('MemoryBuildStore matches the migration 267 functions', () => {
     assert.equal(queuedRow?.status, 'cancelled');
     assert.equal(runningRow?.status, 'cancelled');
     assert.equal(runningRow?.lease_token, null);
-    const untouched = await store.start(args(clock, { draftId: 'other', idempotencyKey: 'o', pool: 'pool-b' }));
+    const untouched = await store.start(
+      args(clock, { draftId: 'other', idempotencyKey: 'o', pool: 'pool-b' }),
+    );
     await store.requestCancel(untouched.buildId!, 'user');
     await store.claim('pool-a', 'instance-b', 60);
     assert.equal((await store.get(untouched.buildId!))?.status, 'queued');
