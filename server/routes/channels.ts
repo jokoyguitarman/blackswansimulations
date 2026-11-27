@@ -22,6 +22,7 @@ import {
 import { io } from '../index.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { getPlayerTeamName } from '../services/teamCharterService.js';
+import { attributeChatMessage, recordOpen } from '../services/ledger/injectLedgerService.js';
 
 /**
  * Chat overview enrichment shared by the channel list and the DM list: last message preview and
@@ -131,6 +132,7 @@ const createMessageSchema = z.object({
   body: z.object({
     content: z.string().min(1).max(5000),
     message_type: z.enum(['text', 'system', 'sitrep', 'alert']).default('text'),
+    reply_to: z.string().uuid().nullish(),
   }),
 });
 
@@ -882,15 +884,28 @@ router.post('/:channelId/read', requireAuth, async (req: AuthenticatedRequest, r
     const access = await assertChannelAccess(channelId, user);
     if (!access.ok) return res.status(access.status).json({ error: access.error });
 
+    const at = new Date().toISOString();
     const { error } = await supabaseAdmin
       .from('chat_channel_reads')
       .upsert(
-        { channel_id: channelId, user_id: user.id, last_read_at: new Date().toISOString() },
+        { channel_id: channelId, user_id: user.id, last_read_at: at },
         { onConflict: 'channel_id,user_id' },
       );
     if (error) {
       logger.warn({ error, channelId, userId: user.id }, 'Failed to update read cursor');
       return res.status(500).json({ error: 'Failed to update read cursor' });
+    }
+    if (access.channel.session_id) {
+      try {
+        await recordOpen({
+          sessionId: access.channel.session_id,
+          chatChannelId: channelId,
+          userId: user.id,
+          at,
+        });
+      } catch (err) {
+        logger.warn({ err, channelId }, 'Failed to record chat open');
+      }
     }
     res.status(204).end();
   } catch (err) {
@@ -1025,7 +1040,7 @@ router.post(
     try {
       const { channelId } = req.params;
       const user = req.user!;
-      const { content, message_type } = req.body;
+      const { content, message_type, reply_to } = req.body;
 
       // One rule for every channel type (team membership, DM membership, trainer channel…).
       const channelAccess = await assertChannelAccess(channelId, user);
@@ -1043,6 +1058,7 @@ router.post(
           sender_id: user.id,
           content,
           type: message_type || 'text',
+          ...(reply_to ? { reply_to } : {}),
         })
         .select('*')
         .single();
@@ -1097,6 +1113,26 @@ router.post(
         content,
         message_type,
       );
+
+      if (channel.session_id) {
+        try {
+          await attributeChatMessage({
+            sessionId: channel.session_id,
+            channelId,
+            channelType: channel.type,
+            messageId: String(messageData.id),
+            senderId: user.id,
+            content,
+            replyTo: reply_to ?? null,
+            createdAt:
+              typeof messageData.created_at === 'string'
+                ? messageData.created_at
+                : new Date().toISOString(),
+          });
+        } catch (err) {
+          logger.warn({ err, channelId }, 'Failed to attribute chat response');
+        }
+      }
 
       // Ensure sender data exists with fallback
       const senderData = messageData.sender || {

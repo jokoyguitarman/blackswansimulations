@@ -1,0 +1,863 @@
+/**
+ * Database side of the inject response ledger. Every call degrades to a no-op when
+ * migration 268 is not applied (42P01 / 42703 / PGRST204 / PGRST205), and none of
+ * them throw: a route or scheduler tick must keep working with the ledger off.
+ *
+ * Chain, attempt and mood columns exist for WP5, WP10 and WP11. This module accepts
+ * them on the input objects and otherwise leaves the database defaults.
+ */
+
+import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { env } from '../../env.js';
+import { getWebSocketService } from '../websocketService.js';
+import { getPlayerTeamName } from '../teamCharterService.js';
+import { logger } from '../../lib/logger.js';
+import {
+  attributeChatResponse,
+  attributeDmResponses,
+  buildCommsState,
+  emptyCommsState,
+  matchEmailDelivery,
+  resolveEmailRootId,
+  responseTeamKey,
+  sessionMinuteAt,
+  COMMS_DELIVERY_CAP,
+  COMMS_RESPONSE_CAP,
+  type CommsState,
+  type EmailLink,
+  type LedgerDeliveryRow,
+  type LedgerResponseRow,
+} from './injectLedgerCore.js';
+import { failLedger, ledgerTablesMissing } from './ledgerSchema.js';
+
+const UNIQUE_VIOLATION = '23505';
+
+export type LedgerChannel =
+  'email' | 'chat' | 'npc_dm' | 'messenger_dm' | 'call' | 'social' | 'news';
+
+export type LedgerRefTable =
+  | 'sim_emails'
+  | 'chat_messages'
+  | 'sim_direct_messages'
+  | 'sim_calls'
+  | 'social_posts'
+  | 'sim_news_articles';
+
+export type LedgerAttribution =
+  | 'email_reply'
+  | 'email_forward'
+  | 'chat_reply_to'
+  | 'chat_heuristic'
+  | 'dm_thread'
+  | 'call_answered'
+  | 'call_transcript'
+  | 'call_returned'
+  | 'social_reply';
+
+export type LedgerUrgency = 'reminder' | 'follow_up' | 'urgent' | 'final' | 'escalated';
+
+export type LedgerCallState = 'ringing' | 'answered' | 'declined' | 'missed' | 'ended' | 'failed';
+
+/** Option object so later work packages can add fields without changing call sites. */
+export interface RecordDeliveryInput {
+  sessionId: string;
+  injectId: string;
+  injectKey: string;
+  channel: LedgerChannel;
+  refTable: LedgerRefTable;
+  refId: string;
+  chatChannelId?: string | null;
+  threadId?: string | null;
+  recipientUserIds?: string[] | null;
+  recipientTeams?: string[];
+  stakeholderId?: string | null;
+  senderName?: string | null;
+  requiresResponse?: boolean;
+  responseWindowMinutes?: number | null;
+  deliveredAt?: string;
+  deliveredMinute?: number;
+  callState?: LedgerCallState | null;
+  callGroupId?: string | null;
+  attemptNo?: number | null;
+  chainRootDeliveryId?: string | null;
+  chainRootKey?: string | null;
+  chainStep?: number | null;
+  urgency?: LedgerUrgency | null;
+  moodRung?: string | null;
+}
+
+export interface RecordOpenInput {
+  sessionId: string;
+  userId: string;
+  at?: string;
+  refTable?: string;
+  refId?: string;
+  chatChannelId?: string;
+}
+
+export interface RecordResponseInput {
+  sessionId: string;
+  deliveryId: string;
+  injectId: string;
+  injectKey: string;
+  channel: string;
+  refTable: string;
+  refId: string;
+  userId: string | null;
+  teamName: string | null;
+  isBot: boolean;
+  attribution: LedgerAttribution;
+  contentExcerpt?: string | null;
+  respondedAt: string;
+  responseMinute: number;
+  meta?: Record<string, unknown>;
+  waitMinutes?: number | null;
+  moodRung?: string | null;
+}
+
+interface SessionClock {
+  startTime: string | null;
+  trainerId: string | null;
+}
+
+const DELIVERY_COLUMNS =
+  'id, inject_id, inject_key, channel, delivered_minute, delivered_at, recipient_teams, recipient_user_ids, stakeholder_id, call_state, call_group_id, attempt_no, chain_root_key, chain_step, urgency, mood_rung, first_opened_at, first_response_minute, first_response_team, ref_id, chat_channel_id, thread_id, response_window_minutes, first_response_at';
+
+export async function recordDelivery(input: RecordDeliveryInput): Promise<string | null> {
+  if (ledgerTablesMissing()) return null;
+  try {
+    const clock = await loadSessionClock(input.sessionId);
+    const deliveredAt = input.deliveredAt ?? new Date().toISOString();
+    const deliveredMinute = input.deliveredMinute ?? sessionMinuteAt(clock.startTime, deliveredAt);
+    const row: Record<string, unknown> = {
+      session_id: input.sessionId,
+      inject_id: input.injectId,
+      inject_key: input.injectKey,
+      channel: input.channel,
+      ref_table: input.refTable,
+      ref_id: input.refId,
+      chat_channel_id: input.chatChannelId ?? null,
+      thread_id: input.threadId ?? null,
+      recipient_user_ids: input.recipientUserIds ?? null,
+      recipient_teams: input.recipientTeams ?? [],
+      stakeholder_id: input.stakeholderId ?? null,
+      sender_name: input.senderName ?? null,
+      requires_response: input.requiresResponse === true,
+      response_window_minutes: input.responseWindowMinutes ?? null,
+      delivered_at: deliveredAt,
+      delivered_minute: deliveredMinute,
+    };
+    assignIfSet(row, 'call_state', input.callState);
+    assignIfSet(row, 'call_group_id', input.callGroupId);
+    assignIfSet(row, 'attempt_no', input.attemptNo);
+    assignIfSet(row, 'chain_root_delivery_id', input.chainRootDeliveryId);
+    assignIfSet(row, 'chain_root_key', input.chainRootKey);
+    assignIfSet(row, 'chain_step', input.chainStep);
+    assignIfSet(row, 'urgency', input.urgency);
+    assignIfSet(row, 'mood_rung', input.moodRung);
+
+    const { data, error } = await supabaseAdmin
+      .from('inject_deliveries')
+      .insert(row)
+      .select('id')
+      .maybeSingle();
+    if (error?.code === UNIQUE_VIOLATION) {
+      const { data: existing, error: readError } = await supabaseAdmin
+        .from('inject_deliveries')
+        .select('id')
+        .eq('ref_table', input.refTable)
+        .eq('ref_id', input.refId)
+        .maybeSingle();
+      if (failLedger(readError, 'recordDelivery.existing')) return null;
+      return (existing?.id as string | undefined) ?? null;
+    }
+    if (failLedger(error, 'recordDelivery')) return null;
+    const id = (data?.id as string | undefined) ?? null;
+    if (id) {
+      emitLedger(clock.trainerId, {
+        delivery_id: id,
+        inject_id: input.injectId,
+        inject_key: input.injectKey,
+        kind: 'delivered',
+        channel: input.channel,
+        team: input.recipientTeams?.length === 1 ? input.recipientTeams[0] : undefined,
+        at: deliveredAt,
+      });
+    }
+    return id;
+  } catch (err) {
+    failLedger(err, 'recordDelivery');
+    return null;
+  }
+}
+
+export async function recordOpen(input: RecordOpenInput): Promise<void> {
+  if (ledgerTablesMissing()) return;
+  if (!input.refId && !input.chatChannelId) return;
+  try {
+    const at = input.at ?? new Date().toISOString();
+    let query = supabaseAdmin
+      .from('inject_deliveries')
+      .update({ first_opened_at: at, first_opened_by: input.userId })
+      .eq('session_id', input.sessionId)
+      .is('first_opened_at', null);
+    if (input.refId) query = query.eq('ref_id', input.refId);
+    if (input.refTable) query = query.eq('ref_table', input.refTable);
+    if (input.chatChannelId) {
+      query = query.eq('chat_channel_id', input.chatChannelId).lte('delivered_at', at);
+    }
+    const { data, error } = await query.select('id, inject_id, inject_key, channel');
+    if (failLedger(error, 'recordOpen')) return;
+    const clock = await loadSessionClock(input.sessionId);
+    for (const row of data ?? []) {
+      emitLedger(clock.trainerId, {
+        delivery_id: String(row.id),
+        inject_id: String(row.inject_id),
+        inject_key: String(row.inject_key),
+        kind: 'opened',
+        channel: String(row.channel),
+        at,
+      });
+    }
+  } catch (err) {
+    failLedger(err, 'recordOpen');
+  }
+}
+
+/**
+ * Inserts one response. A retry of the same `(delivery, ref)` is a no-op: the count
+ * is not incremented twice. The first response sets `first_response_*` only while
+ * that column is still null.
+ */
+export async function recordResponse(input: RecordResponseInput): Promise<string | null> {
+  if (ledgerTablesMissing()) return null;
+  try {
+    const row: Record<string, unknown> = {
+      session_id: input.sessionId,
+      delivery_id: input.deliveryId,
+      inject_id: input.injectId,
+      inject_key: input.injectKey,
+      channel: input.channel,
+      ref_table: input.refTable,
+      ref_id: input.refId,
+      user_id: input.userId,
+      team_name: input.teamName,
+      is_bot: input.isBot,
+      attribution: input.attribution,
+      content_excerpt: excerpt(input.contentExcerpt),
+      responded_at: input.respondedAt,
+      response_minute: input.responseMinute,
+      judgement_status: 'pending',
+      meta: input.meta ?? {},
+    };
+    assignIfSet(row, 'wait_minutes', input.waitMinutes);
+    assignIfSet(row, 'mood_rung', input.moodRung);
+
+    const { data, error } = await supabaseAdmin
+      .from('inject_responses')
+      .insert(row)
+      .select('id')
+      .maybeSingle();
+    if (error?.code === UNIQUE_VIOLATION) {
+      const { data: existing, error: readError } = await supabaseAdmin
+        .from('inject_responses')
+        .select('id')
+        .eq('delivery_id', input.deliveryId)
+        .eq('ref_table', input.refTable)
+        .eq('ref_id', input.refId)
+        .maybeSingle();
+      if (failLedger(readError, 'recordResponse.existing')) return null;
+      return (existing?.id as string | undefined) ?? null;
+    }
+    if (failLedger(error, 'recordResponse')) return null;
+    const id = (data?.id as string | undefined) ?? null;
+    if (!id) return null;
+
+    await bumpDeliveryResponse(input);
+    const clock = await loadSessionClock(input.sessionId);
+    emitLedger(clock.trainerId, {
+      delivery_id: input.deliveryId,
+      inject_id: input.injectId,
+      inject_key: input.injectKey,
+      kind: 'responded',
+      channel: input.channel,
+      team: input.teamName ?? undefined,
+      at: input.respondedAt,
+    });
+    return id;
+  } catch (err) {
+    failLedger(err, 'recordResponse');
+    return null;
+  }
+}
+
+export async function loadCommsState(
+  sessionId: string,
+  elapsedMinutes: number,
+): Promise<CommsState> {
+  if (ledgerTablesMissing()) return emptyCommsState(elapsedMinutes);
+  try {
+    const [deliveriesResult, responsesResult, clock] = await Promise.all([
+      supabaseAdmin
+        .from('inject_deliveries')
+        .select(DELIVERY_COLUMNS)
+        .eq('session_id', sessionId)
+        .order('delivered_at', { ascending: false })
+        .limit(COMMS_DELIVERY_CAP + 1),
+      supabaseAdmin
+        .from('inject_responses')
+        .select(
+          'delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at',
+        )
+        .eq('session_id', sessionId)
+        .order('responded_at', { ascending: false })
+        .limit(COMMS_RESPONSE_CAP + 1),
+      loadSessionClock(sessionId),
+    ]);
+    if (failLedger(deliveriesResult.error, 'loadCommsState.deliveries')) {
+      return emptyCommsState(elapsedMinutes);
+    }
+    if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
+      return emptyCommsState(elapsedMinutes);
+    }
+    return buildCommsState({
+      deliveries: (deliveriesResult.data ?? []) as LedgerDeliveryRow[],
+      responses: (responsesResult.data ?? []) as LedgerResponseRow[],
+      elapsedMinutes,
+      sessionStartedAt: clock.startTime,
+      countBots: env.injectLedgerCountBots,
+    });
+  } catch (err) {
+    failLedger(err, 'loadCommsState');
+    return emptyCommsState(elapsedMinutes);
+  }
+}
+
+export async function attributeChatMessage(input: {
+  sessionId: string | null;
+  channelId: string;
+  channelType: string;
+  messageId: string;
+  senderId: string;
+  content: string;
+  replyTo: string | null;
+  createdAt: string;
+}): Promise<void> {
+  if (!input.sessionId || ledgerTablesMissing()) return;
+  try {
+    const actor = await loadActor(input.sessionId, input.senderId, input.createdAt);
+    if (!actor || actor.isTrainer) return;
+
+    let query = supabaseAdmin
+      .from('inject_deliveries')
+      .select(DELIVERY_COLUMNS)
+      .eq('session_id', input.sessionId)
+      .eq('chat_channel_id', input.channelId);
+    if (input.replyTo && isUuid(input.replyTo) && isUuid(input.channelId)) {
+      query = supabaseAdmin
+        .from('inject_deliveries')
+        .select(DELIVERY_COLUMNS)
+        .eq('session_id', input.sessionId)
+        .or(`chat_channel_id.eq.${input.channelId},ref_id.eq.${input.replyTo}`);
+    }
+    const { data, error } = await query;
+    if (failLedger(error, 'attributeChatMessage')) return;
+    const rows = (data ?? []) as DeliveryRecord[];
+    const responded = await respondedTeamKeys(rows.map((row) => row.id));
+    if (input.channelType === 'npc_direct') {
+      const attributions = attributeDmResponses({
+        message: {
+          id: input.messageId,
+          sender_id: input.senderId,
+          created_at: input.createdAt,
+          sender_team: actor.teamName,
+          is_trainer: false,
+        },
+        deliveries: rows
+          .filter((row) => row.channel === 'npc_dm')
+          .map((row) => toDmDelivery(row, responded.get(row.id) ?? [])),
+        messageMinute: actor.minute,
+        chatChannelId: input.channelId,
+      });
+      await recordAttributed(
+        {
+          sessionId: input.sessionId,
+          senderId: input.senderId,
+          messageId: input.messageId,
+          content: input.content,
+          createdAt: input.createdAt,
+        },
+        actor,
+        rows,
+        attributions,
+        'chat_messages',
+      );
+      return;
+    }
+    const attributions = attributeChatResponse({
+      message: {
+        id: input.messageId,
+        channel_id: input.channelId,
+        sender_id: input.senderId,
+        reply_to: input.replyTo,
+        created_at: input.createdAt,
+        sender_team: actor.teamName,
+        is_trainer: false,
+      },
+      openDeliveries: rows
+        .filter((row) => row.channel === 'chat' || row.ref_id === input.replyTo)
+        .map((row) => ({
+          id: row.id,
+          ref_id: row.ref_id,
+          chat_channel_id: row.chat_channel_id ?? input.channelId,
+          delivered_at: row.delivered_at ?? input.createdAt,
+          delivered_minute: row.delivered_minute,
+          recipient_teams: row.recipient_teams ?? [],
+          recipient_user_ids: row.recipient_user_ids ?? null,
+          response_window_minutes: row.response_window_minutes ?? null,
+          first_response_at: row.first_response_at ?? null,
+          responded_teams: responded.get(row.id) ?? [],
+        })),
+      messageMinute: actor.minute,
+      defaultWindowMinutes: env.injectChatResponseWindowMinutes,
+    });
+    await recordAttributed(
+      {
+        sessionId: input.sessionId,
+        senderId: input.senderId,
+        messageId: input.messageId,
+        content: input.content,
+        createdAt: input.createdAt,
+      },
+      actor,
+      rows,
+      attributions,
+      'chat_messages',
+    );
+  } catch (err) {
+    failLedger(err, 'attributeChatMessage');
+  }
+}
+
+export async function attributeMessengerReply(input: {
+  sessionId: string;
+  userId: string;
+  messageId: string;
+  threadId: string;
+  content: string;
+  createdAt: string;
+}): Promise<void> {
+  if (ledgerTablesMissing() || !isUuid(input.threadId)) return;
+  try {
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    if (!actor || actor.isTrainer) return;
+    const { data, error } = await supabaseAdmin
+      .from('inject_deliveries')
+      .select(DELIVERY_COLUMNS)
+      .eq('session_id', input.sessionId)
+      .eq('thread_id', input.threadId)
+      .eq('channel', 'messenger_dm');
+    if (failLedger(error, 'attributeMessengerReply')) return;
+    const rows = (data ?? []) as DeliveryRecord[];
+    const responded = await respondedTeamKeys(rows.map((row) => row.id));
+    const attributions = attributeDmResponses({
+      message: {
+        id: input.messageId,
+        sender_id: input.userId,
+        created_at: input.createdAt,
+        sender_team: actor.teamName,
+        is_trainer: false,
+      },
+      deliveries: rows.map((row) => toDmDelivery(row, responded.get(row.id) ?? [])),
+      messageMinute: actor.minute,
+      threadId: input.threadId,
+    });
+    await recordAttributed(
+      {
+        sessionId: input.sessionId,
+        senderId: input.userId,
+        messageId: input.messageId,
+        content: input.content,
+        createdAt: input.createdAt,
+      },
+      actor,
+      rows,
+      attributions,
+      'sim_direct_messages',
+    );
+  } catch (err) {
+    failLedger(err, 'attributeMessengerReply');
+  }
+}
+
+export async function attributeEmailHandling(input: {
+  sessionId: string;
+  userId: string;
+  emailId: string;
+  bodyText: string;
+  repliedToId: string | null;
+  forwardedEmailId: string | null;
+  createdAt: string;
+}): Promise<void> {
+  if (ledgerTablesMissing()) return;
+  if (!input.repliedToId && !input.forwardedEmailId) return;
+  try {
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    if (!actor || actor.isTrainer) return;
+    const starts = [input.repliedToId, input.forwardedEmailId].filter(
+      (id): id is string => !!id && isUuid(id),
+    );
+    if (starts.length === 0) return;
+    const emails = await loadEmailLinks(input.sessionId, starts);
+    const lookupIds = new Set<string>(starts);
+    for (const startId of starts) lookupIds.add(resolveEmailRootId(emails, startId));
+    const deliveries = await loadEmailDeliveries(input.sessionId, [...lookupIds]);
+    const resolved: Array<{ deliveryId: string; attribution: 'email_reply' | 'email_forward' }> =
+      [];
+    const seen = new Set<string>();
+    if (input.repliedToId) {
+      const root = resolveEmailRootId(emails, input.repliedToId);
+      const deliveryId = matchEmailDelivery(deliveries, root, input.repliedToId);
+      if (deliveryId) {
+        seen.add(deliveryId);
+        resolved.push({ deliveryId, attribution: 'email_reply' });
+      }
+    }
+    if (input.forwardedEmailId) {
+      const root = resolveEmailRootId(emails, input.forwardedEmailId);
+      const deliveryId = matchEmailDelivery(deliveries, root, input.forwardedEmailId);
+      if (deliveryId && !seen.has(deliveryId)) {
+        resolved.push({ deliveryId, attribution: 'email_forward' });
+      }
+    }
+    const rows = await loadDeliveriesById(
+      input.sessionId,
+      resolved.map((item) => item.deliveryId),
+    );
+    await recordAttributed(
+      {
+        sessionId: input.sessionId,
+        senderId: input.userId,
+        messageId: input.emailId,
+        content: input.bodyText,
+        createdAt: input.createdAt,
+      },
+      actor,
+      rows,
+      resolved,
+      'sim_emails',
+    );
+  } catch (err) {
+    failLedger(err, 'attributeEmailHandling');
+  }
+}
+
+export async function attributeSocialReply(input: {
+  sessionId: string;
+  userId: string;
+  replyPostId: string;
+  parentPostId: string;
+  content: string;
+  createdAt: string;
+}): Promise<void> {
+  if (ledgerTablesMissing()) return;
+  try {
+    const actor = await loadActor(input.sessionId, input.userId, input.createdAt);
+    if (!actor || actor.isTrainer) return;
+    const { data, error } = await supabaseAdmin
+      .from('inject_deliveries')
+      .select(DELIVERY_COLUMNS)
+      .eq('session_id', input.sessionId)
+      .eq('ref_table', 'social_posts')
+      .eq('ref_id', input.parentPostId)
+      .maybeSingle();
+    if (failLedger(error, 'attributeSocialReply')) return;
+    if (!data) return;
+    const row = data as DeliveryRecord;
+    await recordResponse({
+      sessionId: input.sessionId,
+      deliveryId: row.id,
+      injectId: row.inject_id,
+      injectKey: row.inject_key,
+      channel: row.channel,
+      refTable: 'social_posts',
+      refId: input.replyPostId,
+      userId: input.userId,
+      teamName: actor.teamName,
+      isBot: actor.isBot,
+      attribution: 'social_reply',
+      contentExcerpt: input.content,
+      respondedAt: input.createdAt,
+      responseMinute: actor.minute,
+    });
+  } catch (err) {
+    failLedger(err, 'attributeSocialReply');
+  }
+}
+
+interface DeliveryRecord {
+  id: string;
+  inject_id: string;
+  inject_key: string;
+  channel: string;
+  ref_id: string;
+  chat_channel_id: string | null;
+  thread_id: string | null;
+  delivered_at: string | null;
+  delivered_minute: number;
+  recipient_teams: string[] | null;
+  recipient_user_ids: string[] | null;
+  response_window_minutes: number | null;
+  first_response_at: string | null;
+}
+
+interface Actor {
+  teamName: string | null;
+  isBot: boolean;
+  isTrainer: boolean;
+  minute: number;
+}
+
+async function recordAttributed(
+  input: {
+    sessionId: string;
+    senderId: string;
+    messageId: string;
+    content: string;
+    createdAt: string;
+  },
+  actor: Actor,
+  rows: DeliveryRecord[],
+  attributions: Array<{ deliveryId: string; attribution: LedgerAttribution }>,
+  refTable: string,
+): Promise<void> {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const attribution of attributions) {
+    const row = byId.get(attribution.deliveryId);
+    if (!row) continue;
+    await recordResponse({
+      sessionId: input.sessionId,
+      deliveryId: row.id,
+      injectId: row.inject_id,
+      injectKey: row.inject_key,
+      channel: row.channel,
+      refTable,
+      refId: input.messageId,
+      userId: input.senderId,
+      teamName: actor.teamName,
+      isBot: actor.isBot,
+      attribution: attribution.attribution,
+      contentExcerpt: input.content,
+      respondedAt: input.createdAt,
+      responseMinute: actor.minute,
+    });
+  }
+}
+
+function toDmDelivery(row: DeliveryRecord, respondedTeams: string[]) {
+  return {
+    id: row.id,
+    delivered_at: row.delivered_at ?? new Date(0).toISOString(),
+    delivered_minute: row.delivered_minute,
+    response_window_minutes: row.response_window_minutes,
+    recipient_teams: row.recipient_teams ?? [],
+    recipient_user_ids: row.recipient_user_ids,
+    responded_teams: respondedTeams,
+    chat_channel_id: row.chat_channel_id,
+    thread_id: row.thread_id,
+  };
+}
+
+async function bumpDeliveryResponse(input: RecordResponseInput): Promise<void> {
+  const { data: current, error: readError } = await supabaseAdmin
+    .from('inject_deliveries')
+    .select('response_count, first_response_at')
+    .eq('id', input.deliveryId)
+    .maybeSingle();
+  if (failLedger(readError, 'bumpDeliveryResponse.read')) return;
+  const nextCount = ((current?.response_count as number | null) ?? 0) + 1;
+  const { error: countError } = await supabaseAdmin
+    .from('inject_deliveries')
+    .update({ response_count: nextCount })
+    .eq('id', input.deliveryId);
+  if (failLedger(countError, 'bumpDeliveryResponse.count')) return;
+  if (current?.first_response_at) return;
+  const { error: firstError } = await supabaseAdmin
+    .from('inject_deliveries')
+    .update({
+      first_response_at: input.respondedAt,
+      first_response_minute: input.responseMinute,
+      first_response_by: input.userId,
+      first_response_team: input.teamName,
+    })
+    .eq('id', input.deliveryId)
+    .is('first_response_at', null);
+  failLedger(firstError, 'bumpDeliveryResponse.first');
+}
+
+async function respondedTeamKeys(deliveryIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (deliveryIds.length === 0 || ledgerTablesMissing()) return map;
+  const { data, error } = await supabaseAdmin
+    .from('inject_responses')
+    .select('delivery_id, team_name, user_id')
+    .in('delivery_id', deliveryIds);
+  if (failLedger(error, 'respondedTeamKeys')) return map;
+  for (const row of data ?? []) {
+    const key = responseTeamKey(row.team_name as string | null, row.user_id as string | null);
+    if (!key) continue;
+    const deliveryId = String(row.delivery_id);
+    const list = map.get(deliveryId) ?? [];
+    if (!list.includes(key)) list.push(key);
+    map.set(deliveryId, list);
+  }
+  return map;
+}
+
+async function loadEmailLinks(sessionId: string, startIds: string[]): Promise<EmailLink[]> {
+  const links: EmailLink[] = [];
+  const seen = new Set<string>();
+  let frontier = startIds.filter((id) => isUuid(id));
+  for (let hop = 0; hop < 8 && frontier.length > 0; hop++) {
+    const ids = frontier.filter((id) => !seen.has(id));
+    if (ids.length === 0) break;
+    for (const id of ids) seen.add(id);
+    const { data, error } = await supabaseAdmin
+      .from('sim_emails')
+      .select('id, thread_id, replied_to_id')
+      .eq('session_id', sessionId)
+      .in('id', ids);
+    if (failLedger(error, 'loadEmailLinks')) return links;
+    const next: string[] = [];
+    for (const row of data ?? []) {
+      links.push({
+        id: String(row.id),
+        thread_id: (row.thread_id as string | null) ?? null,
+        replied_to_id: (row.replied_to_id as string | null) ?? null,
+      });
+      if (row.thread_id && !seen.has(String(row.thread_id))) next.push(String(row.thread_id));
+      if (row.replied_to_id && !seen.has(String(row.replied_to_id)))
+        next.push(String(row.replied_to_id));
+    }
+    frontier = next;
+  }
+  return links;
+}
+
+async function loadEmailDeliveries(
+  sessionId: string,
+  ids: string[],
+): Promise<Array<{ id: string; thread_id: string | null; ref_id: string }>> {
+  const unique = [...new Set(ids.filter(isUuid))];
+  if (unique.length === 0) return [];
+  const clauses = unique.flatMap((id) => [`thread_id.eq.${id}`, `ref_id.eq.${id}`]);
+  const { data, error } = await supabaseAdmin
+    .from('inject_deliveries')
+    .select('id, thread_id, ref_id')
+    .eq('session_id', sessionId)
+    .eq('channel', 'email')
+    .or(clauses.join(','));
+  if (failLedger(error, 'loadEmailDeliveries')) return [];
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    thread_id: (row.thread_id as string | null) ?? null,
+    ref_id: String(row.ref_id),
+  }));
+}
+
+async function loadDeliveriesById(sessionId: string, ids: string[]): Promise<DeliveryRecord[]> {
+  const unique = [...new Set(ids.filter(isUuid))];
+  if (unique.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from('inject_deliveries')
+    .select(DELIVERY_COLUMNS)
+    .eq('session_id', sessionId)
+    .in('id', unique);
+  if (failLedger(error, 'loadDeliveriesById')) return [];
+  return (data ?? []) as DeliveryRecord[];
+}
+
+async function loadActor(sessionId: string, userId: string, at: string): Promise<Actor | null> {
+  const clock = await loadSessionClock(sessionId);
+  const minute = sessionMinuteAt(clock.startTime, at);
+  if (clock.trainerId && clock.trainerId === userId) {
+    return { teamName: null, isBot: false, isTrainer: true, minute };
+  }
+  const [teamName, isBot] = await Promise.all([
+    getPlayerTeamName(sessionId, userId),
+    profileIsBot(userId),
+  ]);
+  return { teamName, isBot, isTrainer: false, minute };
+}
+
+/**
+ * `user_profiles.is_bot` is the flag the pool writes. `isBotUser()` loads that pool
+ * and can create auth users, which a player message must not do.
+ */
+async function profileIsBot(userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('user_profiles')
+      .select('is_bot')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) return false;
+    return (data as { is_bot?: boolean } | null)?.is_bot === true;
+  } catch {
+    return false;
+  }
+}
+
+async function loadSessionClock(sessionId: string): Promise<SessionClock> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('sessions')
+      .select('start_time, trainer_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (error || !data) return { startTime: null, trainerId: null };
+    return {
+      startTime: (data.start_time as string | null) ?? null,
+      trainerId: (data.trainer_id as string | null) ?? null,
+    };
+  } catch {
+    return { startTime: null, trainerId: null };
+  }
+}
+
+function emitLedger(
+  trainerId: string | null,
+  payload: {
+    delivery_id: string;
+    inject_id: string;
+    inject_key: string;
+    kind: 'delivered' | 'opened' | 'responded';
+    channel: string;
+    team?: string;
+    at: string;
+  },
+): void {
+  if (!trainerId) return;
+  try {
+    getWebSocketService().emitToUser(trainerId, {
+      type: 'inject_ledger.updated',
+      data: payload,
+      timestamp: payload.at,
+    });
+  } catch (err) {
+    logger.debug({ err, deliveryId: payload.delivery_id }, 'inject_ledger.updated was not emitted');
+  }
+}
+
+function assignIfSet(row: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== undefined && value !== null) row[key] = value;
+}
+
+function excerpt(content: string | null | undefined): string | null {
+  if (!content) return null;
+  return content.slice(0, 2000);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}

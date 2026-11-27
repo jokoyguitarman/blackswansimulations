@@ -12,6 +12,13 @@ import {
   UNKNOWN_CALLER,
   type NpcChatMessage,
 } from '../lib/injectChatMessages.js';
+import { injectKeyOf, isValidInjectKey } from '../lib/injectKey.js';
+import { recordDelivery, type RecordDeliveryInput } from './ledger/injectLedgerService.js';
+import {
+  chatInjectIdColumnMissing,
+  ledgerErrorCode,
+  markChatInjectIdColumnMissing,
+} from './ledger/ledgerSchema.js';
 
 export interface DeliveryConfig {
   app: 'social_feed' | 'group_chat' | 'email' | 'news' | 'phone_call';
@@ -48,6 +55,10 @@ export interface DeliveryConfig {
   org_key?: string;
   /** Country whose feed / news this content belongs in (social_feed / news only). */
   country?: string;
+  /** Stable slug conditions use. Invalid values fall back to the inject id. */
+  inject_key?: string;
+  /** Minutes after delivery in which a chat message can still count as the reply. */
+  response_window_minutes?: number;
 }
 
 /** Phone-call injects are also written to chat; see routeToPhoneCall. */
@@ -221,7 +232,7 @@ export async function routeInjectToApp(
   },
 ): Promise<void> {
   const config = inject.delivery_config;
-  if (!config) return;
+  if (!config?.app) return;
 
   try {
     // org_key only scopes private delivery (email / phone / group chat). Public content
@@ -351,6 +362,24 @@ async function routeToSocialFeed(
   });
 
   logger.info({ sessionId, injectId, postId: post.id }, 'Inject routed to social feed');
+
+  if (shouldLedgerSocial(inject.requires_response, config)) {
+    await ledgerDelivery({
+      sessionId,
+      injectId,
+      injectKey: injectKeyOf({ id: injectId, delivery_config: config }),
+      channel: 'social',
+      refTable: 'social_posts',
+      refId: String(post.id),
+      recipientUserIds: targeting?.playerIds ?? null,
+      recipientTeams: targeting?.teamNames ?? [],
+      stakeholderId: config.stakeholder_id ?? null,
+      senderName: authorName,
+      requiresResponse: inject.requires_response === true,
+      responseWindowMinutes: responseWindowMinutes(config),
+      deliveredAt: timestampOf(post.created_at),
+    });
+  }
 
   if (config.spawn_replies && config.spawn_replies > 0 && env.aiEnabled) {
     void spawnNPCReplies(sessionId, post, config).catch((err) =>
@@ -490,7 +519,7 @@ export function sanitizeEmailCategory(category: string | undefined | null): stri
 async function routeToEmail(
   sessionId: string,
   injectId: string,
-  inject: { title: string; content: string },
+  inject: { title: string; content: string; requires_response?: boolean },
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
@@ -557,6 +586,29 @@ async function routeToEmail(
     return;
   }
 
+  const recipientTeams =
+    effectiveTargeting?.teamNames && effectiveTargeting.teamNames.length > 0
+      ? effectiveTargeting.teamNames
+      : config.stakeholder_team
+        ? [config.stakeholder_team]
+        : [];
+  await ledgerDelivery({
+    sessionId,
+    injectId,
+    injectKey: injectKeyOf({ id: injectId, delivery_config: config }),
+    channel: 'email',
+    refTable: 'sim_emails',
+    refId: String(email.id),
+    threadId: String(email.id),
+    recipientUserIds: effectiveTargeting?.playerIds ?? null,
+    recipientTeams,
+    stakeholderId: config.stakeholder_id ?? null,
+    senderName: config.from_name || 'System',
+    requiresResponse: inject.requires_response === true,
+    responseWindowMinutes: responseWindowMinutes(config),
+    deliveredAt: timestampOf(email.created_at),
+  });
+
   await emitScoped(sessionId, effectiveTargeting?.playerIds ?? null, {
     type: 'sim_email.received',
     data: { email },
@@ -591,6 +643,21 @@ async function routeToNews(
     logger.error({ error, sessionId, injectId }, 'Failed to create news article from inject');
     return;
   }
+
+  await ledgerDelivery({
+    sessionId,
+    injectId,
+    injectKey: injectKeyOf({ id: injectId, delivery_config: config }),
+    channel: 'news',
+    refTable: 'sim_news_articles',
+    refId: String(article.id),
+    recipientUserIds: null,
+    recipientTeams: [],
+    stakeholderId: config.stakeholder_id ?? null,
+    senderName: config.outlet_name || 'News Wire',
+    requiresResponse: false,
+    responseWindowMinutes: responseWindowMinutes(config),
+  });
 
   getWebSocketService().broadcastToSession(sessionId, {
     type: 'news_article.published',
@@ -666,7 +733,7 @@ async function routeToNews(
 async function routeToGroupChat(
   sessionId: string,
   injectId: string,
-  inject: { content: string },
+  inject: { content: string; requires_response?: boolean },
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
@@ -676,6 +743,7 @@ async function routeToGroupChat(
     groupChatMessage(inject, config),
     config.channel_type,
     targeting,
+    { requiresResponse: inject.requires_response === true, config },
   );
   logger.info({ sessionId, injectId, channels }, 'Inject routed to group chat');
 }
@@ -691,6 +759,7 @@ async function postNpcChatMessage(
   message: NpcChatMessage,
   channelType: string | undefined,
   targeting: TeamTargeting | null,
+  options: { requiresResponse: boolean; config: DeliveryConfig },
 ): Promise<number> {
   const { data: trainer } = await supabaseAdmin
     .from('sessions')
@@ -699,7 +768,7 @@ async function postNpcChatMessage(
     .single();
   if (!trainer) return 0;
 
-  let channelIds: string[] = [];
+  let channels: Array<{ id: string; team_name: string | null }> = [];
   if (targeting?.playerIds && targeting.playerIds.length > 0) {
     const { data: teamRows } = await supabaseAdmin
       .from('session_teams')
@@ -715,14 +784,17 @@ async function postNpcChatMessage(
       await ensureTeamChannels(sessionId, trainer.trainer_id as string | null);
       const { data: teamChannels } = await supabaseAdmin
         .from('chat_channels')
-        .select('id')
+        .select('id, team_name')
         .eq('session_id', sessionId)
         .eq('type', 'team')
         .in('team_name', teamNames);
-      channelIds = (teamChannels ?? []).map((c) => String((c as { id: string }).id));
+      channels = (teamChannels ?? []).map((c) => ({
+        id: String((c as { id: string }).id),
+        team_name: ((c as { team_name?: string | null }).team_name as string | null) ?? null,
+      }));
     }
     // Team-only content must not fall back to a session-wide channel.
-    if (channelIds.length === 0) {
+    if (channels.length === 0) {
       logger.warn(
         { sessionId, injectId, teamNames: targeting.teamNames },
         'No team channel for scoped chat inject; not delivered',
@@ -733,7 +805,7 @@ async function postNpcChatMessage(
     const type = channelType || 'public';
     const { data: channel } = await supabaseAdmin
       .from('chat_channels')
-      .select('id')
+      .select('id, team_name')
       .eq('session_id', sessionId)
       .eq('type', type)
       .limit(1)
@@ -742,42 +814,87 @@ async function postNpcChatMessage(
       logger.warn({ sessionId, injectId, channelType: type }, 'No channel found for chat inject');
       return 0;
     }
-    channelIds = [String(channel.id)];
+    channels = [
+      {
+        id: String(channel.id),
+        team_name: (channel.team_name as string | null) ?? null,
+      },
+    ];
   }
 
   // The NPC speaks as itself (migration 199: sender_id may be null when a stakeholder sender is
   // set). Never attribute NPC lines to the trainer's account
   // (docs/session-bugfix-spec-2026-09-20.md §1).
   let written = 0;
-  for (const channelId of channelIds) {
-    const { data: row, error } = await supabaseAdmin
-      .from('chat_messages')
-      .insert({
-        channel_id: channelId,
+  for (const channel of channels) {
+    const { data: row, error } = await insertNpcChatRow(
+      {
+        channel_id: channel.id,
         session_id: sessionId,
         sender_id: null,
         ...message,
-      })
-      .select()
-      .single();
+      },
+      injectId,
+    );
 
-    if (error) {
+    if (error || !row) {
       logger.error(
-        { error, sessionId, injectId, channelId },
+        { error, sessionId, injectId, channelId: channel.id },
         'Failed to create chat message from inject',
       );
       continue;
     }
+    await ledgerDelivery({
+      sessionId,
+      injectId,
+      injectKey: injectKeyOf({ id: injectId, delivery_config: options.config }),
+      channel: 'chat',
+      refTable: 'chat_messages',
+      refId: String(row.id),
+      chatChannelId: channel.id,
+      recipientUserIds: targeting?.playerIds ?? null,
+      recipientTeams: channel.team_name ? [channel.team_name] : (targeting?.teamNames ?? []),
+      stakeholderId: options.config.stakeholder_id ?? null,
+      senderName: message.sender_display_name,
+      requiresResponse: options.requiresResponse,
+      responseWindowMinutes: responseWindowMinutes(options.config),
+      deliveredAt: timestampOf(row.created_at),
+    });
     written++;
-    getWebSocketService().messageSent(channelId, row as Record<string, unknown>);
+    getWebSocketService().messageSent(channel.id, row);
   }
   return written;
+}
+
+/**
+ * Migration 268 adds `chat_messages.inject_id`. Until that column exists, PostgREST
+ * rejects the insert; the chat line is saved again without it.
+ */
+async function insertNpcChatRow(
+  row: Record<string, unknown>,
+  injectId: string,
+): Promise<{ data: Record<string, unknown> | null; error: { code?: string } | null }> {
+  const payload = chatInjectIdColumnMissing() ? row : { ...row, inject_id: injectId };
+  const first = await supabaseAdmin.from('chat_messages').insert(payload).select().single();
+  if (!first.error && first.data) {
+    return { data: first.data as Record<string, unknown>, error: null };
+  }
+  const code = ledgerErrorCode(first.error);
+  if (!chatInjectIdColumnMissing() && (code === '42703' || code === 'PGRST204')) {
+    markChatInjectIdColumnMissing();
+    const second = await supabaseAdmin.from('chat_messages').insert(row).select().single();
+    return {
+      data: (second.data as Record<string, unknown> | null) ?? null,
+      error: second.error,
+    };
+  }
+  return { data: null, error: first.error };
 }
 
 async function routeToPhoneCall(
   sessionId: string,
   injectId: string,
-  inject: { title: string; content: string },
+  inject: { title: string; content: string; requires_response?: boolean },
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
@@ -807,8 +924,38 @@ async function routeToPhoneCall(
     phoneCallMessage(inject, config),
     config.channel_type,
     targeting,
+    { requiresResponse: inject.requires_response === true, config },
   );
   logger.info({ sessionId, injectId, channels }, 'Inject routed to phone call');
+}
+
+function responseWindowMinutes(config: DeliveryConfig): number | null {
+  const value = config.response_window_minutes;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return Math.floor(value);
+}
+
+function shouldLedgerSocial(
+  requiresResponse: boolean | undefined,
+  config: DeliveryConfig,
+): boolean {
+  if (requiresResponse) return true;
+  return typeof config.inject_key === 'string' && isValidInjectKey(config.inject_key);
+}
+
+function timestampOf(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+async function ledgerDelivery(input: RecordDeliveryInput): Promise<void> {
+  try {
+    await recordDelivery(input);
+  } catch (err) {
+    logger.warn(
+      { err, injectId: input.injectId, refId: input.refId },
+      'ledger delivery record failed',
+    );
+  }
 }
 
 function determineSentiment(flags: Record<string, unknown> | undefined): string {

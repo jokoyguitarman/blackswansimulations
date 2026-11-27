@@ -39,6 +39,7 @@ import { isBoothJoinToken } from '../lib/boothLink.js';
 import { conditionsToAppearIsEmpty } from './conditions/injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/cancellationGate.js';
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
+import { loadCommsState } from './ledger/injectLedgerService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /** Sessions for which the decision-template dormancy notice has been logged (once per process). */
@@ -904,6 +905,13 @@ export class InjectSchedulerService {
       } catch (stateErr) {
         logger.warn({ err: stateErr, sessionId: session.id }, 'Social state computation error');
       }
+    }
+
+    try {
+      // Recomputed every tick for the evaluator. Not written to sessions.current_state.
+      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes);
+    } catch (err) {
+      logger.warn({ err, sessionId: session.id }, 'comms_state load failed');
     }
 
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---

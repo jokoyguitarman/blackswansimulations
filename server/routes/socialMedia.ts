@@ -22,6 +22,12 @@ import {
 } from '../services/mediaGenerationService.js';
 import { evaluateConditionKey } from '../services/conditionEvaluatorService.js';
 import { buildConditionEvaluationContext } from '../services/conditions/conditionContextService.js';
+import {
+  attributeEmailHandling,
+  attributeSocialReply,
+  loadCommsState,
+  recordOpen,
+} from '../services/ledger/injectLedgerService.js';
 import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 import { adjudicateDispute } from '../services/contentDisputeService.js';
 import { buildPlayerLedger } from '../services/playerLedgerService.js';
@@ -456,6 +462,19 @@ router.post(
             .eq('id', reply_to_post_id);
         }
         await markPostResponded(session_id, reply_to_post_id, post.id);
+        try {
+          await attributeSocialReply({
+            sessionId: session_id,
+            userId: user.id,
+            replyPostId: String(post.id),
+            parentPostId: reply_to_post_id,
+            content,
+            createdAt:
+              typeof post.created_at === 'string' ? post.created_at : new Date().toISOString(),
+          });
+        } catch (err) {
+          logger.warn({ err, postId: post.id }, 'Failed to attribute social reply');
+        }
 
         // Commenting on a targeted post surfaces the parent to the whole team.
         await surfacePostToSession(reply_to_post_id, session_id, user.id);
@@ -1176,6 +1195,17 @@ router.post('/emails/:emailId/read', requireAuth, async (req: AuthenticatedReque
     await supabaseAdmin.from('sim_emails').update({ is_read: true }).eq('id', emailId);
 
     await recordPlayerAction(email.session_id, user.id, 'email_read', emailId, null);
+    try {
+      await recordOpen({
+        sessionId: email.session_id,
+        refTable: 'sim_emails',
+        refId: emailId,
+        userId: user.id,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn({ err, emailId }, 'Failed to record email open');
+    }
 
     if (email.email_category === 'verified_facts') {
       await recordPlayerAction(
@@ -1283,6 +1313,21 @@ router.post(
         .single();
 
       if (error) return res.status(500).json({ error: 'Failed to send email' });
+
+      try {
+        await attributeEmailHandling({
+          sessionId: session_id,
+          userId: user.id,
+          emailId: String(email.id),
+          bodyText: body_text,
+          repliedToId: replied_to_id ?? null,
+          forwardedEmailId: forwarded_email_id ?? null,
+          createdAt:
+            typeof email.created_at === 'string' ? email.created_at : new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.warn({ err, emailId: email.id }, 'Failed to attribute email handling');
+      }
 
       await recordPlayerAction(
         session_id,
@@ -1901,6 +1946,17 @@ router.post('/news/:articleId/read', requireAuth, async (req: AuthenticatedReque
       {},
       'monitor',
     );
+    try {
+      await recordOpen({
+        sessionId: article.session_id,
+        refTable: 'sim_news_articles',
+        refId: articleId,
+        userId: user.id,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn({ err, articleId }, 'Failed to record news open');
+    }
     res.json({ success: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /social/news/:articleId/read');
@@ -2724,15 +2780,27 @@ router.get(
         }
       }
 
+      const storedState = (session.current_state as Record<string, unknown>) || {};
+      let currentState = storedState;
+      try {
+        currentState = {
+          ...storedState,
+          comms_state: await loadCommsState(session.id as string, elapsedMinutes),
+        };
+      } catch (err) {
+        logger.warn({ err, sessionId }, 'comms_state load failed');
+      }
+
       const evalContext = await buildConditionEvaluationContext(
         {
           id: session.id as string,
           scenario_id: session.scenario_id as string,
           start_time: session.start_time as string | null,
-          current_state: (session.current_state as Record<string, unknown>) || {},
+          current_state: currentState,
         },
         {
           elapsedMinutes,
+          currentState,
           conditionSources: condInjects,
         },
       );

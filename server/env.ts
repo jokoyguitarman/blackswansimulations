@@ -152,6 +152,10 @@ export const env = {
     (nodeEnv === 'production' && process.env.ENABLE_AUTO_INJECTS !== 'false'),
   // Interval in milliseconds for checking if injects should be published (default: 30 seconds)
   injectSchedulerIntervalMs: Number(process.env.INJECT_SCHEDULER_INTERVAL_MS) || 30000,
+  // How long after a chat delivery a recipient-team message can still count as the reply.
+  injectChatResponseWindowMinutes: envInt('INJECT_CHAT_RESPONSE_WINDOW_MINUTES', 15),
+  // AI teammate replies are stored either way. Set this false to leave them out of comms_state.
+  injectLedgerCountBots: process.env.INJECT_LEDGER_COUNT_BOTS !== 'false',
   // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.

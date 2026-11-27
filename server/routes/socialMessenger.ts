@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
+import { attributeMessengerReply } from '../services/ledger/injectLedgerService.js';
 import { getControlledOrgPage } from '../services/orgPageService.js';
 import { randomUUID } from 'crypto';
 
@@ -251,6 +252,19 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
     });
 
     await recordPlayerAction(session_id, user.id, 'dm_sent', message.id, content);
+    try {
+      await attributeMessengerReply({
+        sessionId: session_id,
+        userId: user.id,
+        messageId: String(message.id),
+        threadId,
+        content,
+        createdAt:
+          typeof message.created_at === 'string' ? message.created_at : new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn({ err, messageId: message.id }, 'Failed to attribute messenger reply');
+    }
 
     // Trigger NPC reply if the recipient is an NPC (non-blocking)
     void (async () => {
