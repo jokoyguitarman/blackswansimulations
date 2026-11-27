@@ -8,6 +8,13 @@ export const SHOWCASE = {
   FX_SHAKE_S: 0.6,
   FX_SHAKE_PX: 8,
   FREE_WALK_SPEED: 1.19,
+  /** Weidmann level walking: mean 1.34 m/s, standard deviation 0.37. */
+  WALK_SPEED_MEAN: 1.34,
+  WALK_SPEED_SD: 0.37,
+  /** Mean minus two standard deviations. */
+  WALK_SPEED_MIN: 0.6,
+  /** Mean plus two standard deviations. */
+  WALK_SPEED_MAX: 2.08,
   OUTDOOR_RUN_SPEED: 2.14,
   OUTDOOR_WALK_SPEED: 1.44,
   RUN_DISTANCE_M: 50,
@@ -105,6 +112,22 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
   FREE_WALK_SPEED: {
     status: 'seed_pending',
     ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed',
+  },
+  WALK_SPEED_MEAN: {
+    status: 'seed_pending',
+    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed_level_mean',
+  },
+  WALK_SPEED_SD: {
+    status: 'seed_pending',
+    ref: 'knowledge-seeds/physics-movement/movement-parameters.pending.json#free_walk_speed_level_mean',
+  },
+  WALK_SPEED_MIN: {
+    status: 'assumed',
+    ref: 'assumed: Weidmann mean minus two standard deviations',
+  },
+  WALK_SPEED_MAX: {
+    status: 'assumed',
+    ref: 'assumed: Weidmann mean plus two standard deviations',
   },
   OUTDOOR_RUN_SPEED: {
     status: 'seed_pending',

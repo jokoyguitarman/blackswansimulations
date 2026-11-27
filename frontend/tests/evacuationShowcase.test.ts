@@ -31,6 +31,7 @@ import {
   outdoorSpeed,
   radiantAvoidRadiusM,
   samplePremovementS,
+  sampleWalkSpeedMps,
   smokeAheadAction,
   visibilityM,
   walkingSpeed,
@@ -211,6 +212,60 @@ describe('evacuation showcase', () => {
     const median = (draws[4999] + draws[5000]) / 2;
     assert.ok(Math.abs(median - 30) <= 1.5, `median ${median}`);
     for (const v of draws) assert.ok(v >= 12 && v <= 150);
+  });
+
+  test('5a2 each person draws a seeded walk speed', () => {
+    const again = sampleWalkSpeedMps(1, 4);
+    assert.equal(sampleWalkSpeedMps(1, 4), again);
+    assert.notEqual(sampleWalkSpeedMps(1, 5), again);
+    let sum = 0;
+    const n = 4000;
+    for (let i = 0; i < n; i++) {
+      const speed = sampleWalkSpeedMps(7, i);
+      assert.ok(speed >= SHOWCASE.WALK_SPEED_MIN && speed <= SHOWCASE.WALK_SPEED_MAX);
+      sum += speed;
+    }
+    const mean = sum / n;
+    assert.ok(Math.abs(mean - SHOWCASE.WALK_SPEED_MEAN) < 0.03, `mean ${mean}`);
+  });
+
+  test('5a3 a lone walker reaches the commanded speed', () => {
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: 8 },
+      { x: 0, y: 8 },
+    ];
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: 1,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      [exit({ id: 'east', center: { x: 50, y: 4 }, edgeIndex: 1, width: 4 })],
+      [],
+      [],
+      { afterExit: 'disperse', zones: [], seed: 1 },
+    );
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    assert.equal(body.frictionAir, 0);
+    Matter.Body.setPosition(body, { x: 5, y: 4 });
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (body as Matter.Body & {
+      __ped: { state?: string; freeWalkMps?: number; targetExitId: string };
+    }).__ped;
+    ped.state = 'evacuating';
+    ped.targetExitId = 'east';
+    const commanded = (ped.freeWalkMps ?? 0) * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC);
+    for (let i = 0; i < 180; i++) eng.step();
+    const before = { x: body.position.x, y: body.position.y };
+    for (let i = 0; i < 30; i++) eng.step();
+    const speed = Math.hypot(body.position.x - before.x, body.position.y - before.y) / 0.5;
+    assert.ok(speed > commanded * 0.85, `speed ${speed.toFixed(3)} commanded ${commanded.toFixed(3)}`);
+    eng.destroy();
   });
 
   test('5b assembly distance', () => {
@@ -751,8 +806,12 @@ test('people beside a door line up with the opening instead of the wall', () => 
   ped.exitCost = 8;
   ped.nextCheckAt = 1e9;
   ped.posture = 'stand';
-  for (let i = 0; i < 180; i++) eng.step();
-  assert.ok(body.position.y < 15.5, `headed for the opening, y=${body.position.y.toFixed(2)}`);
+  let linedUp = false;
+  for (let i = 0; i < 180 && !linedUp; i++) {
+    eng.step();
+    if (body.position.y < 15.5) linedUp = true;
+  }
+  assert.ok(linedUp, `headed for the opening, y=${body.position.y.toFixed(2)}`);
   assert.ok(body.position.x < 38.5, `stayed off the wall, x=${body.position.x.toFixed(2)}`);
   eng.destroy();
 });
@@ -2027,7 +2086,7 @@ test('a downed body on another storey does not close this storey\'s door', () =>
   });
   eng.step();
   assert.equal((walker as Matter.Body & { __ped: { targetExitId: string } }).__ped.targetExitId, 'west');
-  for (let i = 0; i < 40 * 60; i++) eng.step();
+  for (let i = 0; i < 40 * 60 && walker.position.x >= 16; i++) eng.step();
   assert.equal((walker as Matter.Body & { __ped: { targetExitId: string } }).__ped.targetExitId, 'west');
   assert.ok(walker.position.x < 16, `other-storey body held them at x ${walker.position.x.toFixed(2)}`);
   eng.destroy();

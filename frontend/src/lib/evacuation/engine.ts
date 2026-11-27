@@ -43,6 +43,7 @@ import {
   routeAroundOutline,
   walkedRouteHazard,
   smokeAheadAction,
+  sampleWalkSpeedMps,
   walkingSpeed,
   RouteRegions,
   type ExitChoice,
@@ -180,6 +181,8 @@ interface PedLabel {
   posture?: Posture;
   familiarity?: Familiarity;
   injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  /** Unimpeded level speed, m/s. Drawn once. Stairs keep the stair timer. */
+  freeWalkMps?: number;
   /** Asphyxiant dose so far. It does not fall when the person walks clear. */
   fed?: number;
   /** Heat dose so far. It does not fall when the person walks clear. */
@@ -289,6 +292,7 @@ export class PolygonEvacuationEngine {
   private elapsed = 0;
   private exitCounts = new Map<string, number>();
   private pedIdCounter = 0;
+  private walkSeed: number = SHOWCASE.RNG_SEED;
   private obstacles: ObstaclePoint[] = [];
   private showcase: EvacShowcaseOptions | null = null;
   private rng: (() => number) | null = null;
@@ -371,9 +375,10 @@ export class PolygonEvacuationEngine {
     this.exits = exits;
     this.obstacles = obstacles ?? [];
     this.interiorWalls = interiorWalls ? interiorWalls.map((w) => ({ ...w })) : [];
+    this.walkSeed = showcase?.seed ?? SHOWCASE.RNG_SEED;
     if (showcase) {
       this.showcase = showcase;
-      this.rng = mulberry32(showcase.seed ?? SHOWCASE.RNG_SEED);
+      this.rng = mulberry32(this.walkSeed);
       this.zones = showcase.zones.map((z) => ({ ...z, pos: { ...z.pos } }));
       if (showcase.buildingHeightM != null) this.buildingHeightM = showcase.buildingHeightM;
     }
@@ -527,6 +532,27 @@ export class PolygonEvacuationEngine {
     Matter.Composite.add(this.engine.world, interiorBodies);
   }
 
+  /**
+   * Air drag stays at 0. A frictionAir of 0.15, combined with the 0.4 s
+   * steering blend, settled near a fifth of the commanded speed. The blend
+   * is the damping: each step relaxes the body toward the velocity it was
+   * given, so a contact leftover fades without holding the walk under that speed.
+   */
+  private personBody(x: number, y: number, r: number): Matter.Body {
+    return Matter.Bodies.circle(x, y, r, {
+      restitution: 0.05,
+      friction: 0.3,
+      frictionAir: 0,
+      density: 50,
+      slop: BODY_SLOP_M,
+      label: 'pedestrian',
+    });
+  }
+
+  private walkMps(pedId: number): number {
+    return sampleWalkSpeedMps(this.walkSeed, pedId);
+  }
+
   private spawnPedestrians() {
     const { vertices, pedestrianCount, pedestrianRadius: r } = this.config;
     const bounds = polygonBounds(vertices);
@@ -544,14 +570,7 @@ export class PolygonEvacuationEngine {
 
       if (!isInsidePolygon(x, y, vertices)) continue;
 
-      const body = Matter.Bodies.circle(x, y, r, {
-        restitution: 0.05,
-        friction: 0.3,
-        frictionAir: 0.15,
-        density: 50,
-        slop: BODY_SLOP_M,
-        label: 'pedestrian',
-      });
+      const body = this.personBody(x, y, r);
 
       body.collisionFilter = {
         group: 0,
@@ -559,10 +578,13 @@ export class PolygonEvacuationEngine {
         mask: PED_CATEGORY | WALL_CATEGORY,
       };
 
+      const pedId = this.pedIdCounter++;
+      const freeWalkMps = this.walkMps(pedId);
       const pedLabel: PedLabel = this.showcase
         ? {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: '',
             state: 'idle',
@@ -594,7 +616,8 @@ export class PolygonEvacuationEngine {
           }
         : {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: this.pickNearestExit(x, y),
           };
@@ -641,7 +664,6 @@ export class PolygonEvacuationEngine {
     }
     const { dt, desiredSpeed, panicFactor } = this.config;
     this.tickStairs(dt);
-    const targetSpeed = desiredSpeed * (1 + panicFactor * 0.6);
     const tau = 0.4;
 
     for (const body of this.pedestrians) {
@@ -649,10 +671,15 @@ export class PolygonEvacuationEngine {
       if (ped.evacuated || ped.state === 'down' || ped.state === 'left_map') continue;
       // FEC at 1 is the seeded crawl toward the exit, not a stop. Injury
       // and a wet floor slow that crawl the same way they slow a walk.
+      // The seeded free speed is scaled so a crowd's mean matches desiredSpeed.
+      const personal =
+        ped.freeWalkMps != null
+          ? ped.freeWalkMps * (desiredSpeed / SHOWCASE.WALK_SPEED_MEAN)
+          : desiredSpeed;
       const pace = ped.fumeHeld
         ? SHOWCASE.CRAWL_SPEED *
           this.irritantFooting(ped, body.position.x, body.position.y, ped.level)
-        : targetSpeed;
+        : personal * (1 + panicFactor * 0.6);
       if (ped.fumeHeld) ped.posture = 'crawl';
       if (this.levelPlan && ped.level) {
         this.stepPlainLevel(body, ped, pace, dt, tau);
@@ -1143,6 +1170,7 @@ export class PolygonEvacuationEngine {
         ped.posture ?? 'stand',
         SHOWCASE.SHOWCASE_PANIC,
         injuryFactor,
+        ped.freeWalkMps ?? SHOWCASE.FREE_WALK_SPEED,
       ) * footing;
 
     const blockedDoors = this.blockedDoorsFor(ped);
@@ -2436,8 +2464,8 @@ export class PolygonEvacuationEngine {
     const bodies = this.pushFromBodies(body, steered.near, targetSpeed, dt);
     repX += bodies.x;
     repY += bodies.y;
-    // The 0.4 s blend never catches the air drag, so a crawler held on a
-    // shell creeps. A released crossing takes the step it was given.
+    // Relax toward the commanded step. With no air drag this reaches that
+    // speed. A released crossing takes the step at once.
     const blend = keepForward ? 1 : Math.min(1, dt / 0.4);
     let newVx = body.velocity.x + (nx * targetSpeed * dt + repX - body.velocity.x) * blend;
     let newVy = body.velocity.y + (ny * targetSpeed * dt + repY - body.velocity.y) * blend;
@@ -2662,20 +2690,16 @@ export class PolygonEvacuationEngine {
       const x = bounds.minX + margin + rnd() * (bounds.width - 2 * margin);
       const y = bounds.minY + margin + rnd() * (bounds.height - 2 * margin);
       if (!isInsidePolygon(x, y, vertices)) continue;
-      const body = Matter.Bodies.circle(x, y, r, {
-        restitution: 0.05,
-        friction: 0.3,
-        frictionAir: 0.15,
-        density: 50,
-        slop: BODY_SLOP_M,
-        label: 'pedestrian',
-      });
+      const body = this.personBody(x, y, r);
       body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
       const exits = this.exits.filter((e) => levelOf(e) === levelId && e.exitType !== 'service');
+      const pedId = this.pedIdCounter++;
+      const freeWalkMps = this.walkMps(pedId);
       const label: PedLabel = this.showcase
         ? {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: '',
             state: 'idle',
@@ -2707,7 +2731,8 @@ export class PolygonEvacuationEngine {
           }
         : {
             kind: 'pedestrian',
-            pedId: this.pedIdCounter++,
+            pedId,
+            freeWalkMps,
             evacuated: false,
             targetExitId: exits[0]?.id ?? '',
             level: levelId,
@@ -2765,6 +2790,7 @@ export class PolygonEvacuationEngine {
         ped.posture ?? 'stand',
         SHOWCASE.SHOWCASE_PANIC,
         injuryFactor,
+        ped.freeWalkMps ?? SHOWCASE.FREE_WALK_SPEED,
       ) * footing;
     if (
       this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0) ||
@@ -3028,14 +3054,7 @@ export class PolygonEvacuationEngine {
     }
     const bits = levelCategories(slot);
     const r = this.config.pedestrianRadius;
-    const body = Matter.Bodies.circle(x, y, r, {
-      restitution: 0.05,
-      friction: 0.3,
-      frictionAir: 0.15,
-      density: 50,
-      slop: BODY_SLOP_M,
-      label: 'pedestrian',
-    });
+    const body = this.personBody(x, y, r);
     body.collisionFilter = { group: 0, category: bits.ped, mask: bits.ped | bits.wall };
     const ped = occ.label;
     const fumeDown = ped.fumeDown === true || ped.heatDown === true;

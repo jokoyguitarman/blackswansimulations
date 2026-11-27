@@ -264,9 +264,10 @@ export function walkingSpeed(
   posture: Posture,
   panic: number,
   injuryFactor: number,
+  freeWalk: number = SHOWCASE.FREE_WALK_SPEED,
 ): number {
   if (posture === 'crawl') return SHOWCASE.CRAWL_SPEED * injuryFactor;
-  const stand = SHOWCASE.FREE_WALK_SPEED * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
+  const stand = freeWalk * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
   if (posture === 'crouch') return stand * SHOWCASE.CROUCH_SPEED_FACTOR;
   return stand;
 }
@@ -293,6 +294,20 @@ export function lognormalFromPercentiles(p1: number, p99: number): { mu: number;
   const sigma = Math.log(p99 / p1) / (2 * z);
   const mu = (Math.log(p1) + Math.log(p99)) / 2;
   return { mu, sigma };
+}
+
+/**
+ * One person's unimpeded level speed. The draw is a normal around the
+ * Weidmann mean, clamped to two standard deviations, and it comes from
+ * its own stream so it does not move the premovement draws.
+ */
+export function sampleWalkSpeedMps(seed: number, pedId: number): number {
+  const rng = mulberry32((seed ^ Math.imul(pedId + 1, 0x9e3779b1)) >>> 0);
+  let u1 = rng();
+  if (u1 < 1e-12) u1 = 1e-12;
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rng());
+  const raw = SHOWCASE.WALK_SPEED_MEAN + SHOWCASE.WALK_SPEED_SD * z;
+  return Math.min(SHOWCASE.WALK_SPEED_MAX, Math.max(SHOWCASE.WALK_SPEED_MIN, raw));
 }
 
 export function samplePremovementS(rng: () => number): number {

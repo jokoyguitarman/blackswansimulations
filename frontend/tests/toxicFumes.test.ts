@@ -1441,10 +1441,12 @@ function walk(
   fumeHeldCount: number;
   fumeDownCount: number;
 } {
+  // Long enough that the fastest seeded walk still takes the heat dose indoors.
+  const length = 320;
   const verts: Vec2[] = [
     { x: 0, y: 0 },
-    { x: 40, y: 0 },
-    { x: 40, y: 20 },
+    { x: length, y: 0 },
+    { x: length, y: 20 },
     { x: 0, y: 20 },
   ];
   const exit: ExitDef = {
@@ -1452,7 +1454,7 @@ function walk(
     edgeIndex: 1,
     position: 0.5,
     width: 4,
-    center: { x: 40, y: 10 },
+    center: { x: length, y: 10 },
   };
   const eng = new PolygonEvacuationEngine(
     {
@@ -1479,7 +1481,7 @@ function walk(
       radiantKwM2?: number;
     }
   >();
-  for (let x = 0; x <= 40; x += 3) {
+  for (let x = 0; x <= length; x += 3) {
     const id = `s${x}`;
     studs.push({ id, simPos: { x, y: 10 }, indoor: true });
     states.set(id, { smoke: 0, fire: { state: 'none' }, wet: opts.wet === true });
