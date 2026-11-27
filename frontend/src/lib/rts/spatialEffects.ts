@@ -660,6 +660,8 @@ export class SpatialEffectsEngine {
   private verticalPairs: ShaftPair[] = [];
   /** Shaft column temperature, kelvin, keyed by link and the two rooms. */
   private shaftK = new Map<string, number>();
+  /** Compartment of every stud at the last layer step: the rooms `shaftK` is keyed by. */
+  private shaftRooms: ReadonlyMap<string, string> = new Map();
   /**
    * Upper-layer gas a shaft has delivered to a storey that has no layer
    * yet. It becomes a layer once the depth and the rise say so.
@@ -833,6 +835,7 @@ export class SpatialEffectsEngine {
     this.neighborCache.clear();
     this.verticalPairs = [];
     this.shaftK.clear();
+    this.shaftRooms = new Map();
     this.shaftHold.clear();
     this.shaftFumeTo.clear();
     this.ventNetKg = 0;
@@ -2434,6 +2437,7 @@ export class SpatialEffectsEngine {
     this.fireSim.clearBurnLimits();
     this.syncLayerWalls(walls);
     const rooms = this.fireSim.compartmentsOf(walls);
+    this.shaftRooms = rooms;
     const groups = new Map<string, string[]>();
     for (const [id, room] of rooms) {
       const list = groups.get(room);
@@ -3948,26 +3952,22 @@ export class SpatialEffectsEngine {
   /**
    * Read-only view of every unblocked shaft column: the link, the two
    * landing studs and their storeys, and the column temperature. A column
-   * that has never carried gas, or whose landings are not in a layer room,
-   * reads ambient. The column holds heat only; the gas it passes is carried
+   * that has never carried gas reads ambient. The rooms are the compartments
+   * of the last layer step, the ones the vent keys the column by, whether or
+   * not either holds a layer yet. A column the vent cannot solve (before the
+   * first step, or with a landing in no compartment, or both in one) is left
+   * out, so the crowd keeps its landing-blend fallback rather than reading
+   * ambient. The column holds heat only; the gas it passes is carried
    * between the landing studs.
    */
   shaftColumns(): ShaftColumnView[] {
-    const roomOf = (studId: string): string | undefined => {
-      let fallback: string | undefined;
-      for (const [room, live] of this.layerState) {
-        if (!live.members.includes(studId)) continue;
-        if (live.active) return room;
-        fallback ??= room;
-      }
-      return fallback;
-    };
     const out: ShaftColumnView[] = [];
     for (const pair of this.verticalPairs) {
-      const lowerRoom = roomOf(pair.lower);
-      const upperRoom = roomOf(pair.upper);
+      const lowerRoom = this.shaftRooms.get(pair.lower);
+      const upperRoom = this.shaftRooms.get(pair.upper);
+      if (!lowerRoom || !upperRoom || lowerRoom === upperRoom) continue;
       const key = `${pair.linkId ?? pair.lower}|${lowerRoom}|${upperRoom}`;
-      const tempK = lowerRoom && upperRoom ? (this.shaftK.get(key) ?? AMBIENT_K) : AMBIENT_K;
+      const tempK = this.shaftK.get(key) ?? AMBIENT_K;
       out.push({
         linkId: pair.linkId ?? pair.lower,
         kind: pair.kind,

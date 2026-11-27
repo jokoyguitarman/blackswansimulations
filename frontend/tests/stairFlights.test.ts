@@ -21,6 +21,7 @@ import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine.ts';
 import { DEFAULT_POLYGON_CONFIG } from '../src/lib/evacuation/types.ts';
 import type { ExitDef, Vec2 } from '../src/lib/evacuation/types.ts';
 import {
+  flightAreaM2,
   flightFlowPerS,
   flightKey,
   flightStorage,
@@ -200,10 +201,19 @@ describe('stair flight arithmetic', () => {
     assert.ok(Math.abs(flightWidthM(wide, 10, 10) - 1.05) < 1e-9);
   });
 
-  it('stores a flight at the SFPE stopped density', () => {
-    // 4 m storey × 2.0 travel factor × 1.2 m × 3.76 p/m² = 36.1.
-    assert.equal(flightStorage(stairOf('s', 'G', 'L1'), levelDef('L1', 1, 4)), 36);
-    assert.equal(flightStorage(stairOf('s', 'G', 'L1'), levelDef('L1', 1, 3)), 27);
+  it('stores a flight at the SFPE stopped density on its effective area', () => {
+    // 4 m storey × 2.0 travel factor × 0.9 m effective × 3.76 p/m² = 27.1.
+    assert.equal(flightStorage(stairOf('s', 'G', 'L1'), levelDef('L1', 1, 4)), 27);
+    assert.equal(flightStorage(stairOf('s', 'G', 'L1'), levelDef('L1', 1, 3)), 20);
+    // The area storage fills is the area the descent density is read on, so
+    // a full flight sits at the jam density, not 3.76 × 1.2/0.9 = 5 p/m².
+    for (const widthM of [1.0, 1.2, 1.8, 2.4]) {
+      const stair = stairOf('s', 'G', 'L1', widthM);
+      const from = levelDef('L1', 1, 3.5);
+      const full = flightStorage(stair, from) / flightAreaM2(stair, from);
+      assert.ok(full <= LEVEL.STAIR_JAM_DENSITY_PM2 + 1e-9, `${widthM} m: ${full} p/m²`);
+      assert.ok(full > LEVEL.STAIR_JAM_DENSITY_PM2 - 1 / flightAreaM2(stair, from) - 1e-9);
+    }
   });
 
   it('splits merged releases by the floor share', () => {
@@ -311,11 +321,11 @@ describe('stair flights in the engine', () => {
   });
 
   it('holds the flight above a full landing to its storage, and the upper floor waits at its door', () => {
-    // 2.5 m storeys: storage floor(2.5 × 2.0 × 1.2 × 3.76) = 22 per flight.
+    // 2.5 m storeys: storage floor(2.5 × 2.0 × 0.9 × 3.76) = 16 per flight.
     const stair = stairOf('s', 'G', 'L2');
     const { eng, inner, labels } = build(['G', 'L1', 'L2'], { G: 0, L1: 80, L2: 80 }, [stair], 2.5);
     const storage = flightStorage(stair, levelDef('L2', 2, 2.5));
-    assert.equal(storage, 22);
+    assert.equal(storage, 16);
     for (let i = 80; i < 160; i++) enqueue(inner, labels[i], 's', 'L2', 'L1', 0);
     for (let i = 0; i < 80; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
     const watch = watchReleases(inner);
@@ -433,6 +443,82 @@ describe('stair flights in the engine', () => {
     assert.ok(Math.abs(list[0] - free) < 1e-9, `first ${list[0]} vs ${free}`);
     assert.ok(Math.max(...list) > free + 1, `slowest ${Math.max(...list)}`);
     assert.ok(Math.max(...list) <= packed + 1e-9);
+    eng.destroy();
+  });
+
+  it('packs the descent into its lane while responders climb against it', () => {
+    // 4 m storey, 1.2 m stair: 7.2 m² of flight at full width, 3.6 m² in
+    // single file. The flight is loaded at full width before the crews come.
+    const run = (crews: boolean) => {
+      const stair = stairOf('s', 'G', 'L1');
+      const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 30 }, [stair]);
+      for (let i = 0; i < 30; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
+      const rows: Array<{ t: number; duration: number; on: number }> = [];
+      const seen = new Set<number>();
+      for (let i = 0; i < Math.round(20 / DT); i++) {
+        const t = (i + 1) * DT;
+        if (crews && i === Math.round(8 / DT)) eng.sendStairResponders('s', 4);
+        eng.step();
+        const travelling = inner.stairPeople.filter((o) => o.phase === 'travel');
+        for (const o of travelling) {
+          if (seen.has(o.label.pedId)) continue;
+          seen.add(o.label.pedId);
+          rows.push({ t, duration: o.travelDuration, on: travelling.length });
+        }
+      }
+      eng.destroy();
+      return rows;
+    };
+    const alone = run(false);
+    const against = run(true);
+    // Nothing changes before anyone climbs.
+    const before = (rows: typeof alone) => rows.filter((r) => r.t <= 8 + 1e-9);
+    assert.deepEqual(before(against), before(alone));
+    const firstAfter = (rows: typeof alone) => rows.find((r) => r.t > 8 + DT)!;
+    const a = firstAfter(alone);
+    const b = firstAfter(against);
+    assert.ok(b, 'no descender released while the crews climbed');
+    const length = 4 * LEVEL.STAIR_TRAVEL_FACTOR;
+    // The full-width density would leave this walker at (or near) free speed.
+    const wide =
+      length / Math.min(LEVEL.STAIR_SPEED_DOWN, stairDensitySpeed(b.on / (length * 0.9)));
+    const lane =
+      length / Math.min(LEVEL.STAIR_SPEED_DOWN, stairDensitySpeed(b.on / (length * 0.45)));
+    assert.ok(lane > wide + 1, `lane ${lane} vs wide ${wide}`);
+    assert.ok(b.duration > a.duration + 1, `against ${b.duration} vs alone ${a.duration}`);
+    assert.ok(Math.abs(b.duration - lane) < Math.abs(b.duration - wide), `${b.duration}`);
+    // Never slower than the optimum's k/2.
+    const packed = length / ((4 * 0.266 * 1.01) / 2);
+    for (const r of against) assert.ok(r.duration <= packed + 1e-9, `${r.duration}`);
+  });
+
+  it('breathes the landing blend on a flight the effects engine reports no column for', () => {
+    // An unsolved column is left out of shaftColumns(); the flight must not read ambient.
+    const stair = stairOf('s', 'G', 'L1');
+    const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 1 }, [stair]);
+    const hot = (id: string) => {
+      const field = new HazardField([{ id, simPos: { x: 20, y: 10 }, indoor: true }], 3);
+      field.setStates(new Map([[id, { smoke: 0, fire: { state: 'none' }, headTempC: 120 }]]));
+      return field;
+    };
+    eng.setHazardFields(
+      new Map([
+        ['G', hot('g-land')],
+        ['L1', hot('u-land')],
+      ]),
+    );
+    eng.setShaftColumns([]);
+    enqueue(inner, labels[0], 's', 'L1', 'G', 0);
+    for (let i = 0; i < Math.round(4 / DT); i++) eng.step();
+    const walker = inner.stairPeople[0];
+    assert.equal(walker.phase, 'travel');
+    // Both landings at 120 °C, so the blend is 120 °C throughout.
+    const expected = (heatFedPerMin(120, undefined) / 60) * (4 - walker.travelStart);
+    const got = labels[0].heatFed ?? 0;
+    assert.ok(
+      expected > 0 && Math.abs(got - expected) <= expected * 0.02 + 1e-9,
+      `${got} vs ${expected}`,
+    );
     eng.destroy();
   });
 
