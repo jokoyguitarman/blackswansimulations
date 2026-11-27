@@ -2,7 +2,7 @@
  * Six-storey drill on one 1.2 m stair: 25 people on each of L1 to L5 walk
  * to the stair at once, with no smoke, and leave by a ground-floor door.
  *
- * Checked against the hydraulic model (SFPE Handbook 5th ed. ch. 64):
+ * Checked against the hydraulic model (SFPE Handbook 5th ed. ch. 59):
  *  - the stair delivers its capacity, 1.01 p/s/m × 0.9 m = 0.909 p/s, at
  *    the ground, however many flights feed it;
  *  - each landing merges its floor and the stair stream close to 50:50

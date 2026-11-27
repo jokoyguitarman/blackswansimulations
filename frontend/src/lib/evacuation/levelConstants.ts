@@ -130,7 +130,7 @@ export const LEVEL_SOURCES: Record<
   },
   DEAD_END_DOSE_MARGIN: {
     status: 'assumed',
-    ref: 'calibrated: stair shaft test, blasts at the centre, (4, 1.5), (-3, 0) and (-3, -2). With the trend and no margin, realised/projected FED for crawlers carrying 0.005 or more was 0.96 to 1.44; present-state only it was 2.7 to 4.3. Two leaves headroom over 1.44',
+    ref: 'calibrated: stair shaft test, blasts at the centre, (4, 1.5), (-3, 0) and (-3, -2), and shafts open with the upper floor alarmed at T+240. The flight is breathed as a blend of its two landings by progress, and projected at crawl pace on the worse storey. With the trend and no margin, realised/projected FED for crawlers carrying 0.005 or more is 0.93 to 1.39 at the four blast sites and 1.16 to 1.58 for survivors of the T+240 scene. Two leaves headroom over 1.58. (Before PR 131, a present-state-only projection gave 2.7 to 4.3; not re-measured.)',
   },
   DEFEND_HORIZON_S: {
     status: 'assumed',
@@ -138,7 +138,7 @@ export const LEVEL_SOURCES: Record<
   },
   DEAD_END_OVER_LIMIT_CAP: {
     status: 'assumed',
-    ref: 'calibrated: stair shaft test, shafts open, upper floor alarmed at T+240. Crawls started at 0.59-1.36 got out (1.36 realised 0.79); every crawl started at 1.9 or more went down on the ground floor 30-37 s later, about 60 s before the people who stayed. Applied only when a crawl starts',
+    ref: 'calibrated: stair shaft test, shafts open, upper floor alarmed at T+240. Crawls started at 0.59-1.29 got out (1.29 realised 0.91); every crawl started at 2.1 or more went down 30-31 s later on the ground floor, or on L1. The cap sits in that gap. At the worst realised/projected ratio (0.80), a crawl started at 1.5 could realise about 1.2: the cap trades a small incapacitation risk for crawls that save people. Applied only when a crawl starts',
   },
   DEAD_END_CRAWL_MAX_FED: {
     status: 'assumed',
@@ -146,7 +146,7 @@ export const LEVEL_SOURCES: Record<
   },
   STAIR_MERGE_FLOOR_SHARE: {
     status: 'assumed',
-    ref: 'Galea, Sharp & Lawrence (2008), J. Fire Prot. Eng. 18(4) 291-316: merging at the floor-stair interface in high-rise drills runs close to 50:50, with door placement shifting the bias either way. SFPE Handbook 5th ed. ch. 64 (Gwynne & Rosenbaum) caps the merged flow at the downstream flight. 0.5 is the even case',
+    ref: 'Galea, Sharp & Lawrence (2008), J. Fire Prot. Eng. 18(4) 291-316: merging at the floor-stair interface in high-rise drills runs close to 50:50, with door placement shifting the bias either way. SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, Employing the Hydraulic Model in Assessing Emergency Movement) caps the merged flow at the downstream flight. 0.5 is the even case',
   },
   STAIR_REVERSE_LANE_M: {
     status: 'assumed',
@@ -154,7 +154,7 @@ export const LEVEL_SOURCES: Record<
   },
   STAIR_JAM_DENSITY_PM2: {
     status: 'assumed',
-    ref: 'SFPE Handbook 5th ed. ch. 64 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing',
+    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing',
   },
   GHOST_ALPHA: { status: 'assumed', ref: 'assumed: UX' },
   MAX_LEVELS: { status: 'assumed', ref: 'PR #23 LAYOUT_LIMITS.maxStoreys' },
