@@ -87,15 +87,14 @@ export class RTSEngine {
   }
 
   /**
-   * The showcase drops steps when a frame asks for more than it can run.
-   * Pull the clock back so the HUD does not count time the crowd never lived.
+   * Set the clock to the time the crowd and the effects field have lived. They
+   * step in whole slices and carry the remainder to the next frame, so the
+   * clock follows them instead of counting the remainder twice or losing it.
    */
-  limitElapsed(seconds: number) {
+  syncElapsed(seconds: number) {
     const clock = this.state.clock;
-    if (seconds < clock.elapsed) {
-      clock.elapsed = Math.max(0, seconds);
-      clock.phase = this.computePhase(clock.elapsed);
-    }
+    clock.elapsed = Math.max(0, seconds);
+    clock.phase = this.computePhase(clock.elapsed);
   }
 
   // ── Staging area ──────────────────────────────────────────────────────
