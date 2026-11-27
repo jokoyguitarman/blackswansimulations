@@ -4,6 +4,14 @@ import { env } from '../env.js';
 import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { resolveTeamMembers } from './teamCharterService.js';
+import {
+  groupChatMessage,
+  phoneCallMessage,
+  phoneCaller,
+  selectInjectTeamChannels,
+  UNKNOWN_CALLER,
+  type NpcChatMessage,
+} from '../lib/injectChatMessages.js';
 
 export interface DeliveryConfig {
   app: 'social_feed' | 'group_chat' | 'email' | 'news' | 'phone_call';
@@ -41,6 +49,9 @@ export interface DeliveryConfig {
   /** Country whose feed / news this content belongs in (social_feed / news only). */
   country?: string;
 }
+
+/** Phone-call injects are also written to chat; see routeToPhoneCall. */
+const CALLS_DELIVERED_TO_CHAT = true;
 
 export interface TeamTargeting {
   /** Resolved member user ids; null means universal delivery. */
@@ -659,15 +670,35 @@ async function routeToGroupChat(
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
+  const channels = await postNpcChatMessage(
+    sessionId,
+    injectId,
+    groupChatMessage(inject, config),
+    config.channel_type,
+    targeting,
+  );
+  logger.info({ sessionId, injectId, channels }, 'Inject routed to group chat');
+}
+
+/**
+ * Persist an NPC line in the chat channels an inject targets and broadcast it. Team- or
+ * org-scoped injects land in the `team` channels of the targeted players (there is no org-wide
+ * channel); otherwise the session channel by type. Returns the number of channels written.
+ */
+async function postNpcChatMessage(
+  sessionId: string,
+  injectId: string,
+  message: NpcChatMessage,
+  channelType: string | undefined,
+  targeting: TeamTargeting | null,
+): Promise<number> {
   const { data: trainer } = await supabaseAdmin
     .from('sessions')
     .select('trainer_id')
     .eq('id', sessionId)
     .single();
-  if (!trainer) return;
+  if (!trainer) return 0;
 
-  // Target channels. Team-scoped or org-scoped injects land in the `team` channels of the
-  // targeted players (there is no org-wide channel); otherwise the session channel by type.
   let channelIds: string[] = [];
   if (targeting?.playerIds && targeting.playerIds.length > 0) {
     const { data: teamRows } = await supabaseAdmin
@@ -675,8 +706,9 @@ async function routeToGroupChat(
       .select('team_name')
       .eq('session_id', sessionId)
       .in('user_id', targeting.playerIds);
-    const teamNames = Array.from(
-      new Set((teamRows ?? []).map((r) => String((r as { team_name: string }).team_name))),
+    const teamNames = selectInjectTeamChannels(
+      (teamRows ?? []).map((r) => String((r as { team_name: string }).team_name)),
+      targeting.teamNames,
     );
     if (teamNames.length > 0) {
       const { ensureTeamChannels } = await import('./channelService.js');
@@ -689,48 +721,42 @@ async function routeToGroupChat(
         .in('team_name', teamNames);
       channelIds = (teamChannels ?? []).map((c) => String((c as { id: string }).id));
     }
-  }
-  if (channelIds.length === 0) {
-    const channelType = config.channel_type || 'public';
+    // Team-only content must not fall back to a session-wide channel.
+    if (channelIds.length === 0) {
+      logger.warn(
+        { sessionId, injectId, teamNames: targeting.teamNames },
+        'No team channel for scoped chat inject; not delivered',
+      );
+      return 0;
+    }
+  } else {
+    const type = channelType || 'public';
     const { data: channel } = await supabaseAdmin
       .from('chat_channels')
       .select('id')
       .eq('session_id', sessionId)
-      .eq('type', channelType)
+      .eq('type', type)
       .limit(1)
       .maybeSingle();
     if (!channel) {
-      logger.warn({ sessionId, channelType }, 'No channel found for group chat inject');
-      return;
+      logger.warn({ sessionId, injectId, channelType: type }, 'No channel found for chat inject');
+      return 0;
     }
     channelIds = [String(channel.id)];
   }
 
   // The NPC speaks as itself (migration 199: sender_id may be null when a stakeholder sender is
-  // set). A stakeholder-authored inject carries its id; other NPC voices get a stable `npc:` pseudo
-  // id derived from the display name so the client can key an avatar. Never attribute NPC lines to
-  // the trainer's account (docs/session-bugfix-spec-2026-09-20.md §1).
-  const senderName = (config.sender_name || config.author_display_name || 'NPC').trim();
-  const senderStakeholderId =
-    config.stakeholder_id ||
-    `npc:${
-      senderName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') || 'npc'
-    }`;
-
+  // set). Never attribute NPC lines to the trainer's account
+  // (docs/session-bugfix-spec-2026-09-20.md §1).
+  let written = 0;
   for (const channelId of channelIds) {
-    const { data: message, error } = await supabaseAdmin
+    const { data: row, error } = await supabaseAdmin
       .from('chat_messages')
       .insert({
         channel_id: channelId,
         session_id: sessionId,
         sender_id: null,
-        sender_stakeholder_id: senderStakeholderId,
-        sender_display_name: senderName,
-        content: inject.content,
-        type: 'text',
+        ...message,
       })
       .select()
       .single();
@@ -742,9 +768,10 @@ async function routeToGroupChat(
       );
       continue;
     }
-    getWebSocketService().messageSent(channelId, message as Record<string, unknown>);
+    written++;
+    getWebSocketService().messageSent(channelId, row as Record<string, unknown>);
   }
-  logger.info({ sessionId, injectId, channels: channelIds.length }, 'Inject routed to group chat');
+  return written;
 }
 
 async function routeToPhoneCall(
@@ -754,18 +781,34 @@ async function routeToPhoneCall(
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
+  const caller = phoneCaller(config);
   await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'phone_call.incoming',
     data: {
       inject_id: injectId,
-      caller_name: config.from_name || inject.title,
-      caller_number: config.from_address || '+65 XXXX XXXX',
+      caller_name: caller.name ?? UNKNOWN_CALLER,
+      title: inject.title,
+      caller_number: caller.number,
       dialogue: inject.content,
     },
     timestamp: new Date().toISOString(),
   });
 
-  logger.info({ sessionId, injectId }, 'Inject routed to phone call');
+  // Until a Phone app consumes phone_call.incoming, the chat line is the only place a player can
+  // see the call. When one lands, turn this off (or make it a missed/answered log line) so calls
+  // aren't delivered twice.
+  if (!CALLS_DELIVERED_TO_CHAT) {
+    logger.info({ sessionId, injectId }, 'Inject routed to phone call');
+    return;
+  }
+  const channels = await postNpcChatMessage(
+    sessionId,
+    injectId,
+    phoneCallMessage(inject, config),
+    config.channel_type,
+    targeting,
+  );
+  logger.info({ sessionId, injectId, channels }, 'Inject routed to phone call');
 }
 
 function determineSentiment(flags: Record<string, unknown> | undefined): string {
