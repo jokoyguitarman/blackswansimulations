@@ -383,7 +383,7 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
     const { id } = req.params;
     const { data: scenario, error } = await supabaseAdmin
       .from('scenarios')
-      .select('id, initial_state')
+      .select('id, created_by, initial_state')
       .eq('id', id)
       .maybeSingle();
     if (error) {
@@ -394,6 +394,15 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
       return res.status(500).json({ error: 'Failed to load scenario' });
     }
     if (!scenario) return res.status(404).json({ error: 'Scenario not found' });
+
+    const user = req.user!;
+    const isAdmin = user.role === 'admin';
+    const isCreator = scenario.created_by === user.id && user.role === 'trainer';
+    const trainsThisScenario =
+      user.role === 'trainer' && (await sessionTrainerScenarioIds(user.id)).includes(id);
+    if (!isAdmin && !isCreator && !trainsThisScenario) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const { data: injects, error: injectError } = await supabaseAdmin
       .from('scenario_injects')

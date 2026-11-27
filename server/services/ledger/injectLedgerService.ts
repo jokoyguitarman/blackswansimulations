@@ -30,6 +30,7 @@ import {
   type LedgerResponseRow,
 } from './injectLedgerCore.js';
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
+import { slugifyTeamName } from '../conditions/conditionCatalog.js';
 import {
   firstEmailMinuteByStakeholder,
   summariseActionCounts,
@@ -37,6 +38,7 @@ import {
   type PlayerActionFact,
   type StakeholderContactRow,
 } from '../conditions/commsConditionsCore.js';
+import type { ActionCountBucket } from './injectLedgerCore.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -452,26 +454,47 @@ async function attachCommsFacts(
     const [contacts, verdicts, actions, stakeholders, callsAvailable] = await Promise.all([
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
-      loadPlayerActionFacts(sessionId),
+      loadActionCounts(sessionId, clockStart),
       loadScenarioStakeholders(sessionId),
       simCallsAvailable(),
     ]);
+    const email = actions.email ?? (await loadEmailSentFacts(sessionId));
+    const emailKnown = email.known && stakeholders.known && actions.known;
     return {
       ...state,
       calls_available: callsAvailable,
-      stakeholder_contacts: summariseStakeholderContacts(contacts, clockStart),
+      stakeholder_contacts: contacts.known
+        ? summariseStakeholderContacts(contacts.rows, clockStart)
+        : {},
+      contact_facts_known: contacts.known,
+      contact_facts_truncated: contacts.truncated,
       stakeholder_verdicts: verdicts,
-      email_sent_minutes: firstEmailMinuteByStakeholder(actions.rows, stakeholders, clockStart),
-      action_counts: summariseActionCounts(actions.rows, clockStart),
-      action_counts_truncated: actions.truncated,
+      email_sent_minutes: emailKnown
+        ? firstEmailMinuteByStakeholder(email.rows, stakeholders.stakeholders, clockStart)
+        : {},
+      email_facts_known: emailKnown,
+      email_facts_truncated: emailKnown && email.truncated,
+      action_counts: actions.known ? actions.counts : [],
+      action_facts_known: actions.known,
+      action_counts_truncated: actions.known && actions.truncated,
     };
   } catch (err) {
     warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');
-    return { ...state, calls_available: false };
+    return {
+      ...state,
+      calls_available: false,
+      action_facts_known: false,
+      email_facts_known: false,
+      contact_facts_known: false,
+    };
   }
 }
 
-async function loadPlayerContacts(sessionId: string): Promise<StakeholderContactRow[]> {
+async function loadPlayerContacts(sessionId: string): Promise<{
+  rows: StakeholderContactRow[];
+  known: boolean;
+  truncated: boolean;
+}> {
   try {
     const { data, error } = await supabaseAdmin
       .from('stakeholder_conversations')
@@ -479,23 +502,32 @@ async function loadPlayerContacts(sessionId: string): Promise<StakeholderContact
       .eq('session_id', sessionId)
       .eq('direction', 'player')
       .order('created_at', { ascending: true })
-      .limit(CONTACT_FACT_CAP);
+      .limit(CONTACT_FACT_CAP + 1);
     if (error) {
       warnFactOnce(
         'stakeholder_contacts_unavailable',
         error,
         'Stakeholder contact conditions are off for this process',
       );
-      return [];
+      return { rows: [], known: false, truncated: false };
     }
-    return (data ?? []) as StakeholderContactRow[];
+    const rows = (data ?? []) as StakeholderContactRow[];
+    if (rows.length > CONTACT_FACT_CAP) {
+      warnFactOnce(
+        'stakeholder_contacts_truncated',
+        null,
+        'Stakeholder contact history exceeded the condition-key cap; absence keys stay false',
+      );
+      return { rows: rows.slice(0, CONTACT_FACT_CAP), known: true, truncated: true };
+    }
+    return { rows, known: true, truncated: false };
   } catch (err) {
     warnFactOnce(
       'stakeholder_contacts_unavailable',
       err,
       'Stakeholder contact conditions are off for this process',
     );
-    return [];
+    return { rows: [], known: false, truncated: false };
   }
 }
 
@@ -532,9 +564,86 @@ async function loadLatestVerdicts(sessionId: string): Promise<Record<string, str
   }
 }
 
-async function loadPlayerActionFacts(
+interface ActionCountLoad {
+  counts: ActionCountBucket[];
+  known: boolean;
+  truncated: boolean;
+  /** Set when the grouped query was unavailable and the row scan already loaded email rows. */
+  email?: { rows: PlayerActionFact[]; known: boolean; truncated: boolean };
+}
+
+async function loadActionCounts(
   sessionId: string,
-): Promise<{ rows: PlayerActionFact[]; truncated: boolean }> {
+  startTime: string | null,
+): Promise<ActionCountLoad> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('action_type, team_at_action, count:id.count(), first_at:created_at.min()')
+      .eq('session_id', sessionId);
+    if (!error) {
+      return {
+        counts: bucketsFromActionAggregate(
+          (data ?? []) as Array<Record<string, unknown>>,
+          startTime,
+        ),
+        known: true,
+        truncated: false,
+      };
+    }
+    if (isLedgerSchemaMissing(error)) {
+      warnFactOnce(
+        'action_counts_unavailable',
+        error,
+        'Action-count conditions are off for this process',
+      );
+      return {
+        counts: [],
+        known: false,
+        truncated: false,
+        email: { rows: [], known: false, truncated: false },
+      };
+    }
+    warnFactOnce(
+      'action_count_aggregate_failed',
+      error,
+      'Grouped action counts failed; scanning player_actions instead',
+    );
+  } catch (err) {
+    warnFactOnce(
+      'action_count_aggregate_failed',
+      err,
+      'Grouped action counts failed; scanning player_actions instead',
+    );
+  }
+  return scanActionRows(sessionId, startTime);
+}
+
+function bucketsFromActionAggregate(
+  rows: readonly Record<string, unknown>[],
+  startTime: string | null,
+): ActionCountBucket[] {
+  const buckets: ActionCountBucket[] = [];
+  for (const row of rows) {
+    const actionType = typeof row.action_type === 'string' ? row.action_type : '';
+    if (!actionType) continue;
+    const teamRaw = typeof row.team_at_action === 'string' ? row.team_at_action : '';
+    const count = Number(row.count);
+    const firstAt = typeof row.first_at === 'string' ? row.first_at : '';
+    buckets.push({
+      action_type: actionType,
+      team_slug: teamRaw ? slugifyTeamName(teamRaw) || null : null,
+      count: Number.isFinite(count) ? count : 0,
+      first_minute: firstAt ? sessionMinuteAt(startTime, firstAt) : 0,
+    });
+  }
+  return buckets;
+}
+
+async function scanActionRows(
+  sessionId: string,
+  startTime: string | null,
+): Promise<ActionCountLoad> {
   try {
     const { data, error } = await supabaseAdmin
       .from('player_actions')
@@ -548,46 +657,104 @@ async function loadPlayerActionFacts(
         error,
         'Action-count conditions are off for this process',
       );
-      return { rows: [], truncated: false };
+      return {
+        counts: [],
+        known: false,
+        truncated: false,
+        email: { rows: [], known: false, truncated: false },
+      };
     }
     const rows = (data ?? []) as PlayerActionFact[];
-    if (rows.length > ACTION_FACT_CAP) {
+    const truncated = rows.length > ACTION_FACT_CAP;
+    const kept = truncated ? rows.slice(0, ACTION_FACT_CAP) : rows;
+    if (truncated) {
       warnFactOnce(
         'action_counts_truncated',
         null,
         'Action history exceeded the condition-key cap; absence keys stay false',
       );
-      return { rows: rows.slice(0, ACTION_FACT_CAP), truncated: true };
     }
-    return { rows, truncated: false };
+    return {
+      counts: summariseActionCounts(kept, startTime),
+      known: true,
+      truncated,
+      email: {
+        rows: kept.filter((row) => row.action_type === 'email_sent'),
+        known: true,
+        truncated,
+      },
+    };
   } catch (err) {
     warnFactOnce(
       'action_counts_unavailable',
       err,
       'Action-count conditions are off for this process',
     );
-    return { rows: [], truncated: false };
+    return {
+      counts: [],
+      known: false,
+      truncated: false,
+      email: { rows: [], known: false, truncated: false },
+    };
   }
 }
 
-async function loadScenarioStakeholders(
+async function loadEmailSentFacts(
   sessionId: string,
-): Promise<Array<{ id: string; email?: string | null }>> {
+): Promise<{ rows: PlayerActionFact[]; known: boolean; truncated: boolean }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('action_type, team_at_action, created_at, metadata')
+      .eq('session_id', sessionId)
+      .eq('action_type', 'email_sent')
+      .order('created_at', { ascending: true })
+      .limit(ACTION_FACT_CAP + 1);
+    if (error) {
+      warnFactOnce(
+        'email_facts_unavailable',
+        error,
+        'Email condition keys are off for this process',
+      );
+      return { rows: [], known: false, truncated: false };
+    }
+    const rows = (data ?? []) as PlayerActionFact[];
+    if (rows.length > ACTION_FACT_CAP) {
+      warnFactOnce(
+        'email_facts_truncated',
+        null,
+        'Email history exceeded the condition-key cap; absence keys stay false',
+      );
+      return { rows: rows.slice(0, ACTION_FACT_CAP), known: true, truncated: true };
+    }
+    return { rows, known: true, truncated: false };
+  } catch (err) {
+    warnFactOnce('email_facts_unavailable', err, 'Email condition keys are off for this process');
+    return { rows: [], known: false, truncated: false };
+  }
+}
+
+async function loadScenarioStakeholders(sessionId: string): Promise<{
+  stakeholders: Array<{ id: string; email?: string | null }>;
+  known: boolean;
+}> {
   try {
     const { data: session, error } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id')
       .eq('id', sessionId)
       .maybeSingle();
-    if (error || !session?.scenario_id) return [];
+    if (error) return { stakeholders: [], known: false };
+    if (!session?.scenario_id) return { stakeholders: [], known: true };
     const { data: scenario, error: scenarioError } = await supabaseAdmin
       .from('scenarios')
       .select('initial_state')
       .eq('id', session.scenario_id as string)
       .maybeSingle();
-    if (scenarioError || !scenario) return [];
+    if (scenarioError) return { stakeholders: [], known: false };
+    if (!scenario) return { stakeholders: [], known: true };
     const initial = scenario.initial_state as { stakeholders?: unknown } | null;
-    if (!Array.isArray(initial?.stakeholders)) return [];
+    if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
     const stakeholders: Array<{ id: string; email?: string | null }> = [];
     for (const raw of initial.stakeholders) {
       if (!raw || typeof raw !== 'object') continue;
@@ -595,14 +762,14 @@ async function loadScenarioStakeholders(
       if (typeof row.id !== 'string') continue;
       stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
     }
-    return stakeholders;
+    return { stakeholders, known: true };
   } catch (err) {
     warnFactOnce(
       'stakeholder_roster_unavailable',
       err,
       'Email-to-stakeholder conditions are off for this process',
     );
-    return [];
+    return { stakeholders: [], known: false };
   }
 }
 

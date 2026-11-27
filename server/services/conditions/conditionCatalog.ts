@@ -178,7 +178,7 @@ const DEPRECATED: Record<string, { reason: string; use: string }> = {
   },
   player_message_inconsistent_across_channels: {
     reason: 'True when the crisis-standards consistency score is below 40',
-    use: 'player_message_is_consistent_across_channels',
+    use: 'player_message_inconsistent_across_channels',
   },
   player_pinned_verified_update: {
     reason: 'Alias of the official statement',

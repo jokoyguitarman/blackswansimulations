@@ -80,8 +80,17 @@ export interface CommsState {
   /** First session minute an email_sent reached this stakeholder. */
   email_sent_minutes?: Record<string, number>;
   action_counts?: ActionCountBucket[];
-  /** True when the action query hit its cap, so absence cannot be proved. */
+  /**
+   * False when the action, email, or contact read failed or the table is missing.
+   * Unset means the read succeeded, or the caller supplied the facts directly.
+   */
+  action_facts_known?: boolean;
+  email_facts_known?: boolean;
+  contact_facts_known?: boolean;
+  /** True when a read hit its cap, so absence cannot be proved. */
   action_counts_truncated?: boolean;
+  email_facts_truncated?: boolean;
+  contact_facts_truncated?: boolean;
 }
 
 export const COMMS_DELIVERY_CAP = 2000;

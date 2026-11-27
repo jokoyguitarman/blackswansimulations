@@ -289,6 +289,41 @@ describe('per-inject comms keys', () => {
     assert.equal(met('email_not_sent_to_stakeholder:stk_a:10', state, 12), false);
     assert.equal(met('email_not_sent_to_stakeholder:stk_b:10', state, 12), true);
   });
+
+  test('a failed read keeps absence and positive keys false', () => {
+    const unknown = comms([], {
+      action_facts_known: false,
+      email_facts_known: false,
+      contact_facts_known: false,
+      action_counts: [
+        { action_type: 'group_post_created', team_slug: 'a', count: 5, first_minute: 1 },
+      ],
+      email_sent_minutes: { stk_a: 2 },
+      stakeholder_contacts: { stk_a: { first_minute: 2, channels: ['email'] } },
+    });
+    assert.equal(met('action_absent:group_post_created:1', unknown, 10), false);
+    assert.equal(met('action_count_gte:group_post_created:1', unknown, 10), false);
+    assert.equal(met('email_not_sent_to_stakeholder:stk_b:1', unknown, 10), false);
+    assert.equal(met('email_sent_to_stakeholder:stk_a', unknown, 10), false);
+    assert.equal(met('not_contacted:stk_b:1', unknown, 10), false);
+    assert.equal(met('contacted:stk_a', unknown, 10), false);
+    assert.equal(met('contacted_via:stk_a:email', unknown, 10), false);
+  });
+
+  test('a truncated history cannot prove that something never happened', () => {
+    const truncated = comms([], {
+      action_counts_truncated: true,
+      email_facts_truncated: true,
+      contact_facts_truncated: true,
+      action_counts: [
+        { action_type: 'group_post_created', team_slug: 'a', count: 2, first_minute: 1 },
+      ],
+    });
+    assert.equal(met('action_absent:draft_approved:5', truncated, 10), false);
+    assert.equal(met('email_not_sent_to_stakeholder:stk_a:5', truncated, 10), false);
+    assert.equal(met('not_contacted:stk_a:5', truncated, 10), false);
+    assert.equal(met('action_count_gte:group_post_created:2|team=a', truncated, 10), true);
+  });
 });
 
 describe('condition key grammar', () => {
@@ -385,6 +420,43 @@ describe('conditional publish burst control', () => {
       selected.deferred.map((item) => item.id),
       ['3', '1'],
     );
+  });
+
+  test('a held inject does not take a publish slot or block the rest of the queue', () => {
+    const metList = [
+      { id: '1', severity: 'low', eligible_after_minutes: 0, inject_key: 'a' },
+      { id: '2', severity: 'critical', eligible_after_minutes: 5, inject_key: 'b' },
+      { id: '3', severity: 'high', eligible_after_minutes: 1, inject_key: 'c' },
+      { id: '4', severity: 'critical', eligible_after_minutes: 1, inject_key: 'd' },
+      { id: '5', severity: 'critical', eligible_after_minutes: 1, inject_key: 'a' },
+    ];
+    const held = (item: { id: string }) => item.id === '5';
+    const firstTick = selectPublishable(metList, 3, held);
+    assert.deepEqual(
+      firstTick.publish.map((item) => item.id),
+      ['4', '2', '3'],
+    );
+    assert.deepEqual(
+      firstTick.skipped.map((item) => item.id),
+      ['5'],
+    );
+    assert.deepEqual(
+      firstTick.deferred.map((item) => item.id),
+      ['1'],
+    );
+
+    const nextTick = selectPublishable(metList, 3, held);
+    assert.deepEqual(
+      nextTick.publish.map((item) => item.id),
+      ['4', '2', '3'],
+    );
+    assert.equal(
+      nextTick.publish.some((item) => item.id === '5'),
+      false,
+    );
+
+    const released = selectPublishable(metList, 3);
+    assert.equal(released.publish[0]?.id, '5');
   });
 });
 

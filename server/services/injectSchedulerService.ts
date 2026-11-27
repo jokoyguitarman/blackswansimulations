@@ -41,7 +41,7 @@ import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/ca
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
 import { loadCommsState } from './ledger/injectLedgerService.js';
 import { sweepCalls } from './calls/callService.js';
-import { selectPublishable } from './conditions/commsConditionsCore.js';
+import { orderPublishCandidates } from './conditions/commsConditionsCore.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -1023,20 +1023,22 @@ export class InjectSchedulerService {
           }
         }
 
-        const selected = selectPublishable(ready, env.conditionPublishMaxPerTick);
-        for (const deferred of selected.deferred) {
-          logger.info(
-            {
-              event: 'condition_publish_deferred',
-              sessionId: session.id,
-              injectId: deferred.id,
-              injectKey: deferred.inject_key,
-            },
-            'Conditional inject deferred to a later tick',
-          );
-        }
-
-        for (const item of selected.publish) {
+        const ordered = orderPublishCandidates(ready);
+        const cap = env.conditionPublishMaxPerTick;
+        let publishedCount = 0;
+        for (const item of ordered) {
+          if (publishedCount >= cap) {
+            logger.info(
+              {
+                event: 'condition_publish_deferred',
+                sessionId: session.id,
+                injectId: item.id,
+                injectKey: item.inject_key,
+              },
+              'Conditional inject deferred to a later tick',
+            );
+            continue;
+          }
           const condInject = item.condInject;
           if (publishedInjectIds.has(condInject.id) || cancelledInjectIds.has(condInject.id)) {
             continue;
@@ -1145,6 +1147,7 @@ export class InjectSchedulerService {
           await publishInjectToSession(condInject.id, session.id, session.trainer_id, this.io);
           publishedInjectIds.add(condInject.id);
           timing.published++;
+          publishedCount++;
         }
       }
     } catch (condErr) {

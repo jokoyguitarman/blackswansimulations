@@ -143,6 +143,8 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   email_forwarded: ({ args, team, state, elapsed }) =>
     forwardedResult(state, args[0] ?? '', team, elapsed),
   email_sent_to_stakeholder: ({ args, state, elapsed }) => {
+    const blocked = factBlock(state, 'email', false);
+    if (blocked) return { met: false, detail: blocked };
     const minute = state.email_sent_minutes?.[args[0] ?? ''];
     const met = minute != null;
     return {
@@ -151,6 +153,8 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
     };
   },
   email_not_sent_to_stakeholder: ({ args, state, elapsed }) => {
+    const blocked = factBlock(state, 'email', true);
+    if (blocked) return { met: false, detail: blocked };
     const minute = state.email_sent_minutes?.[args[0] ?? ''];
     const n = numberArg(args, 1);
     const met = elapsed >= n && (minute == null || minute > n);
@@ -240,6 +244,8 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
     return { met: count >= n, detail: `${count} missed or declined` };
   },
   contacted: ({ args, state, elapsed }) => {
+    const blocked = factBlock(state, 'contacts', false);
+    if (blocked) return { met: false, detail: blocked };
     const contact = state.stakeholder_contacts?.[args[0] ?? ''];
     return {
       met: contact != null,
@@ -247,12 +253,16 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
     };
   },
   contacted_via: ({ args, state }) => {
+    const blocked = factBlock(state, 'contacts', false);
+    if (blocked) return { met: false, detail: blocked };
     const contact = state.stakeholder_contacts?.[args[0] ?? ''];
     const channel = args[1] ?? '';
     const met = contact?.channels.includes(channel) === true;
     return { met, detail: met ? `Contacted by ${channel}` : `Not contacted by ${channel}` };
   },
   not_contacted: ({ args, state, elapsed }) => {
+    const blocked = factBlock(state, 'contacts', true);
+    if (blocked) return { met: false, detail: blocked };
     const contact = state.stakeholder_contacts?.[args[0] ?? ''];
     const n = numberArg(args, 1);
     const met = elapsed >= n && (contact == null || contact.first_minute > n);
@@ -272,14 +282,15 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   news_opened: ({ args, team, state, elapsed }) =>
     openedResult(viewFor(state, args[0] ?? '', team, newsChannel), elapsed),
   action_count_gte: ({ args, team, state }) => {
+    const blocked = factBlock(state, 'actions', false);
+    if (blocked) return { met: false, detail: blocked };
     const stats = actionStats(state, args[0] ?? '', team);
     const n = numberArg(args, 1);
     return { met: stats.count >= n, detail: `${stats.count} so far` };
   },
   action_absent: ({ args, team, state, elapsed }) => {
-    if (state.action_counts_truncated) {
-      return { met: false, detail: 'Action history is incomplete' };
-    }
+    const blocked = factBlock(state, 'actions', true);
+    if (blocked) return { met: false, detail: blocked };
     const stats = actionStats(state, args[0] ?? '', team);
     const n = numberArg(args, 1);
     const met = elapsed >= n && (stats.first == null || stats.first > n);
@@ -648,6 +659,26 @@ function missedCallsForStakeholder(state: CommsState, stakeholderId: string): nu
   return count;
 }
 
+/** A failed or truncated read must not look like "nothing happened". */
+function factBlock(
+  state: CommsState,
+  source: 'actions' | 'email' | 'contacts',
+  absence: boolean,
+): string | null {
+  if (source === 'actions') {
+    if (state.action_facts_known === false) return 'Action history is unavailable';
+    if (absence && state.action_counts_truncated) return 'Action history is incomplete';
+  } else if (source === 'email') {
+    if (state.email_facts_known === false) return 'Email history is unavailable';
+    if (absence && state.email_facts_truncated) return 'Email history is incomplete';
+  } else if (state.contact_facts_known === false) {
+    return 'Contact history is unavailable';
+  } else if (absence && state.contact_facts_truncated) {
+    return 'Contact history is incomplete';
+  }
+  return null;
+}
+
 function actionStats(
   state: CommsState,
   actionType: string,
@@ -681,19 +712,39 @@ function severityRank(value: string | null | undefined): number {
 }
 
 /** Highest severity first, then earliest eligibility, then inject key. */
-export function selectPublishable<T extends PublishCandidate>(
-  met: readonly T[],
-  maxPerTick: number,
-): { publish: T[]; deferred: T[] } {
-  const sorted = [...met].sort((a, b) => {
+export function orderPublishCandidates<T extends PublishCandidate>(met: readonly T[]): T[] {
+  return [...met].sort((a, b) => {
     const severity = severityRank(b.severity) - severityRank(a.severity);
     if (severity !== 0) return severity;
     const eligible = (a.eligible_after_minutes ?? 0) - (b.eligible_after_minutes ?? 0);
     if (eligible !== 0) return eligible;
     return (a.inject_key ?? '').localeCompare(b.inject_key ?? '');
   });
+}
+
+/**
+ * Fill the per-tick cap from the ordered list.
+ * `skip` is a gate or delay: it does not consume a slot, and the walk continues,
+ * so a held inject cannot keep the slots at the head of the queue.
+ */
+export function selectPublishable<T extends PublishCandidate>(
+  met: readonly T[],
+  maxPerTick: number,
+  skip?: (item: T) => boolean,
+): { publish: T[]; deferred: T[]; skipped: T[] } {
   const limit = Number.isFinite(maxPerTick) && maxPerTick > 0 ? Math.floor(maxPerTick) : 0;
-  return { publish: sorted.slice(0, limit), deferred: sorted.slice(limit) };
+  const publish: T[] = [];
+  const deferred: T[] = [];
+  const skipped: T[] = [];
+  for (const item of orderPublishCandidates(met)) {
+    if (skip?.(item)) {
+      skipped.push(item);
+      continue;
+    }
+    if (publish.length < limit) publish.push(item);
+    else deferred.push(item);
+  }
+  return { publish, deferred, skipped };
 }
 
 export interface StakeholderContactRow {
