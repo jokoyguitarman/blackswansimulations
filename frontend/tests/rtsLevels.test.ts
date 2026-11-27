@@ -413,6 +413,104 @@ describe('rts levels', () => {
     eng.destroy();
   });
 
+  it('holds 40 trickled and bunched arrivals to the stair cap', () => {
+    const stair: Stairwell = {
+      id: 's',
+      pos: { x: 20, y: 10 },
+      connectsFloors: [0, 1],
+      blocked: false,
+      label: 'S',
+      kind: 'stair',
+      widthM: 1.2,
+      levels: { from: 'G', to: 'L1' },
+    };
+    const count = 40;
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 0 },
+      [],
+      [],
+      [],
+      { afterExit: 'zone', zones: [], seed: 4 },
+      {
+        ids: ['G', 'L1'],
+        exitsByLevel: { G: [exitOn('out', 'G')], L1: [] },
+        wallsByLevel: { G: [], L1: [] },
+        stairs: [stair],
+        counts: { G: 0, L1: count },
+        heights: { G: 4, L1: 4 },
+      },
+    );
+    type Occ = {
+      label: { pedId: number; state: string };
+      stairId: string;
+      dir: 'up' | 'down';
+      fromLevel: string;
+      toLevel: string;
+      phase: 'queue' | 'travel';
+      enqueuedAt: number;
+      travelStart: number;
+      travelDuration: number;
+    };
+    const inner = eng as unknown as {
+      pedestrians: Matter.Body[];
+      stairPeople: Occ[];
+      engine: Matter.Engine;
+    };
+    const labels = inner.pedestrians.map(
+      (body) => (body as Matter.Body & { __ped: Occ['label'] }).__ped,
+    );
+    for (const body of inner.pedestrians) Matter.Composite.remove(inner.engine.world, body);
+    inner.pedestrians.length = 0;
+    const spacing = [0.02, 0.02, 0.02, 0.3, 0.6, 1.5, 3, 0.02, 0.9, 0.4];
+    const dt = DEFAULT_POLYGON_CONFIG.dt;
+    const arriveAt: number[] = [];
+    let t = 0.5;
+    for (let i = 0; i < count; i++) {
+      arriveAt.push(t);
+      t += spacing[i % spacing.length];
+    }
+    const released = new Map<number, number>();
+    let next = 0;
+    for (let i = 0; i < Math.round((t + 60) / dt); i++) {
+      const now = i * dt;
+      while (next < count && arriveAt[next] <= now + 1e-9) {
+        labels[next].state = 'evacuating';
+        inner.stairPeople.push({
+          label: labels[next],
+          stairId: 's',
+          dir: 'down',
+          fromLevel: 'L1',
+          toLevel: 'G',
+          phase: 'queue',
+          enqueuedAt: now,
+          travelStart: now,
+          travelDuration: 1,
+        });
+        next++;
+      }
+      eng.step();
+      for (const occ of inner.stairPeople) {
+        if (occ.phase === 'travel' && !released.has(occ.label.pedId)) {
+          released.set(occ.label.pedId, occ.travelStart);
+        }
+      }
+    }
+    const times = [...released.values()].sort((a, b) => a - b);
+    assert.equal(times.length, count);
+    const flow = stairFlowPerS(stair);
+    for (let i = 1; i < times.length; i++) {
+      const gap = times[i] - times[i - 1];
+      assert.ok(gap >= 1 / flow - dt - 1e-9, `gap ${gap.toFixed(3)} s after release ${i}`);
+    }
+    for (let i = 0; i < times.length; i++) {
+      for (let j = i + 1; j < times.length; j++) {
+        const cap = (times[j] - times[i] + dt) * flow + 1e-6;
+        assert.ok(j - i <= cap, `${j - i} releases in ${(times[j] - times[i]).toFixed(2)} s`);
+      }
+    }
+    eng.destroy();
+  });
+
   it('switches stairs within half a second when the one in use is smoke-logged', () => {
     const levels = [levelDef('G', 0), levelDef('L1', 1), levelDef('L2', 2)];
     const stairs: Stairwell[] = [

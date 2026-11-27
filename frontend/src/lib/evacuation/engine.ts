@@ -309,8 +309,8 @@ export class PolygonEvacuationEngine {
   private levelPlan: EvacLevelPlan | null = null;
   private levelDefs: LevelDef[] = [];
   private stairPeople: StairOccupant[] = [];
-  private stairAcc = new Map<string, number>();
-  private stairPrimed = new Map<string, boolean>();
+  /** Release slot of the last person let onto each stair and direction. */
+  private stairLastRelease = new Map<string, number>();
   private pendingCapture: Matter.Body[] = [];
   private hazardFields = new Map<string, HazardField>();
   private blastLevel: string | null = null;
@@ -2878,36 +2878,23 @@ export class PolygonEvacuationEngine {
     if (!this.levelPlan) return;
     for (const stair of this.levelPlan.stairs) {
       if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
+      const headway = 1 / stairFlowPerS(stair);
       for (const dir of ['up', 'down'] as const) {
         const key = `${stair.id}:${dir}`;
         const waiting = this.stairPeople
           .filter((p) => p.stairId === stair.id && p.dir === dir && p.phase === 'queue')
           .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
-        if (waiting.length === 0) {
-          this.stairAcc.set(key, 0);
-          this.stairPrimed.set(key, false);
-          continue;
-        }
+        if (waiting.length === 0) continue;
         if (waiting[0].label.fumeHeld) waiting[0].label.posture = 'crawl';
-        let acc = this.stairAcc.get(key) ?? 0;
-        if (!this.stairPrimed.get(key)) {
-          acc = Math.max(acc, 1);
-          this.stairPrimed.set(key, true);
+        // The headway holds across an empty queue, so a trickle of arrivals
+        // is held to the same cap as a crowd. A standing queue chains on the
+        // slot, not the step, so the rate stays exact.
+        let last = this.stairLastRelease.get(key) ?? -Infinity;
+        while (waiting.length > 0 && this.elapsed + 1e-9 >= last + headway) {
+          last = Math.max(last + headway, this.elapsed - dt);
+          this.beginTravel(waiting.shift()!);
         }
-        acc += stairFlowPerS(stair) * dt;
-        while (acc >= 1 && waiting.length > 0) {
-          acc -= 1;
-          const next = waiting.shift()!;
-          this.beginTravel(next);
-        }
-        const stillWaiting = this.stairPeople.some(
-          (p) => p.stairId === stair.id && p.dir === dir && p.phase === 'queue',
-        );
-        if (!stillWaiting) {
-          acc = 0;
-          this.stairPrimed.set(key, false);
-        }
-        this.stairAcc.set(key, acc);
+        this.stairLastRelease.set(key, last);
       }
     }
   }
