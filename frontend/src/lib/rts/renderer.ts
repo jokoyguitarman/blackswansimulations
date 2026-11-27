@@ -668,10 +668,19 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
     ring = true;
   }
 
+  // Frozen in fear: pale ice fill and a square, so it reads apart from crawl and dose rings.
+  if (ped.frozen) fill = '#e0f2fe';
+
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
+  if (ped.frozen) {
+    const side = (r + 3) * 2;
+    ctx.strokeStyle = '#0ea5e9';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.cx - side / 2, p.cy - side / 2, side, side);
+  }
   if (ring) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;
@@ -1086,13 +1095,22 @@ function drawShowcaseLegend(ctx: CanvasRenderingContext2D, h: number) {
     'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable';
   const line2 =
     'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre';
+  const line3 =
+    'Frozen in fear: pale dot in a blue square, stays put until a marshal reaches them · sealed-room shelter: crawl purple + ring';
   const pad = 8;
-  const boxW = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + pad * 2;
+  const boxW =
+    Math.max(
+      ctx.measureText(line1).width,
+      ctx.measureText(line2).width,
+      ctx.measureText(line3).width,
+    ) +
+    pad * 2;
   ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-  ctx.fillRect(8, h - 46, boxW, 36);
+  ctx.fillRect(8, h - 60, boxW, 50);
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillText(line1, 8 + pad, h - 30);
-  ctx.fillText(line2, 8 + pad, h - 16);
+  ctx.fillText(line1, 8 + pad, h - 44);
+  ctx.fillText(line2, 8 + pad, h - 30);
+  ctx.fillText(line3, 8 + pad, h - 16);
   ctx.restore();
 }
 

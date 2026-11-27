@@ -13,26 +13,34 @@
  * keeps the jet path after the feed pauses, so both crowds still have a
  * mall layer at T+300: 1.60 m and 69 K. At T+390 both malls are 1.27 m
  * and 81.7 K. By T+600 both are 1.12 m and 81.4 K.
- * Heat is a separate ISO 13571 dose. Six people are down from it by
+ * Heat is a separate ISO 13571 dose. Seven people are down from it by
  * T+180 in both crowds, and that holds through T+600. Gas concentration
  * is the soot mass on the stud: the layer's grams over the upper-layer
  * volume, or the column extinction, including soot past 6.1 per metre.
  * The smoke number still saturates there, and walking and sight use
- * that number. Open outs are 68, 90, 96 and 99 at T+180, T+240, T+300
- * and T+600. Downs are 14 at T+300 and 15 at T+600. Fume downs stay 0,
- * and 21 are still inside at T+600, one of them in the mall. The highest
- * asphyxiant FED still inside is 1 and the highest heat FED is 1.001.
- * Late mean smoke is 0.779. The blocked crowd lets 41, 55 and 97 people
- * out at T+180, T+240 and T+300, and 100 by T+600. Downs stay 14, with
- * 20 still inside and none of them in the mall. Late mean smoke is
- * 0.786. Mean smoke at T+180, T+240 and T+300 is 0.384, 0.385 and 0.681
- * in both crowds. Flashover stays 79.88 s and the peak stays 163.5 MW.
+ * that number. Open outs are 67, 88, 95 and 97 at T+180, T+240, T+300
+ * and T+600. Downs are 15 at T+300 and 17 at T+600. No fume downs by
+ * T+300, and 23 are still inside at T+600, two of them in the mall. The
+ * highest asphyxiant FED still inside is 1 and the highest heat FED is
+ * 1.001. Late mean smoke is 0.779. The blocked crowd lets 40, 54 and 94
+ * people out at T+180, T+240 and T+300, and 95 by T+600. Downs are 15 at
+ * T+300 and 19 at T+600, with 25 still inside, four of them in the mall.
+ * Late mean smoke is 0.786. Mean smoke at T+180, T+240 and T+300 is
+ * 0.384, 0.385 and 0.681 in both crowds. Flashover stays 79.88 s and the
+ * peak stays 163.5 MW.
+ * Freezing in fear: in the open crowd three people freeze, ped 61 at T+82
+ * and ped 109 at T+107 by the west fires and ped 101 at T+282 as smoke
+ * reaches the mall. In the blocked crowd peds 80 and 85 freeze at T+282
+ * as well. Only a marshal ends a freeze, and these runs have none, so
+ * every one of them stays frozen until a dose puts them down: ped 109 by
+ * heat, the rest by smoke. Frozen people are not counted as crawling.
+ * The freeze roll and the smoke turn-back roll are keyed on the person,
+ * so a frozen person moves nobody else's pre-movement or turn-back draw.
  * The six people in the sealed concrete room have no route to any exit,
  * so they shelter in place, crawling, instead of walking at an exit
  * they cannot reach. The open crowd counts 7 crawling at T+300, those
- * six and one other. The blocked crowd records 48 reroutes, five fewer:
- * people in the room no longer switch between exits they cannot reach,
- * as when E2-east closes. Outs and downs do not move.
+ * six and one other. In the blocked crowd, people in the room no longer
+ * switch between exits they cannot reach, as when E2-east closes.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
