@@ -14,6 +14,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { execDecisionsRouter } from './routes/execDecisions.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { sessionRolesRouter } from './routes/sessionRoles.js';
+import { escalationsRouter } from './routes/escalations.js';
 import { channelsRouter } from './routes/channels.js';
 import { decisionsRouter } from './routes/decisions.js';
 import { resourcesRouter } from './routes/resources.js';
@@ -287,6 +288,7 @@ app.use('/api/scenarios', scenarioStakeholdersRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/sessions/:id/bots', teammateBotsRouter); // AI teammates (before the generic router)
 app.use('/api/sessions', sessionRolesRouter);
+app.use('/api/sessions', escalationsRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)
 app.use('/api/channels', channelsRouter);

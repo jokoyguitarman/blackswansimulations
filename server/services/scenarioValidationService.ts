@@ -15,6 +15,8 @@ import {
 import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateCast } from './castCompletenessService.js';
 import { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
+import { validateEscalation } from './escalation/escalationCore.js';
+import { collectConditionKeys } from './conditions/conditionCatalog.js';
 
 export { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
 
@@ -469,6 +471,30 @@ export function validateScenarioPayload(
             path,
             `Inject "${inj.title}" targets unknown team "${t}" (sanitizer will downgrade)`,
           );
+      }
+    }
+    const escalation = (dc as { escalation?: unknown }).escalation;
+    if (escalation != null) {
+      const rootKey = typeof dc.inject_key === 'string' ? dc.inject_key : null;
+      for (const issue of validateEscalation({
+        escalation,
+        rootApp: dc.app ?? null,
+        rootStakeholderId: dc.stakeholder_id ?? null,
+        stakeholderIds: stakeholders.map((s) => s.id),
+        durationMinutes: payload.scenario.duration_minutes ?? null,
+        rootKey,
+        rootTriggerMinute: inj.trigger_time_minutes ?? null,
+        otherInjects: injects
+          .filter((other) => other !== inj)
+          .map((other) => ({
+            key: typeof other.delivery_config?.inject_key === 'string' ? other.delivery_config.inject_key : '',
+            trigger_time_minutes: other.trigger_time_minutes ?? null,
+            condition_keys: collectConditionKeys(other.conditions_to_appear, other.conditions_to_cancel),
+          }))
+          .filter((other) => other.key),
+      })) {
+        if (issue.level === 'error') fail('ESC-001', path, issue.message);
+        else warn('ESC-002', path, issue.message);
       }
     }
   }

@@ -171,6 +171,8 @@ export const env = {
   callbackWindowMinutes: envInt('CALLBACK_WINDOW_MINUTES', 30),
   // How many conditional injects one session may publish in a single scheduler tick.
   conditionPublishMaxPerTick: envInt('CONDITION_PUBLISH_MAX_PER_TICK', 3),
+  // AI follow-ups one chain may write in a session-hour. A denied budget uses the template.
+  escalationAiBudgetPerSessionHour: envInt('ESCALATION_AI_BUDGET_PER_SESSION_HOUR', 120),
   // Chat-completion calls that may judge inject replies in one session-hour.
   // One attempt counts as one unit. A denied budget leaves the reply unjudged.
   judgeBudgetPerSessionHour: envInt('JUDGE_BUDGET_PER_SESSION_HOUR', 400),

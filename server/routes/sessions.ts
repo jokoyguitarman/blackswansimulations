@@ -1563,6 +1563,11 @@ router.patch(
         void settleCallsForSession(id).catch((err) => {
           logger.warn({ err, sessionId: id }, 'call settle on session status failed');
         });
+        if (status === 'completed' || status === 'cancelled') {
+          void import('../services/escalation/escalationService.js')
+            .then(({ cancelSessionChains }) => cancelSessionChains(id))
+            .catch((err) => logger.warn({ err, sessionId: id }, 'escalation cancel on session end failed'));
+        }
       }
 
       if (claimingStart && data) {

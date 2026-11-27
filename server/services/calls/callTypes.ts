@@ -20,6 +20,8 @@ export interface StoredScript extends CallScript {
   inject_target_mode?: 'line' | 'role' | 'player' | 'ring_all';
   role_fallback?: 'none' | 'line' | 'line_after_minutes';
   role_fallback_minutes?: number | null;
+  /** Inject delivery_config, so chain steps and root escalations reach the ledger. */
+  ledger_config?: Record<string, unknown> | null;
 }
 
 export interface SimCall {

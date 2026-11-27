@@ -81,6 +81,8 @@ export interface CommsDelivery {
 
 export interface StakeholderContactSummary {
   first_minute: number;
+  /** Latest player contact. Chains use this to see contact after the root was delivered. */
+  latest_minute?: number;
   channels: string[];
 }
 
@@ -118,6 +120,27 @@ export interface CommsState {
   action_counts_truncated?: boolean;
   email_facts_truncated?: boolean;
   contact_facts_truncated?: boolean;
+  /**
+   * Escalation chains keyed by the root inject key. Absent when migration 272
+   * is not applied; chain keys are then false.
+   */
+  chains?: Record<
+    string,
+    Array<{
+      chain_id: string;
+      scope_team: string | null;
+      scope_role: string | null;
+      status: 'active' | 'stopped' | 'exhausted' | 'cancelled';
+      steps_sent: number;
+      max_steps: number;
+      max_urgency: string | null;
+      stopped_reason: string | null;
+      stopped_minute: number | null;
+      stopped_after_step: number | null;
+    }>
+  >;
+  /** WP11 sets this when a stakeholder's gave-up rung should stop chains. */
+  mood_stops?: Record<string, { stop_chains?: boolean }>;
   /** Live line and role facts. Absent when migration 271 is not applied. */
   line_runtime?: Array<{
     team: string;

@@ -44,6 +44,7 @@ import {
 } from '../services/conditions/injectTriggerShape.js';
 import { phoneConfigError } from '../services/calls/callCore.js';
 import { responseRubricError } from '../services/judging/judgeCore.js';
+import { inspectEscalation } from '../services/escalation/escalationService.js';
 import { dmDeliveryConfigError } from '../services/dm/dmDeliveryCore.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import {
@@ -977,6 +978,32 @@ function rejectDmDeliveryConfig(res: Response, config: unknown): boolean {
   return true;
 }
 
+async function rejectEscalation(
+  res: Response,
+  scenarioId: string,
+  deliveryConfig: unknown,
+  triggerTimeMinutes: number | null,
+  injectId?: string,
+): Promise<boolean> {
+  const issues = await inspectEscalation({
+    scenarioId,
+    deliveryConfig,
+    triggerTimeMinutes,
+    injectId,
+  });
+  const errors = issues.filter((issue) => issue.level === 'error').map((issue) => issue.message);
+  if (errors.length > 0) {
+    res.status(400).json({ error: errors[0], errors });
+    return true;
+  }
+  for (const issue of issues) {
+    if (issue.level === 'warning') {
+      logger.warn({ scenarioId, event: 'escalation_double_chaser' }, issue.message);
+    }
+  }
+  return false;
+}
+
 function rejectInjectTriggerShape(res: Response, shape: InjectTriggerShape): boolean {
   if (shape === 'timed_with_conditions') {
     res.status(400).json({ error: TIMED_WITH_CONDITIONS });
@@ -1091,6 +1118,11 @@ router.patch(
         if (rubricError) return res.status(400).json({ error: rubricError });
         const teamsForRole = (updates.target_teams ?? existing.target_teams ?? []) as string[];
         if (await rejectRoleTarget(res, id, updates.delivery_config, teamsForRole)) return;
+        const triggerTime =
+          updates.trigger_time_minutes !== undefined
+            ? (updates.trigger_time_minutes as number | null)
+            : (existing.trigger_time_minutes as number | null);
+        if (await rejectEscalation(res, id, nextDeliveryConfig, triggerTime, injectId)) return;
       }
 
       if (updates.inject_scope !== undefined || updates.target_teams !== undefined) {
@@ -1173,6 +1205,16 @@ router.post(
       if (rubricError) return res.status(400).json({ error: rubricError });
       if (await rejectRoleTarget(res, id, body.delivery_config ?? null, body.target_teams ?? []))
         return;
+      if (
+        await rejectEscalation(
+          res,
+          id,
+          body.delivery_config ?? null,
+          body.trigger_time_minutes ?? null,
+        )
+      ) {
+        return;
+      }
       const teamNames = await loadTeamNames(id);
       const sanitized = sanitizeTeamTargeting(
         {

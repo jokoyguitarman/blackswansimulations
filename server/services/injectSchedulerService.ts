@@ -937,6 +937,7 @@ export class InjectSchedulerService {
     }
 
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
+    let conditionalPublished = 0;
     try {
       const { data: condInjectsRaw } = await supabaseAdmin
         .from('scenario_injects')
@@ -1161,6 +1162,7 @@ export class InjectSchedulerService {
           publishedInjectIds.add(condInject.id);
           timing.published++;
           publishedCount++;
+          conditionalPublished = publishedCount;
         }
       }
     } catch (condErr) {
@@ -1170,6 +1172,30 @@ export class InjectSchedulerService {
       );
     }
     timing.conditions = Date.now();
+
+    try {
+      const { runEscalationChains } = await import('./escalation/escalationService.js');
+      const capLeft = Math.max(0, env.conditionPublishMaxPerTick - conditionalPublished);
+      let ioForChains = this.io;
+      if (!ioForChains) {
+        const { io } = await import('../index.js');
+        ioForChains = io;
+        this.io = io;
+      }
+      await runEscalationChains({
+        sessionId: session.id,
+        scenarioId: session.scenario_id,
+        trainerId: session.trainer_id,
+        status: session.status,
+        startTime: session.start_time,
+        elapsedMinutes,
+        comms: (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
+        remainingCap: capLeft,
+        io: ioForChains,
+      });
+    } catch (chainErr) {
+      logger.warn({ err: chainErr, sessionId: session.id }, 'escalation chain tick failed');
+    }
 
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
     try {
