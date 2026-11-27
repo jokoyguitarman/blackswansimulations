@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { SHOWCASE, SHOWCASE_SOURCES, type ShowcaseKey } from '../src/lib/evacuation/showcaseConstants';
 import {
   HazardField,
+  RouteRegions,
   assemblyMinDistanceM,
   chooseExit,
   crouchExtinction,
@@ -860,6 +861,91 @@ test('a retargeted crawler in contact walks toward its new exit, not with its ne
     `moved toward the east exit, dx=${(mover.position.x - startX).toFixed(3)}`,
   );
   eng.destroy();
+});
+
+test('someone in a room with no door shelters in place instead of pinning on the shell', () => {
+  const room = (door: boolean) => [
+    { startX: 30, startY: 0, endX: 30, endY: 6, hasDoor: door, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 30, startY: 6, endX: 40, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  type Label = {
+    state: string;
+    targetExitId: string;
+    sheltering?: boolean;
+    reactAt: number;
+  };
+  const run = (door: boolean) => {
+    const eng = showcaseEngine(2, [], room(door));
+    // Even light smoke indoors on a 1 m grid. Just past the east shell the air is clean,
+    // but nobody in the room can get there.
+    const studs: HazardStud[] = [];
+    const states: Record<string, { smoke: number; fire: string }> = {};
+    for (let x = 0.5; x <= 40.5; x += 1) {
+      for (let y = 0.5; y < 20; y += 1) {
+        const id = `s_${x}_${y}`;
+        studs.push({ id, simPos: { x, y }, indoor: x < 40 });
+        states[id] = { smoke: x < 40 ? 0.05 : 0, fire: 'none' };
+      }
+    }
+    eng.setHazardField(field(studs, states));
+    const [inside, outside] = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+    const start = (body: Matter.Body, x: number, y: number) => {
+      Matter.Body.setPosition(body, { x, y });
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      const ped = (body as Matter.Body & { __ped: Label }).__ped;
+      ped.state = 'reacting';
+      ped.reactAt = 0;
+      return ped;
+    };
+    const roomPed = start(inside, 35, 3);
+    const mallPed = start(outside, 20, 10);
+    for (let i = 0; i < 300; i++) eng.step();
+    const result = {
+      roomPed: { ...roomPed },
+      mallPed: { ...mallPed },
+      x: inside.position.x,
+      y: inside.position.y,
+      target: (inside as Matter.Body & { __ped: { shelterTarget?: Vec2 | null } }).__ped
+        .shelterTarget,
+    };
+    eng.destroy();
+    return result;
+  };
+  const sealed = run(false);
+  assert.equal(sealed.roomPed.sheltering, true);
+  assert.equal(sealed.roomPed.targetExitId, '');
+  assert.ok(sealed.target != null && sealed.target.x < 40, 'shelters on a stud inside its own room');
+  assert.ok(
+    Math.hypot(sealed.x - 35, sealed.y - 3) < 1,
+    `even air: stays put, at ${sealed.x.toFixed(2)}, ${sealed.y.toFixed(2)}`,
+  );
+  assert.notEqual(sealed.mallPed.sheltering, true);
+  assert.ok(sealed.mallPed.targetExitId !== '');
+  const withDoor = run(true);
+  assert.notEqual(withDoor.roomPed.sheltering, true);
+  assert.ok(withDoor.roomPed.targetExitId !== '');
+});
+
+test('route regions split a doorless room off the floor and join it through a door', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const exits = [exit({ id: 'east', center: { x: 40, y: 10 }, edgeIndex: 1, width: 4 })];
+  const wall = (door: boolean) => [
+    { startX: 30, startY: 0, endX: 30, endY: 6, hasDoor: door, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 30, startY: 6, endX: 40, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  const sealed = new RouteRegions(verts, wall(false));
+  assert.equal(sealed.hasRouteOut({ x: 35, y: 3 }, exits, verts), false);
+  assert.equal(sealed.hasRouteOut({ x: 10, y: 10 }, exits, verts), true);
+  // A shut leaf is still a doorway; the plan, not the leaf, decides the route.
+  const shutDoor = wall(true).map((w, i) => (i === 0 ? { ...w, openFraction: 0 } : w));
+  assert.equal(new RouteRegions(verts, shutDoor).hasRouteOut({ x: 35, y: 3 }, exits, verts), true);
+  const blocked = [{ ...exits[0], status: 'blocked' as const }];
+  assert.equal(new RouteRegions(verts, []).hasRouteOut({ x: 10, y: 10 }, blocked, verts), false);
 });
 
 test('posture resets outside and crawling counts only evacuating people', () => {

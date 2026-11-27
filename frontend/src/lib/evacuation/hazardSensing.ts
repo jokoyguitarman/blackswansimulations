@@ -114,9 +114,10 @@ export class HazardField {
   }
 
   /** Stud position with the lowest extinction coefficient within `radius`, if any. */
-  lowestKWithin(x: number, y: number, radius: number): Vec2 | null {
+  lowestKWithin(x: number, y: number, radius: number, accept?: (p: Vec2) => boolean): Vec2 | null {
     let best: Vec2 | null = null;
     let bestK = Infinity;
+    let bestD = Infinity;
     const span = Math.max(1, Math.ceil(radius / this.cellM));
     const cx = Math.floor(x / this.cellM);
     const cy = Math.floor(y / this.cellM);
@@ -126,9 +127,13 @@ export class HazardField {
         if (!list) continue;
         for (const s of list) {
           if (Math.hypot(s.simPos.x - x, s.simPos.y - y) > radius) continue;
+          if (accept && !accept(s.simPos)) continue;
           const k = extinctionK(this.states?.get(s.id)?.smoke ?? 0);
-          if (k < bestK) {
+          const d = Math.hypot(s.simPos.x - x, s.simPos.y - y);
+          // Equal air: the nearer spot, so clean air does not walk anyone to the edge.
+          if (k < bestK - 1e-9 || (Math.abs(k - bestK) <= 1e-9 && d < bestD)) {
             bestK = k;
+            bestD = d;
             best = s.simPos;
           }
         }
@@ -2256,4 +2261,156 @@ export function chooseRoute(
     }
   }
   return best;
+}
+
+const REGION_CELL_M = 0.25;
+const REGION_WALL_CLEAR_M = 0.3;
+
+/**
+ * Connected floor regions of one storey, from the fixed plan: the outline and
+ * interior walls, with every doorway open whatever its leaf is doing. Someone
+ * whose region holds no usable exit has no route out at all, which is not the
+ * same as an exit that smoke or a shut leaf has made costly.
+ */
+export class RouteRegions {
+  private readonly minX: number;
+  private readonly minY: number;
+  private readonly cols: number;
+  private readonly rows: number;
+  private readonly label: Int32Array;
+
+  constructor(verts: Vec2[], walls: readonly WallLike[]) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const v of verts) {
+      minX = Math.min(minX, v.x);
+      minY = Math.min(minY, v.y);
+      maxX = Math.max(maxX, v.x);
+      maxY = Math.max(maxY, v.y);
+    }
+    if (!Number.isFinite(minX)) {
+      minX = minY = maxX = maxY = 0;
+    }
+    this.minX = minX;
+    this.minY = minY;
+    this.cols = Math.max(1, Math.ceil((maxX - minX) / REGION_CELL_M));
+    this.rows = Math.max(1, Math.ceil((maxY - minY) / REGION_CELL_M));
+    const n = this.cols * this.rows;
+    const open = new Uint8Array(n);
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const p = this.centre(c, r);
+        if (isInsidePolygon(p.x, p.y, verts)) open[r * this.cols + c] = 1;
+      }
+    }
+    for (const wall of walls) {
+      for (const [a, b] of planParts(wall)) this.blockSegment(open, a, b);
+    }
+    this.label = new Int32Array(n).fill(-1);
+    let next = 0;
+    const queue = new Int32Array(n);
+    for (let start = 0; start < n; start++) {
+      if (!open[start] || this.label[start] >= 0) continue;
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = start;
+      this.label[start] = next;
+      while (head < tail) {
+        const i = queue[head++];
+        const c = i % this.cols;
+        const r = (i - c) / this.cols;
+        const near = [
+          c > 0 ? i - 1 : -1,
+          c < this.cols - 1 ? i + 1 : -1,
+          r > 0 ? i - this.cols : -1,
+          r < this.rows - 1 ? i + this.cols : -1,
+        ];
+        for (const j of near) {
+          if (j < 0 || !open[j] || this.label[j] >= 0) continue;
+          this.label[j] = next;
+          queue[tail++] = j;
+        }
+      }
+      next++;
+    }
+  }
+
+  /** Region id at a point, or -1 off the floor. A point on a wall slab takes the nearest open cell. */
+  regionAt(p: Vec2, maxReach = 3): number {
+    const c0 = Math.floor((p.x - this.minX) / REGION_CELL_M);
+    const r0 = Math.floor((p.y - this.minY) / REGION_CELL_M);
+    let best = -1;
+    let bestD = Infinity;
+    for (let reach = 0; reach <= maxReach && best < 0; reach++) {
+      for (let dr = -reach; dr <= reach; dr++) {
+        for (let dc = -reach; dc <= reach; dc++) {
+          if (Math.max(Math.abs(dr), Math.abs(dc)) !== reach) continue;
+          const c = c0 + dc;
+          const r = r0 + dr;
+          if (c < 0 || r < 0 || c >= this.cols || r >= this.rows) continue;
+          const id = this.label[r * this.cols + c];
+          if (id < 0) continue;
+          const q = this.centre(c, r);
+          const d = Math.hypot(q.x - p.x, q.y - p.y);
+          if (d < bestD) {
+            bestD = d;
+            best = id;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /** True when the person's region holds the inside approach of a usable exit. */
+  hasRouteOut(pos: Vec2, exits: readonly ExitDef[], verts: Vec2[]): boolean {
+    const here = this.regionAt(pos);
+    if (here < 0) return true;
+    for (const exit of exits) {
+      if (exit.exitType === 'service' || exit.status === 'blocked') continue;
+      if (this.regionAt(exitApproachInside(exit, verts, 1)) === here) return true;
+    }
+    return false;
+  }
+
+  private centre(c: number, r: number): Vec2 {
+    return {
+      x: this.minX + (c + 0.5) * REGION_CELL_M,
+      y: this.minY + (r + 0.5) * REGION_CELL_M,
+    };
+  }
+
+  private blockSegment(open: Uint8Array, a: Vec2, b: Vec2) {
+    const pad = REGION_WALL_CLEAR_M;
+    const c0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - pad - this.minX) / REGION_CELL_M));
+    const c1 = Math.min(
+      this.cols - 1,
+      Math.floor((Math.max(a.x, b.x) + pad - this.minX) / REGION_CELL_M),
+    );
+    const r0 = Math.max(0, Math.floor((Math.min(a.y, b.y) - pad - this.minY) / REGION_CELL_M));
+    const r1 = Math.min(
+      this.rows - 1,
+      Math.floor((Math.max(a.y, b.y) + pad - this.minY) / REGION_CELL_M),
+    );
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const p = this.centre(c, r);
+        if (projectOnto(p, a.x, a.y, b.x, b.y).dist < pad) open[r * this.cols + c] = 0;
+      }
+    }
+  }
+}
+
+/** Solid parts of a wall with its doorway open, whatever the leaf is doing. */
+function planParts(wall: WallLike): Array<[Vec2, Vec2]> {
+  if (!wall.hasDoor)
+    return [
+      [
+        { x: wall.startX, y: wall.startY },
+        { x: wall.endX, y: wall.endY },
+      ],
+    ];
+  return solidSegments({ ...wall, openFraction: undefined });
 }
