@@ -455,14 +455,19 @@ test('a burning room that takes a jet does not burn the neighbour upper layer', 
     asFresh.burn.burnedKw > 100,
     `keeping the far inflow as fresh air only burned ${asFresh.burn.burnedKw.toFixed(0)} kW`,
   );
-  const stepped = stepZone(state, spec, 0.1, 0, {
-    kgS: limited.farUpperInKgS,
-    tempK: 900,
-    oxygenY: 0.05,
-  });
+  const jet = { kgS: limited.farUpperInKgS, tempK: 900, oxygenY: 0.05 };
+  // The room's own layer is spent as well. The jet is then the only gas,
+  // and it is not fresh air.
+  const spent = { ...state, upperO2: 0.05, lowerO2: 0.05 };
+  const stepped = stepZone(spent, spec, 0.1, 0, jet);
   assert.ok(
     stepped.burnedFraction < 0.01,
     `the flame burned ${(stepped.burnedFraction * 5000).toFixed(0)} kW on the neighbour layer`,
+  );
+  const own = stepZone(state, spec, 0.1, 0, jet);
+  assert.ok(
+    own.burnedFraction > 0.2,
+    `the room's own layer released ${(own.burnedFraction * 5000).toFixed(0)} kW`,
   );
 });
 
@@ -519,8 +524,8 @@ test('a clamped fire room fed near-fresh air keeps burning', () => {
     ],
   });
   const start = { ...freshLayer(3), interfaceM: 0.05, upperK: 500 };
-  const released = (upperO2: number) => {
-    let state = start;
+  const released = (upperO2: number, layerY = O2_AMBIENT_MASS) => {
+    let state = { ...start, upperO2: layerY, lowerO2: layerY };
     let kw = 0;
     for (let i = 0; i < 20; i++) {
       const stepped = stepZone(state, spec(upperO2), 0.5);
@@ -531,7 +536,8 @@ test('a clamped fire room fed near-fresh air keeps burning', () => {
   };
   const near = released(0.21);
   const fresh = released(0.23);
-  const vitiated = released(0.05);
+  // The room's own layer is spent too. A vitiated inflow is then not a fire.
+  const vitiated = released(0.05, 0.05);
   assert.ok(fresh > 50000, `fresh stream only released ${fresh.toFixed(0)} kW·s`);
   assert.ok(
     near > fresh * 0.8,
@@ -544,6 +550,76 @@ test('a clamped fire room fed near-fresh air keeps burning', () => {
   assert.ok(
     near > vitiated * 3,
     `near-fresh released ${near.toFixed(0)} kW·s against vitiated ${vitiated.toFixed(0)}`,
+  );
+});
+
+test('a clamped fire room burns the oxygen in its own layer', () => {
+  // The inflow is below the extinction limit. The upper layer is not.
+  // The flame stands in that layer, so it keeps burning. The same inflow
+  // into a spent layer does not, and the two oxygen pools are not added
+  // twice: the burn is the sum of the stream and the layer, not twice either.
+  const fires = [{ heatKw: 4000, diameterM: 1.2 }];
+  const room = {
+    areaM2: 30,
+    ceilingM: 2.6,
+    boundaries: [{ areaM2: 110, lining: LINING.concrete }],
+  };
+  const spec = (upperO2: number): LayerSpec => ({
+    ...room,
+    fires,
+    vents: [
+      {
+        widthM: 1.5,
+        sillM: 0,
+        soffitM: 2,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 90,
+          floorPressurePa: 3,
+          upperO2,
+        },
+      },
+    ],
+  });
+  const start = (y: number) => ({
+    ...freshLayer(2.6),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 120,
+    upperO2: y,
+    lowerO2: y,
+  });
+  const released = (layerY: number, inY: number) => {
+    let state = start(layerY);
+    let kwS = 0;
+    for (let i = 0; i < 8; i++) {
+      const stepped = stepZone(state, spec(inY), 0.5);
+      kwS += stepped.burnedFraction * 4000 * 0.5;
+      state = stepped.state;
+    }
+    return { kwS, y: state.upperO2 ?? 0 };
+  };
+  const burning = released(0.19, 0.12);
+  const spent = released(0.12, 0.12);
+  assert.ok(burning.kwS > 1500, `own layer released ${burning.kwS.toFixed(0)} kW·s`);
+  assert.ok(
+    spent.kwS * 3 < burning.kwS,
+    `spent layer ${spent.kwS.toFixed(0)} kW·s against the live layer ${burning.kwS.toFixed(0)}`,
+  );
+  assert.ok(burning.y < 0.19, `layer oxygen stayed ${burning.y.toFixed(3)}`);
+  const limited = oxygenLimitedBurn(spec(0.12), 0.05, AMBIENT_K + 120, 0.19, 0.19, 0.5);
+  const parts = (limited.burn.oxygenLowerKgS + limited.burn.oxygenUpperKgS) * DELTA_H_O2_KJ_PER_KG;
+  assert.ok(
+    Math.abs(parts - limited.burn.burnedKw) < Math.max(50, 0.05 * limited.burn.burnedKw),
+    `oxygen pools ${parts.toFixed(0)} kW against the burn ${limited.burn.burnedKw.toFixed(0)} kW`,
+  );
+  assert.ok(
+    limited.burn.oxygenUpperKgS > limited.burn.oxygenLowerKgS,
+    'the layer was not the supply',
+  );
+  const spentBurn = oxygenLimitedBurn(spec(0.12), 0.05, AMBIENT_K + 120, 0.12, 0.12, 0.5);
+  assert.ok(
+    spentBurn.burn.burnedKw < limited.burn.burnedKw * 0.25,
+    `spent layer still burned ${spentBurn.burn.burnedKw.toFixed(0)} kW`,
   );
 });
 
@@ -1546,30 +1622,51 @@ test('ten floor seconds stay near 1500 A√H', () => {
     if (afterFloor.length > 0 || state.interfaceM <= 0.051) afterFloor.push(burnedKw);
   }
   // The second the interface arrives still holds the lower air it
-  // descended through, so that release is the stored air. The vent limit
-  // is the seconds that follow, which start on the floor.
-  const window = afterFloor.slice(1, 11);
+  // descended through. The upper layer then feeds the flame as well,
+  // until that oxygen is gone. The vent limit is the seconds after.
   const shown = lines.join('\n');
-  assert.equal(window.length, 10, shown);
-  for (const value of window) {
+  const settled = afterFloor.slice(20, 30);
+  assert.equal(settled.length, 10, shown);
+  for (const value of settled) {
     assert.ok(
       Math.abs(value - cap) / cap < 0.15,
       `${value.toFixed(0)} kW vs ${cap.toFixed(0)}\n${shown}`,
     );
   }
+  assert.ok(
+    Math.max(...afterFloor.slice(0, 5)) > cap * 1.15,
+    `the layer added nothing above ${cap.toFixed(0)} kW\n${shown}`,
+  );
   // One bad doorway root, or the enthalpy cap fed back into the air, used
   // to drop a single second far below the vent limit.
   for (const value of afterFloor) {
     assert.ok(value > cap * 0.5, `collapse ${value.toFixed(0)} kW\n${shown}`);
   }
-  // Upper-layer oxygen at the floor is not a second supply. The flame is
-  // the fresh-air fire, so a hot layer at 0.177 still burns near the door.
+  // The layer's oxygen is a supply on the floor. At the extinction limit
+  // the same door stays on the vent cap, so the door is not counted twice.
   const stored = oxygenLimitedBurn(spec, 0.05, AMBIENT_K + 300, O2_AMBIENT_MASS, 0.177, 0.1);
+  const atLimit = oxygenLimitedBurn(
+    spec,
+    0.05,
+    AMBIENT_K + 300,
+    O2_AMBIENT_MASS,
+    O2_LIMIT_MASS,
+    0.1,
+  );
   assert.ok(
-    Math.abs(stored.burn.burnedKw - cap) / cap < 0.15,
+    stored.burn.burnedKw > cap * 1.15,
     `stored oxygen ${stored.burn.burnedKw.toFixed(0)} kW vs ${cap.toFixed(0)}`,
   );
-  assert.ok(stored.burn.burnedKw < prescribed * 0.5);
+  assert.ok(
+    Math.abs(atLimit.burn.burnedKw - cap) / cap < 0.15,
+    `limit ${atLimit.burn.burnedKw.toFixed(0)} kW vs ${cap.toFixed(0)}`,
+  );
+  const extra = stored.burn.burnedKw - atLimit.burn.burnedKw;
+  const layerKw = stored.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG;
+  assert.ok(
+    extra < layerKw * 1.05 + 100,
+    `extra ${extra.toFixed(0)} kW above the layer's ${layerKw.toFixed(0)} kW`,
+  );
 });
 
 test('the spill plume is the Poreh doorway term', () => {
@@ -3557,7 +3654,8 @@ test('an oxygen-limited fire room keeps its layer and burns again', () => {
     >;
   };
   exposed.fireSim.ignite(['fire']);
-  const of = (id: string) => [...exposed.layerState.values()].find((row) => row.members.includes(id));
+  const of = (id: string) =>
+    [...exposed.layerState.values()].find((row) => row.members.includes(id));
   for (let t = 0; t < 80; t++) engine.step(1, walls, []);
   const fire = of('fire');
   const shop = of('shop');

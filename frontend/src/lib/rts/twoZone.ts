@@ -1134,23 +1134,27 @@ const ZERO_MASS_RATE: (flows: PressureScalars) => number = () => 0;
 /**
  * The oxygen limit tied to the vents. Lower-layer air available this step
  * is the door inflow and fan makeup, plus the air the interface can still
- * descend through. At the floor only the inflow remains.
+ * descend through. At the floor the inflow is what the lower layer can
+ * still give.
  *
- * That fresh air is the flame. CFAST Eq. 3.13 limits the burning to the
- * oxygen the plume can take, and the plume has to be the fire that oxygen
- * supports. The oxygen that counts is the lower-layer air the plume
- * entrains, already shared and capped by the supply. Air the plume does
- * not take, including the last centimetre of a large floor, does not
- * enlarge the flame. Sizing the flame on the prescribed pyrolysis lets it
- * entrain the oxygen stored in the upper layer and burn the free-burn
- * rate for a step. The extra pyrolysis is carried as fuel and can burn
- * where a door jet meets oxygen. It is not a larger flame in this room.
- * The mass of that extra fuel is capped at twice the fresh-air supply
- * (`cappedPyrolysisKw`). φ = 2 there is an engineering bound, the
- * ceiling of the yield blend, not a published limit on a compartment.
- * Upper-layer gas can still finish a flame
- * the fresh air already accounts for. It cannot raise the release above
- * that air.
+ * That air is the flame. CFAST Eq. 3.13 limits the burning to the oxygen
+ * the plume can take, and the plume has to be the fire that oxygen
+ * supports. Above the floor the oxygen that counts is the lower-layer
+ * air the plume entrains, already shared and capped by the supply. Air
+ * the plume does not take, including the last centimetre of a large
+ * floor, does not enlarge the flame. Sizing the flame on the prescribed
+ * pyrolysis lets it entrain the oxygen stored in the upper layer and
+ * burn the free-burn rate for a step, so above the floor that stored
+ * oxygen only finishes a flame the inflow already accounts for. On the
+ * floor the flame stands in the upper layer. The release walks down from
+ * the prescribed fire to the oxygen that layer's plume can take, and the
+ * inflow keeps its own fraction. It is taken out of the upper term, so
+ * the same oxygen is not burned twice. The extra pyrolysis is carried as
+ * fuel and can burn where a door jet meets oxygen. It is not a larger
+ * flame in this room. The mass of that extra fuel is capped at twice the
+ * fresh-air supply (`cappedPyrolysisKw`). φ = 2 there is an engineering
+ * bound, the ceiling of the yield blend, not a published limit on a
+ * compartment.
  *
  * The mass the zone moves is Heskestad entrainment of that flame at the
  * interface. It cannot exceed the air the vents and the layer can give
@@ -1350,16 +1354,45 @@ function flameSupply(
   const extraMass = Math.max(0, streamInCap - entrained.lowerAirKgS);
   const freshKw =
     oxygenCapacityKw(entrained.lowerAirKgS, yMix) + oxygenCapacityKw(extraMass, yStream);
-  const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
-  const flames =
-    freshFraction < 1
-      ? spec.fires.map((fire) => ({
-          heatKw: fire.heatKw > 0 ? fire.heatKw * freshFraction : 0,
-          diameterM: fire.diameterM,
-          baseM: fire.baseM,
-        }))
-      : spec.fires;
-  const raw = layerBurn(flames, interfaceM, yMix, yUpper, chi, airCap);
+  const onFloor = interfaceM <= INTERFACE_FLOOR_M + 1e-9;
+  const yU = yUpper > 0 ? yUpper : 0;
+  // A zero flame entrains nothing, so the walk starts at the prescribed
+  // fire and comes down to the oxygen the upper plume can actually take.
+  // The inflow is already in freshKw. The upper term is the room's layer.
+  const layerFeeds = onFloor && prescribed > freshKw + 1 && lowerOxygenCoefficient(yU) > 0.02;
+  let flames = spec.fires;
+  let raw = entrained;
+  if (layerFeeds) {
+    let q = prescribed;
+    for (let i = 0; i < 4; i++) {
+      const fraction = Math.min(1, q / prescribed);
+      const trial =
+        fraction < 0.999
+          ? spec.fires.map((fire) => ({
+              heatKw: fire.heatKw > 0 ? fire.heatKw * fraction : 0,
+              diameterM: fire.diameterM,
+              baseM: fire.baseM,
+            }))
+          : spec.fires;
+      raw = layerBurn(trial, interfaceM, yMix, yU, chi, airCap);
+      flames = trial;
+      const upperKw = raw.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG;
+      const next = Math.min(prescribed, freshKw + upperKw);
+      if (Math.abs(next - q) <= Math.max(1, 0.02 * Math.max(q, 1))) break;
+      q = next;
+    }
+  } else {
+    const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
+    flames =
+      freshFraction < 1
+        ? spec.fires.map((fire) => ({
+            heatKw: fire.heatKw > 0 ? fire.heatKw * freshFraction : 0,
+            diameterM: fire.diameterM,
+            baseM: fire.baseM,
+          }))
+        : spec.fires;
+    raw = layerBurn(flames, interfaceM, yMix, yUpper, chi, airCap);
+  }
   const extraAfter = Math.max(0, streamInCap - raw.lowerAirKgS);
   const streamKw = Math.min(
     oxygenCapacityKw(extraAfter, yStream),
@@ -3367,9 +3400,15 @@ function stepZoneNow(
           flows.farUpperInKgS > 1e-9 ? Math.max(0, flows.farUpperO2KgS) / flows.farUpperInKgS : y;
         const streamTaken = Math.min(bare, recirc);
         if (advance.burn.burnedKw > 0) {
+          // On the floor the plume above the clamp is the room's layer.
+          // That oxygen is already on the burn, with the inflow taken out
+          // of it, so the stream term does not count it again.
+          const layerKw =
+            z <= INTERFACE_FLOOR_M + 1e-9 ? advance.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG : 0;
           const capacity =
             oxygenCapacityKw(advance.burn.lowerAirKgS * freshScale, y) +
-            oxygenCapacityKw(streamTaken, yStream);
+            oxygenCapacityKw(streamTaken, yStream) +
+            layerKw;
           const newBurned = Math.min(advance.burn.burnedKw, capacity);
           burnScale = newBurned / advance.burn.burnedKw;
           supplyKw =
