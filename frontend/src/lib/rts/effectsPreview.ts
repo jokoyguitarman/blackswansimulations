@@ -189,24 +189,44 @@ export const PREVIEW_FINE_S = 5;
 export const PREVIEW_COARSE_DT = 0.5;
 export const PREVIEW_PRE_BLAST_DT = 1;
 
-export function previewSteps(t0: number, seconds: number): number[] {
+/**
+ * Steps to `seconds` after the blast. Every event, the blast at t0 and any
+ * enrichment event in `eventTimes`, gets the same fine window: from the step
+ * ending on it to PREVIEW_FINE_S after it.
+ */
+export function previewSteps(
+  t0: number,
+  seconds: number,
+  eventTimes: readonly number[] = [],
+): number[] {
+  const end = t0 + Math.max(0, seconds);
+  // A step that reaches an event fires it and then integrates it over the whole
+  // step, so the step ending on an event must already be a fine one.
+  const windows = [t0, ...eventTimes]
+    .filter((e) => e >= t0 && e < end)
+    .sort((a, b) => a - b)
+    .map((e) => [Math.max(0, e - FX.EFFECTS_DT), Math.min(end, e + PREVIEW_FINE_S)]);
   const steps: number[] = [];
-  const pushUntil = (end: number, dt: number, from: number) => {
-    let t = from;
-    while (end - t > 1e-9) {
-      const h = Math.min(dt, end - t);
+  let t = 0;
+  const pushUntil = (until: number, dt: number) => {
+    while (until - t > 1e-9) {
+      const h = Math.min(dt, until - t);
       steps.push(h);
       t += h;
     }
-    return end;
   };
-  // A step that reaches t0 fires the blast and then integrates it over the whole
-  // step, so the step ending on t0 must already be a fine one.
-  let t = pushUntil(Math.max(0, t0 - FX.EFFECTS_DT), PREVIEW_PRE_BLAST_DT, 0);
-  const end = t0 + Math.max(0, seconds);
-  t = pushUntil(Math.min(end, t0 + PREVIEW_FINE_S), FX.EFFECTS_DT, t);
-  pushUntil(end, PREVIEW_COARSE_DT, t);
+  for (const [from, to] of windows) {
+    if (to <= t + 1e-9) continue;
+    pushUntil(from, t < t0 - 1e-9 ? PREVIEW_PRE_BLAST_DT : PREVIEW_COARSE_DT);
+    pushUntil(to, FX.EFFECTS_DT);
+  }
+  pushUntil(end, PREVIEW_COARSE_DT);
   return steps;
+}
+
+/** Trigger times of every hazard event the engine has registered. */
+function eventTimesOf(engine: SpatialEffectsEngine): number[] {
+  return [...engine.hazardStates.values()].flatMap((h) => h.events.map((e) => e.triggerTimeSec));
 }
 
 /** Build the preview engine and run it to `seconds` after the blast. */
@@ -216,7 +236,9 @@ export function runEffectsPreview(
   walls: InteriorWall[],
 ): SpatialEffectsEngine {
   const { engine, t0, hazards } = buildPreviewEngine(input);
-  for (const dt of previewSteps(t0, seconds)) engine.step(dt, walls, hazards);
+  for (const dt of previewSteps(t0, seconds, eventTimesOf(engine))) {
+    engine.step(dt, walls, hazards);
+  }
   return engine;
 }
 
@@ -231,7 +253,7 @@ export async function runEffectsPreviewAsync(
   opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal; sliceMs?: number } = {},
 ): Promise<SpatialEffectsEngine | null> {
   const { engine, t0, hazards } = buildPreviewEngine(input);
-  const steps = previewSteps(t0, seconds);
+  const steps = previewSteps(t0, seconds, eventTimesOf(engine));
   const sliceMs = opts.sliceMs ?? 40;
   let i = 0;
   while (i < steps.length) {

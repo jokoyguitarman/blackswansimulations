@@ -30,6 +30,7 @@ import {
   buildPreviewEngine,
   previewSteps,
   runEffectsPreview,
+  runEffectsPreviewAsync,
   type PreviewInput,
 } from '../src/lib/rts/effectsPreview.ts';
 import { FX } from '../src/lib/rts/fx/fxConstants.ts';
@@ -772,6 +773,92 @@ describe('stair shaft scene', () => {
     assert.equal(engine.hazardStates.get('gas-leak')?.events[0].triggerTimeSec, t0 + 10);
     assert.ok(hazards.some((zone) => zone.id === 'blast-direct'));
     assert.equal((engine as unknown as { hoodFanWhen: string }).hoodFanWhen, 'appliances');
+  });
+
+  test('the setup preview steps every enrichment event like the blast', () => {
+    const t0 = 60;
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const endAt = (steps: number[], i: number) => sum(steps.slice(0, i + 1));
+    // No events: whole seconds to t0 - 0.1 s, 0.1 s to t0 + 5 s, then 0.5 s.
+    const plain = previewSteps(t0, 30);
+    assert.ok(Math.abs(sum(plain) - (t0 + 30)) < 1e-6);
+    plain.forEach((dt, i) => {
+      const t = endAt(plain, i);
+      if (t <= t0 - 0.1 + 1e-6) assert.ok(dt > 0.5 && dt <= 1 + 1e-6, `pre-blast step ${dt}`);
+      else {
+        const want = t <= t0 + 5 + 1e-6 ? FX.EFFECTS_DT : 0.5;
+        assert.ok(Math.abs(dt - want) < 1e-6, `step ending at ${t.toFixed(2)} is ${dt}`);
+      }
+    });
+    // An event at t0 + 20: the step ending on it and the 5 s after it are fine too.
+    const withEvent = previewSteps(t0, 30, [t0 + 20]);
+    withEvent.forEach((dt, i) => {
+      const t = endAt(withEvent, i);
+      const fine =
+        (t > t0 - 0.1 + 1e-6 && t <= t0 + 5 + 1e-6) ||
+        (t > t0 + 19.9 + 1e-6 && t <= t0 + 25 + 1e-6);
+      if (fine) assert.ok(Math.abs(dt - FX.EFFECTS_DT) < 1e-6, `step ending at ${t.toFixed(2)}`);
+      else if (t > t0 + 1e-6)
+        assert.ok(dt > FX.EFFECTS_DT + 1e-6, `step ending at ${t.toFixed(2)}`);
+    });
+    // The runner reads the event times off the engine.
+    const dts: Array<{ t: number; dt: number }> = [];
+    const original = SpatialEffectsEngine.prototype.step;
+    let clock = 0;
+    SpatialEffectsEngine.prototype.step = function (
+      this: SpatialEffectsEngine,
+      dt,
+      walls,
+      hazards,
+    ) {
+      clock += dt;
+      dts.push({ t: clock, dt });
+      return original.call(this, dt, walls, hazards);
+    };
+    try {
+      runEffectsPreview(
+        {
+          ...stairPreviewInput(true),
+          hazardAnalysis: [
+            {
+              hazardId: 'late-ignition',
+              events: [
+                {
+                  triggerTimeSec: 20,
+                  eventType: 'ignite',
+                  spreadType: 'fire',
+                  spreadRadius: 2,
+                  spreadRate: 1,
+                  description: 'Late ignition',
+                  severity: 'high',
+                },
+              ],
+            },
+          ],
+        },
+        30,
+        [],
+      );
+    } finally {
+      SpatialEffectsEngine.prototype.step = original;
+    }
+    const around = dts.filter((s) => s.t > t0 + 20 + 1e-6 && s.t <= t0 + 25 + 1e-6);
+    assert.ok(around.length > 0 && around.every((s) => Math.abs(s.dt - FX.EFFECTS_DT) < 1e-6));
+  });
+
+  test('an aborted async preview resolves without an engine', async () => {
+    const abort = new AbortController();
+    let slices = 0;
+    const result = await runEffectsPreviewAsync(stairPreviewInput(true), 300, [], {
+      signal: abort.signal,
+      sliceMs: 1,
+      onProgress: () => {
+        slices++;
+        if (slices === 2) abort.abort();
+      },
+    });
+    assert.equal(result, null);
+    assert.equal(slices, 2, 'it kept stepping after the abort');
   });
 
   test('the upper crowd walks down the stair and the ground crowd uses its door', () => {

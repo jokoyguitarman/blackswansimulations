@@ -1043,6 +1043,16 @@ export function DebugRTSSim() {
   const rasterCacheRef = useRef(createRasterLayoutCache());
   const rasterLayoutRef = useRef<RasterLayout | null>(null);
   const simClockRef = useRef(createSharedClock());
+  /** Share of the running setup preview done, or null when none is running. */
+  const [previewProgress, setPreviewProgress] = useState<number | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => previewAbortRef.current?.abort(), []);
+  /** Drop a running preview, so it can't install its engine over a scene it wasn't built for. */
+  const cancelPreview = useCallback(() => {
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    setPreviewProgress(null);
+  }, []);
   const speedMeterRef = useRef(createSpeedMeter());
   /** '10x (running 3.1x)' while the clock runs slower than the chosen speed. */
   const [slowedSpeed, setSlowedSpeed] = useState<string | null>(null);
@@ -1448,6 +1458,7 @@ export function DebugRTSSim() {
   }, [fetchResult, saveMapName, lat, lng, radius, liveOnly]);
 
   const handleLoadSavedMap = useCallback((m: SavedMap) => {
+    cancelPreview();
     hoodFanWhenRef.current = HOOD_FAN_WHEN;
     setLiveOnly(false);
     setLiveNote(null);
@@ -1512,6 +1523,7 @@ export function DebugRTSSim() {
   );
 
   const backToMap = useCallback(() => {
+    cancelPreview();
     setPhase('map');
     cancelAnimationFrame(rafRef.current);
     evacEngRef.current?.destroy();
@@ -1701,6 +1713,7 @@ export function DebugRTSSim() {
   ]);
 
   const handleLoadSceneFromDb = useCallback(async (id: string) => {
+    cancelPreview();
     hoodFanWhenRef.current = HOOD_FAN_WHEN;
     setLiveOnly(false);
     setLiveNote(null);
@@ -1851,6 +1864,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadFoodCourt = useCallback(() => {
+    cancelPreview();
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -1935,6 +1949,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadHarbourHouse = useCallback(() => {
+    cancelPreview();
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -2018,6 +2033,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadSmokeCorridor = useCallback(() => {
+    cancelPreview();
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -2106,6 +2122,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadStairShaft = useCallback(() => {
+    cancelPreview();
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -2187,6 +2204,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadOfficeTower = useCallback(() => {
+    cancelPreview();
     setLiveOnly(false);
     setLiveNote(null);
     setLayoutLabels([]);
@@ -2275,6 +2293,7 @@ export function DebugRTSSim() {
   }, []);
 
   const handleLoadHollandVillage = useCallback(async () => {
+    cancelPreview();
     setHollandLoading(true);
     setHollandError(null);
     try {
@@ -2719,10 +2738,6 @@ export function DebugRTSSim() {
     { phase: HazardPhase; phaseDescription: string }
   > | null>(null);
   const [effectPreviewTime, setEffectPreviewTime] = useState(300);
-  /** Share of the running setup preview done, or null when none is running. */
-  const [previewProgress, setPreviewProgress] = useState<number | null>(null);
-  const previewAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => previewAbortRef.current?.abort(), []);
   const [effectCalibrating, setEffectCalibrating] = useState(false);
   const [fireParams, setFireParams] = useState<(FireParams & { reasoning?: string }) | null>(null);
   const [detonationLoading, setDetonationLoading] = useState(false);
@@ -4754,9 +4769,7 @@ export function DebugRTSSim() {
     setShowcaseHud(null);
     hudAtRef.current = 0;
     resetSharedClock(simClockRef.current);
-    previewAbortRef.current?.abort();
-    previewAbortRef.current = null;
-    setPreviewProgress(null);
+    cancelPreview();
     speedMeterRef.current = createSpeedMeter();
     setSlowedSpeed(null);
 
@@ -8141,9 +8154,7 @@ export function DebugRTSSim() {
                       {effectStates && (
                         <button
                           onClick={() => {
-                            previewAbortRef.current?.abort();
-                            previewAbortRef.current = null;
-                            setPreviewProgress(null);
+                            cancelPreview();
                             effectsEngineRef.current = null;
                             setEffectStates(null);
                             setHazardRuntimeStates(null);
