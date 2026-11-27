@@ -1,7 +1,17 @@
 /**
  * Catalogue of every condition key the evaluator understands.
  * The editor, the generator and the evaluator share this allow-list.
+ * Parsing lives in shared/conditionKeyGrammar.ts so the editor uses the same grammar.
  */
+
+import {
+  applyLabelTokens,
+  parseCatalogCondition,
+  type ConditionScope,
+} from '../../../shared/conditionKeyGrammar.js';
+
+export { slugifyTeamName, KNOWN_CONDITION_SCOPES } from '../../../shared/conditionKeyGrammar.js';
+export type { ConditionScope };
 
 export interface ConditionParam {
   name: string;
@@ -41,6 +51,10 @@ export interface ConditionDef {
     | 'warroom'
     | 'session';
   polarity: 'positive' | 'negative' | 'neutral';
+  /** Comms keys that accept `|team=`. */
+  teamScope?: boolean;
+  /** Legacy prefixes keep everything after the colon as one argument. */
+  looseArgs?: boolean;
   deprecated?: { reason: string; use?: string };
 }
 
@@ -272,6 +286,7 @@ function prefix(
     description,
     platform,
     polarity,
+    looseArgs: true,
   };
 }
 
@@ -446,9 +461,6 @@ const dimensionParam: ConditionParam = {
 const criterionIndexParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 100 };
 const scoreParam: ConditionParam = { name: 'n', type: 'int', min: 0, max: 100 };
 
-/** Prefix ids that accept `|team=`. Other keys reject a team scope at parse time. */
-const TEAM_SCOPED_IDS = new Set<string>();
-
 function comms(
   id: string,
   params: ConditionParam[],
@@ -458,7 +470,6 @@ function comms(
   description: string,
   teamScope = false,
 ): ConditionDef {
-  if (teamScope) TEAM_SCOPED_IDS.add(id);
   const scopeNote = teamScope ? ' Add |team=<slug> to limit this to one team.' : '';
   return {
     id,
@@ -469,6 +480,7 @@ function comms(
     description: `${description}${scopeNote}`,
     platform,
     polarity,
+    ...(teamScope ? { teamScope: true } : {}),
   };
 }
 
@@ -996,196 +1008,25 @@ export const CONDITION_CATALOG: ConditionDef[] = [
   ...COMMS_CONDITIONS,
 ];
 
-const fixedById = new Map(
-  CONDITION_CATALOG.filter((def) => def.kind === 'fixed').map((def) => [def.id, def]),
-);
-const prefixes = CONDITION_CATALOG.filter(
-  (def): def is ConditionDef & { prefix: string } => def.kind === 'prefix' && !!def.prefix,
-).sort((a, b) => b.prefix.length - a.prefix.length);
-
-/**
- * Scope names the grammar accepts. WP12 adds `role` to this list; the parser
- * already reads any `|name=value` and does not need to change.
- */
-export const KNOWN_CONDITION_SCOPES = ['team', 'role'] as const;
-
-export interface ConditionScope {
-  team?: string;
-  [name: string]: string | undefined;
-}
-
 export type ParsedCondition =
   { def: ConditionDef; args: string[]; scope?: ConditionScope } | { error: string };
 
 export type ParsedConditionKey = ParsedCondition;
 
-/** Lowercase slug: non-alphanumerics become "_", and leading or trailing "_" is trimmed. */
-export function slugifyTeamName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-const LEGACY_PREFIX_IDS = new Set([
-  'prior_pathway_outcome_fired',
-  'inject_fired',
-  'objective_not_completed',
-  'gate_not_met',
-  'gate_met',
-  'intel_shared',
-  'intel_missing',
-  'location_claimed',
-  'inject_published',
-  'inject_cancelled',
-]);
-
-const INJECT_KEY_RE = /^[a-z0-9_]{1,60}$/;
-const STAKEHOLDER_RE = /^[a-z0-9_]{1,80}$/;
-
-function parseScope(raw: string): { scope: ConditionScope } | { error: string } {
-  const eq = raw.indexOf('=');
-  if (eq <= 0) return { error: 'A condition scope must be written as name=value' };
-  const name = raw.slice(0, eq).trim();
-  const value = raw.slice(eq + 1).trim();
-  if (!/^[a-z][a-z0-9_]*$/.test(name)) {
-    return { error: `Invalid condition scope name "${name}"` };
-  }
-  if (!(KNOWN_CONDITION_SCOPES as readonly string[]).includes(name)) {
-    return {
-      error: `Unknown condition scope "${name}". Supported scopes: ${KNOWN_CONDITION_SCOPES.join(', ')}`,
-    };
-  }
-  if (!value) return { error: `Condition scope ${name}= is missing its value` };
-  const scope: ConditionScope = {};
-  if (name === 'team') {
-    const slug = slugifyTeamName(value);
-    if (!slug) return { error: 'Condition scope team= is missing its value' };
-    scope.team = slug;
-  } else if (name === 'role') {
-    if (!/^[a-z0-9_]{2,40}$/.test(value)) {
-      return { error: `Condition scope role=${value} is not a role id` };
-    }
-    scope.role = value;
-  } else {
-    scope[name] = value;
-  }
-  return { scope };
-}
-
-function validateTypedArg(param: ConditionParam, raw: string): string | null {
-  if (param.type === 'inject_key') {
-    return INJECT_KEY_RE.test(raw) ? null : `Inject key "${raw}" must match ^[a-z0-9_]{1,60}$`;
-  }
-  if (param.type === 'stakeholder') {
-    return STAKEHOLDER_RE.test(raw) ? null : `Stakeholder id "${raw}" must be a lowercase slug`;
-  }
-  if (param.type === 'minutes' || param.type === 'seconds' || param.type === 'int') {
-    if (!/^\d+$/.test(raw)) return `${param.name} must be a whole number`;
-    const n = Number(raw);
-    const min = param.min ?? 0;
-    const max = param.max ?? Number.MAX_SAFE_INTEGER;
-    if (n < min || n > max) return `${param.name} must be from ${min} to ${max}`;
-    return null;
-  }
-  if (param.type === 'enum') {
-    const allowed = param.enum ?? [];
-    return allowed.includes(raw) ? null : `${param.name} must be one of: ${allowed.join(', ')}`;
-  }
-  return raw.trim() === '' ? 'Argument is empty' : null;
-}
-
-function splitTypedArgs(
-  rest: string,
-  params: readonly ConditionParam[],
-): { args: string[] } | { error: string } {
-  const args = rest.split(':');
-  if (args.length !== params.length) {
-    return { error: `Expected ${params.length} argument(s)` };
-  }
-  for (let i = 0; i < params.length; i++) {
-    const problem = validateTypedArg(params[i], args[i] ?? '');
-    if (problem) return { error: problem };
-  }
-  return { args };
-}
-
 export function parseConditionKey(key: string): ParsedConditionKey {
-  const trimmed = key.trim();
-  if (!trimmed) return { error: 'Condition key is empty' };
-
-  const pipe = trimmed.indexOf('|');
-  let body = trimmed;
-  let scope: ConditionScope | undefined;
-  if (pipe >= 0) {
-    if (trimmed.indexOf('|', pipe + 1) >= 0) {
-      return { error: 'A condition key takes at most one scope' };
-    }
-    body = trimmed.slice(0, pipe);
-    if (!body) return { error: 'Condition key is empty' };
-    const parsedScope = parseScope(trimmed.slice(pipe + 1));
-    if ('error' in parsedScope) return parsedScope;
-    scope = parsedScope.scope;
-  }
-
-  const fixed = fixedById.get(body);
-  if (fixed) {
-    if (scope)
-      return { error: `Condition key ${fixed.id} does not accept a ${scopeName(scope)} scope` };
-    return { def: fixed, args: [] };
-  }
-
-  const match = prefixes.find((def) => body.startsWith(def.prefix));
-  if (!match) return { error: `Unknown condition key: ${body}` };
-  const rest = body.slice(match.prefix.length);
-  if (rest.trim() === '') return { error: `Condition key ${body} is missing its argument` };
-
-  if (scope?.team && !TEAM_SCOPED_IDS.has(match.id)) {
-    return { error: `Condition key ${match.id} does not accept a team scope` };
-  }
-
-  if (LEGACY_PREFIX_IDS.has(match.id)) {
-    return { def: match, args: [rest], ...(scope ? { scope } : {}) };
-  }
-
-  const split = splitTypedArgs(rest, match.params ?? []);
-  if ('error' in split) return { error: split.error };
-  return { def: match, args: split.args, ...(scope ? { scope } : {}) };
+  return parseCatalogCondition(key, CONDITION_CATALOG);
 }
 
-function scopeName(scope: ConditionScope): string {
-  return scope.team ? 'team' : (Object.keys(scope)[0] ?? 'unknown');
-}
-
-/** Fill a catalogue label from the parsed arguments. A team scope is appended. */
+/** Fill a catalogue label from the parsed arguments. A team or role scope is appended. */
 export function formatConditionLabel(parsed: {
   def: ConditionDef;
   args: string[];
   scope?: ConditionScope;
 }): string {
-  let label = parsed.def.label;
-  const params = parsed.def.params ?? [];
-  params.forEach((param, index) => {
-    const value = parsed.args[index] ?? '';
-    for (const token of placeholderTokens(param)) {
-      label = label.split(`{${token}}`).join(value);
-    }
-  });
+  let label = applyLabelTokens(parsed.def.label, parsed.def.params ?? [], parsed.args);
   if (parsed.scope?.team) label += ` (team ${parsed.scope.team})`;
   if (parsed.scope?.role) label += ` (role ${parsed.scope.role})`;
   return label;
-}
-
-function placeholderTokens(param: ConditionParam): string[] {
-  if (param.type === 'inject_key') return ['inject'];
-  if (param.type === 'minutes') return ['N'];
-  if (param.type === 'seconds') return ['S'];
-  if (param.type === 'int') return param.name === 'N' ? ['N'] : ['n'];
-  if (param.type === 'stakeholder') return ['stakeholder'];
-  if (param.name === 'channel') return ['channel'];
-  if (param.name === 'verdict') return ['verdict'];
-  if (param.name === 'action_type') return ['action'];
-  return [param.name];
 }
 
 export function isKnownConditionKey(key: string): boolean {

@@ -18,6 +18,7 @@ import {
   planCoalesce,
   releaseUnwrittenBurstIds,
   sweepKeepsScheduledHold,
+  responseRubricError,
   validateJudgeOutput,
   type JudgeChatClient,
   type ResponseRubric,
@@ -633,6 +634,26 @@ describe('judge prompt', () => {
     assert.equal(callBlocks[3]?.length, 2000);
     assert.equal(callBlocks[3]?.endsWith('END'), true);
     assert.equal(callBlocks[3]?.startsWith('START'), false);
+  });
+});
+
+describe('authored response rubric', () => {
+  test('accepts the supplier rubric and rejects an empty one', () => {
+    assert.equal(
+      responseRubricError({
+        asks: ['confirm the batch number'],
+        criteria: ['commits to a specific time', 'does not admit liability'],
+        expected_tone: ['professional', 'empathetic'],
+        pass_threshold: 2,
+      }),
+      null,
+    );
+    assert.equal(responseRubricError(null), null);
+    assert.match(
+      responseRubricError({ criteria: [], expected_tone: ['professional'], pass_threshold: 1 }) ??
+        '',
+      /criteria/,
+    );
   });
 });
 

@@ -212,6 +212,45 @@ export function deriveGenericRubric(
   };
 }
 
+/** Reject a rubric that does not match the authored schema. Null means "use the generic rubric". */
+export function responseRubricError(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return 'response_rubric must be an object';
+  const record = raw as Record<string, unknown>;
+  if (
+    !Array.isArray(record.criteria) ||
+    record.criteria.length === 0 ||
+    record.criteria.some((item) => typeof item !== 'string' || item.trim() === '')
+  ) {
+    return 'response_rubric.criteria must be a non-empty list of strings';
+  }
+  if (
+    record.asks !== undefined &&
+    (!Array.isArray(record.asks) || record.asks.some((item) => typeof item !== 'string'))
+  ) {
+    return 'response_rubric.asks must be a list of strings';
+  }
+  if (
+    !Array.isArray(record.expected_tone) ||
+    record.expected_tone.length === 0 ||
+    record.expected_tone.some(
+      (tone) => typeof tone !== 'string' || !(JUDGE_TONES as readonly string[]).includes(tone),
+    )
+  ) {
+    return 'response_rubric.expected_tone must list tones the judge understands';
+  }
+  const threshold = record.pass_threshold;
+  if (
+    typeof threshold !== 'number' ||
+    !Number.isInteger(threshold) ||
+    threshold < 1 ||
+    threshold > record.criteria.length
+  ) {
+    return 'response_rubric.pass_threshold must be an integer from 1 to the number of criteria';
+  }
+  return null;
+}
+
 export function readAuthoredRubric(raw: unknown): ResponseRubric | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
