@@ -696,16 +696,29 @@ export function evaluateConditionKey(key: string, context: EvaluationContext): b
   return evaluateKey(key, context);
 }
 
-/** Label and a one-line explanation for the trainer orchestration panel. */
+/**
+ * Label and a one-line explanation for the orchestration panel.
+ * Players get the same met flag. The judgement clause after " — " is trainer-only.
+ */
 export function describeConditionKey(
   key: string,
   context: EvaluationContext,
+  options?: { revealJudgement?: boolean },
 ): { met: boolean; label: string; detail: string } {
   const parsed = parseConditionKey(key);
   if ('error' in parsed) return { met: false, label: key, detail: parsed.error };
   const label = formatConditionLabel(parsed);
   const explained = explainCommsKey(parsed, commsStateOf(context), context.elapsedMinutes);
-  if (explained) return { met: explained.met, label, detail: explained.detail };
+  if (explained) {
+    return {
+      met: explained.met,
+      label,
+      detail:
+        options?.revealJudgement === false
+          ? stripJudgementClause(explained.detail)
+          : explained.detail,
+    };
+  }
   const met = evaluateKey(key, context);
   if (
     parsed.def.id === 'player_message_is_consistent_across_channels' ||
@@ -719,6 +732,22 @@ export function describeConditionKey(
     };
   }
   return { met, label, detail: met ? 'Met' : 'Not met' };
+}
+
+/** The AI assessment is the clause after the em dash. The operational prefix stays. */
+function stripJudgementClause(detail: string): string {
+  const mark = ' — ';
+  const at = detail.indexOf(mark);
+  if (at < 0) return detail;
+  return detail.slice(0, at);
+}
+
+/** Session trainer or an admin. Same rule as other trainer-only session actions. */
+export function callerSeesJudgements(
+  user: { id?: string | null; role?: string | null },
+  session: { trainer_id?: string | null },
+): boolean {
+  return user.role === 'admin' || (!!user.id && session.trainer_id === user.id);
 }
 
 /**

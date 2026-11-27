@@ -30,6 +30,7 @@ import {
   type LedgerResponseRow,
 } from './injectLedgerCore.js';
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
+import { enqueueJudgement } from '../judging/judgeService.js';
 import { slugifyTeamName } from '../conditions/conditionCatalog.js';
 import {
   firstEmailMinuteByStakeholder,
@@ -242,6 +243,9 @@ export async function recordOpen(input: RecordOpenInput): Promise<void> {
 export async function recordResponse(input: RecordResponseInput): Promise<string | null> {
   if (ledgerTablesMissing()) return null;
   try {
+    const judging = env.aiEnabled;
+    const meta = { ...(input.meta ?? {}) };
+    if (!judging) meta.skip_reason = 'ai_disabled';
     const row: Record<string, unknown> = {
       session_id: input.sessionId,
       delivery_id: input.deliveryId,
@@ -257,8 +261,8 @@ export async function recordResponse(input: RecordResponseInput): Promise<string
       content_excerpt: excerpt(input.contentExcerpt),
       responded_at: input.respondedAt,
       response_minute: input.responseMinute,
-      judgement_status: 'pending',
-      meta: input.meta ?? {},
+      judgement_status: judging ? 'queued' : 'skipped',
+      meta,
     };
     assignIfSet(row, 'wait_minutes', input.waitMinutes);
     assignIfSet(row, 'mood_rung', input.moodRung);
@@ -294,6 +298,7 @@ export async function recordResponse(input: RecordResponseInput): Promise<string
       team: input.teamName ?? undefined,
       at: input.respondedAt,
     });
+    if (judging) enqueueJudgement(id);
     return id;
   } catch (err) {
     failLedger(err, 'recordResponse');
@@ -361,7 +366,7 @@ export async function loadCommsState(
       supabaseAdmin
         .from('inject_responses')
         .select(
-          'delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, meta',
+          'id, delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, created_at, meta',
         )
         .eq('session_id', sessionId)
         .order('responded_at', { ascending: false })

@@ -41,6 +41,7 @@ import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/ca
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
 import { loadCommsState } from './ledger/injectLedgerService.js';
 import { sweepCalls } from './calls/callService.js';
+import { sweepPendingJudgements } from './judging/judgeService.js';
 import { orderPublishCandidates } from './conditions/commsConditionsCore.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -458,6 +459,9 @@ export class InjectSchedulerService {
     } catch (err) {
       logger.warn({ err, sessionId: session.id }, 'call sweep failed');
     }
+
+    // Not awaited. A model call must not delay this tick; the sweep re-queues anything left behind.
+    sweepPendingJudgements(session.id);
 
     // Merge inject_state_effects so live counters see disruption-related modifiers
     const rawState = (session.current_state as Record<string, unknown>) || {};

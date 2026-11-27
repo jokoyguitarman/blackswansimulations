@@ -383,6 +383,21 @@ describe('condition key grammar', () => {
       'news_opened:k1',
       'action_count_gte:group_post_created:2|team=a',
       'action_absent:draft_approved:15',
+      'reply_passed:k1',
+      'reply_failed:k1',
+      'reply_best_passed:k1',
+      'reply_criterion:k1:2',
+      'reply_missing_criterion:k1:2',
+      'reply_answered_ask:k1:1',
+      'reply_missed_ask:k1:1',
+      'reply_tone:k1:defensive',
+      'reply_tone_off:k1',
+      'reply_score_below:k1:accuracy:40',
+      'reply_score_at_least:k1:empathy:60',
+      'reply_factual_error:k1',
+      'reply_risky_admission:k1',
+      'reply_irrelevant:k1',
+      'responded_relevant:k1|team=a',
     ];
     const ids = examples.map((key) => key.split(':')[0] ?? '');
     for (const id of ids) {
