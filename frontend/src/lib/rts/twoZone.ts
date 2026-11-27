@@ -1359,13 +1359,14 @@ function flameSupply(
   // A zero flame entrains nothing, so the walk starts at the prescribed
   // fire and comes down to the oxygen the upper plume can actually take.
   // The inflow is already in freshKw. The upper term is the room's layer.
-  const layerFeeds = onFloor && prescribed > freshKw + 1 && lowerOxygenCoefficient(yU) > 0.02;
+  // The logistic inside the oxygen capacity is the only switch: a hard
+  // cutoff beside it steps the release as the layer crosses the limit.
+  const layerFeeds = onFloor && prescribed > freshKw + 1 && yU > 0;
   let flames = spec.fires;
   let raw = entrained;
   if (layerFeeds) {
-    let q = prescribed;
-    for (let i = 0; i < 4; i++) {
-      const fraction = Math.min(1, q / prescribed);
+    const at = (qKw: number) => {
+      const fraction = Math.min(1, qKw / prescribed);
       const trial =
         fraction < 0.999
           ? spec.fires.map((fire) => ({
@@ -1374,12 +1375,24 @@ function flameSupply(
               baseM: fire.baseM,
             }))
           : spec.fires;
-      raw = layerBurn(trial, interfaceM, yMix, yU, chi, airCap);
-      flames = trial;
-      const upperKw = raw.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG;
-      const next = Math.min(prescribed, freshKw + upperKw);
-      if (Math.abs(next - q) <= Math.max(1, 0.02 * Math.max(q, 1))) break;
-      q = next;
+      const burned = layerBurn(trial, interfaceM, yMix, yU, chi, airCap);
+      const upperKw = burned.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG;
+      return { trial, burned, next: Math.min(prescribed, freshKw + upperKw) };
+    };
+    let q = prescribed;
+    let step = at(q);
+    for (let i = 0; i < 8; i++) {
+      raw = step.burned;
+      flames = step.trial;
+      if (Math.abs(step.next - q) <= Math.max(1, 0.02 * Math.max(q, 1))) break;
+      q = step.next;
+      step = at(q);
+    }
+    // Land on the oxygen the last plume could take, then read that flame.
+    if (Math.abs(step.next - q) > Math.max(1, 0.02 * Math.max(q, 1))) {
+      step = at(step.next);
+      raw = step.burned;
+      flames = step.trial;
     }
   } else {
     const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
@@ -3070,6 +3083,12 @@ export function stepZone(
   floorPressurePa: number;
   /** Share of the prescribed release the oxygen burned on the last substep. */
   burnedFraction: number;
+  /**
+   * Oxygen the flame took from the layers over the whole step, kg.
+   * Huggett's 13,100 kJ/kg times this is the heat those removals released.
+   * Door-fuel oxygen is not in it.
+   */
+  flameOxygenKg: number;
   /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
   phi: number;
   /** Energy into each held sheet this step, kJ/m². Absent when nothing is held. */
@@ -3158,6 +3177,7 @@ function stepZoneNow(
   let stepOutKT = 0;
   let burnedFraction = 1;
   let phi = 0;
+  let flameOxygenKg = 0;
   let lastIn = 0;
   let lastOut = 0;
   let lastHot = 0;
@@ -3581,7 +3601,22 @@ function stepZoneNow(
     const fromLower = Math.min(useWanted, slicePlume * yL, yL * mL);
     const fromStream = Math.min(Math.max(0, useWanted - fromLower), o2Stream);
     const useL = fromLower + fromStream;
-    const useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, yU * mass);
+    // On the floor the flame stands in the upper layer. The lower and
+    // stream share was already taken out of the upper term, but the sliver
+    // and the bare inflow often cannot hand that oxygen over. Leaving the
+    // gap unbooked keeps it in the layer, and the next slice burns it again.
+    let useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, Math.max(0, yU * mass));
+    if (z <= INTERFACE_FLOOR_M + 1e-9) {
+      const short = Math.max(0, useWanted - useL);
+      const room = Math.max(0, yU * mass - useU);
+      useU += Math.min(short, room);
+      const demanded = useWanted + burn.oxygenUpperKgS * book.burnScale * slice;
+      const covered = useL + useU;
+      if (demanded > covered + 1e-9 && demanded > 0 && burnedFraction > 0) {
+        burnedFraction *= covered / demanded;
+      }
+    }
+    flameOxygenKg += useL + useU;
     const doorO2 = burnedFuelKgS * slice * (WOOD_HEAT_KJ_KG / DELTA_H_O2_KJ_PER_KG);
     const o2L =
       yL * mL -
@@ -3696,6 +3731,7 @@ function stepZoneNow(
       fuelY: kg > 0 ? (hotF[v] ?? 0) / kg : 0,
     })),
     burnedFraction,
+    flameOxygenKg,
     phi,
     neutralM,
     floorPressurePa,

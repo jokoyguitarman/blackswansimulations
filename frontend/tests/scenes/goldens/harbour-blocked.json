@@ -56,8 +56,8 @@
     "mall": {
       "active": true,
       "interfaceM": 1.12,
-      "riseK": 79.5
+      "riseK": 79.4
     },
-    "smoke": "0.779"
+    "smoke": "0.780"
   }
 }

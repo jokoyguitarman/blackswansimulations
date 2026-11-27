@@ -621,6 +621,69 @@ test('a clamped fire room burns the oxygen in its own layer', () => {
     spentBurn.burn.burnedKw < limited.burn.burnedKw * 0.25,
     `spent layer still burned ${spentBurn.burn.burnedKw.toFixed(0)} kW`,
   );
+  // The walk's flame is a fixed point: the same oxygen supports it again.
+  const q = limited.burn.burnedKw;
+  const again = oxygenLimitedBurn(
+    { ...spec(0.12), fires: [{ heatKw: q, diameterM: 1.2 }] },
+    0.05,
+    AMBIENT_K + 120,
+    0.19,
+    0.19,
+    0.5,
+  );
+  assert.ok(
+    Math.abs(again.burn.burnedKw - q) <= Math.max(50, 0.02 * q),
+    `the walk moved from ${q.toFixed(0)} kW to ${again.burn.burnedKw.toFixed(0)} kW`,
+  );
+});
+
+test('a clamped fire releases 13100 kJ per kilogram of oxygen it removes', () => {
+  // The floor walk counts the inflow and the layer. The sliver and the
+  // stream cannot always hand over the inflow's share. That share is
+  // booked against the layer, so the heat and the oxygen removed stay
+  // on Huggett's 13,100 kJ/kg through the burst.
+  const fires = [{ heatKw: 8000, diameterM: 1.2 }];
+  const spec: LayerSpec = {
+    areaM2: 80,
+    ceilingM: 3,
+    boundaries: [{ areaM2: 200, lining: LINING.concrete }],
+    fires,
+    vents: [
+      {
+        widthM: 2,
+        sillM: 0,
+        soffitM: 2,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 80,
+          floorPressurePa: 4,
+          upperO2: 0.12,
+        },
+      },
+    ],
+  };
+  let state = {
+    ...freshLayer(3),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 150,
+    upperO2: 0.2,
+    lowerO2: 0.2,
+  };
+  let heatKj = 0;
+  let oxygenKg = 0;
+  for (let i = 0; i < 200; i++) {
+    const stepped = stepZone(state, spec, 0.1);
+    heatKj += 8000 * stepped.burnedFraction * 0.1;
+    oxygenKg += stepped.flameOxygenKg;
+    state = stepped.state;
+  }
+  assert.ok(heatKj > 50000, `the burst released ${heatKj.toFixed(0)} kJ`);
+  assert.ok((state.upperO2 ?? 1) < 0.2, `layer oxygen stayed ${state.upperO2}`);
+  const perKg = oxygenKg > 0 ? heatKj / oxygenKg : 0;
+  assert.ok(
+    Math.abs(perKg - DELTA_H_O2_KJ_PER_KG) <= 0.01 * DELTA_H_O2_KJ_PER_KG,
+    `${perKg.toFixed(0)} kJ/kg from ${heatKj.toFixed(0)} kJ and ${oxygenKg.toFixed(3)} kg`,
+  );
 });
 
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
