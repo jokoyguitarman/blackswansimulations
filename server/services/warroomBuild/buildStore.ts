@@ -138,12 +138,27 @@ export interface BuildStore {
   claimCompile(
     buildId: string,
     now: Date,
-  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null>;
-  saveCompileCredit(buildId: string, ledgerId: string, invoiceId: string | null): Promise<void>;
-  touchCompileHeartbeat(buildId: string, now: Date): Promise<void>;
-  succeedCompile(buildId: string, scenarioId: string): Promise<void>;
-  /** Failure refunds outside this method. This clears the stored charge so a retry can consume again. */
-  failCompile(buildId: string): Promise<void>;
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null>;
+  /** False when this process no longer holds the heartbeat it claimed. */
+  saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+    heartbeatAt: string,
+  ): Promise<boolean>;
+  /**
+   * Advance the heartbeat only if it is still the value this process wrote.
+   * Returns the stored timestamp when the row matched, otherwise null.
+   */
+  touchCompileHeartbeat(buildId: string, heartbeatAt: string, now: Date): Promise<string | null>;
+  /** False when a newer compile already owns the build. Does not overwrite that owner. */
+  succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean>;
+  /** False when a newer compile already owns the build. Clears the charge only for this heartbeat. */
+  failCompile(buildId: string, heartbeatAt: string): Promise<boolean>;
 }
 
 /** A compile can start, or take over a run whose heartbeat is older than 90s. */
@@ -639,7 +654,11 @@ export class MemoryBuildStore implements BuildStore {
   claimCompile(
     buildId: string,
     now: Date,
-  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null> {
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
       if (!row || row.status !== 'succeeded' || !compileClaimable(row, now)) return null;
@@ -647,47 +666,69 @@ export class MemoryBuildStore implements BuildStore {
       row.compile_status = 'running';
       row.compile_heartbeat_at = iso;
       row.updated_at = iso;
-      return this.copy(row);
+      return {
+        credit_ledger_id: row.credit_ledger_id,
+        credit_invoice_id: row.credit_invoice_id,
+        compile_heartbeat_at: iso,
+      };
     });
   }
 
-  saveCompileCredit(buildId: string, ledgerId: string, invoiceId: string | null): Promise<void> {
+  saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+    heartbeatAt: string,
+  ): Promise<boolean> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
-      if (!row || row.compile_status !== 'running') return;
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
       row.credit_ledger_id = ledgerId;
       row.credit_invoice_id = invoiceId;
       row.updated_at = this.iso();
+      return true;
     });
   }
 
-  touchCompileHeartbeat(buildId: string, now: Date): Promise<void> {
+  touchCompileHeartbeat(buildId: string, heartbeatAt: string, now: Date): Promise<string | null> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
-      if (!row || row.compile_status !== 'running') return;
-      row.compile_heartbeat_at = now.toISOString();
-      row.updated_at = now.toISOString();
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return null;
+      }
+      const iso = now.toISOString();
+      row.compile_heartbeat_at = iso;
+      row.updated_at = iso;
+      return iso;
     });
   }
 
-  succeedCompile(buildId: string, scenarioId: string): Promise<void> {
+  succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
-      if (!row) return;
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
       row.compile_status = 'succeeded';
       row.scenario_id = scenarioId;
       row.updated_at = this.iso();
+      return true;
     });
   }
 
-  failCompile(buildId: string): Promise<void> {
+  failCompile(buildId: string, heartbeatAt: string): Promise<boolean> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
-      if (!row) return;
+      if (!row || row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt) {
+        return false;
+      }
       row.compile_status = 'failed';
       row.credit_ledger_id = null;
       row.credit_invoice_id = null;
       row.updated_at = this.iso();
+      return true;
     });
   }
 }
@@ -1172,7 +1213,11 @@ export class SupabaseBuildStore implements BuildStore {
   async claimCompile(
     buildId: string,
     now: Date,
-  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null> {
+  ): Promise<{
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+    compile_heartbeat_at: string;
+  } | null> {
     const cutoff = new Date(now.getTime() - 90_000).toISOString();
     const { data, error } = await supabaseAdmin
       .from('warroom_builds')
@@ -1191,10 +1236,11 @@ export class SupabaseBuildStore implements BuildStore {
       );
     if (error) throw error;
     const row = data?.[0];
-    if (!row) return null;
+    if (!row?.compile_heartbeat_at) return null;
     return {
       credit_ledger_id: row.credit_ledger_id ?? null,
       credit_invoice_id: row.credit_invoice_id ?? null,
+      compile_heartbeat_at: row.compile_heartbeat_at,
     };
   }
 
@@ -1202,37 +1248,49 @@ export class SupabaseBuildStore implements BuildStore {
     buildId: string,
     ledgerId: string,
     invoiceId: string | null,
-  ): Promise<void> {
-    const { error } = await supabaseAdmin
+    heartbeatAt: string,
+  ): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({ credit_ledger_id: ledgerId, credit_invoice_id: invoiceId })
       .eq('id', buildId)
       .eq('compile_status', 'running')
-      .select('id, compile_status');
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
     if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 
-  async touchCompileHeartbeat(buildId: string, now: Date): Promise<void> {
-    const { error } = await supabaseAdmin
+  async touchCompileHeartbeat(
+    buildId: string,
+    heartbeatAt: string,
+    now: Date,
+  ): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({ compile_heartbeat_at: now.toISOString() })
       .eq('id', buildId)
       .eq('compile_status', 'running')
-      .select('id, compile_status');
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
     if (error) throw error;
+    return data?.[0]?.compile_heartbeat_at ?? null;
   }
 
-  async succeedCompile(buildId: string, scenarioId: string): Promise<void> {
-    const { error } = await supabaseAdmin
+  async succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({ compile_status: 'succeeded', scenario_id: scenarioId })
       .eq('id', buildId)
-      .select('id');
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
     if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 
-  async failCompile(buildId: string): Promise<void> {
-    const { error } = await supabaseAdmin
+  async failCompile(buildId: string, heartbeatAt: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({
         compile_status: 'failed',
@@ -1240,7 +1298,10 @@ export class SupabaseBuildStore implements BuildStore {
         credit_invoice_id: null,
       })
       .eq('id', buildId)
-      .select('id');
+      .eq('compile_status', 'running')
+      .eq('compile_heartbeat_at', heartbeatAt)
+      .select('id, compile_status, compile_heartbeat_at');
     if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 }

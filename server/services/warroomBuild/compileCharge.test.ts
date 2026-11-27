@@ -51,7 +51,10 @@ function succeeded(patch: Partial<BuildRow> = {}): BuildRow {
   };
 }
 
-function stub(initial: BuildRow): CompileChargeStore & { row: BuildRow } {
+function stub(initial: BuildRow): CompileChargeStore & {
+  row: BuildRow;
+  succeedCompile(buildId: string, scenarioId: string, heartbeatAt: string): Promise<boolean>;
+} {
   const row = structuredClone(initial);
   return {
     row,
@@ -60,21 +63,36 @@ function stub(initial: BuildRow): CompileChargeStore & { row: BuildRow } {
     },
     async claimCompile(_id, now) {
       if (row.status !== 'succeeded' || !compileClaimable(row, now)) return null;
+      const iso = now.toISOString();
       row.compile_status = 'running';
-      row.compile_heartbeat_at = now.toISOString();
+      row.compile_heartbeat_at = iso;
       return {
         credit_ledger_id: row.credit_ledger_id,
         credit_invoice_id: row.credit_invoice_id,
+        compile_heartbeat_at: iso,
       };
     },
-    async saveCompileCredit(_id, ledgerId, invoiceId) {
+    async saveCompileCredit(_id, ledgerId, invoiceId, heartbeatAt) {
+      if (row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt)
+        return false;
       row.credit_ledger_id = ledgerId;
       row.credit_invoice_id = invoiceId;
+      return true;
     },
-    async failCompile() {
+    async failCompile(_id, heartbeatAt) {
+      if (row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt)
+        return false;
       row.compile_status = 'failed';
       row.credit_ledger_id = null;
       row.credit_invoice_id = null;
+      return true;
+    },
+    async succeedCompile(_id: string, scenarioId: string, heartbeatAt: string) {
+      if (row.compile_status !== 'running' || row.compile_heartbeat_at !== heartbeatAt)
+        return false;
+      row.compile_status = 'succeeded';
+      row.scenario_id = scenarioId;
+      return true;
     },
   };
 }
@@ -89,6 +107,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume: async () => {
         calls.push('consume');
         return { ok: true, ledgerId: 'ledger-1', invoiceId: 'invoice-1' };
@@ -113,6 +132,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume,
     });
     store.row.compile_heartbeat_at = new Date(NOW.getTime() - 91_000).toISOString();
@@ -122,6 +142,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume,
     });
     assert.equal(again.outcome, 'claimed');
@@ -143,6 +164,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume,
     });
     assert.equal(first.outcome, 'claimed');
@@ -150,6 +172,7 @@ describe('compile charge', () => {
     await failCompileCharge({
       store,
       buildId: store.row.id,
+      heartbeatAt: first.heartbeatAt,
       ledgerId: first.ledgerId,
       invoiceId: first.invoiceId,
       refund: async () => {
@@ -164,6 +187,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume,
     });
     assert.equal(retry.outcome, 'claimed');
@@ -180,6 +204,7 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume: async () => {
         consumes += 1;
         return { ok: true, ledgerId: 'ledger-x', invoiceId: null };
@@ -202,8 +227,97 @@ describe('compile charge', () => {
       userId: 'trainer-1',
       isAdmin: false,
       now: NOW,
+      refund: async () => {},
       consume: async () => ({ ok: true, ledgerId: 'ledger-x', invoiceId: null }),
     });
     assert.equal(result.outcome, 'in_progress');
+  });
+
+  test('a save that matches no row refunds the unstored credit', async () => {
+    const store = stub(succeeded());
+    store.saveCompileCredit = async () => false;
+    let refunds = 0;
+    const result = await beginCompileCharge({
+      store,
+      buildId: store.row.id,
+      userId: 'trainer-1',
+      isAdmin: false,
+      now: NOW,
+      consume: async () => ({ ok: true, ledgerId: 'ledger-1', invoiceId: 'invoice-1' }),
+      refund: async () => {
+        refunds += 1;
+      },
+    });
+    assert.equal(result.outcome, 'unavailable');
+    assert.equal(refunds, 1);
+    assert.equal(store.row.credit_ledger_id, null);
+  });
+
+  test('a stale process does not refund a charge the next process reused', async () => {
+    const store = stub(succeeded());
+    let consumes = 0;
+    let refunds = 0;
+    const consume = async () => {
+      consumes += 1;
+      return { ok: true, ledgerId: 'ledger-1', invoiceId: 'invoice-1' };
+    };
+    const refund = async () => {
+      refunds += 1;
+    };
+    const first = await beginCompileCharge({
+      store,
+      buildId: store.row.id,
+      userId: 'trainer-1',
+      isAdmin: false,
+      now: NOW,
+      consume,
+      refund,
+    });
+    assert.equal(first.outcome, 'claimed');
+    if (first.outcome !== 'claimed') return;
+    store.row.compile_heartbeat_at = new Date(NOW.getTime() - 91_000).toISOString();
+    const later = new Date(NOW.getTime() + 120_000);
+    const second = await beginCompileCharge({
+      store,
+      buildId: store.row.id,
+      userId: 'trainer-1',
+      isAdmin: false,
+      now: later,
+      consume,
+      refund,
+    });
+    assert.equal(second.outcome, 'claimed');
+    if (second.outcome !== 'claimed') return;
+    assert.equal(second.ledgerId, 'ledger-1');
+    assert.equal(consumes, 1);
+    const cleared = await failCompileCharge({
+      store,
+      buildId: store.row.id,
+      heartbeatAt: first.heartbeatAt,
+      ledgerId: first.ledgerId,
+      invoiceId: first.invoiceId,
+      refund,
+    });
+    assert.equal(cleared, false);
+    assert.equal(refunds, 0);
+    assert.equal(store.row.compile_status, 'running');
+    assert.equal(store.row.credit_ledger_id, 'ledger-1');
+    assert.equal(store.row.compile_heartbeat_at, second.heartbeatAt);
+    const third = await beginCompileCharge({
+      store,
+      buildId: store.row.id,
+      userId: 'trainer-1',
+      isAdmin: false,
+      now: later,
+      consume,
+      refund,
+    });
+    assert.equal(third.outcome, 'in_progress');
+    assert.equal(
+      await store.succeedCompile(store.row.id, 'scenario-orphan', first.heartbeatAt),
+      false,
+    );
+    assert.equal(store.row.scenario_id, null);
+    assert.equal(store.row.compile_status, 'running');
   });
 });

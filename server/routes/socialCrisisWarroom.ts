@@ -1021,47 +1021,64 @@ router.post(
     let creditInvoiceId: string | null = null;
     let creditLedgerId: string | null = null;
     const durableBuildId = (req.body.build_id as string | undefined) ?? null;
+    let compileHeartbeatAt: string | null = null;
     if (durableBuildId) {
-      const begun = await beginCompileCharge({
-        store: compileBuilds,
-        buildId: durableBuildId,
-        userId: user.id,
-        isAdmin: isAdmin(user),
-        now: new Date(),
-        consume: async () => {
-          const consumed = await consumeCredit(user.id, 'scenario', 'scenario_generated');
-          if (!consumed.ok || !consumed.ledgerId) return { ok: false };
-          return {
-            ok: true,
-            ledgerId: consumed.ledgerId,
-            invoiceId: consumed.fundingInvoiceId ?? null,
-          };
-        },
-      });
-      if (begun.outcome === 'not_found') {
-        return res.status(404).json({ error: 'Build not found', code: 'BUILD_NOT_FOUND' });
-      }
-      if (begun.outcome === 'not_done') {
-        return res.status(409).json({ error: 'Build is not finished', code: 'BUILD_NOT_DONE' });
-      }
-      if (begun.outcome === 'completed') {
-        return res.status(200).json({
-          job_id: null,
-          status: 'completed',
-          data: { scenario_id: begun.scenarioId },
+      try {
+        const begun = await beginCompileCharge({
+          store: compileBuilds,
+          buildId: durableBuildId,
+          userId: user.id,
+          isAdmin: isAdmin(user),
+          now: new Date(),
+          consume: async () => {
+            const consumed = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+            if (!consumed.ok || !consumed.ledgerId) return { ok: false };
+            return {
+              ok: true,
+              ledgerId: consumed.ledgerId,
+              invoiceId: consumed.fundingInvoiceId ?? null,
+            };
+          },
+          refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+        });
+        if (begun.outcome === 'not_found') {
+          return res.status(404).json({ error: 'Build not found', code: 'BUILD_NOT_FOUND' });
+        }
+        if (begun.outcome === 'not_done') {
+          return res.status(409).json({ error: 'Build is not finished', code: 'BUILD_NOT_DONE' });
+        }
+        if (begun.outcome === 'completed') {
+          return res.status(200).json({
+            job_id: null,
+            status: 'completed',
+            data: { scenario_id: begun.scenarioId },
+          });
+        }
+        if (begun.outcome === 'in_progress') {
+          return res.status(409).json({
+            error: 'Compilation is already running — wait a moment and reopen this draft.',
+            code: 'COMPILE_IN_PROGRESS',
+          });
+        }
+        if (begun.outcome === 'no_credit') {
+          return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+        }
+        if (begun.outcome === 'unavailable') {
+          return res.status(503).json({
+            error: 'Compile could not be claimed. Try again.',
+            code: 'COMPILE_UNAVAILABLE',
+          });
+        }
+        creditLedgerId = begun.ledgerId;
+        creditInvoiceId = begun.invoiceId;
+        compileHeartbeatAt = begun.heartbeatAt;
+      } catch (err) {
+        logger.error({ err, buildId: durableBuildId }, 'compile_claim_failed');
+        return res.status(503).json({
+          error: 'Compile could not be claimed. Try again.',
+          code: 'COMPILE_UNAVAILABLE',
         });
       }
-      if (begun.outcome === 'in_progress') {
-        return res.status(409).json({
-          error: 'Compilation is already running — wait a moment and reopen this draft.',
-          code: 'COMPILE_IN_PROGRESS',
-        });
-      }
-      if (begun.outcome === 'no_credit') {
-        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
-      }
-      creditLedgerId = begun.ledgerId;
-      creditInvoiceId = begun.invoiceId;
     } else if (!isAdmin(user)) {
       const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
       if (!consume.ok) {
@@ -1078,14 +1095,26 @@ router.post(
     const body = req.body;
 
     void (async () => {
-      const heartbeat = durableBuildId
-        ? setInterval(() => {
-            void compileBuilds.touchCompileHeartbeat(durableBuildId, new Date()).catch((err) => {
+      let myHeartbeat = compileHeartbeatAt;
+      let timer: ReturnType<typeof setInterval> | null = null;
+      if (durableBuildId && myHeartbeat) {
+        timer = setInterval(() => {
+          const expected = myHeartbeat;
+          if (!expected) return;
+          void compileBuilds
+            .touchCompileHeartbeat(durableBuildId, expected, new Date())
+            .then((next) => {
+              if (next) myHeartbeat = next;
+              else if (timer) clearInterval(timer);
+            })
+            .catch((err) => {
               logger.warn({ err, buildId: durableBuildId }, 'compile_heartbeat_failed');
             });
-          }, 30_000)
-        : null;
-      heartbeat?.unref?.();
+        }, 30_000);
+        timer.unref?.();
+      }
+      let scenarioWritten = false;
+      let scenarioId = '';
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
@@ -1258,7 +1287,8 @@ router.post(
 
         // Persistence runs the contract §9 checklist first and throws MultiOrgValidationError
         // before writing anything; the trainer sees the failing rule (handled below).
-        const scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+        scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+        scenarioWritten = true;
         if (multiArtifacts) {
           logCompileSummary(
             scenarioId,
@@ -1276,7 +1306,6 @@ router.post(
             .update({ scenario_id: scenarioId })
             .eq('id', creditLedgerId);
         }
-        if (durableBuildId) await compileBuilds.succeedCompile(durableBuildId, scenarioId);
 
         // Pre-generate images in background (doesn't block compile result)
         const personas = (multiArtifacts ? multiArtifacts.personas : body.personas) as NPCPersona[];
@@ -1342,19 +1371,70 @@ router.post(
           },
           startedAt: Date.now(),
         });
+        if (durableBuildId && myHeartbeat) {
+          try {
+            const wrote = await compileBuilds.succeedCompile(
+              durableBuildId,
+              scenarioId,
+              myHeartbeat,
+            );
+            if (!wrote) {
+              logger.warn({ buildId: durableBuildId, scenarioId }, 'compile_orphan_scenario');
+            }
+          } catch (err) {
+            // The scenario rows exist. Refunding here would hand the trainer a
+            // free scenario, or race a process that has taken over the charge.
+            logger.error(
+              { err, buildId: durableBuildId, scenarioId },
+              'compile_succeed_write_failed',
+            );
+          }
+        }
         logger.info({ jobId, scenarioId }, 'Compile completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
-        if (durableBuildId) {
-          await failCompileCharge({
-            store: compileBuilds,
-            buildId: durableBuildId,
-            ledgerId: creditLedgerId,
-            invoiceId: creditInvoiceId,
-            refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+        if (!scenarioWritten) {
+          try {
+            if (durableBuildId && myHeartbeat) {
+              await failCompileCharge({
+                store: compileBuilds,
+                buildId: durableBuildId,
+                heartbeatAt: myHeartbeat,
+                ledgerId: creditLedgerId,
+                invoiceId: creditInvoiceId,
+                refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+              });
+            } else if (creditLedgerId) {
+              await refundCredit(user.id, 'scenario', creditInvoiceId);
+            }
+          } catch (settleErr) {
+            logger.error({ err: settleErr, jobId }, 'compile_settle_failed');
+          }
+        } else {
+          logger.error({ err, jobId, scenarioId }, 'compile_after_persist_failed');
+          if (durableBuildId && myHeartbeat && scenarioId) {
+            try {
+              const wrote = await compileBuilds.succeedCompile(
+                durableBuildId,
+                scenarioId,
+                myHeartbeat,
+              );
+              if (!wrote) {
+                logger.warn({ buildId: durableBuildId, scenarioId }, 'compile_orphan_scenario');
+              }
+            } catch (writeErr) {
+              logger.error(
+                { err: writeErr, buildId: durableBuildId, scenarioId },
+                'compile_succeed_write_failed',
+              );
+            }
+          }
+          aiJobs.set(jobId, {
+            status: 'completed',
+            data: { scenario_id: scenarioId, title: '', inject_count: 0 },
+            startedAt: Date.now(),
           });
-        } else if (creditLedgerId) {
-          await refundCredit(user.id, 'scenario', creditInvoiceId);
+          return;
         }
         // Contract §9 violations surface their rule so the trainer/editor can act on them;
         // a lagging database migration is named rather than hidden behind a generic failure.
@@ -1367,9 +1447,15 @@ router.post(
               : 'Compilation failed';
         aiJobs.set(jobId, { status: 'failed', error, startedAt: Date.now() });
       } finally {
-        if (heartbeat) clearInterval(heartbeat);
+        try {
+          if (timer) clearInterval(timer);
+        } catch (err) {
+          logger.error({ err, jobId }, 'compile_heartbeat_stop_failed');
+        }
       }
-    })();
+    })().catch((err) => {
+      logger.error({ err, jobId }, 'compile_job_unhandled');
+    });
   },
 );
 
