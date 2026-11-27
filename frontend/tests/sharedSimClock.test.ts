@@ -112,7 +112,7 @@ test('a wall-time budget runs only the steps that fit, and the clock slows', () 
 });
 
 test('a budget always runs at least one step, and leaves a cheap 1x frame alone', () => {
-  assert.deepEqual(budgetedFrames(50, 33, 4, 1 / 30, 1).perFrame, [2, 1, 1, 1]);
+  assert.deepEqual(budgetedFrames(50, 33, 4, 1 / 30, 1).perFrame, [2, 2, 1, 1]);
   const cheap = budgetedFrames(4, 33, 12, 1 / 60, 1);
   assert.deepEqual(cheap.perFrame, Array(12).fill(1));
   assert.equal(cheap.clock.dropped, 0);
@@ -120,21 +120,30 @@ test('a budget always runs at least one step, and leaves a cheap 1x frame alone'
 
 test('the first frame after a start or a reset is budgeted', () => {
   // Before any measurement the budget uses the seed cost.
-  const fresh = budgetedFrames(1, 33, 3, 1, 10);
-  assert.deepEqual(fresh.perFrame, [Math.floor(33 / FX.SIM_STEP_SEED_MS), 33, 33]);
-  // The first measurement replaces the seed outright, and a reset keeps it.
-  assert.equal(fresh.clock.msPerStep, 1);
-  resetSharedClock(fresh.clock);
-  assert.equal(fresh.clock.crowdSteps, 0);
+  assert.equal(budgetedFrames(1, 33, 1, 1, 10).perFrame[0], Math.floor(33 / FX.SIM_STEP_SEED_MS));
+  // A cold start: frame 0's steps are slow while the JIT warms up, then 4 ms.
+  const clock = createSharedClock();
   let nowMs = 0;
-  const ran = advanceSharedFrame(
-    fresh.clock,
-    1,
-    10,
-    { crowdStep: () => (nowMs += 1) },
-    { budgetMs: 33, now: () => nowMs },
-  );
-  assert.equal(ran.crowdSteps, 33);
+  const perFrame: number[] = [];
+  for (let frame = 0; frame < 4; frame++) {
+    const costMs = frame === 0 ? 14 : 4;
+    const ran = advanceSharedFrame(
+      clock,
+      1,
+      10,
+      { crowdStep: () => (nowMs += costMs) },
+      { budgetMs: 33, now: () => nowMs },
+    );
+    perFrame.push(ran.crowdSteps);
+  }
+  // The warm-up frame eases the estimate from the seed (4 -> 6 ms) instead of
+  // replacing it with 14 ms, which would have left frames 1-3 at 2 steps.
+  assert.deepEqual(perFrame, [8, 5, 5, 6]);
+  // A reset keeps the measured cost.
+  const measured = clock.msPerStep;
+  resetSharedClock(clock);
+  assert.equal(clock.crowdSteps, 0);
+  assert.equal(clock.msPerStep, measured);
 });
 
 test('responder units move by the sim time the crowd ran, under the budget', () => {
