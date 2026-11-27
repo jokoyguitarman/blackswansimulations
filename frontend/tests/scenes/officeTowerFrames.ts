@@ -16,7 +16,7 @@ import { stepDoorLeaves } from '../../src/lib/rts/doorLeaf.ts';
 import { RTSEngine } from '../../src/lib/rts/engine.ts';
 import { FX } from '../../src/lib/rts/fx/fxConstants.ts';
 import {
-  advanceSharedFrame,
+  advanceGameFrame,
   createSharedClock,
   type SharedFrameBudget,
 } from '../../src/lib/rts/fx/simClock.ts';
@@ -49,6 +49,8 @@ export interface OfficeFrameOptions {
   /** People per storey, G first. Defaults to the sample's counts. */
   counts?: number[];
   budget?: SharedFrameBudget;
+  /** Once the scene is built, right before the first frame. */
+  onStart?: () => void;
   /** After each frame, with the frame's crowd steps. */
   onFrame?: (crowdSteps: number) => void;
 }
@@ -199,6 +201,7 @@ export function runOfficeFrames(
   let blastFired = false;
   let snaps = evac.getSnapshots();
   let frames = 0;
+  opts.onStart?.();
   while (rts.state.clock.elapsed < untilS) {
     frames++;
     const dt = typeof frameDt === 'number' ? frameDt : frameDt();
@@ -207,7 +210,8 @@ export function runOfficeFrames(
     effects.setFuelCells(cells);
     effects.setStoreyHeights(heights);
     effects.setBuildingEnvelope(verts, exits);
-    const ran = advanceSharedFrame(
+    const ran = advanceGameFrame(
+      rts,
       shared,
       dt,
       speed,
@@ -230,9 +234,7 @@ export function runOfficeFrames(
       },
       opts.budget,
     );
-    if (ran.crowdSteps > 0) rts.tick((ran.crowdSteps * FX.FIXED_DT) / speed);
     opts.onFrame?.(ran.crowdSteps);
-    rts.syncElapsed(shared.crowdSteps * FX.FIXED_DT);
     snaps = evac.getSnapshots();
   }
 

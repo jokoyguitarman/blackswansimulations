@@ -56,6 +56,13 @@ export const FX = {
    * crowd step, so an unbudgeted loaded 10x frame ran 240 steps in about 1 s.
    */
   SIM_BUDGET_MS: 33,
+  /**
+   * Assumed. Step cost the budget uses before it has measured one, so the
+   * first frame after a fresh start is budgeted too. About an office fire step.
+   */
+  SIM_STEP_SEED_MS: 4,
+  /** Real seconds of frames the HUD's effective-speed reading averages over. */
+  SPEED_WINDOW_S: 1,
   FX_RNG_SEED: 4242,
 } as const;
 

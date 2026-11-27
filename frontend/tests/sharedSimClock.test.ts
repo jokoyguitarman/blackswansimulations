@@ -9,9 +9,14 @@ import { RTSEngine } from '../src/lib/rts/engine.ts';
 import { FX } from '../src/lib/rts/fx/fxConstants.ts';
 import {
   MAX_FRAME_SIM_S,
+  advanceGameFrame,
   advanceSharedFrame,
   cappedFrameDt,
   createSharedClock,
+  createSpeedMeter,
+  noteFrameSpeed,
+  resetSharedClock,
+  speedLabel,
 } from '../src/lib/rts/fx/simClock.ts';
 
 function play(frames: number[], speed: number) {
@@ -99,10 +104,9 @@ function budgetedFrames(
 
 test('a wall-time budget runs only the steps that fit, and the clock slows', () => {
   const { clock, perFrame } = budgetedFrames(4, 33, 5, 1, 10);
-  // The first frame has no measured cost yet, so only the 4 s cap applies.
-  assert.deepEqual(perFrame, [240, 8, 8, 8, 8]);
+  assert.deepEqual(perFrame, [8, 8, 8, 8, 8]);
   assert.equal(clock.msPerStep, 4);
-  assert.equal(clock.dropped, 5 * 600 - 240 - 4 * 8);
+  assert.equal(clock.dropped, 5 * 600 - 5 * 8);
   assert.ok(clock.acc < FX.FIXED_DT);
   assert.equal(clock.effectSteps, Math.floor(clock.crowdSteps / 6));
 });
@@ -112,4 +116,72 @@ test('a budget always runs at least one step, and leaves a cheap 1x frame alone'
   const cheap = budgetedFrames(4, 33, 12, 1 / 60, 1);
   assert.deepEqual(cheap.perFrame, Array(12).fill(1));
   assert.equal(cheap.clock.dropped, 0);
+});
+
+test('the first frame after a start or a reset is budgeted', () => {
+  // Before any measurement the budget uses the seed cost.
+  const fresh = budgetedFrames(1, 33, 3, 1, 10);
+  assert.deepEqual(fresh.perFrame, [Math.floor(33 / FX.SIM_STEP_SEED_MS), 33, 33]);
+  // The first measurement replaces the seed outright, and a reset keeps it.
+  assert.equal(fresh.clock.msPerStep, 1);
+  resetSharedClock(fresh.clock);
+  assert.equal(fresh.clock.crowdSteps, 0);
+  let nowMs = 0;
+  const ran = advanceSharedFrame(
+    fresh.clock,
+    1,
+    10,
+    { crowdStep: () => (nowMs += 1) },
+    { budgetMs: 33, now: () => nowMs },
+  );
+  assert.equal(ran.crowdSteps, 33);
+});
+
+test('responder units move by the sim time the crowd ran, under the budget', () => {
+  const loaded = [0.016, 1.2, 0.5, 2, 0.033, 0.9, 3, 0.25, 1, 1, 1, 1 / 60, 1 / 144];
+  for (const speed of [1, 2, 5, 10]) {
+    for (const costMs of [0.5, 4, 50]) {
+      const rts = new RTSEngine();
+      rts.startDetonation();
+      rts.setSpeed(speed);
+      const unit = rts.spawnUnit('marshal', { x: 0, y: 0 });
+      rts.issueMove([unit.id], { x: 100000, y: 0 }, false);
+      const clock = createSharedClock();
+      let nowMs = 0;
+      let effects = 0;
+      for (const dt of loaded) {
+        advanceGameFrame(
+          rts,
+          clock,
+          dt,
+          speed,
+          { crowdStep: () => (nowMs += costMs), effectsStep: () => effects++ },
+          { budgetMs: FX.SIM_BUDGET_MS, now: () => nowMs },
+        );
+      }
+      const crowdS = clock.crowdSteps * FX.FIXED_DT;
+      const unitS = unit.pos.x / unit.def.speed;
+      const tag = `${speed}x at ${costMs} ms/step`;
+      assert.ok(Math.abs(unitS - crowdS) < 1e-6, `${tag}: unit ${unitS} s, crowd ${crowdS} s`);
+      assert.ok(Math.abs(rts.state.clock.elapsed - crowdS) < 1e-9, tag);
+      const effectsS = effects * FX.EFFECTS_DT;
+      assert.ok(crowdS - effectsS >= -1e-9 && crowdS - effectsS < FX.EFFECTS_DT, tag);
+    }
+  }
+});
+
+test('the speed meter reads simulated seconds per real second', () => {
+  const meter = createSpeedMeter();
+  let readings = 0;
+  for (let i = 0; i < 40; i++) if (noteFrameSpeed(meter, 10, 0.05, 0.155)) readings++;
+  assert.equal(readings, 2);
+  assert.ok(Math.abs((meter.effective ?? 0) - 3.1) < 1e-9);
+  assert.equal(speedLabel(10, meter.effective), '10x (running 3.1x)');
+  // A new speed starts a new window.
+  noteFrameSpeed(meter, 5, 0.05, 0.25);
+  assert.equal(meter.effective, null);
+  assert.equal(speedLabel(5, meter.effective), '5x');
+  // Within 10% of the chosen speed the label stays plain.
+  assert.equal(speedLabel(1, 0.95), '1x');
+  assert.equal(speedLabel(1, 0.6), '1x (running 0.6x)');
 });
