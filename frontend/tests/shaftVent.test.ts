@@ -258,14 +258,17 @@ function stud(
   };
 }
 
-/** Two studs and an outside neighbour, on both floors, with a door. */
-function shaftRoom(doorWidth = 0.9) {
+/**
+ * Two studs and an outside neighbour, on both floors, with a door. `upper`
+ * names the upper landing stud and its neighbour.
+ */
+function shaftRoom(doorWidth = 0.9, upper: [string, string] = ['u0', 'u1']) {
   const studs = [
     stud('g0', 0, 0, 'G', true),
     stud('g1', 3, 0, 'G', true),
     stud('gout', 6, 0, 'G', false),
-    stud('u0', 0, 0, 'L1', true),
-    stud('u1', 3, 0, 'L1', true),
+    stud(upper[0], 0, 0, 'L1', true),
+    stud(upper[1], 3, 0, 'L1', true),
     stud('uout', 6, 0, 'L1', false),
   ];
   const walls = [...roomWalls('G', doorWidth), ...roomWalls('L1', doorWidth)];
@@ -420,6 +423,38 @@ describe('shaft between two storeys', () => {
     }
     assert.ok(seen, 'the column never ran hot ahead of the upper layer');
     assert.equal(seen.reported, seen.shaftK);
+  });
+
+  test('shaftColumns keeps the last layer step’s rooms when the walls change before the next', () => {
+    // The upper landing is 'u1', so its room is named for its neighbour 'u0'
+    // until a partition splits them.
+    const { engine, walls } = shaftRoom(0.9, ['u1', 'u0']);
+    engine.setFuelCells(
+      new Map([
+        ['g0', hotFuel()],
+        ['g1', hotFuel()],
+      ]),
+    );
+    const fire = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    fire.ignite(['g0', 'g1']);
+    for (let t = 0; t < 60; t++) engine.step(1, walls, []);
+    const before = engine.shaftColumns();
+    assert.equal(before.length, 1);
+    assert.equal(before[0].upperStudId, 'u1');
+    assert.ok(before[0].tempK > AMBIENT_K + 20, `column ${before[0].tempK} K`);
+    // A partition goes up on L1. The fire sim refills its compartments for
+    // the new walls before the effects engine's next layer step.
+    const partition: InteriorWall = {
+      ...walls[0],
+      id: 'split-L1',
+      start: { x: 1.5, y: -1.5 },
+      end: { x: 1.5, y: 1.5 },
+      hasDoor: false,
+      level: 'L1',
+    };
+    const live = fire.compartmentsOf([...walls, partition]);
+    assert.equal(live.get('u1'), 'u1', 'the partition did not rename the landing’s room');
+    assert.deepEqual(engine.shaftColumns(), before);
   });
 
   test('shaftColumns leaves out a column whose landing is in no compartment', () => {

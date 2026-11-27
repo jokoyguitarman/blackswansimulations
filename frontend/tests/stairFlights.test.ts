@@ -492,6 +492,121 @@ describe('stair flights in the engine', () => {
     for (const r of against) assert.ok(r.duration <= packed + 1e-9, `${r.duration}`);
   });
 
+  it('holds a flight to its lane’s storage while a crew climbs against it', () => {
+    // 4 m storeys, 1.2 m stair: 27 on the whole 0.9 m, floor(4 × 2.0 × 0.45 × 3.76) = 13 in single file.
+    const stair = stairOf('s', 'G', 'L2');
+    const lane = flightStorage(stair, levelDef('L2', 2, 4), 0.45);
+    assert.equal(lane, 13);
+    assert.equal(flightStorage(stair, levelDef('L2', 2, 4)), 27);
+    const { eng, inner, labels } = build(['G', 'L1', 'L2'], { G: 0, L1: 60, L2: 60 }, [stair]);
+    for (let i = 60; i < 120; i++) enqueue(inner, labels[i], 's', 'L2', 'L1', 0);
+    for (let i = 0; i < 60; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
+    eng.sendStairResponders('s', 40);
+    const heldOnL2 = () =>
+      inner.stairPeople.filter((o) => o.phase === 'travel' && o.fromLevel === 'L2').length +
+      inner.stairPeople.filter(
+        (o) => o.phase === 'queue' && o.fromLevel === 'L1' && o.source === 'stream',
+      ).length;
+    let against = 0;
+    let fullAgainst = false;
+    for (let i = 0; i < Math.round(150 / DT); i++) {
+      const before = heldOnL2();
+      eng.step();
+      const view = eng.getStairFlights().find((f) => f.fromLevel === 'L2' && f.dir === 'down');
+      if (!view?.counterflow) continue;
+      against++;
+      assert.equal(view.storage, lane);
+      if (view.full) fullAgainst = true;
+      // Nobody steps onto a flight that already holds its lane's storage.
+      if (before >= lane) assert.ok(heldOnL2() <= before, `${before} → ${heldOnL2()}`);
+    }
+    assert.ok(against > 0, 'the crew never met the L2 flight');
+    assert.ok(fullAgainst, 'the L2 flight never filled its lane');
+    eng.destroy();
+  });
+
+  it('holds people already on a flight to the descent cap when a crew narrows it', () => {
+    // The flight loads at full width for 8 s; then a crew takes half the
+    // stair, and the people already walking it are packed into the lane.
+    const run = (crews: boolean) => {
+      const stair = stairOf('s', 'G', 'L1');
+      const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 30 }, [stair]);
+      for (let i = 0; i < 30; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
+      const landed = new Map<number, number>();
+      const releasedBy8: number[] = [];
+      for (let i = 0; i < Math.round(30 / DT); i++) {
+        if (i === Math.round(8 / DT)) {
+          for (const o of inner.stairPeople)
+            if (o.phase === 'travel') releasedBy8.push(o.label.pedId);
+          if (crews) eng.sendStairResponders('s', 4);
+        }
+        const walking = new Map(
+          inner.stairPeople.filter((o) => o.phase === 'travel').map((o) => [o.label.pedId, o]),
+        );
+        eng.step();
+        for (const [id, o] of walking) {
+          if (!inner.stairPeople.includes(o) || o.phase !== 'travel') {
+            if (!landed.has(id)) landed.set(id, o.travelStart + o.travelDuration);
+          }
+        }
+      }
+      eng.destroy();
+      return { landed, releasedBy8 };
+    };
+    const alone = run(false);
+    const against = run(true);
+    assert.deepEqual(against.releasedBy8, alone.releasedBy8);
+    assert.ok(
+      against.releasedBy8.length >= 6,
+      `${against.releasedBy8.length} on the flight at 8 s`,
+    );
+    // Everyone already on the flight at 8 s lands later with the crew there.
+    for (const id of against.releasedBy8) {
+      const a = alone.landed.get(id)!;
+      const b = against.landed.get(id)!;
+      assert.ok(b > a + 0.2, `ped ${id}: ${b.toFixed(2)} with the crew vs ${a.toFixed(2)}`);
+    }
+  });
+
+  it('lets the rest of a flight speed up as the people ahead step off', () => {
+    // Twenty step on as fast as the flight takes them; the first are released
+    // into an empty flight, the later ones into a packed one. Once the head
+    // of the stream lands, the density falls and the rest pick up.
+    const stair = stairOf('s', 'G', 'L1');
+    const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 20 }, [stair]);
+    for (let i = 0; i < 20; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
+    const atRelease = new Map<number, number>();
+    const atLanding = new Map<number, number>();
+    for (let i = 0; i < Math.round(60 / DT); i++) {
+      const walking = inner.stairPeople.filter((o) => o.phase === 'travel');
+      eng.step();
+      for (const o of inner.stairPeople) {
+        if (o.phase === 'travel' && !atRelease.has(o.label.pedId)) {
+          atRelease.set(o.label.pedId, o.travelDuration);
+        }
+      }
+      for (const o of walking) {
+        if (
+          !atLanding.has(o.label.pedId) &&
+          !(inner.stairPeople.includes(o) && o.phase === 'travel')
+        ) {
+          atLanding.set(o.label.pedId, o.travelDuration);
+        }
+      }
+    }
+    eng.destroy();
+    assert.equal(atLanding.size, 20);
+    const free = (4 * LEVEL.STAIR_TRAVEL_FACTOR) / LEVEL.STAIR_SPEED_DOWN;
+    const packed = (4 * LEVEL.STAIR_TRAVEL_FACTOR) / ((4 * 0.266 * 1.01) / 2);
+    let faster = 0;
+    for (const [id, first] of atRelease) {
+      const last = atLanding.get(id)!;
+      assert.ok(last >= free - 1e-9 && last <= packed + 1e-9, `ped ${id}: ${last}`);
+      if (last < first - 0.2) faster++;
+    }
+    assert.ok(faster > 0, 'nobody picked up pace when the flight thinned');
+  });
+
   it('breathes the landing blend on a flight the effects engine reports no column for', () => {
     // An unsolved column is left out of shaftColumns(); the flight must not read ambient.
     const stair = stairOf('s', 'G', 'L1');

@@ -3,7 +3,8 @@
  * three 1.2 m stairs while the ground floor burns, and four responders
  * climb one of the stairs against them at T+90.
  *
- * Checked: no flight holds more than its storage (3.76 p/m², SFPE); the
+ * Checked: no release takes a flight over its storage (3.76 p/m², SFPE, on
+ * the lane the descent keeps); the
  * L1 landings merge the L2 stream with the L1 floor; the climbing crew
  * narrows the descent to single file (1.01 p/s/m × 0.45 m, the Fruin lane
  * capped at half a 1.2 m stair) and reaches L2.
@@ -20,6 +21,7 @@ test(
   { skip: slowScene, timeout: 20 * 60 * 1000 },
   () => {
     let worstOver = -Infinity;
+    const heldBefore = new Map<string, number>();
     let merged = 0;
     let counterflowRate: number | null = null;
     let crewStair: string | null = null;
@@ -33,7 +35,13 @@ test(
           flights.find(
             (g) => g.stairId === f.stairId && g.dir === 'down' && g.fromLevel === f.toLevel,
           )?.landing ?? 0;
-        worstOver = Math.max(worstOver, f.moving + atFoot - f.storage);
+        // Storage is on the lane the descent keeps, so a crew arriving can
+        // leave a loaded flight over it. Only a release adds to the hold, and
+        // none may take it past storage.
+        const key = `${f.stairId}:${f.fromLevel}`;
+        const held = f.moving + atFoot;
+        if (held > (heldBefore.get(key) ?? 0)) worstOver = Math.max(worstOver, held - f.storage);
+        heldBefore.set(key, held);
         if (f.fromLevel === 'L1' && f.door > 0 && f.landing > 0) merged++;
         if (f.stairId === crewStair && f.counterflow) counterflowRate = f.flowPerS;
       }

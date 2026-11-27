@@ -2437,7 +2437,9 @@ export class SpatialEffectsEngine {
     this.fireSim.clearBurnLimits();
     this.syncLayerWalls(walls);
     const rooms = this.fireSim.compartmentsOf(walls);
-    this.shaftRooms = rooms;
+    // compartmentsOf hands back the fire sim's live map, which a wall change
+    // refills before the next layer step. The column keys are this step's.
+    this.shaftRooms = new Map(rooms);
     const groups = new Map<string, string[]>();
     for (const [id, room] of rooms) {
       const list = groups.get(room);
