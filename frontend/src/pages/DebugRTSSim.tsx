@@ -156,7 +156,7 @@ import { attachBuilding, storeyId } from '../lib/rts/effectsBuilding';
 import {
   blastIgnitionZone,
   hazardsForEffects,
-  runEffectsPreview,
+  runEffectsPreviewAsync,
   syncIgnition,
 } from '../lib/rts/effectsPreview';
 import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
@@ -2719,6 +2719,10 @@ export function DebugRTSSim() {
     { phase: HazardPhase; phaseDescription: string }
   > | null>(null);
   const [effectPreviewTime, setEffectPreviewTime] = useState(300);
+  /** Share of the running setup preview done, or null when none is running. */
+  const [previewProgress, setPreviewProgress] = useState<number | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => previewAbortRef.current?.abort(), []);
   const [effectCalibrating, setEffectCalibrating] = useState(false);
   const [fireParams, setFireParams] = useState<(FireParams & { reasoning?: string }) | null>(null);
   const [detonationLoading, setDetonationLoading] = useState(false);
@@ -4750,6 +4754,9 @@ export function DebugRTSSim() {
     setShowcaseHud(null);
     hudAtRef.current = 0;
     resetSharedClock(simClockRef.current);
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    setPreviewProgress(null);
     speedMeterRef.current = createSpeedMeter();
     setSlowedSpeed(null);
 
@@ -8080,10 +8087,19 @@ export function DebugRTSSim() {
                         />
                       </div>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
+                          if (previewAbortRef.current) {
+                            previewAbortRef.current.abort();
+                            previewAbortRef.current = null;
+                            setPreviewProgress(null);
+                            return;
+                          }
                           if (!blastSite) return;
                           const spread = manualRadius ? blastRadius : rings.ignitionM;
-                          const preview = runEffectsPreview(
+                          const abort = new AbortController();
+                          previewAbortRef.current = abort;
+                          setPreviewProgress(0);
+                          const preview = await runEffectsPreviewAsync(
                             {
                               studs: allSimStuds.map((s) => ({
                                 id: s.id,
@@ -8103,20 +8119,31 @@ export function DebugRTSSim() {
                                 affectRadius: manualRadius ? blastRadius : rings.minorM,
                               },
                               hazardAnalysis: enrichResult?.hazardAnalysis,
+                              hoodFanWhen: hoodFanWhenRef.current,
                             },
                             effectPreviewTime,
                             interiorWalls,
+                            { signal: abort.signal, onProgress: setPreviewProgress },
                           );
+                          if (previewAbortRef.current !== abort) return;
+                          previewAbortRef.current = null;
+                          setPreviewProgress(null);
+                          if (!preview) return;
                           effectsEngineRef.current = preview;
                           setEffectStates(new Map(preview.studStates));
                         }}
                         className="w-full bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-3 py-1.5 rounded border border-orange-600 font-bold"
                       >
-                        Preview Hazard Effects
+                        {previewProgress == null
+                          ? 'Preview Hazard Effects'
+                          : `Previewing… ${Math.round(previewProgress * 100)}% (click to cancel)`}
                       </button>
                       {effectStates && (
                         <button
                           onClick={() => {
+                            previewAbortRef.current?.abort();
+                            previewAbortRef.current = null;
+                            setPreviewProgress(null);
                             effectsEngineRef.current = null;
                             setEffectStates(null);
                             setHazardRuntimeStates(null);
