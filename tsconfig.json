@@ -29,5 +29,5 @@
     }
   },
   "include": ["src", "server", "shared", "scripts", "types.d.ts"],
-  "exclude": ["node_modules", "dist", "api", "scripts/bench-fire.ts"]
+  "exclude": ["node_modules", "dist", "api", "scripts/bench-fire.ts", "scripts/bench-frame.ts"]
 }

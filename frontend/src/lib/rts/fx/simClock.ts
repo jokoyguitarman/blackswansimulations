@@ -37,8 +37,8 @@ export function takeSteps(
 
 /**
  * Step the effects field in fixed EFFECTS_DT slices. The smoke spread is an
- * Euler step, so a 1 s call is not ten calls of 0.1 s. Both the showcase and
- * the plain loop use this, and the dose is taken after each slice.
+ * Euler step, so a 1 s call is not ten calls of 0.1 s. The headless scenes use
+ * this; the RTS page steps the effects field through advanceSharedFrame.
  */
 export function stepEffectsFixed(
   engine: { step(dt: number, walls: InteriorWall[], hazards: HazardZone[]): void },
@@ -76,10 +76,12 @@ export const CROWD_STEPS_PER_EFFECTS_STEP = Math.round(FX.EFFECTS_DT / FX.FIXED_
 export interface SharedSimClock extends StepAccumulator {
   crowdSteps: number;
   effectSteps: number;
+  /** Smoothed wall time of one crowd step with its share of effects, ms. 0 until measured. */
+  msPerStep: number;
 }
 
 export function createSharedClock(): SharedSimClock {
-  return { acc: 0, dropped: 0, crowdSteps: 0, effectSteps: 0 };
+  return { acc: 0, dropped: 0, crowdSteps: 0, effectSteps: 0, msPerStep: 0 };
 }
 
 export function resetSharedClock(clock: SharedSimClock): void {
@@ -87,6 +89,7 @@ export function resetSharedClock(clock: SharedSimClock): void {
   clock.dropped = 0;
   clock.crowdSteps = 0;
   clock.effectSteps = 0;
+  clock.msPerStep = 0;
 }
 
 /** Real seconds of this frame the game clock may count at `speed`. */
@@ -104,17 +107,35 @@ export interface SharedFrameHooks {
   effectsStep?(): void;
 }
 
+export interface SharedFrameBudget {
+  /** Wall time the frame's steps may take, ms. */
+  budgetMs: number;
+  now: () => number;
+}
+
+/** Weight of the newest frame in `msPerStep`. */
+const STEP_COST_SMOOTHING = 0.2;
+
 /**
  * Run this frame's share of simulated time on every subsystem: at most
- * MAX_FRAME_SIM_S, with the rest dropped and counted in `dropped` steps.
+ * MAX_FRAME_SIM_S, and with a budget at most the steps that fit in it at the
+ * measured step cost (never fewer than one). The rest is dropped and counted
+ * in `dropped` steps, so a slow machine slows the clock instead of falling
+ * further behind every frame.
  */
 export function advanceSharedFrame(
   clock: SharedSimClock,
   frameDt: number,
   speed: number,
   hooks: SharedFrameHooks,
+  budget?: SharedFrameBudget,
 ): { crowdSteps: number; effectSteps: number } {
-  const n = takeSteps(clock, frameDt, speed, FX.FIXED_DT, FX.MAX_STEPS_PER_FRAME);
+  let maxSteps: number = FX.MAX_STEPS_PER_FRAME;
+  if (budget && clock.msPerStep > 0) {
+    maxSteps = Math.max(1, Math.min(maxSteps, Math.floor(budget.budgetMs / clock.msPerStep)));
+  }
+  const n = takeSteps(clock, frameDt, speed, FX.FIXED_DT, maxSteps);
+  const startMs = budget && n > 0 ? budget.now() : 0;
   hooks.beforeSteps?.(n * FX.FIXED_DT);
   let effectSteps = 0;
   for (let i = 0; i < n; i++) {
@@ -126,6 +147,13 @@ export function advanceSharedFrame(
       effectSteps++;
       hooks.effectsStep?.();
     }
+  }
+  if (budget && n > 0) {
+    const perStep = (budget.now() - startMs) / n;
+    clock.msPerStep =
+      clock.msPerStep > 0
+        ? clock.msPerStep + STEP_COST_SMOOTHING * (perStep - clock.msPerStep)
+        : perStep;
   }
   return { crowdSteps: n, effectSteps };
 }

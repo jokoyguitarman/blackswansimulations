@@ -6,5 +6,5 @@
     "noUnusedParameters": false,
     "erasableSyntaxOnly": false
   },
-  "include": ["../scripts/bench-fire.ts"]
+  "include": ["../scripts/bench-fire.ts", "../scripts/bench-frame.ts"]
 }

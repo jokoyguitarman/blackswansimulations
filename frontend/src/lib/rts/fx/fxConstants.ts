@@ -50,6 +50,12 @@ export const FX = {
   FIXED_DT: 1 / 60,
   EFFECTS_DT: 0.1,
   MAX_STEPS_PER_FRAME: 240,
+  /**
+   * Assumed. Wall time the RTS page gives one frame's crowd and effects steps,
+   * which holds about 30 fps under load. The office fire costs about 4 ms a
+   * crowd step, so an unbudgeted loaded 10x frame ran 240 steps in about 1 s.
+   */
+  SIM_BUDGET_MS: 33,
   FX_RNG_SEED: 4242,
 } as const;
 
