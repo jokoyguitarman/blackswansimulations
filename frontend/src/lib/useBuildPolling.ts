@@ -1,37 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBuild, type HeaderSource } from './buildClient';
 import {
+  claimPollTick,
+  classifyPollStop,
   emptyPollState,
+  isDeployGap,
   nextPollDelayMs,
   reducePoll,
   type BuildView,
   type PollState,
 } from './buildStatus';
 
-/** Proxy and gateway statuses a Render deploy produces while the new process boots. */
-export function isTransientPollStatus(status: number): boolean {
-  return status === 0 || status === 408 || status === 502 || status === 503 || status === 504;
-}
+export { isDeployGap as isTransientPollStatus } from './buildStatus';
 
 /**
  * Poll one build until it leaves `queued` or `running`. Network errors, timeouts
  * and deploy statuses (502/503/504) back off and show reconnecting. They never
  * end the build. A 401 just waits for the next tick, which reads a fresh token.
- * A 404 reports the build as gone. `nonce` restarts the loop after Resume.
+ * 404, 403 and 501 stop the loop. `nonce` restarts it after Resume.
  */
 export function useBuildPolling(
   buildId: string | null,
   nonce: number,
   headers: HeaderSource,
   onUpdate: (view: BuildView, state: PollState) => void,
-  onLost: () => void,
+  onHalt: (reason: 'lost' | 'denied' | 'unavailable') => void,
 ): { reconnecting: boolean } {
   const [reconnecting, setReconnecting] = useState(false);
   const onUpdateRef = useRef(onUpdate);
-  const onLostRef = useRef(onLost);
+  const onHaltRef = useRef(onHalt);
   const headersRef = useRef(headers);
   onUpdateRef.current = onUpdate;
-  onLostRef.current = onLost;
+  onHaltRef.current = onHalt;
   headersRef.current = headers;
 
   useEffect(() => {
@@ -41,6 +41,8 @@ export function useBuildPolling(
     }
     let stopped = false;
     let timer = 0;
+    let inFlight = false;
+    let wakeAgain = false;
     let state = emptyPollState();
 
     const delay = () =>
@@ -53,31 +55,48 @@ export function useBuildPolling(
 
     const tick = async () => {
       if (stopped) return;
-      const result = await getBuild(buildId, state.nextAfter, () => headersRef.current());
-      if (stopped) return;
-      if (result.status === 404) {
-        onLostRef.current();
+      if (claimPollTick(inFlight) === 'queue') {
+        wakeAgain = true;
         return;
       }
-      const payload = result.data;
-      if (!result.ok || !payload?.build) {
+      inFlight = true;
+      wakeAgain = false;
+      try {
+        const result = await getBuild(buildId, state.nextAfter, () => headersRef.current());
+        if (stopped) return;
+        const halt = classifyPollStop(result.status);
+        if (halt) {
+          stopped = true;
+          setReconnecting(false);
+          onHaltRef.current(halt);
+          return;
+        }
+        const payload = result.data;
+        if (!result.ok || !payload?.build) {
+          state = reducePoll(state, {
+            type: 'poll_error',
+            transient: isDeployGap(result.status),
+          });
+          setReconnecting(state.reconnecting);
+          schedule(delay());
+          return;
+        }
         state = reducePoll(state, {
-          type: 'poll_error',
-          transient: isTransientPollStatus(result.status) || result.status >= 500,
+          type: 'poll_ok',
+          log: payload.log ?? [],
+          nextAfter: payload.next_after ?? state.nextAfter,
         });
-        setReconnecting(state.reconnecting);
-        schedule(delay());
-        return;
-      }
-      state = reducePoll(state, {
-        type: 'poll_ok',
-        log: payload.log ?? [],
-        nextAfter: payload.next_after ?? state.nextAfter,
-      });
-      setReconnecting(false);
-      onUpdateRef.current(payload.build, state);
-      if (payload.build.status === 'queued' || payload.build.status === 'running') {
-        schedule(delay());
+        setReconnecting(false);
+        onUpdateRef.current(payload.build, state);
+        if (payload.build.status === 'queued' || payload.build.status === 'running') {
+          schedule(delay());
+        }
+      } finally {
+        inFlight = false;
+        if (wakeAgain && !stopped) {
+          wakeAgain = false;
+          schedule(0);
+        }
       }
     };
 

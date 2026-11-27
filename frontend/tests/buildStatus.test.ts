@@ -5,10 +5,16 @@ import { canonicalJson } from '@shared/canonicalJson';
 import { hashBuildRequest, makeBuildRequest } from '../src/lib/buildRequest';
 import {
   buildCardFor,
+  claimPollTick,
+  classifyLatestFetch,
+  classifyMutation,
+  classifyPollStop,
+  classifyReview,
   emptyPollState,
   mapToWizardStage,
   nextPollDelayMs,
   reducePoll,
+  shouldClearIdempotencyKey,
   stageMark,
   type BuildLogLine,
   type BuildView,
@@ -265,6 +271,39 @@ describe('stageMark', () => {
     });
     assert.equal(stageMark(claimed, 'characters'), 'done');
     assert.equal(stageMark(claimed, 'storyline'), 'running');
+  });
+});
+
+describe('deploy gap on the other build calls', () => {
+  test('getLatestBuild, startBuild, getReview and resumeBuild retry 0/408/502-504', () => {
+    for (const status of [0, 408, 502, 503, 504]) {
+      assert.equal(classifyLatestFetch(status, false), 'retry');
+      assert.equal(classifyMutation(status), 'retry');
+      assert.equal(classifyReview(status, false), 'retry');
+      assert.equal(shouldClearIdempotencyKey(status), false);
+      assert.equal(classifyPollStop(status), null);
+    }
+  });
+
+  test('a real answer clears the idempotency key and does not retry', () => {
+    for (const status of [200, 202, 400, 401, 403, 409, 429, 500, 501]) {
+      assert.equal(shouldClearIdempotencyKey(status), true);
+      assert.equal(classifyMutation(status), 'settled');
+    }
+    assert.equal(classifyLatestFetch(501, false), 'unavailable');
+    assert.equal(classifyLatestFetch(200, false), 'missing');
+    assert.equal(classifyLatestFetch(200, true), 'ready');
+    assert.equal(classifyReview(200, true), 'apply');
+    assert.equal(classifyReview(500, false), 'failed');
+  });
+
+  test('polling stops on 404, 403 and 501, and a wake does not overlap a tick', () => {
+    assert.equal(classifyPollStop(404), 'lost');
+    assert.equal(classifyPollStop(403), 'denied');
+    assert.equal(classifyPollStop(501), 'unavailable');
+    assert.equal(classifyPollStop(502), null);
+    assert.equal(claimPollTick(false), 'run');
+    assert.equal(claimPollTick(true), 'queue');
   });
 });
 

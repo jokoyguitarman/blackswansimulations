@@ -108,7 +108,7 @@ export function mapToWizardStage(view: BuildView): {
   return { buildStage: view.resume_from ?? view.current_stage, buildError: null };
 }
 
-export type BuildCardAction = 'retry' | 'resume' | 'start_over' | 'build_again';
+export type BuildCardAction = 'retry' | 'resume' | 'start_over' | 'build_again' | 'open_review';
 
 export interface BuildCard {
   heading: string;
@@ -209,6 +209,60 @@ export function nextPollDelayMs(consecutiveErrors: number, hidden: boolean): num
   if (consecutiveErrors <= 0) return hidden ? HIDDEN_MS : HEALTHY_VISIBLE_MS;
   const backoff = Math.min(BACKOFF_CAP_MS, HEALTHY_VISIBLE_MS * 2 ** (consecutiveErrors - 1));
   return hidden ? Math.max(HIDDEN_MS, backoff) : backoff;
+}
+
+/**
+ * A Render deploy answers with these while the new process is down or booting.
+ * Status 0 is a network error or the client's own timeout. 501 and 403 are not
+ * in this set: those are answers, and polling stops on them.
+ */
+export function isDeployGap(status: number): boolean {
+  return status === 0 || status === 408 || status === 502 || status === 503 || status === 504;
+}
+
+/** Drop the idempotency key only after the server actually answered. */
+export function shouldClearIdempotencyKey(status: number): boolean {
+  return status > 0 && !isDeployGap(status);
+}
+
+/** Polling stops on these. A deploy gap does not. */
+export function classifyPollStop(status: number): 'lost' | 'denied' | 'unavailable' | null {
+  if (status === 404) return 'lost';
+  if (status === 403) return 'denied';
+  if (status === 501) return 'unavailable';
+  return null;
+}
+
+/**
+ * What a reload does with `getLatestBuild` during a gap. `retry` keeps the
+ * sessionStorage build id and does not show "the build has not started".
+ */
+export function classifyLatestFetch(
+  status: number,
+  hasBuild: boolean,
+): 'retry' | 'unavailable' | 'denied' | 'ready' | 'missing' {
+  if (isDeployGap(status)) return 'retry';
+  if (status === 501) return 'unavailable';
+  if (status === 403) return 'denied';
+  if (hasBuild && status >= 200 && status < 300) return 'ready';
+  return 'missing';
+}
+
+/** `startBuild` and `resumeBuild` during a gap retry. Anything else is settled. */
+export function classifyMutation(status: number): 'retry' | 'settled' {
+  return isDeployGap(status) ? 'retry' : 'settled';
+}
+
+/** A failed review fetch retries only for a deploy gap. */
+export function classifyReview(status: number, ok: boolean): 'retry' | 'apply' | 'failed' {
+  if (ok) return 'apply';
+  if (isDeployGap(status)) return 'retry';
+  return 'failed';
+}
+
+/** A visibility or online event must not start a second poll while one is in flight. */
+export function claimPollTick(inFlight: boolean): 'run' | 'queue' {
+  return inFlight ? 'queue' : 'run';
 }
 
 export type StripMark = 'done' | 'running' | 'continuing' | 'failed' | 'queued';

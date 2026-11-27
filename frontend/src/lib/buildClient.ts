@@ -28,8 +28,11 @@ async function call<T>(
   headers: HeaderSource,
   init?: RequestInit,
 ): Promise<BuildApiResult<T>> {
+  // Every build call, not only the poll, gives up after 12s. A deploy that
+  // accepts the socket and never answers must come back as status 0.
+  const signal = init?.signal ?? AbortSignal.timeout(12_000);
   try {
-    const res = await fetch(apiUrl(path), { ...init, headers: await headers() });
+    const res = await fetch(apiUrl(path), { ...init, signal, headers: await headers() });
     const body = (await res.json().catch(() => null)) as {
       data?: T;
       error?: string;
@@ -80,10 +83,7 @@ export function getBuild(
   after: number,
   headers: HeaderSource,
 ): Promise<BuildApiResult<{ build: BuildView; log: BuildLogLine[]; next_after: number }>> {
-  // A deploy that accepts the socket and never answers must become a transient
-  // miss, not a spinner that waits for the browser's default.
-  const signal = AbortSignal.timeout(12_000);
-  return call(`${ROOT}/${id}?after=${after}`, headers, { signal });
+  return call(`${ROOT}/${id}?after=${after}`, headers);
 }
 
 export function getLatestBuild(

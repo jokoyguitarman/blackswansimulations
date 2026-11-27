@@ -70,8 +70,13 @@ import {
 import { hashBuildRequest, makeBuildRequest } from '../lib/buildRequest';
 import {
   buildCardFor,
+  classifyLatestFetch,
+  classifyMutation,
+  classifyReview,
   mapToWizardStage,
+  nextPollDelayMs,
   previousFinishedStage,
+  shouldClearIdempotencyKey,
   stageMark,
   type BuildCard,
   type BuildLogLine,
@@ -327,6 +332,10 @@ function writeSession(key: string, value: string | null): void {
 
 const durableBuildKey = (draftId: string) => `warroom-build:${draftId}`;
 const durableIdempotencyKey = (draftId: string) => `warroom-build-key:${draftId}`;
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function authHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../lib/supabase')).supabase.auth.getSession();
@@ -833,8 +842,10 @@ export const SocialCrisisWizard = () => {
   const [durableCard, setDurableCard] = useState<BuildCard | null>(null);
   const [conflictBuildId, setConflictBuildId] = useState<string | null>(null);
   const [lastBuildId, setLastBuildId] = useState<string | null>(null);
+  const [gatewayReconnecting, setGatewayReconnecting] = useState(false);
   const appliedBuildRef = useRef<string | null>(null);
   const startingRef = useRef(false);
+  const closedRef = useRef(false);
   const requestHashRef = useRef<string | null>(null);
   const durableLive =
     activeBuildId != null &&
@@ -849,6 +860,11 @@ export const SocialCrisisWizard = () => {
   // Legacy keeps the screen on for the chained NDJSON build. Durable does the
   // same while the server is still working, and says the trainer can leave.
   const wakeLock = useWakeLock(durableLive || legacyLive);
+  useEffect(() => {
+    return () => {
+      closedRef.current = true;
+    };
+  }, []);
 
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
@@ -1093,9 +1109,25 @@ export const SocialCrisisWizard = () => {
     async (buildId: string) => {
       if (appliedBuildRef.current === buildId) return;
       appliedBuildRef.current = buildId;
-      const review = await getReview(buildId, authHeaders);
+      let misses = 0;
+      let review = await getReview(buildId, authHeaders);
+      while (classifyReview(review.status, review.ok && review.data != null) === 'retry') {
+        if (closedRef.current) return;
+        misses += 1;
+        setGatewayReconnecting(true);
+        await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
+        if (closedRef.current) return;
+        review = await getReview(buildId, authHeaders);
+      }
+      setGatewayReconnecting(false);
       if (!review.ok || !review.data) {
         appliedBuildRef.current = null;
+        setDurableCard({
+          heading: "Couldn't open the finished build",
+          body: 'The build finished, but the review did not load. Retry opens it without starting again.',
+          actions: ['open_review'],
+          primaryLabel: 'Retry',
+        });
         return;
       }
       applyGenerated(review.data);
@@ -1138,11 +1170,30 @@ export const SocialCrisisWizard = () => {
     [finishSucceeded],
   );
 
-  const onBuildLost = useCallback(() => {
+  const onPollHalt = useCallback((reason: 'lost' | 'denied' | 'unavailable') => {
+    setGatewayReconnecting(false);
     setActiveBuildId(null);
     setDurableView(null);
     setBuildStage(null);
     setBuildError(null);
+    if (reason === 'denied') {
+      setDurableCard({
+        heading: 'Access denied',
+        body: 'You cannot watch this build.',
+        actions: [],
+        primaryLabel: '',
+      });
+      return;
+    }
+    if (reason === 'unavailable') {
+      setDurableCard({
+        heading: 'Durable builds are unavailable',
+        body: 'This server is not running durable builds right now. Reload the page. The build already on the server is kept.',
+        actions: [],
+        primaryLabel: '',
+      });
+      return;
+    }
     setDurableCard({
       heading: 'This build no longer exists',
       body: 'This build no longer exists (the draft may have been deleted).',
@@ -1156,7 +1207,7 @@ export const SocialCrisisWizard = () => {
     pollNonce,
     authHeaders,
     showDurableView,
-    onBuildLost,
+    onPollHalt,
   );
 
   useEffect(() => {
@@ -1194,12 +1245,35 @@ export const SocialCrisisWizard = () => {
 
   const attachLatestBuild = useCallback(
     async (draftId: string, savedStep: number) => {
-      const latest = await getLatestBuild(draftId, authHeaders);
-      if (latest.status === 501 || !latest.ok || !latest.data?.build) {
+      let misses = 0;
+      let latest = await getLatestBuild(draftId, authHeaders);
+      while (classifyLatestFetch(latest.status, latest.data?.build != null) === 'retry') {
+        if (closedRef.current) return;
+        misses += 1;
+        setStep(2);
+        setGatewayReconnecting(true);
+        const stored = readSession(durableBuildKey(draftId));
+        if (stored) setActiveBuildId((current) => current ?? stored);
+        await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
+        if (closedRef.current) return;
+        latest = await getLatestBuild(draftId, authHeaders);
+      }
+      setGatewayReconnecting(false);
+      const outcome = classifyLatestFetch(latest.status, latest.data?.build != null);
+      if (outcome === 'unavailable' || outcome === 'missing') {
         setStep(2);
         return;
       }
-      const row = latest.data.build;
+      if (outcome === 'denied') {
+        onPollHalt('denied');
+        setStep(2);
+        return;
+      }
+      const row = latest.data?.build;
+      if (!row) {
+        setStep(2);
+        return;
+      }
       const keep = () => {
         setActiveBuildId(row.id);
         writeSession(durableBuildKey(draftId), row.id);
@@ -1221,7 +1295,7 @@ export const SocialCrisisWizard = () => {
       }
       setStep(2);
     },
-    [finishSucceeded],
+    [finishSucceeded, onPollHalt],
   );
 
   useEffect(() => {
@@ -2065,7 +2139,8 @@ export const SocialCrisisWizard = () => {
           key = crypto.randomUUID();
           writeSession(storageKey, key);
         }
-        const result = await startBuild(
+        let misses = 0;
+        let result = await startBuild(
           {
             draft_id: draftId,
             idempotency_key: key,
@@ -2074,7 +2149,26 @@ export const SocialCrisisWizard = () => {
           },
           authHeaders,
         );
-        if (result.status > 0) writeSession(storageKey, null);
+        while (classifyMutation(result.status) === 'retry') {
+          if (closedRef.current) return;
+          misses += 1;
+          setStep(2);
+          setGatewayReconnecting(true);
+          setBuildStage((stage) => stage ?? 'characters');
+          await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
+          if (closedRef.current) return;
+          result = await startBuild(
+            {
+              draft_id: draftId,
+              idempotency_key: key,
+              request,
+              replace_active: Boolean(opts?.replaceActive),
+            },
+            authHeaders,
+          );
+        }
+        setGatewayReconnecting(false);
+        if (shouldClearIdempotencyKey(result.status)) writeSession(storageKey, null);
         if (result.status === 501) {
           await legacyGenerateAll();
           return;
@@ -2146,7 +2240,18 @@ export const SocialCrisisWizard = () => {
 
   const resumeDurable = useCallback(async () => {
     if (!activeBuildId) return;
-    const res = await resumeBuild(activeBuildId, authHeaders);
+    setStep2Error(null);
+    let misses = 0;
+    let res = await resumeBuild(activeBuildId, authHeaders);
+    while (classifyMutation(res.status) === 'retry') {
+      if (closedRef.current) return;
+      misses += 1;
+      setGatewayReconnecting(true);
+      await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
+      if (closedRef.current) return;
+      res = await resumeBuild(activeBuildId, authHeaders);
+    }
+    setGatewayReconnecting(false);
     if (!res.ok || !res.data?.build) {
       setStep2Error(res.error || 'Could not resume this build.');
       return;
@@ -3593,7 +3698,7 @@ export const SocialCrisisWizard = () => {
           </p>
         )}
 
-        {polling.reconnecting && (
+        {(polling.reconnecting || gatewayReconnecting) && (
           <p className="mt-3 text-sm text-muted">
             Lost contact with the server — the build continues there. Reconnecting…
           </p>
@@ -3689,11 +3794,16 @@ export const SocialCrisisWizard = () => {
             <div>
               <h4>{durableCard.heading}</h4>
               <p>{durableCard.body}</p>
+              {step2Error && <p className="mt-2">{step2Error}</p>}
             </div>
-            {durableCard.actions[0] !== 'start_over' && (
+            {durableCard.actions[0] && durableCard.actions[0] !== 'start_over' && (
               <button
                 onClick={() => {
                   const action = durableCard.actions[0];
+                  if (action === 'open_review') {
+                    if (activeBuildId) void finishSucceeded(activeBuildId);
+                    return;
+                  }
                   if (action === 'build_again' || action === 'start_over') {
                     void generateAll({ replaceActive: true });
                     return;
@@ -3729,6 +3839,7 @@ export const SocialCrisisWizard = () => {
           </div>
         ) : buildStage === null &&
           !activeBuildId &&
+          !gatewayReconnecting &&
           !step2Loading &&
           !step3Loading &&
           !step4Loading ? (
