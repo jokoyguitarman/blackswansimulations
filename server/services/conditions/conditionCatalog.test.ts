@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { REGISTERED_CONDITION_KEYS } from '../conditionEvaluatorService.js';
 import { CONDITION_CATALOG, isKnownConditionKey, parseConditionKey } from './conditionCatalog.js';
-import { validateInjectTriggerShape } from './injectTriggerShape.js';
+import { triggerShapeForPatch, validateInjectTriggerShape } from './injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './cancellationGate.js';
 
 const fixedCatalogIds = CONDITION_CATALOG.filter((def) => def.kind === 'fixed').map(
@@ -89,6 +89,25 @@ describe('inject trigger shape', () => {
       }),
       'conditional_without_conditions',
     );
+  });
+
+  test('a delivery_config-only patch of a dual-trigger row is allowed', () => {
+    const stored = {
+      trigger_time_minutes: 12,
+      trigger_condition: null,
+      conditions_to_appear: { all: ['sentiment_below_30'] },
+    };
+    assert.equal(
+      triggerShapeForPatch(stored, { delivery_config: { author_handle: '@ada' } }),
+      'unchanged',
+    );
+    assert.equal(triggerShapeForPatch(stored, { title: 'Renamed' }), 'unchanged');
+    assert.equal(
+      triggerShapeForPatch(stored, { trigger_time_minutes: 12 }),
+      'timed_with_conditions',
+    );
+    assert.equal(triggerShapeForPatch(stored, { conditions_to_appear: null }), 'ok');
+    assert.equal(triggerShapeForPatch(stored, { trigger_time_minutes: null }), 'ok');
   });
 
   test('timed, decision-driven and conditional shapes are ok', () => {

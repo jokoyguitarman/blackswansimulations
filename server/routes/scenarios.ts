@@ -34,6 +34,7 @@ import {
   unknownConditionKeys,
 } from '../services/conditions/conditionCatalog.js';
 import {
+  triggerShapeForPatch,
   validateInjectTriggerShape,
   type InjectTriggerShape,
 } from '../services/conditions/injectTriggerShape.js';
@@ -923,28 +924,15 @@ router.patch(
 
       const updates: Record<string, unknown> = { ...req.body };
 
-      const resultingTime =
-        updates.trigger_time_minutes !== undefined
-          ? (updates.trigger_time_minutes as number | null)
-          : (existing.trigger_time_minutes as number | null);
-      const resultingCondition =
-        updates.trigger_condition !== undefined
-          ? (updates.trigger_condition as string | null)
-          : (existing.trigger_condition as string | null);
-      const resultingAppear =
-        updates.conditions_to_appear !== undefined
-          ? updates.conditions_to_appear
-          : existing.conditions_to_appear;
-      if (
-        rejectInjectTriggerShape(
-          res,
-          validateInjectTriggerShape({
-            trigger_time_minutes: resultingTime,
-            trigger_condition: resultingCondition,
-            conditions_to_appear: resultingAppear,
-          }),
-        )
-      ) {
+      const triggerDecision = triggerShapeForPatch(
+        {
+          trigger_time_minutes: existing.trigger_time_minutes as number | null,
+          trigger_condition: existing.trigger_condition as string | null,
+          conditions_to_appear: existing.conditions_to_appear,
+        },
+        updates,
+      );
+      if (triggerDecision !== 'unchanged' && rejectInjectTriggerShape(res, triggerDecision)) {
         return;
       }
       if (

@@ -1797,13 +1797,14 @@ const InjectForm = ({
       : '',
   );
   const [intelSummary, setIntelSummary] = useState(String(dcInit.intel_summary ?? ''));
+  const [conditionsCleared, setConditionsCleared] = useState(false);
 
   const contentChanged =
     inject !== null &&
     (content !== inject.content || authorHandle !== String(dcInit.author_handle ?? ''));
   const imageStale = contentChanged && mediaUrls.length > 0;
   const timeBlank = time.trim() === '';
-  const hasConditions = injectHasConditions(inject);
+  const hasConditions = injectHasConditions(inject) && !conditionsCleared;
   const timedWithConditions = !timeBlank && hasConditions;
   const conditionalWithoutConditions =
     timeBlank && !hasConditions && !inject?.trigger_condition?.trim();
@@ -1858,6 +1859,7 @@ const InjectForm = ({
         trigger_time_minutes: time.trim() === '' ? null : Number(time),
         delivery_config: buildDeliveryConfig(),
       };
+      if (conditionsCleared) fields.conditions_to_appear = null;
       if (inject === null) {
         fields.type = app === 'social_feed' ? 'social_post' : app;
         const res = await api.scenarios.createInject(scenarioId, fields);
@@ -1905,6 +1907,7 @@ const InjectForm = ({
         trigger_time_minutes: time.trim() === '' ? null : Number(time),
         delivery_config: buildDeliveryConfig(),
       };
+      if (conditionsCleared) fields.conditions_to_appear = null;
       await api.scenarios.updateInject(scenarioId, inject.id, fields);
       const res = await api.scenarios.regenerateInjectImage(scenarioId, inject.id);
       const updated = res.data as unknown as InjectRow;
@@ -1965,7 +1968,16 @@ const InjectForm = ({
       {timedWithConditions && (
         <p className="text-[11px] text-warning mt-1">
           An inject is either timed or conditional. Clear the trigger time to keep the conditions,
-          or remove the conditions. Use eligible-after minutes for &quot;not before&quot;.
+          or{' '}
+          <button type="button" className="underline" onClick={() => setConditionsCleared(true)}>
+            clear the conditions
+          </button>{' '}
+          to keep the time. Use eligible-after minutes for &quot;not before&quot;.
+        </p>
+      )}
+      {conditionsCleared && !timeBlank && (
+        <p className="text-[11px] text-muted mt-1">
+          Conditions will be removed when you save. The inject stays timed.
         </p>
       )}
       {conditionalWithoutConditions && (
