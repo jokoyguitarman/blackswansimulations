@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { defaultLadderFor, ladderFromUnknown, validateMoodLadder } from '@shared/moodLadder';
 import { api } from '../../lib/api';
+import { MoodLadderEditor, type LadderInjectOption } from './MoodLadderEditor';
 import { WrSection, WrFold, WrSub, initialsOf, countryCode } from '../UI/Collapsible';
 import { WrIcon, type WrIconName } from '../UI/WarRoomIcon';
 
@@ -31,6 +33,7 @@ export interface StakeholderRecord {
   resolution_criteria: string[];
   persuadability: string;
   hard_constraints: string[];
+  mood_ladder?: unknown | null;
   // Contract v3.2 additive (cast completeness)
   kind?: 'person' | 'group';
   members?: string[];
@@ -288,6 +291,20 @@ export const OrganisationsSection = ({
   );
 };
 
+function ladderInjectOptions(
+  rows: Array<{
+    title: string;
+    trigger_time_minutes: number | null;
+    delivery_config?: { inject_key?: unknown } | null;
+  }>,
+): LadderInjectOption[] {
+  return rows.flatMap((row) => {
+    const key = row.delivery_config?.inject_key;
+    if (typeof key !== 'string' || !key) return [];
+    return [{ key, title: row.title, conditional: row.trigger_time_minutes == null }];
+  });
+}
+
 /* ─── Stakeholders ───────────────────────────────────────────────────────── */
 
 const blankDraft = (orgKey: string | null, owningTeam: string): StakeholderRecord => ({
@@ -315,10 +332,16 @@ const blankDraft = (orgKey: string | null, owningTeam: string): StakeholderRecor
 export const StakeholdersSection = ({
   scenarioId,
   locked,
+  injects = [],
   onInjectsChanged,
 }: {
   scenarioId: string;
   locked: boolean;
+  injects?: Array<{
+    title: string;
+    trigger_time_minutes: number | null;
+    delivery_config?: { inject_key?: unknown } | null;
+  }>;
   /** Called after a save that renamed/deleted authored injects so the inject list can refetch. */
   onInjectsChanged?: () => void;
 }) => {
@@ -504,6 +527,7 @@ export const StakeholdersSection = ({
         resolution_criteria: draft.resolution_criteria,
         persuadability: draft.persuadability,
         hard_constraints: draft.hard_constraints,
+        mood_ladder: draft.mood_ladder ?? null,
       };
       if (editing === 'new') {
         const res = await api.scenarios.createStakeholder(scenarioId, body);
@@ -772,11 +796,47 @@ export const StakeholdersSection = ({
         )}
       </div>
 
+      <MoodLadderEditor
+        fieldId={editing ?? 'stakeholder'}
+        ladder={
+          draft.mood_ladder != null
+            ? ladderFromUnknown(draft.mood_ladder, draft.persuadability)
+            : defaultLadderFor(draft.persuadability)
+        }
+        onChange={(next) => setDraft({ ...draft, mood_ladder: next })}
+        injects={ladderInjectOptions(injects)}
+        errors={
+          draft.mood_ladder != null
+            ? validateMoodLadder({
+                ladder: draft.mood_ladder,
+                knownInjects: ladderInjectOptions(injects),
+              }).map((issue) => issue.message)
+            : []
+        }
+      />
+      {draft.mood_ladder != null && (
+        <button
+          type="button"
+          onClick={() => setDraft({ ...draft, mood_ladder: null })}
+          className="text-[11px] text-muted hover:underline mt-1"
+        >
+          Use the default ladder
+        </button>
+      )}
+
       <div className="flex gap-2 mt-3 items-center">
         <button
           onClick={save}
           disabled={
-            saving || !draft.name.trim() || !draft.title.trim() || !draft.organisation.trim()
+            saving ||
+            !draft.name.trim() ||
+            !draft.title.trim() ||
+            !draft.organisation.trim() ||
+            (draft.mood_ladder != null &&
+              validateMoodLadder({
+                ladder: draft.mood_ladder,
+                knownInjects: ladderInjectOptions(injects),
+              }).length > 0)
           }
           className="text-xs px-3 py-1 bg-brand text-white rounded disabled:opacity-40"
         >

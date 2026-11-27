@@ -16,6 +16,7 @@ import {
 } from '../lib/stakeholderContract.js';
 import { countrySlug } from '../../shared/countries.js';
 import { personaTwinFor } from '../services/stakeholderGenerationService.js';
+import { inspectMoodLadder } from '../services/mood/moodService.js';
 
 /**
  * Trainer CRUD for stakeholder characters (contract §3) on a compiled
@@ -160,6 +161,7 @@ const stakeholderBodySchema = z.object({
   resolution_criteria: z.array(z.string()).max(4).default([]),
   persuadability: z.enum(PERSUADABILITY).default('medium'),
   hard_constraints: z.array(z.string()).max(4).default([]),
+  mood_ladder: z.unknown().nullable().optional(),
 });
 
 function normaliseHandle(raw: string): string {
@@ -219,6 +221,7 @@ function defaultsFor(
       : [],
     persuadability: input.persuadability,
     hard_constraints: input.hard_constraints.map((c) => c.trim()).filter(Boolean),
+    ...(input.mood_ladder != null ? { mood_ladder: input.mood_ladder } : {}),
   };
 }
 
@@ -284,6 +287,11 @@ scenarioStakeholdersRouter.post(
         return res
           .status(400)
           .json({ error: parsed.error.issues[0]?.message || 'Invalid stakeholder' });
+      if (stakeholder.mood_ladder != null) {
+        const issues = await inspectMoodLadder({ scenarioId: id, ladder: stakeholder.mood_ladder });
+        const moodError = issues.find((issue) => issue.level === 'error');
+        if (moodError) return res.status(400).json({ error: moodError.message });
+      }
       const linkErr = validateLinks(ctx, stakeholder);
       if (linkErr) return res.status(400).json({ error: linkErr, code: 'MO-STK-001' });
       await saveStakeholders(id, ctx, [...ctx.stakeholders, stakeholder]);
@@ -352,7 +360,11 @@ scenarioStakeholdersRouter.patch(
         ...(patch.hard_constraints !== undefined
           ? { hard_constraints: patch.hard_constraints.map((c) => c.trim()).filter(Boolean) }
           : {}),
+        ...(patch.mood_ladder !== undefined && patch.mood_ladder !== null
+          ? { mood_ladder: patch.mood_ladder }
+          : {}),
       };
+      if (patch.mood_ladder === null) delete next.mood_ladder;
       if (next.grievance === '') next.resolution_criteria = [];
       else if (next.resolution_criteria.length === 0) {
         return res.status(400).json({
@@ -364,6 +376,11 @@ scenarioStakeholdersRouter.patch(
         return res
           .status(400)
           .json({ error: parsed.error.issues[0]?.message || 'Invalid stakeholder' });
+      if (next.mood_ladder != null) {
+        const issues = await inspectMoodLadder({ scenarioId: id, ladder: next.mood_ladder });
+        const moodError = issues.find((issue) => issue.level === 'error');
+        if (moodError) return res.status(400).json({ error: moodError.message });
+      }
       const linkErr = validateLinks(ctx, next, stakeholderId);
       if (linkErr) return res.status(400).json({ error: linkErr, code: 'MO-STK-001' });
 
