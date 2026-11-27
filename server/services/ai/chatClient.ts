@@ -244,6 +244,12 @@ async function post(
 }
 
 function fail(opts: ChatOptions, error: AiCallError): null {
+  // A disconnect is expected. Don't count it as a provider failure.
+  if (error.message === 'aborted by caller') {
+    logger.info({ label: opts.label }, 'ai.chat aborted');
+    if (opts.throwOnError) throw error;
+    return null;
+  }
   bump(opts.label, 'failures', error.message);
   logger.warn(
     { label: opts.label, status: error.status, detail: error.detail, err: error.message },

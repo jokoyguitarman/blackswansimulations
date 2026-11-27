@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { currentAbortSignal } from './ai/abortContext.js';
 import type {
   TeamBestPractice,
   ResearchGuidelines,
@@ -13,6 +14,15 @@ function normalizeRole(teamName: string): string {
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, '_')
     .trim();
+}
+
+function groupWideIsEmpty(group: ResearchGuidelines['group_wide']): boolean {
+  return (
+    (group.coordination_guidelines?.length ?? 0) === 0 &&
+    (group.escalation_protocols?.length ?? 0) === 0 &&
+    Object.keys(group.timing_benchmarks ?? {}).length === 0 &&
+    (group.case_studies?.length ?? 0) === 0
+  );
 }
 
 function deriveCrisisCategory(crisisType: string): string {
@@ -203,13 +213,22 @@ export async function getOrResearchTeamDoctrines(
     onTeamComplete,
   );
 
+  // A disconnect aborts the AI calls and leaves empty fallbacks. Writing those
+  // would make every later build in this category reuse blank doctrines.
+  if (currentAbortSignal()?.aborted) {
+    return {
+      per_team: [...cachedPerTeam, ...freshResult.per_team],
+      group_wide: cachedGroupWide || freshResult.group_wide,
+    };
+  }
+
   for (const teamRes of freshResult.per_team) {
     if (teamRes.guidelines.length > 0) {
       await cacheTeamDoctrines(teamRes.team_name, teamRes.guidelines, cacheCategory);
     }
   }
 
-  if (!cachedGroupWide) {
+  if (!cachedGroupWide && !groupWideIsEmpty(freshResult.group_wide)) {
     await cacheGroupDoctrines(freshResult.group_wide, cacheCategory);
   }
 

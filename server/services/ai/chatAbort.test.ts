@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
-import { chat, type ChatMessage } from './chatClient.js';
+import { chat, stats, type ChatMessage } from './chatClient.js';
 import { runWithAbortSignal } from './abortContext.js';
 
 // Keep provider calls off the network. A real key in the environment is replaced
@@ -71,6 +71,7 @@ test('X1 aborted ALS signal makes chat return null without calling fetch', async
     );
     assert.equal(result, null);
     assert.equal(calls, 0);
+    assert.equal(stats('x1').failures, 0);
   } finally {
     restoreFetch();
   }
