@@ -258,6 +258,15 @@ export function nextPosture(current: Posture, d: number, f: Familiarity): Postur
   return 'stand';
 }
 
+/**
+ * Unimpeded level speed after panic and before smoke or injury.
+ * The draw is already clamped; this stops panic from commanding a jog.
+ */
+export function unimpededWalkMps(freeWalk: number, panic: number): number {
+  const commanded = Math.max(0, freeWalk) * (1 + 0.6 * panic);
+  return Math.min(SHOWCASE.WALK_SPEED_CAP, commanded);
+}
+
 /** Indoor speed (m/s). Panic is the caller's factor; the showcase passes SHOWCASE_PANIC. */
 export function walkingSpeed(
   K: number,
@@ -267,7 +276,7 @@ export function walkingSpeed(
   freeWalk: number = SHOWCASE.FREE_WALK_SPEED,
 ): number {
   if (posture === 'crawl') return SHOWCASE.CRAWL_SPEED * injuryFactor;
-  const stand = freeWalk * (1 + 0.6 * panic) * jinFactor(K) * injuryFactor;
+  const stand = unimpededWalkMps(freeWalk, panic) * jinFactor(K) * injuryFactor;
   if (posture === 'crouch') return stand * SHOWCASE.CROUCH_SPEED_FACTOR;
   return stand;
 }

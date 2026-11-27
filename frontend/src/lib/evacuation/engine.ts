@@ -44,6 +44,7 @@ import {
   walkedRouteHazard,
   smokeAheadAction,
   sampleWalkSpeedMps,
+  unimpededWalkMps,
   walkingSpeed,
   RouteRegions,
   type ExitChoice,
@@ -687,7 +688,7 @@ export class PolygonEvacuationEngine {
       const pace = ped.fumeHeld
         ? SHOWCASE.CRAWL_SPEED *
           this.irritantFooting(ped, body.position.x, body.position.y, ped.level)
-        : personal * (1 + panicFactor * 0.6);
+        : unimpededWalkMps(personal, panicFactor);
       if (ped.fumeHeld) ped.posture = 'crawl';
       if (this.levelPlan && ped.level) {
         this.stepPlainLevel(body, ped, pace, dt, tau);

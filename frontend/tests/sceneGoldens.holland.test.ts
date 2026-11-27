@@ -3,8 +3,9 @@
  * The job timeout is 60 minutes, so this test's own limit is 55.
  * Pedestrians no longer carry Matter air drag. Each person draws an SFPE
  * unimpeded speed around 1.19 m/s, and panic brings the mean to about
- * 1.55 m/s. Outs are 19, 72, 100 and 112 at T+90, T+120, T+180 and T+240,
- * and T+300 is 112. The blast is at T+60: 5 down (3 lethal, 2 serious)
+ * 1.55 m/s. The unimpeded command stops at 2.0 m/s. Outs are 19, 72, 100
+ * and 112 at T+90, T+120, T+180 and T+240, and T+300 is 112. At T+120,
+ * 43 of those 72 are outside and 29 have left the map. The blast is at T+60: 5 down (3 lethal, 2 serious)
  * and 8 minor. Fume and heat downs stay 0, and the burn counts are
  * unchanged. A forced crawl no longer reverses on the stall corner, so
  * ped 17 is outside by T+210 and off the map by T+240. Three people still

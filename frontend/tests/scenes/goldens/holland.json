@@ -70,8 +70,8 @@
       "states": {
         "down": 5,
         "evacuating": 19,
-        "left_map": 30,
-        "outside": 42,
+        "left_map": 29,
+        "outside": 43,
         "reacting": 24
       },
       "out": 72,

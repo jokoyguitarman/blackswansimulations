@@ -20,7 +20,8 @@
  * The smoke number still saturates there, and walking and sight use
  * that number. Pedestrians no longer carry Matter air drag. Each person
  * draws an SFPE unimpeded speed around 1.19 m/s, and panic brings the
- * mean to about 1.55 m/s. Open outs are 93, 101, 101 and 101 at T+180,
+ * mean to about 1.55 m/s. Capping that command at 2.0 m/s does not move
+ * either crowd. Open outs are 93, 101, 101 and 101 at T+180,
  * T+240, T+300 and T+600, against 67, 88, 95 and 97. Downs are 12 at
  * T+300 and 13 at T+600. No fume downs by T+300, and 19 are still inside
  * at T+600, one of them in the mall. The highest asphyxiant FED still

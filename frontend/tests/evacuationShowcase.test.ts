@@ -259,7 +259,10 @@ describe('evacuation showcase', () => {
     }).__ped;
     ped.state = 'evacuating';
     ped.targetExitId = 'east';
-    const commanded = (ped.freeWalkMps ?? 0) * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC);
+    const commanded = Math.min(
+      SHOWCASE.WALK_SPEED_CAP,
+      (ped.freeWalkMps ?? 0) * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC),
+    );
     for (let i = 0; i < 180; i++) eng.step();
     const before = { x: body.position.x, y: body.position.y };
     for (let i = 0; i < 30; i++) eng.step();
@@ -317,6 +320,64 @@ describe('evacuation showcase', () => {
     const p90 = panicked[Math.ceil(0.9 * n) - 1];
     assert.ok(p90 < 2.2, `panic p90 ${p90.toFixed(3)}`);
     eng.destroy();
+  });
+
+  test('5a6 panic does not command a walk above 2 m/s', () => {
+    assert.equal(SHOWCASE.WALK_SPEED_CAP, 2);
+    const fast = SHOWCASE.WALK_SPEED_MAX;
+    const uncapped = fast * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC);
+    assert.ok(uncapped > SHOWCASE.WALK_SPEED_CAP, `uncapped ${uncapped}`);
+    assert.equal(
+      walkingSpeed(0, 'stand', SHOWCASE.SHOWCASE_PANIC, 1, fast),
+      SHOWCASE.WALK_SPEED_CAP,
+    );
+    // Smoke and injury scale the capped speed, they do not lift it.
+    assert.equal(
+      walkingSpeed(1, 'stand', SHOWCASE.SHOWCASE_PANIC, 0.6, fast),
+      SHOWCASE.WALK_SPEED_CAP * jinFactor(1) * 0.6,
+    );
+    const mean = SHOWCASE.WALK_SPEED_MEAN * (1 + 0.6 * SHOWCASE.SHOWCASE_PANIC);
+    assert.ok(mean < SHOWCASE.WALK_SPEED_CAP);
+    assert.equal(
+      walkingSpeed(0, 'stand', SHOWCASE.SHOWCASE_PANIC, 1, SHOWCASE.WALK_SPEED_MEAN),
+      mean,
+    );
+
+    // The plain engine applies the same cap after its own panic factor.
+    const verts: Vec2[] = [
+      { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 80, y: 8 },
+      { x: 0, y: 8 },
+    ];
+    const plain = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: 1,
+        pedestrianRadius: 0.25,
+        desiredSpeed: SHOWCASE.WALK_SPEED_MEAN,
+        panicFactor: 1,
+        dt: 1 / 60,
+      },
+      [exit({ id: 'east', center: { x: 80, y: 4 }, edgeIndex: 1, width: 4 })],
+    );
+    const body = (plain as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
+    Matter.Body.setPosition(body, { x: 5, y: 4 });
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (body as Matter.Body & { __ped: { freeWalkMps?: number; targetExitId: string } })
+      .__ped;
+    ped.freeWalkMps = fast;
+    ped.targetExitId = 'east';
+    for (let i = 0; i < 180; i++) plain.step();
+    const before = { x: body.position.x, y: body.position.y };
+    for (let i = 0; i < 60; i++) plain.step();
+    const speed = Math.hypot(body.position.x - before.x, body.position.y - before.y);
+    const plainUncapped = fast * (1 + 0.6);
+    assert.ok(
+      speed > 1.7 && speed < 2.15,
+      `plain speed ${speed.toFixed(3)} against a ${plainUncapped.toFixed(2)} m/s command`,
+    );
+    plain.destroy();
   });
 
   test('5a5 a forced crawl is not stuck on a stall corner', () => {

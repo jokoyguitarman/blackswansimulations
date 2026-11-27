@@ -15,10 +15,15 @@ export const SHOWCASE = {
   WALK_SPEED_MEAN: 1.19,
   /** Weidmann's 0.37 m/s spread, scaled by 1.19 / 1.34 so the shape is unchanged. */
   WALK_SPEED_SD: 0.3286,
-  /** Mean minus two standard deviations. */
+  /** Mean minus two standard deviations. Applied before panic. */
   WALK_SPEED_MIN: 0.53,
-  /** Mean plus two standard deviations. Kept under 2.0 m/s. */
+  /** Mean plus two standard deviations. Applied before panic. */
   WALK_SPEED_MAX: 1.85,
+  /**
+   * Unimpeded walking speed after panic, before smoke and injury.
+   * The pre-panic clamp times 1.3 would command 2.41 m/s.
+   */
+  WALK_SPEED_CAP: 2,
   OUTDOOR_RUN_SPEED: 2.14,
   /** The indoor evacuation mean, so stepping outside does not slow the walk. */
   OUTDOOR_WALK_SPEED: 1.55,
@@ -132,7 +137,11 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
   },
   WALK_SPEED_MAX: {
     status: 'assumed',
-    ref: 'assumed: SFPE mean plus two scaled standard deviations, and not above 2.0 m/s',
+    ref: 'assumed: SFPE mean plus two scaled standard deviations, applied before panic. IMO MSC.1/Circ.1533 fastest unimpeded group is 1.85 m/s',
+  },
+  WALK_SPEED_CAP: {
+    status: 'assumed',
+    ref: 'assumed: post-panic unimpeded walking ceiling of 2.0 m/s, before smoke and injury. The pre-panic clamp times 1.3 would command 2.41 m/s, which is jogging indoors',
   },
   OUTDOOR_RUN_SPEED: {
     status: 'seed_pending',
