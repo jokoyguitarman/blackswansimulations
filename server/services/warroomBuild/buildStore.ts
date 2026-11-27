@@ -130,6 +130,30 @@ export interface BuildStore {
   touchSeen(buildId: string): Promise<void>;
   countActive(userId: string): Promise<number>;
   sweep(retentionDays: number): Promise<number>;
+  /**
+   * Claim a succeeded build for compile. Null when another compile holds a
+   * fresh lease (running and heartbeat within 90s) or the build is not succeeded.
+   * A failed compile, or a running one whose heartbeat is older than 90s, is claimable.
+   */
+  claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null>;
+  saveCompileCredit(buildId: string, ledgerId: string, invoiceId: string | null): Promise<void>;
+  touchCompileHeartbeat(buildId: string, now: Date): Promise<void>;
+  succeedCompile(buildId: string, scenarioId: string): Promise<void>;
+  /** Failure refunds outside this method. This clears the stored charge so a retry can consume again. */
+  failCompile(buildId: string): Promise<void>;
+}
+
+/** A compile can start, or take over a run whose heartbeat is older than 90s. */
+export function compileClaimable(
+  row: { compile_status: BuildRow['compile_status']; compile_heartbeat_at: string | null },
+  now: Date,
+): boolean {
+  if (row.compile_status == null || row.compile_status === 'failed') return true;
+  if (row.compile_status !== 'running' || row.compile_heartbeat_at == null) return false;
+  return Date.parse(row.compile_heartbeat_at) < now.getTime() - 90_000;
 }
 
 const ACTIVE: BuildStatus[] = ['queued', 'running'];
@@ -611,6 +635,61 @@ export class MemoryBuildStore implements BuildStore {
       return removed;
     });
   }
+
+  claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.status !== 'succeeded' || !compileClaimable(row, now)) return null;
+      const iso = now.toISOString();
+      row.compile_status = 'running';
+      row.compile_heartbeat_at = iso;
+      row.updated_at = iso;
+      return this.copy(row);
+    });
+  }
+
+  saveCompileCredit(buildId: string, ledgerId: string, invoiceId: string | null): Promise<void> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running') return;
+      row.credit_ledger_id = ledgerId;
+      row.credit_invoice_id = invoiceId;
+      row.updated_at = this.iso();
+    });
+  }
+
+  touchCompileHeartbeat(buildId: string, now: Date): Promise<void> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.compile_status !== 'running') return;
+      row.compile_heartbeat_at = now.toISOString();
+      row.updated_at = now.toISOString();
+    });
+  }
+
+  succeedCompile(buildId: string, scenarioId: string): Promise<void> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row) return;
+      row.compile_status = 'succeeded';
+      row.scenario_id = scenarioId;
+      row.updated_at = this.iso();
+    });
+  }
+
+  failCompile(buildId: string): Promise<void> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row) return;
+      row.compile_status = 'failed';
+      row.credit_ledger_id = null;
+      row.credit_invoice_id = null;
+      row.updated_at = this.iso();
+    });
+  }
 }
 
 function asRows<T>(data: T[] | T | null): T[] {
@@ -1088,5 +1167,80 @@ export class SupabaseBuildStore implements BuildStore {
       .select('id, status, finished_at');
     if (error) throw error;
     return data?.length ?? 0;
+  }
+
+  async claimCompile(
+    buildId: string,
+    now: Date,
+  ): Promise<{ credit_ledger_id: string | null; credit_invoice_id: string | null } | null> {
+    const cutoff = new Date(now.getTime() - 90_000).toISOString();
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({
+        compile_status: 'running',
+        compile_heartbeat_at: now.toISOString(),
+      })
+      .eq('id', buildId)
+      .eq('status', 'succeeded')
+      .or(
+        `compile_status.is.null,compile_status.eq.failed,and(compile_status.eq.running,compile_heartbeat_at.lt.${cutoff})`,
+      )
+      // Filtered columns stay in RETURNING. PostgREST 12/13 otherwise answers 42703.
+      .select(
+        'id, status, compile_status, compile_heartbeat_at, credit_ledger_id, credit_invoice_id, scenario_id, created_by',
+      );
+    if (error) throw error;
+    const row = data?.[0];
+    if (!row) return null;
+    return {
+      credit_ledger_id: row.credit_ledger_id ?? null,
+      credit_invoice_id: row.credit_invoice_id ?? null,
+    };
+  }
+
+  async saveCompileCredit(
+    buildId: string,
+    ledgerId: string,
+    invoiceId: string | null,
+  ): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ credit_ledger_id: ledgerId, credit_invoice_id: invoiceId })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .select('id, compile_status');
+    if (error) throw error;
+  }
+
+  async touchCompileHeartbeat(buildId: string, now: Date): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ compile_heartbeat_at: now.toISOString() })
+      .eq('id', buildId)
+      .eq('compile_status', 'running')
+      .select('id, compile_status');
+    if (error) throw error;
+  }
+
+  async succeedCompile(buildId: string, scenarioId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({ compile_status: 'succeeded', scenario_id: scenarioId })
+      .eq('id', buildId)
+      .select('id');
+    if (error) throw error;
+  }
+
+  async failCompile(buildId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({
+        compile_status: 'failed',
+        credit_ledger_id: null,
+        credit_invoice_id: null,
+      })
+      .eq('id', buildId)
+      .select('id');
+    if (error) throw error;
   }
 }

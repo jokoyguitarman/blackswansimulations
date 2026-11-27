@@ -72,9 +72,12 @@ import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js'
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
+import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const compileBuilds = new SupabaseBuildStore();
 
 const router = Router();
 
@@ -961,6 +964,8 @@ router.post(
         // Cast-generated notification SOP steps + planner hints (organic-decisions plan §4.1).
         sop_steps: z.array(z.unknown()).optional(),
         decision_context: z.record(z.string(), z.unknown()).optional(),
+        // Durable builds: one scenario credit per build. Omitted on the legacy path.
+        build_id: z.string().uuid().optional(),
       }),
     }),
   ),
@@ -1010,11 +1015,54 @@ router.post(
       compileRoster = rosterCheck.roster;
     }
 
-    // The compile consumes the scenario credit. Consume up-front (race-safe)
-    // before starting the async job; refund if compilation fails.
+    // The compile consumes the scenario credit. Without a build id this is the
+    // legacy path: consume up-front and refund if compilation fails. With a
+    // build id the charge is claimed on the build, once, and a crash reuses it.
     let creditInvoiceId: string | null = null;
     let creditLedgerId: string | null = null;
-    if (!isAdmin(user)) {
+    const durableBuildId = (req.body.build_id as string | undefined) ?? null;
+    if (durableBuildId) {
+      const begun = await beginCompileCharge({
+        store: compileBuilds,
+        buildId: durableBuildId,
+        userId: user.id,
+        isAdmin: isAdmin(user),
+        now: new Date(),
+        consume: async () => {
+          const consumed = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+          if (!consumed.ok || !consumed.ledgerId) return { ok: false };
+          return {
+            ok: true,
+            ledgerId: consumed.ledgerId,
+            invoiceId: consumed.fundingInvoiceId ?? null,
+          };
+        },
+      });
+      if (begun.outcome === 'not_found') {
+        return res.status(404).json({ error: 'Build not found', code: 'BUILD_NOT_FOUND' });
+      }
+      if (begun.outcome === 'not_done') {
+        return res.status(409).json({ error: 'Build is not finished', code: 'BUILD_NOT_DONE' });
+      }
+      if (begun.outcome === 'completed') {
+        return res.status(200).json({
+          job_id: null,
+          status: 'completed',
+          data: { scenario_id: begun.scenarioId },
+        });
+      }
+      if (begun.outcome === 'in_progress') {
+        return res.status(409).json({
+          error: 'Compilation is already running — wait a moment and reopen this draft.',
+          code: 'COMPILE_IN_PROGRESS',
+        });
+      }
+      if (begun.outcome === 'no_credit') {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+      }
+      creditLedgerId = begun.ledgerId;
+      creditInvoiceId = begun.invoiceId;
+    } else if (!isAdmin(user)) {
       const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
       if (!consume.ok) {
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
@@ -1030,6 +1078,14 @@ router.post(
     const body = req.body;
 
     void (async () => {
+      const heartbeat = durableBuildId
+        ? setInterval(() => {
+            void compileBuilds.touchCompileHeartbeat(durableBuildId, new Date()).catch((err) => {
+              logger.warn({ err, buildId: durableBuildId }, 'compile_heartbeat_failed');
+            });
+          }, 30_000)
+        : null;
+      heartbeat?.unref?.();
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
@@ -1220,6 +1276,7 @@ router.post(
             .update({ scenario_id: scenarioId })
             .eq('id', creditLedgerId);
         }
+        if (durableBuildId) await compileBuilds.succeedCompile(durableBuildId, scenarioId);
 
         // Pre-generate images in background (doesn't block compile result)
         const personas = (multiArtifacts ? multiArtifacts.personas : body.personas) as NPCPersona[];
@@ -1288,7 +1345,15 @@ router.post(
         logger.info({ jobId, scenarioId }, 'Compile completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
-        if (creditLedgerId) {
+        if (durableBuildId) {
+          await failCompileCharge({
+            store: compileBuilds,
+            buildId: durableBuildId,
+            ledgerId: creditLedgerId,
+            invoiceId: creditInvoiceId,
+            refund: (invoiceId) => refundCredit(user.id, 'scenario', invoiceId),
+          });
+        } else if (creditLedgerId) {
           await refundCredit(user.id, 'scenario', creditInvoiceId);
         }
         // Contract §9 violations surface their rule so the trainer/editor can act on them;
@@ -1301,6 +1366,8 @@ router.post(
               ? `Compilation failed: database ${MIGRATION_197_HINT}`
               : 'Compilation failed';
         aiJobs.set(jobId, { status: 'failed', error, startedAt: Date.now() });
+      } finally {
+        if (heartbeat) clearInterval(heartbeat);
       }
     })();
   },

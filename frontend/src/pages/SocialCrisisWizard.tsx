@@ -844,6 +844,8 @@ export const SocialCrisisWizard = () => {
   const [lastBuildId, setLastBuildId] = useState<string | null>(null);
   const [gatewayReconnecting, setGatewayReconnecting] = useState(false);
   const appliedBuildRef = useRef<string | null>(null);
+  /** Survives a reload that never set activeBuildId, so Retry can reopen the review. */
+  const reviewBuildIdRef = useRef<string | null>(null);
   const startingRef = useRef(false);
   const closedRef = useRef(false);
   const requestHashRef = useRef<string | null>(null);
@@ -1107,6 +1109,7 @@ export const SocialCrisisWizard = () => {
 
   const finishSucceeded = useCallback(
     async (buildId: string) => {
+      reviewBuildIdRef.current = buildId;
       if (appliedBuildRef.current === buildId) return;
       appliedBuildRef.current = buildId;
       let misses = 0;
@@ -3801,7 +3804,8 @@ export const SocialCrisisWizard = () => {
                 onClick={() => {
                   const action = durableCard.actions[0];
                   if (action === 'open_review') {
-                    if (activeBuildId) void finishSucceeded(activeBuildId);
+                    const id = reviewBuildIdRef.current ?? activeBuildId;
+                    if (id) void finishSucceeded(id);
                     return;
                   }
                   if (action === 'build_again' || action === 'start_over') {
