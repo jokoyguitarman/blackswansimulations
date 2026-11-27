@@ -360,6 +360,12 @@ export class FireSimulation {
   /** Walls from the latest step, so a fireball respects an open spray. */
   private sceneWalls: InteriorWall[] = [];
   private charge: ChargeSpec | null = null;
+  /**
+   * Discrete changes the step made on its own: a cell catching fire, a room
+   * latching flashover, a line rupturing, a jet or arc starting, a head
+   * opening, a valve or arc shut by a timer or an interlock. It only counts.
+   */
+  private onsetCount = 0;
 
   constructor(params?: FireParams) {
     this.params = params ?? { ...DEFAULT_FIRE_PARAMS };
@@ -377,6 +383,7 @@ export class FireSimulation {
     this.compartmentKey = '';
     this.flashedStuds.clear();
     this.burnLimit.clear();
+    this.onsetCount = 0;
     this.gasRuntime.clear();
     this.arcRuntime.clear();
     this.suppressionRuntime.clear();
@@ -493,6 +500,7 @@ export class FireSimulation {
     const state = this.states.get(id);
     if (!state || state.state === 'burning' || state.state === 'burnt_out') return;
     const cell = this.burningCell(id);
+    this.onsetCount += 1;
     state.state = 'burning';
     state.timer = burnoutSec(cell);
     state.fuelFactor = 1;
@@ -687,6 +695,16 @@ export class FireSimulation {
     const meta = this.burn.get(id);
     if (!meta) return null;
     return this.releaseKw(this.burningCell(id), meta);
+  }
+
+  /** Discrete changes so far. A step that raised it made one. */
+  onsets(): number {
+    return this.onsetCount;
+  }
+
+  /** Lookups only `init` and `addStuds` write. A snapshot shares them. */
+  topology(): object[] {
+    return [this.studIndex, this.neighborCache];
   }
 
   /** True once this stud has met the flashover rule. The latch does not clear. */
@@ -919,6 +937,7 @@ export class FireSimulation {
         inFireball || this.incidentKpa(origin, arc.pos, spec) >= ELECTRICAL_DAMAGE_KPA;
       if (!faulted) continue;
       arc.damaged = true;
+      if (!arc.arcing) this.onsetCount += 1;
       arc.arcing = true;
     }
     for (const line of this.gasRuntime.values()) {
@@ -927,6 +946,7 @@ export class FireSimulation {
       const dist = Math.hypot(line.pos.x - origin.x, line.pos.y - origin.y);
       if (!(this.incidentKpa(origin, line.pos, spec) >= GAS_RUPTURE_KPA)) continue;
       line.ruptured = true;
+      this.onsetCount += 1;
       const inFireball = fireballRadiusM > 0 && dist <= fireballRadiusM + 1e-6;
       if (inFireball || this.ignitionNear(line, walls)) line.jetting = true;
     }
@@ -1070,6 +1090,7 @@ export class FireSimulation {
         if (line.age + 1e-9 >= line.autoShutoffSec) {
           line.jetting = false;
           line.shutoff = true;
+          this.onsetCount += 1;
         }
       } else {
         line.age += dt;
@@ -1139,7 +1160,10 @@ export class FireSimulation {
   private refreshJets(walls: InteriorWall[]) {
     for (const line of this.gasRuntime.values()) {
       if (line.shutoff || !line.ruptured || line.jetting) continue;
-      if (this.ignitionNear(line, walls)) line.jetting = true;
+      if (this.ignitionNear(line, walls)) {
+        line.jetting = true;
+        this.onsetCount += 1;
+      }
     }
   }
 
@@ -1235,6 +1259,7 @@ export class FireSimulation {
         if (step.openedAt != null) {
           const tOpen = cursor + step.openedAt;
           head.open = true;
+          this.onsetCount += 1;
           openedHead.set(head.id, tOpen);
           this.markCover(head, walls, tOpen);
           this.snapshotReached(head, fires, tOpen, walls, heldFuel, openedFuel);
@@ -1346,12 +1371,14 @@ export class FireSimulation {
       if (line.jetting && (line.closedAt == null || tOpen < line.closedAt)) line.closedAt = tOpen;
       line.shutoff = true;
       line.jetting = false;
+      this.onsetCount += 1;
     }
     for (const arc of this.arcRuntime.values()) {
       if (arc.shutoff) continue;
       if (!this.headReaches(head, arc.pos, arc.level, walls)) continue;
       arc.shutoff = true;
       arc.arcing = false;
+      this.onsetCount += 1;
     }
   }
 
@@ -1538,6 +1565,7 @@ export class FireSimulation {
         const hot = (roomHeat.get(room) ?? 0) >= FLASHOVER_ROOM_KW;
         const latched = members.some((id) => this.flashedStuds.has(id));
         if (!hot && !latched) continue;
+        if (!latched) this.onsetCount += 1;
         // One layer, one oxygen. The decision is the room's, so a starved
         // latch does not ask again for every stud.
         const mayLight = this.roomAllowsIgnition(members);
@@ -1562,7 +1590,10 @@ export class FireSimulation {
           const dist = Math.hypot(other.x - src.x, other.y - src.y);
           if (dist <= LOCAL_FLASHOVER_RADIUS_M + 1e-6) sum += other.heat;
         }
-        if (sum >= FLASHOVER_ROOM_KW) this.flashedStuds.add(src.id);
+        if (sum >= FLASHOVER_ROOM_KW) {
+          this.flashedStuds.add(src.id);
+          this.onsetCount += 1;
+        }
       }
     }
   }
