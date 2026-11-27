@@ -2485,7 +2485,7 @@ export class PolygonEvacuationEngine {
       if (ped.fec != null && ped.fec > 0) snap.fumeFec = ped.fec;
       if (ped.fumeHeld) snap.fumeHeld = true;
       if (ped.fumeDown) snap.fumeDown = true;
-      if (ped.frozen) snap.frozen = true;
+      if (ped.frozen && ped.state === 'evacuating') snap.frozen = true;
       if (ped.heatDown) snap.heatDown = true;
       snap.zoneId = ped.zoneId ?? null;
       if (ped.blastKpa != null) {
@@ -2544,8 +2544,9 @@ export class PolygonEvacuationEngine {
       else if (s.state === 'reacting') reacting++;
       else if (s.state === 'evacuating') evacuating++;
       else if (s.state === 'outside') outside++;
-      if (s.state === 'evacuating' && s.posture === 'crouch') crouching++;
-      if (s.state === 'evacuating' && s.posture === 'crawl') crawling++;
+      // A frozen person keeps the posture they froze in but is not moving in it.
+      if (s.state === 'evacuating' && !s.frozen && s.posture === 'crouch') crouching++;
+      if (s.state === 'evacuating' && !s.frozen && s.posture === 'crawl') crawling++;
       if (s.injury === 'minor') minorInjured++;
       if (s.state === 'down' && s.injury === 'lethal') lethal++;
       if (s.state === 'down' && s.injury === 'serious') serious++;
@@ -2591,7 +2592,7 @@ export class PolygonEvacuationEngine {
       if (!id || !out[id]) continue;
       if (s.state === 'idle' || s.state === 'reacting' || s.state === 'evacuating')
         out[id].remaining++;
-      if (s.state === 'evacuating' && s.posture === 'crawl') out[id].crawling++;
+      if (s.state === 'evacuating' && !s.frozen && s.posture === 'crawl') out[id].crawling++;
     }
     return out;
   }
