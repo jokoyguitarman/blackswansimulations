@@ -339,7 +339,7 @@ function ExecDecisionCard({ d, onDismiss }: { d: ExecDecisionView; onDismiss: ()
 /** Stakeholder reconsideration outcomes (docs/stakeholder-runtime-plan.md §3.6). */
 interface StakeholderEvent {
   id: string;
-  event_type: 'inject_cancelled' | 'inject_modified' | 'inject_delayed' | 'stakeholder_verdict';
+  event_type: 'inject_cancelled' | 'inject_modified' | 'inject_delayed' | 'stakeholder_verdict' | 'stakeholder_mood';
   description: string;
   metadata: {
     inject_id?: string;
@@ -1381,8 +1381,33 @@ export default function TrainerSimDashboard() {
       'social_post.flagged',
       'social_posts.engagement_update',
       'team_scores.updated',
+      'stakeholder_mood.changed',
     ],
     onEvent: (evt) => {
+      if (evt.type === 'stakeholder_mood.changed' && evt.data) {
+        const data = evt.data as {
+          stakeholder_id?: string;
+          to?: string;
+          label?: string;
+          minute?: number;
+          profile?: { wait_minutes?: number; missed_calls?: number };
+        };
+        const label = data.label || data.to || 'changed';
+        const waited = data.profile?.wait_minutes;
+        setStakeholderEvents((current) => [
+          {
+            id: `mood-${data.stakeholder_id ?? 'stakeholder'}-${data.to ?? label}-${data.minute ?? Date.now()}`,
+            event_type: 'stakeholder_mood',
+            description: `${data.stakeholder_id ?? 'A stakeholder'} is now ${label}${
+              waited != null ? ` (waited ${waited} min)` : ''
+            }.`,
+            metadata: { stakeholder_id: data.stakeholder_id, verdict: label },
+            created_at: new Date().toISOString(),
+          },
+          ...current,
+        ]);
+        return;
+      }
       if (evt.type === 'social_state.updated' && evt.data) {
         setSocialState(evt.data as unknown as SocialState);
         loadIntelStatus();

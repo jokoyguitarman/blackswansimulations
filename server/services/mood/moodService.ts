@@ -21,7 +21,9 @@ import {
   consequencesToFire,
   defaultLadderFor,
   extendHeldIntervals,
+  holdSnapshot,
   isBaseRung,
+  type HoldSnapshot,
   ladderFromUnknown,
   mergeLadders,
   moodLineFor,
@@ -60,7 +62,12 @@ interface MoodRow {
   rung_id: string;
   episode_anchor_minute: number | null;
   entered_minute: number;
-  profile: WaitProfile & { held_intervals?: HeldInterval[]; terminal?: boolean; ladder_ids?: string[] };
+  profile: WaitProfile & {
+    held_intervals?: HeldInterval[];
+    terminal?: boolean;
+    ladder_ids?: string[];
+    hold_profile?: HoldSnapshot | null;
+  };
   history: Array<{ rung: string; minute: number; reason: string }>;
   consequences_fired: string[];
   locks: MoodLocks;
@@ -99,7 +106,7 @@ function errorCode(err: unknown): string | null {
 
 function schemaMissing(err: unknown): boolean {
   const code = errorCode(err);
-  return code != null && SCHEMA_CODES.has(code);
+  return code != null && (SCHEMA_CODES.has(code) || code === 'PGRST202');
 }
 
 function noteUnavailable(): void {
@@ -294,6 +301,7 @@ export async function getMoodNow(input: {
     const selection = selectRung(ladder, profile, {
       rungId: stored?.rung_id ?? null,
       pendingRecoverySteps: stored?.locks.pending_recovery_steps ?? 0,
+      baseline: stored?.profile.hold_profile ?? null,
     });
     const now = snapshotOf(ladder, selection.rung, profile, name);
     now.scope = input.scope;
@@ -308,6 +316,8 @@ export async function getMoodNow(input: {
         ladder,
         selectionRung: selection.rung,
         selectionReason: selection.reason,
+        selectionHold: selection.hold,
+        selectionClearHold: selection.clearHold,
         profile,
         held,
         stored,
@@ -332,6 +342,8 @@ async function persistSelection(input: {
   ladder: MoodLadder;
   selectionRung: MoodRung;
   selectionReason: string;
+  selectionHold: boolean;
+  selectionClearHold: boolean;
   profile: WaitProfile;
   held: HeldInterval[];
   stored: MoodRow | null;
@@ -340,8 +352,6 @@ async function persistSelection(input: {
   if (tablesMissing || inMoodWrite) return;
   const entered = !input.stored || input.stored.rung_id !== input.selectionRung.id;
   const pending = input.stored?.locks.pending_recovery_steps ?? 0;
-  const locks: MoodLocks = { ...(input.stored?.locks ?? {}) };
-  if (pending > 0) delete locks.pending_recovery_steps;
   const history = [...(input.stored?.history ?? [])];
   if (entered) {
     history.push({
@@ -353,42 +363,40 @@ async function persistSelection(input: {
   const due = consequencesToFire(input.selectionRung, input.stored?.consequences_fired ?? []);
   const heldChanged =
     JSON.stringify(input.held) !== JSON.stringify(input.stored?.profile.held_intervals ?? []);
-  if (!entered && due.length === 0 && !heldChanged && pending === 0) return;
+  const holdProfile = input.selectionHold
+    ? holdSnapshot(input.profile)
+    : input.selectionClearHold
+      ? null
+      : (input.stored?.profile.hold_profile ?? null);
+  if (!entered && due.length === 0 && !heldChanged && pending === 0 && !input.selectionHold && !input.selectionClearHold) return;
 
   inMoodWrite = true;
   try {
-    const row = {
-      session_id: input.sessionId,
-      stakeholder_id: input.stakeholderId,
-      scope_team: input.scope,
-      rung_id: input.selectionRung.id,
-      episode_anchor_minute: input.profile.episode_anchor_minute,
-      entered_minute: entered ? input.atMinute : (input.stored?.entered_minute ?? input.atMinute),
+    const saved = await saveMoodFacts({
+      sessionId: input.sessionId,
+      stakeholderId: input.stakeholderId,
+      scope: input.scope,
+      rungId: input.selectionRung.id,
+      episodeAnchor: input.profile.episode_anchor_minute,
+      enteredMinute: entered ? input.atMinute : (input.stored?.entered_minute ?? input.atMinute),
       profile: {
         ...input.profile,
         held_intervals: input.held,
         terminal: input.selectionRung.terminal === true,
         ladder_ids: activeRungs(input.ladder).map((item) => item.id),
+        hold_profile: holdProfile,
       },
       history,
-      consequences_fired: input.stored?.consequences_fired ?? [],
-      locks,
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await supabaseAdmin.from('stakeholder_moods').upsert(row, {
-      onConflict: 'session_id,stakeholder_id,scope_team',
     });
-    if (error) {
-      if (schemaMissing(error)) noteUnavailable();
-      else logger.warn({ err: error, sessionId: input.sessionId }, 'mood row was not saved');
-      return;
-    }
+    if (!saved) return;
+    if (pending > 0) await consumeRecovery(input.sessionId, input.stakeholderId, input.scope);
     if (entered) {
       emitTrainer(input.trainerId, 'stakeholder_mood.changed', {
         stakeholder_id: input.stakeholderId,
         scope_team: input.scope,
         from: input.stored?.rung_id ?? null,
         to: input.selectionRung.id,
+        label: input.selectionRung.label,
         minute: input.atMinute,
         profile: input.profile,
       });
@@ -416,15 +424,13 @@ async function fireConsequence(
   id: string,
   consequence: MoodConsequence,
 ): Promise<void> {
-  if (consequence.type === 'publish_inject') {
-    const published = await publishConditional(input, consequence.inject_key);
-    if (!published) return;
-    await claim(input, id, {});
-    return;
-  }
-  const patch = lockPatch(consequence, input.selectionRung.id);
+  const patch = consequence.type === 'publish_inject' ? {} : lockPatch(consequence, input.selectionRung.id);
   const claimed = await claim(input, id, patch);
   if (!claimed) return;
+  if (consequence.type === 'publish_inject') {
+    await publishConditional(input, consequence.inject_key);
+    return;
+  }
   if (consequence.type === 'stop_chains') {
     const { stopChainsForMood } = await import('../escalation/escalationService.js');
     await stopChainsForMood({
@@ -451,47 +457,91 @@ function lockPatch(consequence: MoodConsequence, rungId: string): MoodLocks {
   return {};
 }
 
+async function saveMoodFacts(input: {
+  sessionId: string;
+  stakeholderId: string;
+  scope: string;
+  rungId: string;
+  episodeAnchor: number | null;
+  enteredMinute: number;
+  profile: MoodRow['profile'];
+  history: MoodRow['history'];
+}): Promise<boolean> {
+  const facts = {
+    rung_id: input.rungId,
+    episode_anchor_minute: input.episodeAnchor,
+    entered_minute: input.enteredMinute,
+    profile: input.profile,
+    history: input.history,
+    updated_at: new Date().toISOString(),
+  };
+  const updated = await supabaseAdmin
+    .from('stakeholder_moods')
+    .update(facts)
+    .eq('session_id', input.sessionId)
+    .eq('stakeholder_id', input.stakeholderId)
+    .eq('scope_team', input.scope)
+    .select('stakeholder_id');
+  if (updated.error) {
+    if (schemaMissing(updated.error)) noteUnavailable();
+    else logger.warn({ err: updated.error, sessionId: input.sessionId }, 'mood row was not saved');
+    return false;
+  }
+  if ((updated.data?.length ?? 0) > 0) return true;
+  const inserted = await supabaseAdmin.from('stakeholder_moods').insert({
+    session_id: input.sessionId,
+    stakeholder_id: input.stakeholderId,
+    scope_team: input.scope,
+    ...facts,
+    consequences_fired: [],
+    locks: {},
+  });
+  if (inserted.error?.code === '23505') {
+    const retry = await supabaseAdmin
+      .from('stakeholder_moods')
+      .update(facts)
+      .eq('session_id', input.sessionId)
+      .eq('stakeholder_id', input.stakeholderId)
+      .eq('scope_team', input.scope);
+    if (retry.error && schemaMissing(retry.error)) noteUnavailable();
+    return !retry.error;
+  }
+  if (inserted.error) {
+    if (schemaMissing(inserted.error)) noteUnavailable();
+    else logger.warn({ err: inserted.error, sessionId: input.sessionId }, 'mood row was not saved');
+    return false;
+  }
+  return true;
+}
+
 async function claim(
   input: { sessionId: string; stakeholderId: string; scope: string },
   id: string,
   patch: MoodLocks,
 ): Promise<boolean> {
-  const { data: current, error: readError } = await supabaseAdmin
-    .from('stakeholder_moods')
-    .select('consequences_fired, locks')
-    .eq('session_id', input.sessionId)
-    .eq('stakeholder_id', input.stakeholderId)
-    .eq('scope_team', input.scope)
-    .maybeSingle();
-  if (readError) {
-    if (schemaMissing(readError)) noteUnavailable();
-    return false;
-  }
-  const fired = Array.isArray(current?.consequences_fired) ? (current.consequences_fired as string[]) : [];
-  if (fired.includes(id)) return false;
-  const locks = { ...((current?.locks ?? {}) as MoodLocks) };
-  if (patch.grievance_append) {
-    locks.grievance_append = [...(locks.grievance_append ?? []), ...patch.grievance_append];
-  }
-  const nextLocks = { ...locks, ...patch, grievance_append: locks.grievance_append };
-  const { data, error } = await supabaseAdmin
-    .from('stakeholder_moods')
-    .update({
-      consequences_fired: [...fired, id],
-      locks: nextLocks,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('session_id', input.sessionId)
-    .eq('stakeholder_id', input.stakeholderId)
-    .eq('scope_team', input.scope)
-    .not('consequences_fired', 'cs', `{"${id}"}`)
-    .select('stakeholder_id');
+  if (tablesMissing) return false;
+  const { data, error } = await supabaseAdmin.rpc('claim_mood_consequence', {
+    p_session_id: input.sessionId,
+    p_stakeholder_id: input.stakeholderId,
+    p_scope_team: input.scope,
+    p_consequence_id: id,
+    p_patch: patch,
+  });
   if (error) {
     if (schemaMissing(error)) noteUnavailable();
     else logger.warn({ err: error, id }, 'mood consequence was not claimed');
     return false;
   }
-  return (data?.length ?? 0) > 0;
+  return data === true;
+}
+
+async function consumeRecovery(sessionId: string, stakeholderId: string, scope: string): Promise<void> {
+  const { error } = await supabaseAdmin.rpc('consume_mood_recovery', {
+    p_session_id: sessionId,
+    p_stakeholder_id: stakeholderId,
+    p_scope_team: scope,
+  });
+  if (error && schemaMissing(error)) noteUnavailable();
 }
 
 async function publishConditional(
@@ -687,16 +737,11 @@ export async function noteGoodReply(sessionId: string, deliveryId: string): Prom
     if (!stored) return;
     const rung = activeRungs(ladder).find((item) => item.id === stored.rung_id);
     if (rung?.terminal) return;
-    const steps = (stored.locks.pending_recovery_steps ?? 0) + (ladder.recovery === 'reset_on_good_reply' ? 1 : 1);
-    const { error } = await supabaseAdmin
-      .from('stakeholder_moods')
-      .update({
-        locks: { ...stored.locks, pending_recovery_steps: steps },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('session_id', sessionId)
-      .eq('stakeholder_id', delivery.stakeholderId)
-      .eq('scope_team', delivery.scope);
+    const { error } = await supabaseAdmin.rpc('bump_mood_recovery', {
+      p_session_id: sessionId,
+      p_stakeholder_id: delivery.stakeholderId,
+      p_scope_team: delivery.scope,
+    });
     if (error && schemaMissing(error)) noteUnavailable();
   } catch (err) {
     if (schemaMissing(err)) noteUnavailable();

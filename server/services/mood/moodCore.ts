@@ -99,16 +99,46 @@ export interface HeldInterval {
   end: number;
 }
 
+export interface HoldSnapshot {
+  wait_minutes: number;
+  missed_calls: number;
+  unanswered_messages: number;
+  followups_sent: number;
+}
+
+export interface MoodLockState {
+  verdict?: 'keep';
+  verdict_rung?: string;
+  persuadability?: string;
+  grievance_append?: string[];
+  stop_chains?: boolean;
+  pending_recovery_steps?: number;
+}
+
+export interface ClaimState {
+  fired: string[];
+  locks: MoodLockState;
+}
+
 export interface CurrentMood {
   rungId: string | null;
   /** Good replies judged since the last interaction. Each one can drop a rung. */
   pendingRecoverySteps?: number;
+  /**
+   * Profile captured when recovery last landed. The rung stays down until
+   * the wait gets worse than this snapshot.
+   */
+  baseline?: HoldSnapshot | null;
 }
 
 export interface MoodSelection {
   rung: MoodRung;
   index: number;
   reason: 'matched' | 'held' | 'recovery' | 'terminal';
+  /** Keep the recovered rung until the wait profile gets worse. */
+  hold: boolean;
+  /** The held snapshot is stale because new waiting has accrued. */
+  clearHold: boolean;
 }
 
 export interface MoodIssue {
@@ -397,24 +427,88 @@ export function selectRung(ladder: MoodLadder, profile: WaitProfile, current?: C
   });
   const currentIndex = current?.rungId ? rungs.findIndex((item) => item.id === current.rungId) : -1;
   if (currentIndex >= 0 && rungs[currentIndex]?.terminal) {
-    return { rung: rungs[currentIndex], index: currentIndex, reason: 'terminal' };
+    return { rung: rungs[currentIndex], index: currentIndex, reason: 'terminal', hold: false, clearHold: false };
   }
   if (currentIndex < 0) {
-    return { rung: rungs[candidate], index: candidate, reason: 'matched' };
+    return { rung: rungs[candidate], index: candidate, reason: 'matched', hold: false, clearHold: false };
   }
   let index = currentIndex;
   let reason: MoodSelection['reason'] = 'held';
   const steps = current?.pendingRecoverySteps ?? 0;
+  let recovered = false;
   if (steps > 0 && ladder.recovery !== 'none') {
     if (ladder.recovery === 'reset_on_good_reply') index = 0;
     else index = Math.max(0, currentIndex - Math.max(1, steps));
+    recovered = true;
     reason = 'recovery';
   }
-  if (candidate > index) {
+  const grew = waitingWorsened(current?.baseline, profile);
+  const heldDown = (recovered || Boolean(current?.baseline)) && !grew;
+  if (candidate > index && !heldDown) {
     index = candidate;
     reason = 'matched';
   }
-  return { rung: rungs[index] ?? base, index, reason };
+  return {
+    rung: rungs[index] ?? base,
+    index,
+    reason,
+    hold: recovered && !grew,
+    clearHold: Boolean(current?.baseline) && grew,
+  };
+}
+
+export function holdSnapshot(profile: WaitProfile): HoldSnapshot {
+  return {
+    wait_minutes: profile.wait_minutes,
+    missed_calls: profile.missed_calls,
+    unanswered_messages: profile.unanswered_messages,
+    followups_sent: profile.followups_sent,
+  };
+}
+
+/** True when the wait itself got worse, not merely because an old `when` still matches. */
+export function waitingWorsened(baseline: HoldSnapshot | null | undefined, profile: WaitProfile): boolean {
+  if (!baseline) return false;
+  return (
+    profile.wait_minutes > baseline.wait_minutes ||
+    profile.missed_calls > baseline.missed_calls ||
+    profile.unanswered_messages > baseline.unanswered_messages ||
+    profile.followups_sent > baseline.followups_sent
+  );
+}
+
+/** Append a consequence id only when it is absent, and merge locks instead of replacing them. */
+export function commitClaim(state: ClaimState, id: string, patch: MoodLockState): { won: boolean; state: ClaimState } {
+  if (state.fired.includes(id)) return { won: false, state };
+  return {
+    won: true,
+    state: {
+      fired: [...state.fired, id],
+      locks: mergeLocks(state.locks, patch),
+    },
+  };
+}
+
+export function mergeLocks(current: MoodLockState, patch: MoodLockState): MoodLockState {
+  const grievance = [...(current.grievance_append ?? [])];
+  for (const line of patch.grievance_append ?? []) {
+    if (!grievance.includes(line)) grievance.push(line);
+  }
+  return {
+    ...current,
+    ...patch,
+    grievance_append: grievance.length > 0 ? grievance : current.grievance_append,
+    pending_recovery_steps:
+      patch.pending_recovery_steps !== undefined ? patch.pending_recovery_steps : current.pending_recovery_steps,
+  };
+}
+
+/** A good reply adds a recovery step and leaves every other lock in place. */
+export function addPendingRecovery(locks: MoodLockState, steps = 1): MoodLockState {
+  return {
+    ...locks,
+    pending_recovery_steps: (locks.pending_recovery_steps ?? 0) + steps,
+  };
 }
 
 export function consequenceId(rungId: string, index: number): string {
@@ -480,6 +574,9 @@ export function buildMoodBlock(
     lines.push(`You may let this show, in your own words: "${opening}"`);
   }
   lines.push('Let the mood show in your word choice and pacing. Never be abusive, never threaten violence.');
+  lines.push(
+    `Never say "${rung.label}" to them, and never say the word mood. The label is for you, not for them to hear.`,
+  );
   const recovery = options.recovery ?? 'none';
   if (rung.terminal) {
     lines.push('You have already acted on your own (see opening). Do not take it back.');

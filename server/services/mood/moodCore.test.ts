@@ -9,7 +9,10 @@ import { buildCharacterPrompt } from '../stakeholderReplyService.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
 import {
   buildMoodBlock,
+  addPendingRecovery,
   claimConsequences,
+  commitClaim,
+  type ClaimState,
   computeWaitProfile,
   defaultLadderFor,
   moodLineFor,
@@ -223,6 +226,30 @@ describe('selectRung', () => {
     const none = selectRung(ladder('angry', 'none'), calmProfile, { rungId: 'upset', pendingRecoverySteps: 1 });
     assert.equal(none.rung.id, 'upset');
   });
+
+  test('reset_on_good_reply stays down until the wait itself gets worse', () => {
+    const baseline = { wait_minutes: 25, missed_calls: 3, unanswered_messages: 0, followups_sent: 0 };
+    const high = profile({ wait_minutes: 25, missed_calls: 3 });
+    const reset = selectRung(ladder('disappointed', 'reset_on_good_reply'), high, {
+      rungId: 'disappointed',
+      pendingRecoverySteps: 1,
+      baseline,
+    });
+    assert.equal(reset.rung.id, 'calm');
+    assert.equal(reset.hold, true);
+    const sameTick = selectRung(ladder('disappointed', 'reset_on_good_reply'), high, {
+      rungId: 'calm',
+      baseline,
+    });
+    assert.equal(sameTick.rung.id, 'calm');
+    const grew = selectRung(
+      ladder('disappointed', 'reset_on_good_reply'),
+      profile({ wait_minutes: 26, missed_calls: 3 }),
+      { rungId: 'calm', baseline },
+    );
+    assert.equal(grew.rung.id, 'disappointed');
+    assert.equal(grew.clearHold, true);
+  });
 });
 
 describe('consequences and verdict lock', () => {
@@ -237,6 +264,24 @@ describe('consequences and verdict lock', () => {
     const second = claimConsequences(authored, first.next);
     assert.deepEqual(first.ids, ['gave_up:0', 'gave_up:1', 'gave_up:2']);
     assert.deepEqual(second.ids, []);
+  });
+
+  test('two writers claim different consequences and a later recovery keeps the verdict lock', () => {
+    let live: ClaimState = { fired: [], locks: {} };
+    const first = commitClaim(live, 'gave_up:0', { verdict: 'keep', verdict_rung: 'gave_up' });
+    assert.equal(first.won, true);
+    const second = commitClaim(first.state, 'gave_up:1', { stop_chains: true, grievance_append: ['They went to the press.'] });
+    assert.equal(second.won, true);
+    live = second.state;
+    const again = commitClaim(live, 'gave_up:0', { verdict: 'keep', verdict_rung: 'gave_up' });
+    assert.equal(again.won, false);
+    assert.deepEqual(again.state.fired, ['gave_up:0', 'gave_up:1']);
+    assert.equal(live.locks.verdict, 'keep');
+    assert.equal(live.locks.stop_chains, true);
+    const recovered = addPendingRecovery(live.locks);
+    assert.equal(recovered.verdict, 'keep');
+    assert.equal(recovered.pending_recovery_steps, 1);
+    assert.deepEqual(recovered.grievance_append, ['They went to the press.']);
   });
 
   test('verdict_lock coerces cancel to keep', () => {
@@ -282,6 +327,7 @@ describe('buildMoodBlock', () => {
     assert.equal(block.includes('calls went unanswered'), false);
     assert.match(block, /I've called you 0 times/);
     assert.equal(block.toLowerCase().includes('simulation'), false);
+    assert.match(block, /Never say "Upset"/);
   });
 
   test('omits the script directions when includeScript is false', () => {
@@ -397,6 +443,78 @@ describe('mood keys and ladder validation', () => {
             ],
           },
         ],
+        role_query: [
+          {
+            delivery_id: 'role-mail',
+            inject_id: 'i2',
+            inject_key: 'role_query',
+            channel: 'email',
+            delivered_minute: 8,
+            recipient_teams: ['Engagement'],
+            session_wide: false,
+            stakeholder_id: 'stk_mas_officer',
+            call_state: null,
+            call_group_id: null,
+            attempt_no: 1,
+            chain_root_key: null,
+            chain_step: null,
+            urgency: null,
+            mood_rung: null,
+            target_role_id: 'cs_head',
+            opened_minute: null,
+            first_response_minute: 27,
+            first_response_team: 'Engagement',
+            first_response_by_team: { Engagement: 27 },
+            responses: [
+              {
+                minute: 27,
+                team: 'Engagement',
+                user_id: 'aisha',
+                is_bot: false,
+                attribution: 'email_reply',
+                judgement_status: 'done',
+                judgement: { passed: true, tone: 'professional' },
+                wait_minutes: 19,
+                mood_rung: 'upset',
+              },
+            ],
+          },
+          {
+            delivery_id: 'team-mail',
+            inject_id: 'i2',
+            inject_key: 'role_query',
+            channel: 'email',
+            delivered_minute: 4,
+            recipient_teams: ['Legal'],
+            session_wide: false,
+            stakeholder_id: 'stk_mas_officer',
+            call_state: null,
+            call_group_id: null,
+            attempt_no: 1,
+            chain_root_key: null,
+            chain_step: null,
+            urgency: null,
+            mood_rung: null,
+            target_role_id: null,
+            opened_minute: null,
+            first_response_minute: 10,
+            first_response_team: 'Legal',
+            first_response_by_team: { Legal: 10 },
+            responses: [
+              {
+                minute: 10,
+                team: 'Legal',
+                user_id: 'ben',
+                is_bot: false,
+                attribution: 'email_reply',
+                judgement_status: 'done',
+                judgement: { passed: false, tone: 'dismissive' },
+                wait_minutes: 40,
+                mood_rung: 'angry',
+              },
+            ],
+          },
+        ],
       },
       generated_at_minute: 30,
       truncated: false,
@@ -442,6 +560,10 @@ describe('mood keys and ladder validation', () => {
     assert.equal(met('replied_late:mas_query:20', comms), false);
     assert.equal(met('mood_at_reply:mas_query:upset', comms), true);
     assert.equal(met('mood_at_least:stk_mas_officer:upset|team=legal', comms), false);
+    assert.equal(met('replied_late:role_query:30|role=cs_head', comms), false);
+    assert.equal(met('replied_late:role_query:15|role=cs_head', comms), true);
+    assert.equal(met('mood_at_reply:role_query:upset|role=cs_head', comms), true);
+    assert.equal(met('mood_at_reply:role_query:angry|role=cs_head', comms), false);
   });
 
   test('duplicate ids, a non-empty first when, a terminal rung that is not last, and too many lines', () => {

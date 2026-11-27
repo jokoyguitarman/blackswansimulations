@@ -767,9 +767,6 @@ async function deliverStep(
     stakeholderId: moodStakeholder,
     moodBlock: mood?.block ?? null,
   });
-  if (rendered.mode === 'template' && mood?.line && !(step.template ?? '').includes('{mood_line}')) {
-    rendered.text = `${rendered.text}\n${mood.line}`.trim();
-  }
   const composed = composeFollowUp({
     app: step.appResolved,
     urgency: step.urgency,

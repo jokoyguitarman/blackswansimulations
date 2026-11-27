@@ -19,6 +19,8 @@ export interface StoredScript extends CallScript {
   /** The inject's target mode, kept for every later attempt. */
   inject_target_mode?: 'line' | 'role' | 'player' | 'ring_all';
   role_fallback?: 'none' | 'line' | 'line_after_minutes';
+  /** Set when a mood rung replaced the authored opening. Later attempts speak that line. */
+  mood_opening_applied?: boolean;
   role_fallback_minutes?: number | null;
   /** Inject delivery_config, so chain steps and root escalations reach the ledger. */
   ledger_config?: Record<string, unknown> | null;

@@ -596,8 +596,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const channel = await chooseChannel(call.sessionId, capabilities);
     const atMinute = sessionMinuteFrom(session?.startTime ?? null, at);
     const mood = await callMood(claimed, atMinute);
-    const spoken = await rememberMood(claimed, mood.rungId, mood.profile);
-    const opening = mood.opening ?? openingForAttempt(spoken.script, spoken.attemptNo, spoken.callerName);
+    const spoken = await rememberMood(claimed, mood);
+    const opening = spokenOpening(spoken);
     if (channel === 'voice') {
       const instructions = await instructionsFor(spoken, opening, undefined, mood.block);
       const minted = await realtime.mintClientSecret(
@@ -656,7 +656,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     if (call.answeredBy !== actor.id) return fail(409, 'not_answerer');
     if (call.status !== 'connecting') return fail(409, 'call_ended');
     if (body.first_audio_ms != null) logFirstAudio(call.id, body.first_audio_ms);
-    const opening = openingForAttempt(call.script, call.attemptNo, call.callerName);
+    const opening = spokenOpening(call);
     const active: SimCall = {
       ...call,
       status: 'active',
@@ -736,7 +736,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       return { ok: true, status: 200, body: { reply: LINE_DROPPED, ended: false } };
     }
     await addTurn(call, 'player', text.trim(), 'text', actor.id);
-    const opening = openingForAttempt(call.script, call.attemptNo, call.callerName);
+    const opening = spokenOpening(call);
     const history = (await store.turns(call.id)).map((turn) => `${turn.speaker}: ${turn.text}`).join('\n');
     const reply = deps.textReply
       ? await deps.textReply({ instructions: await instructionsFor(call, opening), history, playerText: text.trim() })
@@ -1322,9 +1322,15 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     }
   }
 
-  async function rememberMood(call: SimCall, rungId: string | null, profile: unknown): Promise<SimCall> {
-    if (!rungId) return call;
-    const next = { ...call, moodRung: rungId, waitProfile: profile };
+  async function rememberMood(
+    call: SimCall,
+    mood: { opening: string | null; rungId: string | null; profile: unknown },
+  ): Promise<SimCall> {
+    if (!mood.rungId && !mood.opening) return call;
+    const script = mood.opening
+      ? { ...call.script, opening: mood.opening, redial_openings: undefined, mood_opening_applied: true }
+      : call.script;
+    const next = { ...call, script, moodRung: mood.rungId, waitProfile: mood.profile };
     await store.save(next);
     return next;
   }
@@ -1739,6 +1745,11 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     if (call.answeredBy) emit(call.answeredBy, type, data);
     if (trainerId && trainerId !== call.answeredBy) emit(trainerId, type, data);
   }
+}
+
+function spokenOpening(call: SimCall): string {
+  if (call.script.mood_opening_applied && call.script.opening) return call.script.opening;
+  return openingForAttempt(call.script, call.attemptNo, call.callerName);
 }
 
 function callKey(call: SimCall): string {

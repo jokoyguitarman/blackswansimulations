@@ -370,8 +370,8 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   mood_at_least: ({ args, team, role, state }) => moodAtLeast(state, args[0] ?? '', args[1] ?? '', team, role),
   mood_reached: ({ args, team, role, state }) => moodReached(state, args[0] ?? '', args[1] ?? '', team, role),
   stakeholder_gave_up: ({ args, team, role, state }) => moodGaveUp(state, args[0] ?? '', team, role),
-  replied_late: ({ args, team, state }) => lateReply(state, args[0] ?? '', numberArg(args, 1), team),
-  mood_at_reply: ({ args, team, state }) => replyMood(state, args[0] ?? '', args[1] ?? '', team),
+  replied_late: ({ args, team, role, state }) => lateReply(state, args[0] ?? '', numberArg(args, 1), team, role),
+  mood_at_reply: ({ args, team, role, state }) => replyMood(state, args[0] ?? '', args[1] ?? '', team, role),
 };
 
 type MoodRow = NonNullable<CommsState['moods']>[number];
@@ -417,11 +417,17 @@ function moodGaveUp(state: CommsState, stakeholderId: string, team?: string, rol
   return { met, detail: met ? `${stakeholderId} gave up` : `${stakeholderId} is still waiting` };
 }
 
-function firstScopedResponse(state: CommsState, injectKey: string, team: string | undefined): ResponseRow | null {
+function firstScopedResponse(
+  state: CommsState,
+  injectKey: string,
+  team: string | undefined,
+  role: string | undefined,
+): ResponseRow | null {
   const view = viewFor(state, injectKey, team);
   let best: ResponseRow | null = null;
   for (const root of view.roots) {
     for (const delivery of bundleOf(view, root)) {
+      if (role && delivery.target_role_id !== role) continue;
       for (const response of delivery.responses) {
         if (team && slugifyTeamName(response.team ?? '') !== team) continue;
         if (!best || response.minute < best.minute || (response.minute === best.minute && (response.id ?? '') < (best.id ?? ''))) {
@@ -433,15 +439,15 @@ function firstScopedResponse(state: CommsState, injectKey: string, team: string 
   return best;
 }
 
-function lateReply(state: CommsState, injectKey: string, minutes: number, team?: string): KeyResult {
-  const first = firstScopedResponse(state, injectKey, team);
+function lateReply(state: CommsState, injectKey: string, minutes: number, team?: string, role?: string): KeyResult {
+  const first = firstScopedResponse(state, injectKey, team, role);
   const wait = first?.wait_minutes;
   const met = first != null && wait != null && Number.isFinite(minutes) && wait >= minutes;
   return { met, detail: wait == null ? 'No timed reply yet' : `First reply waited ${wait} minutes` };
 }
 
-function replyMood(state: CommsState, injectKey: string, rung: string, team?: string): KeyResult {
-  const first = firstScopedResponse(state, injectKey, team);
+function replyMood(state: CommsState, injectKey: string, rung: string, team?: string, role?: string): KeyResult {
+  const first = firstScopedResponse(state, injectKey, team, role);
   const met = first?.mood_rung === rung;
   return { met, detail: met ? `First reply on ${rung}` : `First reply was ${first?.mood_rung ?? 'unrecorded'}` };
 }
