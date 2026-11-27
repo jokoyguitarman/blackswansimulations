@@ -274,6 +274,19 @@ describe('warroom build routes', () => {
     assert.equal(allowed.status, 200);
   });
 
+  test('polling does not require a scenario credit', async () => {
+    const unpaid = await get(`/api/warroom/social-crisis/builds/${row().id}?after=0`, {
+      'x-credit': 'no',
+    });
+    assert.equal(unpaid.status, 200);
+    const participant = await get(`/api/warroom/social-crisis/builds/${row().id}?after=0`, {
+      'x-role': PLAYER.role,
+      'x-user': PLAYER.id,
+    });
+    assert.equal(participant.status, 403);
+    assert.equal(participant.json.error, 'Only trainers can use the War Room');
+  });
+
   test('GET after returns only later log lines', async () => {
     const res = await get(`/api/warroom/social-crisis/builds/${row().id}?after=1`);
     assert.equal(res.status, 200);

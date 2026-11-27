@@ -1,3 +1,4 @@
+import { logger } from '../../lib/logger.js';
 import { runWithAbortSignal } from '../ai/abortContext.js';
 import { assembleReview, stageInput } from './assemble.js';
 import {
@@ -16,6 +17,7 @@ import {
   toView,
 } from './buildCore.js';
 import { BuildServiceError, CancelledError, LeaseLostError, ShutdownError } from './buildErrors.js';
+import { isDurableSchemaMissing, noteDurableBuildsUnavailable } from './schemaError.js';
 import type { BuildStore, LogDraft, StartResult } from './buildStore.js';
 import type { StageContext, StageRunner } from './stageRunners.js';
 import {
@@ -62,6 +64,12 @@ export interface BuildServiceOptions {
   unwatchedPauseMin?: number;
   maxInterruptions?: number;
   retentionDays?: number;
+  /**
+   * When false, start and resume claim only the build they just accepted.
+   * They do not take the oldest queued build in the pool. The claim loop is
+   * what drains the pool, and only the worker process starts it.
+   */
+  worker?: boolean;
 }
 
 interface RunningJob {
@@ -79,7 +87,7 @@ const UNWATCHED_LOG = (minutes: number, stage: BuildStage | null) =>
 
 /**
  * Claims builds, runs stages, and releases them on cancel or shutdown.
- * Not started from server/index.ts until the routes slice wires it in.
+ * Background loops are started from server/index.ts only when the flag is on.
  */
 export class BuildService {
   private readonly store: BuildStore;
@@ -94,16 +102,27 @@ export class BuildService {
   private readonly unwatchedPauseMin: number;
   private readonly maxInterruptions: number;
   private readonly retentionDays: number;
+  private readonly worker: boolean;
   private readonly running = new Map<string, RunningJob>();
   private readonly inflight = new Set<Promise<void>>();
   private readonly seenAt = new Map<string, number>();
   private shuttingDown = false;
-  private queue: Promise<void> = Promise.resolve();
+  /** Claim work. A hung claim stays on this queue and does not block renewals. */
+  private tickQueue: Promise<void> = Promise.resolve();
+  /** Lease renewal. Independent of tickQueue so a stuck claim cannot expire leases. */
+  private renewQueue: Promise<void> = Promise.resolve();
   private renewTimer: ReturnType<typeof setInterval> | null = null;
   private claimTimer: ReturnType<typeof setInterval> | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private schemaRetry: ReturnType<typeof setTimeout> | null = null;
   /** Set when the process asks for renewal even if it is not the claim worker. */
   private leaseRenewalRequested = false;
+  private claimRequested = false;
+  private sweepRequested = false;
+  private schemaMissing = false;
+  private claimPollMs = 5000;
+  private sweepEveryMs = 60 * 60 * 1000;
+  private readonly loopLoggedAt = new Map<string, number>();
 
   constructor(options: BuildServiceOptions) {
     this.store = options.store;
@@ -118,6 +137,7 @@ export class BuildService {
     this.unwatchedPauseMin = options.unwatchedPauseMin ?? 45;
     this.maxInterruptions = options.maxInterruptions ?? 3;
     this.retentionDays = options.retentionDays ?? 7;
+    this.worker = options.worker ?? true;
   }
 
   private iso(): string {
@@ -146,7 +166,7 @@ export class BuildService {
       result.outcome === 'replayed' ||
       result.outcome === 'attached'
     ) {
-      await this.tick();
+      await this.kick(result.buildId);
     }
     return result;
   }
@@ -195,7 +215,7 @@ export class BuildService {
       if (current.status === 'queued' || current.status === 'running') return current;
       throw new BuildServiceError('Build cannot be resumed', 'BUILD_NOT_RESUMABLE');
     }
-    await this.tick();
+    await this.kick(buildId);
     const next = await this.store.get(buildId);
     if (!next) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
     return next;
@@ -225,10 +245,44 @@ export class BuildService {
 
   /**
    * Renew leases this instance holds, then claim until the concurrency cap.
-   * Overlapping calls queue: two ticks cannot both pass the concurrency check.
+   * Claims are serialised on their own queue. Renewals use a second queue, so a
+   * hung claim cannot hold the lease past its expiry.
    */
   async tick(): Promise<void> {
-    return this.enqueue(() => this.tickBody());
+    await this.chain('renew', () => this.renewDue());
+    await this.chain('tick', () => this.claimUntilCap());
+  }
+
+  /**
+   * After listen. A missing migration logs once and skips the loops, then looks
+   * again once a minute. A transient probe error still starts the loops; their
+   * bodies catch their own failures.
+   */
+  async startBackground(pollMs: number): Promise<void> {
+    this.claimPollMs = pollMs;
+    if (this.shuttingDown) return;
+    try {
+      try {
+        await this.store.probeSchema();
+      } catch (err) {
+        if (isDurableSchemaMissing(err)) {
+          this.schemaMissing = true;
+          noteDurableBuildsUnavailable();
+          this.leaseRenewalRequested = true;
+          this.claimRequested = this.worker;
+          this.sweepRequested = this.worker;
+          this.armSchemaRecheck();
+          return;
+        }
+        this.noteLoopError('probe', err);
+      }
+      this.startLeaseRenewal();
+      if (!this.worker) return;
+      this.startClaimLoop(pollMs);
+      this.startSweepLoop();
+    } catch (err) {
+      this.noteLoopError('probe', err);
+    }
   }
 
   /** Keep leases alive for builds this process is running, even when it does not claim. */
@@ -239,64 +293,146 @@ export class BuildService {
 
   /** Background claim loop. Only the worker process should start this. */
   startClaimLoop(pollMs: number): void {
-    if (this.claimTimer || this.shuttingDown) return;
+    this.claimPollMs = pollMs;
+    this.claimRequested = true;
+    if (this.claimTimer || this.shuttingDown || this.schemaMissing) return;
     const timer = setInterval(() => {
-      void this.tick();
+      void this.tick().catch((err) => this.noteLoopError('claim', err));
     }, pollMs);
     timer.unref?.();
     this.claimTimer = timer;
   }
 
   /** Hourly deletion of old terminal builds. Only the worker process should start this. */
-  startSweepLoop(): void {
-    if (this.sweepTimer || this.shuttingDown) return;
-    const timer = setInterval(
-      () => {
-        void this.sweep();
-      },
-      60 * 60 * 1000,
-    );
+  startSweepLoop(intervalMs = 60 * 60 * 1000): void {
+    this.sweepEveryMs = intervalMs;
+    this.sweepRequested = true;
+    if (this.sweepTimer || this.shuttingDown || this.schemaMissing) return;
+    const timer = setInterval(() => {
+      void this.sweep().catch((err) => this.noteLoopError('sweep', err));
+    }, intervalMs);
     timer.unref?.();
     this.sweepTimer = timer;
   }
 
-  private enqueue(fn: () => Promise<void>): Promise<void> {
-    const run = this.queue.then(fn, fn);
-    this.queue = run.then(
+  private chain(queue: 'tick' | 'renew', fn: () => Promise<void>): Promise<void> {
+    const current = queue === 'tick' ? this.tickQueue : this.renewQueue;
+    const run = current.then(fn, fn);
+    const settled = run.then(
       () => undefined,
       () => undefined,
     );
+    if (queue === 'tick') this.tickQueue = settled;
+    else this.renewQueue = settled;
     return run;
+  }
+
+  /** Worker: drain the pool. Anyone else: claim only the build just accepted. */
+  private async kick(buildId: string | null): Promise<void> {
+    if (this.worker) {
+      await this.tick();
+      return;
+    }
+    if (!buildId || this.shuttingDown || this.schemaMissing) return;
+    if (this.running.size >= this.maxConcurrent) return;
+    const row = await this.store.claimQueued(
+      buildId,
+      this.pool,
+      this.instanceId,
+      this.leaseSeconds,
+    );
+    if (!row) return;
+    await this.beginClaimed(row);
   }
 
   private ensureRenewLoop(): void {
     if (this.renewTimer || this.shuttingDown) return;
     const timer = setInterval(() => {
-      void this.enqueue(() => this.renewDue());
+      void this.chain('renew', () => this.renewDue()).catch((err) =>
+        this.noteLoopError('renew', err),
+      );
     }, this.renewMs);
     timer.unref?.();
     this.renewTimer = timer;
   }
 
-  private async tickBody(): Promise<void> {
-    if (this.shuttingDown) return;
-    await this.renewDue();
+  private async claimUntilCap(): Promise<void> {
+    if (this.shuttingDown || this.schemaMissing) return;
     while (this.running.size < this.maxConcurrent) {
       const row = await this.store.claim(this.pool, this.instanceId, this.leaseSeconds);
-      if (!row || !row.lease_token) return;
-      if (row.interruptions > this.maxInterruptions) {
-        const stage = nextStage(row.stage_states) ?? row.current_stage ?? 'characters';
-        const error = `The server restarted ${row.interruptions} times while building. Retry continues from the ${STAGE_LABEL[stage]} stage.`;
-        const stageStates = markFailed(row.stage_states, stage, error, this.iso());
-        await this.store.failRunning(row.id, row.lease_token, {
-          stageStates,
-          error,
-          errorCode: 'interrupted_too_often',
-        });
-        continue;
-      }
-      this.track(this.runClaimed(row));
+      if (!row) return;
+      const started = await this.beginClaimed(row);
+      if (!started) return;
     }
+  }
+
+  /** @returns false when the row had no lease and the caller should stop claiming. */
+  private async beginClaimed(row: BuildRow): Promise<boolean> {
+    if (!row.lease_token) return false;
+    if (row.interruptions > this.maxInterruptions) {
+      const stage = nextStage(row.stage_states) ?? row.current_stage ?? 'characters';
+      const error = `The server restarted ${row.interruptions} times while building. Retry continues from the ${STAGE_LABEL[stage]} stage.`;
+      const stageStates = markFailed(row.stage_states, stage, error, this.iso());
+      await this.store.failRunning(row.id, row.lease_token, {
+        stageStates,
+        error,
+        errorCode: 'interrupted_too_often',
+      });
+      return true;
+    }
+    this.track(this.runClaimed(row));
+    return true;
+  }
+
+  private noteLoopError(kind: string, err: unknown): void {
+    if (isDurableSchemaMissing(err)) {
+      this.schemaMissing = true;
+      noteDurableBuildsUnavailable();
+      this.stopClaimLoop();
+      this.stopSweepLoop();
+      this.armSchemaRecheck();
+      return;
+    }
+    const now = Date.now();
+    const previous = this.loopLoggedAt.get(kind) ?? 0;
+    if (now - previous < 30_000) return;
+    this.loopLoggedAt.set(kind, now);
+    logger.error({ err, kind }, 'warroom_build_loop_failed');
+  }
+
+  private armSchemaRecheck(): void {
+    if (this.schemaRetry || this.shuttingDown) return;
+    const timer = setTimeout(() => {
+      this.schemaRetry = null;
+      void this.recheckSchema();
+    }, 60_000);
+    timer.unref?.();
+    this.schemaRetry = timer;
+  }
+
+  private async recheckSchema(): Promise<void> {
+    if (this.shuttingDown) return;
+    try {
+      await this.store.probeSchema();
+    } catch (err) {
+      this.noteLoopError('probe', err);
+      this.armSchemaRecheck();
+      return;
+    }
+    this.schemaMissing = false;
+    if (this.leaseRenewalRequested || this.running.size > 0) this.startLeaseRenewal();
+    if (this.claimRequested) this.startClaimLoop(this.claimPollMs);
+    if (this.sweepRequested) this.startSweepLoop(this.sweepEveryMs);
+  }
+
+  private stopClaimLoop(): void {
+    if (this.claimTimer) clearInterval(this.claimTimer);
+    this.claimTimer = null;
+  }
+
+  private stopSweepLoop(): void {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    this.sweepTimer = null;
   }
 
   async whenIdle(): Promise<void> {
@@ -310,9 +446,11 @@ export class BuildService {
     if (this.claimTimer) clearInterval(this.claimTimer);
     if (this.renewTimer) clearInterval(this.renewTimer);
     if (this.sweepTimer) clearInterval(this.sweepTimer);
+    if (this.schemaRetry) clearTimeout(this.schemaRetry);
     this.claimTimer = null;
     this.renewTimer = null;
     this.sweepTimer = null;
+    this.schemaRetry = null;
     const jobs = [...this.running.entries()];
     for (const [, job] of jobs) job.controller.abort(new ShutdownError());
     // A runner that ignores the abort must not hold the release past the 5 s
@@ -339,8 +477,9 @@ export class BuildService {
   }
 
   private track(work: Promise<void>): void {
-    this.inflight.add(work);
-    void work.finally(() => this.inflight.delete(work));
+    const guarded = work.catch((err) => this.noteLoopError('build', err));
+    this.inflight.add(guarded);
+    void guarded.finally(() => this.inflight.delete(guarded));
   }
 
   private async renewDue(): Promise<void> {

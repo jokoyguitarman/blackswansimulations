@@ -16,17 +16,19 @@ export const warroomBuildService = new BuildService({
   unwatchedPauseMin: env.warroomBuildUnwatchedPauseMin,
   maxInterruptions: env.warroomBuildMaxInterruptions,
   retentionDays: env.warroomBuildRetentionDays,
+  worker: env.warroomBuildWorker,
 });
 
 /**
  * Start loops after listen. Renewal runs whenever durable builds are on, including
  * when this process is not the claim worker, so a build started here keeps its lease.
  * Claiming and sweeping stay on the worker only.
+ *
+ * A missing migration is checked once here. The loops stay off until the schema
+ * appears, and a later claim or sweep that reports it missing stops itself
+ * instead of rejecting in the background.
  */
 export function startWarroomBuildLoops(): void {
   if (!env.warroomDurableBuilds) return;
-  warroomBuildService.startLeaseRenewal();
-  if (!env.warroomBuildWorker) return;
-  warroomBuildService.startClaimLoop(env.warroomBuildPollMs);
-  warroomBuildService.startSweepLoop();
+  void warroomBuildService.startBackground(env.warroomBuildPollMs);
 }

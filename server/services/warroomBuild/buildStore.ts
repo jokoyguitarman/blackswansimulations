@@ -67,6 +67,19 @@ export function capLogBatch(existing: number, lines: LogDraft[]): LogDraft[] {
 export interface BuildStore {
   start(args: StartArgs): Promise<StartResult>;
   claim(pool: string, instanceId: string, leaseSeconds: number): Promise<BuildRow | null>;
+  /**
+   * Claim one queued build by id. Does not look at any other row, so a process
+   * that is not the pool worker can run the build it just accepted without
+   * taking the oldest build in the pool.
+   */
+  claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null>;
+  /** Throws the driver error when `warroom_builds` is missing. Empty is success. */
+  probeSchema(): Promise<void>;
   renewLease(buildId: string, leaseToken: string, leaseSeconds: number): Promise<RenewResult>;
   completeStage(args: CompleteStageArgs): Promise<boolean>;
   /** Guarded by lease token and status = running. */
@@ -286,6 +299,33 @@ export class MemoryBuildStore implements BuildStore {
       row.updated_at = now;
       return this.copy(row);
     });
+  }
+
+  claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.pool !== pool || row.status !== 'queued' || row.cancel_requested_at != null) {
+        return null;
+      }
+      const nowMs = this.now().getTime();
+      const now = new Date(nowMs).toISOString();
+      row.status = 'running';
+      row.lease_owner = instanceId;
+      row.lease_token = randomUUID();
+      row.lease_expires_at = new Date(nowMs + leaseSeconds * 1000).toISOString();
+      row.started_at = row.started_at ?? now;
+      row.updated_at = now;
+      return this.copy(row);
+    });
+  }
+
+  probeSchema(): Promise<void> {
+    return Promise.resolve();
   }
 
   renewLease(buildId: string, leaseToken: string, leaseSeconds: number): Promise<RenewResult> {
@@ -646,6 +686,48 @@ export class SupabaseBuildStore implements BuildStore {
     if (error) throw error;
     const row = asRows(data as BuildRow[] | null)[0];
     return row ?? null;
+  }
+
+  async claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null> {
+    const now = this.iso();
+    const { data: queued, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('id, pool, status, cancel_requested_at, started_at')
+      .eq('id', buildId)
+      .eq('pool', pool)
+      .eq('status', 'queued')
+      .is('cancel_requested_at', null)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!queued) return null;
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({
+        status: 'running',
+        lease_owner: instanceId,
+        lease_token: randomUUID(),
+        lease_expires_at: new Date(this.now().getTime() + leaseSeconds * 1000).toISOString(),
+        started_at: queued.started_at ?? now,
+      })
+      .eq('id', buildId)
+      .eq('pool', pool)
+      .eq('status', 'queued')
+      .is('cancel_requested_at', null)
+      // select('*') keeps every filtered column in RETURNING. PostgREST 12/13
+      // otherwise answers 42703 for an omitted filter column.
+      .select('*');
+    if (error) throw error;
+    return (data?.[0] as BuildRow | undefined) ?? null;
+  }
+
+  async probeSchema(): Promise<void> {
+    const { error } = await supabaseAdmin.from('warroom_builds').select('id').limit(0);
+    if (error) throw error;
   }
 
   async renewLease(

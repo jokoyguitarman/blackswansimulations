@@ -17,6 +17,10 @@ import {
 import type { StartResult } from '../services/warroomBuild/buildStore.js';
 import type { BuildView, ReviewPayload } from '../services/warroomBuild/buildTypes.js';
 import { env } from '../env.js';
+import {
+  isDurableSchemaMissing,
+  noteDurableBuildsUnavailable,
+} from '../services/warroomBuild/schemaError.js';
 import { warroomBuildService } from '../services/warroomBuild/runtime.js';
 
 const NO_SCENARIO_CREDITS_BODY = {
@@ -70,20 +74,12 @@ export interface WarroomBuildsRouterDeps {
   ) => { ok: true } | { ok: false; message: string; code: string; details: unknown };
 }
 
-let unavailableLogged = false;
-
 function unavailable(res: Response): void {
-  if (!unavailableLogged) {
-    unavailableLogged = true;
-    logger.warn('warroom_durable_builds_unavailable');
-  }
+  noteDurableBuildsUnavailable();
   res.status(501).json(UNAVAILABLE_BODY);
 }
 
-export function isDurableSchemaMissing(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code;
-  return code === '42P01' || code === '42883' || code === 'PGRST202' || code === 'PGRST205';
-}
+export { isDurableSchemaMissing };
 
 function sendServiceError(res: Response, err: BuildServiceError): void {
   if (err.code === 'BUILD_NOT_FOUND') {
@@ -266,7 +262,13 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
   });
 
   router.get('/:id', validate(pollSchema), async (req: AuthenticatedRequest, res) => {
-    if (!(await guard(req, res))) return;
+    // §5.2 polls with the trainer role only. A trainer who spent their last
+    // credit on something else must still be able to watch a build they started.
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      res.status(403).json({ error: 'Only trainers can use the War Room' });
+      return;
+    }
     await withBuild(deps, req, res, async (row) => {
       const after = Number(req.query.after ?? 0);
       const polled = await deps.service.get(row.id, after);
