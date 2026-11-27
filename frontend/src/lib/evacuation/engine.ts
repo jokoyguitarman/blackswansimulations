@@ -3075,9 +3075,11 @@ export class PolygonEvacuationEngine {
    * person can reach lands next to a door on the storey beside it. It is
    * taken if the crawl is survivable: either FED, projected to the far door
    * by crawlDose, stays under DEAD_END_CRAWL_MAX_FED. A crawl over that is
-   * still taken when staying is worse: the same projection, standing where
-   * they are for DEFEND_HORIZON_S, comes out higher. Otherwise the person
-   * defends in place. The check runs again on
+   * started only when staying is projected to incapacitate (the same
+   * projection, standing where they are for DEFEND_HORIZON_S, reaches 1)
+   * and the crawl projects under DEAD_END_OVER_LIMIT_CAP. The stay
+   * projection is used only as that lethal-or-not test, never as a dose to
+   * trade against. Otherwise the person defends in place. The check runs again on
    * every route check, so a crawl that has become lethal is not started
    * late. A crawl already under way is kept until the projection reaches the
    * incapacitating dose, so nobody stops on the landing for a small rise.
@@ -3120,7 +3122,13 @@ export class PolygonEvacuationEngine {
             { levels: [to], a: stair.pos, b: approach },
             { levels: [to], a: approach, b: exit.center },
           ]);
-          if (!(dose < limit) && !(dose < stayDose())) continue;
+          // Over the limit, a crawl is started only when staying is itself
+          // projected to incapacitate, and only up to the cap. One already
+          // under way keeps going while it projects lower than staying.
+          const overLimitOk = held
+            ? stayDose() >= 1 && dose < stayDose()
+            : stayDose() >= 1 && dose < LEVEL.DEAD_END_OVER_LIMIT_CAP;
+          if (!(dose < limit) && !overLimitOk) continue;
           const dist =
             Math.hypot(stair.pos.x - pos.x, stair.pos.y - pos.y) +
             Math.hypot(exit.center.x - stair.pos.x, exit.center.y - stair.pos.y);

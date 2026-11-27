@@ -31,8 +31,13 @@ export const LEVEL = {
   DOSE_TREND_SAMPLES: 4,
   /** Multiplier on the projected dose for what the linear trend misses. */
   DEAD_END_DOSE_MARGIN: 2,
-  /** Seconds a person defending in place is assumed to wait before rescue. */
+  /**
+   * Look-ahead, from each route check, over which staying put is tested for
+   * incapacitation. It recedes with the check; it is not a rescue time.
+   */
   DEFEND_HORIZON_S: 300,
+  /** The most a crawl over DEAD_END_CRAWL_MAX_FED may project when it is started. */
+  DEAD_END_OVER_LIMIT_CAP: 1.5,
   GHOST_ALPHA: 0.15,
   MAX_LEVELS: 12,
 } as const;
@@ -120,7 +125,11 @@ export const LEVEL_SOURCES: Record<
   },
   DEFEND_HORIZON_S: {
     status: 'assumed',
-    ref: 'assumed: five minutes, the order of a fire-service arrival and search of one floor',
+    ref: 'assumed: a receding five-minute look-ahead. The engine has no rescue to wait for, so the question each check asks is whether staying here would incapacitate within the next five minutes, not whether help arrives in time. The linear trend held for 300 s is uncalibrated as a dose; it is read only as at or over 1',
+  },
+  DEAD_END_OVER_LIMIT_CAP: {
+    status: 'assumed',
+    ref: 'calibrated: stair shaft test, shafts open, upper floor alarmed at T+240. Crawls started at 0.59-1.36 got out (1.36 realised 0.79); every crawl started at 1.9 or more went down on the ground floor 30-37 s later, about 60 s before the people who stayed. Applied only when a crawl starts',
   },
   DEAD_END_CRAWL_MAX_FED: {
     status: 'assumed',

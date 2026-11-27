@@ -16,10 +16,17 @@
  *
  * The walled run seals a ground-floor room in the north-west corner and
  * splits the upper floor north of y = 1.5.
+ *
+ * `closedShafts` is a perfect seal: the shaft gets no vertical link at all,
+ * so there is no leakage, no smoke drawn through by the people using the
+ * door, and no other path between the storeys. The lethal-descent scene is
+ * an idealised compartmented case, a test of the refusal path, and staying
+ * there projects 0 throughout.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { InteriorWall } from '../src/lib/rts/types.ts';
+import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import { runStairShaft } from './scenes/stairShaftFire.ts';
 import { slowScene } from './scenes/slow.ts';
 
@@ -110,6 +117,35 @@ test(
     const sent = forced.people.filter((person) => person.home === 'L1');
     assert.equal(forced.perFloor.L1.down, 20, JSON.stringify(forced.perFloor));
     assert.ok(Math.min(...sent.map((person) => person.dose)) > worstInPlace);
+  },
+);
+
+test(
+  'open shafts, upper floor alarmed at T+240: an over-limit crawl starts only under the cap',
+  { skip: slowScene, timeout: 10 * 60 * 1000 },
+  () => {
+    // L1 is untenable by about T+390, so staying projects to incapacitate.
+    // Crawls between the limit and the cap get out; nobody is started on a
+    // crawl at or over the cap, so those people stay rather than die sooner
+    // on the burning ground floor.
+    const run = runStairShaft({ durationS: 600, upperAlarmAtS: 240 });
+    const floors = JSON.stringify(run.perFloor);
+    assert.ok(run.perFloor.L1.out >= 11, floors);
+    const upper = run.crawlers.filter((crawler) => crawler.pedId >= 20);
+    const started = upper.map((crawler) => crawler.projected);
+    assert.ok(
+      started.some((dose) => dose >= LEVEL.DEAD_END_CRAWL_MAX_FED),
+      'no crawl over the limit was started',
+    );
+    for (const crawler of upper) {
+      assert.ok(
+        crawler.projected < LEVEL.DEAD_END_OVER_LIMIT_CAP,
+        `ped ${crawler.pedId} started at ${crawler.projected.toFixed(2)}`,
+      );
+    }
+    for (const crawler of upper.filter((c) => !c.frozen)) {
+      assert.equal(crawler.outcome === 'down', false, `ped ${crawler.pedId} went down crawling`);
+    }
   },
 );
 

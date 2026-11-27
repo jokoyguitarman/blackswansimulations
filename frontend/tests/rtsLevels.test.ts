@@ -1134,11 +1134,20 @@ describe('multi-floor crowd sensing and storey walls', () => {
   });
 
   it('crawls down a lethal-looking stair when staying put projects worse', () => {
-    // 300 °C at the door projects over the limit, but 120 °C where the person
-    // stands, held for DEFEND_HORIZON_S, projects higher still.
-    const { eng, ped } = upperDeadEnd(300, undefined, 120);
+    // 250 °C at the door projects over the limit but under the cap, and
+    // 120 °C where the person stands, held for DEFEND_HORIZON_S, projects
+    // incapacitation.
+    const { eng, ped } = upperDeadEnd(250, undefined, 120);
     assert.equal(ped.sheltering, false);
     assert.equal(ped.targetStairId, 's');
+    eng.destroy();
+  });
+
+  it('does not start a crawl over the cap, however bad staying looks', () => {
+    // 300 °C at the door, plus 120 °C on the way to the stair, is over the cap.
+    const { eng, ped } = upperDeadEnd(300, undefined, 120);
+    assert.equal(ped.sheltering, true);
+    assert.equal(ped.targetStairId, null);
     eng.destroy();
   });
 
