@@ -44,6 +44,7 @@ import {
   walkedRouteHazard,
   smokeAheadAction,
   walkingSpeed,
+  RouteRegions,
   type ExitChoice,
   type Familiarity,
   type Posture,
@@ -283,6 +284,7 @@ export class PolygonEvacuationEngine {
   private rng: (() => number) | null = null;
   private hazardField: HazardField | null = null;
   private interiorWalls: InteriorWallDef[] = [];
+  private routeRegions: RouteRegions | null = null;
   private restMask = new WeakMap<Matter.Body, number>();
   /** People in a mouth approach who have not been released yet. */
   private mouthWait = new Set<number>();
@@ -779,6 +781,7 @@ export class PolygonEvacuationEngine {
   setInteriorWalls(walls: InteriorWallDef[]) {
     if (!this.showcase) return;
     this.interiorWalls = walls.map((w) => ({ ...w }));
+    this.routeRegions = null;
   }
 
   syncExits(exits: ExitDef[]) {
@@ -1087,7 +1090,7 @@ export class PolygonEvacuationEngine {
         blockedDoors,
       };
       if (burningAhead) {
-        const alt = chooseExit(
+        const alt = this.routedChoice(
           pos,
           this.exits,
           this.config.vertices,
@@ -1105,7 +1108,7 @@ export class PolygonEvacuationEngine {
             turned = true;
             this.turnedBackCount++;
             this.rerouteCount++;
-            const alt = chooseExit(
+            const alt = this.routedChoice(
               pos,
               this.exits,
               this.config.vertices,
@@ -1121,7 +1124,7 @@ export class PolygonEvacuationEngine {
           }
         }
         if (!turned) {
-          const alt = chooseExit(
+          const alt = this.routedChoice(
             pos,
             this.exits,
             this.config.vertices,
@@ -1150,7 +1153,7 @@ export class PolygonEvacuationEngine {
       this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)
     ) {
       this.pruneAvoid(ped, pos);
-      const choice = chooseExit(
+      const choice = this.routedChoice(
         pos,
         this.exits,
         this.config.vertices,
@@ -1164,7 +1167,9 @@ export class PolygonEvacuationEngine {
 
     if (ped.sheltering) {
       ped.shelterTarget =
-        this.field(ped.level)?.lowestKWithin(pos.x, pos.y, 6) ?? ped.shelterTarget ?? null;
+        this.field(ped.level)?.lowestKWithin(pos.x, pos.y, 6, this.sameRegion(pos)) ??
+        ped.shelterTarget ??
+        null;
       ped.posture = 'crawl';
     }
 
@@ -1733,8 +1738,37 @@ export class PolygonEvacuationEngine {
     return { id: ped.targetExitId, cost: ped.exitCost ?? Infinity };
   }
 
+  private regions(): RouteRegions {
+    if (!this.routeRegions) {
+      this.routeRegions = new RouteRegions(this.config.vertices, this.interiorWalls);
+    }
+    return this.routeRegions;
+  }
+
+  /** False when no usable exit shares this person's floor region: walls, not smoke. */
+  private routeOut(pos: Vec2): boolean {
+    if (this.levelPlan) return true;
+    return this.regions().hasRouteOut(pos, this.exits, this.config.vertices);
+  }
+
+  /** Stud positions a person can walk to without leaving their floor region. */
+  private sameRegion(pos: Vec2): ((p: Vec2) => boolean) | undefined {
+    if (this.levelPlan) return undefined;
+    const regions = this.regions();
+    const here = regions.regionAt(pos);
+    if (here < 0) return undefined;
+    const verts = this.config.vertices;
+    return (p) => isInsidePolygon(p.x, p.y, verts) && regions.regionAt(p, 1) === here;
+  }
+
+  /** chooseExit, or null (shelter in place) when walls leave no route to any usable exit. */
+  private routedChoice(...args: Parameters<typeof chooseExit>): ExitChoice | null {
+    if (!this.routeOut(args[0])) return null;
+    return chooseExit(...args);
+  }
+
   private pickInitialExit(pos: Vec2): ExitChoice | null {
-    return chooseExit(pos, this.exits, this.config.vertices, this.field(), null, {
+    return this.routedChoice(pos, this.exits, this.config.vertices, this.field(), null, {
       walls: this.interiorWalls,
       blockedDoors: this.blockedDoorsByLevel.get('') ?? [],
     });
@@ -1747,7 +1781,9 @@ export class PolygonEvacuationEngine {
       ped.forcedCrawl = true;
       ped.posture = 'crawl';
       ped.shelterTarget =
-        this.field(ped.level).lowestKWithin(pos.x, pos.y, 6) ?? ped.shelterTarget ?? null;
+        this.field(ped.level).lowestKWithin(pos.x, pos.y, 6, this.sameRegion(pos)) ??
+        ped.shelterTarget ??
+        null;
       if (count && changed) this.rerouteCount++;
       return;
     }
