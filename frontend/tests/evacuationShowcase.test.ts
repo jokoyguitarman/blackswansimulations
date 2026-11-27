@@ -1569,11 +1569,38 @@ describe('freezing in fear', () => {
     const upstairs = hold(eng, 0, { x: 20, y: 10 }, 'L1');
     // Directly below, on the ground floor: no.
     assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 }, level: 'G' }), false);
-    // No storey given in a multi-storey scene: no.
+    // No storey given: that responder is on G, so still no.
     assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 } }), false);
     assert.equal(eng.getMetrics().showcase?.unfrozen, 0);
     // On their storey: yes.
     assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 }, level: 'L1' }), true);
+    assert.equal(eng.getMetrics().showcase?.unfrozen, 1);
+    eng.destroy();
+  });
+
+  test('a marshal placed before a second storey existed works on the ground floor', () => {
+    const groundExit = {
+      ...exit({ id: 'out', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }),
+      level: 'G',
+    };
+    const eng = new PolygonEvacuationEngine(
+      { vertices: verts, pedestrianCount: 0, pedestrianRadius: 0.25, desiredSpeed: 1.4, panicFactor: 0, dt: 1 / 60 },
+      [groundExit],
+      [],
+      [],
+      { afterExit: 'zone', zones: [], seed: 1, freezePermille: 0 },
+      {
+        ids: ['G', 'L1'],
+        exitsByLevel: { G: [groundExit], L1: [] },
+        wallsByLevel: { G: [], L1: [] },
+        stairs: [],
+        counts: { G: 1, L1: 0 },
+        heights: { G: 4, L1: 4 },
+      },
+    );
+    // A unit spawned in a one-storey scene carries no level; it counts as G.
+    const downstairs = hold(eng, 0, { x: 20, y: 10 }, 'G');
+    assert.equal(releasedBy(eng, downstairs, { pos: { x: 20.5, y: 10 } }), true);
     assert.equal(eng.getMetrics().showcase?.unfrozen, 1);
     eng.destroy();
   });
