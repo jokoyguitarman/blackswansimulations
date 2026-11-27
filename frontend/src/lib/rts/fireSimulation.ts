@@ -715,6 +715,22 @@ export class FireSimulation {
     return oxygenAllowsFlame(y);
   }
 
+  /**
+   * Flashover lights a whole room at once. Every stud stands in that
+   * room's layer, so one oxygen reading decides the room. No reading
+   * means ambient, and the front still checks a stud on its own.
+   */
+  private roomAllowsIgnition(members: readonly string[]): boolean {
+    const oxygen = this.ignitionOxygen;
+    if (oxygen == null) return true;
+    for (const id of members) {
+      const y = oxygen.get(id);
+      if (y == null || !Number.isFinite(y)) continue;
+      if (!oxygenAllowsFlame(y)) return false;
+    }
+    return true;
+  }
+
   setBurnLimit(ids: readonly string[], fraction: number, phi: number): void {
     const kept = fraction > 0 ? Math.min(1, fraction) : 0;
     const ratio =
@@ -1522,11 +1538,12 @@ export class FireSimulation {
         const hot = (roomHeat.get(room) ?? 0) >= FLASHOVER_ROOM_KW;
         const latched = members.some((id) => this.flashedStuds.has(id));
         if (!hot && !latched) continue;
+        // One layer, one oxygen. The decision is the room's, so a starved
+        // latch does not ask again for every stud.
+        const mayLight = this.roomAllowsIgnition(members);
         for (const id of members) {
           this.flashedStuds.add(id);
-          if (this.acceptsFuel(id) && !this.coverFrom.has(id) && this.oxygenAllowsIgnition(id)) {
-            this.catchFire(id);
-          }
+          if (mayLight && this.acceptsFuel(id) && !this.coverFrom.has(id)) this.catchFire(id);
         }
         continue;
       }

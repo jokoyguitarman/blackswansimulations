@@ -12,8 +12,8 @@
   "reachable": 102,
   "mall": {
     "active": true,
-    "interfaceM": 1.48,
-    "riseK": 66.7
+    "interfaceM": 1.49,
+    "riseK": 66.4
   },
   "marks": {
     "t180": {
@@ -56,8 +56,8 @@
     "mall": {
       "active": true,
       "interfaceM": 1.11,
-      "riseK": 78.8
+      "riseK": 78.6
     },
-    "smoke": "0.774"
+    "smoke": "0.773"
   }
 }
