@@ -13,12 +13,12 @@
  * 46.5 MW prescribed, upper oxygen 0.189. The layer still holds oxygen,
  * so the burn reaches 50.2 MW at T+200. That excess over the 22.1 MW
  * door is the layer's own oxygen, booked at 13,100 kJ per kilogram. By
- * T+290 the shop is 15.1 MW, and 12 MW at T+320. From T+180 it spans 12
+ * T+290 the shop is 15.1 MW, and 9.7 MW at T+320. From T+180 it spans 9.7
  * to 50.2 MW. The frame peak, one substep per frame, is 52.3 MW. The
  * kitchen burns its own layer after the shop's inflow is spent: the
  * prescribed 4.2 MW at T+210, T+250 and T+290. By T+320 the flame is
- * out, apart from a 0.1 MW sample at T+330, and its oxygen is at the
- * extinction limit. The floor-deep layer stays. At T+370 the rise is
+ * out and does not relight, and its oxygen is at the extinction
+ * limit. The floor-deep layer stays. At T+370 the rise is
  * 107 K with 1843 g of soot, against its 6.8 MW door. A fireless room
  * keeps the jet path after the feed pauses, so both crowds still have a
  * mall layer at T+300: 1.48 m and 66.7 K. By T+600 both are 1.11 m and

@@ -9,7 +9,7 @@ import {
 } from './materialLibrary';
 import { blastPressureAt, type ChargeSpec } from './blast/blastModel';
 import { leafWidthM } from './doorLeaf';
-import { HOOD_FAN_WHEN, pyrolysisFraction, type HoodFanWhen } from './twoZone';
+import { HOOD_FAN_WHEN, oxygenAllowsFlame, pyrolysisFraction, type HoodFanWhen } from './twoZone';
 import {
   ELECTRICAL_ARC_SEC,
   ELECTRICAL_DAMAGE_KPA,
@@ -343,6 +343,12 @@ export class FireSimulation {
    * it scales the pyrolysed mass. A stud with no entry is burning in free air.
    */
   private burnLimit = new Map<string, { fraction: number; phi: number }>();
+  /**
+   * Oxygen mass fraction the last layer step left at each stud. A stud
+   * with no entry has no layer yet and may light. A stud below the
+   * cutoff does not: the front and the latch both read this.
+   */
+  private ignitionOxygen: ReadonlyMap<string, number> | null = null;
   /** Survives setGasLines, so a shut valve stays shut when the page refreshes the list. */
   private gasRuntime = new Map<string, GasRuntime>();
   /** Survives setElectricalSources, so a shut supply stays shut. */
@@ -698,6 +704,17 @@ export class FireSimulation {
    * of the prescribed release that the oxygen can burn. φ is the equivalence
    * ratio before the lower-oxygen cutoff.
    */
+  /** Layer oxygen the next step's new ignitions must be able to stand in. */
+  setIgnitionOxygen(oxygen: ReadonlyMap<string, number> | null): void {
+    this.ignitionOxygen = oxygen;
+  }
+
+  private oxygenAllowsIgnition(id: string): boolean {
+    const y = this.ignitionOxygen?.get(id);
+    if (y == null || !Number.isFinite(y)) return true;
+    return oxygenAllowsFlame(y);
+  }
+
   setBurnLimit(ids: readonly string[], fraction: number, phi: number): void {
     const kept = fraction > 0 ? Math.min(1, fraction) : 0;
     const ratio =
@@ -1083,6 +1100,11 @@ export class FireSimulation {
       const dose = this.accrueDose(fState.dose ?? 0, cell, slot, window);
       fState.dose = dose;
       if (dose >= 1 || (cover == null && slot.approach >= 1)) {
+        if (!this.oxygenAllowsIgnition(id)) {
+          fState.state = 'heating';
+          fState.approach = Math.max(slot.approach, Math.min(1, dose));
+          continue;
+        }
         this.catchFire(id);
         continue;
       }
@@ -1502,7 +1524,9 @@ export class FireSimulation {
         if (!hot && !latched) continue;
         for (const id of members) {
           this.flashedStuds.add(id);
-          if (this.acceptsFuel(id) && !this.coverFrom.has(id)) this.catchFire(id);
+          if (this.acceptsFuel(id) && !this.coverFrom.has(id) && this.oxygenAllowsIgnition(id)) {
+            this.catchFire(id);
+          }
         }
         continue;
       }

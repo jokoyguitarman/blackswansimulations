@@ -802,6 +802,132 @@ test('a clamp slice scales the burn to the oxygen the layer holds', () => {
   );
 });
 
+test('a midpoint publish keeps the gas the book already balanced', () => {
+  // The published height is the mean of the two ends. Moving the
+  // interface without a matching temperature left 0.03 kg on the step
+  // that settled this room. The upper temperature is refit so the
+  // published height weighs what the booked height weighed.
+  const spec: LayerSpec = {
+    areaM2: 120,
+    ceilingM: 3,
+    boundaries: [
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 120, lining: LINING.concrete },
+      { areaM2: 80, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 4000, diameterM: 8 }],
+    vents: [{ widthM: 1.6, sillM: 0, soffitM: 2 }],
+  };
+  let state = {
+    ...freshLayer(3),
+    interfaceM: 0.052,
+    upperK: AMBIENT_K + 180,
+    upperO2: 0.19,
+    lowerO2: 0.22,
+  };
+  const dt = 1 / 60;
+  let worst = 0;
+  let moved = 0;
+  for (let i = 0; i < 300; i++) {
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const before = gasMassKg(spec, state.interfaceM, state.upperK, lower0);
+    const z0 = state.interfaceM;
+    const stepped = stepZone(state, spec, dt);
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const after = gasMassKg(spec, stepped.state.interfaceM, stepped.state.upperK, lower1);
+    worst = Math.max(worst, Math.abs(after - before - stepped.bookedKg));
+    if (
+      Math.abs(stepped.state.interfaceM - z0) > 1e-5 &&
+      z0 < 0.053 &&
+      stepped.state.interfaceM < 0.053
+    )
+      moved += 1;
+    state = stepped.state;
+  }
+  assert.ok(moved > 0, 'the interface never moved inside the publish band');
+  assert.ok(state.interfaceM <= 0.051, `interface finished at ${state.interfaceM.toFixed(4)} m`);
+  assert.ok(worst < 0.005, `worst midpoint residual ${worst.toFixed(4)} kg`);
+});
+
+test('a flame that has gone out does not relight past the oxygen cutoff', () => {
+  // The kitchen's extinction is one sub-second period-3. The slice
+  // fraction falls below 0.05, the next slice jumps back above 0.5, and
+  // the layer is still at about 0.154. The cutoff is steep and the door
+  // inflow twitches. Hold the flame out until the oxygen is on the
+  // burning side again. A layer that still has oxygen may relight, and a
+  // flame that has not gone out is not clipped.
+  const spec: LayerSpec = {
+    areaM2: 100,
+    ceilingM: 3,
+    boundaries: [
+      { areaM2: 100, lining: LINING.concrete },
+      { areaM2: 100, lining: LINING.concrete },
+      { areaM2: 70, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 4200, diameterM: 3 }],
+    vents: [
+      {
+        widthM: 1.5,
+        sillM: 0,
+        soffitM: 2,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 60,
+          floorPressurePa: 2,
+          upperO2: 0.12,
+        },
+      },
+    ],
+  };
+  const at = (y: number, last: number | undefined) => {
+    const stepped = stepZone(
+      {
+        ...freshLayer(3),
+        interfaceM: 0.05,
+        upperK: AMBIENT_K + 140,
+        upperO2: y,
+        lowerO2: 0.2,
+        ...(last != null ? { lastBurnFraction: last } : {}),
+      },
+      spec,
+      1 / 60,
+    );
+    return stepped.burnedFraction;
+  };
+  const held = at(0.154, 0);
+  assert.ok(held <= 0.05, `an extinguished slice relit to ${held.toFixed(3)}`);
+  const recovered = at(0.17, 0);
+  assert.ok(recovered > 0.5, `a layer with oxygen stayed at ${recovered.toFixed(3)}`);
+  const stillBurning = at(0.154, 1);
+  assert.ok(stillBurning > 0.5, `a flame still burning was cut to ${stillBurning.toFixed(3)}`);
+
+  // The same jump, carried across slices, is the period-3. The limit from
+  // one slice is the next slice's release, which is what makes a zero
+  // slice report a full fraction and light the fire again.
+  let state = {
+    ...freshLayer(3),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 140,
+    upperO2: 0.156,
+    lowerO2: 0.2,
+  };
+  let prev = 1;
+  let flips = 0;
+  for (let i = 0; i < 4000; i++) {
+    const stepped = stepZone(
+      state,
+      { ...spec, fires: [{ heatKw: 4200 * prev, diameterM: 3 }] },
+      1 / 60,
+    );
+    const f = stepped.burnedFraction;
+    if ((f > 0.5 && prev < 0.05) || (f < 0.05 && prev > 0.5)) flips += 1;
+    prev = f;
+    state = stepped.state;
+    if ((state.upperO2 ?? 1) < 0.14 && i > 200) break;
+  }
+  assert.equal(flips, 0, `the extinction period-3 returned, ${flips} strict flips`);
+});
+
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
   // No fire, so the stream is not consumed. Its oxygen, soot and fuel
   // arrive with the mass. CO is not a layer species; the stud dose reads
