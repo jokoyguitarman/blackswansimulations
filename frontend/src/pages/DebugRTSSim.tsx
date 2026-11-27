@@ -12,7 +12,7 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 import { PolygonEvacuationEngine } from '../lib/evacuation/engine';
-import type { PedSnapshot, ShowcaseMetrics } from '../lib/evacuation/engine';
+import type { PedSnapshot, ShowcaseMetrics, StairFlightView } from '../lib/evacuation/engine';
 import type { ExitDef, PolygonSimConfig, Vec2, ZoneKind } from '../lib/evacuation/types';
 import {
   HazardField,
@@ -1073,6 +1073,9 @@ export function DebugRTSSim() {
     smoke: number;
   } | null>(null);
   const hudAtRef = useRef(0);
+  const [stairFlights, setStairFlights] = useState<StairFlightView[]>([]);
+  const stairHudAtRef = useRef(0);
+  const [responderStairId, setResponderStairId] = useState('');
   useEffect(() => {
     try {
       localStorage.setItem('rtsShowcaseSettings', JSON.stringify({ showcase, afterExit }));
@@ -2886,6 +2889,10 @@ export function DebugRTSSim() {
         const snaps = evac.getSnapshots();
         pedestriansRef.current = snaps;
         setPedestrians(snaps);
+        if (performance.now() - stairHudAtRef.current >= 250) {
+          stairHudAtRef.current = performance.now();
+          setStairFlights(evac.getStairFlights());
+        }
         if (showcaseOn && performance.now() - hudAtRef.current >= 250) {
           hudAtRef.current = performance.now();
           const stats = effectsEngineRef.current?.getStats();
@@ -7223,6 +7230,19 @@ export function DebugRTSSim() {
               </div>
             )}
 
+            {gameState.clock.phase !== 'setup' &&
+              stairwells.some((sw) => (sw.kind ?? 'stair') === 'stair' && !sw.blocked) && (
+                <StairFlightPanel
+                  flights={stairFlights}
+                  stairs={stairwells.filter(
+                    (sw) => (sw.kind ?? 'stair') === 'stair' && !sw.blocked,
+                  )}
+                  stairId={responderStairId}
+                  onStairId={setResponderStairId}
+                  onSendUp={(id) => evacEngRef.current?.sendStairResponders(id, 4)}
+                />
+              )}
+
             {gasJetCount > 0 && (
               <div className="bg-gray-900 border border-orange-600 rounded p-3 space-y-2">
                 <div className="text-xs text-orange-200">Gas jets {gasJetCount}</div>
@@ -8975,6 +8995,71 @@ function LevelSwitcher({
             onClick={() => onCopy(active.id, copyTargets)}
           >
             Copy
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Stair flights with anyone on them or waiting: the door queue on the floor,
+ * the stream already on the stair waiting at the landing, and the people
+ * walking the flight, with the release rate the flight has right now.
+ */
+function StairFlightPanel({
+  flights,
+  stairs,
+  stairId,
+  onStairId,
+  onSendUp,
+}: {
+  flights: StairFlightView[];
+  stairs: Stairwell[];
+  stairId: string;
+  onStairId: (id: string) => void;
+  onSendUp: (id: string) => void;
+}) {
+  const picked = stairs.find((sw) => sw.id === stairId) ?? stairs[0];
+  const labelOf = (id: string) => stairs.find((sw) => sw.id === id)?.label || id;
+  return (
+    <div className="bg-gray-900 border border-sky-800 rounded p-3 text-xs space-y-1 text-sky-200">
+      <div className="font-semibold">Stair flights</div>
+      {flights.length === 0 ? (
+        <div className="text-gray-400">Nobody on or waiting for a stair</div>
+      ) : (
+        flights.map((f) => (
+          <div key={`${f.stairId}:${f.dir}:${f.fromLevel}`} className="font-mono">
+            {labelOf(f.stairId)} {f.fromLevel}
+            {f.dir === 'down' ? '↓' : '↑'}
+            {f.toLevel}: door {f.door} · landing {f.landing} · moving {f.moving}/{f.storage} ·{' '}
+            {f.flowPerS.toFixed(2)} p/s
+            {f.responders > 0 && <span className="text-red-300"> · crew {f.responders}</span>}
+            {f.counterflow && <span className="text-amber-300"> · counterflow</span>}
+            {f.full && <span className="text-red-400"> · full</span>}
+          </div>
+        ))
+      )}
+      {picked && (
+        <div className="flex items-center gap-2 pt-1">
+          <select
+            className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5"
+            value={picked.id}
+            onChange={(e) => onStairId(e.target.value)}
+          >
+            {stairs.map((sw) => (
+              <option key={sw.id} value={sw.id}>
+                {sw.label || sw.id}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="px-2 py-0.5 rounded bg-red-900 hover:bg-red-800 text-red-100"
+            title="Four responders in breathing apparatus climb from the lowest storey to the top, against the crowd"
+            onClick={() => onSendUp(picked.id)}
+          >
+            Send 4 crew up
           </button>
         </div>
       )}

@@ -131,7 +131,11 @@ test(
     // on the burning ground floor.
     const run = runStairShaft({ durationS: 600, upperAlarmAtS: 240 });
     const floors = JSON.stringify(run.perFloor);
-    assert.ok(run.perFloor.L1.out >= 11, floors);
+    // 10, not 11: the flight is breathed on the way down, so a crawl now
+    // projects its stair at crawl pace in the shaft's air. The crawl that
+    // projected 1.36 and got out before projects over the cap and is not
+    // started; run anyway, it reaches the ground floor at FED 1 and goes down.
+    assert.ok(run.perFloor.L1.out >= 10, floors);
     const upper = run.crawlers.filter((crawler) => crawler.pedId >= 20);
     const started = upper.map((crawler) => crawler.projected);
     assert.ok(

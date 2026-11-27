@@ -53,6 +53,8 @@ export interface OfficeFrameOptions {
   onStart?: () => void;
   /** After each frame, with the frame's crowd steps. */
   onFrame?: (crowdSteps: number) => void;
+  /** After each crowd step, with the crowd engine and its clock. */
+  onCrowdStep?: (evac: PolygonEvacuationEngine, crowdS: number) => void;
 }
 
 interface PedLabel {
@@ -229,6 +231,7 @@ export function runOfficeFrames(
             evac.triggerBlast(site, radius);
           }
           evac.step();
+          opts.onCrowdStep?.(evac, stepNo * FX.FIXED_DT);
         },
         effectsStep: () => effects.step(FX.EFFECTS_DT, walls, hazards),
       },

@@ -38,6 +38,15 @@ export const LEVEL = {
   DEFEND_HORIZON_S: 300,
   /** The most a crawl over DEAD_END_CRAWL_MAX_FED may project when it is started. */
   DEAD_END_OVER_LIMIT_CAP: 1.5,
+  /**
+   * Share of a landing's merged release that goes to the floor stream when
+   * floor and stair streams are both waiting. The rest goes to the stair.
+   */
+  STAIR_MERGE_FLOOR_SHARE: 0.5,
+  /** Width a minor reverse stream takes on a stair: one traffic lane. */
+  STAIR_REVERSE_LANE_M: 0.76,
+  /** Density at which stair movement stops, persons per m² of flight. */
+  STAIR_JAM_DENSITY_PM2: 3.76,
   GHOST_ALPHA: 0.15,
   MAX_LEVELS: 12,
 } as const;
@@ -134,6 +143,18 @@ export const LEVEL_SOURCES: Record<
   DEAD_END_CRAWL_MAX_FED: {
     status: 'assumed',
     ref: 'assumed: half the ISO 13571 incapacitating dose, applied to the trend projection after DEAD_END_DOSE_MARGIN, so a crawl is refused once about a quarter of the dose is projected unscaled',
+  },
+  STAIR_MERGE_FLOOR_SHARE: {
+    status: 'assumed',
+    ref: 'Galea, Sharp & Lawrence (2008), J. Fire Prot. Eng. 18(4) 291-316: merging at the floor-stair interface in high-rise drills runs close to 50:50, with door placement shifting the bias either way. SFPE Handbook 5th ed. ch. 64 (Gwynne & Rosenbaum) caps the merged flow at the downstream flight. 0.5 is the even case',
+  },
+  STAIR_REVERSE_LANE_M: {
+    status: 'assumed',
+    ref: 'Fruin (1971) Pedestrian Planning and Design, and HCM 2000 ch. 18 stairways: a minor reverse flow takes one 30 in (0.76 m) lane. NIST NCSTAR 1-7 (Averill et al. 2005): firefighters ascending 1.1 m WTC stairs put descending occupants into single file. The engine caps the lane at half the effective width',
+  },
+  STAIR_JAM_DENSITY_PM2: {
+    status: 'assumed',
+    ref: 'SFPE Handbook 5th ed. ch. 64 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing',
   },
   GHOST_ALPHA: { status: 'assumed', ref: 'assumed: UX' },
   MAX_LEVELS: { status: 'assumed', ref: 'PR #23 LAYOUT_LIMITS.maxStoreys' },

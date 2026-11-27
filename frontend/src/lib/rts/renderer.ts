@@ -298,8 +298,17 @@ export function renderRTS(
   if (stairsToDraw && stairsToDraw.length > 0) {
     for (const sw of stairsToDraw) {
       const badge = sw.levels ? `${sw.levels.from}→${sw.levels.to}` : undefined;
-      const inside = pedestrians.filter((ped) => ped.inStair?.stairId === sw.id).length;
-      drawStairwell(ctx, sw, rc, badge, inside);
+      let door = 0;
+      let onStair = 0;
+      for (const ped of pedestrians) {
+        if (ped.inStair?.stairId !== sw.id) continue;
+        if (ped.inStair.queue === 'floor') {
+          if (!levelView || (ped.level ?? 'G') === levelView.active) door++;
+        } else {
+          onStair++;
+        }
+      }
+      drawStairwell(ctx, sw, rc, badge, onStair, door);
     }
   }
 
@@ -340,9 +349,12 @@ export function renderRTS(
     if (ped.state === 'left_map') continue;
     if (ped.evacuated && ped.state !== 'outside' && ped.state !== 'arrived') continue;
     if (levelView) {
+      // A door queue stands on its own storey; the stair itself shows on
+      // every storey it serves.
+      const inShaft = ped.inStair != null && ped.inStair.queue !== 'floor';
       const here =
         (ped.level ?? 'G') === levelView.active ||
-        (ped.inStair != null && (stairsToDraw ?? []).some((sw) => sw.id === ped.inStair?.stairId));
+        (inShaft && (stairsToDraw ?? []).some((sw) => sw.id === ped.inStair?.stairId));
       if (here) drawPedestrian(ctx, ped, rc);
       else if (levelView.showGhostPeople) drawGhostPerson(ctx, ped, rc, levelView.ghostAlpha);
       continue;
@@ -699,7 +711,13 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
     ctx.fillStyle = '#ffffff';
     ctx.fill();
   }
-  if (ped.inStair) {
+  if (ped.inStair?.queue === 'floor') {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else if (ped.inStair) {
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ped.inStair.progress);
     ctx.strokeStyle = '#f8fafc';
@@ -1735,6 +1753,7 @@ function drawStairwell(
   rc: RenderContext,
   badge?: string,
   inside = 0,
+  door = 0,
 ) {
   const p = toCanvas(sw.pos.x, sw.pos.y, rc);
   const r = 10;
@@ -1775,14 +1794,16 @@ function drawStairwell(
     ctx.fillText(badge, p.cx + r + 4, p.cy + 3);
     ctx.restore();
   }
-  // Queued and walking occupants all sit on the stair point, so the count
-  // is the only sign of the queue.
-  if (inside > 0) {
+  // The door queue is drawn on the floor round the stair. People walking a
+  // flight or waiting on its landing sit on the stair point, so they are
+  // counted here.
+  if (inside > 0 || door > 0) {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.font = 'bold 8px monospace';
     ctx.fillStyle = '#fde68a';
-    ctx.fillText(`${inside} in stair`, p.cx + r + 4, p.cy + 13);
+    const parts = [door > 0 ? `${door} at door` : '', inside > 0 ? `${inside} in stair` : ''];
+    ctx.fillText(parts.filter(Boolean).join(' · '), p.cx + r + 4, p.cy + 13);
     ctx.restore();
   }
 
