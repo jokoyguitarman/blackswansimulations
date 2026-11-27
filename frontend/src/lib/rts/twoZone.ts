@@ -568,8 +568,10 @@ let fluxMemo: Map<string, Map<number, Map<number, Map<number, FluxAt>>>> | null 
  * temperature, radiant flux and the exposed flag. The table is upper-layer
  * temperature, filled lazily, the same way `fluxAt` is.
  */
-let lowerFilmMemo: Map<string, (upperK: number) => { toUpperKwM2: number; toLowerKwM2: number }> | null =
-  null;
+let lowerFilmMemo: Map<
+  string,
+  (upperK: number) => { toUpperKwM2: number; toLowerKwM2: number }
+> | null = null;
 let fluxSerial = 0;
 let fluxGen = 0;
 /** χQ / AT for the fire currently being solved, kW/m². Zero outside a balance. */
@@ -1714,7 +1716,12 @@ function stepSheetLoss(
   slice: number,
   hold?: ReadonlySet<string>,
   gainKjM2?: Record<string, number>,
-): { lossKw: number; lowerLossKw: number; lowerM2: number; sheetK?: Readonly<Record<string, number>> } {
+): {
+  lossKw: number;
+  lowerLossKw: number;
+  lowerM2: number;
+  sheetK?: Readonly<Record<string, number>>;
+} {
   let exposed = false;
   for (const boundary of boundaries) {
     if (boundary.areaM2 > 0 && boundary.id && backFaceExposed(boundary.lining, tS)) {
@@ -2561,16 +2568,7 @@ function layerAdvance(
   },
 ): LayerAdvance {
   const { spec, z, temp, slice } = ctx;
-  const supplied = flameSupply(
-    spec,
-    z,
-    temp,
-    ctx.yL,
-    ctx.yU,
-    slice,
-    ctx.depositKgS > 0,
-    scalars,
-  );
+  const supplied = flameSupply(spec, z, temp, ctx.yL, ctx.yU, slice, ctx.depositKgS > 0, scalars);
   const burn = supplied.burn;
   const burnedFraction = burn.prescribedKw > 0 ? burn.fraction : 1;
   const plume = supplied.plumeKgS;
@@ -2675,8 +2673,7 @@ function layerAdvance(
   // the layer, are sources. The vents carry the rest of the mass change.
   // Jet mass the orifice did not already import. Once the opening's upper
   // inflow exceeds the deposit, that stream is entirely inside `in`.
-  const carried =
-    ctx.depositKgS > 0 ? Math.max(0, ctx.depositKgS - scalars.farUpperInKgS) : 0;
+  const carried = ctx.depositKgS > 0 ? Math.max(0, ctx.depositKgS - scalars.farUpperInKgS) : 0;
   return {
     massRateKgS: gained - carried - storeKgS,
     burnedFraction,
@@ -2768,6 +2765,14 @@ export function stepZone(
    * inflow, with a deposited jet left out. Already in `inKgS`.
    */
   lowerInKgS: number;
+  /**
+   * Integrated (in − out − fans) over the substeps, kilograms. The last
+   * substep's rates are not this: a step longer than one substep would
+   * miss the earlier slices.
+   */
+  bookedKg: number;
+  /** Orifice mass that left each vent over the step, kilograms. */
+  outKgByVent: number[];
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -2795,6 +2800,8 @@ function stepZoneNow(
   const hotT = spec.vents.map(() => 0);
   const hotY = spec.vents.map(() => 0);
   const hotF = spec.vents.map(() => 0);
+  const outKg = spec.vents.map(() => 0);
+  let bookedKg = 0;
   let burnedFraction = 1;
   let phi = 0;
   let lastIn = 0;
@@ -2985,17 +2992,7 @@ function stepZoneNow(
       }
     }
     const solveAt = (rateKgS: number) =>
-      oxygenLimitedBurn(
-        spec,
-        z,
-        temp,
-        yL,
-        yU,
-        slice,
-        depositKgS > 0,
-        () => rateKgS,
-        lower,
-      );
+      oxygenLimitedBurn(spec, z, temp, yL, yU, slice, depositKgS > 0, () => rateKgS, lower);
     const hotOf = (flows: LimitedBurn) => {
       let hot = 0;
       for (const rate of flows.hotOutByVentKgS) hot += rate ?? 0;
@@ -3156,6 +3153,10 @@ function stepZoneNow(
     lastFanL = limited.fanLowerKgS;
     lastFanU = limited.fanUpperKgS;
     lastLowerIn = lowerInKgS;
+    bookedKg +=
+      (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS) * slice;
+    const outRates = limited.outByVentKgS;
+    for (let v = 0; v < outKg.length; v++) outKg[v] = (outKg[v] ?? 0) + (outRates[v] ?? 0) * slice;
     const rates = limited.hotOutByVentKgS;
     for (let v = 0; v < hotKg.length; v++) {
       const doorDm = (rates[v] ?? 0) * slice;
@@ -3278,6 +3279,8 @@ function stepZoneNow(
     upperLossKw: lossSlices > 0 ? upperLossSum / lossSlices : 0,
     lowerLossKw: lossSlices > 0 ? lowerLossSum / lossSlices : 0,
     lowerInKgS: lastLowerIn,
+    bookedKg,
+    outKgByVent: outKg,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }

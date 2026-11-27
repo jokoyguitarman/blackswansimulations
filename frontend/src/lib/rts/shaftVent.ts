@@ -97,10 +97,24 @@ export function shaftDrivePa(
   const gaugeU = upper.active
     ? shaftGaugePa(zDoor, upper.interfaceM, upper.floorPressurePa, upper.lowerK, upper.upperK)
     : 0;
+  return gaugeL - gaugeU + shaftStackPa(shaftK, storeyHeightM);
+}
+
+/** (ρ_ambient − ρ_shaft) g H. Positive when the column is buoyant. */
+export function shaftStackPa(shaftK: number, storeyHeightM: number): number {
+  if (!(storeyHeightM > 0) || !(shaftK > 0)) return 0;
   // The same 353/T as the layers. A constant 1.2 would leave a draft
   // between two ambient floors.
-  const stack = (shaftDensityKgM3(AMBIENT_K) - shaftDensityKgM3(shaftK)) * LEVEL.G * storeyHeightM;
-  return gaugeL - gaugeU + stack;
+  return (shaftDensityKgM3(AMBIENT_K) - shaftDensityKgM3(shaftK)) * LEVEL.G * storeyHeightM;
+}
+
+/**
+ * Width of one orifice standing in for the two landing doors. Two equal
+ * openings in series pass A/√2.
+ */
+export function shaftEquivalentWidthM(doorWidthM: number): number {
+  if (!(doorWidthM > 0)) return 0;
+  return doorWidthM / Math.sqrt(SERIES_DOORS);
 }
 
 /** Air in the shaft, kg. The width is the landing door; the run is assumed. */

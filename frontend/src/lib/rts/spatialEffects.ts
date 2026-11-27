@@ -81,10 +81,9 @@ import {
   nextShaftK,
   shaftColumnMassKg,
   shaftDensityKgM3,
-  shaftDrivePa,
-  shaftMassFlowKgS,
+  shaftEquivalentWidthM,
   shaftOpeningM,
-  type ShaftEnd,
+  shaftStackPa,
   type UpperGas,
 } from './shaftVent';
 import {
@@ -534,6 +533,26 @@ export function blastSmokeStudIds(
 
 // ── Main engine ──────────────────────────────────────────────────────────
 
+/** One shaft orifice a pressure root solved this step. */
+interface ShaftMove {
+  key: string;
+  pair: ShaftPair;
+  /** Stud the gas leaves, and the stud it is heading for. */
+  sourceId: string;
+  destId: string;
+  toRoom: string;
+  /** The other storey already had a layer when the gauges were taken. */
+  otherActive: boolean;
+  ventIndex: number;
+  outKg: number;
+  hotKg: number;
+  hotT: number;
+  hotY: number;
+  hotF: number;
+  sootG: number;
+  lowerK: number;
+}
+
 export class SpatialEffectsEngine {
   studStates: Map<string, StudEffectState> = new Map();
   hazardStates: Map<string, HazardRuntimeState> = new Map();
@@ -584,6 +603,14 @@ export class SpatialEffectsEngine {
   >();
   /** Landing studs the shaft has carried gas between. Fumes follow. */
   private shaftFumeTo = new Map<string, Set<string>>();
+  /**
+   * Kilograms the pressure roots have booked since init: each room's
+   * (in − out − fans), plus a shaft outflow parked in `shaftHold` when the
+   * other storey has no layer yet. The hold is that outflow's destination.
+   */
+  ventNetKg = 0;
+  /** Shaft vents opened during the step that is running, filled in after each pressure root. */
+  private shaftMoves: ShaftMove[] = [];
   private fireSim: FireSimulation;
   /**
    * When a hood fan runs. Discharge-only until a scene says otherwise.
@@ -702,6 +729,7 @@ export class SpatialEffectsEngine {
     this.shaftK.clear();
     this.shaftHold.clear();
     this.shaftFumeTo.clear();
+    this.ventNetKg = 0;
     this.sootK.clear();
     this.blockedWalls = null;
     this.blockedGen = -1;
@@ -1928,6 +1956,8 @@ export class SpatialEffectsEngine {
     dt: number,
     rooms: ReadonlyMap<string, string>,
     jets: Map<string, DoorJetParcel>,
+    vents: readonly Vent[] = enc.spec.vents,
+    receivers: readonly (readonly string[])[] = enc.ventReceivers,
   ): void {
     const shares = stepped.outByVentKgS;
     let totalOut = 0;
@@ -1935,12 +1965,12 @@ export class SpatialEffectsEngine {
     if (stepped.ventedSootG > 0 && totalOut > 0) {
       for (let i = 0; i < shares.length; i++) {
         const share = shares[i] ?? 0;
-        const receivers = enc.ventReceivers[i] ?? [];
+        const dest = receivers[i] ?? [];
         // No receiver means the soot left through the opening and is
         // not painted onto the studs along the outside wall.
-        if (!(share > 0) || receivers.length === 0) continue;
+        if (!(share > 0) || dest.length === 0) continue;
         this.layerGrants.push({
-          receivers,
+          receivers: dest.slice(),
           grams: stepped.ventedSootG * (share / totalOut),
         });
       }
@@ -1952,7 +1982,7 @@ export class SpatialEffectsEngine {
         ? stepped.neutralM
         : sourceInterfaceM;
     const hot = stepped.hotByVent.map((row, i) => {
-      const vent = enc.spec.vents[i];
+      const vent = vents[i];
       const sill = vent?.sillM ?? 0;
       const soffit = vent?.soffitM ?? sill;
       return {
@@ -1972,13 +2002,13 @@ export class SpatialEffectsEngine {
       this.jetAudit.push({
         room,
         members: members.slice(),
-        receivers: enc.ventReceivers.map((ids) => ids.slice()),
+        receivers: receivers.map((ids) => ids.slice()),
         hot,
         inKgS: stepped.inKgS,
         outKgS: stepped.outKgS,
       });
     }
-    const assigned = assignDoorJet(room, memberSet, enc.ventReceivers, hot, rooms);
+    const assigned = assignDoorJet(room, memberSet, receivers, hot, rooms);
     for (const [dest, parcel] of assigned) {
       const cur = jets.get(dest) ?? { kg: 0, tKg: 0, yKg: 0, fKg: 0, originKg: 0, widthKg: 0 };
       cur.kg += parcel.kg;
@@ -2244,6 +2274,10 @@ export class SpatialEffectsEngine {
       if (list) list.push(id);
       else groups.set(room, [id]);
     }
+    // A hold from the previous step becomes a layer before the gauges, so
+    // both storeys book the shaft this step.
+    this.shaftMoves = [];
+    this.absorbShaftHolds(walls, groups);
 
     const extra = new Map<string, FirePlume[]>();
     const addPlume = (studId: string | null, heatKw: number) => {
@@ -2379,14 +2413,21 @@ export class SpatialEffectsEngine {
           room,
           run: (hold, startT) => {
             const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
-            const next = stepZone(
+            const solved = this.stepThroughShafts(
+              room,
+              members,
               seeded,
               spec,
               dt,
               sootRate,
               incoming,
               hold.size > 0 ? hold : undefined,
+              enc.ventReceivers,
+              gauges,
+              groups,
+              zone.lowerK ?? AMBIENT_K,
             );
+            const next = solved.stepped;
             this.keepSheetTemperatures(spec.boundaries, next.state.sheetK);
             const depth = spec.ceilingM - next.state.interfaceM;
             const rise = next.state.upperK - AMBIENT_K;
@@ -2395,7 +2436,14 @@ export class SpatialEffectsEngine {
               prev?.active === true &&
               rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
               depth >= thick * LAYER_OFF_FRACTION;
-            const active = layerHold || formsSustainedLayer(depth, ceiling, rise, true);
+            // A shaft-fed film is thinner than the jet test until the next
+            // step deepens it. Retiring it would throw away the gas the hold
+            // just handed over.
+            const shaftFed =
+              solved.moves.length > 0 &&
+              rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+              depth >= 0.02;
+            const active = layerHold || shaftFed || formsSustainedLayer(depth, ceiling, rise, true);
             if (!active) {
               retire();
               this.forgetFloorPressure(room);
@@ -2422,7 +2470,18 @@ export class SpatialEffectsEngine {
               owned.add(id);
               this.jetLowerStuds.add(id);
             }
-            this.grantVented(room, members, enc, next, next.state.interfaceM, dt, rooms, nextJets);
+            this.grantVented(
+              room,
+              members,
+              enc,
+              next,
+              next.state.interfaceM,
+              dt,
+              rooms,
+              nextJets,
+              solved.vents,
+              solved.receivers,
+            );
             return { gain: next.sheetGainKjM2 };
           },
         });
@@ -2487,14 +2546,21 @@ export class SpatialEffectsEngine {
         room,
         run: (hold, startT) => {
           const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
-          const stepped = stepZone(
+          const solved = this.stepThroughShafts(
+            room,
+            members,
             seeded,
             spec,
             dt,
             sootRate,
             fuelJet,
             hold.size > 0 ? hold : undefined,
+            enc.ventReceivers,
+            gauges,
+            groups,
+            zone.lowerK ?? AMBIENT_K,
           );
+          const stepped = solved.stepped;
           this.keepSheetTemperatures(spec.boundaries, stepped.state.sheetK);
           this.rememberFloorPressure(room, stepped.floorPressurePa);
           this.layerState.set(room, {
@@ -2523,6 +2589,8 @@ export class SpatialEffectsEngine {
             dt,
             rooms,
             nextJets,
+            solved.vents,
+            solved.receivers,
           );
           return { gain: stepped.sheetGainKjM2 };
         },
@@ -2569,111 +2637,267 @@ export class SpatialEffectsEngine {
       this.forgetFloorPressure(room);
     }
     this.commitGlass(dt);
-    this.exchangeShafts(dt, walls, groups, owned);
+    this.settleShafts(dt, groups, owned);
     return owned;
   }
 
   /**
-   * One shaft segment, one vent. Hot gas moves from the storey whose door
-   * head is in the upper layer toward the other storey. The stack term
-   * sends a hot lower floor upward. A deep upper layer can reverse it.
-   * The receiving storey keeps the gas until it is deep and warm enough
-   * to be a layer. A stair landing takes the black-layer flux; a lift does
-   * not.
+   * Solve one room with its doors plus a shaft orifice into each other
+   * storey. The other storey's gauge is lagged, and the stack is a shift
+   * of that gauge, the same way a neighbour door already lags. A storey
+   * with no layer yet is a still column at the stack pressure, and only
+   * the hot part of the outflow is kept for it.
    */
-  private exchangeShafts(
+  private stepThroughShafts(
+    room: string,
+    members: readonly string[],
+    state: ZoneState,
+    spec: LayerSpec,
     dt: number,
-    walls: InteriorWall[],
+    sootGPerS: number,
+    jet: DoorJetInflow | null | undefined,
+    hold: ReadonlySet<string> | undefined,
+    doorReceivers: readonly (readonly string[])[],
+    gauges: ReadonlyMap<string, VentOutside>,
     groups: ReadonlyMap<string, string[]>,
-    owned: Set<string>,
-  ): void {
-    if (!(dt > 0) || this.verticalPairs.length === 0) return;
-    const rooms = this.fireSim.compartmentsOf(walls);
+    lowerK: number,
+  ): {
+    stepped: ReturnType<typeof stepZone>;
+    vents: Vent[];
+    receivers: string[][];
+    moves: ShaftMove[];
+  } {
+    const planned = this.planShaftVents(
+      room,
+      members,
+      state.interfaceM,
+      spec,
+      doorReceivers,
+      gauges,
+      groups,
+    );
+    const stepped = stepZone(state, planned.spec, dt, sootGPerS, jet, hold);
+    this.ventNetKg += stepped.bookedKg;
+    this.fillShaftMoves(planned.moves, stepped, lowerK);
+    return { stepped, vents: planned.vents, receivers: planned.receivers, moves: planned.moves };
+  }
+
+  private planShaftVents(
+    room: string,
+    members: readonly string[],
+    interfaceM: number,
+    spec: LayerSpec,
+    doorReceivers: readonly (readonly string[])[],
+    gauges: ReadonlyMap<string, VentOutside>,
+    groups: ReadonlyMap<string, string[]>,
+  ): { spec: LayerSpec; vents: Vent[]; receivers: string[][]; moves: ShaftMove[] } {
+    const vents = spec.vents.slice();
+    const receivers = doorReceivers.map((row) => row.slice());
+    const moves: ShaftMove[] = [];
+    if (this.verticalPairs.length === 0) return { spec, vents, receivers, moves };
+    const memberSet = new Set(members);
     const seen = new Set<string>();
     for (const pair of this.verticalPairs) {
-      const lowerRoom = rooms.get(pair.lower);
-      const upperRoom = rooms.get(pair.upper);
-      if (!lowerRoom || !upperRoom || lowerRoom === upperRoom) continue;
+      const thisIsLower = memberSet.has(pair.lower);
+      const thisIsUpper = memberSet.has(pair.upper);
+      if ((thisIsLower && thisIsUpper) || (!thisIsLower && !thisIsUpper)) continue;
+      const otherId = thisIsLower ? pair.upper : pair.lower;
+      const otherRoom = this.roomOfStud(otherId, groups);
+      if (!otherRoom || otherRoom === room) continue;
+      const lowerRoom = thisIsLower ? room : otherRoom;
+      const upperRoom = thisIsLower ? otherRoom : room;
       const key = `${pair.linkId ?? pair.lower}|${lowerRoom}|${upperRoom}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const lowerLevel = levelOf(this.studIndex.get(pair.lower) ?? {});
-      const upperLevel = levelOf(this.studIndex.get(pair.upper) ?? {});
-      const height = this.storeyHeight(lowerLevel);
+      const level = levelOf(this.studIndex.get(thisIsLower ? pair.lower : pair.upper) ?? {});
+      const height =
+        pair.storeyHeightM && pair.storeyHeightM > 0
+          ? pair.storeyHeightM
+          : this.storeyHeight(level);
       const opening = shaftOpeningM(height);
-      const width =
+      const other = gauges.get(otherRoom);
+      const otherActive = other != null;
+      // Cold air through an empty landing is not a layer. Wait until the
+      // door head is in the smoke, then keep that hot gas for the far floor.
+      if (!otherActive && !doorHeadInUpper(interfaceM, opening)) continue;
+      const doorWidth =
         pair.widthM ??
         (pair.kind === 'lift' ? LEVEL.LIFT_DOOR_WIDTH_M : LEVEL.DEFAULT_STAIR_WIDTH_M);
-      this.foldShaftHold(lowerRoom);
-      this.foldShaftHold(upperRoom);
-      const lowerEnd = this.shaftEnd(lowerRoom, lowerLevel);
-      const upperEnd = this.shaftEnd(upperRoom, upperLevel);
+      const width = shaftEquivalentWidthM(doorWidth);
+      if (!(width > 0) || !(opening > 0)) continue;
       const shaftK = this.shaftK.get(key) ?? AMBIENT_K;
-      const columnMass = shaftColumnMassKg(shaftK, width, height);
-      const drive = shaftDrivePa(lowerEnd, upperEnd, shaftK, height);
-      const up = drive >= 0;
-      const sourceRoom = up ? lowerRoom : upperRoom;
-      const destRoom = up ? upperRoom : lowerRoom;
-      const sourceEnd = up ? lowerEnd : upperEnd;
-      const sourceId = up ? pair.lower : pair.upper;
-      const destId = up ? pair.upper : pair.lower;
-      const upwindK = sourceEnd.active ? sourceEnd.upperK : AMBIENT_K;
-      const flow = shaftMassFlowKgS(drive, width, opening, upwindK);
-      const hot =
-        sourceEnd.active && doorHeadInUpper(sourceEnd.interfaceM, opening) && Math.abs(flow) > 0;
-      let inflowKg = 0;
-      let inflowK: number | null = null;
-      if (hot) {
-        const live = this.layerState.get(sourceRoom);
-        const area = live?.areaM2 ?? 0;
-        const capM = Math.max(0, opening - sourceEnd.interfaceM);
-        const capKg = shaftDensityKgM3(sourceEnd.upperK) * area * capM;
-        const want = Math.min(Math.abs(flow) * dt, capKg);
-        if (live && want > 0) {
-          const moved = this.giveShaftGas(sourceRoom, destRoom, want, groups, walls);
-          if (moved > 0) {
-            inflowKg = moved;
-            inflowK = sourceEnd.upperK;
-            const from = this.shaftFumeTo.get(sourceId) ?? new Set<string>();
-            from.add(destId);
-            this.shaftFumeTo.set(sourceId, from);
-            this.ownShaftRoom(destRoom, groups, owned);
+      const stack = shaftStackPa(shaftK, height);
+      const outside: VentOutside = other
+        ? {
+            interfaceM: other.interfaceM,
+            upperK: other.upperK,
+            lowerK: other.lowerK,
+            floorPressurePa: other.floorPressurePa + (thisIsLower ? -stack : stack),
           }
-        }
-      }
-      this.shaftK.set(key, nextShaftK(shaftK, dt, inflowKg, inflowK, columnMass));
-      if (pair.kind === 'stair') {
-        const landingK = this.shaftK.get(key) ?? AMBIENT_K;
-        this.fireSim.applyLandingFlux(pair.upper, blackLayerRadiantKwM2(landingK), dt);
-        const fs = this.fireSim.states.get(pair.upper);
-        const stud = this.studStates.get(pair.upper);
-        if (fs && stud) stud.fire = { ...fs };
-      }
+        : {
+            interfaceM: opening + 1,
+            upperK: AMBIENT_K,
+            lowerK: AMBIENT_K,
+            floorPressurePa: thisIsLower ? -stack : stack,
+          };
+      const move: ShaftMove = {
+        key,
+        pair,
+        sourceId: thisIsLower ? pair.lower : pair.upper,
+        destId: otherId,
+        toRoom: otherRoom,
+        otherActive,
+        ventIndex: vents.length,
+        outKg: 0,
+        hotKg: 0,
+        hotT: AMBIENT_K,
+        hotY: O2_AMBIENT_MASS,
+        hotF: 0,
+        sootG: 0,
+        lowerK: AMBIENT_K,
+      };
+      vents.push({ widthM: width, sillM: 0, soffitM: opening, outside });
+      receivers.push(otherActive ? (groups.get(otherRoom) ?? []).slice() : []);
+      moves.push(move);
+      this.shaftMoves.push(move);
+    }
+    return {
+      spec: vents.length === spec.vents.length ? spec : { ...spec, vents },
+      vents,
+      receivers,
+      moves,
+    };
+  }
+
+  private roomOfStud(id: string, groups: ReadonlyMap<string, string[]>): string | undefined {
+    for (const [room, members] of groups) {
+      if (members.includes(id)) return room;
+    }
+    return undefined;
+  }
+
+  private fillShaftMoves(
+    moves: readonly ShaftMove[],
+    stepped: {
+      ventedSootG: number;
+      outByVentKgS: readonly number[];
+      outKgByVent: readonly number[];
+      hotByVent: readonly { kg: number; tempK: number; oxygenY: number; fuelY?: number }[];
+    },
+    lowerK: number,
+  ): void {
+    if (moves.length === 0) return;
+    let totalOut = 0;
+    for (const share of stepped.outByVentKgS) totalOut += share;
+    for (const move of moves) {
+      const hot = stepped.hotByVent[move.ventIndex];
+      move.outKg = stepped.outKgByVent[move.ventIndex] ?? 0;
+      move.hotKg = hot?.kg ?? 0;
+      move.hotT = hot?.tempK ?? AMBIENT_K;
+      move.hotY = hot?.oxygenY ?? O2_AMBIENT_MASS;
+      move.hotF = hot?.fuelY ?? 0;
+      move.lowerK = lowerK;
+      const share = totalOut > 0 ? (stepped.outByVentKgS[move.ventIndex] ?? 0) / totalOut : 0;
+      move.sootG = stepped.ventedSootG * share;
     }
   }
 
-  /** A storey with no active layer is ambient at its ceiling. */
-  private shaftEnd(room: string, level: string): ShaftEnd {
-    const ceiling = this.storeyHeight(level);
-    const live = this.layerState.get(room);
-    if (!live?.active) {
-      return {
-        active: false,
-        interfaceM: ceiling,
-        upperK: AMBIENT_K,
-        lowerK: AMBIENT_K,
-        floorPressurePa: 0,
-        ceilingM: ceiling,
-      };
+  /**
+   * The shaft's hot outflow is already in both pressure roots when the far
+   * storey has a layer. Until then it waits in the hold, and the books keep
+   * that same mass so the building total does not grow. The column
+   * temperature and the landing flux follow the gas that entered.
+   */
+  private settleShafts(
+    dt: number,
+    groups: ReadonlyMap<string, string[]>,
+    owned: Set<string>,
+  ): void {
+    if (!(dt > 0) || this.shaftMoves.length === 0) return;
+    const byKey = new Map<string, ShaftMove[]>();
+    for (const move of this.shaftMoves) {
+      const list = byKey.get(move.key);
+      if (list) list.push(move);
+      else byKey.set(move.key, [move]);
     }
-    return {
-      active: true,
-      interfaceM: live.zone.interfaceM,
-      upperK: live.zone.upperK,
-      lowerK: live.zone.lowerK ?? AMBIENT_K,
-      floorPressurePa: this.floorPressurePa.get(room) ?? 0,
-      ceilingM: live.ceilingM,
-    };
+    for (const [key, moves] of byKey) {
+      const pair = moves[0]!.pair;
+      let inflowKg = 0;
+      let inflowKT = 0;
+      for (const move of moves) {
+        const hot = Math.min(Math.max(0, move.hotKg), Math.max(0, move.outKg));
+        if (hot > 0) {
+          inflowKg += hot;
+          inflowKT += hot * move.hotT;
+        }
+        if (!move.otherActive && hot > 0) {
+          const soot = move.hotKg > 0 ? move.sootG * (hot / move.hotKg) : 0;
+          this.parkShaftHold(move.toRoom, hot, move.hotT, soot, move.hotF * hot, move.hotY * hot);
+          // The pressure root already counted this kilogram as leaving. The
+          // hold still has it, so the books take it back.
+          this.ventNetKg += hot;
+        }
+        if (move.hotKg > 0) {
+          const from = this.shaftFumeTo.get(move.sourceId) ?? new Set<string>();
+          from.add(move.destId);
+          this.shaftFumeTo.set(move.sourceId, from);
+          this.ownShaftRoom(move.toRoom, groups, owned);
+        }
+      }
+      const shaftK = this.shaftK.get(key) ?? AMBIENT_K;
+      const width =
+        pair.widthM ??
+        (pair.kind === 'lift' ? LEVEL.LIFT_DOOR_WIDTH_M : LEVEL.DEFAULT_STAIR_WIDTH_M);
+      const height =
+        pair.storeyHeightM && pair.storeyHeightM > 0
+          ? pair.storeyHeightM
+          : this.storeyHeight(levelOf(this.studIndex.get(pair.lower) ?? {}));
+      const column = shaftColumnMassKg(shaftK, width, height);
+      this.shaftK.set(
+        key,
+        nextShaftK(shaftK, dt, inflowKg, inflowKg > 0 ? inflowKT / inflowKg : null, column),
+      );
+      if (pair.kind !== 'stair') continue;
+      const landingK = this.shaftK.get(key) ?? AMBIENT_K;
+      this.fireSim.applyLandingFlux(pair.upper, blackLayerRadiantKwM2(landingK), dt);
+      const fs = this.fireSim.states.get(pair.upper);
+      const stud = this.studStates.get(pair.upper);
+      if (fs && stud) stud.fire = { ...fs };
+    }
+  }
+
+  private parkShaftHold(
+    room: string,
+    massKg: number,
+    tempK: number,
+    sootG: number,
+    fuelKg: number,
+    o2Kg: number,
+  ): void {
+    const prev = this.shaftHold.get(room);
+    this.shaftHold.set(room, {
+      massKg: (prev?.massKg ?? 0) + massKg,
+      enthalpy: (prev?.enthalpy ?? 0) + massKg * tempK,
+      sootG: (prev?.sootG ?? 0) + sootG,
+      fuelKg: (prev?.fuelKg ?? 0) + fuelKg,
+      o2Kg: (prev?.o2Kg ?? 0) + o2Kg,
+    });
+  }
+
+  /** A hold from the last step joins the layer before this step's gauges. */
+  private absorbShaftHolds(walls: InteriorWall[], groups: ReadonlyMap<string, string[]>): void {
+    if (this.shaftHold.size === 0) return;
+    for (const room of [...this.shaftHold.keys()]) {
+      if (this.layerState.get(room)?.active) {
+        this.foldShaftHold(room);
+        continue;
+      }
+      const members = groups.get(room) ?? [];
+      const level = levelOf(this.studIndex.get(members[0] ?? '') ?? {});
+      const ceiling = this.storeyHeight(level);
+      const area = Math.max(members.length, 1) * STUD_AREA_M2;
+      this.promoteShaftHold(room, members, area, ceiling, walls);
+    }
   }
 
   /** Gas the shaft stored on a storey that has since grown its own layer. */
@@ -2688,58 +2912,6 @@ export class SpatialEffectsEngine {
     this.shaftHold.delete(room);
   }
 
-  /**
-   * Take `kg` from the source upper layer and give it to the destination.
-   * A destination with no layer keeps the parcel until it can stand as one.
-   */
-  private giveShaftGas(
-    sourceRoom: string,
-    destRoom: string,
-    kg: number,
-    groups: ReadonlyMap<string, string[]>,
-    walls: InteriorWall[],
-  ): number {
-    const source = this.layerState.get(sourceRoom);
-    if (!source?.active || !(kg > 0)) return 0;
-    const sourceGas = this.upperGasOf(source);
-    const dest = this.layerState.get(destRoom);
-    if (dest?.active) {
-      const mixed = moveUpperGas(sourceGas, this.upperGasOf(dest), kg);
-      this.writeUpperGas(source, mixed.source);
-      this.writeUpperGas(dest, mixed.dest);
-      if (this.sustainedShaftLayer(mixed.dest)) dest.active = true;
-      return mixed.movedKg;
-    }
-    const members = groups.get(destRoom) ?? dest?.members ?? [];
-    const memberLevel = levelOf(this.studIndex.get(members[0] ?? '') ?? {});
-    const ceiling = dest?.ceilingM ?? this.storeyHeight(memberLevel);
-    const area = dest?.areaM2 ?? Math.max(members.length, 1) * STUD_AREA_M2;
-    const empty: UpperGas = {
-      interfaceM: ceiling,
-      upperK: AMBIENT_K,
-      sootG: 0,
-      fuelKg: 0,
-      upperO2: O2_AMBIENT_MASS,
-      areaM2: area,
-      ceilingM: ceiling,
-    };
-    const mixed = moveUpperGas(sourceGas, empty, kg);
-    this.writeUpperGas(source, mixed.source);
-    if (!(mixed.movedKg > 0)) return 0;
-    // The empty side is clamped to a sliver, so its geometric mass is not
-    // the parcel. The hold keeps the kilograms that actually moved.
-    const gained = mixed.movedKg;
-    const prev = this.shaftHold.get(destRoom);
-    const mass = (prev?.massKg ?? 0) + gained;
-    const enthalpy = (prev?.enthalpy ?? 0) + gained * mixed.dest.upperK;
-    const soot = (prev?.sootG ?? 0) + mixed.dest.sootG;
-    const fuel = (prev?.fuelKg ?? 0) + mixed.dest.fuelKg;
-    const o2 = (prev?.o2Kg ?? 0) + gained * mixed.dest.upperO2;
-    this.shaftHold.set(destRoom, { massKg: mass, enthalpy, sootG: soot, fuelKg: fuel, o2Kg: o2 });
-    this.promoteShaftHold(destRoom, members, area, ceiling, walls);
-    return mixed.movedKg;
-  }
-
   private promoteShaftHold(
     room: string,
     members: readonly string[],
@@ -2752,8 +2924,13 @@ export class SpatialEffectsEngine {
     const enc = this.enclosureOf(room, members, walls, ceilingM);
     if (!enc || !hasSmokeReservoir(enc.spec.vents, ceilingM)) return;
     const area = enc.spec.areaM2 > 0 ? enc.spec.areaM2 : areaM2;
+    const temp = hold.enthalpy / hold.massKg;
+    const natural = area > 0 && temp > 0 ? hold.massKg / (shaftDensityKgM3(temp) * area) : 0;
+    // Wait for a ceiling slice, not the 12% jet depth. On a large floor that
+    // deeper test discards the ambient in the whole band when the parcel
+    // becomes the layer.
+    if (temp < AMBIENT_K + DISTINCT_LAYER_RISE_K || natural < 0.02) return;
     const gas = this.parcelGas(hold, area, ceilingM);
-    if (!this.sustainedShaftLayer(gas)) return;
     const prev = this.layerState.get(room);
     this.layerState.set(room, {
       active: true,
@@ -2787,12 +2964,6 @@ export class SpatialEffectsEngine {
     for (const id of live.members.length > 0 ? live.members : (groups.get(room) ?? [])) {
       owned.add(id);
     }
-  }
-
-  /** The formation test. A shaft does not start a layer on the half-depth hold. */
-  private sustainedShaftLayer(gas: UpperGas): boolean {
-    const depth = Math.max(0, gas.ceilingM - gas.interfaceM);
-    return formsSustainedLayer(depth, gas.ceilingM, gas.upperK - AMBIENT_K, true);
   }
 
   private upperGasOf(live: {

@@ -316,7 +316,80 @@ describe('shaft between two storeys', () => {
     assert.ok(lowerK > AMBIENT_K + 20, `lower temperature ${lowerK}`);
     assert.equal(fire.states.get('g0')?.state ?? 'none', 'none');
   });
+
+  test('the two storeys conserve mass, including gas waiting in the shaft hold', () => {
+    const { engine, walls } = shaftRoom();
+    const fuel = hotFuel();
+    engine.setFuelCells(
+      new Map([
+        ['g0', fuel],
+        ['g1', fuel],
+      ]),
+    );
+    const fire = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    fire.ignite(['g0', 'g1']);
+    const view = engine as unknown as {
+      layerState: Map<string, BudgetLayer>;
+      shaftHold: Map<string, { massKg: number }>;
+      ventNetKg: number;
+    };
+    const mass = () => storeyMass(view) + holdMass(view.shaftHold);
+    let prev = mass();
+    let residual = 0;
+    let peakHold = 0;
+    let peak = 0;
+    for (let t = 1; t <= 180; t++) {
+      const netBefore = view.ventNetKg;
+      engine.step(1, walls, []);
+      const hold = holdMass(view.shaftHold);
+      if (hold > peakHold) peakHold = hold;
+      const now = mass();
+      residual += now - prev - (view.ventNetKg - netBefore);
+      if (Math.abs(residual) > Math.abs(peak)) peak = residual;
+      prev = now;
+    }
+    // A closed room with no shaft loses about 3 kg to the floor clamp. The
+    // same scene at d4dd0df, with the shaft moved outside the pressure roots,
+    // is about +510 kg by T+180 and still climbing.
+    assert.ok(
+      Math.abs(residual) < 6,
+      `mass residual ${residual.toFixed(1)} kg at T+180 (peak ${peak.toFixed(1)} kg)`,
+    );
+    assert.ok(peakHold > 0, `no gas waited in the shaft hold (residual ${residual.toFixed(1)} kg)`);
+  });
 });
+
+interface BudgetLayer {
+  active: boolean;
+  members: string[];
+  areaM2: number;
+  ceilingM: number;
+  zone: { interfaceM: number; upperK: number; lowerK?: number };
+}
+
+function storeyMass(view: { layerState: Map<string, BudgetLayer> }): number {
+  let total = 0;
+  for (const id of ['g0', 'u0']) {
+    const live = [...view.layerState.values()].find((row) => row.members.includes(id));
+    if (live?.active) {
+      const z = live.zone.interfaceM;
+      const lowerK =
+        live.zone.lowerK != null && live.zone.lowerK > 0 ? live.zone.lowerK : AMBIENT_K;
+      total +=
+        (353 / live.zone.upperK) * live.areaM2 * (live.ceilingM - z) +
+        (353 / lowerK) * live.areaM2 * z;
+    } else {
+      total += (353 / AMBIENT_K) * 18 * 2.6;
+    }
+  }
+  return total;
+}
+
+function holdMass(hold: Map<string, { massKg: number }>): number {
+  let mass = 0;
+  for (const row of hold.values()) mass += row.massKg;
+  return mass;
+}
 
 describe('stair shaft scene', () => {
   test('the upper floor is bare and both shafts are there', () => {
