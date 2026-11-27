@@ -11,11 +11,8 @@ import {
   readAuthoredRubric,
   type ResponseRubric,
 } from '../judging/judgeCore.js';
-import {
-  collectConditionKeys,
-  parseConditionKey,
-  type ConditionScope,
-} from '../conditions/conditionCatalog.js';
+import { collectConditionKeys, parseConditionKey } from '../conditions/conditionCatalog.js';
+import { formatConditionKey } from '../../../shared/conditionKeyGrammar.js';
 
 export const DELIVERY_APPS = [
   'social_feed',
@@ -405,22 +402,13 @@ function rebuildConditionKey(
   parsed: Exclude<ReturnType<typeof parseConditionKey>, { error: string }>,
   args: string[],
 ): string {
+  const formatted = formatConditionKey(parsed.def, args, parsed.scope);
+  if ('key' in formatted) return formatted.key;
   const body =
     parsed.def.kind === 'fixed' || args.length === 0
       ? parsed.def.id
       : `${parsed.def.id}:${args.join(':')}`;
-  return `${body}${formatScope(parsed.scope)}`;
-}
-
-function formatScope(scope: ConditionScope | undefined): string {
-  if (!scope) return '';
-  const name = scope.team
-    ? 'team'
-    : scope.role
-      ? 'role'
-      : Object.keys(scope).find((key) => scope[key]);
-  if (!name || !scope[name]) return '';
-  return `|${name}=${scope[name]}`;
+  return body;
 }
 
 function clampEligible(value: unknown, durationMinutes: number): number {

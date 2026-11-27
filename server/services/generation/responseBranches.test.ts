@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { catalogPromptBlock } from '../conditions/conditionCatalog.js';
 import { validateConditionalInjects } from '../conditions/conditionalInjectsCore.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
+import { responseRubricError } from '../judging/judgeCore.js';
 import {
   generateResponseBranches,
   responseBranchChatOptions,
@@ -139,7 +140,7 @@ describe('response branch post-processing', () => {
     });
   });
 
-  test('clamping a minute window keeps a role scope', () => {
+  test('clamping a minute window keeps team and role scopes', () => {
     const processed = postProcessResponseBranches(
       {
         branches: [
@@ -152,17 +153,28 @@ describe('response branch post-processing', () => {
             conditions_to_appear: { all: ['email_unreplied:supplier_4471:90|role=cs_head'] },
             conditions_to_cancel: ['email_replied:supplier_4471|role=cs_head'],
           },
+          {
+            parent_inject_key: 'supplier_4471',
+            branch: 'poor_reply',
+            title: 'Team chaser',
+            content: 'Ops still has not answered.',
+            delivery_config: { app: 'email' },
+            conditions_to_appear: { all: ['email_unreplied:supplier_4471:90|team=Ops'] },
+          },
         ],
       },
       [supplierParent],
       60,
     );
-    assert.deepEqual(processed.branches[0]?.conditions_to_appear, {
+    const role = processed.branches.find((branch) => branch.title === 'Role chaser');
+    const team = processed.branches.find((branch) => branch.title === 'Team chaser');
+    assert.deepEqual(role?.conditions_to_appear, {
       all: ['email_unreplied:supplier_4471:60|role=cs_head'],
     });
-    assert.deepEqual(processed.branches[0]?.conditions_to_cancel, [
-      'email_replied:supplier_4471|role=cs_head',
-    ]);
+    assert.deepEqual(role?.conditions_to_cancel, ['email_replied:supplier_4471|role=cs_head']);
+    assert.deepEqual(team?.conditions_to_appear, {
+      all: ['email_unreplied:supplier_4471:60|team=ops'],
+    });
   });
 
   test('pass_threshold is capped at the number of criteria', () => {
@@ -183,6 +195,34 @@ describe('response branch post-processing', () => {
     );
     assert.equal(processed.rubrics[0]?.rubric.criteria.length, 3);
     assert.equal(processed.rubrics[0]?.rubric.pass_threshold, 3);
+    assert.equal(responseRubricError(processed.rubrics[0]?.rubric), null);
+  });
+
+  test('a generated rubric passes the editor schema', async () => {
+    const parent: SocialInject = {
+      type: 'email_inbound',
+      title: 'Batch hold',
+      content: 'When does the recall notice go out?',
+      severity: 'high',
+      inject_scope: 'team_specific',
+      target_teams: ['Ops'],
+      requires_response: true,
+      delivery_config: { app: 'email', inject_key: 'supplier_4471' },
+    };
+    await generateResponseBranches(
+      [parent],
+      [],
+      { confirmed_facts: [], unconfirmed_claims: [] },
+      { crisisType: 'recall', duration: 60 },
+      {
+        client: {
+          async complete() {
+            return { branches: [], rubrics: [] };
+          },
+        },
+      },
+    );
+    assert.equal(responseRubricError(parent.delivery_config.response_rubric), null);
   });
 });
 
