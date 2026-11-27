@@ -370,7 +370,7 @@ export function renderRTS(
   if (showcaseFx) drawFlameFront(ctx, rc, showcaseFx);
 
   for (const unit of state.units) {
-    if (unit.level != null && !onActive(unit.level)) continue;
+    if (!onActive(unit.level)) continue;
     drawUnit(ctx, unit, rc);
   }
 
@@ -379,7 +379,7 @@ export function renderRTS(
   }
 
   for (const unit of state.units) {
-    if (unit.level != null && !onActive(unit.level)) continue;
+    if (!onActive(unit.level)) continue;
     if (unit.waypoints.length > 0) {
       drawWaypoints(ctx, unit, rc, unit.selected);
     }

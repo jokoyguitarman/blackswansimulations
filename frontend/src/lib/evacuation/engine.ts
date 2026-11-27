@@ -1213,7 +1213,8 @@ export class PolygonEvacuationEngine {
    */
   setResponders(responders: ReadonlyArray<{ id: string; pos: Vec2; level?: string }>) {
     // In a multi-storey scene a responder releases only people on its own
-    // storey, so one without a level releases nobody.
+    // storey. One without a level is on G, as the renderer draws it, so a unit
+    // placed before a second storey was added still works on the ground floor.
     this.responders = responders.map((r) => ({ id: r.id, pos: { ...r.pos }, level: r.level }));
   }
 
@@ -1276,7 +1277,7 @@ export class PolygonEvacuationEngine {
     const pos = this.posOf(body);
     let walls: WallLike[] | null = null;
     for (const r of this.responders) {
-      if (this.levelPlan && (r.level == null || r.level !== ped.level)) continue;
+      if (this.levelPlan && levelOf(r) !== levelOf(ped)) continue;
       if (Math.hypot(r.pos.x - pos.x, r.pos.y - pos.y) > reach) continue;
       // Interior walls and the shell, with exit gaps open: a marshal outside an
       // exit can reach someone in it, not someone behind the wall beside it.
