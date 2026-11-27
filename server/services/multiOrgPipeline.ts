@@ -1,19 +1,29 @@
-import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import {
+  generateConvergenceLayer,
+  generateIntelDependencies,
   generateUnifiedStoryline,
   generateOrgPageConfig,
   normalizeOrgPages,
   type NPCPersona,
   type FactSheet,
+  type ObjectiveDef,
   type SocialInject,
   type TeamDef,
   type OrgPageConfig,
   type OrgConfig,
   type SOPStep,
 } from './socialCrisisGeneratorService.js';
+import {
+  competitorsSchema,
+  organisationInputSchema,
+  organisationsSchema,
+  pressureOrganisationsSchema,
+  teamCharterWireSchema,
+  type TeamCharterWire,
+} from './warroomBuild/wireSchemas.js';
 import { repairOrgPageKeys } from './orgNameMatch.js';
 import {
   validateOrganisations,
@@ -62,6 +72,15 @@ import {
   ownerFunctionFor,
 } from './castCompletenessService.js';
 
+export {
+  competitorsSchema,
+  organisationInputSchema,
+  organisationsSchema,
+  pressureOrganisationsSchema,
+  teamCharterWireSchema,
+  type TeamCharterWire,
+};
+
 /** Private planner hints persisted at initial_state.decision_context (organic decisions §4.1). */
 export interface DecisionContext {
   leakiness: number;
@@ -74,82 +93,10 @@ export interface DecisionContext {
 /**
  * Multi-organisation War Room pipeline (contract §5): the per-endpoint
  * orchestration the routes delegate to whenever the wizard sends
- * `organisations[]`. Legacy single-org requests never reach this file.
+ * `organisations[]`. `runConvergencePipeline` is also the legacy convergence
+ * path (no organisations): the route passes a null org result.
+ * Wire schemas live in `warroomBuild/wireSchemas.ts` and are re-exported above.
  */
-
-// ─── Zod schemas shared by the routes ────────────────────────────────────────
-
-export const organisationInputSchema = z.object({
-  org_key: z.string().optional(),
-  display_name: z.string().min(1).max(120),
-  short_name: z.string().max(20).optional(),
-  country: z.string().min(1).max(80),
-  city: z.string().max(80).optional(),
-  kind: z.enum(['company', 'office', 'agency', 'ngo', 'other']).optional(),
-  facebook_handle: z.string().max(60).optional(),
-  x_handle: z.string().max(60).optional(),
-  logo_url: z.string().max(2000).optional(),
-  is_primary: z.boolean(),
-  team_roster: z
-    .array(
-      z.object({
-        team_name: z.string().min(1).max(60),
-        description: z.string().max(2000).optional(),
-        is_custom: z.boolean().optional(),
-        is_public_voice: z.boolean().optional(),
-      }),
-    )
-    .max(6),
-  operation: z.enum(['players', 'ai']).optional(),
-});
-
-export const organisationsSchema = z.array(organisationInputSchema).min(1).max(6);
-
-export const pressureOrganisationsSchema = z
-  .array(
-    z.object({
-      org_key: z.string().optional(),
-      display_name: z.string().min(1).max(120),
-      kind: z.enum(['union', 'regulator', 'ngo', 'community_group', 'political']),
-      country: z.string().min(1).max(80),
-      city: z.string().max(80).optional(),
-      register: z.enum(['statutory', 'advocacy', 'grassroots', 'political']).optional(),
-      wants: z.string().max(300).optional(),
-      facebook_handle: z.string().max(60).optional(),
-      x_handle: z.string().max(60).optional(),
-      spokesperson_stakeholder_id: z.string().max(80).optional(),
-      targets_org_keys: z.array(z.string()).max(6).optional(),
-    }),
-  )
-  .max(6);
-
-export const competitorsSchema = z.array(
-  z.object({
-    name: z.string().min(1).max(120),
-    country: z.string().min(1).max(80),
-    facebook_handle: z.string().max(60).optional(),
-    x_handle: z.string().max(60).optional(),
-  }),
-);
-
-export const teamCharterWireSchema = z.object({
-  team_name: z.string(),
-  mission: z.string(),
-  responsibilities: z.array(z.string()),
-  out_of_lane: z.array(z.string()).optional(),
-  scoring_rubric: z.string().optional(),
-  expected_actions: z.array(z.unknown()).optional(),
-  min_participants: z.number().optional(),
-  max_participants: z.number().optional(),
-  is_custom: z.boolean().optional(),
-  can_post_publicly: z.boolean().optional(),
-  sentiment_dimension: z.string().optional(),
-  org_key: z.string().nullable().optional(),
-  function_key: z.string().optional(),
-  country: z.string().optional(),
-  short_name: z.string().optional(),
-});
-export type TeamCharterWire = z.infer<typeof teamCharterWireSchema>;
 
 export function resolveOrganisations(
   organisations: OrganisationInput[] | undefined,
@@ -652,6 +599,100 @@ export function chartersFromWire(
     }
   }
   return out;
+}
+
+// ─── generate-convergence ────────────────────────────────────────────────────
+
+export interface ConvergenceCrisisContext {
+  crisisType: string;
+  location: string;
+  country: string;
+  context: string;
+  duration: number;
+}
+
+/** The object POST /generate-convergence stores on the job, including intel. */
+export interface ConvergencePipelineResult {
+  sharedInjects: SocialInject[];
+  convergenceGates: SocialInject[];
+  narrative: { title: string; description: string; briefing: string };
+  objectives: ObjectiveDef[];
+  dimensionLabels: {
+    public_trust: string;
+    community_safety: string;
+    narrative_control: string;
+    escalation_risk: string;
+  };
+  intel_injects: Record<string, SocialInject[]>;
+}
+
+/**
+ * Convergence stage, extracted from the route so the durable build calls the same code.
+ * `blueprint` is already coerced (or null). Pass `jobId` to keep the route's log lines.
+ */
+export async function runConvergencePipeline(
+  orgsResult: Extract<OrganisationsValidation, { ok: true }> | null,
+  crisisContext: ConvergenceCrisisContext,
+  teamStorylines: Record<string, SocialInject[]>,
+  personas: NPCPersona[],
+  factSheet: FactSheet,
+  blueprint: ScenarioBlueprint | null,
+  jobId?: string,
+): Promise<ConvergencePipelineResult> {
+  // Explicit valid team names (never the wizard's synthetic "Shared" key) and the
+  // org grouping that lets dependencies cross agencies and borders.
+  const orgSummary =
+    orgsResult && orgsResult.multiOrg
+      ? orgsResult.orgs.map((o) => ({
+          org_key: o.org_key,
+          display_name: o.display_name,
+          country: o.country,
+          team_names: o.teams.map((t) => t.team_name),
+        }))
+      : undefined;
+  const validTeamNames = orgsResult
+    ? orgsResult.orgs.flatMap((o) => o.teams.map((t) => t.team_name))
+    : Object.keys(teamStorylines).filter((k) => k !== 'Shared');
+
+  const [result, intelResult] = await Promise.all([
+    generateConvergenceLayer(teamStorylines, personas, factSheet, crisisContext, blueprint),
+    generateIntelDependencies(
+      teamStorylines,
+      personas,
+      factSheet,
+      crisisContext,
+      validTeamNames,
+      orgSummary,
+    ).catch((err: unknown) => {
+      logger.warn(
+        jobId ? { err, jobId } : { err },
+        'Intel dependency generation failed (non-critical)',
+      );
+      return {
+        intelInjects: {} as Record<string, SocialInject[]>,
+        intelGates: [] as SocialInject[],
+      };
+    }),
+  ]);
+
+  // Paired intel gates ride the convergence-gate bucket; intel emails are
+  // returned separately so the wizard can merge them into team storylines.
+  const data: ConvergencePipelineResult = {
+    ...result,
+    convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
+    intel_injects: intelResult.intelInjects,
+  };
+  if (jobId) {
+    logger.info(
+      {
+        jobId,
+        intelEmails: Object.values(intelResult.intelInjects).flat().length,
+        intelGates: intelResult.intelGates.length,
+      },
+      'Convergence generation completed',
+    );
+  }
+  return data;
 }
 
 // ─── generate-org-page ───────────────────────────────────────────────────────

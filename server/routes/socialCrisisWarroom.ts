@@ -8,8 +8,6 @@ import {
   generateNPCsAndFactSheet,
   suggestSocialCrisisTeams,
   generateAllTeamStorylines,
-  generateConvergenceLayer,
-  generateIntelDependencies,
   generateUnifiedStoryline,
   generateStrategyWindows,
   researchBestPractices,
@@ -39,19 +37,24 @@ import {
   MIGRATION_197_HINT,
 } from '../services/socialCrisisPersistenceService.js';
 import {
-  organisationsSchema,
-  competitorsSchema,
-  pressureOrganisationsSchema,
-  teamCharterWireSchema,
   resolveOrganisations,
   crisisContextFrom,
   runNpcsPipeline,
   runStorylinePipeline,
+  runConvergencePipeline,
   runOrgPagePipeline,
   buildCompileArtifacts,
   logCompileSummary,
-  type TeamCharterWire,
 } from '../services/multiOrgPipeline.js';
+import {
+  organisationsSchema,
+  competitorsSchema,
+  pressureOrganisationsSchema,
+  teamRosterSchema,
+  teamCharterWireSchema,
+  type TeamCharterWire,
+} from '../services/warroomBuild/wireSchemas.js';
+import { describeGenerationFailure } from '../services/warroomBuild/buildCore.js';
 import { MultiOrgValidationError } from '../services/scenarioValidationService.js';
 import {
   EXECUTIVE_CHARTER,
@@ -110,18 +113,6 @@ interface RosterEntry {
   is_custom?: boolean;
   is_public_voice?: boolean;
 }
-
-const teamRosterSchema = z
-  .array(
-    z.object({
-      team_name: z.string().min(2).max(60),
-      description: z.string().max(2000).optional(),
-      is_custom: z.boolean().optional(),
-      is_public_voice: z.boolean().optional(),
-    }),
-  )
-  .min(2)
-  .max(6);
 
 const DEFAULT_ROSTER: RosterEntry[] = FIXED_TEAM_NAMES.map((n) => ({
   team_name: n,
@@ -454,26 +445,6 @@ router.post(
     })();
   },
 );
-
-/**
- * Turn a generation error into something the trainer can act on. Generation shares the AI
- * quota and the server with live sessions, so the two common causes are rate limits and
- * timeouts — both are transient and worth naming.
- */
-function describeGenerationFailure(err: unknown, stage: string): string {
-  const e = err as { status?: number; message?: string; name?: string } | null;
-  const msg = e?.message ?? '';
-  if (e?.status === 429 || /rate limit|429/i.test(msg)) {
-    return `The AI provider rate-limited the ${stage} stage — the server is busy (a live session shares the same quota). Wait a minute and retry.`;
-  }
-  if (e?.name === 'TimeoutError' || /timed out|timeout/i.test(msg)) {
-    return `The AI took too long answering the ${stage} stage and the call timed out. Retry — it usually completes the second time.`;
-  }
-  if (/budget exhausted/i.test(msg)) {
-    return `The hourly AI budget is exhausted. Retry after the top of the hour.`;
-  }
-  return `Failed to generate ${stage}${msg ? ` — ${msg.slice(0, 160)}` : ''}. Retry to rebuild this stage.`;
-}
 
 // Poll for any async AI job status
 router.get('/job-status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -837,60 +808,16 @@ router.post(
     void (async () => {
       try {
         const crisisContext = { crisisType: crisis_type, location, country, context, duration };
-
-        // Explicit valid team names (never the wizard's synthetic "Shared" key) and the
-        // org grouping that lets dependencies cross agencies and borders.
-        const orgSummary =
-          orgsResult && orgsResult.ok && orgsResult.multiOrg
-            ? orgsResult.orgs.map((o) => ({
-                org_key: o.org_key,
-                display_name: o.display_name,
-                country: o.country,
-                team_names: o.teams.map((t) => t.team_name),
-              }))
-            : undefined;
-        const validTeamNames =
-          orgsResult && orgsResult.ok
-            ? orgsResult.orgs.flatMap((o) => o.teams.map((t) => t.team_name))
-            : Object.keys(team_storylines as Record<string, unknown>).filter((k) => k !== 'Shared');
-
-        const [result, intelResult] = await Promise.all([
-          generateConvergenceLayer(
-            team_storylines as Record<string, SocialInject[]>,
-            personas as NPCPersona[],
-            fact_sheet as FactSheet,
-            crisisContext,
-            env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
-          ),
-          generateIntelDependencies(
-            team_storylines as Record<string, SocialInject[]>,
-            personas as NPCPersona[],
-            fact_sheet as FactSheet,
-            crisisContext,
-            validTeamNames,
-            orgSummary,
-          ).catch((err) => {
-            logger.warn({ err, jobId }, 'Intel dependency generation failed (non-critical)');
-            return { intelInjects: {}, intelGates: [] };
-          }),
-        ]);
-
-        // Paired intel gates ride the convergence-gate bucket; intel emails are
-        // returned separately so the wizard can merge them into team storylines.
-        const data = {
-          ...result,
-          convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
-          intel_injects: intelResult.intelInjects,
-        };
-        aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
-        logger.info(
-          {
-            jobId,
-            intelEmails: Object.values(intelResult.intelInjects).flat().length,
-            intelGates: intelResult.intelGates.length,
-          },
-          'Convergence generation completed',
+        const data = await runConvergencePipeline(
+          orgsResult && orgsResult.ok ? orgsResult : null,
+          crisisContext,
+          team_storylines as Record<string, SocialInject[]>,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+          jobId,
         );
+        aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
       } catch (err) {
         logger.error({ err, jobId }, 'Convergence generation failed');
         aiJobs.set(jobId, {
