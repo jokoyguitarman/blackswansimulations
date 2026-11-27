@@ -6820,8 +6820,8 @@ export function DebugRTSSim() {
                 />
               </label>
               <div className="text-xs text-gray-500">
-                0 m/s is still air. A face the wind blows onto takes Cp 0.8, the opposite face −0.5,
-                and the sides −0.7.
+                0 m/s is still air. A face the wind blows straight onto takes Cp 0.6, and the
+                suction grows smoothly as the wind turns along the wall.
               </div>
             </div>
 
@@ -8133,6 +8133,10 @@ export function DebugRTSSim() {
                               },
                               hazardAnalysis: enrichResult?.hazardAnalysis,
                               hoodFanWhen: hoodFanWhenRef.current,
+                              wind: {
+                                speedMs: windRef.current.speedMs,
+                                directionRad: windRef.current.directionRad,
+                              },
                             },
                             effectPreviewTime,
                             interiorWalls,

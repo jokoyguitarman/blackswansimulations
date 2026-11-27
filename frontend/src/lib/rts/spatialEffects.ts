@@ -455,6 +455,30 @@ interface ShellOpening {
   b: Vec2;
   level: string;
   widthM: number;
+  /** Outward normal of the edge, radians, 0 along +x. */
+  outwardRad: number;
+}
+
+/** Positive when the ring is counter-clockwise, so the interior is on the left. */
+function ringIsCounterClockwise(vertices: readonly Vec2[]): boolean {
+  let sum = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    if (!a || !b) continue;
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum >= 0;
+}
+
+/**
+ * Outward normal of an edge. Walking a counter-clockwise ring, the interior
+ * is on the left, so outward is to the right of (dx, dy).
+ */
+function edgeOutwardRad(dx: number, dy: number, counterClockwise: boolean): number {
+  const ox = counterClockwise ? dy : -dy;
+  const oy = counterClockwise ? -dx : dx;
+  return Math.atan2(oy, ox);
 }
 
 /**
@@ -466,6 +490,7 @@ function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): Sh
   const openings: ShellOpening[] = [];
   const n = vertices.length;
   if (n < 2) return openings;
+  const counterClockwise = ringIsCounterClockwise(vertices);
   for (const exit of exits) {
     if (exit.status === 'blocked') continue;
     if (!(exit.width > 0)) continue;
@@ -491,6 +516,7 @@ function shellOpenings(vertices: readonly Vec2[], exits: readonly ExitDef[]): Sh
       b: { x: start.x + dx * t1, y: start.y + dy * t1 },
       level: exit.level ?? 'G',
       widthM: exit.width,
+      outwardRad: edgeOutwardRad(dx, dy, counterClockwise),
     });
   }
   return openings;
@@ -1089,10 +1115,9 @@ export class SpatialEffectsEngine {
 
   /**
    * Wind at outdoor openings. `speedMs` is the speed at the face. `directionRad`
-   * is the direction the wind travels, 0 along +x, counter-clockwise. A face
-   * the wind blows onto takes Cp +0.8, the opposite face −0.5, the sides −0.7
-   * (ASCE/SEI 7-22 Figure 27.3-1, square plan). Speed 0, or a speed that is
-   * not a positive number, is still air.
+   * is the direction the wind travels, 0 along +x, counter-clockwise. The
+   * coefficient follows Swami and Chandra (1988) with the wind angle.
+   * Speed 0, or a speed that is not a positive number, is still air.
    */
   setWind(speedMs: number, directionRad: number): void {
     this.windSpeedMs = Number.isFinite(speedMs) && speedMs > 0 ? speedMs : 0;
@@ -1512,7 +1537,12 @@ export class SpatialEffectsEngine {
     for (const gap of this.shellGaps) {
       if (gap.level !== level) continue;
       if (segmentsIntersect(member.simPos, outside.simPos, gap.a, gap.b)) {
-        return { kind: 'exit', exitKey: gap.key, widthM: gap.widthM };
+        return {
+          kind: 'exit',
+          exitKey: gap.key,
+          widthM: gap.widthM,
+          outwardRad: gap.outwardRad,
+        };
       }
     }
     return { kind: 'wall' };

@@ -97,6 +97,11 @@ export interface PreviewInput {
   hazardAnalysis?: readonly PreviewHazardAnalysis[];
   /** The scene's kitchen hood-fan rule. Leave out for the engine default. */
   hoodFanWhen?: HoodFanWhen;
+  /**
+   * Wind at the openings. The same speed and direction the live engine is
+   * given each frame. Leave out for still air.
+   */
+  wind?: { speedMs: number; directionRad: number };
 }
 
 export interface PreviewEngine {
@@ -121,6 +126,7 @@ export function buildPreviewEngine(input: PreviewInput): PreviewEngine {
   engine.setFuelCells(fuelCells);
   attachBuilding(engine, input.building);
   if (input.hoodFanWhen) engine.setHoodFanWhen(input.hoodFanWhen);
+  if (input.wind) engine.setWind(input.wind.speedMs, input.wind.directionRad);
   syncIgnition(engine, input.objects, input.hazardZones, input.charge, input.building.levels);
 
   const t0 = blastEffectsTriggerSec(engine.timeScale);
