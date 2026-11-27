@@ -12,6 +12,7 @@ import {
 } from './NotificationCenter';
 import '../../styles/device-sim.css';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
+import IncomingCallOverlay from './PhoneApp/IncomingCallOverlay';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -76,6 +77,11 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       route = channelId
         ? `/sim/${sessionId}/device/chat?channel=${encodeURIComponent(channelId)}`
         : `/sim/${sessionId}/device/chat`;
+    } else if (notifType === 'missed_call') {
+      appId = 'phone';
+      appName = 'Phone';
+      appIcon = '/icons/icon-phone.svg';
+      route = `/sim/${sessionId}/device/phone?tab=missed`;
     } else if (isSocialInteraction) {
       const metadata = (notif.metadata || {}) as Record<string, unknown>;
       const postId = String(metadata.post_id || metadata.highlight_post_id || '');
@@ -406,6 +412,7 @@ function DeviceShellInner() {
           >
             <Outlet />
           </div>
+          <IncomingCallOverlay />
 
           <NotificationCenter
             notifications={notifications}
@@ -591,6 +598,7 @@ function DeviceShellInner() {
             >
               <Outlet />
             </div>
+            <IncomingCallOverlay />
 
             {/* Notification pill + expandable preview list (the only notification surface) */}
             <NotificationCenter

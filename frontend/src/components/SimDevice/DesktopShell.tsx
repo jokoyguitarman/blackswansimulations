@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import FacebookFeedApp from './FacebookFeedApp';
+import PhoneApp from './PhoneApp/PhoneApp';
+import IncomingCallOverlay from './PhoneApp/IncomingCallOverlay';
+import { loadBadge } from './PhoneApp/phoneClient';
 import EmailApp from './EmailApp';
 import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
@@ -70,6 +73,14 @@ const APP_REGISTRY: Record<
     component: EmailApp,
     defaultWidth: 500,
     defaultHeight: 550,
+  },
+  phone: {
+    title: 'Phone',
+    icon: '☎',
+    iconImg: '/icons/icon-phone.svg',
+    component: PhoneApp,
+    defaultWidth: 390,
+    defaultHeight: 680,
   },
   news: {
     title: 'News',
@@ -153,7 +164,24 @@ export default function DesktopShell() {
   const [nextZ, setNextZ] = useState(100);
   const { isTrainer } = useRoleVisibility();
   const [showFirstBriefing, setShowFirstBriefing] = useState(false);
+  const [phoneBadge, setPhoneBadge] = useState(0);
   useBoothIdleSignOut(sessionId);
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    const pull = () => {
+      void loadBadge(sessionId).then((count) => {
+        if (!cancelled) setPhoneBadge(count);
+      });
+    };
+    pull();
+    const interval = setInterval(pull, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
+
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
@@ -446,7 +474,7 @@ export default function DesktopShell() {
 
   return (
     <div
-      className="h-screen w-screen flex flex-col overflow-hidden"
+      className="relative h-screen w-screen flex flex-col overflow-hidden"
       style={{
         backgroundImage: 'url(/icons/wallpaper.jpg)',
         backgroundSize: 'cover',
@@ -454,6 +482,7 @@ export default function DesktopShell() {
       }}
     >
       {sessionId ? <SessionIdleNotice sessionId={sessionId} role="player" /> : null}
+      <IncomingCallOverlay />
       {/* Desktop Area */}
       <div ref={desktopRef} className="flex-1 relative overflow-hidden">
         {/* Desktop Icons */}
@@ -468,18 +497,25 @@ export default function DesktopShell() {
               onDoubleClick={() => openApp(id)}
               className="flex flex-col items-center gap-1.5 w-20 p-2 rounded-xl hover:bg-white/15 transition-colors group"
             >
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform overflow-hidden"
-                style={{ backgroundColor: 'rgba(30,30,30,0.6)', backdropFilter: 'blur(8px)' }}
-              >
-                {app.iconImg ? (
-                  <img
-                    src={app.iconImg}
-                    alt={app.title}
-                    className="w-full h-full object-cover rounded-2xl"
-                  />
-                ) : (
-                  <span className="text-xl">{app.icon}</span>
+              <div className="relative">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform overflow-hidden"
+                  style={{ backgroundColor: 'rgba(30,30,30,0.6)', backdropFilter: 'blur(8px)' }}
+                >
+                  {app.iconImg ? (
+                    <img
+                      src={app.iconImg}
+                      alt={app.title}
+                      className="w-full h-full object-cover rounded-2xl"
+                    />
+                  ) : (
+                    <span className="text-xl">{app.icon}</span>
+                  )}
+                </div>
+                {id === 'phone' && phoneBadge > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-[#FF3B30] px-1 text-[11px] font-bold text-white flex items-center justify-center">
+                    {phoneBadge > 99 ? '99+' : phoneBadge}
+                  </span>
                 )}
               </div>
               <span

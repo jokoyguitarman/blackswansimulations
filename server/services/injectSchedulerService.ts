@@ -40,6 +40,7 @@ import { conditionsToAppearIsEmpty } from './conditions/injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/cancellationGate.js';
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
 import { loadCommsState } from './ledger/injectLedgerService.js';
+import { sweepCalls } from './calls/callService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /** Sessions for which the decision-template dormancy notice has been logged (once per process). */
@@ -449,6 +450,12 @@ export class InjectSchedulerService {
       },
       'Processing session for inject triggers',
     );
+
+    try {
+      await sweepCalls(session.id);
+    } catch (err) {
+      logger.warn({ err, sessionId: session.id }, 'call sweep failed');
+    }
 
     // Merge inject_state_effects so live counters see disruption-related modifiers
     const rawState = (session.current_state as Record<string, unknown>) || {};

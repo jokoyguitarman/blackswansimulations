@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import { useBoothBriefing } from './BriefingApp';
+import { loadBadge } from './PhoneApp/phoneClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -159,6 +161,7 @@ export default function HomeScreen() {
   const navigate = useNavigate();
   const { isTrainer } = useRoleVisibility();
   const [badges, setBadges] = useState<Record<string, number>>({});
+  const [phoneBadge, setPhoneBadge] = useState(0);
   const [time, setTime] = useState(new Date());
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
@@ -229,6 +232,32 @@ export default function HomeScreen() {
     const interval = setInterval(fetchBadges, 15000);
     return () => clearInterval(interval);
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    const pull = () => {
+      void loadBadge(sessionId).then((count) => {
+        if (!cancelled) setPhoneBadge(count);
+      });
+    };
+    pull();
+    const interval = setInterval(pull, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
+
+  useWebSocket({
+    sessionId: sessionId || '',
+    enabled: Boolean(sessionId),
+    eventTypes: ['sim_call.missed', 'sim_call.ended'],
+    onEvent: () => {
+      if (!sessionId) return;
+      void loadBadge(sessionId).then(setPhoneBadge);
+    },
+  });
 
   const checkDemographics = useCallback(async () => {
     if (!sessionId || onboardingChecked) return;
@@ -366,6 +395,14 @@ export default function HomeScreen() {
       icon: '/icons/icon-mail.png',
       path: 'email',
       badge: badges.email,
+      inDock: true,
+    },
+    {
+      id: 'phone',
+      label: 'Phone',
+      icon: '/icons/icon-phone.svg',
+      path: 'phone',
+      badge: phoneBadge,
       inDock: true,
     },
     {

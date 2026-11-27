@@ -156,6 +156,19 @@ export const env = {
   injectChatResponseWindowMinutes: envInt('INJECT_CHAT_RESPONSE_WINDOW_MINUTES', 15),
   // AI teammate replies are stored either way. Set this false to leave them out of comms_state.
   injectLedgerCountBots: process.env.INJECT_LEDGER_COUNT_BOTS !== 'false',
+  // Phone app (WP5). `off` keeps the interim chat-line delivery. Anything else is on.
+  simPhoneApp: process.env.SIM_PHONE_APP === 'off' ? 'off' : 'on',
+  // OpenAI Realtime voices. Comma-separated override; the default matches the current Realtime voice list.
+  realtimeVoices: (process.env.REALTIME_VOICES ?? '')
+    .split(',')
+    .map((voice) => voice.trim())
+    .filter(Boolean),
+  realtimeModel: process.env.REALTIME_MODEL || 'gpt-realtime',
+  realtimeTranscribeModel: process.env.REALTIME_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe',
+  realtimeMaxConcurrentCallsPerSession: envInt('REALTIME_MAX_CONCURRENT_CALLS_PER_SESSION', 4),
+  realtimeMaxMinutesPerSession: envInt('REALTIME_MAX_MINUTES_PER_SESSION', 60),
+  // Default "gave up" threshold for WP11. It does not block call-backs.
+  callbackWindowMinutes: envInt('CALLBACK_WINDOW_MINUTES', 30),
   // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.

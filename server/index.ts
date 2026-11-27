@@ -38,6 +38,8 @@ import equipmentRouter from './routes/equipment.js';
 import locationsRouter from './routes/locations.js';
 import floorPlansRouter from './routes/floorPlans.js';
 import { voiceRouter } from './routes/voice.js';
+import { simCallsRouter } from './routes/simCalls.js';
+import { resumeCallSidebands } from './services/calls/callService.js';
 import { demoRouter } from './routes/demo.js';
 import { debugRouter } from './routes/debug.js';
 import { rtsScenesRouter } from './routes/rtsScenes.js';
@@ -94,6 +96,10 @@ if (env.runBackgroundEngines) {
   }
   // Inject scheduler (time- and condition-based publication, 30s tick)
   injectScheduler.start();
+  // Re-attach Realtime sidebands for calls that were active when this process last stopped.
+  void resumeCallSidebands().catch((err) => {
+    logger.warn({ err }, 'call sideband resume failed');
+  });
   // AI inject scheduler (runs every 5 minutes)
   aiInjectScheduler.start();
   // Chat surveillance (monitors comms for scandal spin)
@@ -296,6 +302,7 @@ app.use('/api', equipmentRouter);
 app.use('/api', locationsRouter);
 app.use('/api', floorPlansRouter);
 app.use('/api/voice', voiceRouter);
+app.use('/api/calls', simCallsRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/debug', debugRouter);
 app.use('/api/rts-scenes', rtsScenesRouter);

@@ -35,6 +35,7 @@ import SocialFeedApp from './components/SimDevice/SocialFeedApp';
 import FacebookFeedApp from './components/SimDevice/FacebookFeedApp';
 import GroupChatApp from './components/SimDevice/GroupChatApp';
 import EmailApp from './components/SimDevice/EmailApp';
+import PhoneApp from './components/SimDevice/PhoneApp/PhoneApp';
 import NewsApp from './components/SimDevice/NewsApp';
 import { WordAppMobile } from './components/SimDevice/WordApp/WordApp';
 import { SheetsAppMobile } from './components/SimDevice/SheetsApp/SheetsApp';
@@ -198,6 +199,7 @@ const App = () => {
               <Route path="facebook" element={<FacebookFeedApp />} />
               <Route path="chat" element={<GroupChatApp />} />
               <Route path="email" element={<EmailApp />} />
+              <Route path="phone" element={<PhoneApp />} />
               <Route path="news" element={<NewsApp />} />
               <Route path="drafts" element={<WordAppMobile />} />
               <Route path="contacts" element={<SheetsAppMobile />} />

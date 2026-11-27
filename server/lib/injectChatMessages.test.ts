@@ -4,6 +4,7 @@ import {
   groupChatMessage,
   npcSenderStakeholderId,
   looksLikePhoneNumber,
+  missedCallMessage,
   phoneCallMessage,
   phoneCaller,
   selectInjectTeamChannels,
@@ -150,6 +151,36 @@ describe('phoneCallMessage', () => {
     const msg = phoneCallMessage({ title: 'T', content: '' }, { from_number: '+65 6000 0000' });
     assert.equal(msg.type, 'text');
     assert.equal(msg.content, '📞 Incoming call (+65 6000 0000): T');
+  });
+});
+
+describe('missedCallMessage', () => {
+  test('a missed call is a text line with the voicemail opening', () => {
+    const msg = missedCallMessage(
+      { title: 'Worker welfare', content: 'Hello, is this the response team? Families are waiting.' },
+      { from_name: 'Pastor Daniel', from_address: '+60 9300 6062', stakeholder_id: 'stk_pastor' },
+      { opening: 'Hello, is this the response team?' },
+    );
+    assert.equal(msg.type, 'text');
+    assert.equal(msg.sender_display_name, 'Pastor Daniel');
+    assert.equal(msg.sender_stakeholder_id, 'stk_pastor');
+    assert.equal(
+      msg.content,
+      '📞 Missed call from Pastor Daniel (+60 9300 6062) — voicemail: Hello, is this the response team?',
+    );
+  });
+
+  test('several misses in one group use the plural count', () => {
+    const msg = missedCallMessage(
+      { title: 'Worker welfare', content: 'Hello there.' },
+      { from_name: 'Pastor Daniel', from_number: '+60 9300 6062' },
+      { count: 3, opening: 'Hello there.' },
+    );
+    assert.equal(msg.type, 'text');
+    assert.equal(
+      msg.content,
+      '📞 3 missed calls from Pastor Daniel (+60 9300 6062) — voicemail: Hello there.',
+    );
   });
 });
 
