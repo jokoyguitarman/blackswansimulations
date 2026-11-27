@@ -536,7 +536,7 @@ function FitBounds({ polygon }: { polygon: [number, number][] }) {
     if (polygon.length < 3) return;
     const latlngs = polygon.map(([la, ln]) => [la, ln] as [number, number]);
     const leafletBounds = L.latLngBounds(latlngs);
-    map.fitBounds(leafletBounds, { padding: [120, 120], maxZoom: 22 });
+    map.fitBounds(leafletBounds, { padding: [120, 120], maxZoom: MAX_MAP_ZOOM });
   }, [map, polygon]);
   return null;
 }
@@ -2593,7 +2593,7 @@ export function DebugRTSSim() {
         setPlacingObject(false);
         return;
       }
-      if (e.key === 'Escape' && rtsRef.current.state.interactionMode.type === 'place_stairwell') {
+      if (e.key === 'Escape' && rtsRef.current.state.interactionMode.type !== 'select') {
         e.preventDefault();
         rtsRef.current.setInteractionMode({ type: 'select' });
         rerender();
@@ -3249,6 +3249,7 @@ export function DebugRTSSim() {
     const onVisibility = () => {
       lastTimeRef.current = 0;
       speedMeterRef.current = createSpeedMeter();
+      setSlowedSpeed(null);
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -3842,6 +3843,8 @@ export function DebugRTSSim() {
         isDraggingRef.current = false;
         return;
       }
+
+      if (e.button !== 0) return;
 
       if (mode.type === 'place_staging') {
         rts.setStagingArea(sim);
