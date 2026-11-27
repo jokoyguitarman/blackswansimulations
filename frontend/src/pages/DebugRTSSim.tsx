@@ -2627,7 +2627,7 @@ export function DebugRTSSim() {
         };
         if (showcaseOn) {
           const liveEffects = effectsEngineRef.current;
-          if (liveEffects) hazardFieldRef.current?.setStates(liveEffects.studStates);
+          if (liveEffects) evac.setHazardStates(liveEffects.studStates);
           evac.syncExits(exitsRef.current);
           evac.setZones(
             rts.state.equipment

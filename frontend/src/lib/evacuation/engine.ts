@@ -50,6 +50,7 @@ import {
   type ExitChoice,
   type Familiarity,
   type Posture,
+  type StudStateLike,
   type WallLike,
 } from './hazardSensing';
 import { SHOWCASE } from './showcaseConstants';
@@ -338,8 +339,11 @@ export class PolygonEvacuationEngine {
   private stairLastRelease = new Map<string, number>();
   private pendingCapture: Matter.Body[] = [];
   private hazardFields = new Map<string, HazardField>();
+  /** Last map passed to setHazardStates. A field installed later starts on it. */
+  private hazardStates: ReadonlyMap<string, StudStateLike> | null = null;
   private blastLevel: string | null = null;
   private wallsByLevel = new Map<string, InteriorWallDef[]>();
+  private levelRegions = new Map<string, RouteRegions>();
   private motionSerial = 0;
   private staticIndexSerial = -1;
   private grids = new Map<
@@ -816,10 +820,24 @@ export class PolygonEvacuationEngine {
   setHazardField(field: HazardField | null) {
     if (!this.showcase && !this.levelPlan) return;
     this.hazardField = field;
+    if (field && this.hazardStates) field.setStates(this.hazardStates);
   }
 
   setHazardFields(fields: ReadonlyMap<string, HazardField>) {
     this.hazardFields = new Map(fields);
+    if (!this.hazardStates) return;
+    for (const field of this.hazardFields.values()) field.setStates(this.hazardStates);
+  }
+
+  /**
+   * Point every field the crowd reads, the single one and each storey's, at
+   * the effects engine's stud states. Call it every frame: the effects
+   * engine can be rebuilt with a new map.
+   */
+  setHazardStates(states: ReadonlyMap<string, StudStateLike>) {
+    this.hazardStates = states;
+    this.hazardField?.setStates(states);
+    for (const field of this.hazardFields.values()) field.setStates(states);
   }
 
   setBlastLevel(level: string | null) {
@@ -1485,8 +1503,7 @@ export class PolygonEvacuationEngine {
    * A swing is rejected when it would sit inside one of those slabs.
    */
   private clearanceWalls(ped: PedLabel): WallLike[] {
-    const shell = this.separationWalls().filter((wall) => !this.interiorWalls.includes(wall));
-    return [...this.wallsNear(ped), ...shell];
+    return [...this.wallsNear(ped), ...this.shellWalls(ped.level)];
   }
 
   /** True when a centre is outside wall slabs and not on another person. */
@@ -1687,8 +1704,13 @@ export class PolygonEvacuationEngine {
     return null;
   }
 
+  /**
+   * Partitions on this person's storey. With a level plan, interiorWalls
+   * holds every storey, so it is never the answer for one person.
+   */
   private wallsNear(ped: PedLabel): InteriorWallDef[] {
     if (ped.level && this.wallsByLevel.has(ped.level)) return this.wallsByLevel.get(ped.level)!;
+    if (this.levelPlan && ped.level) return [];
     return this.interiorWalls;
   }
 
@@ -1708,12 +1730,18 @@ export class PolygonEvacuationEngine {
    * overlap with a jamb. Door and exit openings are not solid.
    */
   private unstickFromWalls() {
-    const walls = this.separationWalls();
+    const byLevel = new Map<string, InteriorWallDef[]>();
     const clear = WALL_FACE_CLEAR_M + 0.05;
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state === 'down' || ped.state === 'left_map') continue;
       const pos = this.posOf(body);
+      const key = ped.level ?? '';
+      let walls = byLevel.get(key);
+      if (!walls) {
+        walls = this.separationWalls(ped.level);
+        byLevel.set(key, walls);
+      }
       const next = separateFromWalls(pos, [...walls, ...this.wallsNear(ped)], clear);
       if (Math.hypot(next.x - pos.x, next.y - pos.y) < 1e-3) continue;
       Matter.Body.setPosition(body, next);
@@ -1730,9 +1758,20 @@ export class PolygonEvacuationEngine {
     }
   }
 
-  /** Interior partitions plus the building shell, with exit gaps left open. */
-  private separationWalls(): InteriorWallDef[] {
+  /**
+   * Interior partitions plus the building shell, with exit gaps left open.
+   * A storey gets only its own partitions and its own exit gaps: the shell
+   * of an upper floor is solid where the ground floor has a door.
+   */
+  private separationWalls(level?: string): InteriorWallDef[] {
+    const shell = this.shellWalls(level);
+    if (this.levelPlan && level) return shell;
+    return [...this.interiorWalls, ...shell];
+  }
+
+  private shellWalls(level?: string): InteriorWallDef[] {
     const verts = this.config.vertices;
+    const storey = this.levelPlan && level ? level : null;
     const shell: InteriorWallDef[] = [];
     for (let i = 0; i < verts.length; i++) {
       const a = verts[i];
@@ -1741,7 +1780,12 @@ export class PolygonEvacuationEngine {
       const ux = (b.x - a.x) / len;
       const uy = (b.y - a.y) / len;
       const gaps = this.exits
-        .filter((e) => e.edgeIndex === i && e.exitType !== 'service')
+        .filter(
+          (e) =>
+            e.edgeIndex === i &&
+            e.exitType !== 'service' &&
+            (storey == null || levelOf(e) === storey),
+        )
         .map((e) => {
           const t = (e.center.x - a.x) * ux + (e.center.y - a.y) * uy;
           return { lo: t - e.width / 2, hi: t + e.width / 2 };
@@ -1766,7 +1810,7 @@ export class PolygonEvacuationEngine {
       }
       push(cursor, len);
     }
-    return [...this.interiorWalls, ...shell];
+    return shell;
   }
 
   /**
@@ -2922,7 +2966,7 @@ export class PolygonEvacuationEngine {
     );
     if (!choice) {
       ped.targetStairId = null;
-      this.assignChoice(ped, pos, null, count);
+      this.assignChoice(ped, pos, this.storeyFallback(ped, pos), count);
       return;
     }
     if (choice.kind === 'exit') {
@@ -2943,7 +2987,31 @@ export class PolygonEvacuationEngine {
     ped.targetExitId = '';
     ped.exitCost = choice.cost;
     ped.sheltering = false;
+    ped.forcedCrawl = false;
     if (count && changed) this.rerouteCount++;
+  }
+
+  /**
+   * No stair or door has a finite cost. As on a single floor (§2.6), smoke
+   * and fire alone do not make anyone shelter: a person with a door on their
+   * own storey crawls for it. Shelter is for walls that cut them off, or a
+   * storey whose only way out runs down a stair through the fire.
+   */
+  private storeyFallback(ped: PedLabel, pos: Vec2): ExitChoice | null {
+    const level = ped.level ?? '';
+    const local = this.exits.filter((e) => levelOf(e) === level);
+    const walls = this.wallsByLevel.get(level) ?? [];
+    let regions = this.levelRegions.get(level);
+    if (!regions) {
+      regions = new RouteRegions(this.config.vertices, walls);
+      this.levelRegions.set(level, regions);
+    }
+    if (!regions.hasRouteOut(pos, local, this.config.vertices)) return null;
+    const held = local.some((e) => e.id === ped.targetExitId) ? this.currentChoice(ped) : null;
+    return chooseExit(pos, local, this.config.vertices, this.field(ped.level), held, {
+      walls,
+      blockedDoors: this.blockedDoorsFor(ped),
+    });
   }
 
   private queueLengths(): Map<string, { up: number; down: number }> {
