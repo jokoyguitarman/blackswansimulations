@@ -1623,6 +1623,27 @@ export function steerToTarget(pos: Vec2, target: Vec2, walls: WallLike[], hold =
   return separateFromWalls(aim, walls, WALL_FACE_CLEAR_M);
 }
 
+/**
+ * True when the straight line from a to b crosses a solid wall part. A shut
+ * leaf is solid; an open doorway is not.
+ */
+export function sightBlocked(a: Vec2, b: Vec2, walls: readonly WallLike[]): boolean {
+  for (const wall of walls) {
+    for (const [p, q] of solidParts(wall)) {
+      const d1x = b.x - a.x;
+      const d1y = b.y - a.y;
+      const d2x = q.x - p.x;
+      const d2y = q.y - p.y;
+      const denom = d1x * d2y - d1y * d2x;
+      if (Math.abs(denom) < 1e-12) continue;
+      const t = ((p.x - a.x) * d2y - (p.y - a.y) * d2x) / denom;
+      const u = ((p.x - a.x) * d1y - (p.y - a.y) * d1x) / denom;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
+    }
+  }
+  return false;
+}
+
 /** The door this person is about to enter, when they are already in its approach. */
 export function committedDoor(
   pos: Vec2,
