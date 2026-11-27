@@ -125,7 +125,7 @@ while (run.rts.state.clock.elapsed < end) {
     lastMark = t;
     const heap = Math.round(process.memoryUsage().heapUsed / (1024 * 1024));
     say(
-      `T+${Math.round(t)} fx mean ${(fxT / Math.max(1, fxN)).toFixed(2)} ms max ${fxMax.toFixed(1)} (n ${fxN}) | evac mean ${(evT / Math.max(1, evN)).toFixed(2)} ms max ${evMax.toFixed(1)} (n ${evN}) | world p50 ${percentile(worldMs, 50).toFixed(1)} p95 ${percentile(worldMs, 95).toFixed(1)} max ${percentile(worldMs, 100).toFixed(1)} ms/s | heap ${heap} MB | smoke delta max ${deltaMax} B | burning ${effects.getStats().fire.burning}`,
+      `T+${Math.round(t)} fx mean ${(fxT / Math.max(1, fxN)).toFixed(2)} ms max ${fxMax.toFixed(1)} (n ${fxN}) | evac mean ${(evT / Math.max(1, evN)).toFixed(2)} ms max ${evMax.toFixed(1)} (n ${evN}) | world p50 ${percentile(worldMs, 50).toFixed(1)} p95 ${percentile(worldMs, 95).toFixed(1)} max ${percentile(worldMs, 100).toFixed(1)} ms/s | heap ${heap} MB | smoke delta max ${deltaMax} B | burning ${effects.getStats().fire.burning} | heat passes ${effects.heatSolvePasses} peak ${effects.heatSolvePeak} | jump unbacked ${(effects.jumpUnbackedKj / 1000).toFixed(2)} MJ`,
     );
     fxT = 0;
     fxN = 0;
@@ -145,4 +145,7 @@ say(
 );
 say(
   `last minute effects mean ${burnMean.toFixed(2)} ms, p95 ${percentile(burning, 95).toFixed(2)} ms, max ${percentile(burning, 100).toFixed(2)} ms`,
+);
+say(
+  `oxygen heat solve passes ${effects.heatSolvePasses}, peak ${effects.heatSolvePeak} per slice, jump unbacked ${(effects.jumpUnbackedKj / 1000).toFixed(2)} MJ`,
 );

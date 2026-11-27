@@ -1070,6 +1070,9 @@ test('the room energy budget closes on the heat the layer actually took', () => 
     let balance = 0;
     let applied = 0;
     let reported = 0;
+    let passes = 0;
+    let peak = 0;
+    let jump = 0;
     const prescribed = spec.fires.reduce(
       (sum, fire) => sum + (fire.heatKw > 0 ? fire.heatKw : 0),
       0,
@@ -1093,9 +1096,12 @@ test('the room energy budget closes on the heat the layer actually took', () => 
         dm * step.state.upperK;
       applied += step.convectedKj;
       reported += convectedKw * step.burnedFraction * dt;
+      passes += step.heatSolvePasses;
+      if (step.heatSolvePeak > peak) peak = step.heatSolvePeak;
+      jump += step.jumpUnbackedKj;
       state = step.state;
     }
-    return { balance, applied, reported };
+    return { balance, applied, reported, passes, peak, jump };
   };
   const sealed = tally(
     room(80, 4000, 2.8, false),
@@ -1108,6 +1114,8 @@ test('the room energy budget closes on the heat the layer actually took', () => 
     Math.abs(sealed.applied - sealed.reported) <= 0.01 * Math.max(Math.abs(sealed.reported), 1),
     `sealed post-scale ${sealed.applied.toFixed(0)} vs ${sealed.reported.toFixed(0)} kJ`,
   );
+  assert.equal(sealed.passes, 0, 'a sealed room does not re-solve the oxygen heat');
+  assert.equal(sealed.jump, 0);
 
   const open = tally(
     room(400, 2000, 2, true),
@@ -1121,6 +1129,8 @@ test('the room energy budget closes on the heat the layer actually took', () => 
     Math.abs(open.applied - open.reported) <= 0.01 * Math.max(Math.abs(open.reported), 1),
     `open post-scale ${open.applied.toFixed(0)} vs ${open.reported.toFixed(0)} kJ`,
   );
+  assert.equal(open.passes, 0, 'a free layer does not re-solve the oxygen heat');
+  assert.equal(open.jump, 0);
 
   const floor = tally(
     room(400, 20000, 10, true),
@@ -1140,6 +1150,13 @@ test('the room energy budget closes on the heat the layer actually took', () => 
     `floor post-scale ${floor.applied.toFixed(0)} vs ${floor.reported.toFixed(0)} kJ`,
   );
   assert.ok(Math.abs(floor.balance) < 2000, `floor budget ${floor.balance.toFixed(0)} kJ`);
+  assert.ok(floor.passes > 0, 'the floor clamp re-solves the oxygen heat');
+  assert.ok(floor.peak > 0 && floor.peak <= 20, `floor peak passes ${floor.peak}`);
+  assert.ok(floor.jump >= 0, `floor jump unbacked ${floor.jump.toFixed(1)} kJ`);
+  assert.ok(
+    floor.jump <= 0.01 * Math.max(Math.abs(floor.reported), 1),
+    `floor jump unbacked ${floor.jump.toFixed(1)} kJ`,
+  );
 });
 
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
