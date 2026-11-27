@@ -21,6 +21,7 @@ import {
   distanceToOutline,
 } from '../lib/evacuation/hazardSensing';
 import { stepDoorLeaves } from '../lib/rts/doorLeaf';
+import { snapWallPoint } from '../lib/rts/wallSnap';
 import { SHOWCASE, SHOWCASE_SOURCES } from '../lib/evacuation/showcaseConstants';
 import { blastEffectsTriggerSec, countdownLabel, shiftEvents } from '../lib/evacuation/showcase';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
@@ -322,6 +323,12 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 // ── Feature flags (set to true to re-enable hidden UI) ──────────────────
 /** Screen pixels a right-press must travel before it pans instead of ordering a move. */
 const PAN_THRESHOLD_PX = 5;
+/**
+ * Deepest map zoom. At 22 a 60 m building is about 1600 px wide, so on a
+ * 2560–3840 px focus pane it could not get past 40–60% of the width; 24 lets
+ * a building fill any pane. Tiles stop at 19 and are scaled up past it.
+ */
+const MAX_MAP_ZOOM = 24;
 
 type PaneCount = 1 | 2 | 4;
 interface PaneRect {
@@ -1031,6 +1038,8 @@ export function DebugRTSSim() {
   const fxTimePosRef = useRef(0);
   const fxTimeCountRef = useRef(0);
   const fxWarmupRef = useRef(30);
+  /** Previous frame's sim time, ms. The frame interval it lands in is the next one. */
+  const prevSimMsRef = useRef(0);
   const fxDebugRef = useRef(searchParams.get('fxdebug') === '1');
   const hazardFxRef = useRef<HazardFxRenderer | null>(null);
   if (hazardFxRef.current === null && typeof document !== 'undefined') {
@@ -1181,6 +1190,24 @@ export function DebugRTSSim() {
     const grown = growFieldRef.current(simPos);
     return grown ? pick(grown) : hit;
   }, []);
+
+  const snapWallEnd = useCallback(
+    (simPos: Vec2): { pos: Vec2; stud: SimStud | null } => {
+      const snapped = snapToStud(simPos);
+      const level = activeLevelRef.current;
+      const ends = interiorWallsRef.current
+        .filter((w) => (w.level ?? 'G') === level)
+        .flatMap((w) => [w.start, w.end]);
+      const wall = snapWallPoint(
+        simPos,
+        projectedVertsRef.current,
+        ends,
+        snapped.stud ? snapped.pos : null,
+      );
+      return { pos: wall.pos, stud: snapped.stud };
+    },
+    [snapToStud],
+  );
 
   // ── Prevent browser zoom on canvas/map area ────────────────────────────
   useEffect(() => {
@@ -2702,6 +2729,7 @@ export function DebugRTSSim() {
     (time: number) => {
       const dt = lastTimeRef.current ? (time - lastTimeRef.current) / 1000 : 0;
       lastTimeRef.current = time;
+      const simStartMs = performance.now();
 
       const rts = rtsRef.current;
       const clock = rts.state.clock;
@@ -2916,6 +2944,7 @@ export function DebugRTSSim() {
         if (pinsChanged) casualtyPinsRef.current = updatedPins;
       }
 
+      const simMs = performance.now() - simStartMs;
       updateRenderCtx();
 
       const fillFxCtx = (fxCtx: HazardFxContext, level: string) => {
@@ -3102,7 +3131,9 @@ export function DebugRTSSim() {
               const active = fxActiveRef.current;
               const pos = fxTimePosRef.current;
               ring[pos] = sample;
-              frames[pos] = dt * 1000;
+              // The sim budget alone can stretch a frame past FRAME_DOWNGRADE_MS;
+              // only the rest of the frame says anything about drawing cost.
+              frames[pos] = Math.max(0, dt * 1000 - prevSimMsRef.current);
               active[pos] = hazardFxRef.current.last.covering ? 1 : 0;
               fxTimePosRef.current = (pos + 1) % ring.length;
               if (fxTimeCountRef.current < ring.length) fxTimeCountRef.current++;
@@ -3189,6 +3220,7 @@ export function DebugRTSSim() {
         drawLevelView(paneCtx, pane.canvas.width, pane.canvas.height, paneRc, pane.level, paneFx);
       }
 
+      prevSimMsRef.current = simMs;
       rerender();
       rafRef.current = requestAnimationFrame(loop);
     },
@@ -3800,6 +3832,12 @@ export function DebugRTSSim() {
         return;
       }
 
+      if (mode.type === 'place_staging') {
+        rts.setStagingArea(sim);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
       if (mode.type === 'spawn_unit') {
         const spawnPos = rts.state.stagingArea ?? sim;
         const u = rts.spawnUnit(mode.unitKind, spawnPos);
@@ -3841,7 +3879,7 @@ export function DebugRTSSim() {
       }
 
       if (mode.type === 'draw_wall') {
-        const snapped = snapToStud(sim);
+        const snapped = snapWallEnd(sim);
         if (!mode.startPoint) {
           rts.setInteractionMode({ type: 'draw_wall', startPoint: snapped.pos });
         } else {
@@ -3938,6 +3976,7 @@ export function DebugRTSSim() {
       casualtyPins,
       handleCasualtyPinClick,
       applyElementDrag,
+      snapWallEnd,
     ],
   );
 
@@ -4095,8 +4134,9 @@ export function DebugRTSSim() {
       // Wall draw: touch-and-drag mode — capture start point
       const currentMode = rtsRef.current.state.interactionMode;
       if (currentMode.type === 'draw_wall') {
-        wallDrawTouchRef.current = sim;
-        rtsRef.current.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+        const start = snapWallEnd(sim).pos;
+        wallDrawTouchRef.current = start;
+        rtsRef.current.setInteractionMode({ type: 'draw_wall', startPoint: start });
         return;
       }
 
@@ -4119,7 +4159,7 @@ export function DebugRTSSim() {
         }
       }, 500);
     },
-    [toSim, rerender],
+    [toSim, rerender, snapWallEnd],
   );
 
   const handleTouchMove = useCallback(
@@ -4202,7 +4242,8 @@ export function DebugRTSSim() {
       if (wallDrawTouchRef.current) {
         const rect0 = canvasRef.current!.getBoundingClientRect();
         const lt = e.changedTouches[0];
-        const endSim = toSim(lt.clientX - rect0.left, lt.clientY - rect0.top);
+        const endSnap = snapWallEnd(toSim(lt.clientX - rect0.left, lt.clientY - rect0.top));
+        const endSim = endSnap.pos;
         const startSim = wallDrawTouchRef.current;
         const wallLen = Math.hypot(endSim.x - startSim.x, endSim.y - startSim.y);
         if (wallLen > 1) {
@@ -4218,6 +4259,10 @@ export function DebugRTSSim() {
               description: '',
               material: '',
               photos: [],
+              studId: endSnap.stud?.id,
+              insideBuilding: endSnap.stud?.spatialContext === 'inside_building',
+              spatialContext: endSnap.stud?.spatialContext ?? undefined,
+              level: activeLevelRef.current,
             },
           ]);
         }
@@ -4327,6 +4372,9 @@ export function DebugRTSSim() {
               }
             }
           }
+        } else if (mode.type === 'place_staging') {
+          rts.setStagingArea(sim);
+          rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'spawn_unit') {
           const spawnPos = rts.state.stagingArea ?? sim;
           const u = rts.spawnUnit(mode.unitKind, spawnPos);
@@ -4358,7 +4406,7 @@ export function DebugRTSSim() {
             ]);
           }
         } else if (mode.type === 'draw_wall') {
-          const snapped = snapToStud(sim);
+          const snapped = snapWallEnd(sim);
           if (!mode.startPoint) {
             rts.setInteractionMode({ type: 'draw_wall', startPoint: snapped.pos });
           } else {
@@ -4448,24 +4496,15 @@ export function DebugRTSSim() {
       newExitWidth,
       handleCasualtyPinClick,
       handleWallPointClick,
+      snapWallEnd,
     ],
   );
 
   // ── Staging area handler ──────────────────────────────────────────────
   const handleSetStagingArea = () => {
-    rtsRef.current.setInteractionMode({ type: 'select' });
-    const handleStaging = (e: MouseEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const sim = toSim(cx, cy);
-      rtsRef.current.setStagingArea(sim);
-      canvas.removeEventListener('click', handleStaging);
-      rerender();
-    };
-    canvasRef.current?.addEventListener('click', handleStaging, { once: true });
+    const placing = rtsRef.current.state.interactionMode.type === 'place_staging';
+    rtsRef.current.setInteractionMode(placing ? { type: 'select' } : { type: 'place_staging' });
+    rerender();
   };
 
   // ── Derived values ────────────────────────────────────────────────────
@@ -5151,12 +5190,19 @@ export function DebugRTSSim() {
                   <button
                     onClick={handleSetStagingArea}
                     className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
-                      gameState.stagingArea
-                        ? 'border-green-700 bg-green-900/20 text-green-400'
-                        : 'border-amber-800 text-amber-400 hover:border-amber-600'
+                      gameState.interactionMode.type === 'place_staging'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : gameState.stagingArea
+                          ? 'border-green-700 bg-green-900/20 text-green-400'
+                          : 'border-amber-800 text-amber-400 hover:border-amber-600'
                     }`}
                   >
-                    📍 {gameState.stagingArea ? 'Relocate Staging Area' : 'Set Staging Area (RVP)'}
+                    📍{' '}
+                    {gameState.interactionMode.type === 'place_staging'
+                      ? 'Click the map to place the staging area'
+                      : gameState.stagingArea
+                        ? 'Relocate Staging Area'
+                        : 'Set Staging Area (RVP)'}
                   </button>
                   {!gameState.stagingArea && (
                     <div className="text-xs text-amber-600 px-2 italic">
@@ -5191,7 +5237,7 @@ export function DebugRTSSim() {
               Number.isNaN(parsedLng) ? 103.8 : parsedLng,
             ]}
             zoom={18}
-            maxZoom={22}
+            maxZoom={MAX_MAP_ZOOM}
             style={{ height: '100%', width: '100%' }}
             zoomControl={phase === 'map'}
             dragging={phase === 'map'}
@@ -5202,7 +5248,7 @@ export function DebugRTSSim() {
               attribution="&copy; OSM"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               maxNativeZoom={19}
-              maxZoom={22}
+              maxZoom={MAX_MAP_ZOOM}
             />
             <MapRefSync onMap={setLeafletMap} />
 
@@ -8572,7 +8618,7 @@ function LevelPane({
       <MapContainer
         center={initial?.center ?? [1.3, 103.8]}
         zoom={initial?.zoom ?? 18}
-        maxZoom={22}
+        maxZoom={MAX_MAP_ZOOM}
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
         attributionControl={false}
@@ -8586,7 +8632,7 @@ function LevelPane({
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxNativeZoom={19}
-          maxZoom={22}
+          maxZoom={MAX_MAP_ZOOM}
         />
         <MapRefSync onMap={setMap} />
       </MapContainer>
