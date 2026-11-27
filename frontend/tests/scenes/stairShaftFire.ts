@@ -118,9 +118,9 @@ export function runStairShaft(
     /** Sim seconds when the upper floor hears the alarm. Default: with the blast. */
     upperAlarmAtS?: number;
     /**
-     * Shafts whose doors are shut to smoke: they stay walkable, but the
-     * effects engine gets no vertical link for them. (The effects engine does
-     * not read a link's `blocked` flag.)
+     * Smoke-tight but walkable: the effects engine gets no vertical link for
+     * these shafts, while the crowd still uses them. Not the same as
+     * `blocked` (doors shut), which also closes the shaft to people.
      */
     closedShafts?: string[];
     /** Override for LEVEL.DEAD_END_CRAWL_MAX_FED, for a counterfactual run. */

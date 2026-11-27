@@ -17,7 +17,8 @@
  * The walled run seals a ground-floor room in the north-west corner and
  * splits the upper floor north of y = 1.5.
  *
- * `closedShafts` is a perfect seal: the shaft gets no vertical link at all,
+ * `closedShafts` is smoke-tight but walkable, unlike `blocked`, which also
+ * stops people. It is a perfect seal: the shaft gets no vertical link at all,
  * so there is no leakage, no smoke drawn through by the people using the
  * door, and no other path between the storeys. The lethal-descent scene is
  * an idealised compartmented case, a test of the refusal path, and staying

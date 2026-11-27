@@ -629,6 +629,11 @@ export interface Stairwell {
   id: string;
   pos: Vec2;
   connectsFloors: [number, number];
+  /**
+   * Blocked (doors shut): the landing doors are closed. The crowd cannot
+   * use it, and the effects engine passes no smoke or heat through it. A
+   * stair choked by debris with its doors open is not this.
+   */
   blocked: boolean;
   label: string;
   kind?: VerticalLinkKind;
