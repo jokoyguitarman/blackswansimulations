@@ -32,6 +32,7 @@ export function noteLedgerUnavailable(): void {
 
 let tablesMissing = false;
 let chatInjectIdMissing = false;
+let directMessageInjectIdMissing = false;
 
 export function ledgerTablesMissing(): boolean {
   return tablesMissing;
@@ -50,6 +51,20 @@ export function chatInjectIdColumnMissing(): boolean {
 export function markChatInjectIdColumnMissing(): void {
   chatInjectIdMissing = true;
   noteLedgerUnavailable();
+}
+
+export function directMessageInjectIdColumnMissing(): boolean {
+  return directMessageInjectIdMissing;
+}
+
+/** The Messenger row is saved either way. Only migration 270's column is skipped. */
+export function markDirectMessageInjectIdColumnMissing(): void {
+  if (directMessageInjectIdMissing) return;
+  directMessageInjectIdMissing = true;
+  logger.warn(
+    { event: 'dm_inject_id_unavailable' },
+    'sim_direct_messages.inject_id is off because migration 270 is not applied',
+  );
 }
 
 const otherWarned = new Set<string>();

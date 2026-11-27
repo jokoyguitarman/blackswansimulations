@@ -1,9 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { handleFor } from '../lib/identity.js';
 import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { resolveTeamMembers } from './teamCharterService.js';
+import { ensureNpcDirectChannel } from './channelService.js';
+import { buildMessengerDmRows, type MessengerRecipient } from './dm/dmDeliveryCore.js';
 import {
   groupChatMessage,
   phoneCallMessage,
@@ -16,12 +20,14 @@ import { injectKeyOf, isValidInjectKey } from '../lib/injectKey.js';
 import { recordDelivery, type RecordDeliveryInput } from './ledger/injectLedgerService.js';
 import {
   chatInjectIdColumnMissing,
+  directMessageInjectIdColumnMissing,
   ledgerErrorCode,
   markChatInjectIdColumnMissing,
+  markDirectMessageInjectIdColumnMissing,
 } from './ledger/ledgerSchema.js';
 
 export interface DeliveryConfig {
-  app: 'social_feed' | 'group_chat' | 'email' | 'news' | 'phone_call';
+  app: 'social_feed' | 'group_chat' | 'email' | 'news' | 'phone_call' | 'messenger_dm' | 'npc_dm';
   platform?: string;
   author_handle?: string;
   author_display_name?: string;
@@ -196,8 +202,7 @@ export async function resolveInjectRecipients(
 ): Promise<string[] | null> {
   const config = inject.delivery_config;
   if (!config) return null;
-  const privateApp =
-    config.app === 'email' || config.app === 'phone_call' || config.app === 'group_chat';
+  const privateApp = isPrivateDeliveryApp(config.app);
   const targeting = await resolveInjectTargeting(
     sessionId,
     inject.inject_scope,
@@ -235,10 +240,9 @@ export async function routeInjectToApp(
   if (!config?.app) return;
 
   try {
-    // org_key only scopes private delivery (email / phone / group chat). Public content
+    // org_key only scopes private delivery (email / phone / chat / DMs). Public content
     // (social_feed / news) is public; its visibility is governed by `country` (contract §4.1).
-    const privateApp =
-      config.app === 'email' || config.app === 'phone_call' || config.app === 'group_chat';
+    const privateApp = isPrivateDeliveryApp(config.app);
     const targeting = await resolveInjectTargeting(
       sessionId,
       inject.inject_scope,
@@ -266,6 +270,12 @@ export async function routeInjectToApp(
         break;
       case 'phone_call':
         await routeToPhoneCall(sessionId, injectId, inject, config, targeting);
+        break;
+      case 'messenger_dm':
+        await routeToMessengerDm(sessionId, injectId, inject, config, targeting);
+        break;
+      case 'npc_dm':
+        await routeToNpcDm(sessionId, injectId, inject, config, targeting);
         break;
       default:
         logger.warn({ app: config.app, injectId }, 'Unknown delivery_config app');
@@ -927,6 +937,248 @@ async function routeToPhoneCall(
     { requiresResponse: inject.requires_response === true, config },
   );
   logger.info({ sessionId, injectId, channels }, 'Inject routed to phone call');
+}
+
+function isPrivateDeliveryApp(app: DeliveryConfig['app']): boolean {
+  return (
+    app === 'email' ||
+    app === 'phone_call' ||
+    app === 'group_chat' ||
+    app === 'messenger_dm' ||
+    app === 'npc_dm'
+  );
+}
+
+/**
+ * Team- or org-scoped DMs go to those players. A session-wide DM goes to every participant,
+ * matching a null result from resolveInjectRecipients (notify everyone).
+ */
+async function dmRecipientUserIds(
+  sessionId: string,
+  targeting: TeamTargeting | null,
+): Promise<string[]> {
+  if (targeting?.playerIds && targeting.playerIds.length > 0) {
+    return [...new Set(targeting.playerIds)];
+  }
+  if (targeting) return [];
+  const { data, error } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id')
+    .eq('session_id', sessionId);
+  if (error) {
+    logger.warn({ error, sessionId }, 'Failed to load DM recipients');
+    return [];
+  }
+  return [...new Set((data ?? []).map((row) => row.user_id).filter((id): id is string => !!id))];
+}
+
+async function loadDmProfiles(
+  userIds: string[],
+): Promise<Array<{ userId: string; displayName: string }>> {
+  if (userIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id, full_name')
+    .in('id', userIds);
+  if (error) {
+    logger.warn({ error }, 'Failed to load DM recipient names');
+  }
+  const names = new Map<string, string>();
+  for (const row of data ?? []) {
+    const id = String((row as { id: string }).id);
+    const fullName = (row as { full_name?: string | null }).full_name;
+    if (typeof fullName === 'string' && fullName.trim()) names.set(id, fullName.trim());
+  }
+  return userIds.map((userId) => ({
+    userId,
+    displayName: names.get(userId) || 'Player',
+  }));
+}
+
+async function findMessengerThread(
+  sessionId: string,
+  senderHandle: string,
+  recipientHandle: string,
+): Promise<string | null> {
+  if (/["\\]/.test(senderHandle) || /["\\]/.test(recipientHandle)) return null;
+  const { data, error } = await supabaseAdmin
+    .from('sim_direct_messages')
+    .select('thread_id')
+    .eq('session_id', sessionId)
+    .or(
+      `and(sender_handle.eq."${senderHandle}",recipient_handle.eq."${recipientHandle}"),and(sender_handle.eq."${recipientHandle}",recipient_handle.eq."${senderHandle}")`,
+    )
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    logger.warn({ error, sessionId }, 'Messenger thread lookup failed; opening a new thread');
+    return null;
+  }
+  const threadId = data?.thread_id;
+  return typeof threadId === 'string' && threadId ? threadId : null;
+}
+
+async function insertMessengerRow(
+  row: Record<string, unknown>,
+  injectId: string,
+): Promise<Record<string, unknown> | null> {
+  const payload = directMessageInjectIdColumnMissing() ? row : { ...row, inject_id: injectId };
+  const first = await supabaseAdmin.from('sim_direct_messages').insert(payload).select().single();
+  if (!first.error && first.data) return first.data as Record<string, unknown>;
+  const code = ledgerErrorCode(first.error);
+  if (!directMessageInjectIdColumnMissing() && (code === '42703' || code === 'PGRST204')) {
+    markDirectMessageInjectIdColumnMissing();
+    const second = await supabaseAdmin.from('sim_direct_messages').insert(row).select().single();
+    if (!second.error && second.data) return second.data as Record<string, unknown>;
+    logger.error({ error: second.error, injectId }, 'Failed to insert messenger DM');
+    return null;
+  }
+  logger.error({ error: first.error, injectId }, 'Failed to insert messenger DM');
+  return null;
+}
+
+async function routeToMessengerDm(
+  sessionId: string,
+  injectId: string,
+  inject: { content: string; requires_response?: boolean },
+  config: DeliveryConfig,
+  targeting: TeamTargeting | null,
+): Promise<void> {
+  const senderHandle = config.author_handle?.trim();
+  if (!senderHandle) {
+    logger.warn(
+      { sessionId, injectId, event: 'messenger_dm_missing_handle' },
+      'messenger_dm inject has no author_handle; not delivered',
+    );
+    return;
+  }
+  const userIds = await dmRecipientUserIds(sessionId, targeting);
+  if (userIds.length === 0) {
+    logger.warn({ sessionId, injectId }, 'messenger_dm inject has no recipients; not delivered');
+    return;
+  }
+  const profiles = await loadDmProfiles(userIds);
+  const recipients: MessengerRecipient[] = [];
+  for (const profile of profiles) {
+    const handle = handleFor(profile.displayName);
+    recipients.push({
+      userId: profile.userId,
+      handle,
+      threadId: await findMessengerThread(sessionId, senderHandle, handle),
+    });
+  }
+  const rows = buildMessengerDmRows(inject, config, recipients, () => randomUUID());
+  let written = 0;
+  for (const row of rows) {
+    const inserted = await insertMessengerRow(
+      {
+        session_id: sessionId,
+        thread_id: row.thread_id,
+        sender_handle: row.sender_handle,
+        sender_display_name: row.sender_display_name,
+        sender_type: row.sender_type,
+        recipient_handle: row.recipient_handle,
+        recipient_user_id: row.recipient_user_id,
+        content: row.content,
+        media_urls: [],
+        is_read: false,
+        platform: row.platform,
+      },
+      injectId,
+    );
+    if (!inserted) continue;
+    await ledgerDelivery({
+      sessionId,
+      injectId,
+      injectKey: injectKeyOf({ id: injectId, delivery_config: config }),
+      channel: 'messenger_dm',
+      refTable: 'sim_direct_messages',
+      refId: String(inserted.id),
+      threadId: row.thread_id,
+      recipientUserIds: targeting?.playerIds ?? null,
+      recipientTeams: targeting?.teamNames ?? [],
+      stakeholderId: config.stakeholder_id ?? null,
+      senderName: row.sender_display_name,
+      requiresResponse: inject.requires_response === true,
+      responseWindowMinutes: responseWindowMinutes(config),
+      deliveredAt: timestampOf(inserted.created_at),
+    });
+    await emitScoped(sessionId, [row.recipient_user_id], {
+      type: 'messenger.received',
+      data: { user_id: row.recipient_user_id, message: inserted },
+      timestamp: new Date().toISOString(),
+    });
+    written++;
+  }
+  logger.info({ sessionId, injectId, written }, 'Inject routed to messenger DM');
+}
+
+async function routeToNpcDm(
+  sessionId: string,
+  injectId: string,
+  inject: { content: string; requires_response?: boolean },
+  config: DeliveryConfig,
+  targeting: TeamTargeting | null,
+): Promise<void> {
+  const stakeholderId = config.stakeholder_id?.trim();
+  if (!stakeholderId) {
+    logger.warn(
+      { sessionId, injectId, event: 'npc_dm_missing_stakeholder' },
+      'npc_dm inject has no stakeholder_id; not delivered',
+    );
+    return;
+  }
+  const userIds = await dmRecipientUserIds(sessionId, targeting);
+  if (userIds.length === 0) {
+    logger.warn({ sessionId, injectId }, 'npc_dm inject has no recipients; not delivered');
+    return;
+  }
+  const drafted = groupChatMessage(inject, config);
+  let written = 0;
+  for (const userId of userIds) {
+    const channel = await ensureNpcDirectChannel(sessionId, userId, stakeholderId);
+    if (!channel) continue;
+    const message =
+      drafted.sender_display_name === 'NPC'
+        ? { ...drafted, sender_display_name: channel.name }
+        : drafted;
+    const { data: row, error } = await insertNpcChatRow(
+      {
+        channel_id: channel.id,
+        session_id: sessionId,
+        sender_id: null,
+        ...message,
+      },
+      injectId,
+    );
+    if (error || !row) {
+      logger.error({ error, sessionId, injectId, userId }, 'Failed to create NPC DM from inject');
+      continue;
+    }
+    await ledgerDelivery({
+      sessionId,
+      injectId,
+      injectKey: injectKeyOf({ id: injectId, delivery_config: config }),
+      channel: 'npc_dm',
+      refTable: 'chat_messages',
+      refId: String(row.id),
+      chatChannelId: channel.id,
+      recipientUserIds: targeting?.playerIds ?? null,
+      recipientTeams: targeting?.teamNames ?? [],
+      stakeholderId,
+      senderName: message.sender_display_name,
+      requiresResponse: inject.requires_response === true,
+      responseWindowMinutes: responseWindowMinutes(config),
+      deliveredAt: timestampOf(row.created_at),
+    });
+    getWebSocketService().emitToUser(userId, {
+      type: 'message.sent',
+      data: { message: row },
+      timestamp: new Date().toISOString(),
+    });
+    written++;
+  }
+  logger.info({ sessionId, injectId, written }, 'Inject routed to NPC DM');
 }
 
 function responseWindowMinutes(config: DeliveryConfig): number | null {

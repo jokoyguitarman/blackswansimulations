@@ -4,7 +4,8 @@
  *
  * Mapping mirrors the platform pill that used to live in SocialScenarioEditor's InjectCard:
  *   delivery_config.app ?? inject.type  → social_feed (+ platform facebook → Fakebook, else Z),
- *   email → Mail, news → News, group_chat/team_chat → Chat, phone_call → Call.
+ *   email → Mail, news → News, group_chat/team_chat/npc_dm → Chat, phone_call → Call,
+ *   messenger_dm → Fakebook.
  */
 import { WrIcon, type WrIconName } from './WarRoomIcon';
 
@@ -23,7 +24,16 @@ export function originOf(inject: OriginInject): Origin {
   }
   if (app === 'email' || app === 'mail') return 'mail';
   if (app === 'news' || app === 'news_article' || app === 'article') return 'news';
-  if (app === 'group_chat' || app === 'team_chat' || app === 'chat' || app === 'dm') return 'chat';
+  if (app === 'messenger_dm') return 'fb';
+  if (
+    app === 'group_chat' ||
+    app === 'team_chat' ||
+    app === 'chat' ||
+    app === 'dm' ||
+    app === 'npc_dm'
+  ) {
+    return 'chat';
+  }
   if (app === 'phone_call' || app === 'call' || app === 'voice') return 'call';
   return 'other';
 }

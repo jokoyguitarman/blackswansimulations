@@ -1395,7 +1395,29 @@ const OrgPagesSection = ({
 // ─── Injects ─────────────────────────────────────────────────────────────────
 
 const SEVERITIES = ['low', 'medium', 'high', 'critical'];
-const APPS = ['social_feed', 'email', 'news', 'group_chat', 'phone_call'];
+const APPS = ['social_feed', 'email', 'news', 'group_chat', 'phone_call', 'messenger_dm', 'npc_dm'];
+
+interface StakeholderOption {
+  id: string;
+  name: string;
+  handle: string;
+}
+
+function readStakeholderOptions(initialState: Record<string, unknown>): StakeholderOption[] {
+  const raw = initialState.stakeholders;
+  if (!Array.isArray(raw)) return [];
+  const options: StakeholderOption[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const id = typeof row.id === 'string' ? row.id.trim() : '';
+    if (!id) continue;
+    const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : id;
+    const handle = typeof row.handle === 'string' ? row.handle.trim() : '';
+    options.push({ id, name, handle });
+  }
+  return options;
+}
 
 const InjectsSection = ({
   scenarioId,
@@ -1413,6 +1435,7 @@ const InjectsSection = ({
   locked: boolean;
 }) => {
   const personas = (initialState.npc_personas || []) as PersonaShape[];
+  const stakeholders = readStakeholderOptions(initialState);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [originFilter, setOriginFilter] = useState<Origin | 'all'>('all');
@@ -1590,6 +1613,7 @@ const InjectsSection = ({
                     scenarioId={scenarioId}
                     inject={inj}
                     personas={personas}
+                    stakeholders={stakeholders}
                     teamList={teamList}
                     onSaved={onSaved}
                     onDeleted={onDeleted}
@@ -1617,6 +1641,7 @@ const InjectsSection = ({
             scenarioId={scenarioId}
             inject={null}
             personas={personas}
+            stakeholders={stakeholders}
             teamList={teamList}
             onSaved={onCreated}
             onDeleted={() => undefined}
@@ -1753,6 +1778,7 @@ const InjectForm = ({
   scenarioId,
   inject,
   personas,
+  stakeholders,
   teamList,
   onSaved,
   onDeleted,
@@ -1761,6 +1787,7 @@ const InjectForm = ({
   scenarioId: string;
   inject: InjectRow | null; // null = create new
   personas: PersonaShape[];
+  stakeholders: StakeholderOption[];
   teamList: TeamRow[];
   onSaved: (row: InjectRow) => void;
   onDeleted: (id: string) => void;
@@ -1779,6 +1806,8 @@ const InjectForm = ({
   const [app, setApp] = useState(String(dcInit.app ?? 'social_feed'));
   const [platform, setPlatform] = useState(String(dcInit.platform ?? 'x_twitter'));
   const [authorHandle, setAuthorHandle] = useState(String(dcInit.author_handle ?? ''));
+  const [authorName, setAuthorName] = useState(String(dcInit.author_display_name ?? ''));
+  const [stakeholderId, setStakeholderId] = useState(String(dcInit.stakeholder_id ?? ''));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -1809,6 +1838,10 @@ const InjectForm = ({
   const conditionalWithoutConditions =
     timeBlank && !hasConditions && !inject?.trigger_condition?.trim();
   const triggerBlocked = timedWithConditions || conditionalWithoutConditions;
+  const dmApp = app === 'messenger_dm' || app === 'npc_dm';
+  const dmBlocked =
+    (app === 'npc_dm' && stakeholderId.trim() === '') ||
+    (app === 'messenger_dm' && authorHandle.trim() === '');
 
   const buildDeliveryConfig = (): Record<string, unknown> => {
     const persona = personas.find((p) => String(p.handle || '') === authorHandle);
@@ -1817,8 +1850,14 @@ const InjectForm = ({
       app,
       platform: app === 'social_feed' ? platform : dcInit.platform,
       author_handle: authorHandle || dcInit.author_handle,
-      ...(persona ? { author_display_name: String(persona.name || '') } : {}),
     };
+    if (persona && String(persona.name || '').trim()) {
+      dc.author_display_name = String(persona.name);
+    } else if (authorName.trim()) {
+      dc.author_display_name = authorName.trim();
+    }
+    if (stakeholderId.trim()) dc.stakeholder_id = stakeholderId.trim();
+    else if (dmApp) delete dc.stakeholder_id;
     if (mediaRemoved) dc.media_urls = [];
     else if (mediaUrls.length > 0) dc.media_urls = mediaUrls;
     // Cross-team intel tagging: only meaningful on emails; clearing the key
@@ -1845,7 +1884,7 @@ const InjectForm = ({
   };
 
   const save = async () => {
-    if (triggerBlocked) return;
+    if (triggerBlocked || dmBlocked) return;
     setSaving(true);
     setMsg(null);
     try {
@@ -1891,7 +1930,7 @@ const InjectForm = ({
   };
 
   const regenerateImage = async () => {
-    if (!inject || triggerBlocked) return;
+    if (!inject || triggerBlocked || dmBlocked) return;
     setRegenerating(true);
     setMsg(null);
     try {
@@ -2048,6 +2087,50 @@ const InjectForm = ({
         </div>
       </div>
 
+      {dmApp && (
+        <div className="mt-2 border border-border rounded p-2 bg-surface-2">
+          <label className={labelCls}>Sender (stakeholder)</label>
+          <p className="text-[10px] text-muted mb-1.5">
+            {app === 'messenger_dm'
+              ? 'Arrives as a Fakebook Messenger DM from this stakeholder.'
+              : 'Arrives as a TeamChat direct message from this stakeholder.'}
+          </p>
+          <select
+            value={stakeholderId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setStakeholderId(id);
+              const stakeholder = stakeholders.find((item) => item.id === id);
+              if (!stakeholder) return;
+              if (stakeholder.handle) setAuthorHandle(stakeholder.handle);
+              setAuthorName(stakeholder.name);
+            }}
+            className={inputCls}
+          >
+            <option value="">Select a stakeholder</option>
+            {stakeholderId && !stakeholders.some((item) => item.id === stakeholderId) && (
+              <option value={stakeholderId}>{stakeholderId}</option>
+            )}
+            {stakeholders.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+                {item.handle ? ` (${item.handle})` : ''}
+              </option>
+            ))}
+          </select>
+          {app === 'npc_dm' && stakeholderId.trim() === '' && (
+            <p className="text-[11px] text-warning mt-1">
+              An NPC direct message needs a stakeholder sender.
+            </p>
+          )}
+          {app === 'messenger_dm' && authorHandle.trim() === '' && (
+            <p className="text-[11px] text-warning mt-1">
+              A Messenger DM needs a sender handle. Pick a stakeholder or enter a handle.
+            </p>
+          )}
+        </div>
+      )}
+
       {app === 'email' && (
         <div className="mt-2 border border-border rounded p-2 bg-surface-2">
           <label className={labelCls}>Cross-team intel (optional)</label>
@@ -2169,7 +2252,7 @@ const InjectForm = ({
               <button
                 type="button"
                 onClick={regenerateImage}
-                disabled={regenerating || saving || triggerBlocked}
+                disabled={regenerating || saving || triggerBlocked || dmBlocked}
                 className="text-xs text-brand hover:underline disabled:opacity-40"
               >
                 {regenerating ? 'Regenerating…' : 'Regenerate image'}
@@ -2203,7 +2286,13 @@ const InjectForm = ({
         <button
           onClick={save}
           disabled={
-            saving || deleting || regenerating || triggerBlocked || !title.trim() || !content.trim()
+            saving ||
+            deleting ||
+            regenerating ||
+            triggerBlocked ||
+            dmBlocked ||
+            !title.trim() ||
+            !content.trim()
           }
           className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-40"
         >
