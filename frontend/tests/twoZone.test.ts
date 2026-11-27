@@ -507,6 +507,8 @@ test('a clamped fire room fed near-fresh air keeps burning', () => {
   // layer. On the floor the plume cap used to drop it, and its oxygen never
   // reached the flame, so the fire collapsed. Near-fresh air should burn
   // close to the model's fresh 0.23, and a vitiated stream should not.
+  // Oxygen-backed heat lets the 0.21 stream keep a little more of its air
+  // than the fresh stream, so its burn can sit a few percent higher.
   const fires = [{ heatKw: 15000, diameterM: 1.4 }];
   const room = {
     areaM2: 40,
@@ -545,7 +547,7 @@ test('a clamped fire room fed near-fresh air keeps burning', () => {
     `near-fresh released ${near.toFixed(0)} kW·s against fresh ${fresh.toFixed(0)}`,
   );
   assert.ok(
-    near < fresh * 1.02,
+    near < fresh * 1.08,
     `near-fresh released ${near.toFixed(0)} kW·s, above the fresh stream ${fresh.toFixed(0)}`,
   );
   assert.ok(
@@ -1035,9 +1037,10 @@ test('the room energy budget closes on the heat the layer actually took', () => 
   // room's heat is the enthalpy of the mass the density law releases. A
   // free interface sends the same heat out of the vents. Radiation stays
   // on the boundaries, and the wall term is only the film the gas pays.
-  // The oxygen scale lowers the reported fraction after this heat is
-  // already in the temperature, which is why a floor clamp's reported
-  // convected heat does not close the same balance.
+  // The temperature step is given the oxygen-backed fraction: the clamp
+  // book and the floor shortfall, then the ±400 K/s clip. convectedKj
+  // matches that post-scale heat. The clip is subtracted so a limited
+  // rise does not look like a leak.
   const RHO_T = 353;
   const dt = 1 / 60;
   const stored = (
@@ -1081,7 +1084,13 @@ test('the room energy budget closes on the heat the layer actually took', () => 
       const walls = (step.upperLossKw + step.lowerLossKw) * dt;
       const vent = step.inKT - step.outKT;
       const dm = after.mass - before.mass - step.bookedKg;
-      balance += step.convectedKj + vent - walls - (after.kj - before.kj) + dm * step.state.upperK;
+      balance +=
+        step.convectedKj -
+        step.clippedKj +
+        vent -
+        walls -
+        (after.kj - before.kj) +
+        dm * step.state.upperK;
       applied += step.convectedKj;
       reported += convectedKw * step.burnedFraction * dt;
       state = step.state;
@@ -1095,6 +1104,10 @@ test('the room energy budget closes on the heat the layer actually took', () => 
   );
   assert.ok(Math.abs(sealed.applied - 26000) < 100, `sealed heat ${sealed.applied.toFixed(0)} kJ`);
   assert.ok(Math.abs(sealed.balance) < 50, `sealed budget ${sealed.balance.toFixed(1)} kJ`);
+  assert.ok(
+    Math.abs(sealed.applied - sealed.reported) <= 0.01 * Math.max(Math.abs(sealed.reported), 1),
+    `sealed post-scale ${sealed.applied.toFixed(0)} vs ${sealed.reported.toFixed(0)} kJ`,
+  );
 
   const open = tally(
     room(400, 2000, 2, true),
@@ -1104,6 +1117,10 @@ test('the room energy budget closes on the heat the layer actually took', () => 
   assert.ok(Math.abs(open.applied - 13000) < 100, `open heat ${open.applied.toFixed(0)} kJ`);
   assert.ok(Math.abs(open.reported - open.applied) < 50, 'the free layer was not oxygen-scaled');
   assert.ok(Math.abs(open.balance) < 50, `open budget ${open.balance.toFixed(1)} kJ`);
+  assert.ok(
+    Math.abs(open.applied - open.reported) <= 0.01 * Math.max(Math.abs(open.reported), 1),
+    `open post-scale ${open.applied.toFixed(0)} vs ${open.reported.toFixed(0)} kJ`,
+  );
 
   const floor = tally(
     room(400, 20000, 10, true),
@@ -1116,10 +1133,11 @@ test('the room energy budget closes on the heat the layer actually took', () => 
     },
     900,
   );
-  assert.ok(Math.abs(floor.applied - 195000) < 500, `floor heat ${floor.applied.toFixed(0)} kJ`);
+  assert.ok(floor.applied < 180000, `floor heat was not oxygen-scaled (${floor.applied.toFixed(0)} kJ)`);
+  assert.ok(floor.applied > 100000, `floor heat ${floor.applied.toFixed(0)} kJ`);
   assert.ok(
-    floor.applied - floor.reported > 20000,
-    `scale gap ${(floor.applied - floor.reported).toFixed(0)} kJ`,
+    Math.abs(floor.applied - floor.reported) <= 0.01 * Math.max(Math.abs(floor.reported), 1),
+    `floor post-scale ${floor.applied.toFixed(0)} vs ${floor.reported.toFixed(0)} kJ`,
   );
   assert.ok(Math.abs(floor.balance) < 2000, `floor budget ${floor.balance.toFixed(0)} kJ`);
 });
@@ -4096,8 +4114,10 @@ test('an oxygen-limited fire room keeps its layer and burns again', () => {
   // Harbour's kitchen at T+270. The inflow is the shop's spent gas, at the
   // 0.15 extinction limit, so the steady correlation predicts no layer.
   // The live layer is floor-deep and hot. Retiring it dumps the soot into
-  // the columns and the room never steps again. The layer stays, the burn
-  // falls to nothing, and fresher air brings the flame back.
+  // the columns and the room never steps again. The layer stays. The
+  // oxygen-backed heat no longer blows the inflow out, so the flame
+  // burns the air that remains instead of falling to nothing, and
+  // fresher air brings it up further.
   const fuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 40 };
   const stud = (id: string, x: number, y: number) => ({
     id,
@@ -4185,8 +4205,12 @@ test('an oxygen-limited fire room keeps its layer and burns again', () => {
     `rise ${(starved.zone.upperK - AMBIENT_K).toFixed(0)} K`,
   );
   assert.ok(
-    exposed.fireSim.burnFraction('fire') < 0.05,
-    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} at the extinction limit`,
+    exposed.fireSim.burnFraction('fire') < 0.25,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} was not oxygen-limited`,
+  );
+  assert.ok(
+    exposed.fireSim.burnFraction('fire') > 0.05,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} fell through the oxygen that remained`,
   );
   for (let t = 0; t < 3; t++) {
     const liveFire = of('fire');

@@ -9,20 +9,17 @@
  * the floor. The mall's upper inflow is near-fresh air, and once the
  * interface is on the floor the flame also takes its own layer's oxygen.
  * The credit fades over the first 5 cm, so a millimetre of lift does not
- * drop the flame back to fresh air. At T+180 the shop burns 27.7 MW of
- * 46.5 MW prescribed, upper oxygen 0.188. The layer still holds oxygen,
- * so the burn reaches 44.4 MW at T+200. That excess over the 22.1 MW
+ * drop the flame back to fresh air. The temperature step takes only the
+ * oxygen-backed heat, so the shop no longer spends a pre-scale burst.
+ * At T+180 the shop burns 32.8 MW of 46.5 MW prescribed, upper oxygen
+ * 0.184. The sample at T+200 is 26 MW. That excess over the 22.1 MW
  * door is the layer's own oxygen, booked at 13,100 kJ per kilogram. By
- * T+290 the shop is 15.1 MW, and 11.8 MW at T+320. From T+180 it spans
- * 11.8 to 44.4 MW. The frame peak, one substep per frame, is 51.8 MW. The
- * kitchen burns its own layer after the shop's inflow is spent: the
- * prescribed 4.2 MW at T+210, T+250 and T+290. By T+320 the flame is
- * out and does not relight, and its oxygen is at the extinction
- * limit. The floor-deep layer stays. At T+370 the rise is
- * 107 K with 1843 g of soot, against its 6.8 MW door. A fireless room
- * keeps the jet path after the feed pauses, so both crowds still have a
- * mall layer at T+300: 1.49 m and 66.4 K. By T+600 both are 1.11 m and
- * 78.6 K.
+ * T+290 the shop is 14.5 MW, and 16.9 MW at T+320. From T+180 it spans
+ * 14 to 39.8 MW. The kitchen still burns the prescribed 4.2 MW at
+ * T+210, T+250 and T+290, and is out by T+370, against its 6.8 MW door.
+ * A fireless room keeps the jet path after the feed pauses, so both
+ * crowds still have a mall layer at T+300: 1.56 m and 58.4 K. By T+600
+ * both are 1.11 m and 76.5 K.
  * Heat is a separate ISO 13571 dose. Five people are down from it by
  * T+180 in both crowds, and that holds through T+600. Gas concentration
  * is the soot mass on the stud: the layer's grams over the upper-layer
@@ -33,12 +30,12 @@
  * are 12 from T+180 through T+300 and 13 at T+600. No fume downs by
  * T+300, and 19 are still inside at T+600, one of them in the mall. The
  * highest asphyxiant FED still inside is 1 and the highest heat FED is
- * 1.001. Late mean smoke is 0.773. The blocked crowd lets 91, 100 and
+ * 1.001. Late mean smoke is 0.769. The blocked crowd lets 91, 100 and
  * 101 people out at T+180, T+240 and T+300, and 101 by T+600. Downs
  * match the open crowd, with 19 still inside and one of them in the
- * mall. Late mean smoke is 0.778. Open reroutes are 0 and blocked
- * reroutes are 13. Mean smoke at T+180, T+240 and T+300 is 0.382, 0.376
- * and 0.652 in the open crowd and 0.382, 0.376 and 0.652 in the blocked
+ * mall. Late mean smoke is 0.774. Open reroutes are 0 and blocked
+ * reroutes are 13. Mean smoke at T+180, T+240 and T+300 is 0.382, 0.375
+ * and 0.652 in the open crowd and 0.382, 0.375 and 0.653 in the blocked
  * crowd. Flashover stays 79.88 s and the
  * peak stays 163.5 MW.
  * Freezing in fear: in both crowds ped 61 freezes at T+72, ped 36 at
