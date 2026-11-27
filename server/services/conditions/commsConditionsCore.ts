@@ -69,13 +69,23 @@ export function explainCommsKey(
   if (CALL_KEY_IDS.has(parsed.def.id) && state.calls_available === false) {
     return { met: false, detail: 'Phone calls are not available yet' };
   }
-  return resolve({
-    args: parsed.args,
-    team: parsed.scope?.team,
-    state,
-    elapsed: elapsedMinutes,
-  });
+  // Role scope is read by the filters below. Evaluation does not await, so
+  // concurrent tests cannot observe another key's scope.
+  const previousRole = scopeRole;
+  scopeRole = parsed.scope?.role;
+  try {
+    return resolve({
+      args: parsed.args,
+      team: parsed.scope?.team,
+      state,
+      elapsed: elapsedMinutes,
+    });
+  } finally {
+    scopeRole = previousRole;
+  }
 }
+
+let scopeRole: string | undefined;
 
 function emailChannel(channel: string): boolean {
   return channel === 'email';
@@ -315,6 +325,37 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   reply_risky_admission: (input) => replyKey('risky', input),
   reply_irrelevant: (input) => replyKey('irrelevant', input),
   responded_relevant: (input) => replyKey('relevant', input),
+  line_missed_calls_gte: ({ args, state }) =>
+    lineMissCount(state, args[0] ?? '', null, numberArg(args, 1)),
+  line_busy_missed_gte: ({ args, state }) =>
+    lineMissCount(state, args[0] ?? '', 'line_busy', numberArg(args, 1)),
+  line_unattended: ({ args, state }) => lineFact(state, args[0] ?? '', (fact) => fact.online_holders === 0),
+  line_unattended_minutes_gte: ({ args, state }) =>
+    lineFact(state, args[0] ?? '', (fact) => (fact.unattended_minutes ?? -1) >= numberArg(args, 1)),
+  line_reassigned: ({ args, state }) => lineFact(state, args[0] ?? '', (fact) => fact.reassigned),
+  role_missed_calls_gte: ({ args, state }) => {
+    const count = allDeliveries(state).filter(
+      (row) => isRoleMiss(row) && row.target_role_id === args[0],
+    ).length;
+    return { met: count >= numberArg(args, 1), detail: `${count} role misses` };
+  },
+  role_unassigned: ({ args, state }) => {
+    const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
+    return { met: fact != null && !fact.assigned, detail: fact?.assigned ? 'Assigned' : 'Unassigned' };
+  },
+  role_fallback_used: ({ args, state }) => {
+    const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
+    const fromDelivery = allDeliveries(state).some(
+      (row) => row.target_role_id === args[0] && Boolean(row.fallback_reason),
+    );
+    const met = fact?.fallback_used === true || fromDelivery;
+    return { met, detail: met ? 'Fallback used' : 'No fallback' };
+  },
+  role_offline_minutes_gte: ({ args, state }) => {
+    const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
+    const minutes = fact?.offline_minutes ?? -1;
+    return { met: minutes >= numberArg(args, 1), detail: `${Math.max(minutes, 0)} minutes offline` };
+  },
 };
 
 type ReplyKind =
@@ -499,7 +540,10 @@ function viewFor(
   const all = state.by_key[injectKey] ?? [];
   const roots = all.filter(
     (delivery) =>
-      isRoot(delivery, injectKey) && includesTeam(delivery, team) && channelOk(delivery, channel),
+      isRoot(delivery, injectKey) &&
+      includesTeam(delivery, team) &&
+      includesRole(delivery) &&
+      channelOk(delivery, channel),
   );
   const followUps = all.filter(
     (delivery) => isFollowUp(delivery, injectKey) && channelOk(delivery, channel),
@@ -521,6 +565,11 @@ function isFollowUp(delivery: CommsDelivery, injectKey: string): boolean {
 function includesTeam(delivery: CommsDelivery, team: string | undefined): boolean {
   if (!team) return true;
   return delivery.recipient_teams.some((name) => slugifyTeamName(name) === team);
+}
+
+function includesRole(delivery: CommsDelivery): boolean {
+  if (!scopeRole) return true;
+  return delivery.target_role_id === scopeRole;
 }
 
 function channelOk(
@@ -776,8 +825,57 @@ function callAttempts(
   team: string | undefined,
 ): CommsDelivery[] {
   return (state.by_key[injectKey] ?? []).filter(
-    (delivery) => delivery.channel === 'call' && includesTeam(delivery, team),
+    (delivery) => delivery.channel === 'call' && includesTeam(delivery, team) && includesRole(delivery),
   );
+}
+
+function allDeliveries(state: CommsState): CommsDelivery[] {
+  const seen = new Set<string>();
+  const rows: CommsDelivery[] = [];
+  for (const list of Object.values(state.by_key)) {
+    for (const delivery of list) {
+      if (seen.has(delivery.delivery_id)) continue;
+      seen.add(delivery.delivery_id);
+      rows.push(delivery);
+    }
+  }
+  return rows;
+}
+
+function isMissedAttempt(delivery: CommsDelivery): boolean {
+  return delivery.channel === 'call' && MISS_STATES.has(delivery.call_state ?? '');
+}
+
+function isRoleMiss(delivery: CommsDelivery): boolean {
+  if (!isMissedAttempt(delivery) || !delivery.target_role_id) return false;
+  if (delivery.fallback_reason) return false;
+  if (delivery.missed_reason === 'line_busy' || delivery.missed_reason === 'line_unattended') return false;
+  return true;
+}
+
+function lineMissCount(
+  state: CommsState,
+  teamSlug: string,
+  reason: string | null,
+  minimum: number,
+): KeyResult {
+  const count = allDeliveries(state).filter((delivery) => {
+    if (!isMissedAttempt(delivery) || isRoleMiss(delivery)) return false;
+    if (slugifyTeamName(delivery.line_team ?? '') !== teamSlug) return false;
+    if (delivery.missed_reason === 'role_busy' || delivery.missed_reason === 'role_offline') return false;
+    if (reason && delivery.missed_reason !== reason) return false;
+    return true;
+  }).length;
+  return { met: count >= minimum, detail: `${count} line misses` };
+}
+
+function lineFact(
+  state: CommsState,
+  teamSlug: string,
+  pred: (fact: NonNullable<CommsState['line_runtime']>[number]) => boolean,
+): KeyResult {
+  const fact = (state.line_runtime ?? []).find((row) => slugifyTeamName(row.team) === teamSlug);
+  return { met: fact != null && pred(fact), detail: fact ? 'Line fact' : 'No line fact' };
 }
 
 function groupAttempts(attempts: readonly CommsDelivery[]): CommsDelivery[][] {

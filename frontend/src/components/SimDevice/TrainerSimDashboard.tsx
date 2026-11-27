@@ -5,6 +5,7 @@ import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
 import { LiveCallsPanel } from './LiveCallsPanel';
+import { LinesRolesPanel } from './LinesRolesPanel';
 import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
@@ -2208,6 +2209,7 @@ export default function TrainerSimDashboard() {
         </Card>
 
         {sessionId ? <LiveCallsPanel sessionId={sessionId} /> : null}
+        {sessionId ? <LinesRolesPanel sessionId={sessionId} /> : null}
 
         {/* ============ ADVERSARY CONSOLE ROW: full width ============ */}
         <AdversaryConsole sessionId={sessionId || ''} />

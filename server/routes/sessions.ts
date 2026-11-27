@@ -35,6 +35,18 @@ import {
 import { getSessionPageCoverage } from '../services/pageCoverageService.js';
 import { settleCallsForSession } from '../services/calls/callService.js';
 import { PAGES_UNASSIGNED, pageCoverageMessage } from '../../shared/sessionPageCoverage.js';
+import {
+  CALL_COVERAGE_INCOMPLETE,
+  buildStartOverride,
+  coverageBlocksStart,
+  coverageError,
+  mayStart,
+  startWithUnfilledPayload,
+} from '../../shared/sessionCallCoverage.js';
+import { getSessionCallCoverage } from '../services/callCoverageService.js';
+import { endLines, ensureCallLines } from '../services/calls/lineService.js';
+import { endRoles } from '../services/roles/roleService.js';
+import { insertSessionEvent } from '../lib/sessionEvents.js';
 
 const router = Router();
 
@@ -65,6 +77,7 @@ const updateSessionSchema = z.object({
     trainer_instructions: z.string().max(5000).optional(),
     scheduled_start_time: z.string().datetime().optional(),
     auto_complete_on_objectives: z.boolean().optional(),
+    start_override: z.object({ acknowledge: z.literal(true) }).optional(),
   }),
 });
 
@@ -1439,7 +1452,7 @@ router.patch(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const { status, trainer_instructions, scheduled_start_time, auto_complete_on_objectives } =
+      const { status, trainer_instructions, scheduled_start_time, auto_complete_on_objectives, start_override } =
         req.body;
 
       // Check if user is trainer of this session
@@ -1476,6 +1489,36 @@ router.patch(
             pages: coverage.pages,
           });
         }
+        const callCoverage = await getSessionCallCoverage(id);
+        const acknowledge = start_override?.acknowledge === true;
+        if (!mayStart(callCoverage, acknowledge)) {
+          logger.info(
+            { sessionId: id, code: CALL_COVERAGE_INCOMPLETE },
+            'Session start blocked: call coverage incomplete',
+          );
+          return res.status(409).json({
+            error: coverageError(callCoverage),
+            code: CALL_COVERAGE_INCOMPLETE,
+            coverage: callCoverage,
+          });
+        }
+        if (coverageBlocksStart(callCoverage) && acknowledge) {
+          const record = buildStartOverride(user.id, new Date().toISOString(), callCoverage);
+          const event = startWithUnfilledPayload(callCoverage);
+          const saved = await supabaseAdmin.from('sessions').update({ start_override: record }).eq('id', id);
+          if (saved.error) {
+            logger.warn(
+              { code: saved.error.code, event: 'start_override_unrecorded', sessionId: id },
+              'Start override was not stored. Migration 271 may be unapplied. The start is still allowed.',
+            );
+          }
+          await insertSessionEvent({
+            session_id: id,
+            event_type: event.event_type,
+            metadata: { ...event.metadata, by: user.id, at: record.at },
+          });
+          logger.info({ sessionId: id, warnings: record.warnings, event: 'start_with_unfilled' }, 'Session started with unfilled roles or lines');
+        }
       }
 
       const updates: Record<string, unknown> = {};
@@ -1509,6 +1552,10 @@ router.patch(
         return res.status(500).json({ error: 'Failed to update session' });
       }
 
+      if (status === 'completed' || status === 'cancelled') {
+        void endLines(id).catch((err) => logger.warn({ err, sessionId: id }, 'end lines failed'));
+        void endRoles(id).catch((err) => logger.warn({ err, sessionId: id }, 'end roles failed'));
+      }
       if (
         previousStatus === 'in_progress' &&
         (status === 'paused' || status === 'completed' || status === 'cancelled')
@@ -1519,6 +1566,9 @@ router.patch(
       }
 
       if (claimingStart && data) {
+        void ensureCallLines(id).catch((err) => {
+          logger.warn({ err, sessionId: id }, 'call lines were not ensured at start');
+        });
         const scenarioId = (session as { scenario_id?: string }).scenario_id;
         let nextState: Record<string, unknown> | null = null;
 

@@ -8,6 +8,7 @@ export interface IncomingCall {
   call_waiting?: boolean;
   line_team?: string | null;
   direction?: string;
+  role_title?: string;
 }
 
 export type SimCallUiState =

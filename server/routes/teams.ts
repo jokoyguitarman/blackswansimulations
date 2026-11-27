@@ -277,6 +277,10 @@ router.delete(
         );
         return res.status(500).json({ error: 'Failed to remove team assignment' });
       }
+      const { releaseLineMember } = await import('../services/calls/lineService.js');
+      const { releaseRoleMember } = await import('../services/roles/roleService.js');
+      void releaseLineMember(id, user_id);
+      void releaseRoleMember(id, user_id);
 
       logger.info(
         { sessionId: id, userId: user_id, teamName: team_name, removedBy: user.id },

@@ -6,6 +6,8 @@ import {
   type PageCoverage,
   type PageCoverageItem,
 } from '@shared/sessionPageCoverage';
+import { CALL_COVERAGE_INCOMPLETE, type CallCoverage } from '@shared/sessionCallCoverage';
+import { CallCoveragePanel } from './CallCoveragePanel';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
 import { JoinLinkPanel } from './JoinLinkPanel';
@@ -43,7 +45,7 @@ interface SessionLobbyProps {
       };
     }>;
   };
-  onStartSession?: () => Promise<void> | void;
+  onStartSession?: (override?: boolean) => Promise<void> | void;
   onSessionUpdate?: () => void;
 }
 
@@ -267,7 +269,10 @@ export const SessionLobby = ({
     loadCoverage();
   }, [loadCoverage]);
 
+  const [callCoverage, setCallCoverage] = useState<CallCoverage | null>(null);
   const pagesBlocked = Boolean(coverage?.applies && !coverage.covered);
+  const callsBlocked = Boolean(callCoverage?.applies && callCoverage.mode === 'enforce' && !callCoverage.covered);
+  const callGaps = callCoverage?.items.filter((item) => item.required && !item.satisfied).length ?? 0;
   const uncoveredCount = coverage?.uncovered.length ?? 0;
   const eligibleCount = (session.participants || []).filter(
     (p) => p.role !== 'observer' && p.user_id !== user?.id,
@@ -313,6 +318,9 @@ export const SessionLobby = ({
       revealPageProblems();
       return;
     }
+    if (callsBlocked) {
+      return;
+    }
 
     // Social crisis sessions score and route content per team — warn (but do
     // not block) when players would start without a team.
@@ -339,6 +347,11 @@ export const SessionLobby = ({
     try {
       await onStartSession();
     } catch (error) {
+      if (error instanceof ApiError && error.code === CALL_COVERAGE_INCOMPLETE) {
+        const body = error.body as { coverage?: CallCoverage };
+        if (body.coverage) setCallCoverage(body.coverage);
+        return;
+      }
       if (error instanceof ApiError && error.code === PAGES_UNASSIGNED) {
         const body = error.body as { pages?: PageCoverageItem[]; uncovered?: PageCoverageItem[] };
         setCoverage({
@@ -501,8 +514,31 @@ export const SessionLobby = ({
                   ? `Waiting · ${readyStatus.total - readyStatus.ready} participant${readyStatus.total - readyStatus.ready === 1 ? '' : 's'} not ready`
                   : pagesBlocked
                     ? `Start session · ${uncoveredCount} page${uncoveredCount === 1 ? '' : 's'} need${uncoveredCount === 1 ? 's' : ''} a player`
-                    : 'Start session'}
+                    : callsBlocked
+                      ? `Start session · ${callGaps} item${callGaps === 1 ? '' : 's'} missing`
+                      : 'Start session'}
             </button>
+            {callsBlocked && (
+              <button
+                type="button"
+                className="wr-btn w-full mt-2"
+                disabled={starting || !readyStatus.all_ready}
+                onClick={() => {
+                  if (!onStartSession) return;
+                  setStarting(true);
+                  void Promise.resolve(onStartSession(true))
+                    .catch((error) => {
+                      if (error instanceof ApiError && error.code === CALL_COVERAGE_INCOMPLETE) {
+                        const body = error.body as { coverage?: CallCoverage };
+                        if (body.coverage) setCallCoverage(body.coverage);
+                      }
+                    })
+                    .finally(() => setStarting(false));
+                }}
+              >
+                Start anyway…
+              </button>
+            )}
             {pagesBlocked && (
               <div id="lobby-pages-gate-note" className="wr-note">
                 <WrIcon name="alert" size={13} />
@@ -580,6 +616,10 @@ export const SessionLobby = ({
             </div>
           )}
       </div>
+
+      {isTrainer && (
+        <CallCoveragePanel sessionId={sessionId} userId={user?.id} onCoverage={setCallCoverage} />
+      )}
 
       {isTrainer && isSocialSim && coverage?.applies && coverage.pages.length > 0 && (
         <div

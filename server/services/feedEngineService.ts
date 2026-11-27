@@ -19,6 +19,7 @@ import {
 import { injectKeyOf, isValidInjectKey } from '../lib/injectKey.js';
 import { recordDelivery, type RecordDeliveryInput } from './ledger/injectLedgerService.js';
 import { startInjectCall } from './calls/callService.js';
+import { routeRoleMessage } from './roles/messageRouting.js';
 import {
   chatInjectIdColumnMissing,
   directMessageInjectIdColumnMissing,
@@ -74,6 +75,10 @@ export interface TeamTargeting {
   /** Resolved member user ids; null means universal delivery. */
   playerIds: string[] | null;
   teamNames: string[];
+  mention?: string;
+  targetRoleId?: string | null;
+  lineTeam?: string | null;
+  fallbackReason?: string | null;
 }
 
 /**
@@ -243,7 +248,7 @@ export async function routeInjectToApp(
     // org_key only scopes private delivery (email / phone / chat / DMs). Public content
     // (social_feed / news) is public; its visibility is governed by `country` (contract §4.1).
     const privateApp = isPrivateDeliveryApp(config.app);
-    const targeting = await resolveInjectTargeting(
+    let targeting = await resolveInjectTargeting(
       sessionId,
       inject.inject_scope,
       inject.target_teams,
@@ -253,6 +258,28 @@ export async function routeInjectToApp(
     if (targeting && targeting.playerIds && targeting.playerIds.length === 0) {
       await reportUndeliverableInject(sessionId, injectId, inject.title, targeting.teamNames);
       return;
+    }
+
+    const roleRoute = await routeRoleMessage({
+      sessionId,
+      app: config.app,
+      config: config as unknown as Record<string, unknown>,
+      teamNames: targeting?.teamNames ?? inject.target_teams ?? [],
+      resolvedUserIds: targeting?.playerIds ?? null,
+    });
+    if (roleRoute?.playerIds && roleRoute.playerIds.length === 0) {
+      await reportUndeliverableInject(sessionId, injectId, inject.title, roleRoute.teamNames);
+      return;
+    }
+    if (roleRoute) {
+      targeting = {
+        playerIds: roleRoute.playerIds,
+        teamNames: roleRoute.teamNames.length > 0 ? roleRoute.teamNames : (targeting?.teamNames ?? []),
+        mention: roleRoute.mention,
+        targetRoleId: roleRoute.targetRoleId,
+        lineTeam: roleRoute.lineTeam,
+        fallbackReason: roleRoute.fallbackReason ?? null,
+      };
     }
 
     switch (config.app) {
@@ -610,6 +637,7 @@ async function routeToEmail(
     refTable: 'sim_emails',
     refId: String(email.id),
     threadId: String(email.id),
+    ...roleLedger(effectiveTargeting),
     recipientUserIds: effectiveTargeting?.playerIds ?? null,
     recipientTeams,
     stakeholderId: config.stakeholder_id ?? null,
@@ -747,10 +775,11 @@ async function routeToGroupChat(
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
+  const spoken = targeting?.mention ? { ...inject, content: `${targeting.mention}${inject.content}` } : inject;
   const channels = await postNpcChatMessage(
     sessionId,
     injectId,
-    groupChatMessage(inject, config),
+    groupChatMessage(spoken, config),
     config.channel_type,
     targeting,
     { requiresResponse: inject.requires_response === true, config },
@@ -863,7 +892,12 @@ async function postNpcChatMessage(
       refId: String(row.id),
       chatChannelId: channel.id,
       recipientUserIds: targeting?.playerIds ?? null,
-      recipientTeams: channel.team_name ? [channel.team_name] : (targeting?.teamNames ?? []),
+      recipientTeams: targeting?.targetRoleId
+        ? []
+        : channel.team_name
+          ? [channel.team_name]
+          : (targeting?.teamNames ?? []),
+      ...roleLedger(targeting),
       stakeholderId: options.config.stakeholder_id ?? null,
       senderName: message.sender_display_name,
       requiresResponse: options.requiresResponse,
@@ -1134,7 +1168,8 @@ async function routeToMessengerDm(
       refId: String(inserted.id),
       threadId: row.thread_id,
       recipientUserIds: targeting?.playerIds ?? null,
-      recipientTeams: targeting?.teamNames ?? [],
+      recipientTeams: targeting?.targetRoleId ? [] : (targeting?.teamNames ?? []),
+      ...roleLedger(targeting),
       stakeholderId: config.stakeholder_id ?? null,
       senderName: row.sender_display_name,
       requiresResponse: inject.requires_response === true,
@@ -1202,7 +1237,8 @@ async function routeToNpcDm(
       refId: String(row.id),
       chatChannelId: channel.id,
       recipientUserIds: targeting?.playerIds ?? null,
-      recipientTeams: targeting?.teamNames ?? [],
+      recipientTeams: targeting?.targetRoleId ? [] : (targeting?.teamNames ?? []),
+      ...roleLedger(targeting),
       stakeholderId,
       senderName: message.sender_display_name,
       requiresResponse: inject.requires_response === true,
@@ -1217,6 +1253,18 @@ async function routeToNpcDm(
     written++;
   }
   logger.info({ sessionId, injectId, written }, 'Inject routed to NPC DM');
+}
+
+function roleLedger(targeting: TeamTargeting | null | undefined): {
+  targetRoleId: string | null;
+  lineTeam: string | null;
+  fallbackReason: string | null;
+} {
+  return {
+    targetRoleId: targeting?.targetRoleId ?? null,
+    lineTeam: targeting?.lineTeam ?? null,
+    fallbackReason: targeting?.fallbackReason ?? null,
+  };
 }
 
 function responseWindowMinutes(config: DeliveryConfig): number | null {

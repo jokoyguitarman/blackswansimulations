@@ -42,6 +42,7 @@ import {
 import type { ActionCountBucket } from './injectLedgerCore.js';
 
 const UNIQUE_VIOLATION = '23505';
+let deliveryRoleColumns = true;
 
 export type LedgerChannel =
   'email' | 'chat' | 'npc_dm' | 'messenger_dm' | 'call' | 'social' | 'news';
@@ -95,6 +96,9 @@ export interface RecordDeliveryInput {
   chainStep?: number | null;
   urgency?: LedgerUrgency | null;
   moodRung?: string | null;
+  lineTeam?: string | null;
+  targetRoleId?: string | null;
+  fallbackReason?: string | null;
 }
 
 export interface RecordOpenInput {
@@ -166,12 +170,25 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
     assignIfSet(row, 'chain_step', input.chainStep);
     assignIfSet(row, 'urgency', input.urgency);
     assignIfSet(row, 'mood_rung', input.moodRung);
+    if (deliveryRoleColumns) {
+      assignIfSet(row, 'line_team', input.lineTeam);
+      assignIfSet(row, 'target_role_id', input.targetRoleId);
+      assignIfSet(row, 'fallback_reason', input.fallbackReason);
+    }
 
     const { data, error } = await supabaseAdmin
       .from('inject_deliveries')
       .insert(row)
       .select('id')
       .maybeSingle();
+    if (error && deliveryRoleColumns && (error.code === '42703' || error.code === 'PGRST204')) {
+      deliveryRoleColumns = false;
+      logger.warn(
+        { event: 'delivery_role_columns_unavailable' },
+        'Role and line columns on inject_deliveries are off because migration 271 is not applied',
+      );
+      return recordDelivery(input);
+    }
     if (error?.code === UNIQUE_VIOLATION) {
       const { data: existing, error: readError } = await supabaseAdmin
         .from('inject_deliveries')
@@ -396,10 +413,57 @@ export async function loadCommsState(
       sessionStartedAt: clock.startTime,
       countBots: env.injectLedgerCountBots,
     });
+    await enrichRoleDeliveryColumns(built);
     return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built);
   } catch (err) {
     failLedger(err, 'loadCommsState');
     return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+  }
+}
+
+let roleColumnWarn = false;
+
+/** Migration 271 columns. A missing column is skipped for the rest of the process. */
+async function enrichRoleDeliveryColumns(state: CommsState): Promise<void> {
+  if (!deliveryRoleColumns) return;
+  const deliveries = Object.values(state.by_key).flat();
+  const ids = [...new Set(deliveries.map((row) => row.delivery_id))];
+  if (ids.length === 0) return;
+  const { data, error } = await supabaseAdmin
+    .from('inject_deliveries')
+    .select('id, ref_id, target_role_id, line_team, fallback_reason')
+    .in('id', ids);
+  if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+    deliveryRoleColumns = false;
+    if (!roleColumnWarn) {
+      roleColumnWarn = true;
+      logger.warn(
+        { event: 'delivery_role_columns_unavailable' },
+        'Role and line columns on inject_deliveries are off because migration 271 is not applied',
+      );
+    }
+    return;
+  }
+  if (error || !data) return;
+  const byId = new Map(data.map((row) => [String(row.id), row]));
+  const callRefs: string[] = [];
+  for (const delivery of deliveries) {
+    const extra = byId.get(delivery.delivery_id);
+    if (!extra) continue;
+    delivery.target_role_id = (extra.target_role_id as string | null) ?? null;
+    delivery.line_team = (extra.line_team as string | null) ?? null;
+    delivery.fallback_reason = (extra.fallback_reason as string | null) ?? null;
+    if (delivery.channel === 'call' && extra.ref_id) callRefs.push(String(extra.ref_id));
+  }
+  if (callRefs.length === 0) return;
+  const calls = await supabaseAdmin.from('sim_calls').select('id, missed_reason').in('id', callRefs);
+  if (calls.error && (calls.error.code === '42703' || calls.error.code === 'PGRST204')) return;
+  if (calls.error || !calls.data) return;
+  const reasons = new Map(calls.data.map((row) => [String(row.id), (row.missed_reason as string | null) ?? null]));
+  for (const delivery of deliveries) {
+    const extra = byId.get(delivery.delivery_id);
+    const refId = extra?.ref_id ? String(extra.ref_id) : '';
+    if (refId && reasons.has(refId)) delivery.missed_reason = reasons.get(refId) ?? null;
   }
 }
 

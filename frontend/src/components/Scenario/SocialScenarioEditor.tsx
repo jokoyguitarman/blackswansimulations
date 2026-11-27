@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
+import { InjectSendTo, PlayerRolesSection, readPlayerRoles, type SendToValue } from './PlayerRolesEditor';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
@@ -618,12 +619,20 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               setInjectList={setInjectList}
               teamList={teamList}
               initialState={initialState}
+              saveInitialState={saveInitialState}
               locked={locked}
             />
             <TeamsSection
               scenarioId={scenarioId}
               teamList={teamList}
               setTeamList={setTeamList}
+              locked={locked}
+            />
+            <PlayerRolesSection
+              initialState={initialState}
+              saveInitialState={saveInitialState}
+              teamList={teamList}
+              injectList={injectList}
               locked={locked}
             />
             <ObjectivesSection
@@ -1425,6 +1434,7 @@ const InjectsSection = ({
   setInjectList,
   teamList,
   initialState,
+  saveInitialState,
   locked,
 }: {
   scenarioId: string;
@@ -1432,6 +1442,7 @@ const InjectsSection = ({
   setInjectList: React.Dispatch<React.SetStateAction<InjectRow[]>>;
   teamList: TeamRow[];
   initialState: Record<string, unknown>;
+  saveInitialState: (mutate: (state: Record<string, unknown>) => Record<string, unknown>) => Promise<unknown>;
   locked: boolean;
 }) => {
   const personas = (initialState.npc_personas || []) as PersonaShape[];
@@ -1615,6 +1626,8 @@ const InjectsSection = ({
                     personas={personas}
                     stakeholders={stakeholders}
                     teamList={teamList}
+                    playerRoles={readPlayerRoles(initialState)}
+                    saveInitialState={saveInitialState}
                     onSaved={onSaved}
                     onDeleted={onDeleted}
                     onCancel={() => setExpandedId(null)}
@@ -1643,6 +1656,8 @@ const InjectsSection = ({
             personas={personas}
             stakeholders={stakeholders}
             teamList={teamList}
+            playerRoles={readPlayerRoles(initialState)}
+            saveInitialState={saveInitialState}
             onSaved={onCreated}
             onDeleted={() => undefined}
             onCancel={() => setAdding(false)}
@@ -1780,6 +1795,8 @@ const InjectForm = ({
   personas,
   stakeholders,
   teamList,
+  playerRoles = [],
+  saveInitialState,
   onSaved,
   onDeleted,
   onCancel,
@@ -1789,6 +1806,8 @@ const InjectForm = ({
   personas: PersonaShape[];
   stakeholders: StakeholderOption[];
   teamList: TeamRow[];
+  playerRoles?: ReturnType<typeof readPlayerRoles>;
+  saveInitialState?: (mutate: (state: Record<string, unknown>) => Record<string, unknown>) => Promise<unknown>;
   onSaved: (row: InjectRow) => void;
   onDeleted: (id: string) => void;
   onCancel: () => void;
@@ -1804,6 +1823,13 @@ const InjectForm = ({
   const [scope, setScope] = useState(inject?.inject_scope ?? 'universal');
   const [targetTeams, setTargetTeams] = useState<string[]>(inject?.target_teams ?? []);
   const [app, setApp] = useState(String(dcInit.app ?? 'social_feed'));
+  const [sendTo, setSendTo] = useState<SendToValue>({
+    mode: typeof dcInit.target_role_id === 'string' ? 'role' : dcInit.call_target && (dcInit.call_target as { mode?: string }).mode === 'ring_all' ? 'ring_all' : 'team',
+    roleId: typeof dcInit.target_role_id === 'string' ? dcInit.target_role_id : '',
+    fallback:
+      dcInit.role_fallback === 'line' || dcInit.role_fallback === 'line_after_minutes' ? dcInit.role_fallback : 'none',
+    minutes: typeof dcInit.role_fallback_minutes === 'number' ? dcInit.role_fallback_minutes : 10,
+  });
   const [platform, setPlatform] = useState(String(dcInit.platform ?? 'x_twitter'));
   const [authorHandle, setAuthorHandle] = useState(String(dcInit.author_handle ?? ''));
   const [authorName, setAuthorName] = useState(String(dcInit.author_display_name ?? ''));
@@ -1880,11 +1906,33 @@ const InjectForm = ({
       delete dc.detection_keywords;
       delete dc.intel_summary;
     }
+    const routable = ['phone_call', 'email', 'npc_dm', 'messenger_dm', 'group_chat'].includes(app);
+    if (routable && sendTo.mode === 'role') {
+      dc.target_role_id = sendTo.roleId;
+      dc.role_fallback = sendTo.fallback;
+      dc.role_fallback_minutes = sendTo.minutes;
+      dc.call_target = { mode: 'role' };
+    } else if (routable && sendTo.mode === 'ring_all') {
+      delete dc.target_role_id;
+      delete dc.role_fallback;
+      dc.call_target = { mode: 'ring_all' };
+    } else if (routable) {
+      delete dc.target_role_id;
+      delete dc.role_fallback;
+      delete dc.role_fallback_minutes;
+      if (app === 'phone_call') dc.call_target = { mode: 'line' };
+      else delete dc.call_target;
+    }
     return dc;
   };
 
   const save = async () => {
     if (triggerBlocked || dmBlocked) return;
+    if (sendTo.mode === 'role' && !playerRoles.some((role) => role.role_id === sendTo.roleId)) {
+      setMsg('Choose a role that exists on this scenario.');
+      setError(true);
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
@@ -1906,6 +1954,15 @@ const InjectForm = ({
       } else {
         const res = await api.scenarios.updateInject(scenarioId, inject.id, fields);
         onSaved(res.data as unknown as InjectRow);
+      }
+      if (
+        saveInitialState &&
+        (sendTo.mode === 'role' ||
+          sendTo.mode === 'ring_all' ||
+          sendTo.fallback !== 'none' ||
+          (app === 'phone_call' && sendTo.mode === 'team'))
+      ) {
+        await saveInitialState((state) => ({ ...state, call_coverage_gate: 'enforce' }));
       }
     } catch (err) {
       setMsg((err as Error).message);
@@ -2044,6 +2101,13 @@ const InjectForm = ({
             ))}
           </select>
         </div>
+        <InjectSendTo
+          app={app}
+          roles={playerRoles}
+          targetTeams={targetTeams}
+          value={sendTo}
+          onChange={setSendTo}
+        />
         {app === 'social_feed' && (
           <div>
             <label className={labelCls}>Platform</label>

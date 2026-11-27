@@ -101,6 +101,8 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
         }
 
         socket.join(`session:${sessionId}`);
+        const { noteSessionJoin } = await import('../services/presence/sessionPresenceService.js');
+        noteSessionJoin(sessionId, socket.userId, socket.id);
         logger.info(
           { socketId: socket.id, sessionId, userId: socket.userId },
           'Joined session room',
@@ -114,6 +116,9 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
     // Leave session room
     socket.on('leave_session', (sessionId: string) => {
       socket.leave(`session:${sessionId}`);
+      void import('../services/presence/sessionPresenceService.js').then(({ noteSessionLeave }) => {
+        noteSessionLeave(sessionId, socket.userId, socket.id);
+      });
       logger.info({ socketId: socket.id, sessionId }, 'Left session room');
     });
 
@@ -155,6 +160,9 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
     });
 
     socket.on('disconnect', (reason) => {
+      void import('../services/presence/sessionPresenceService.js').then(({ noteSocketGone }) => {
+        noteSocketGone(socket.id, socket.userId);
+      });
       logger.info({ socketId: socket.id, userId: socket.userId, reason }, 'WebSocket disconnected');
     });
 

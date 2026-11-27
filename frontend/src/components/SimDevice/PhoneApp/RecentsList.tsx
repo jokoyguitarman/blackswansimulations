@@ -7,14 +7,18 @@ interface Props {
   missedCount: number;
   onOpen: (call: CallSummary) => void;
   onCallback: (call: CallSummary) => void;
+  headerNote?: string | null;
 }
 
-export default function RecentsList({ calls, filter, onFilter, missedCount, onOpen, onCallback }: Props) {
+export default function RecentsList({ calls, filter, onFilter, missedCount, onOpen, onCallback, headerNote }: Props) {
   const rows = collapse(calls).filter((row) => filter === 'all' || row.missed);
   return (
     <div className="flex h-full flex-col bg-[#f6f6f7] text-[#172033]">
       <header className="flex items-center justify-between px-4 pb-2 pt-4">
-        <h1 className="text-2xl font-semibold">Recents</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Recents</h1>
+          {headerNote && <p className="text-xs text-black/50">{headerNote}</p>}
+        </div>
         <div className="flex rounded-full bg-black/5 p-0.5 text-xs">
           <button
             type="button"

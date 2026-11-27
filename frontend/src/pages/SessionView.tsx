@@ -1335,13 +1335,20 @@ export const SessionView = () => {
     }
   };
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (override?: boolean) => {
     if (!id) return;
     try {
-      await api.sessions.update(id, { status: 'in_progress' });
+      await api.sessions.update(
+        id,
+        override
+          ? { status: 'in_progress', start_override: { acknowledge: true } }
+          : { status: 'in_progress' },
+      );
       await loadSession();
     } catch (error) {
-      if (error instanceof ApiError && error.code === PAGES_UNASSIGNED) throw error;
+      if (error instanceof ApiError && (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')) {
+        throw error;
+      }
       console.error('Failed to start session:', error);
       alert('Failed to start session');
     }
