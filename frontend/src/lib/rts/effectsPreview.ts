@@ -194,39 +194,169 @@ export function buildPreviewEngine(input: PreviewInput): PreviewEngine {
 export const PREVIEW_FINE_S = 5;
 export const PREVIEW_COARSE_DT = 0.5;
 export const PREVIEW_PRE_BLAST_DT = 1;
+/**
+ * Effects seconds between rollback points while stepping coarsely. A copy
+ * costs a few steps, and a rollback replays at most this much.
+ */
+export const PREVIEW_CHECKPOINT_S = 10;
+
+interface FineWindow {
+  from: number;
+  to: number;
+}
+
+interface ClockState {
+  t: number;
+  windows: FineWindow[];
+  index: number;
+  inWindow: boolean;
+  until: number;
+  dt: number;
+  tail: boolean;
+}
 
 /**
- * Steps to `seconds` after the blast. Every event, the blast at t0 and any
- * enrichment event in `eventTimes`, gets the same fine window: from the step
- * ending on it to PREVIEW_FINE_S after it.
+ * The preview's step schedule, one step at a time, so a fine window can be
+ * added while it runs. Every event gets the same fine window: from the step
+ * ending on it to PREVIEW_FINE_S after it. Between windows the steps are
+ * whole seconds before the blast and PREVIEW_COARSE_DT after it.
+ */
+class PreviewClock {
+  private readonly t0: number;
+  private readonly end: number;
+  private s: ClockState;
+  private replay: number[] = [];
+  private pending: FineWindow | null = null;
+
+  constructor(t0: number, end: number, eventTimes: readonly number[]) {
+    this.t0 = t0;
+    this.end = end;
+    // A step that reaches an event fires it and then integrates it over the
+    // whole step, so the step ending on an event must already be a fine one.
+    const windows = [t0, ...eventTimes]
+      .filter((e) => e >= t0 && e < end)
+      .sort((a, b) => a - b)
+      .map((e) => ({
+        from: Math.max(0, e - FX.EFFECTS_DT),
+        to: Math.min(end, e + PREVIEW_FINE_S),
+      }));
+    this.s = { t: 0, windows, index: 0, inWindow: false, until: 0, dt: 0, tail: false };
+  }
+
+  get t(): number {
+    return this.s.t;
+  }
+
+  /** True while the steps before a rollback point are being taken again. */
+  get replaying(): boolean {
+    return this.replay.length > 0;
+  }
+
+  /** The next step, or 0 when the run has reached the end. */
+  next(): number {
+    if (this.replay.length > 0) return this.replay[0] ?? 0;
+    const s = this.s;
+    for (;;) {
+      if (s.until - s.t > 1e-9) return Math.min(s.dt, s.until - s.t);
+      const w = s.windows[s.index];
+      if (w) {
+        if (!s.inWindow) {
+          if (w.to <= s.t + 1e-9) {
+            s.index += 1;
+            continue;
+          }
+          s.inWindow = true;
+          s.until = w.from;
+          s.dt = s.t < this.t0 - 1e-9 ? PREVIEW_PRE_BLAST_DT : PREVIEW_COARSE_DT;
+          continue;
+        }
+        if (s.until !== w.to || s.dt !== FX.EFFECTS_DT) {
+          s.until = w.to;
+          s.dt = FX.EFFECTS_DT;
+          continue;
+        }
+        s.index += 1;
+        s.inWindow = false;
+        continue;
+      }
+      if (!s.tail) {
+        s.tail = true;
+        s.until = this.end;
+        s.dt = PREVIEW_COARSE_DT;
+        continue;
+      }
+      return 0;
+    }
+  }
+
+  advance(h: number): void {
+    if (this.replay.length > 0) {
+      this.replay.shift();
+      this.s.t += h;
+      if (this.replay.length === 0 && this.pending) {
+        const w = this.pending;
+        this.pending = null;
+        this.addWindow(w.from, w.to);
+      }
+      return;
+    }
+    this.s.t += h;
+  }
+
+  /**
+   * A fine window from `from`, which must not be after the current time.
+   * Inside a fine window it extends that window. Otherwise it starts now.
+   */
+  addWindow(from: number, to: number): void {
+    const s = this.s;
+    const end = Math.min(this.end, to);
+    const current = s.windows[s.index];
+    if (current && s.inWindow && s.dt === FX.EFFECTS_DT && from <= current.to + 1e-9) {
+      if (end > current.to) current.to = end;
+      s.until = current.to;
+      return;
+    }
+    s.windows.splice(s.index, 0, { from: Math.min(from, s.t), to: end });
+    s.inWindow = false;
+    s.until = s.t;
+    s.tail = false;
+  }
+
+  save(): ClockState {
+    return { ...this.s, windows: this.s.windows.map((w) => ({ ...w })) };
+  }
+
+  /**
+   * Back to `state`, then the exact steps of `steps`, then a fine window
+   * from where they end. The replay reaches that point on the same sums.
+   */
+  rewind(state: ClockState, steps: readonly number[], window: FineWindow): void {
+    this.s = { ...state, windows: state.windows.map((w) => ({ ...w })) };
+    this.replay = [...steps];
+    this.pending = window;
+    if (this.replay.length === 0) {
+      this.pending = null;
+      this.addWindow(window.from, window.to);
+    }
+  }
+}
+
+/**
+ * Steps to `seconds` after the blast when nothing starts on its own: every
+ * event, the blast at t0 and any enrichment event in `eventTimes`, gets the
+ * same fine window, from the step ending on it to PREVIEW_FINE_S after it.
  */
 export function previewSteps(
   t0: number,
   seconds: number,
   eventTimes: readonly number[] = [],
 ): number[] {
-  const end = t0 + Math.max(0, seconds);
-  // A step that reaches an event fires it and then integrates it over the whole
-  // step, so the step ending on an event must already be a fine one.
-  const windows = [t0, ...eventTimes]
-    .filter((e) => e >= t0 && e < end)
-    .sort((a, b) => a - b)
-    .map((e) => [Math.max(0, e - FX.EFFECTS_DT), Math.min(end, e + PREVIEW_FINE_S)]);
+  const clock = new PreviewClock(t0, t0 + Math.max(0, seconds), eventTimes);
   const steps: number[] = [];
-  let t = 0;
-  const pushUntil = (until: number, dt: number) => {
-    while (until - t > 1e-9) {
-      const h = Math.min(dt, until - t);
-      steps.push(h);
-      t += h;
-    }
-  };
-  for (const [from, to] of windows) {
-    if (to <= t + 1e-9) continue;
-    pushUntil(from, t < t0 - 1e-9 ? PREVIEW_PRE_BLAST_DT : PREVIEW_COARSE_DT);
-    pushUntil(to, FX.EFFECTS_DT);
+  for (let h = clock.next(); h > 0; h = clock.next()) {
+    steps.push(h);
+    clock.advance(h);
   }
-  pushUntil(end, PREVIEW_COARSE_DT);
   return steps;
 }
 
@@ -235,17 +365,130 @@ function eventTimesOf(engine: SpatialEffectsEngine): number[] {
   return [...engine.hazardStates.values()].flatMap((h) => h.events.map((e) => e.triggerTimeSec));
 }
 
+/**
+ * The setup preview, one step at a time. Registered events get their fine
+ * windows up front. An event the engine makes itself, a cell catching fire
+ * or a jet lighting (see `SpatialEffectsEngine.onsets`), is only seen after
+ * the step that made it. If that step was coarse, the run goes back to the
+ * last checkpoint, replays the same steps to the start of that step, and
+ * takes it again in fine steps, so it gets the same window as a registered
+ * event.
+ */
+export class PreviewRun {
+  engine: SpatialEffectsEngine;
+  readonly t0: number;
+  readonly hazards: HazardZone[];
+  private readonly clock: PreviewClock;
+  private readonly end: number;
+  private readonly keep: object[];
+  private readonly walls: InteriorWall[];
+  private onsetsSeen: number;
+  private checkpoint: {
+    engine: SpatialEffectsEngine;
+    clock: ClockState;
+    onsets: number;
+    taken: number;
+  } | null = null;
+  /** Steps behind the current engine, from the start. A rollback cuts it back. */
+  private taken: number[] = [];
+  private sinceCheckpoint: number[] = [];
+  private reached = 0;
+  /** Steps taken, rollbacks included. */
+  steps = 0;
+  rollbacks = 0;
+
+  constructor(input: PreviewInput, seconds: number, walls: InteriorWall[]) {
+    const built = buildPreviewEngine(input);
+    this.walls = walls;
+    this.engine = built.engine;
+    this.t0 = built.t0;
+    this.hazards = built.hazards;
+    this.end = built.t0 + Math.max(0, seconds);
+    this.clock = new PreviewClock(built.t0, this.end, eventTimesOf(built.engine));
+    this.onsetsSeen = built.engine.onsets();
+    this.keep = [walls, ...walls, this.hazards, ...this.hazards];
+  }
+
+  get done(): boolean {
+    return !(this.clock.next() > 0);
+  }
+
+  /** Share of the effects time reached, 0 to 1. A rollback does not lower it. */
+  get progress(): number {
+    return this.end > 0 ? Math.min(1, this.reached / this.end) : 1;
+  }
+
+  /** The steps the current engine has taken, in order. */
+  schedule(): number[] {
+    return [...this.taken];
+  }
+
+  /** One engine step. Returns false once the run is done. */
+  advance(): boolean {
+    const h = this.clock.next();
+    if (!(h > 0)) return false;
+    if (this.clock.replaying) {
+      // The same steps from the same state: nothing new can start here.
+      this.engine.step(h, this.walls, this.hazards);
+      this.clock.advance(h);
+      this.taken.push(h);
+      this.steps += 1;
+      this.onsetsSeen = this.engine.onsets();
+      return true;
+    }
+    const coarse = h > FX.EFFECTS_DT + 1e-9;
+    if (!coarse) {
+      this.checkpoint = null;
+    } else if (
+      !this.checkpoint ||
+      this.clock.t - this.checkpoint.clock.t >= PREVIEW_CHECKPOINT_S - 1e-9
+    ) {
+      this.checkpoint = {
+        engine: this.engine.snapshot(this.keep),
+        clock: this.clock.save(),
+        onsets: this.onsetsSeen,
+        taken: this.taken.length,
+      };
+      this.sinceCheckpoint = [];
+    }
+    const start = this.clock.t;
+    this.engine.step(h, this.walls, this.hazards);
+    this.clock.advance(h);
+    this.taken.push(h);
+    this.steps += 1;
+    if (coarse) this.sinceCheckpoint.push(h);
+    if (this.clock.t > this.reached) this.reached = this.clock.t;
+    const onsets = this.engine.onsets();
+    if (onsets === this.onsetsSeen) return true;
+    this.onsetsSeen = onsets;
+    const cp = this.checkpoint;
+    if (!coarse || !cp) {
+      this.clock.addWindow(this.clock.t - FX.EFFECTS_DT, this.clock.t + PREVIEW_FINE_S);
+      return true;
+    }
+    this.engine = cp.engine;
+    this.onsetsSeen = cp.onsets;
+    this.taken.length = cp.taken;
+    this.checkpoint = null;
+    this.rollbacks += 1;
+    this.clock.rewind(cp.clock, this.sinceCheckpoint.slice(0, -1), {
+      from: start,
+      to: start + PREVIEW_FINE_S,
+    });
+    this.sinceCheckpoint = [];
+    return true;
+  }
+}
+
 /** Build the preview engine and run it to `seconds` after the blast. */
 export function runEffectsPreview(
   input: PreviewInput,
   seconds: number,
   walls: InteriorWall[],
 ): SpatialEffectsEngine {
-  const { engine, t0, hazards } = buildPreviewEngine(input);
-  for (const dt of previewSteps(t0, seconds, eventTimesOf(engine))) {
-    engine.step(dt, walls, hazards);
-  }
-  return engine;
+  const run = new PreviewRun(input, seconds, walls);
+  while (run.advance());
+  return run.engine;
 }
 
 /**
@@ -258,19 +501,14 @@ export async function runEffectsPreviewAsync(
   walls: InteriorWall[],
   opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal; sliceMs?: number } = {},
 ): Promise<SpatialEffectsEngine | null> {
-  const { engine, t0, hazards } = buildPreviewEngine(input);
-  const steps = previewSteps(t0, seconds, eventTimesOf(engine));
+  const run = new PreviewRun(input, seconds, walls);
   const sliceMs = opts.sliceMs ?? 40;
-  let i = 0;
-  while (i < steps.length) {
+  while (!run.done) {
     if (opts.signal?.aborted) return null;
     const start = performance.now();
-    while (i < steps.length && performance.now() - start < sliceMs) {
-      engine.step(steps[i], walls, hazards);
-      i++;
-    }
-    opts.onProgress?.(i / steps.length);
-    if (i < steps.length) await new Promise((resolve) => setTimeout(resolve, 0));
+    while (performance.now() - start < sliceMs && run.advance());
+    opts.onProgress?.(run.done ? 1 : run.progress);
+    if (!run.done) await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  return opts.signal?.aborted ? null : engine;
+  return opts.signal?.aborted ? null : run.engine;
 }

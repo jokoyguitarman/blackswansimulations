@@ -8140,7 +8140,11 @@ export function DebugRTSSim() {
                             },
                             effectPreviewTime,
                             interiorWalls,
-                            { signal: abort.signal, onProgress: setPreviewProgress },
+                            {
+                              signal: abort.signal,
+                              // Whole percents, so most slices leave the page unrendered.
+                              onProgress: (f) => setPreviewProgress(Math.floor(f * 100) / 100),
+                            },
                           );
                           if (previewAbortRef.current !== abort) return;
                           previewAbortRef.current = null;

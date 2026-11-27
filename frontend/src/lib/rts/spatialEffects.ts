@@ -98,6 +98,7 @@ import {
   type FumeGrams,
 } from './toxicDose';
 import { extinctionK, smokeFromK } from '../evacuation/hazardSensing';
+import { cloneState } from './stateClone';
 
 // ── Effect types ─────────────────────────────────────────────────────────
 
@@ -634,18 +635,21 @@ export class SpatialEffectsEngine {
   private smokeOpen = new Uint8Array(0);
   /** 1 when that neighbour link is a wall or the shell. Invalidated with the leaves. */
   private smokeBlock: Array<Uint8Array | null> = [];
-  private smokeBlockKey = '';
+  private smokeBlockGen = -1;
+  private smokeBlockShell: string | null = null;
   private smokeBlockWalls: InteriorWall[] | null = null;
   private kScratch = new Float64Array(0);
   /** Reused so the init-order sort does not allocate on the burning slices. */
-  private smokeEmit: number[] = [];
+  private smokeEmit = new Int32Array(0);
   private sumScratch = new Float64Array(0);
   private scaleScratch = new Float64Array(0);
   private seenScratch = new Uint8Array(0);
   private wasInField = new Uint8Array(0);
   private usedSlots: number[] = [];
-  private moveFrom: string[] = [];
-  private moveTo: string[] = [];
+  /** 1 on a slot the current smoke move leaves alone. */
+  private skipSlot = new Uint8Array(0);
+  /** 1 on a slot already added to the step's touch set during this move. */
+  private touchedSlot = new Uint8Array(0);
   private moveFromSlot: number[] = [];
   private moveToSlot: number[] = [];
   private moveK: number[] = [];
@@ -811,6 +815,12 @@ export class SpatialEffectsEngine {
   private wallById = new Map<string, GridWall>();
   /** Timber and glass only. Empty in a building that has neither. */
   private liningWalls: GridWall[] = [];
+  /**
+   * Internal lining walls by room members and skipped walls. A wall's
+   * position and level only change with a new `liningWalls` array.
+   */
+  private internalLiningMemo = new Map<string, GridWall[]>();
+  private internalLiningFor: GridWall[] | null = null;
 
   constructor(fireParams?: FireParams, timeScale = 1) {
     this.timeScale = timeScale;
@@ -911,13 +921,17 @@ export class SpatialEffectsEngine {
       this.smokeNeigh[i] = row;
     }
     this.smokeBlock = new Array(n).fill(null);
-    this.smokeBlockKey = '';
+    this.smokeBlockGen = -1;
+    this.smokeBlockShell = null;
     this.smokeBlockWalls = null;
     this.kScratch = new Float64Array(n);
     this.sumScratch = new Float64Array(n);
     this.scaleScratch = new Float64Array(n);
     this.seenScratch = new Uint8Array(n);
     this.wasInField = new Uint8Array(n);
+    this.skipSlot = new Uint8Array(n);
+    this.smokeEmit = new Int32Array(n);
+    this.touchedSlot = new Uint8Array(n);
     this.usedSlots = [];
     this.fillOpenAir();
   }
@@ -1005,9 +1019,13 @@ export class SpatialEffectsEngine {
   private blockRow(slot: number, walls: InteriorWall[]): Uint8Array {
     if (!this.shellReady) this.rebuildShell();
     const gen = walls === this.leafWalls ? this.leafGen : this.noteLeaves(walls);
-    const key = `${gen}:${this.shellKey}`;
-    if (key !== this.smokeBlockKey || walls !== this.smokeBlockWalls) {
-      this.smokeBlockKey = key;
+    if (
+      gen !== this.smokeBlockGen ||
+      this.shellKey !== this.smokeBlockShell ||
+      walls !== this.smokeBlockWalls
+    ) {
+      this.smokeBlockGen = gen;
+      this.smokeBlockShell = this.shellKey;
       this.smokeBlockWalls = walls;
       this.smokeBlock = new Array(this.smokeSlots.length).fill(null);
     }
@@ -1172,6 +1190,37 @@ export class SpatialEffectsEngine {
 
   gasLineState(id: string) {
     return this.fireSim.gasLineState(id);
+  }
+
+  /**
+   * Discrete changes the steps have made on their own: a cell catching fire,
+   * a flashover latch, a jet, arc or sprinkler starting, a timer or
+   * interlock shutting a source, a pane falling out. A step that raises it
+   * made one.
+   */
+  onsets(): number {
+    return this.fireSim.onsets() + this.fallenGlass.size;
+  }
+
+  /**
+   * A copy that steps exactly as this engine would from here. The stud
+   * topology is shared, not copied: only `init` and `extendStuds` write it,
+   * so neither engine may call them while the other is in use. `shared`
+   * names caller objects the engine holds, such as the walls and hazards
+   * passed to `step`, so the copy keeps them by reference too.
+   */
+  snapshot(shared: Iterable<object> = []): SpatialEffectsEngine {
+    const keep = new Set<object>([
+      this.studIndex,
+      this.neighborCache,
+      this.gridStuds,
+      this.smokeSlots,
+      this.smokeSlotOf,
+      this.smokeNeigh,
+      ...this.fireSim.topology(),
+      ...shared,
+    ]);
+    return cloneState(this, keep, new Set([SpatialEffectsEngine, FireSimulation]));
   }
 
   registerHazard(
@@ -1848,6 +1897,22 @@ export class SpatialEffectsEngine {
    */
   private internalLiningWalls(members: readonly string[], skip: ReadonlySet<string>): GridWall[] {
     if (this.liningWalls.length === 0) return [];
+    if (this.internalLiningFor !== this.liningWalls || this.internalLiningMemo.size > 256) {
+      this.internalLiningFor = this.liningWalls;
+      this.internalLiningMemo.clear();
+    }
+    const key = `${members.join(',')}|${[...skip].join(',')}`;
+    const known = this.internalLiningMemo.get(key);
+    if (known) return known;
+    const result = this.findInternalLiningWalls(members, skip);
+    this.internalLiningMemo.set(key, result);
+    return result;
+  }
+
+  private findInternalLiningWalls(
+    members: readonly string[],
+    skip: ReadonlySet<string>,
+  ): GridWall[] {
     const inside = new Set(members);
     const found = new Map<string, GridWall>();
     for (const id of members) {
@@ -2650,29 +2715,7 @@ export class SpatialEffectsEngine {
         });
         continue;
       }
-      const opening = oxygenLimitedBurn(
-        spec,
-        zone.interfaceM,
-        zone.upperK,
-        oxygenMassFraction(zone.lowerO2),
-        oxygenMassFraction(zone.upperO2),
-        dt,
-        false,
-        undefined,
-        zone.lowerK ?? AMBIENT_K,
-      ).burn;
-      const limitedFires =
-        opening.prescribedKw > 0 && opening.fraction < 0.999
-          ? fires.map((fire) => ({ ...fire, heatKw: fire.heatKw * opening.fraction }))
-          : fires;
-      const steady = steadyLayer({ ...spec, fires: limitedFires }, zone.ageS);
-      const rise = steady ? steady.upperK - AMBIENT_K : 0;
-      const depth = steady?.depthM ?? 0;
       const jet = CEILING_JET_DEPTH_FRACTION * ceiling;
-      const hold =
-        prev?.active === true &&
-        rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
-        depth >= jet * LAYER_OFF_FRACTION;
       // The steady correlation is run at the oxygen-limited burn. At the
       // extinction limit that burn is almost nothing, so it predicts no
       // layer and would retire the one already there. A shaft landing was
@@ -2690,7 +2733,36 @@ export class SpatialEffectsEngine {
         ) ||
           (prev.zone.upperK - AMBIENT_K >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
             ceiling - prev.zone.interfaceM >= jet * LAYER_OFF_FRACTION));
-      const active = hold || kept || formsSustainedLayer(depth, ceiling, rise, true);
+      // A kept layer stays whatever the steady balance says. Both solves
+      // are pure, so a kept room skips them.
+      let opening: ReturnType<typeof oxygenLimitedBurn>['burn'] | null = null;
+      let active = kept;
+      if (!kept) {
+        const burn = oxygenLimitedBurn(
+          spec,
+          zone.interfaceM,
+          zone.upperK,
+          oxygenMassFraction(zone.lowerO2),
+          oxygenMassFraction(zone.upperO2),
+          dt,
+          false,
+          undefined,
+          zone.lowerK ?? AMBIENT_K,
+        ).burn;
+        opening = burn;
+        const limitedFires =
+          burn.prescribedKw > 0 && burn.fraction < 0.999
+            ? fires.map((fire) => ({ ...fire, heatKw: fire.heatKw * burn.fraction }))
+            : fires;
+        const steady = steadyLayer({ ...spec, fires: limitedFires }, zone.ageS);
+        const rise = steady ? steady.upperK - AMBIENT_K : 0;
+        const depth = steady?.depthM ?? 0;
+        const hold =
+          prev?.active === true &&
+          rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+          depth >= jet * LAYER_OFF_FRACTION;
+        active = hold || formsSustainedLayer(depth, ceiling, rise, true);
+      }
       if (!active) {
         retire();
         this.forgetFloorPressure(room);
@@ -2701,7 +2773,7 @@ export class SpatialEffectsEngine {
           areaM2: spec.areaM2,
           ceilingM: ceiling,
         });
-        if (opening.prescribedKw > 0) {
+        if (opening && opening.prescribedKw > 0) {
           this.roomPhi.set(room, opening.phi);
           this.fireSim.setBurnLimit(members, opening.fraction, opening.phi);
         }
@@ -3577,11 +3649,19 @@ export class SpatialEffectsEngine {
     skip?: ReadonlySet<string>,
     touch?: Set<string>,
   ): void {
-    const froms = this.moveFrom;
-    const tos = this.moveTo;
     const fromSlots = this.moveFromSlot;
     const toSlots = this.moveToSlot;
     const ks = this.moveK;
+    const skipSlot = this.skipSlot;
+    const skipped: number[] = [];
+    if (skip) {
+      for (const id of skip) {
+        const slot = this.smokeSlotOf.get(id);
+        if (slot == null || skipSlot[slot] === 1) continue;
+        skipSlot[slot] = 1;
+        skipped.push(slot);
+      }
+    }
     let n = 0;
     const openShare = dt * SMOKE_EXCHANGE_PER_S;
     const leakShare = openShare * SMOKE_WALL_LEAK;
@@ -3599,29 +3679,24 @@ export class SpatialEffectsEngine {
     // order. The live map only keeps the positive keys, in touch order.
     // Emitting in slot order is that same init order, and the sums stay
     // bit-identical.
-    const emit = this.smokeEmit;
-    emit.length = 0;
+    let emitN = 0;
     for (const slot of present) {
-      if ((scratch[slot] ?? 0) > 0) emit.push(slot);
+      if ((scratch[slot] ?? 0) > 0) this.smokeEmit[emitN++] = slot;
     }
-    emit.sort((a, b) => a - b);
+    const emit = this.smokeEmit.subarray(0, emitN).sort();
     for (const slot of emit) {
       const value = scratch[slot] ?? 0;
-      const id = this.smokeSlots[slot] ?? '';
-      if (skip?.has(id) || !this.studIndex.has(id)) continue;
+      if (skipSlot[slot] === 1 || !this.studIndex.has(this.smokeSlots[slot] ?? '')) continue;
       const neigh = this.smokeNeigh[slot] ?? [];
       const blocked = this.blockRow(slot, walls);
       for (let j = 0; j < neigh.length; j++) {
         const nSlot = neigh[j] ?? 0;
-        const nId = this.smokeSlots[nSlot] ?? '';
-        if (skip?.has(nId)) continue;
+        if (skipSlot[nSlot] === 1) continue;
         const other = scratch[nSlot] ?? 0;
         if (!(value > other)) continue;
         const share = blocked[j] === 1 ? leakShare : openShare;
         const moved = (value - other) * share;
         if (moved > 1e-10) {
-          froms[n] = id;
-          tos[n] = nId;
           fromSlots[n] = slot;
           toSlots[n] = nSlot;
           ks[n] = moved;
@@ -3632,8 +3707,6 @@ export class SpatialEffectsEngine {
       if (holes > 0) {
         const leaving = value * openShare * holes;
         if (leaving > 1e-10) {
-          froms[n] = id;
-          tos[n] = '';
           fromSlots[n] = slot;
           toSlots[n] = -1;
           ks[n] = leaving;
@@ -3641,6 +3714,7 @@ export class SpatialEffectsEngine {
         }
       }
     }
+    for (const slot of skipped) skipSlot[slot] = 0;
     this.applySmokeMoves(field, n, cap, touch);
     for (const slot of present) {
       scratch[slot] = 0;
@@ -3659,8 +3733,6 @@ export class SpatialEffectsEngine {
     kMax: number,
     touch?: Set<string>,
   ): void {
-    const froms = this.moveFrom;
-    const tos = this.moveTo;
     const fromSlots = this.moveFromSlot;
     const toSlots = this.moveToSlot;
     const ks = this.moveK;
@@ -3712,6 +3784,16 @@ export class SpatialEffectsEngine {
       sum[slot] = 0;
     }
     const appended: number[] = [];
+    // Each slot is added to `touch` once, at its first move, so the set
+    // keeps the insertion order of adding on every move.
+    const touched = this.touchedSlot;
+    const touchedList: number[] = [];
+    const touchSlot = (slot: number) => {
+      if (!touch || touched[slot] === 1) return;
+      touched[slot] = 1;
+      touchedList.push(slot);
+      touch.add(this.smokeSlots[slot] ?? '');
+    };
     for (let i = 0; i < n; i++) {
       const toSlot = toSlots[i] ?? 0;
       const fromSlot = fromSlots[i] ?? 0;
@@ -3719,7 +3801,7 @@ export class SpatialEffectsEngine {
         const moved = ks[i] ?? 0;
         if (!(moved > 0)) continue;
         work[fromSlot] = (work[fromSlot] ?? 0) - moved;
-        if (touch) touch.add(froms[i] ?? '');
+        touchSlot(fromSlot);
         continue;
       }
       const moved = (ks[i] ?? 0) * (scale[toSlot] ?? 1);
@@ -3734,11 +3816,10 @@ export class SpatialEffectsEngine {
         seen[toSlot] = 1;
         appended.push(toSlot);
       }
-      if (touch) {
-        touch.add(froms[i] ?? '');
-        touch.add(tos[i] ?? '');
-      }
+      touchSlot(fromSlot);
+      touchSlot(toSlot);
     }
+    for (const slot of touchedList) touched[slot] = 0;
     for (const [id, old] of kNow) {
       const slot = this.smokeSlotOf.get(id);
       if (slot == null) continue;

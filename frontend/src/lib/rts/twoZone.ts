@@ -2657,6 +2657,81 @@ function ventFlows(
   return flows;
 }
 
+/**
+ * Vent sums by floor pressure for one room state. One substep solves the
+ * pressure root several times on the same vents, interface and
+ * temperatures, with only the mass rate changed, and each bisection
+ * starts on the same pressures. Active only inside `stepZone`.
+ */
+interface VentSumMemo {
+  vents: readonly Vent[];
+  fans: readonly MechanicalVent[];
+  interfaceM: number;
+  upperK: number;
+  lowerK: number;
+  rhoL: number;
+  rhoU: number;
+  rhoA: number;
+  byPressure: Map<number, PressureScalars>;
+}
+
+let ventSumMemo: VentSumMemo | null = null;
+
+function ventSumsFor(
+  vents: readonly Vent[],
+  interfaceM: number,
+  upperK: number,
+  fans: readonly MechanicalVent[],
+  rhoL: number,
+  rhoU: number,
+  rhoA: number,
+  lowerK: number,
+): Map<number, PressureScalars> | null {
+  const memo = ventSumMemo;
+  if (!memo) return null;
+  if (
+    memo.vents !== vents ||
+    (memo.fans !== fans && (memo.fans.length > 0 || fans.length > 0)) ||
+    memo.interfaceM !== interfaceM ||
+    memo.upperK !== upperK ||
+    memo.lowerK !== lowerK ||
+    memo.rhoL !== rhoL ||
+    memo.rhoU !== rhoU ||
+    memo.rhoA !== rhoA
+  ) {
+    memo.vents = vents;
+    memo.fans = fans;
+    memo.interfaceM = interfaceM;
+    memo.upperK = upperK;
+    memo.lowerK = lowerK;
+    memo.rhoL = rhoL;
+    memo.rhoU = rhoU;
+    memo.rhoA = rhoA;
+    memo.byPressure.clear();
+  }
+  return memo.byPressure;
+}
+
+function withVentSumMemo<T>(body: () => T): T {
+  const prev = ventSumMemo;
+  ventSumMemo = {
+    vents: [],
+    fans: [],
+    interfaceM: Number.NaN,
+    upperK: Number.NaN,
+    lowerK: Number.NaN,
+    rhoL: Number.NaN,
+    rhoU: Number.NaN,
+    rhoA: Number.NaN,
+    byPressure: new Map(),
+  };
+  try {
+    return body();
+  } finally {
+    ventSumMemo = prev;
+  }
+}
+
 function pressureNet(
   vents: readonly Vent[],
   interfaceM: number,
@@ -2669,6 +2744,39 @@ function pressureNet(
   massRateKgS: (flows: PressureScalars) => number,
   lowerK = AMBIENT_K,
 ): number {
+  // A signed zero is left to the direct sum.
+  const memo =
+    dP0 !== 0 ? ventSumsFor(vents, interfaceM, upperK, fans, rhoL, rhoU, rhoA, lowerK) : null;
+  // No mass-rate callback writes to the flows it is handed, so a memo
+  // entry is handed over as it is.
+  let scalars = memo?.get(dP0);
+  if (!scalars) {
+    scalars = ventSums(vents, interfaceM, upperK, dP0, fans, rhoL, rhoU, rhoA, lowerK);
+    memo?.set(dP0, scalars);
+  }
+  // CFAST's pressure equation. in − out − fans = dM/dt. The caller
+  // passes dM/dt, and it does not depend on this candidate. A steady
+  // layer passes zero, so the root is the old inflow = outflow.
+  return (
+    scalars.inKgS -
+    scalars.outKgS -
+    scalars.fanUpperKgS -
+    scalars.fanLowerKgS -
+    massRateKgS(scalars)
+  );
+}
+
+function ventSums(
+  vents: readonly Vent[],
+  interfaceM: number,
+  upperK: number,
+  dP0: number,
+  fans: readonly MechanicalVent[],
+  rhoL: number,
+  rhoU: number,
+  rhoA: number,
+  lowerK: number,
+): PressureScalars {
   ventScratch.inKgS = 0;
   ventScratch.outKgS = 0;
   ventScratch.hotOutKgS = 0;
@@ -2689,7 +2797,7 @@ function pressureNet(
   const extracted = mechanicalExtract(fans, interfaceM, upperK, dP0, lowerK);
   // Copy before the mass callback. It solves the burn and the sheet loss,
   // and a nested vent pass would reuse this scratch.
-  const scalars: PressureScalars = {
+  return {
     inKgS: ventScratch.inKgS,
     outKgS: ventScratch.outKgS,
     hotOutKgS: ventScratch.hotOutKgS,
@@ -2701,16 +2809,6 @@ function pressureNet(
     farUpperInKT: ventScratch.farUpperInKT,
     farUpperInO2KgS: ventScratch.farUpperInO2KgS,
   };
-  // CFAST's pressure equation. in − out − fans = dM/dt. The caller
-  // passes dM/dt, and it does not depend on this candidate. A steady
-  // layer passes zero, so the root is the old inflow = outflow.
-  return (
-    scalars.inKgS -
-    scalars.outKgS -
-    scalars.fanUpperKgS -
-    scalars.fanLowerKgS -
-    massRateKgS(scalars)
-  );
 }
 
 function balancedFlows(
@@ -3371,7 +3469,9 @@ export function stepZone(
    */
   jumpUnbackedKj: number;
 } {
-  return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
+  return withFluxMemo(() =>
+    withVentSumMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold)),
+  );
 }
 
 function stepZoneNow(
