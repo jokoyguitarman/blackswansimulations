@@ -35,7 +35,7 @@ export interface HazardStud {
   indoor: boolean;
 }
 
-interface StudStateLike {
+export interface StudStateLike {
   smoke: number;
   fire: { state: string };
   wet?: boolean;

@@ -782,3 +782,223 @@ describe('rts levels', () => {
     assert.ok(ms <= 500, `effects init ${ms.toFixed(1)} ms`);
   });
 });
+
+describe('multi-floor crowd sensing and storey walls', () => {
+  type Label = {
+    pedId: number;
+    state: string;
+    level: string;
+    nextCheckAt: number;
+    sheltering?: boolean;
+    forcedCrawl?: boolean;
+    targetExitId: string;
+    targetStairId: string | null;
+  };
+  type Inner = {
+    pedestrians: Matter.Body[];
+    stairPeople: Array<{ label: Label }>;
+    unstickFromWalls(): void;
+  };
+  const labelOf = (body: Matter.Body) => (body as Matter.Body & { __ped: Label }).__ped;
+
+  function stairAt(pos: Vec2): Stairwell {
+    return {
+      id: 's',
+      pos,
+      connectsFloors: [0, 1],
+      blocked: false,
+      label: 'S',
+      kind: 'stair',
+      widthM: 1.2,
+      levels: { from: 'G', to: 'L1' },
+    };
+  }
+
+  function twoStorey(opts: {
+    walls?: Array<Record<string, unknown> & { startX: number }>;
+    stairs?: Stairwell[];
+    counts: { G: number; L1: number };
+  }) {
+    const walls = (opts.walls ?? []) as unknown as Parameters<
+      PolygonEvacuationEngine['setInteriorWalls']
+    >[0];
+    const byLevel = (id: string) =>
+      walls.filter((wall) => ((wall as { level?: string }).level ?? 'G') === id);
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 0 },
+      [exitOn('out', 'G')],
+      walls,
+      [],
+      { afterExit: 'zone', zones: [], seed: 2 },
+      {
+        ids: ['G', 'L1'],
+        exitsByLevel: { G: [exitOn('out', 'G')], L1: [] },
+        wallsByLevel: { G: byLevel('G'), L1: byLevel('L1') },
+        stairs: opts.stairs ?? [],
+        counts: opts.counts,
+        heights: { G: 4, L1: 4 },
+      },
+    );
+    // The page hands the engine every storey's walls as one list as well.
+    eng.setInteriorWalls(walls);
+    return { eng, inner: eng as unknown as Inner };
+  }
+
+  function burningAt(id: string, pos: Vec2) {
+    return {
+      stud: { id, simPos: pos, indoor: true },
+      state: [id, { smoke: 1, fire: { state: 'burning' } }] as const,
+    };
+  }
+
+  it('points every storey field at the stud states, including fields installed later', () => {
+    const { eng } = twoStorey({ counts: { G: 0, L1: 0 } });
+    const ground = new HazardField([{ id: 'g', simPos: { x: 4, y: 10 }, indoor: true }], 3);
+    const upper = new HazardField([{ id: 'u', simPos: { x: 4, y: 10 }, indoor: true }], 3);
+    eng.setHazardFields(
+      new Map([
+        ['G', ground],
+        ['L1', upper],
+      ]),
+    );
+    eng.setHazardField(ground);
+    const states = new Map([
+      ['g', { smoke: 0.5, fire: { state: 'burning' } }],
+      ['u', { smoke: 0.8, fire: { state: 'none' } }],
+    ]);
+    eng.setHazardStates(states);
+    assert.equal(ground.sample(4, 10).fire, 'burning');
+    assert.equal(upper.sample(4, 10).smoke, 0.8);
+    const rebuilt = new HazardField([{ id: 'u', simPos: { x: 4, y: 10 }, indoor: true }], 3);
+    eng.setHazardFields(new Map([['L1', rebuilt]]));
+    assert.equal(rebuilt.sample(4, 10).smoke, 0.8);
+    eng.destroy();
+  });
+
+  it('an upper-floor walker reads its own storey field through setHazardStates', () => {
+    const { eng, inner } = twoStorey({
+      counts: { G: 0, L1: 1 },
+      stairs: [stairAt({ x: 4, y: 10 })],
+    });
+    const fire = burningAt('u', { x: 6, y: 10 });
+    const upper = new HazardField([fire.stud], 3);
+    eng.setHazardFields(
+      new Map([
+        ['G', new HazardField([], 3)],
+        ['L1', upper],
+      ]),
+    );
+    eng.setHazardStates(new Map([fire.state]));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 20, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    // The only stair stands in fire on this storey, so there is no route.
+    assert.equal(ped.targetStairId, null);
+    assert.equal(ped.sheltering, true);
+    eng.destroy();
+  });
+
+  it('a ground-floor wall does not hold back a walker on the floor above', () => {
+    const groundWall = {
+      id: 'g-wall',
+      startX: 20,
+      startY: 0,
+      endX: 20,
+      endY: 20,
+      hasDoor: false,
+      doorWidth: 0,
+      doorPosition: 0.5,
+      level: 'G',
+    };
+    const { eng, inner } = twoStorey({
+      walls: [groundWall],
+      stairs: [stairAt({ x: 4, y: 10 })],
+      counts: { G: 0, L1: 1 },
+    });
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 30, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    let minX = Infinity;
+    let boarded = false;
+    for (let i = 0; i < Math.round(40 / DEFAULT_POLYGON_CONFIG.dt) && !boarded; i++) {
+      eng.step();
+      minX = Math.min(minX, body.position.x);
+      boarded = inner.stairPeople.some((occ) => occ.label.pedId === ped.pedId);
+    }
+    assert.ok(boarded, `never reached the stair, got as far west as x=${minX.toFixed(2)}`);
+    eng.destroy();
+  });
+
+  it('separates an upper-floor walker from its own shell, not the ground-floor door gap', () => {
+    const { eng, inner } = twoStorey({ counts: { G: 1, L1: 1 } });
+    const [ground, upper] = [...inner.pedestrians].sort((a, b) =>
+      labelOf(a).level.localeCompare(labelOf(b).level),
+    );
+    assert.equal(labelOf(ground).level, 'G');
+    assert.equal(labelOf(upper).level, 'L1');
+    for (const body of inner.pedestrians) Matter.Body.setPosition(body, { x: 0.3, y: 10 });
+    inner.unstickFromWalls();
+    assert.ok(Math.abs(ground.position.x - 0.3) < 1e-6, `G moved to x=${ground.position.x}`);
+    assert.ok(upper.position.x >= 0.7, `L1 left at x=${upper.position.x}`);
+    eng.destroy();
+  });
+
+  it('crawls for the only door when fire, not walls, leaves no finite route', () => {
+    const { eng, inner } = twoStorey({ counts: { G: 1, L1: 0 } });
+    // exitOn's inside approach is (2, 10): the door itself is in the fire.
+    const fire = burningAt('g', { x: 2, y: 10 });
+    eng.setHazardFields(
+      new Map([
+        ['G', new HazardField([fire.stud], 3)],
+        ['L1', new HazardField([], 3)],
+      ]),
+    );
+    eng.setHazardStates(new Map([fire.state]));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 20, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    assert.equal(ped.sheltering, false);
+    assert.equal(ped.forcedCrawl, true);
+    assert.equal(ped.targetExitId, 'out');
+    eng.destroy();
+  });
+
+  it('still shelters when walls cut a person off and fire blocks the rest', () => {
+    const sealing = {
+      id: 'seal',
+      startX: 30,
+      startY: 0,
+      endX: 30,
+      endY: 20,
+      hasDoor: false,
+      doorWidth: 0,
+      doorPosition: 0.5,
+      level: 'G',
+    };
+    const { eng, inner } = twoStorey({ walls: [sealing], counts: { G: 1, L1: 0 } });
+    const fire = burningAt('g', { x: 2, y: 10 });
+    eng.setHazardFields(
+      new Map([
+        ['G', new HazardField([fire.stud], 3)],
+        ['L1', new HazardField([], 3)],
+      ]),
+    );
+    eng.setHazardStates(new Map([fire.state]));
+    const body = inner.pedestrians[0];
+    const ped = labelOf(body);
+    Matter.Body.setPosition(body, { x: 35, y: 10 });
+    ped.state = 'evacuating';
+    ped.nextCheckAt = 0;
+    eng.step();
+    assert.equal(ped.sheltering, true);
+    eng.destroy();
+  });
+});
