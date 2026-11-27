@@ -47,6 +47,8 @@ import { socialMessengerRouter } from './routes/socialMessenger.js';
 import { socialGroupsRouter } from './routes/socialGroups.js';
 import { socialEventsRouter } from './routes/socialEvents.js';
 import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
+import { warroomBuildsRouter } from './routes/warroomBuilds.js';
+import { startWarroomBuildLoops, warroomBuildService } from './services/warroomBuild/runtime.js';
 import { billingRouter } from './routes/billing.js';
 import { billingWebhookRouter } from './routes/billingWebhook.js';
 import { trainerAgreementsRouter } from './routes/trainerAgreements.js';
@@ -302,6 +304,7 @@ app.use('/api/social', socialMediaRouter);
 app.use('/api/social/messenger', socialMessengerRouter);
 app.use('/api/social/groups', socialGroupsRouter);
 app.use('/api/social/events', socialEventsRouter);
+app.use('/api/warroom/social-crisis/builds', warroomBuildsRouter);
 app.use('/api/warroom/social-crisis', socialCrisisWarroomRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/trainer-agreements', trainerAgreementsRouter);
@@ -330,6 +333,13 @@ app.use((err: unknown, _req: express.Request, res: express.Response) => {
 // Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutdown signal received, closing server gracefully...');
+
+  // Release in-flight builds before the 10s grace ends. The service itself
+  // stops waiting after 3s; this race is the outer cap from the spec.
+  await Promise.race([
+    warroomBuildService.shutdown(),
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ]);
 
   // Stop inject schedulers
   injectScheduler.stop();
@@ -368,6 +378,7 @@ const start = () => {
       },
       'Server started successfully',
     );
+    startWarroomBuildLoops();
   });
 };
 

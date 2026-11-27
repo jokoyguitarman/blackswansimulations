@@ -5,7 +5,7 @@ import { runWithAbortSignal } from '../ai/abortContext.js';
 import { env } from '../../env.js';
 import { assembleReview } from './assemble.js';
 import { formatProgress, restartLine } from './buildCore.js';
-import { BuildService, ManualClock } from './buildService.js';
+import { BuildService, ManualClock, type Clock } from './buildService.js';
 import { MemoryBuildStore } from './buildStore.js';
 import type { StageRunner } from './stageRunners.js';
 import { buildRequestSchema, type BuildRequest, type BuildStage } from './buildTypes.js';
@@ -94,14 +94,19 @@ const pagesOut = {
 interface HarnessOptions {
   instanceId?: string;
   store?: MemoryBuildStore;
-  clock?: ManualClock;
+  clock?: Clock;
   maxConcurrent?: number;
   maxActivePerUser?: number;
+  renewEveryMs?: number;
+  leaseSeconds?: number;
+  worker?: boolean;
   runners?: Partial<Record<BuildStage, StageRunner>>;
 }
 
-function harness(options: HarnessOptions = {}) {
-  const clock = options.clock ?? new ManualClock();
+function harness<C extends Clock = ManualClock>(
+  options: Omit<HarnessOptions, 'clock'> & { clock?: C } = {},
+) {
+  const clock = (options.clock ?? new ManualClock()) as C;
   const store = options.store ?? new MemoryBuildStore(() => clock.now());
   const calls = { characters: 0, storyline: 0, convergence: 0, pages: 0 };
   const order: BuildStage[] = [];
@@ -138,6 +143,9 @@ function harness(options: HarnessOptions = {}) {
     clock,
     maxConcurrent: options.maxConcurrent,
     maxActivePerUser: options.maxActivePerUser ?? 10,
+    renewEveryMs: options.renewEveryMs,
+    leaseSeconds: options.leaseSeconds,
+    worker: options.worker,
   });
   return { clock, store, calls, order, service, runners };
 }
@@ -852,5 +860,280 @@ describe('build service', () => {
     assert.equal(await store.get(finished.buildId!), null);
     assert.equal((await store.get(running.buildId!))?.status, 'running');
     hold();
+  });
+
+  test('ticks run one at a time', async () => {
+    const { service, store } = harness();
+    let active = 0;
+    let max = 0;
+    const original = store.claim.bind(store);
+    store.claim = async (...args) => {
+      active += 1;
+      max = Math.max(max, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return original(...args);
+    };
+    await Promise.all([service.tick(), service.tick()]);
+    assert.equal(max, 1);
+  });
+
+  test('a running build renews its lease without another tick', async () => {
+    let release: () => void = () => undefined;
+    const { service, store } = harness({
+      clock: { now: () => new Date() },
+      renewEveryMs: 30,
+      leaseSeconds: 60,
+      runners: {
+        storyline: async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-renew',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'renew',
+    });
+    const id = started.buildId!;
+    const original = Date.parse((await store.get(id))!.lease_expires_at!);
+    const deadline = Date.now() + 1000;
+    let renewed = false;
+    while (Date.now() < deadline) {
+      const expires = Date.parse((await store.get(id))!.lease_expires_at!);
+      if (expires > original + 20) {
+        renewed = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(renewed, true);
+    release();
+    await service.whenIdle();
+    await service.shutdown();
+  });
+
+  test('a cancel requested as a stage finishes does not start the next stage', async () => {
+    let storylineCalls = 0;
+    const { service, store } = harness({
+      runners: {
+        storyline: async () => {
+          storylineCalls += 1;
+          return storylineOut;
+        },
+      },
+    });
+    const original = store.completeStage.bind(store);
+    store.completeStage = async (args) => {
+      const wrote = await original(args);
+      if (args.stage === 'characters') await store.requestCancel(args.buildId, 'user');
+      return wrote;
+    };
+    const started = await service.start({
+      draftId: 'draft-cancel',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'cancel-between',
+    });
+    await service.whenIdle();
+    const row = await store.get(started.buildId!);
+    assert.equal(row?.status, 'cancelled');
+    assert.equal(storylineCalls, 0);
+    const log = await store.listLog(started.buildId!, 0, 50);
+    assert.ok(log.some((line) => line.message === 'Build cancelled.'));
+  });
+
+  test('a non-worker runs only the build it just started', async () => {
+    const { service, store } = harness({ worker: false });
+    const older = await store.start({
+      draftId: 'draft-old',
+      userId: 'user-1',
+      pool: 'pool-a',
+      request: request('Older'),
+      requestHash: 'older-hash',
+      idempotencyKey: 'old-key',
+      replaceActive: false,
+      maxActivePerUser: 10,
+    });
+    const started = await service.start({
+      draftId: 'draft-new',
+      userId: 'user-2',
+      request: request(),
+      idempotencyKey: 'new-key',
+    });
+    await service.whenIdle();
+    assert.equal((await store.get(older.buildId!))?.status, 'queued');
+    assert.equal((await store.get(started.buildId!))?.status, 'succeeded');
+    await service.shutdown();
+  });
+
+  test('a hung claim does not block lease renewal', async () => {
+    let release: () => void = () => undefined;
+    const { service, store } = harness({
+      clock: { now: () => new Date() },
+      renewEveryMs: 30,
+      leaseSeconds: 60,
+      runners: {
+        storyline: async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-hung',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'hung',
+    });
+    const id = started.buildId!;
+    await waitFor(async () => (await store.get(id))?.stage_states.storyline.status === 'running');
+    let hung = false;
+    store.claim = () => {
+      hung = true;
+      return new Promise(() => undefined);
+    };
+    service.startClaimLoop(20);
+    const hungDeadline = Date.now() + 1000;
+    while (!hung && Date.now() < hungDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(hung, true);
+    const before = Date.parse((await store.get(id))!.lease_expires_at!);
+    const deadline = Date.now() + 1000;
+    let renewed = false;
+    while (Date.now() < deadline) {
+      const expires = Date.parse((await store.get(id))!.lease_expires_at!);
+      if (expires > before) {
+        renewed = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(renewed, true);
+    release();
+    await service.shutdown();
+  });
+
+  test('a missing schema stops claim and sweep', async () => {
+    const { service, store } = harness();
+    const missing = Object.assign(new Error('warroom_builds is missing'), { code: 'PGRST205' });
+    let claims = 0;
+    let sweeps = 0;
+    store.claim = async () => {
+      claims += 1;
+      throw missing;
+    };
+    store.sweep = async () => {
+      sweeps += 1;
+      throw missing;
+    };
+    service.startClaimLoop(20);
+    service.startSweepLoop(20);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const seenClaims = claims;
+    const seenSweeps = sweeps;
+    // The first failing claim stops both loops, so sweep may not have fired yet.
+    assert.ok(seenClaims >= 1 && seenClaims <= 3);
+    assert.ok(seenSweeps <= 3);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(claims, seenClaims);
+    assert.equal(sweeps, seenSweeps);
+    await service.shutdown();
+  });
+
+  test('boot skips the loops when the schema probe says the table is missing', async () => {
+    const { service, store } = harness();
+    let claims = 0;
+    store.probeSchema = async () => {
+      throw Object.assign(new Error('warroom_builds is missing'), { code: '42P01' });
+    };
+    store.claim = async () => {
+      claims += 1;
+      return null;
+    };
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => {
+      rejections.push(err);
+    };
+    process.on('unhandledRejection', onRejection);
+    try {
+      void service.startBackground(20);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      assert.equal(claims, 0);
+      assert.deepEqual(rejections, []);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+      await service.shutdown();
+    }
+  });
+
+  test('claim, renew and sweep failures do not escape as unhandled rejections', async () => {
+    let release: () => void = () => undefined;
+    const { service, store } = harness({
+      clock: { now: () => new Date() },
+      renewEveryMs: 20,
+      leaseSeconds: 60,
+      runners: {
+        storyline: async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-throw',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'throw',
+    });
+    await waitFor(
+      async () => (await store.get(started.buildId!))?.stage_states.storyline.status === 'running',
+    );
+    let claims = 0;
+    let renews = 0;
+    let sweeps = 0;
+    store.claim = async () => {
+      claims += 1;
+      throw new Error('claim down');
+    };
+    store.renewLease = async () => {
+      renews += 1;
+      throw new Error('renew down');
+    };
+    store.sweep = async () => {
+      sweeps += 1;
+      throw new Error('sweep down');
+    };
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => {
+      rejections.push(err);
+    };
+    process.on('unhandledRejection', onRejection);
+    try {
+      service.startClaimLoop(20);
+      service.startSweepLoop(20);
+      const deadline = Date.now() + 1000;
+      while (Date.now() < deadline && (claims < 2 || renews < 2 || sweeps < 2)) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(claims >= 2);
+      assert.ok(renews >= 2);
+      assert.ok(sweeps >= 2);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(rejections, []);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+      release();
+      await service.shutdown();
+    }
   });
 });

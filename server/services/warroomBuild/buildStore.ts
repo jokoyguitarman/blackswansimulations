@@ -67,6 +67,19 @@ export function capLogBatch(existing: number, lines: LogDraft[]): LogDraft[] {
 export interface BuildStore {
   start(args: StartArgs): Promise<StartResult>;
   claim(pool: string, instanceId: string, leaseSeconds: number): Promise<BuildRow | null>;
+  /**
+   * Claim one queued build by id. Does not look at any other row, so a process
+   * that is not the pool worker can run the build it just accepted without
+   * taking the oldest build in the pool.
+   */
+  claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null>;
+  /** Throws the driver error when `warroom_builds` is missing. Empty is success. */
+  probeSchema(): Promise<void>;
   renewLease(buildId: string, leaseToken: string, leaseSeconds: number): Promise<RenewResult>;
   completeStage(args: CompleteStageArgs): Promise<boolean>;
   /** Guarded by lease token and status = running. */
@@ -98,11 +111,19 @@ export interface BuildStore {
     buildId: string,
     stageStates: StageStates,
   ): Promise<'ok' | 'active_conflict' | 'missing' | 'not_resumable'>;
+  /** Newest build for a draft, or null when the draft has none. */
+  latestForDraft(draftId: string): Promise<BuildRow | null>;
   get(buildId: string): Promise<BuildRow | null>;
   getOutputs(buildId: string): Promise<StageOutputs>;
   /**
    * When `leaseToken` is set, write only while that lease is still held.
    * A stale owner then cannot append lines after the lease moved on.
+   *
+   * The Supabase path cannot do the lease check, the insert, and the
+   * `log_count` update as one statement: PostgREST has no nested write, and
+   * migration 267 is not extended with a helper function. The check and the
+   * count update are both filtered by the token. A stale owner can still win
+   * the gap between them; that only affects the trainer-visible log.
    */
   appendLog(buildId: string, lines: LogDraft[], leaseToken?: string): Promise<LogLine[]>;
   listLog(buildId: string, after: number, limit: number): Promise<LogLine[]>;
@@ -155,6 +176,8 @@ export class MemoryBuildStore implements BuildStore {
 
   start(args: StartArgs): Promise<StartResult> {
     return this.lock(() => {
+      // Same idempotency key returns the original build as `replayed`, even when
+      // the request body differs. The key is the client's identity for one press of Build.
       const byKey = [...this.rows.values()].find(
         (row) => row.draft_id === args.draftId && row.idempotency_key === args.idempotencyKey,
       );
@@ -276,6 +299,33 @@ export class MemoryBuildStore implements BuildStore {
       row.updated_at = now;
       return this.copy(row);
     });
+  }
+
+  claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null> {
+    return this.lock(() => {
+      const row = this.rows.get(buildId);
+      if (!row || row.pool !== pool || row.status !== 'queued' || row.cancel_requested_at != null) {
+        return null;
+      }
+      const nowMs = this.now().getTime();
+      const now = new Date(nowMs).toISOString();
+      row.status = 'running';
+      row.lease_owner = instanceId;
+      row.lease_token = randomUUID();
+      row.lease_expires_at = new Date(nowMs + leaseSeconds * 1000).toISOString();
+      row.started_at = row.started_at ?? now;
+      row.updated_at = now;
+      return this.copy(row);
+    });
+  }
+
+  probeSchema(): Promise<void> {
+    return Promise.resolve();
   }
 
   renewLease(buildId: string, leaseToken: string, leaseSeconds: number): Promise<RenewResult> {
@@ -474,6 +524,17 @@ export class MemoryBuildStore implements BuildStore {
     });
   }
 
+  latestForDraft(draftId: string): Promise<BuildRow | null> {
+    return this.lock(() => {
+      const rows = [...this.rows.values()]
+        .filter((row) => row.draft_id === draftId)
+        .sort(
+          (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id),
+        );
+      return rows[0] ? this.copy(rows[0]) : null;
+    });
+  }
+
   getOutputs(buildId: string): Promise<StageOutputs> {
     return this.lock(() => clone(this.outputs.get(buildId) ?? {}));
   }
@@ -625,6 +686,48 @@ export class SupabaseBuildStore implements BuildStore {
     if (error) throw error;
     const row = asRows(data as BuildRow[] | null)[0];
     return row ?? null;
+  }
+
+  async claimQueued(
+    buildId: string,
+    pool: string,
+    instanceId: string,
+    leaseSeconds: number,
+  ): Promise<BuildRow | null> {
+    const now = this.iso();
+    const { data: queued, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('id, pool, status, cancel_requested_at, started_at')
+      .eq('id', buildId)
+      .eq('pool', pool)
+      .eq('status', 'queued')
+      .is('cancel_requested_at', null)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!queued) return null;
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .update({
+        status: 'running',
+        lease_owner: instanceId,
+        lease_token: randomUUID(),
+        lease_expires_at: new Date(this.now().getTime() + leaseSeconds * 1000).toISOString(),
+        started_at: queued.started_at ?? now,
+      })
+      .eq('id', buildId)
+      .eq('pool', pool)
+      .eq('status', 'queued')
+      .is('cancel_requested_at', null)
+      // select('*') keeps every filtered column in RETURNING. PostgREST 12/13
+      // otherwise answers 42703 for an omitted filter column.
+      .select('*');
+    if (error) throw error;
+    return (data?.[0] as BuildRow | undefined) ?? null;
+  }
+
+  async probeSchema(): Promise<void> {
+    const { error } = await supabaseAdmin.from('warroom_builds').select('id').limit(0);
+    if (error) throw error;
   }
 
   async renewLease(
@@ -855,6 +958,18 @@ export class SupabaseBuildStore implements BuildStore {
       .maybeSingle();
     if (readError) throw readError;
     return existing ? 'not_resumable' : 'missing';
+  }
+
+  async latestForDraft(draftId: string): Promise<BuildRow | null> {
+    const { data, error } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('*')
+      .eq('draft_id', draftId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as BuildRow | null) ?? null;
   }
 
   async get(buildId: string): Promise<BuildRow | null> {
