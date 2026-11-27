@@ -16,12 +16,15 @@ import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import { runOfficeFrames } from './scenes/officeTowerFrames.ts';
 import { slowScene } from './scenes/slow.ts';
 
+type Walker = { phase: string; stairId: string; dir: string; fromLevel: string };
+
 test(
   'office fire: flights stay within storage, L1 landings merge, a climbing crew gets single file',
   { skip: slowScene, timeout: 20 * 60 * 1000 },
   () => {
     let worstOver = -Infinity;
-    const heldBefore = new Map<string, number>();
+    let releaseSteps = 0;
+    let onFlight = new Map<string, Set<object>>();
     let merged = 0;
     let counterflowRate: number | null = null;
     let crewStair: string | null = null;
@@ -29,22 +32,36 @@ test(
     let crewAt = 0;
     const onCrowdStep = (evac: PolygonEvacuationEngine, t: number) => {
       const flights = evac.getStairFlights();
+      // Who is walking each flight now, by identity, so a release is seen
+      // even when someone steps off the foot landing in the same step.
+      const inner = evac as unknown as { stairPeople: Walker[]; stairResponders: Walker[] };
+      const walking = new Map<string, Set<object>>();
+      for (const o of [...inner.stairPeople, ...inner.stairResponders]) {
+        if (o.phase !== 'travel') continue;
+        const key = `${o.stairId}:${o.dir}:${o.fromLevel}`;
+        if (!walking.has(key)) walking.set(key, new Set());
+        walking.get(key)!.add(o);
+      }
       for (const f of flights) {
-        if (f.dir !== 'down') continue;
-        const atFoot =
-          flights.find(
-            (g) => g.stairId === f.stairId && g.dir === 'down' && g.fromLevel === f.toLevel,
-          )?.landing ?? 0;
+        const key = `${f.stairId}:${f.dir}:${f.fromLevel}`;
+        const before = onFlight.get(key);
+        const released = [...(walking.get(key) ?? [])].filter((o) => !before?.has(o)).length;
         // Storage is on the lane the descent keeps, so a crew arriving can
-        // leave a loaded flight over it. Only a release adds to the hold, and
-        // none may take it past storage.
-        const key = `${f.stairId}:${f.fromLevel}`;
-        const held = f.moving + atFoot;
-        if (held > (heldBefore.get(key) ?? 0)) worstOver = Math.max(worstOver, held - f.storage);
-        heldBefore.set(key, held);
+        // leave a loaded flight over it. Releases are what add to the hold,
+        // and after any release this step the flight is within storage.
+        if (released > 0) {
+          const atFoot =
+            flights.find(
+              (g) => g.stairId === f.stairId && g.dir === f.dir && g.fromLevel === f.toLevel,
+            )?.landing ?? 0;
+          worstOver = Math.max(worstOver, f.moving + atFoot - f.storage);
+          releaseSteps++;
+        }
+        if (f.dir !== 'down') continue;
         if (f.fromLevel === 'L1' && f.door > 0 && f.landing > 0) merged++;
         if (f.stairId === crewStair && f.counterflow) counterflowRate = f.flowPerS;
       }
+      onFlight = walking;
       if (crewStair == null && t >= 90) {
         const busiest = flights
           .filter((f) => f.dir === 'down' && f.fromLevel === 'L1')
@@ -71,7 +88,8 @@ test(
     const result = runOfficeFrames(1, 1 / 60, 240, { onCrowdStep });
     assert.ok(crewStair, 'no busy stair at T+90 to send the crew up');
     assert.equal(crewIds.length, 0, 'crew arrivals were not checked');
-    assert.ok(worstOver <= 1, `a flight held ${worstOver} over its storage`);
+    assert.ok(releaseSteps > 0, 'no release was seen');
+    assert.ok(worstOver <= 0, `a release left a flight ${worstOver} over its storage`);
     assert.ok(merged > 0, 'no L1 landing merged the L2 stream with the L1 floor');
     assert.ok(counterflowRate != null, 'the crew never met the crowd');
     assert.ok(Math.abs(counterflowRate - 1.01 * 0.45) < 1e-9, `rate ${counterflowRate}`);
