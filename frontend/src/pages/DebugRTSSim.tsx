@@ -146,6 +146,7 @@ import {
   type HazardEvent,
   type SmokeLayerView,
 } from '../lib/rts/spatialEffects';
+import { attachBuilding, storeyId } from '../lib/rts/effectsBuilding';
 import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
 import {
   createSceneConfig,
@@ -172,11 +173,6 @@ function blastIgnitionZone(pos: Vec2, radius: number, level?: string): HazardZon
     photos: [],
     ...(level ? { level } : {}),
   };
-}
-
-function storeyId(floor: string | undefined): string {
-  if (!floor || floor === 'Ground') return 'G';
-  return floor;
 }
 
 function placementCover(
@@ -4470,25 +4466,13 @@ export function DebugRTSSim() {
       spatialContext: s.spatialContext,
       level: storeyId(s.floor),
     }));
-    const attachShafts = (engine: SpatialEffectsEngine) => {
-      const heightByLevel = Object.fromEntries(levelsRef.current.map((l) => [l.id, l.heightM]));
-      engine.setVerticalLinks(
-        stairwellsRef.current.map((sw) => {
-          const norm = normaliseStairwell(sw, levelsRef.current);
-          return {
-            id: norm.id,
-            pos: norm.pos,
-            levels: linkLevels(norm, levelsRef.current),
-            kind: norm.kind ?? 'stair',
-            blocked: norm.blocked,
-            widthM: norm.widthM,
-            heightByLevel,
-          };
-        }),
-      );
-      engine.setStoreyHeights(heightByLevel);
-      engine.setBuildingEnvelope(projectedVertsRef.current, exitsRef.current);
-    };
+    const attachShafts = (engine: SpatialEffectsEngine) =>
+      attachBuilding(engine, {
+        stairwells: stairwellsRef.current,
+        levels: levelsRef.current,
+        vertices: projectedVertsRef.current,
+        exits: exitsRef.current,
+      });
     const publishFields = () => {
       const evac = evacEngRef.current;
       if (!evac) return;
@@ -7912,6 +7896,7 @@ export function DebugRTSSim() {
                               id: s.id,
                               simPos: s.simPos,
                               spatialContext: s.spatialContext,
+                              level: storeyId(s.floor),
                             })),
                           );
 
@@ -7960,10 +7945,12 @@ export function DebugRTSSim() {
                           }
 
                           preview.setFuelCells(fuelCellsFor(placedObjects, allSimStuds));
-                          preview.setStoreyHeights(
-                            Object.fromEntries(levels.map((level) => [level.id, level.heightM])),
-                          );
-                          preview.setBuildingEnvelope(projectedVerts, exits);
+                          attachBuilding(preview, {
+                            stairwells,
+                            levels,
+                            vertices: projectedVerts,
+                            exits,
+                          });
                           syncIgnition(preview, placedObjects, hazardZones, charge, levels);
                           preview.runPreview(
                             effectPreviewTime,
@@ -7971,7 +7958,11 @@ export function DebugRTSSim() {
                             hazardsForEffects(
                               hazardZones,
                               !hasEvents && blastSite
-                                ? blastIgnitionZone(blastSite, ignitionR)
+                                ? blastIgnitionZone(
+                                    blastSite,
+                                    ignitionR,
+                                    levels.length > 1 ? blastLevel : undefined,
+                                  )
                                 : null,
                             ),
                           );

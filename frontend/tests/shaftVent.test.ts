@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { LEVEL } from '../src/lib/evacuation/levelConstants.ts';
 import { FireSimulation } from '../src/lib/rts/fireSimulation.ts';
-import { defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
+import { confirmedFuelCells, defaultLightFuel } from '../src/lib/rts/materialLibrary.ts';
 import {
   doorHeadInUpper,
   moveUpperGas,
@@ -24,7 +24,8 @@ import {
   stairShaftSample,
   stairShaftStuds,
 } from '../src/lib/rts/stairShaftTest.ts';
-import type { InteriorWall, LevelDef } from '../src/lib/rts/types.ts';
+import type { HazardZone, InteriorWall, LevelDef } from '../src/lib/rts/types.ts';
+import { attachBuilding, storeyId } from '../src/lib/rts/effectsBuilding.ts';
 import Matter from 'matter-js';
 import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine.ts';
 import { projectPolygon } from '../src/lib/evacuation/geometry.ts';
@@ -575,6 +576,69 @@ describe('stair shaft scene', () => {
       pairs.some((pair) => pair.kind === 'lift'),
       'the lift missed every stud',
     );
+  });
+
+  test('the setup preview carries ground-floor smoke up the stair', () => {
+    const scene = stairShaftSample.scene;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const studs = projectSceneStuds(polygon, stairShaftStuds(polygon, ['G', 'L1'])).map((stud) => ({
+      id: stud.id,
+      simPos: stud.simPos,
+      spatialContext: stud.spatialContext,
+      level: storeyId(stud.floor),
+    }));
+    const levels = scene.levels as LevelDef[];
+    const exits = scene.exits as unknown as ExitDef[];
+    const stairOnly = scene.stairwells.filter((shaft) => shaft.kind === 'stair');
+    const blast = scene.blastSite;
+    const upper = studs.filter(
+      (stud) => stud.level === 'L1' && stud.spatialContext === 'inside_building',
+    );
+    assert.ok(upper.length > 0, 'no indoor studs upstairs');
+    const preview = (wired: boolean) => {
+      const engine = new SpatialEffectsEngine();
+      engine.init(studs);
+      engine.registerHazard(
+        'blast-direct',
+        [
+          {
+            triggerTimeSec: 0,
+            eventType: 'explode',
+            spreadType: 'fire',
+            spreadRadius: blast.radius,
+            spreadRate: 10,
+            description: 'Direct blast ignition',
+            severity: 'critical',
+          },
+        ],
+        { initial: 'Pre', triggered: 'Blast', worsening: 'Spreading', critical: 'Engulfed' },
+      );
+      engine.setFuelCells(confirmedFuelCells(stairShaftFuelObjects(studs), studs));
+      const building = {
+        stairwells: wired ? stairOnly : [],
+        levels,
+        vertices: projectPolygon(polygon),
+        exits,
+      };
+      attachBuilding(engine, building);
+      const zone: HazardZone = {
+        id: 'blast-direct',
+        pos: { x: blast.x, y: blast.y },
+        radius: blast.radius,
+        hazardType: 'ignitable',
+        severity: 'high',
+        label: 'Blast',
+        description: 'Direct blast ignition',
+        photos: [],
+        level: 'G',
+      };
+      engine.runPreview(300, [], [zone]);
+      return Math.max(...upper.map((stud) => engine.studStates.get(stud.id)?.smoke ?? 0));
+    };
+    const withStair = preview(true);
+    const sealed = preview(false);
+    assert.ok(withStair > 0.1, `upper smoke ${withStair} with the stair wired`);
+    assert.ok(sealed < 0.01, `upper smoke ${sealed} with no shaft, so it must come up the stair`);
   });
 
   test('the upper crowd walks down the stair and the ground crowd uses its door', () => {
