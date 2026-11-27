@@ -42,6 +42,7 @@ import {
 import type { ActionCountBucket } from './injectLedgerCore.js';
 
 const UNIQUE_VIOLATION = '23505';
+let deliveryRoleColumns = true;
 
 export type LedgerChannel =
   'email' | 'chat' | 'npc_dm' | 'messenger_dm' | 'call' | 'social' | 'news';
@@ -95,6 +96,9 @@ export interface RecordDeliveryInput {
   chainStep?: number | null;
   urgency?: LedgerUrgency | null;
   moodRung?: string | null;
+  lineTeam?: string | null;
+  targetRoleId?: string | null;
+  fallbackReason?: string | null;
 }
 
 export interface RecordOpenInput {
@@ -166,12 +170,25 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
     assignIfSet(row, 'chain_step', input.chainStep);
     assignIfSet(row, 'urgency', input.urgency);
     assignIfSet(row, 'mood_rung', input.moodRung);
+    if (deliveryRoleColumns) {
+      assignIfSet(row, 'line_team', input.lineTeam);
+      assignIfSet(row, 'target_role_id', input.targetRoleId);
+      assignIfSet(row, 'fallback_reason', input.fallbackReason);
+    }
 
     const { data, error } = await supabaseAdmin
       .from('inject_deliveries')
       .insert(row)
       .select('id')
       .maybeSingle();
+    if (error && deliveryRoleColumns && (error.code === '42703' || error.code === 'PGRST204')) {
+      deliveryRoleColumns = false;
+      logger.warn(
+        { event: 'delivery_role_columns_unavailable' },
+        'Role and line columns on inject_deliveries are off because migration 271 is not applied',
+      );
+      return recordDelivery(input);
+    }
     if (error?.code === UNIQUE_VIOLATION) {
       const { data: existing, error: readError } = await supabaseAdmin
         .from('inject_deliveries')

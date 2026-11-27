@@ -1126,6 +1126,65 @@ export const api = {
         await fetch(apiUrl(`/api/sessions/${sessionId}/page-coverage`), { headers }),
       );
     },
+    getCallCoverage: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: import('@shared/sessionCallCoverage').CallCoverage }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/call-coverage`), { headers }),
+      );
+    },
+    getRoles: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Array<{ role_id: string; title: string; team_name: string; players: Array<{ user_id: string; name: string; online: boolean }> }> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/roles`), { headers }),
+      );
+    },
+    setRoles: async (sessionId: string, roleId: string, userIds: string[]) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/roles`), {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ role_id: roleId, user_ids: userIds }),
+        }),
+      );
+    },
+    rerouteRole: async (sessionId: string, roleId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ rerouted: number }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/roles/${roleId}/reroute`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}),
+        }),
+      );
+    },
+    getCallLines: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{ team_name: string; holders: Array<{ user_id: string; name: string; online: boolean; source: string }>; unattended_since: string | null }>;
+        policy: { show_line_holders: boolean; callback_by: string; line_log_visible_to: string };
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/call-lines`), { headers }));
+    },
+    setCallTakers: async (sessionId: string, teamName: string, userIds: string[]) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/call-takers`), {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ team_name: teamName, user_ids: userIds }),
+        }),
+      );
+    },
+    autofillCallTakers: async (sessionId: string, teamNames?: string[]) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ picks: Array<{ team_name: string; user_id: string }> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/call-takers/autofill`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(teamNames ? { team_names: teamNames } : {}),
+        }),
+      );
+    },
     inviteByEmail: async (sessionId: string, email: string, role: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown; isNewUser: boolean }>(

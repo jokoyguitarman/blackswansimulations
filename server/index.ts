@@ -13,6 +13,7 @@ import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { execDecisionsRouter } from './routes/execDecisions.js';
 import { sessionsRouter } from './routes/sessions.js';
+import { sessionRolesRouter } from './routes/sessionRoles.js';
 import { channelsRouter } from './routes/channels.js';
 import { decisionsRouter } from './routes/decisions.js';
 import { resourcesRouter } from './routes/resources.js';
@@ -100,6 +101,16 @@ if (env.runBackgroundEngines) {
   void resumeCallSidebands().catch((err) => {
     logger.warn({ err }, 'call sideband resume failed');
   });
+  void import('./services/presence/sessionPresenceService.js').then(({ onPresence }) =>
+    import('./services/calls/lineService.js').then(({ sweepLines }) => {
+      onPresence((notice) => {
+        if (notice.type !== 'presence.offline') return;
+        void sweepLines(notice.sessionId).catch((err) => {
+          logger.warn({ err, sessionId: notice.sessionId }, 'line sweep after offline failed');
+        });
+      });
+    }),
+  );
   // AI inject scheduler (runs every 5 minutes)
   aiInjectScheduler.start();
   // Chat surveillance (monitors comms for scandal spin)
@@ -275,6 +286,7 @@ app.use('/api/scenarios', scenariosRouter);
 app.use('/api/scenarios', scenarioStakeholdersRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/sessions/:id/bots', teammateBotsRouter); // AI teammates (before the generic router)
+app.use('/api/sessions', sessionRolesRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)
 app.use('/api/channels', channelsRouter);

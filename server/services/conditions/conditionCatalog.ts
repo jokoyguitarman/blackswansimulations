@@ -413,6 +413,8 @@ const secondsParam: ConditionParam = { name: 'S', type: 'seconds', min: 5, max: 
 const countParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 10000 };
 const countNParam: ConditionParam = { name: 'N', type: 'int', min: 1, max: 10000 };
 const stakeholderParam: ConditionParam = { name: 'stakeholder', type: 'stakeholder' };
+const slugParam: ConditionParam = { name: 'team_slug', type: 'string' };
+const roleParam: ConditionParam = { name: 'role_id', type: 'string' };
 const actionParam: ConditionParam = {
   name: 'action_type',
   type: 'enum',
@@ -914,6 +916,78 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'Any judged in-scope reply deals with the message that was received.',
     true,
   ),
+  comms(
+    'line_missed_calls_gte',
+    [slugParam, countNParam],
+    'call',
+    'negative',
+    'The {team_slug} line has missed at least {N} calls',
+    'Missed or declined attempts on that team line, excluding role misses.',
+  ),
+  comms(
+    'line_busy_missed_gte',
+    [slugParam, countNParam],
+    'call',
+    'negative',
+    'The {team_slug} line was busy for at least {N} misses',
+    'Missed attempts on that team line whose reason is line_busy.',
+  ),
+  comms(
+    'line_unattended',
+    [slugParam],
+    'call',
+    'negative',
+    'The {team_slug} line has nobody online',
+    'The team line currently has no online holder.',
+  ),
+  comms(
+    'line_unattended_minutes_gte',
+    [slugParam, countNParam],
+    'call',
+    'negative',
+    'The {team_slug} line has been unattended for {N} minutes',
+    'unattended_since is at least this many minutes ago.',
+  ),
+  comms(
+    'line_reassigned',
+    [slugParam],
+    'call',
+    'neutral',
+    'The {team_slug} line was reassigned',
+    'An automatic reassignment happened on that line this session.',
+  ),
+  comms(
+    'role_missed_calls_gte',
+    [roleParam, countNParam],
+    'call',
+    'negative',
+    '{role_id} has missed at least {N} calls',
+    'Missed attempts addressed to that role.',
+  ),
+  comms(
+    'role_unassigned',
+    [roleParam],
+    'cross',
+    'negative',
+    '{role_id} has nobody assigned',
+    'The role currently has no active player.',
+  ),
+  comms(
+    'role_fallback_used',
+    [roleParam],
+    'cross',
+    'neutral',
+    'Contact for {role_id} was rerouted',
+    'A delivery for that role used a fallback or a trainer reroute.',
+  ),
+  comms(
+    'role_offline_minutes_gte',
+    [roleParam, countNParam],
+    'cross',
+    'negative',
+    '{role_id} has been offline for {N} minutes',
+    'Every player in the role has been offline past the grace for at least this long.',
+  ),
 ];
 
 export const CONDITION_CATALOG: ConditionDef[] = [
@@ -933,7 +1007,7 @@ const prefixes = CONDITION_CATALOG.filter(
  * Scope names the grammar accepts. WP12 adds `role` to this list; the parser
  * already reads any `|name=value` and does not need to change.
  */
-export const KNOWN_CONDITION_SCOPES = ['team'] as const;
+export const KNOWN_CONDITION_SCOPES = ['team', 'role'] as const;
 
 export interface ConditionScope {
   team?: string;
@@ -988,6 +1062,11 @@ function parseScope(raw: string): { scope: ConditionScope } | { error: string } 
     const slug = slugifyTeamName(value);
     if (!slug) return { error: 'Condition scope team= is missing its value' };
     scope.team = slug;
+  } else if (name === 'role') {
+    if (!/^[a-z0-9_]{2,40}$/.test(value)) {
+      return { error: `Condition scope role=${value} is not a role id` };
+    }
+    scope.role = value;
   } else {
     scope[name] = value;
   }
@@ -1093,6 +1172,7 @@ export function formatConditionLabel(parsed: {
     }
   });
   if (parsed.scope?.team) label += ` (team ${parsed.scope.team})`;
+  if (parsed.scope?.role) label += ` (role ${parsed.scope.role})`;
   return label;
 }
 

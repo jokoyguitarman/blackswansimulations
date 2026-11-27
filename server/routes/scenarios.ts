@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
 import { env } from '../env.js';
 import { chat, chatJson } from '../services/ai/chatClient.js';
 import { validate } from '../lib/validation.js';
@@ -1078,6 +1079,8 @@ router.patch(
       if (updates.delivery_config !== undefined) {
         const phoneError = phoneConfigError(updates.delivery_config);
         if (phoneError) return res.status(400).json({ error: phoneError });
+        const teamsForRole = (updates.target_teams ?? existing.target_teams ?? []) as string[];
+        if (await rejectRoleTarget(res, id, updates.delivery_config, teamsForRole)) return;
       }
 
       if (updates.inject_scope !== undefined || updates.target_teams !== undefined) {
@@ -1156,6 +1159,7 @@ router.post(
       }
       const phoneError = phoneConfigError(body.delivery_config ?? null);
       if (phoneError) return res.status(400).json({ error: phoneError });
+      if (await rejectRoleTarget(res, id, body.delivery_config ?? null, body.target_teams ?? [])) return;
       const teamNames = await loadTeamNames(id);
       const sanitized = sanitizeTeamTargeting(
         {
@@ -3751,5 +3755,30 @@ router.post('/:id/backfill-buildings', requireAuth, async (req: AuthenticatedReq
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+async function rejectRoleTarget(
+  res: Response,
+  scenarioId: string,
+  config: unknown,
+  targetTeams: string[],
+): Promise<boolean> {
+  if (!config || typeof config !== 'object') return false;
+  const { data } = await supabaseAdmin.from('scenarios').select('initial_state').eq('id', scenarioId).maybeSingle();
+  const roles = parsePlayerRoles((data?.initial_state as { player_roles?: unknown } | null)?.player_roles);
+  const result = injectRoleTargetError({
+    config: config as Record<string, unknown>,
+    roles,
+    targetTeams,
+    isTemplate: true,
+  });
+  if (result.error) {
+    res.status(400).json({ error: result.error });
+    return true;
+  }
+  if (result.warning) {
+    logger.warn({ scenarioId, warning: result.warning, event: 'role_team_mismatch' }, result.warning);
+  }
+  return false;
+}
 
 export { router as scenariosRouter };

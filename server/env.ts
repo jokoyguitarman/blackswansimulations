@@ -174,6 +174,12 @@ export const env = {
   // Chat-completion calls that may judge inject replies in one session-hour.
   // One attempt counts as one unit. A denied budget leaves the reply unjudged.
   judgeBudgetPerSessionHour: envInt('JUDGE_BUDGET_PER_SESSION_HOUR', 400),
+  // Lobby coverage gate cap. `warn` never blocks; `off` hides the gate. Default enforce
+  // still only blocks scenarios that opt in with initial_state.call_coverage_gate.
+  callCoverageGate:
+    process.env.CALL_COVERAGE_GATE === 'warn' || process.env.CALL_COVERAGE_GATE === 'off'
+      ? process.env.CALL_COVERAGE_GATE
+      : 'enforce',
   // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.

@@ -25,7 +25,11 @@ import { createNotificationsForUsers } from '../notificationService.js';
 import { supabaseCallStore } from './supabaseCallStore.js';
 import { createRealtimeClient, WEBRTC_URL, type RealtimeClient, type Sideband } from './realtimeClient.js';
 import type { CallStore, SimCall, StoredScript, StoredTurn } from './callTypes.js';
-import { DEFAULT_CALL_POLICY, resolveCallRingSet, type RingGroup } from './lineCore.js';
+import { callbackAllowed, resolveCallRingSet, type RingGroup } from './lineCore.js';
+import { buildRingSetInput, owningTeamFor } from './callRouting.js';
+import { holdersByTeam, loadCallPolicy } from './lineService.js';
+import { rolePlayersById } from '../roles/roleService.js';
+import { rolesFeatureReady } from '../roles/rolesSchema.js';
 import {
   ACTIVE_SWEEP_GRACE_SECONDS,
   answerChannel,
@@ -244,19 +248,19 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const busy = new Set(
       open.filter((call) => call.status === 'connecting' || call.status === 'active').map((call) => call.answeredBy).filter((id): id is string => Boolean(id)),
     );
-    const groups = resolveCallRingSet({
-      mode: 'ring_all',
-      targetTeams: teams,
-      rolePlayers: {},
-      roleTeam: {},
-      roleFallback: 'none',
-      holdersByTeam: {},
-      teamMembers: members,
-      recipientsRingAll: recipients,
-      online: () => true,
-      busy: (id) => busy.has(id),
-      policy: DEFAULT_CALL_POLICY,
-    });
+    const stakeholderId = typeof config.stakeholder_id === 'string' ? config.stakeholder_id : null;
+    const groups = resolveCallRingSet(
+      await buildRingSetInput({
+        sessionId,
+        config: config as Record<string, unknown>,
+        teams,
+        members,
+        recipients,
+        busy: (id) => busy.has(id),
+        attemptNo: 1,
+        owningTeam: await owningTeamFor(sessionId, stakeholderId),
+      }),
+    );
     const at = now();
     let nextFree: Record<string, number> = {};
     for (const call of open) {
@@ -286,8 +290,13 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       const stored = baseScript(script, redial, inject, ringSeconds, group);
       const id = randomUUID();
       const recipientsForGroup = [...group.ring, ...group.call_waiting];
-      const missedNow = group.outcome === 'line_unattended' || recipientsForGroup.length === 0 || queue.missed;
+      const missedNow =
+        group.outcome === 'line_unattended' ||
+        group.outcome === 'role_offline' ||
+        recipientsForGroup.length === 0 ||
+        queue.missed;
       const delayed = !missedNow && queue.startMs > at.getTime();
+      const reasonNow = missedReasonFor(group.outcome);
       const row = blankCall({
         id,
         sessionId,
@@ -296,7 +305,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         callerName,
         callerNumber: caller.number,
         voice,
-        script: stored,
+        script: { ...stored, fallback_reason: group.fallback_reason, role_title: roleTitle(config) },
         recipientUserIds: recipientsForGroup,
         recipientTeams: group.line_team ? [group.line_team] : [],
         status: missedNow ? 'missed' : delayed ? 'scheduled' : 'ringing',
@@ -308,17 +317,26 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         ringDeadlineAt: new Date(at.getTime() + ringSeconds * 1000).toISOString(),
         maxSeconds,
         lineTeam: group.line_team,
+        targetMode: group.mode_used,
+        targetRoleId: group.target_role_id,
         rungUserIds: recipientsForGroup,
-        missedReason: missedNow ? (group.outcome === 'line_busy' ? 'line_busy' : 'no_answer') : null,
-        endReason: missedNow ? 'no_answer' : null,
+        missedReason: missedNow || group.outcome === 'line_busy' || group.outcome === 'role_busy' ? reasonNow : null,
+        endReason: missedNow ? reasonNow : null,
         endedAt: missedNow ? at.toISOString() : null,
       });
       if (delayed) row.script = { ...row.script, queue_hold: true };
       row.script = { ...row.script, call_waiting: group.call_waiting };
       const inserted = await store.insert(row);
       if (!inserted?.created) continue;
+      if (group.fallback_reason && session?.trainerId) {
+        emit(session.trainerId, 'role.unassigned_target', {
+          role_id: group.target_role_id,
+          inject_id: inject.id,
+          fallback: group.fallback_reason,
+        });
+      }
       if (row.status === 'ringing') await beginRing(inserted.call, group);
-      if (row.status === 'missed') await afterTerminal(inserted.call, 'no_answer');
+      if (row.status === 'missed') await afterTerminal(inserted.call, row.endReason ?? 'no_answer');
     }
     return 'started';
   }
@@ -336,6 +354,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         direction: call.direction,
         line_team: call.lineTeam,
         call_waiting: waiting.has(userId),
+        role_title: call.script.role_title,
+        target_role_id: call.targetRoleId,
       });
     }
     if (useLedger && call.injectId) {
@@ -356,6 +376,9 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         callGroupId: call.callGroupId,
         attemptNo: call.attemptNo,
         deliveredAt: call.ringStartedAt,
+        lineTeam: call.lineTeam,
+        targetRoleId: call.targetRoleId,
+        fallbackReason: call.script.fallback_reason ?? null,
       });
       if (deliveryId) deliveryIds.set(call.id, deliveryId);
     }
@@ -563,7 +586,15 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
   ): Promise<CallSuccess<VoiceAnswer | TextAnswer> | CallFailure> {
     const seed = await store.get(callId);
     if (!seed) return fail(404, 'not_found');
-    if (!canAccess(seed, actor)) return fail(403, 'forbidden');
+    if (!(await rolesFeatureReady())) {
+      if (!canAccess(seed, actor)) return fail(403, 'forbidden');
+    } else if (!canAccess(seed, actor)) {
+      const permitted = await callbackPermitted(seed, actor.id);
+      if (!permitted.allowed) return fail(403, 'forbidden');
+    } else {
+      const permitted = await callbackPermitted(seed, actor.id);
+      if (!permitted.allowed) return fail(403, permitted.code ?? 'callback_not_allowed');
+    }
     const sessionCalls = await store.listSession(seed.sessionId);
     const group = sessionCalls.filter((call) => call.callGroupId === seed.callGroupId);
     const summary = toSummary(seed, sessionCalls, {});
@@ -789,27 +820,37 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       return;
     }
     if (plan.action !== 'ring') return;
-    const members = await store.teamMembers(call.sessionId, call.lineTeam ? [call.lineTeam] : []);
+    const members = await store.teamMembers(call.sessionId, call.lineTeam ? [call.lineTeam] : call.recipientTeams);
     const open = await store.listOpen(call.sessionId);
     const busyIds = new Set(
       open.filter((row) => row.status === 'connecting' || row.status === 'active').map((row) => row.answeredBy).filter((id): id is string => Boolean(id)),
     );
-    const groups = resolveCallRingSet({
-      mode: 'ring_all',
-      targetTeams: call.lineTeam ? [call.lineTeam] : [],
-      rolePlayers: {},
-      roleTeam: {},
-      roleFallback: 'none',
-      holdersByTeam: {},
-      teamMembers: members,
-      recipientsRingAll: call.recipientUserIds,
-      online: () => true,
-      busy: (id) => busyIds.has(id),
-      policy: DEFAULT_CALL_POLICY,
-    });
+    const groups = resolveCallRingSet(
+      await buildRingSetInput({
+        sessionId: call.sessionId,
+        config: {
+          target_role_id: call.targetRoleId,
+          call_target: { mode: call.targetMode, user_id: call.recipientUserIds?.[0] },
+          role_fallback: call.script.fallback_reason === 'role_offline_fallback' ? 'line' : 'none',
+          stakeholder_team: call.lineTeam,
+        },
+        teams: call.lineTeam ? [call.lineTeam] : call.recipientTeams,
+        members,
+        recipients: call.recipientUserIds,
+        busy: (id) => busyIds.has(id),
+        attemptNo: call.attemptNo,
+        owningTeam: call.lineTeam,
+      }),
+    );
     const group = groups[0];
-    if (!group || group.outcome === 'line_unattended') {
-      await finish({ ...call, missedReason: 'line_unattended' }, 'missed', 'line_unattended', null);
+    if (group?.outcome === 'held') {
+      const later = new Date(at.getTime() + 60_000).toISOString();
+      await store.save({ ...call, status: 'scheduled', scheduledFor: later });
+      return;
+    }
+    if (!group || group.outcome === 'line_unattended' || group.outcome === 'role_offline') {
+      const reason = group?.outcome === 'role_offline' ? 'role_offline' : 'line_unattended';
+      await finish({ ...call, missedReason: reason, targetRoleId: group?.target_role_id ?? call.targetRoleId }, 'missed', reason, null);
       return;
     }
     const ringing: SimCall = {
@@ -819,8 +860,11 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       ringDeadlineAt: new Date(at.getTime() + call.script.ring_seconds * 1000).toISOString(),
       recipientUserIds: [...group.ring, ...group.call_waiting],
       rungUserIds: [...group.ring, ...group.call_waiting],
-      script: { ...call.script, queue_hold: false, call_waiting: group.call_waiting },
-      missedReason: group.outcome === 'line_busy' ? 'line_busy' : null,
+      lineTeam: group.line_team ?? call.lineTeam,
+      targetMode: group.mode_used,
+      targetRoleId: group.target_role_id ?? call.targetRoleId,
+      script: { ...call.script, queue_hold: false, call_waiting: group.call_waiting, fallback_reason: group.fallback_reason ?? call.script.fallback_reason },
+      missedReason: group.outcome === 'line_busy' || group.outcome === 'role_busy' ? group.outcome : null,
     };
     await store.save(ringing);
     await beginRing(ringing, group);
@@ -1566,6 +1610,46 @@ function voicemailLines(call: SimCall, group: SimCall[], finished: boolean): Arr
   }
   if (!finished) return [];
   return [{ attemptNo: missed[missed.length - 1].attemptNo, content: render(missed.length) }];
+}
+
+async function callbackPermitted(
+  call: SimCall,
+  userId: string,
+): Promise<{ allowed: boolean; code?: string }> {
+  if (!(await rolesFeatureReady())) return { allowed: true };
+  const policy = await loadCallPolicy(call.sessionId);
+  const roles = await rolePlayersById(call.sessionId);
+  const holders = await holdersByTeam(call.sessionId);
+  const team = call.lineTeam ?? call.recipientTeams[0] ?? '';
+  const { supabaseAdmin } = await import('../../lib/supabaseAdmin.js');
+  const { data } = team
+    ? await supabaseAdmin
+        .from('session_teams')
+        .select('user_id')
+        .eq('session_id', call.sessionId)
+        .eq('team_name', team)
+        .eq('user_id', userId)
+        .limit(1)
+    : { data: [] };
+  const isRoleCall = call.targetMode === 'role' && Boolean(call.targetRoleId);
+  return callbackAllowed({
+    callbackBy: policy.callback_by,
+    isTeamMember: (data ?? []).length > 0,
+    isHolder: (holders[team] ?? []).includes(userId),
+    isRoleCall,
+    isRolePlayer: (roles.players[call.targetRoleId ?? ''] ?? []).includes(userId),
+  });
+}
+
+function missedReasonFor(outcome: RingGroup['outcome']): string {
+  if (outcome === 'line_busy' || outcome === 'line_unattended' || outcome === 'role_busy' || outcome === 'role_offline') {
+    return outcome;
+  }
+  return 'no_answer';
+}
+
+function roleTitle(config: { target_role_id?: unknown }): string | undefined {
+  return typeof config.target_role_id === 'string' ? config.target_role_id : undefined;
 }
 
 function blankCall(input: Omit<SimCall, 'direction' | 'stakeholderId' | 'mode' | 'declinedUserIds' | 'answeredBy' | 'answeredAt' | 'declinedBy' | 'openaiCallId' | 'transcriptSource' | 'beatsDone' | 'durationSeconds' | 'createdAt' | 'targetMode' | 'targetRoleId' | 'parentCallId'> & Partial<SimCall>): SimCall {

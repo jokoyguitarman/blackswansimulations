@@ -455,6 +455,10 @@ export class InjectSchedulerService {
     );
 
     try {
+      const { sweepLines } = await import('./calls/lineService.js');
+      const { sweepRoles } = await import('./roles/roleService.js');
+      await sweepLines(session.id);
+      await sweepRoles(session.id);
       await sweepCalls(session.id);
     } catch (err) {
       logger.warn({ err, sessionId: session.id }, 'call sweep failed');

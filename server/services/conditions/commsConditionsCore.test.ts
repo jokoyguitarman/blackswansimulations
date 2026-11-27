@@ -337,9 +337,12 @@ describe('condition key grammar', () => {
       const parsed = parseConditionKey(key);
       assert.ok('error' in parsed, key);
     }
-    const unknownScope = parseConditionKey('unresponded:k1:10|role=cs_head');
+    const roleScope = parseConditionKey('unresponded:k1:10|role=cs_head');
+    assert.ok(!('error' in roleScope));
+    if (!('error' in roleScope)) assert.equal(roleScope.scope?.role, 'cs_head');
+    const unknownScope = parseConditionKey('unresponded:k1:10|desk=ops');
     assert.ok('error' in unknownScope);
-    if ('error' in unknownScope) assert.match(unknownScope.error, /role/);
+    if ('error' in unknownScope) assert.match(unknownScope.error, /desk/);
 
     const slugged = parseConditionKey('responded:k1|team=Legal Team');
     assert.ok(!('error' in slugged));

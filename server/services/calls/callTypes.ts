@@ -14,6 +14,8 @@ export interface StoredScript extends CallScript {
   silence_prompted?: boolean;
   response_window_minutes?: number | null;
   inject_key?: string;
+  role_title?: string;
+  fallback_reason?: string;
 }
 
 export interface SimCall {

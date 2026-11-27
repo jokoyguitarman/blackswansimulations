@@ -127,6 +127,9 @@ export default function IncomingCallOverlay() {
           {ringing.call.caller_name.slice(0, 1)}
         </div>
         <h2 className="mt-4 text-2xl font-semibold">{ringing.call.caller_name}</h2>
+        {ringing.call.role_title && (
+          <p className="text-sm text-black/60">Call for {ringing.call.role_title}</p>
+        )}
         {ringing.call.caller_number && <p className="mt-1 text-sm text-white/70">{ringing.call.caller_number}</p>}
         {ringing.call.line_team && <p className="mt-1 text-sm text-white/50">{ringing.call.line_team}</p>}
         <p className="mt-4 text-sm text-white/60">

@@ -4,6 +4,7 @@ import { useWebSocket } from '../../../hooks/useWebSocket';
 import { readAppIntent } from '../../../lib/appIntents';
 import InCallScreen from './InCallScreen';
 import RecentsList from './RecentsList';
+import { api } from '../../../lib/api';
 import {
   browserCanCall,
   callbackCall,
@@ -26,6 +27,21 @@ export default function PhoneApp() {
   const [badge, setBadge] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(intent?.call ?? null);
   const [detail, setDetail] = useState<(CallSummary & { turns: CallTurn[] }) | null>(null);
+  const [headerNote, setHeaderNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    void Promise.all([api.sessions.getCallLines(sessionId), api.sessions.getRoles(sessionId)])
+      .then(([lines, roles]) => {
+        const held = lines.data.flatMap((line) =>
+          line.holders.map((holder) => `${line.team_name} line · held by ${holder.name}`),
+        );
+        const mine = roles.data.map((role) => `${role.title}: ${role.players.map((player) => player.name).join(', ') || 'unassigned'}`);
+        const note = [...held, ...mine].slice(0, 4).join(' · ');
+        setHeaderNote(note || null);
+      })
+      .catch(() => setHeaderNote(null));
+  }, [sessionId]);
 
   async function refresh() {
     if (!sessionId) return;
@@ -108,6 +124,7 @@ export default function PhoneApp() {
       missedCount={badge}
       onOpen={(call) => setActiveId(call.id)}
       onCallback={(call) => void placeCallback(call)}
+      headerNote={headerNote}
     />
   );
 

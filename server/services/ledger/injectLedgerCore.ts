@@ -50,6 +50,11 @@ export interface CommsDelivery {
   chain_step: number | null;
   urgency: string | null;
   mood_rung: string | null;
+  /** Set when migration 271 is applied. Absent deliveries are not role- or line-scoped. */
+  target_role_id?: string | null;
+  line_team?: string | null;
+  missed_reason?: string | null;
+  fallback_reason?: string | null;
   opened_minute: number | null;
   first_response_minute: number | null;
   first_response_team: string | null;
@@ -113,6 +118,19 @@ export interface CommsState {
   action_counts_truncated?: boolean;
   email_facts_truncated?: boolean;
   contact_facts_truncated?: boolean;
+  /** Live line and role facts. Absent when migration 271 is not applied. */
+  line_runtime?: Array<{
+    team: string;
+    online_holders: number;
+    unattended_minutes: number | null;
+    reassigned: boolean;
+  }>;
+  role_runtime?: Array<{
+    role_id: string;
+    assigned: boolean;
+    fallback_used: boolean;
+    offline_minutes: number | null;
+  }>;
 }
 
 export const COMMS_DELIVERY_CAP = 2000;
@@ -194,10 +212,9 @@ function isRecipient(
 ): boolean {
   const teamList = teams ?? [];
   const userList = users ?? [];
-  if (userList.length === 0 && teamList.length === 0) return true;
-  if (users?.includes(senderId)) return true;
-  if (senderTeam && teamList.includes(senderTeam)) return true;
-  return false;
+  if (userList.length > 0) return userList.includes(senderId);
+  if (teamList.length === 0) return true;
+  return Boolean(senderTeam && teamList.includes(senderTeam));
 }
 
 function teamAlreadyResponded(
@@ -422,6 +439,11 @@ export interface LedgerDeliveryRow {
   first_opened_at?: string | null;
   first_response_minute?: number | null;
   first_response_team?: string | null;
+  target_role_id?: string | null;
+  line_team?: string | null;
+  missed_reason?: string | null;
+  fallback_reason?: string | null;
+  ref_id?: string | null;
 }
 
 export interface LedgerResponseRow {
@@ -569,6 +591,10 @@ export function buildCommsState(args: {
       chain_step: row.chain_step ?? null,
       urgency: row.urgency ?? null,
       mood_rung: row.mood_rung ?? null,
+      target_role_id: row.target_role_id ?? null,
+      line_team: row.line_team ?? null,
+      missed_reason: row.missed_reason ?? null,
+      fallback_reason: row.fallback_reason ?? null,
       opened_minute: openedMinute(row, args.sessionStartedAt),
       first_response_minute: firstMinute,
       first_response_team: firstTeam,
