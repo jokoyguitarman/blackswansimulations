@@ -3493,3 +3493,118 @@ test('a floor-clamped door between two rooms does not reverse every step', () =>
   assert.equal(gaugeFlips, 0, `floor gauge reversed on ${gaugeFlips} steps`);
   assert.equal(flowFlips, 0, `door hot outflow turned over on ${flowFlips} steps`);
 });
+
+test('an oxygen-limited fire room keeps its layer and burns again', () => {
+  // Harbour's kitchen at T+270. The inflow is the shop's spent gas, at the
+  // 0.15 extinction limit, so the steady correlation predicts no layer.
+  // The live layer is floor-deep and hot. Retiring it dumps the soot into
+  // the columns and the room never steps again. The layer stays, the burn
+  // falls to nothing, and fresher air brings the flame back.
+  const fuel = { ...defaultLightFuel(), alphaKwS2: 0.2, fuelLoadKgM2: 40 };
+  const stud = (id: string, x: number, y: number) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: 'inside_building' as const,
+    level: 'G',
+  });
+  const barrier = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 2,
+    doorPosition: 0.5,
+    description: '',
+    material: 'concrete',
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    barrier('fs', -1.5, -1.5, 1.5, -1.5, false),
+    barrier('fw', -1.5, -1.5, -1.5, 1.5, false),
+    barrier('fe', 1.5, -1.5, 1.5, 1.5, false),
+    barrier('door', -1.5, 1.5, 1.5, 1.5, true),
+    barrier('hw', -1.5, 1.5, -1.5, 4.5, false),
+    barrier('he', 1.5, 1.5, 1.5, 4.5, false),
+    barrier('hn', -1.5, 4.5, 1.5, 4.5, false),
+  ];
+  const engine = new SpatialEffectsEngine(undefined, 1);
+  engine.init([stud('fire', 0, 0), stud('shop', 0, 3)]);
+  engine.setStoreyHeights({ G: 2.6 });
+  engine.setFuelCells(new Map([['fire', fuel]]));
+  const exposed = engine as unknown as {
+    fireSim: { ignite: (ids: string[]) => void; burnFraction: (id: string) => number };
+    layerState: Map<
+      string,
+      {
+        active: boolean;
+        members: string[];
+        zone: {
+          interfaceM: number;
+          upperK: number;
+          sootG: number;
+          upperO2?: number;
+          lowerO2?: number;
+        };
+      }
+    >;
+  };
+  exposed.fireSim.ignite(['fire']);
+  const of = (id: string) => [...exposed.layerState.values()].find((row) => row.members.includes(id));
+  for (let t = 0; t < 80; t++) engine.step(1, walls, []);
+  const fire = of('fire');
+  const shop = of('shop');
+  assert.ok(fire?.active && shop?.active, 'the two rooms never formed layers');
+  fire.zone.interfaceM = 0.05;
+  fire.zone.upperK = AMBIENT_K + 124;
+  fire.zone.sootG = 300;
+  fire.zone.upperO2 = 0.152;
+  fire.zone.lowerO2 = 0.152;
+  shop.active = true;
+  shop.zone.interfaceM = 0.1;
+  shop.zone.upperK = AMBIENT_K + 50;
+  shop.zone.upperO2 = 0.152;
+  shop.zone.lowerO2 = 0.23;
+  shop.zone.sootG = 20;
+  engine.step(1, walls, []);
+  const starved = of('fire');
+  assert.ok(starved?.active, 'the oxygen-limited layer was retired');
+  assert.ok(
+    starved.zone.sootG > 200,
+    `the layer soot was dumped (${starved.zone.sootG.toFixed(1)} g)`,
+  );
+  assert.ok(starved.zone.interfaceM <= 0.1, `interface ${starved.zone.interfaceM.toFixed(2)} m`);
+  assert.ok(
+    starved.zone.upperK - AMBIENT_K > 90,
+    `rise ${(starved.zone.upperK - AMBIENT_K).toFixed(0)} K`,
+  );
+  assert.ok(
+    exposed.fireSim.burnFraction('fire') < 0.05,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} at the extinction limit`,
+  );
+  for (let t = 0; t < 3; t++) {
+    const liveFire = of('fire');
+    const liveShop = of('shop');
+    assert.ok(liveFire && liveShop);
+    liveFire.zone.upperO2 = 0.23;
+    liveFire.zone.lowerO2 = 0.23;
+    liveShop.zone.upperO2 = 0.23;
+    liveShop.zone.lowerO2 = 0.23;
+    liveShop.zone.interfaceM = 0.1;
+    engine.step(1, walls, []);
+  }
+  const recovered = of('fire');
+  assert.ok(recovered?.active, 'the layer did not survive the fresh air');
+  assert.ok(
+    exposed.fireSim.burnFraction('fire') > 0.3,
+    `burn fraction ${exposed.fireSim.burnFraction('fire').toFixed(3)} after fresh air`,
+  );
+  assert.ok(recovered.zone.sootG > 100, `soot ${recovered.zone.sootG.toFixed(1)} g`);
+});

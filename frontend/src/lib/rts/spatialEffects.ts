@@ -2570,11 +2570,14 @@ export class SpatialEffectsEngine {
         prev?.active === true &&
         rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
         depth >= jet * LAYER_OFF_FRACTION;
-      // A shaft landing that ignites already holds a deep jet layer. The
-      // steady fire correlation is thinner than that layer and would retire
-      // it, dropping the smoke the stair just delivered.
+      // The steady correlation is run at the oxygen-limited burn. At the
+      // extinction limit that burn is almost nothing, so it predicts no
+      // layer and would retire the one already there. A shaft landing was
+      // the first case: the stair's jet is deeper than that correlation.
+      // An ordinary fire room does the same when its inflow is spent gas.
+      // The floor-deep ceiling, and the soot in it, stay until that layer
+      // itself is no longer a sustained layer.
       const kept =
-        this.touchesShaft(members) &&
         prev?.active === true &&
         (formsSustainedLayer(
           Math.max(0, ceiling - prev.zone.interfaceM),
