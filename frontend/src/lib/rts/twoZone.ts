@@ -1176,6 +1176,64 @@ function limitedFrom(
   };
 }
 
+/**
+ * The last prescribed-plume sum and the inputs it was taken from. One
+ * substep solves the pressure root several times at the same interface
+ * and the same fires, and each solve reads this sum. A fire whose value
+ * changes, in place or in a new array, misses on the field compare.
+ */
+const plumeGuessFires: { heatKw: number; diameterM: number; baseM: number | undefined }[] = [];
+let plumeGuessCount = -1;
+let plumeGuessZ = NaN;
+let plumeGuessChi = NaN;
+let plumeGuessKgS = 0;
+
+/** Heskestad entrainment of the prescribed fires at the interface, kg/s. */
+function prescribedPlumeKgS(fires: readonly FirePlume[], interfaceM: number, chi: number): number {
+  if (interfaceM === plumeGuessZ && chi === plumeGuessChi && fires.length === plumeGuessCount) {
+    let same = true;
+    for (let i = 0; i < fires.length; i++) {
+      const fire = fires[i]!;
+      const kept = plumeGuessFires[i]!;
+      if (
+        fire.heatKw !== kept.heatKw ||
+        fire.diameterM !== kept.diameterM ||
+        fire.baseM !== kept.baseM
+      ) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return plumeGuessKgS;
+  }
+  let plume = 0;
+  for (const fire of fires) {
+    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+    plume += heskestadEntrainmentKgS(
+      fire.heatKw,
+      heightAboveFuelM(interfaceM, fire.baseM),
+      fire.diameterM,
+      chi,
+    );
+  }
+  for (let i = 0; i < fires.length; i++) {
+    const fire = fires[i]!;
+    const kept = plumeGuessFires[i];
+    if (kept) {
+      kept.heatKw = fire.heatKw;
+      kept.diameterM = fire.diameterM;
+      kept.baseM = fire.baseM;
+    } else {
+      plumeGuessFires.push({ heatKw: fire.heatKw, diameterM: fire.diameterM, baseM: fire.baseM });
+    }
+  }
+  plumeGuessCount = fires.length;
+  plumeGuessZ = interfaceM;
+  plumeGuessChi = chi;
+  plumeGuessKgS = plume;
+  return plume;
+}
+
 function flameSupply(
   spec: LayerSpec,
   interfaceM: number,
@@ -1206,16 +1264,7 @@ function flameSupply(
   // credited to its midpoint, the mean of the interface and the clamp.
   // A deeper layer cannot be consumed in one substep, and its full
   // height stands.
-  let plumeGuess = 0;
-  for (const fire of spec.fires) {
-    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
-    plumeGuess += heskestadEntrainmentKgS(
-      fire.heatKw,
-      heightAboveFuelM(interfaceM, fire.baseM),
-      fire.diameterM,
-      chi,
-    );
-  }
+  const plumeGuess = sliverM > 0 ? prescribedPlumeKgS(spec.fires, interfaceM, chi) : 0;
   const floorArea = sectionAreaM2(spec, INTERFACE_FLOOR_M);
   const consumableM =
     floorArea > 0 && plumeGuess > 0 ? (plumeGuess * slice) / (rho * floorArea) : 0;
@@ -1601,6 +1650,11 @@ interface BoundTerm {
   /** Lower-layer temperature the cached film table was built for. */
   filmLower: number;
   filmAt: ((upperK: number) => LowerFilms) | null;
+  /** Interface and ceiling the cached contact split was taken at. */
+  contactZ: number;
+  contactCeiling: number;
+  upperM2: number;
+  lowerM2: number;
 }
 
 interface BoundLoss {
@@ -1641,6 +1695,10 @@ function contactLossKw(
         exposed: backFaceExposed(boundary.lining, tS),
         filmLower: Number.NaN,
         filmAt: null,
+        contactZ: Number.NaN,
+        contactCeiling: Number.NaN,
+        upperM2: 0,
+        lowerM2: 0,
       });
     }
     bound = { boundaries, tS, rad, gen: fluxGen, terms };
@@ -1653,9 +1711,16 @@ function contactLossKw(
   for (let i = 0; i < terms.length; i++) {
     const term = terms[i];
     if (!term) continue;
-    const contact = layerContactM2(term.boundary, interfaceM, ceilingM);
-    if (contact.upperM2 > 0) upperKw += contact.upperM2 * term.at(upperK);
-    if (contact.lowerM2 > 0) {
+    // The balance bisects the rise at one interface, so the split is reused.
+    if (term.contactZ !== interfaceM || term.contactCeiling !== ceilingM) {
+      const split = layerContactM2(term.boundary, interfaceM, ceilingM);
+      term.contactZ = interfaceM;
+      term.contactCeiling = ceilingM;
+      term.upperM2 = split.upperM2;
+      term.lowerM2 = split.lowerM2;
+    }
+    if (term.upperM2 > 0) upperKw += term.upperM2 * term.at(upperK);
+    if (term.lowerM2 > 0) {
       // The balance samples this face at dozens of upper temperatures.
       // The table is built once for the lower temperature; the later
       // samples read a knot, the same way `term.at` does.
@@ -1666,9 +1731,9 @@ function contactLossKw(
         term.filmLower = lowerK;
       }
       const parts = filmAt(upperK);
-      upperKw += contact.lowerM2 * parts.toUpperKwM2;
-      lowerKw += contact.lowerM2 * parts.toLowerKwM2;
-      lowerM2 += contact.lowerM2;
+      upperKw += term.lowerM2 * parts.toUpperKwM2;
+      lowerKw += term.lowerM2 * parts.toLowerKwM2;
+      lowerM2 += term.lowerM2;
     }
   }
   return { upperKw, lowerKw, lowerM2 };
