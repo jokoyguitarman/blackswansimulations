@@ -2264,7 +2264,10 @@ export function chooseRoute(
 }
 
 const REGION_CELL_M = 0.25;
-const REGION_WALL_CLEAR_M = 0.3;
+/** Just over half a cell's diagonal, so a wall line leaves no 4-connected leak. */
+const REGION_WALL_BAND_M = 0.2;
+/** A doorway is carved this far either side of its wall line, through the band. */
+const REGION_DOOR_CARVE_M = REGION_WALL_BAND_M + REGION_CELL_M;
 
 /**
  * Connected floor regions of one storey, from the fixed plan: the outline and
@@ -2278,6 +2281,7 @@ export class RouteRegions {
   private readonly cols: number;
   private readonly rows: number;
   private readonly label: Int32Array;
+  private readonly solid: Array<[Vec2, Vec2]> = [];
 
   constructor(verts: Vec2[], walls: readonly WallLike[]) {
     let minX = Infinity;
@@ -2305,8 +2309,18 @@ export class RouteRegions {
         if (isInsidePolygon(p.x, p.y, verts)) open[r * this.cols + c] = 1;
       }
     }
+    const inside = open.slice();
     for (const wall of walls) {
-      for (const [a, b] of planParts(wall)) this.blockSegment(open, a, b);
+      for (const part of planParts(wall)) {
+        this.solid.push(part);
+        this.blockSegment(open, part[0], part[1]);
+      }
+    }
+    // Any doorway a body fits through is open across its whole width, wherever
+    // it falls on the grid. The jamb bands alone can close a 0.8 m door.
+    for (const wall of walls) {
+      const gap = planGap(wall);
+      if (gap) this.carveGap(open, inside, gap[0], gap[1]);
     }
     this.label = new Int32Array(n).fill(-1);
     let next = 0;
@@ -2337,7 +2351,11 @@ export class RouteRegions {
     }
   }
 
-  /** Region id at a point, or -1 off the floor. A point on a wall slab takes the nearest open cell. */
+  /**
+   * Region id at a point, or -1 off the floor. A point on a wall band takes
+   * the nearest open cell it can see: never one across a wall, so someone in
+   * a jamb keeps their own side.
+   */
   regionAt(p: Vec2, maxReach = 3): number {
     const c0 = Math.floor((p.x - this.minX) / REGION_CELL_M);
     const r0 = Math.floor((p.y - this.minY) / REGION_CELL_M);
@@ -2354,7 +2372,7 @@ export class RouteRegions {
           if (id < 0) continue;
           const q = this.centre(c, r);
           const d = Math.hypot(q.x - p.x, q.y - p.y);
-          if (d < bestD) {
+          if (d < bestD && (reach === 0 || !this.crossesWall(p, q))) {
             bestD = d;
             best = id;
           }
@@ -2382,8 +2400,51 @@ export class RouteRegions {
     };
   }
 
+  private crossesWall(p: Vec2, q: Vec2): boolean {
+    for (const [a, b] of this.solid) {
+      const d1x = q.x - p.x;
+      const d1y = q.y - p.y;
+      const d2x = b.x - a.x;
+      const d2y = b.y - a.y;
+      const denom = d1x * d2y - d1y * d2x;
+      if (Math.abs(denom) < 1e-12) continue;
+      const t = ((a.x - p.x) * d2y - (a.y - p.y) * d2x) / denom;
+      const u = ((a.x - p.x) * d1y - (a.y - p.y) * d1x) / denom;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
+    }
+    return false;
+  }
+
+  private carveGap(open: Uint8Array, inside: Uint8Array, a: Vec2, b: Vec2) {
+    const pad = REGION_DOOR_CARVE_M;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-6) return;
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    const c0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - pad - this.minX) / REGION_CELL_M));
+    const c1 = Math.min(
+      this.cols - 1,
+      Math.floor((Math.max(a.x, b.x) + pad - this.minX) / REGION_CELL_M),
+    );
+    const r0 = Math.max(0, Math.floor((Math.min(a.y, b.y) - pad - this.minY) / REGION_CELL_M));
+    const r1 = Math.min(
+      this.rows - 1,
+      Math.floor((Math.max(a.y, b.y) + pad - this.minY) / REGION_CELL_M),
+    );
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const i = r * this.cols + c;
+        if (!inside[i]) continue;
+        const p = this.centre(c, r);
+        const along = (p.x - a.x) * ux + (p.y - a.y) * uy;
+        const off = Math.abs((p.x - a.x) * uy - (p.y - a.y) * ux);
+        if (along >= 0 && along <= len && off <= pad) open[i] = 1;
+      }
+    }
+  }
+
   private blockSegment(open: Uint8Array, a: Vec2, b: Vec2) {
-    const pad = REGION_WALL_CLEAR_M;
+    const pad = REGION_WALL_BAND_M;
     const c0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - pad - this.minX) / REGION_CELL_M));
     const c1 = Math.min(
       this.cols - 1,
@@ -2401,6 +2462,22 @@ export class RouteRegions {
       }
     }
   }
+}
+
+/** The doorway of a plan wall, when a body fits through it. */
+function planGap(wall: WallLike): [Vec2, Vec2] | null {
+  if (!wall.hasDoor || !(wall.doorWidth >= 2 * BODY_RADIUS_M)) return null;
+  const dx = wall.endX - wall.startX;
+  const dy = wall.endY - wall.startY;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.01) return null;
+  const half = wall.doorWidth / (2 * len);
+  const lo = Math.max(0, wall.doorPosition - half);
+  const hi = Math.min(1, wall.doorPosition + half);
+  return [
+    { x: wall.startX + dx * lo, y: wall.startY + dy * lo },
+    { x: wall.startX + dx * hi, y: wall.startY + dy * hi },
+  ];
 }
 
 /** Solid parts of a wall with its doorway open, whatever the leaf is doing. */

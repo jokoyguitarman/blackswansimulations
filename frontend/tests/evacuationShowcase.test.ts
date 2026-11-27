@@ -948,6 +948,87 @@ test('route regions split a doorless room off the floor and join it through a do
   assert.equal(new RouteRegions(verts, []).hasRouteOut({ x: 10, y: 10 }, blocked, verts), false);
 });
 
+test('route regions pass any door a body fits through, wherever it falls on the grid', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 6 },
+    { x: 0, y: 6 },
+  ];
+  const exits = [exit({ id: 'e', center: { x: 10, y: 3 }, edgeIndex: 1, width: 1.2 })];
+  const offsets = [0, 0.03, 0.07, 0.1, 0.125, 0.15, 0.19, 0.22];
+  const westReaches = (wall: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    hasDoor: boolean;
+    doorWidth: number;
+    doorPosition: number;
+  }) => new RouteRegions(verts, [wall]).hasRouteOut({ x: 2, y: 3 }, exits, verts);
+  for (const width of [0.6, 0.8]) {
+    for (const off of offsets) {
+      for (const at of [0.3, 0.5, 0.71]) {
+        const wall = {
+          startX: 5 + off,
+          startY: 0,
+          endX: 5 + off,
+          endY: 6,
+          hasDoor: true,
+          doorWidth: width,
+          doorPosition: at,
+        };
+        assert.equal(westReaches(wall), true, `${width} m door at x=${5 + off}, ${at}`);
+      }
+    }
+  }
+  for (const off of offsets) {
+    const solid = { startX: 5 + off, startY: 0, endX: 5 + off, endY: 6, hasDoor: false, doorWidth: 0, doorPosition: 0.5 };
+    assert.equal(westReaches(solid), false, `doorless partition at x=${5 + off}`);
+    const slant = { startX: 4 + off, startY: 0, endX: 6 + off, endY: 6, hasDoor: false, doorWidth: 0, doorPosition: 0.5 };
+    assert.equal(westReaches(slant), false, `slanted partition from x=${4 + off}`);
+    // Narrower than a body: not a route.
+    const slot = { ...solid, hasDoor: true, doorWidth: 0.4 };
+    assert.equal(westReaches(slot), false, `0.4 m slot at x=${5 + off}`);
+  }
+});
+
+test('someone pressed against a wall keeps their own side of it', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 6 },
+    { x: 0, y: 6 },
+  ];
+  for (const off of [0, 0.05, 0.1, 0.125, 0.17, 0.2]) {
+    const x = 5 + off;
+    const wall = { startX: x, startY: 0, endX: x, endY: 4, hasDoor: true, doorWidth: 0.8, doorPosition: 0.2 };
+    const sealed = { ...wall, endY: 6, hasDoor: false };
+    const regions = new RouteRegions(verts, [sealed]);
+    const west = regions.regionAt({ x: 2, y: 3 });
+    const east = regions.regionAt({ x: 8, y: 3 });
+    assert.notEqual(west, east);
+    // At body radius from the line, and pressed almost onto it.
+    for (const y of [1.1, 2.9, 4.6]) {
+      for (const gap of [0.26, 0.05]) {
+        assert.equal(regions.regionAt({ x: x - gap, y }), west, `west at x=${x - gap}, y=${y}`);
+        assert.equal(regions.regionAt({ x: x + gap, y }), east, `east at x=${x + gap}, y=${y}`);
+      }
+    }
+    // In a door's jamb, both faces and the doorway itself share the joined region.
+    const joined = new RouteRegions(verts, [wall]);
+    const room = joined.regionAt({ x: 2, y: 3 });
+    for (const p of [
+      { x: x - 0.26, y: 0.4 },
+      { x: x + 0.26, y: 0.4 },
+      { x, y: 0.8 },
+      { x: x - 0.26, y: 1.25 },
+    ]) {
+      assert.equal(joined.regionAt(p), room, `jamb point ${p.x}, ${p.y}`);
+    }
+  }
+});
+
 test('posture resets outside and crawling counts only evacuating people', () => {
   const eng = showcaseEngine(2);
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
