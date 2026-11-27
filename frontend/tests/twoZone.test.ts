@@ -47,6 +47,7 @@ import {
   neutralPlaneM,
   swamiChandraNormalCp,
   windSpeedAtHeight,
+  windTerrainFactor,
   formsSustainedLayer,
   FAN_FULL_FLOW_PA,
   FAN_ZERO_FLOW_PA,
@@ -1978,7 +1979,8 @@ test('facade pressure follows the wind angle instead of a 45 degree step', () =>
   close(onto(0.4), onto(-0.4), 1e-12, 'the fit does not care which way the wind turns');
   assert.equal(facadeWindPa(0, Math.PI, 0), 0);
   assert.equal(facadeWindPa(0, Math.PI, -4), 0);
-  const q = 0.5 * 1.2 * 25;
+  const atStation = windSpeedAtHeight(5, 10);
+  const q = 0.5 * 1.2 * atStation * atStation;
   close(facadeWindPa(0, Math.PI, 5), headOn * q, 1e-9, 'dynamic pressure');
 });
 
@@ -2006,17 +2008,26 @@ test('the side ratio moves the suction and leaves a head-on face alone', () => {
   assert.equal(facadeSideRatio([], 0), 1);
 });
 
-test('wind speed follows the suburban power law down from 10 m', () => {
+test('an open-country station speed becomes the suburban wind at the opening', () => {
   assert.equal(windSpeedAtHeight(0, 2), 0);
   assert.equal(windSpeedAtHeight(8, -2), 0);
-  close(windSpeedAtHeight(8, 10), 8, 1e-12, 'the reference height is the speed given');
+  assert.equal(windTerrainFactor(-1), 0);
+  const atTen = windTerrainFactor(10);
+  assert.ok(atTen > 0.7 && atTen < 0.74, `suburban factor at 10 m is ${atTen}`);
+  close(windSpeedAtHeight(8, 10), 8 * atTen, 1e-12, '10 m is the station height after conversion');
   const low = windSpeedAtHeight(8, 1);
   const mid = windSpeedAtHeight(8, 5);
-  assert.ok(low < mid && mid < 8, `speeds at 1 m ${low} and 5 m ${mid}`);
-  close(low, 8 * Math.pow(0.1, 0.22), 1e-12, 'one metre');
-  const atTen = facadeWindPa(0, Math.PI, 8, 10, 1);
-  const atOne = facadeWindPa(0, Math.PI, 8, 1, 1);
-  close(atOne / atTen, (low / 8) * (low / 8), 1e-9, 'pressure scales with speed squared');
+  const localTen = windSpeedAtHeight(8, 10);
+  assert.ok(low < mid && mid < localTen, `speeds at 1 m ${low}, 5 m ${mid}, 10 m ${localTen}`);
+  close(low / localTen, Math.pow(0.1, 0.22), 1e-12, 'the profile above the site is still z^0.22');
+  const pressureTen = facadeWindPa(0, Math.PI, 8, 10, 1);
+  const pressureOne = facadeWindPa(0, Math.PI, 8, 1, 1);
+  close(
+    pressureOne / pressureTen,
+    (low / localTen) * (low / localTen),
+    1e-9,
+    'pressure scales with speed squared',
+  );
   const heights = new Map<string, number>([
     ['G', 4],
     ['L1', 3],
@@ -2363,6 +2374,123 @@ test('a door and fallen glass take the wall normal, not the room centroid', () =
     Math.cos(glassVent.windFace - Math.PI),
   );
   close(glassTurn, 0, 1e-6, 'glass wall normal');
+});
+
+test('a non-exit door and fallen glass take the wall normal under wind', () => {
+  const stud = (id: string, x: number, y: number, inside = true) => ({
+    id,
+    simPos: { x, y },
+    spatialContext: inside ? ('inside_building' as const) : ('open_air' as const),
+    level: 'G',
+  });
+  const plan: Vec2[] = [
+    { x: 0, y: -2 },
+    { x: 9, y: -2 },
+    { x: 9, y: 8 },
+    { x: 0, y: 8 },
+  ];
+  const wall = (
+    id: string,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    material: string,
+    door: boolean,
+  ): InteriorWall => ({
+    id,
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    hasDoor: door,
+    doorWidth: 0.9,
+    doorPosition: 0.625,
+    description: '',
+    material,
+    photos: [],
+    level: 'G',
+  });
+  const walls = [
+    wall('west', 0, -1, 0, 7, 'concrete', true),
+    wall('pane', 6.5, -1, 6.5, 7, 'glass', false),
+  ];
+  const studs = [
+    stud('a', 2, 1),
+    stud('b', 5, 1),
+    stud('c', 2, 4),
+    stud('outW', -1, 4, false),
+    stud('outE', 8, 0, false),
+  ];
+  const build = (speedMs: number) => {
+    const engine = new SpatialEffectsEngine(undefined, 1);
+    engine.init(studs);
+    engine.setStoreyHeights({ G: 4 });
+    engine.setBuildingEnvelope(plan, []);
+    (engine as unknown as { fallenGlass: Set<string> }).fallenGlass.add('pane');
+    engine.setWind(speedMs, 0);
+    return engine;
+  };
+  const encOf = (engine: SpatialEffectsEngine) =>
+    (
+      engine as unknown as {
+        enclosureOf: (
+          room: string,
+          members: string[],
+          walls: InteriorWall[],
+          ceiling: number,
+        ) => {
+          spec: { vents: { widthM: number; windFace?: number; sillM: number; soffitM: number }[] };
+          ventReceivers: string[][];
+        } | null;
+      }
+    ).enclosureOf('room', ['a', 'b', 'c'], walls, 4);
+  const windPaOf = (
+    engine: SpatialEffectsEngine,
+    vents: { widthM: number; sillM: number; soffitM: number; windFace?: number }[],
+    receivers: string[][],
+  ) =>
+    (
+      engine as unknown as {
+        ventsSeeingNeighbours: (
+          vents: { widthM: number; sillM: number; soffitM: number; windFace?: number }[],
+          receivers: string[][],
+          room: string,
+          members: string[],
+          rooms: Map<string, string>,
+          gauges: Map<string, unknown>,
+        ) => { windPa?: number; widthM: number }[];
+      }
+    ).ventsSeeingNeighbours(vents, receivers, 'room', ['a', 'b', 'c'], new Map(), new Map());
+
+  const gust = build(10);
+  const enc = encOf(gust);
+  assert.ok(enc, 'the room should be an enclosure');
+  const door = enc.spec.vents.find((row) => Math.abs(row.widthM - 0.9) < 1e-6);
+  const pane = enc.spec.vents.find((row) => row.widthM > 1);
+  assert.ok(door?.windFace != null, 'the exterior door should face the weather');
+  assert.ok(pane?.windFace != null, 'fallen glass should face the weather');
+  const turn = (face: number, expected: number) =>
+    Math.atan2(Math.sin(face - expected), Math.cos(face - expected));
+  close(turn(door.windFace, Math.PI), 0, 1e-6, 'door follows the west wall');
+  close(turn(pane.windFace, 0), 0, 1e-6, 'glass follows the east wall');
+  const centroid = { x: 3, y: 2 };
+  const skewed = (x: number, y: number) => Math.atan2(y - centroid.y, x - centroid.x);
+  assert.ok(Math.abs(turn(skewed(-1, 4), Math.PI)) > 0.2, 'the door centroid normal is skewed');
+  assert.ok(Math.abs(turn(skewed(8, 0), 0)) > 0.2, 'the glass centroid normal is skewed');
+
+  const pressed = windPaOf(gust, enc.spec.vents, enc.ventReceivers);
+  const doorPa = pressed.find((row) => Math.abs(row.widthM - 0.9) < 1e-6)?.windPa;
+  const panePa = pressed.find((row) => row.widthM > 1)?.windPa;
+  const side = facadeSideRatio(plan, Math.PI);
+  close(doorPa ?? NaN, facadeWindPa(Math.PI, 0, 10, 1, side), 1e-6, 'windward door');
+  close(panePa ?? NaN, facadeWindPa(0, 0, 10, 2, side), 1e-6, 'leeward glass');
+  assert.ok((doorPa ?? 0) > 0, `wind should blow in the door, ${doorPa}`);
+  assert.ok((panePa ?? 0) < 0, `wind should suck at the glass, ${panePa}`);
+
+  const calm = build(0);
+  const calmEnc = encOf(calm);
+  assert.ok(calmEnc);
+  const calmPa = windPaOf(calm, calmEnc.spec.vents, calmEnc.ventReceivers);
+  assert.ok(calmPa.every((row) => row.windPa == null), 'still air writes no wind pressure');
 });
 
 test('wind shifts a tall opening off the stack neutral plane', () => {

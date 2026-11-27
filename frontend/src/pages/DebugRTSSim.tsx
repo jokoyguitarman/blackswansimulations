@@ -159,7 +159,7 @@ import {
   runEffectsPreviewAsync,
   syncIgnition,
 } from '../lib/rts/effectsPreview';
-import { HOOD_FAN_WHEN, type HoodFanWhen } from '../lib/rts/twoZone';
+import { HOOD_FAN_WHEN, windTerrainFactor, type HoodFanWhen } from '../lib/rts/twoZone';
 import {
   createSceneConfig,
   loadSceneConfig,
@@ -6793,7 +6793,7 @@ export function DebugRTSSim() {
             <div className="bg-gray-900 border border-green-800 rounded p-3 space-y-2">
               <div className="text-xs text-green-400 font-bold">Wind</div>
               <label className="block text-xs text-gray-400">
-                Speed at 10 m, m/s
+                Open-country speed at 10 m, m/s
                 <input
                   type="number"
                   min={0}
@@ -6820,8 +6820,10 @@ export function DebugRTSSim() {
                 />
               </label>
               <div className="text-xs text-gray-500">
-                0 m/s is still air. An opening below 10 m sees a slower wind. A face the wind
-                blows straight onto takes Cp 0.6, then the angle and the plan's side ratio.
+                Airport speed, open country, at 10 m. The site is suburban, so the local wind
+                at 10 m is {windTerrainFactor(10).toFixed(2)} of this, and a lower opening sees
+                less. 0 is still air. A face the wind blows straight onto takes Cp 0.6, then the
+                angle and the plan's side ratio.
               </div>
             </div>
 

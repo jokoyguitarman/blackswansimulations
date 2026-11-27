@@ -711,10 +711,11 @@ export class SpatialEffectsEngine {
    */
   private hoodFanWhen: HoodFanWhen = HOOD_FAN_WHEN;
   /**
-   * Wind at 10 m. Speed 0 is still air: outdoor vents keep the ambient
-   * gauge and the goldens do not move. Direction is where the wind is
-   * going, radians, 0 along +x. An opening uses the power law at its
-   * own height, and the plan's side ratio.
+   * Open-country station speed at 10 m. Speed 0 is still air: outdoor
+   * vents keep the ambient gauge and the goldens do not move. Direction
+   * is where the wind is going, radians, 0 along +x. The site is suburban,
+   * so an opening takes the ASHRAE terrain conversion at its own height,
+   * and the plan's side ratio.
    */
   private windSpeedMs = 0;
   private windToRad = 0;
@@ -1128,12 +1129,13 @@ export class SpatialEffectsEngine {
   }
 
   /**
-   * Wind at outdoor openings. `speedMs` is the speed at 10 m. `directionRad`
-   * is the direction the wind travels, 0 along +x, counter-clockwise. The
-   * coefficient follows Swami and Chandra (1988) with the wind angle and
-   * the plan's side ratio, and the speed at an opening follows the suburban
-   * power law down from 10 m. Speed 0, or a speed that is not a positive
-   * number, is still air.
+   * Wind at outdoor openings. `speedMs` is the open-country station speed
+   * at 10 m, not the speed at the wall. `directionRad` is the direction the
+   * wind travels, 0 along +x, counter-clockwise. The site is suburban, so
+   * the station speed is converted with the ASHRAE terrain factors before
+   * the power law to the opening. The coefficient follows Swami and Chandra
+   * (1988) with the wind angle and the plan's side ratio. Speed 0, or a
+   * speed that is not a positive number, is still air.
    */
   setWind(speedMs: number, directionRad: number): void {
     this.windSpeedMs = Number.isFinite(speedMs) && speedMs > 0 ? speedMs : 0;
