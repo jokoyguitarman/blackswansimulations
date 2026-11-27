@@ -134,7 +134,7 @@ export const stairShaftSample = {
     centerLat: CENTER_LAT,
     centerLng: CENTER_LNG,
     locationDescription:
-      'Two storeys, 12 m by 9 m, 3 m ceilings. The ground floor is furnished and the upper floor is empty. A stair at the north-west and a lift at the north-east connect them. Each floor has one open door to the outside. Detonate on the ground floor, then switch to Level 1: smoke in the bare room came up the shaft.',
+      'Two storeys, 12 m by 9 m, 3 m ceilings. The ground floor is furnished and the upper floor is empty, with no fuel, so the landing cannot ignite. A stair at the north-west and a lift at the north-east connect them. Each floor has one open door to the outside. Detonate on the ground floor, then switch to Level 1: smoke in the bare room came up the shaft.',
     pedestrianCount: 0,
     hoodFanWhen: 'discharge' as const,
     levels: LEVELS,

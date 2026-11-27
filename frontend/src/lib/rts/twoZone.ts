@@ -700,6 +700,19 @@ export interface Vent {
   soffitM: number;
   /** The other compartment. Absent means the vent opens to ambient. */
   outside?: VentOutside;
+  /**
+   * A shaft between storeys. Its flow is internal: the building budget
+   * counts the doors and the fans, and the shaft only when the two
+   * storeys disagree.
+   */
+  shaft?: boolean;
+  /**
+   * Net added to this vent's orifice, kg/s. Positive enters the room.
+   * A shaft uses it to cancel the gap between the two storeys' orifices
+   * so the kilogram that leaves one arrives in the other. The orifice
+   * itself still carries the hot stream.
+   */
+  imposedKgS?: number;
 }
 
 /**
@@ -1048,6 +1061,8 @@ export interface LimitedBurn {
   inKgS: number;
   outKgS: number;
   outByVentKgS: number[];
+  /** Inflow of each vent, same order. Already inside `inKgS`. */
+  inByVentKgS: number[];
   /** Upper-layer outflow of each vent, same order. The door jet. */
   hotOutByVentKgS: number[];
   /**
@@ -1167,6 +1182,7 @@ function limitedFrom(
     inKgS: flows.inKgS,
     outKgS: flows.outKgS,
     outByVentKgS: flows.outByVent,
+    inByVentKgS: flows.inByVent,
     hotOutByVentKgS: flows.hotOutByVent,
     farUpperInKgS: flows.farUpperInKgS,
     fanUpperKgS: flows.fanUpperKgS,
@@ -1972,6 +1988,8 @@ interface SliceFlows {
 interface Flows extends SliceFlows {
   /** Outflow of each vent, same order as the spec. */
   outByVent: number[];
+  /** Inflow of each vent, same order as the spec. Already inside `inKgS`. */
+  inByVent: number[];
   /** Upper-layer outflow of each vent. This is the door jet. */
   hotOutByVent: number[];
   /** Fan extract from the upper layer, kg/s. It leaves through the duct. */
@@ -2114,6 +2132,16 @@ function accumulateVent(
   rhoU: number,
   rhoA: number,
 ): void {
+  if (vent.imposedKgS != null && Number.isFinite(vent.imposedKgS) && vent.imposedKgS !== 0) {
+    const rate = vent.imposedKgS;
+    if (rate >= 0) {
+      into.inKgS += rate;
+      into.farUpperInKgS += rate;
+    } else {
+      into.outKgS += -rate;
+      into.hotOutKgS += -rate;
+    }
+  }
   const sill = Math.min(vent.sillM, vent.soffitM);
   const soffit = Math.max(vent.sillM, vent.soffitM);
   if (!(vent.widthM > 0) || !(soffit > sill)) return;
@@ -2186,6 +2214,7 @@ function ventFlows(
     lowerInKgS: 0,
     lowerInKT: 0,
     outByVent: vents.map(() => 0),
+    inByVent: vents.map(() => 0),
     hotOutByVent: vents.map(() => 0),
     fanUpperKgS: 0,
     fanLowerKgS: 0,
@@ -2197,9 +2226,11 @@ function ventFlows(
     const vent = vents[v];
     if (!vent) continue;
     const before = flows.outKgS;
+    const beforeIn = flows.inKgS;
     const beforeHot = flows.hotOutKgS;
     accumulateVent(flows, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
     flows.outByVent[v] = flows.outKgS - before;
+    flows.inByVent[v] = flows.inKgS - beforeIn;
     flows.hotOutByVent[v] = flows.hotOutKgS - beforeHot;
   }
   return flows;
@@ -2474,6 +2505,29 @@ export function gasMassKg(
     ? volumeBetweenM3(spec, 0, interfaceM)
     : Math.max(spec.areaM2, 0) * Math.max(interfaceM, 0);
   return upper + densityKgM3(lowerK) * lower;
+}
+
+/**
+ * Upper temperature that makes the two-layer mass `massKg` at a fixed
+ * interface. Returns null when the lower layer already weighs more than the
+ * target. A shaft-fed room sitting on the floor clamp uses this so the
+ * stored density matches the mass the vents actually moved: the pressure
+ * root may stop short of the relief the clamp requires, and cooling would
+ * otherwise invent mass in a volume that cannot grow.
+ */
+function upperTemperatureForMassKg(
+  spec: LayerSpec,
+  interfaceM: number,
+  lowerK: number,
+  massKg: number,
+): number | null {
+  const upperVolume = upperLayerVolumeM3(spec, interfaceM);
+  const lowerMass = densityKgM3(lowerK) * lowerVolumeM3(spec, interfaceM);
+  const upperMass = massKg - lowerMass;
+  if (!(upperVolume > 0) || !(upperMass > 0)) return null;
+  const fitted = (RHO_T * upperVolume) / upperMass;
+  if (!Number.isFinite(fitted)) return null;
+  return Math.min(1500, Math.max(AMBIENT_K, fitted));
 }
 
 /** Lower-layer volume, m³. A rectangular room is the floor area times the height. */
@@ -2771,8 +2825,16 @@ export function stepZone(
    * miss the earlier slices.
    */
   bookedKg: number;
+  /**
+   * Integrated net through vents that are not shafts, minus the fans,
+   * kilograms. A shaft is inside the building. The outdoor doors and the
+   * fans are what the building exchanges with the outside.
+   */
+  shellKg: number;
   /** Orifice mass that left each vent over the step, kilograms. */
   outKgByVent: number[];
+  /** Orifice mass that entered each vent over the step, kilograms. */
+  inKgByVent: number[];
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -2801,7 +2863,9 @@ function stepZoneNow(
   const hotY = spec.vents.map(() => 0);
   const hotF = spec.vents.map(() => 0);
   const outKg = spec.vents.map(() => 0);
+  const inKg = spec.vents.map(() => 0);
   let bookedKg = 0;
+  let shellKg = 0;
   let burnedFraction = 1;
   let phi = 0;
   let lastIn = 0;
@@ -3069,7 +3133,15 @@ function stepZoneNow(
       const floor = 0.05;
       const ceil = spec.ceilingM - 0.02;
       const zApplied = Math.min(ceil, Math.max(floor, zFlow));
-      const vMass = zFlow < floor ? area * zFlow : lowerVolumeM3(spec, zApplied);
+      // A jet that would push the interface through the floor cannot store
+      // that volume. The root balances the clamped room, and the inflow the
+      // layer cannot hold leaves through the other vents.
+      const throughFloor = depositKgS > 0 && zFlow < floor && spec.vents.some((vent) => vent.shaft);
+      const vMass = throughFloor
+        ? lowerVolumeM3(spec, zApplied)
+        : zFlow < floor
+          ? area * zFlow
+          : lowerVolumeM3(spec, zApplied);
       const upperMass = densityKgM3(tempNext) * upperLayerVolumeM3(spec, zApplied);
       const lowerMass = densityKgM3(lowerNext) * vMass;
       const massRateKgS =
@@ -3155,8 +3227,19 @@ function stepZoneNow(
     lastLowerIn = lowerInKgS;
     bookedKg +=
       (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS) * slice;
+    let shaftNet = 0;
+    const ventIn = limited.inByVentKgS;
+    const ventOut = limited.outByVentKgS;
+    for (let v = 0; v < spec.vents.length; v++) {
+      if (!spec.vents[v]?.shaft) continue;
+      shaftNet += (ventIn[v] ?? 0) - (ventOut[v] ?? 0);
+    }
+    shellKg +=
+      (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS - shaftNet) *
+      slice;
     const outRates = limited.outByVentKgS;
     for (let v = 0; v < outKg.length; v++) outKg[v] = (outKg[v] ?? 0) + (outRates[v] ?? 0) * slice;
+    for (let v = 0; v < inKg.length; v++) inKg[v] = (inKg[v] ?? 0) + (ventIn[v] ?? 0) * slice;
     const rates = limited.hotOutByVentKgS;
     for (let v = 0; v < hotKg.length; v++) {
       const doorDm = (rates[v] ?? 0) * slice;
@@ -3203,9 +3286,19 @@ function stepZoneNow(
     }
     yL = mL2 > 1e-4 ? Math.min(1, Math.max(0, o2L / mL2)) : 0;
     yU = mU2 > 1e-4 ? Math.min(1, Math.max(0, o2U / mU2)) : O2_AMBIENT_MASS;
+    const zStart = z;
+    const tempStart = temp;
+    const lowerStart = lower;
     temp = book.tempNext;
     lower = book.lowerK;
     z = book.z;
+    if (spec.vents.some((vent) => vent.shaft) && z <= INTERFACE_FLOOR_M + 1e-9) {
+      const net =
+        (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS) * slice;
+      const target = gasMassKg(spec, zStart, tempStart, lowerStart) + net;
+      const fitted = upperTemperatureForMassKg(spec, z, lower, target);
+      if (fitted != null) temp = fitted;
+    }
     const carried = mass > 1e-6 ? (soot / mass) * hotSum * slice : 0;
     const extracted = mass > 1e-6 ? (soot / mass) * limited.fanUpperKgS * slice : 0;
     const displacedSoot = mass > 1e-6 ? (soot / mass) * sliceExtra : 0;
@@ -3280,7 +3373,9 @@ function stepZoneNow(
     lowerLossKw: lossSlices > 0 ? lowerLossSum / lossSlices : 0,
     lowerInKgS: lastLowerIn,
     bookedKg,
+    shellKg,
     outKgByVent: outKg,
+    inKgByVent: inKg,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }

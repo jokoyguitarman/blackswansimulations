@@ -609,6 +609,18 @@ export class SpatialEffectsEngine {
    * other storey has no layer yet. The hold is that outflow's destination.
    */
   ventNetKg = 0;
+  /**
+   * Kilograms exchanged with the outside since init: every vent that is
+   * not a shaft, minus the fans, plus ambient air booked when a shaft
+   * parcel takes its place. The hold is mass still in the building.
+   */
+  shellNetKg = 0;
+  /** Last preview's shaft net, kg/s into the room, by room and link. */
+  private previewNets: { room: string; key: string; netKgS: number }[] = [];
+  /** Agreed shaft net for the real solve, kg/s into the room. */
+  private imposedShaft = new Map<string, number>();
+  /** The real solve books the agreed flow. A preview still uses the orifice. */
+  private useImposedShaft = false;
   /** Shaft vents opened during the step that is running, filled in after each pressure root. */
   private shaftMoves: ShaftMove[] = [];
   private fireSim: FireSimulation;
@@ -730,6 +742,7 @@ export class SpatialEffectsEngine {
     this.shaftHold.clear();
     this.shaftFumeTo.clear();
     this.ventNetKg = 0;
+    this.shellNetKg = 0;
     this.sootK.clear();
     this.blockedWalls = null;
     this.blockedGen = -1;
@@ -2319,6 +2332,8 @@ export class SpatialEffectsEngine {
       ageS: number;
       zone: ZoneState;
       room: string;
+      /** Predict this step's gauge so the other storey's shaft uses it. */
+      preview?: () => VentOutside;
       run: (
         hold: ReadonlySet<string>,
         startT: ReadonlyMap<string, number>,
@@ -2411,6 +2426,24 @@ export class SpatialEffectsEngine {
           ageS: zone.ageS,
           zone,
           room,
+          ...(this.touchesShaft(members)
+            ? {
+                preview: () =>
+                  this.previewShaftGauge(
+                    room,
+                    members,
+                    zone,
+                    spec,
+                    dt,
+                    sootRate,
+                    incoming,
+                    enc.ventReceivers,
+                    gauges,
+                    groups,
+                    zone.lowerK ?? AMBIENT_K,
+                  ),
+              }
+            : {}),
           run: (hold, startT) => {
             const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
             const solved = this.stepThroughShafts(
@@ -2510,7 +2543,21 @@ export class SpatialEffectsEngine {
         prev?.active === true &&
         rise >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
         depth >= jet * LAYER_OFF_FRACTION;
-      const active = hold || formsSustainedLayer(depth, ceiling, rise, true);
+      // A shaft landing that ignites already holds a deep jet layer. The
+      // steady fire correlation is thinner than that layer and would retire
+      // it, dropping the smoke the stair just delivered.
+      const kept =
+        this.touchesShaft(members) &&
+        prev?.active === true &&
+        (formsSustainedLayer(
+          Math.max(0, ceiling - prev.zone.interfaceM),
+          ceiling,
+          prev.zone.upperK - AMBIENT_K,
+          true,
+        ) ||
+          (prev.zone.upperK - AMBIENT_K >= DISTINCT_LAYER_RISE_K * LAYER_OFF_FRACTION &&
+            ceiling - prev.zone.interfaceM >= jet * LAYER_OFF_FRACTION));
+      const active = hold || kept || formsSustainedLayer(depth, ceiling, rise, true);
       if (!active) {
         retire();
         this.forgetFloorPressure(room);
@@ -2544,6 +2591,24 @@ export class SpatialEffectsEngine {
         ageS: zone.ageS,
         zone,
         room,
+        ...(this.touchesShaft(members)
+          ? {
+              preview: () =>
+                this.previewShaftGauge(
+                  room,
+                  members,
+                  zone,
+                  spec,
+                  dt,
+                  sootRate,
+                  fuelJet,
+                  enc.ventReceivers,
+                  gauges,
+                  groups,
+                  zone.lowerK ?? AMBIENT_K,
+                ),
+            }
+          : {}),
         run: (hold, startT) => {
           const seeded = this.zoneWithSharedSheet(zone, spec.boundaries, hold, startT);
           const solved = this.stepThroughShafts(
@@ -2612,6 +2677,24 @@ export class SpatialEffectsEngine {
       }
       startT.set(id, temp != null && temp > AMBIENT_K ? temp : AMBIENT_K);
     }
+    // Each storey books its own orifice against the other's last gauge,
+    // and those two flows are not equal. The preview measures the gap.
+    // The real solve keeps the orifice and adds half the gap at each end,
+    // so the kilogram that leaves one storey arrives in the other. The
+    // hot stream stays on the orifice.
+    if (this.verticalPairs.length > 0) {
+      this.useImposedShaft = false;
+      this.imposedShaft = new Map();
+      for (let pass = 0; pass < 2; pass++) {
+        this.previewNets = [];
+        for (const job of pending) {
+          if (!job.preview || !gauges.has(job.room)) continue;
+          job.preview();
+        }
+        this.agreeShaftFlows();
+        this.useImposedShaft = true;
+      }
+    }
     const finished: Array<{
       room: string;
       boundaries: readonly Boundary[];
@@ -2624,6 +2707,7 @@ export class SpatialEffectsEngine {
         ...job.run(hold, startT),
       });
     }
+    this.useImposedShaft = false;
     this.applySharedSheetGains(finished, startT);
     this.relaxUnclaimedSheets(dt);
     this.publishSheetTemperatures();
@@ -2643,10 +2727,10 @@ export class SpatialEffectsEngine {
 
   /**
    * Solve one room with its doors plus a shaft orifice into each other
-   * storey. The other storey's gauge is lagged, and the stack is a shift
-   * of that gauge, the same way a neighbour door already lags. A storey
-   * with no layer yet is a still column at the stack pressure, and only
-   * the hot part of the outflow is kept for it.
+   * storey. A preview measures the two orifices, and the real solve adds
+   * the gap so the same kilograms leave one storey and enter the other.
+   * A storey with no layer yet is a still column at the stack pressure,
+   * and only the hot part of the outflow is kept for it.
    */
   private stepThroughShafts(
     room: string,
@@ -2661,12 +2745,14 @@ export class SpatialEffectsEngine {
     gauges: ReadonlyMap<string, VentOutside>,
     groups: ReadonlyMap<string, string[]>,
     lowerK: number,
+    commit = true,
   ): {
     stepped: ReturnType<typeof stepZone>;
     vents: Vent[];
     receivers: string[][];
     moves: ShaftMove[];
   } {
+    const movesBefore = this.shaftMoves.length;
     const planned = this.planShaftVents(
       room,
       members,
@@ -2677,9 +2763,110 @@ export class SpatialEffectsEngine {
       groups,
     );
     const stepped = stepZone(state, planned.spec, dt, sootGPerS, jet, hold);
+    if (!commit) {
+      this.noteShaftPreview(room, planned.moves, stepped, dt);
+      this.shaftMoves.length = movesBefore;
+      return { stepped, vents: planned.vents, receivers: planned.receivers, moves: [] };
+    }
     this.ventNetKg += stepped.bookedKg;
+    this.shellNetKg += stepped.shellKg;
     this.fillShaftMoves(planned.moves, stepped, lowerK);
     return { stepped, vents: planned.vents, receivers: planned.receivers, moves: planned.moves };
+  }
+
+  /** True when this room is one end of a stair or a lift. */
+  private touchesShaft(members: readonly string[]): boolean {
+    if (this.verticalPairs.length === 0) return false;
+    for (const pair of this.verticalPairs) {
+      const lower = members.includes(pair.lower);
+      const upper = members.includes(pair.upper);
+      if (lower !== upper) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Thrown-away solve on this step's starting gauge. The shaft nets it
+   * records are what the two orifices would book before the correction.
+   */
+  private previewShaftGauge(
+    room: string,
+    members: readonly string[],
+    state: ZoneState,
+    spec: LayerSpec,
+    dt: number,
+    sootGPerS: number,
+    jet: DoorJetInflow | null | undefined,
+    doorReceivers: readonly (readonly string[])[],
+    gauges: ReadonlyMap<string, VentOutside>,
+    groups: ReadonlyMap<string, string[]>,
+    lowerK: number,
+  ): VentOutside {
+    const seeded: ZoneState = {
+      ...state,
+      ...(state.sheetK ? { sheetK: { ...state.sheetK } } : {}),
+    };
+    const solved = this.stepThroughShafts(
+      room,
+      members,
+      seeded,
+      spec,
+      dt,
+      sootGPerS,
+      jet,
+      undefined,
+      doorReceivers,
+      gauges,
+      groups,
+      lowerK,
+      false,
+    );
+    const next = solved.stepped.state;
+    return {
+      interfaceM: next.interfaceM,
+      upperK: next.upperK,
+      floorPressurePa: solved.stepped.floorPressurePa,
+      ...(next.lowerK != null ? { lowerK: next.lowerK } : {}),
+    };
+  }
+
+  /** Shaft net from a thrown-away solve, kg/s into the room. */
+  private noteShaftPreview(
+    room: string,
+    moves: readonly ShaftMove[],
+    stepped: { inKgByVent: readonly number[]; outKgByVent: readonly number[] },
+    dt: number,
+  ): void {
+    const scale = dt > 0 ? 1 / dt : 0;
+    for (const move of moves) {
+      const inn = stepped.inKgByVent[move.ventIndex] ?? 0;
+      const out = stepped.outKgByVent[move.ventIndex] ?? 0;
+      this.previewNets.push({ room, key: move.key, netKgS: (inn - out) * scale });
+    }
+  }
+
+  /**
+   * Split the preview gap evenly. Each storey keeps its own orifice, and
+   * both add the same correction so the two nets sum to zero.
+   */
+  private agreeShaftFlows(): void {
+    const byKey = new Map<string, { room: string; netKgS: number }[]>();
+    for (const row of this.previewNets) {
+      const list = byKey.get(row.key);
+      if (list) list.push(row);
+      else byKey.set(row.key, [row]);
+    }
+    for (const [key, rows] of byKey) {
+      if (rows.length < 2) continue;
+      const a = rows[0]!;
+      const b = rows[1]!;
+      const fix = -(a.netKgS + b.netKgS) / 2;
+      if (!(Math.abs(fix) > 1e-6)) continue;
+      const aKey = `${a.room}\n${key}`;
+      const bKey = `${b.room}\n${key}`;
+      this.imposedShaft.set(aKey, (this.imposedShaft.get(aKey) ?? 0) + fix);
+      this.imposedShaft.set(bKey, (this.imposedShaft.get(bKey) ?? 0) + fix);
+    }
   }
 
   private planShaftVents(
@@ -2756,7 +2943,16 @@ export class SpatialEffectsEngine {
         sootG: 0,
         lowerK: AMBIENT_K,
       };
-      vents.push({ widthM: width, sillM: 0, soffitM: opening, outside });
+      vents.push({
+        widthM: width,
+        sillM: 0,
+        soffitM: opening,
+        outside,
+        shaft: true,
+        ...(this.useImposedShaft && this.imposedShaft.has(`${room}\n${key}`)
+          ? { imposedKgS: this.imposedShaft.get(`${room}\n${key}`) }
+          : {}),
+      });
       receivers.push(otherActive ? (groups.get(otherRoom) ?? []).slice() : []);
       moves.push(move);
       this.shaftMoves.push(move);
@@ -2830,12 +3026,17 @@ export class SpatialEffectsEngine {
           inflowKg += hot;
           inflowKT += hot * move.hotT;
         }
-        if (!move.otherActive && hot > 0) {
-          const soot = move.hotKg > 0 ? move.sootG * (hot / move.hotKg) : 0;
-          this.parkShaftHold(move.toRoom, hot, move.hotT, soot, move.hotF * hot, move.hotY * hot);
-          // The pressure root already counted this kilogram as leaving. The
-          // hold still has it, so the books take it back.
-          this.ventNetKg += hot;
+        if (!move.otherActive && move.outKg > 0) {
+          if (hot > 0) {
+            const soot = move.hotKg > 0 ? move.sootG * (hot / move.hotKg) : 0;
+            this.parkShaftHold(move.toRoom, hot, move.hotT, soot, move.hotF * hot, move.hotY * hot);
+            // The pressure root already counted this kilogram as leaving. The
+            // hold still has it, so the books take it back.
+            this.ventNetKg += hot;
+          }
+          // Whatever did not stay in the hold went into a storey with no
+          // layer. That storey is the outdoor air, so the building did lose it.
+          this.shellNetKg -= Math.max(0, move.outKg - hot);
         }
         if (move.hotKg > 0) {
           const from = this.shaftFumeTo.get(move.sourceId) ?? new Set<string>();
@@ -2931,6 +3132,10 @@ export class SpatialEffectsEngine {
     // becomes the layer.
     if (temp < AMBIENT_K + DISTINCT_LAYER_RISE_K || natural < 0.02) return;
     const gas = this.parcelGas(hold, area, ceilingM);
+    const depth = Math.max(0, ceilingM - gas.interfaceM);
+    // The parcel takes the place of the ambient air that filled that slice.
+    // The outdoor books record the air that left.
+    this.shellNetKg -= shaftDensityKgM3(AMBIENT_K) * area * depth;
     const prev = this.layerState.get(room);
     this.layerState.set(room, {
       active: true,

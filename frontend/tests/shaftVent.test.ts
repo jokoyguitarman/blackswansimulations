@@ -146,7 +146,7 @@ describe('shaft vent', () => {
   });
 });
 
-function roomWalls(level: string): InteriorWall[] {
+function roomWalls(level: string, doorWidth = 0.9): InteriorWall[] {
   const wall = (
     id: string,
     x1: number,
@@ -159,7 +159,7 @@ function roomWalls(level: string): InteriorWall[] {
     start: { x: x1, y: y1 },
     end: { x: x2, y: y2 },
     hasDoor: door,
-    doorWidth: 0.9,
+    doorWidth,
     doorPosition: 0.5,
     description: '',
     material: 'concrete',
@@ -195,7 +195,7 @@ function stud(
 }
 
 /** Two studs and an outside neighbour, on both floors, with a door. */
-function shaftRoom() {
+function shaftRoom(doorWidth = 0.9) {
   const studs = [
     stud('g0', 0, 0, 'G', true),
     stud('g1', 3, 0, 'G', true),
@@ -204,7 +204,7 @@ function shaftRoom() {
     stud('u1', 3, 0, 'L1', true),
     stud('uout', 6, 0, 'L1', false),
   ];
-  const walls = [...roomWalls('G'), ...roomWalls('L1')];
+  const walls = [...roomWalls('G', doorWidth), ...roomWalls('L1', doorWidth)];
   const engine = new SpatialEffectsEngine(undefined, 1);
   engine.init(studs);
   engine.setStoreyHeights({ G: 2.6, L1: 2.6 });
@@ -357,6 +357,48 @@ describe('shaft between two storeys', () => {
     );
     assert.ok(peakHold > 0, `no gas waited in the shaft hold (residual ${residual.toFixed(1)} kg)`);
   });
+
+  test('a clamped upper storey conserves mass through the outdoor vents and the hold', () => {
+    const { engine, walls } = shaftRoom(0.25);
+    const fuel = hotFuel();
+    engine.setFuelCells(
+      new Map([
+        ['g0', fuel],
+        ['g1', fuel],
+      ]),
+    );
+    const fire = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    fire.ignite(['g0', 'g1']);
+    const run = buildingBudget(engine, walls, 600);
+    assert.ok(
+      run.minInterface <= 0.051,
+      `upper interface ${run.minInterface} never reached the floor`,
+    );
+    assert.ok(
+      Math.abs(run.residual) < 6,
+      `mass residual ${run.residual.toFixed(1)} kg at T+600 (peak ${run.peak.toFixed(1)} kg)`,
+    );
+  });
+
+  test('a fuelled landing conserves mass', () => {
+    const { engine, walls } = shaftRoom();
+    const fuel = hotFuel();
+    engine.setFuelCells(
+      new Map([
+        ['g0', fuel],
+        ['g1', fuel],
+        ['u0', defaultLightFuel()],
+      ]),
+    );
+    const fire = (engine as unknown as { fireSim: FireSimulation }).fireSim;
+    fire.ignite(['g0', 'g1']);
+    const run = buildingBudget(engine, walls, 240);
+    assert.equal(fire.states.get('u0')?.state, 'burning');
+    assert.ok(
+      Math.abs(run.residual) < 6,
+      `mass residual ${run.residual.toFixed(1)} kg at T+240 (peak ${run.peak.toFixed(1)} kg)`,
+    );
+  });
 });
 
 interface BudgetLayer {
@@ -391,6 +433,37 @@ function holdMass(hold: Map<string, { massKg: number }>): number {
   return mass;
 }
 
+/** Building residual: storey mass plus the hold, minus outdoor vents and fans. */
+function buildingBudget(
+  engine: SpatialEffectsEngine,
+  walls: InteriorWall[],
+  steps: number,
+): { residual: number; peak: number; minInterface: number } {
+  const view = engine as unknown as {
+    layerState: Map<string, BudgetLayer>;
+    shaftHold: Map<string, { massKg: number }>;
+    shellNetKg: number;
+  };
+  const mass = () => storeyMass(view) + holdMass(view.shaftHold);
+  let prev = mass();
+  let residual = 0;
+  let peak = 0;
+  let minInterface = 99;
+  for (let t = 1; t <= steps; t++) {
+    const netBefore = view.shellNetKg;
+    engine.step(1, walls, []);
+    const upper = [...view.layerState.values()].find(
+      (row) => row.active && row.members.includes('u0'),
+    );
+    if (upper && upper.zone.interfaceM < minInterface) minInterface = upper.zone.interfaceM;
+    const now = mass();
+    residual += now - prev - (view.shellNetKg - netBefore);
+    if (Math.abs(residual) > Math.abs(peak)) peak = residual;
+    prev = now;
+  }
+  return { residual, peak, minInterface };
+}
+
 describe('stair shaft scene', () => {
   test('the upper floor is bare and both shafts are there', () => {
     const scene = stairShaftSample.scene;
@@ -400,6 +473,7 @@ describe('stair shaft scene', () => {
     );
     assert.equal(scene.levels[0]?.heightM, 3);
     assert.equal(scene.levels[1]?.heightM, 3);
+    assert.match(scene.locationDescription, /cannot ignite/);
     assert.deepEqual(
       scene.stairwells.map((shaft) => shaft.kind),
       ['stair', 'lift'],
