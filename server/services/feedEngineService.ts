@@ -8,6 +8,8 @@ import {
   groupChatMessage,
   phoneCallMessage,
   phoneCaller,
+  selectInjectTeamChannels,
+  UNKNOWN_CALLER,
   type NpcChatMessage,
 } from '../lib/injectChatMessages.js';
 
@@ -47,6 +49,9 @@ export interface DeliveryConfig {
   /** Country whose feed / news this content belongs in (social_feed / news only). */
   country?: string;
 }
+
+/** Phone-call injects are also written to chat; see routeToPhoneCall. */
+const CALLS_DELIVERED_TO_CHAT = true;
 
 export interface TeamTargeting {
   /** Resolved member user ids; null means universal delivery. */
@@ -701,8 +706,9 @@ async function postNpcChatMessage(
       .select('team_name')
       .eq('session_id', sessionId)
       .in('user_id', targeting.playerIds);
-    const teamNames = Array.from(
-      new Set((teamRows ?? []).map((r) => String((r as { team_name: string }).team_name))),
+    const teamNames = selectInjectTeamChannels(
+      (teamRows ?? []).map((r) => String((r as { team_name: string }).team_name)),
+      targeting.teamNames,
     );
     if (teamNames.length > 0) {
       const { ensureTeamChannels } = await import('./channelService.js');
@@ -715,8 +721,15 @@ async function postNpcChatMessage(
         .in('team_name', teamNames);
       channelIds = (teamChannels ?? []).map((c) => String((c as { id: string }).id));
     }
-  }
-  if (channelIds.length === 0) {
+    // Team-only content must not fall back to a session-wide channel.
+    if (channelIds.length === 0) {
+      logger.warn(
+        { sessionId, injectId, teamNames: targeting.teamNames },
+        'No team channel for scoped chat inject; not delivered',
+      );
+      return 0;
+    }
+  } else {
     const type = channelType || 'public';
     const { data: channel } = await supabaseAdmin
       .from('chat_channels')
@@ -768,18 +781,26 @@ async function routeToPhoneCall(
   config: DeliveryConfig,
   targeting: TeamTargeting | null = null,
 ): Promise<void> {
-  const caller = phoneCaller(inject, config);
+  const caller = phoneCaller(config);
   await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'phone_call.incoming',
     data: {
       inject_id: injectId,
-      caller_name: caller.name,
+      caller_name: caller.name ?? UNKNOWN_CALLER,
+      title: inject.title,
       caller_number: caller.number,
       dialogue: inject.content,
     },
     timestamp: new Date().toISOString(),
   });
 
+  // Until a Phone app consumes phone_call.incoming, the chat line is the only place a player can
+  // see the call. When one lands, turn this off (or make it a missed/answered log line) so calls
+  // aren't delivered twice.
+  if (!CALLS_DELIVERED_TO_CHAT) {
+    logger.info({ sessionId, injectId }, 'Inject routed to phone call');
+    return;
+  }
   const channels = await postNpcChatMessage(
     sessionId,
     injectId,

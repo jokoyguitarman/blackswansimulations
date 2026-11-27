@@ -16,6 +16,7 @@ export interface ChatInjectConfig {
   caller?: unknown;
   callback_number?: string;
   number?: string;
+  caller_id?: unknown;
 }
 
 export interface NpcChatMessage {
@@ -55,42 +56,74 @@ export function groupChatMessage(
   };
 }
 
-/** Caller fields as authored across scenario generators (from_name / caller_name / …). */
-export function phoneCaller(
-  inject: { title: string },
-  config: ChatInjectConfig,
-): { name: string; number: string | null } {
-  const name =
-    firstString(
-      config.from_name,
-      config.caller_name,
-      config.caller_display_name,
-      config.caller,
-      config.sender_name,
-      config.author_display_name,
-    ) ??
-    firstString(inject.title) ??
-    'Unknown caller';
-  const number = firstString(
-    config.from_number,
-    config.from_address,
-    config.callback_number,
-    config.number,
+/** At least six digits and only phone punctuation; rejects emails and free-text ids. */
+export function looksLikePhoneNumber(value: string): boolean {
+  return /^\+?[\d\s().-]+$/.test(value) && (value.match(/\d/g)?.length ?? 0) >= 6;
+}
+
+/**
+ * Caller fields as authored across scenario generators (from_name / caller_name / caller_id …).
+ * `name` is null when nothing names the caller; `caller_id` counts as a number when it looks like
+ * one and as a name otherwise.
+ */
+export function phoneCaller(config: ChatInjectConfig): {
+  name: string | null;
+  number: string | null;
+} {
+  const callerId = firstString(config.caller_id);
+  const callerIdIsNumber = callerId !== null && looksLikePhoneNumber(callerId);
+  const name = firstString(
+    config.from_name,
+    config.caller_name,
+    config.caller_display_name,
+    config.caller,
+    callerIdIsNumber ? null : callerId,
+    config.sender_name,
+    config.author_display_name,
   );
+  const number =
+    [
+      firstString(config.from_number),
+      callerIdIsNumber ? callerId : null,
+      firstString(config.from_address),
+      firstString(config.callback_number),
+      firstString(config.number),
+    ].find((v): v is string => v !== null && looksLikePhoneNumber(v)) ?? null;
   return { name, number };
 }
+
+export const UNKNOWN_CALLER = 'Unknown caller';
 
 export function phoneCallMessage(
   inject: { title: string; content: string },
   config: ChatInjectConfig,
 ): NpcChatMessage {
-  const caller = phoneCaller(inject, config);
-  const header = `📞 Call from ${caller.name}${caller.number ? ` (${caller.number})` : ''}`;
+  const caller = phoneCaller(config);
+  const number = caller.number ? ` (${caller.number})` : '';
+  const header = caller.name
+    ? `📞 Call from ${caller.name}${number}`
+    : `📞 Incoming call${number}: ${inject.title.trim() || 'no subject'}`;
+  const senderName = caller.name ?? UNKNOWN_CALLER;
   const body = inject.content.trim();
   return {
-    sender_stakeholder_id: npcSenderStakeholderId(caller.name, config.stakeholder_id),
-    sender_display_name: caller.name,
+    sender_stakeholder_id: npcSenderStakeholderId(senderName, config.stakeholder_id),
+    sender_display_name: senderName,
     content: body ? `${header}\n\n${body}` : header,
     type: 'text',
   };
+}
+
+/**
+ * Teams whose channels a scoped chat inject is written to. The players' teams that were targeted
+ * by name; when none match (target resolved by function key, or org-only scope) all the players'
+ * teams. Never widens beyond the targeted players' own teams.
+ */
+export function selectInjectTeamChannels(
+  playerTeamNames: readonly string[],
+  targetTeamNames: readonly string[],
+): string[] {
+  const teams = Array.from(new Set(playerTeamNames));
+  const named = new Set(targetTeamNames.filter((t) => t !== 'all' && !t.startsWith('org:')));
+  const exact = teams.filter((t) => named.has(t));
+  return exact.length > 0 ? exact : teams;
 }
