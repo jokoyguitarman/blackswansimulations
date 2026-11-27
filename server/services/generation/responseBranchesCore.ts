@@ -4,13 +4,18 @@
  * and counts conditional coverage. No database and no network.
  */
 
+import { logger } from '../../lib/logger.js';
 import { isValidInjectKey, slugifyInjectTitle } from '../../lib/injectKey.js';
 import {
   deriveGenericRubric,
   readAuthoredRubric,
   type ResponseRubric,
 } from '../judging/judgeCore.js';
-import { collectConditionKeys, parseConditionKey } from '../conditions/conditionCatalog.js';
+import {
+  collectConditionKeys,
+  parseConditionKey,
+  type ConditionScope,
+} from '../conditions/conditionCatalog.js';
 
 export const DELIVERY_APPS = [
   'social_feed',
@@ -177,7 +182,17 @@ export function postProcessResponseBranches(
     ...parents.map((parent) => parent.inject_key),
     ...drafted.map((item) => text(item.branch.delivery_config?.inject_key) || ''),
   ]);
-  const branches = drafted.map((item) => finishConditions(item, known, durationMinutes));
+  const branches = drafted
+    .map((item) => finishConditions(item, known, durationMinutes))
+    .filter((branch) => {
+      if (branch.delivery_config?.app !== 'npc_dm') return true;
+      if (text(branch.delivery_config.stakeholder_id)) return true;
+      logger.warn(
+        { event: 'conditional_branch_dropped_no_stakeholder', title: branch.title },
+        'Dropping generated npc_dm branch with no stakeholder',
+      );
+      return false;
+    });
   return { branches, rubrics };
 }
 
@@ -267,7 +282,7 @@ function finishConditions(
   branch.conditions_to_appear = { all: appearKeysFinal };
   branch.conditions_to_cancel = cancelMissing ? [defaultCancel(kind, parent)] : cancel;
   const config = branch.delivery_config ?? {};
-  if (config.app === 'phone_call') clampCallScript(config);
+  if (config.app === 'phone_call') repairGeneratedPhone(config);
   if (config.app === 'npc_dm' && parent.stakeholder_id && !text(config.stakeholder_id)) {
     config.stakeholder_id = parent.stakeholder_id;
   }
@@ -302,7 +317,11 @@ function normaliseRubric(raw: Record<string, unknown>, parent: BranchParent): Re
     if (criteria.length >= 3) break;
     if (!criteria.includes(criterion)) criteria.push(criterion);
   }
-  return { ...authored, criteria };
+  return {
+    ...authored,
+    criteria,
+    pass_threshold: Math.min(authored.pass_threshold, criteria.length),
+  };
 }
 
 function genericRubric(parent: BranchParent): ResponseRubric {
@@ -379,9 +398,29 @@ function clampConditionWindow(key: string, durationMinutes: number): string {
     return String(cap);
   });
   if (!changed) return key;
+  return rebuildConditionKey(parsed, args);
+}
+
+function rebuildConditionKey(
+  parsed: Exclude<ReturnType<typeof parseConditionKey>, { error: string }>,
+  args: string[],
+): string {
   const body =
-    parsed.def.kind === 'fixed' || args.length === 0 ? parsed.def.id : `${parsed.def.id}:${args.join(':')}`;
-  return parsed.scope?.team ? `${body}|team=${parsed.scope.team}` : body;
+    parsed.def.kind === 'fixed' || args.length === 0
+      ? parsed.def.id
+      : `${parsed.def.id}:${args.join(':')}`;
+  return `${body}${formatScope(parsed.scope)}`;
+}
+
+function formatScope(scope: ConditionScope | undefined): string {
+  if (!scope) return '';
+  const name = scope.team
+    ? 'team'
+    : scope.role
+      ? 'role'
+      : Object.keys(scope).find((key) => scope[key]);
+  if (!name || !scope[name]) return '';
+  return `|${name}=${scope[name]}`;
 }
 
 function clampEligible(value: unknown, durationMinutes: number): number {
@@ -389,6 +428,30 @@ function clampEligible(value: unknown, durationMinutes: number): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.min(cap, Math.floor(n));
+}
+
+function repairGeneratedPhone(config: Record<string, unknown>): void {
+  if (config.ring_seconds != null) config.ring_seconds = clampLimit(config.ring_seconds, 10, 60);
+  if (config.max_call_seconds != null) {
+    config.max_call_seconds = clampLimit(config.max_call_seconds, 60, 900);
+  }
+  if (config.redial != null && typeof config.redial !== 'object') {
+    delete config.redial;
+  } else if (config.redial && typeof config.redial === 'object') {
+    const redial = config.redial as Record<string, unknown>;
+    if (redial.attempts != null) redial.attempts = clampLimit(redial.attempts, 1, 6);
+    if (redial.interval_minutes != null) {
+      redial.interval_minutes = clampLimit(redial.interval_minutes, 1, 30);
+    }
+  }
+  if (config.call_script != null && typeof config.call_script !== 'object') delete config.call_script;
+  clampCallScript(config);
+}
+
+function clampLimit(value: unknown, min: number, max: number): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
 }
 
 function clampCallScript(config: Record<string, unknown>): void {
@@ -492,8 +555,7 @@ function swapKey(key: string, from: string, to: string): string {
     return arg;
   });
   if (!changed) return key;
-  const body = `${parsed.def.id}:${args.join(':')}`;
-  return parsed.scope?.team ? `${body}|team=${parsed.scope.team}` : body;
+  return rebuildConditionKey(parsed, args);
 }
 
 function typeForApp(app: DeliveryApp): string {

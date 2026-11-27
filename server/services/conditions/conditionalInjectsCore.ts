@@ -98,9 +98,12 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
   const issues: ConditionalInjectIssue[] = [];
   const duration = scenario.duration_minutes;
 
-  for (const inject of scenario.injects) dropUnknownKeys(inject);
+  const withKnownKeys: T[] = [];
+  for (const inject of scenario.injects) {
+    if (keepAfterUnknownKeys(inject)) withKnownKeys.push(inject);
+  }
 
-  const withParents = dropOrphanBranches([...scenario.injects]);
+  const withParents = repairGeneratedBranches(dropOrphanBranches(withKnownKeys), issues);
   const apps = appByKey(withParents);
 
   withParents.forEach((inject, index) => {
@@ -116,17 +119,159 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
   return { injects: [...withParents], issues };
 }
 
-function dropUnknownKeys(inject: ConditionalInjectInput): void {
+function keepAfterUnknownKeys(inject: ConditionalInjectInput): boolean {
   const retained = retainKnownConditions(inject.conditions_to_appear, inject.conditions_to_cancel);
-  if (retained.dropped.length === 0) return;
+  if (retained.dropped.length === 0) return true;
   for (const key of retained.dropped) {
     logger.warn(
       { event: 'conditional_invalid_key_dropped', key, title: inject.title },
       'Dropping unknown condition key',
     );
   }
+  const conditional =
+    inject.trigger_time_minutes == null &&
+    !(typeof inject.trigger_condition === 'string' && inject.trigger_condition.trim() !== '');
+  if (retained.emptied && conditional) {
+    logger.warn(
+      { event: 'generated_inject_dropped_empty_conditions', title: inject.title },
+      'Dropping generated inject whose conditions were all unknown',
+    );
+    return false;
+  }
   inject.conditions_to_appear = retained.conditions_to_appear ?? undefined;
   inject.conditions_to_cancel = retained.conditions_to_cancel;
+  return true;
+}
+
+function isGeneratedBranch(inject: ConditionalInjectInput): boolean {
+  const branch = inject.delivery_config?.branch;
+  return typeof branch === 'string' && branch.length > 0;
+}
+
+/**
+ * A generated branch must not fail the compile. Repair a phone field that is
+ * outside the call limits, and drop an npc_dm that still has no stakeholder.
+ * Author-written injects keep the error path below.
+ */
+function repairGeneratedBranches<T extends ConditionalInjectInput>(
+  rows: readonly T[],
+  issues: ConditionalInjectIssue[],
+): T[] {
+  return rows.filter((inject) => {
+    if (!isGeneratedBranch(inject)) return true;
+    const config = inject.delivery_config;
+    if (!config) return true;
+    const path = injectPath(inject, 0);
+    if (config.app === 'npc_dm') {
+      const stakeholder = config.stakeholder_id;
+      if (typeof stakeholder !== 'string' || !stakeholder.trim()) {
+        logger.warn(
+          { event: 'conditional_branch_dropped_no_stakeholder', title: inject.title },
+          'Dropping generated npc_dm branch with no stakeholder',
+        );
+        issues.push({
+          code: 'MO-COND-009',
+          path,
+          severity: 'warning',
+          message: `Inject "${inject.title ?? ''}" is a generated npc_dm with no stakeholder_id and was dropped`,
+        });
+        return false;
+      }
+    }
+    if (config.app === 'phone_call') {
+      const before = phoneConfigError(config);
+      if (before) {
+        repairPhoneConfig(config);
+        const after = phoneConfigError(config);
+        if (after) {
+          logger.warn(
+            { event: 'conditional_branch_dropped_phone', title: inject.title, error: after },
+            'Dropping generated phone branch that could not be repaired',
+          );
+          issues.push({
+            code: 'MO-COND-008',
+            path,
+            severity: 'warning',
+            message: `Inject "${inject.title ?? ''}" was dropped: ${after}`,
+          });
+          return false;
+        }
+        logger.warn(
+          { event: 'conditional_branch_phone_repaired', title: inject.title, error: before },
+          'Repaired a generated phone branch',
+        );
+        issues.push({
+          code: 'MO-COND-008',
+          path,
+          severity: 'warning',
+          message: `Inject "${inject.title ?? ''}": ${before} The generated branch was clamped.`,
+        });
+      }
+    }
+    return true;
+  });
+}
+
+function repairPhoneConfig(config: Record<string, unknown>): void {
+  if (config.ring_seconds != null) config.ring_seconds = clampLimit(config.ring_seconds, 10, 60);
+  if (config.max_call_seconds != null) {
+    config.max_call_seconds = clampLimit(config.max_call_seconds, 60, 900);
+  }
+  if (config.call_script != null && typeof config.call_script !== 'object') {
+    delete config.call_script;
+  } else if (config.call_script && typeof config.call_script === 'object') {
+    const body = config.call_script as Record<string, unknown>;
+    if (Array.isArray(body.beats)) body.beats = body.beats.slice(0, 6);
+    const parts = scriptParts(body);
+    if (parts.join('').length > 2000) {
+      if (typeof body.opening === 'string') body.opening = body.opening.slice(0, 400);
+      if (typeof body.closing === 'string') body.closing = body.closing.slice(0, 200);
+      if (Array.isArray(body.beats)) {
+        body.beats = body.beats.map((beat) => {
+          if (!beat || typeof beat !== 'object' || typeof (beat as { say?: unknown }).say !== 'string') {
+            return beat;
+          }
+          return { ...(beat as Record<string, unknown>), say: (beat as { say: string }).say.slice(0, 200) };
+        });
+      }
+      if (Array.isArray(body.redial_openings)) {
+        body.redial_openings = body.redial_openings.map((line) =>
+          typeof line === 'string' ? line.slice(0, 200) : line,
+        );
+      }
+    }
+  }
+  if (config.redial != null && typeof config.redial !== 'object') {
+    delete config.redial;
+  } else if (config.redial && typeof config.redial === 'object') {
+    const redial = config.redial as Record<string, unknown>;
+    if (redial.attempts != null) redial.attempts = clampLimit(redial.attempts, 1, 6);
+    if (redial.interval_minutes != null) {
+      redial.interval_minutes = clampLimit(redial.interval_minutes, 1, 30);
+    }
+  }
+}
+
+function scriptParts(body: Record<string, unknown>): string[] {
+  const beats = Array.isArray(body.beats) ? body.beats : [];
+  return [
+    typeof body.opening === 'string' ? body.opening : '',
+    typeof body.closing === 'string' ? body.closing : '',
+    ...beats.map((beat) =>
+      beat && typeof beat === 'object' && typeof (beat as { say?: unknown }).say === 'string'
+        ? (beat as { say: string }).say
+        : '',
+    ),
+    ...(Array.isArray(body.redial_openings)
+      ? body.redial_openings.filter((line): line is string => typeof line === 'string')
+      : []),
+  ];
+}
+
+function clampLimit(value: unknown, min: number, max: number): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
 }
 
 function dropOrphanBranches<T extends ConditionalInjectInput>(rows: T[]): T[] {

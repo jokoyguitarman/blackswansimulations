@@ -138,6 +138,52 @@ describe('response branch post-processing', () => {
       all: ['email_unreplied:supplier_4471:10'],
     });
   });
+
+  test('clamping a minute window keeps a role scope', () => {
+    const processed = postProcessResponseBranches(
+      {
+        branches: [
+          {
+            parent_inject_key: 'supplier_4471',
+            branch: 'no_reply',
+            title: 'Role chaser',
+            content: 'Still waiting on batch 4471.',
+            delivery_config: { app: 'email' },
+            conditions_to_appear: { all: ['email_unreplied:supplier_4471:90|role=cs_head'] },
+            conditions_to_cancel: ['email_replied:supplier_4471|role=cs_head'],
+          },
+        ],
+      },
+      [supplierParent],
+      60,
+    );
+    assert.deepEqual(processed.branches[0]?.conditions_to_appear, {
+      all: ['email_unreplied:supplier_4471:60|role=cs_head'],
+    });
+    assert.deepEqual(processed.branches[0]?.conditions_to_cancel, [
+      'email_replied:supplier_4471|role=cs_head',
+    ]);
+  });
+
+  test('pass_threshold is capped at the number of criteria', () => {
+    const processed = postProcessResponseBranches(
+      {
+        rubrics: [
+          {
+            inject_key: 'supplier_4471',
+            asks: ['confirm the batch'],
+            criteria: ['acknowledges the deadline', 'names a time', 'does not admit liability'],
+            expected_tone: ['professional'],
+            pass_threshold: 99,
+          },
+        ],
+      },
+      [supplierParent],
+      60,
+    );
+    assert.equal(processed.rubrics[0]?.rubric.criteria.length, 3);
+    assert.equal(processed.rubrics[0]?.rubric.pass_threshold, 3);
+  });
 });
 
 describe('coverage report', () => {
