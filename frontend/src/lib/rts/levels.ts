@@ -46,6 +46,34 @@ export function levelOf<T extends { level?: string }>(el: T): string {
   return el.level ?? 'G';
 }
 
+/**
+ * Floor height above grade. Ground is 0. A level above ground stacks the
+ * storeys under it; a basement floor is below grade by its own height and
+ * the basements under that. A missing storey uses the default height.
+ */
+export function floorElevationM(level: string, heights: ReadonlyMap<string, number>): number {
+  const heightOf = (id: string): number => {
+    const saved = heights.get(id);
+    if (saved != null && saved > 0) return saved;
+    return id.startsWith('B') ? LEVEL.DEFAULT_BASEMENT_HEIGHT_M : LEVEL.DEFAULT_STOREY_HEIGHT_M;
+  };
+  let idx: number;
+  try {
+    idx = levelIndex(level);
+  } catch {
+    return 0;
+  }
+  if (idx >= 0) {
+    let z = 0;
+    if (idx > 0) z += heightOf('G');
+    for (let i = 1; i < idx; i++) z += heightOf(`L${i}`);
+    return z;
+  }
+  let z = 0;
+  for (let i = 1; i <= -idx; i++) z -= heightOf(`B${i}`);
+  return z;
+}
+
 export function linkLevels(sw: Stairwell, levels: LevelDef[]): string[] {
   const from = sw.levels?.from;
   const to = sw.levels?.to;
