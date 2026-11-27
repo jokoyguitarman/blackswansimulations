@@ -80,6 +80,10 @@ export const ALLOWED_DETECTION_ACTION_TYPES = [
   'intel_shared',
   // Decision layer (contract §7A, migration 203)
   'decision_recorded',
+  // Migration 268. Phone work records these; charters may name them before that ships.
+  'call_missed',
+  'call_ended',
+  'call_returned',
 ] as const;
 
 export const SENTIMENT_DIMENSIONS = [

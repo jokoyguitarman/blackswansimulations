@@ -5,6 +5,7 @@ import type { TeamCharter } from './teamCharterService.js';
 import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateScenarioPayload } from './scenarioValidationService.js';
 import { retainKnownConditions } from './conditions/conditionCatalog.js';
+import { stampGeneratedInjectKeys } from '../lib/injectKey.js';
 
 const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -266,8 +267,11 @@ export async function persistSocialCrisisScenario(
       })),
     ];
 
-    if (allInjects.length > 0) {
-      const { error: injectsErr } = await supabaseAdmin.from('scenario_injects').insert(allInjects);
+    const stampedInjects = stampGeneratedInjectKeys(allInjects);
+    if (stampedInjects.length > 0) {
+      const { error: injectsErr } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert(stampedInjects);
       if (injectsErr) throw new Error(`scenario_injects: ${injectsErr.message}`);
     }
 
