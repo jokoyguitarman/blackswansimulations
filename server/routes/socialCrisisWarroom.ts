@@ -45,6 +45,7 @@ import {
   runOrgPagePipeline,
   buildCompileArtifacts,
   logCompileSummary,
+  attachResponseBranches,
 } from '../services/multiOrgPipeline.js';
 import {
   organisationsSchema,
@@ -816,6 +817,7 @@ router.post(
         pressure_organisations: pressureOrganisationsSchema.optional(),
         team_charters: z.array(teamCharterWireSchema).optional(),
         stakeholders: z.array(z.unknown()).optional(),
+        stakeholder_injects: z.array(z.unknown()).optional(),
       }),
     }),
   ),
@@ -860,6 +862,10 @@ router.post(
           fact_sheet as FactSheet,
           env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
           jobId,
+          {
+            stakeholders: req.body.stakeholders as Stakeholder[] | undefined,
+            stakeholderInjects: req.body.stakeholder_injects as SocialInject[] | undefined,
+          },
         );
         aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
       } catch (err) {
@@ -1275,6 +1281,41 @@ router.post(
         // (graded by the organic decision engine when a formal notice is detected).
         if (multiArtifacts && multiArtifacts.sop_steps.length > 0) {
           sop.steps = [...sop.steps, ...multiArtifacts.sop_steps];
+        }
+
+        const convergenceGates = (body.convergence_gates as SocialInject[]) ?? [];
+        body.convergence_gates = convergenceGates;
+        const strategyInjects: SocialInject[] = [];
+        for (const window of strategyWindows ?? []) {
+          if (window.success_injects) strategyInjects.push(...window.success_injects);
+          if (window.backlash_injects) strategyInjects.push(...window.backlash_injects);
+        }
+        try {
+          await attachResponseBranches({
+            crisis: {
+              crisisType: body.crisis_type || '',
+              duration: body.duration,
+              country: body.country || 'Singapore',
+            },
+            factSheet: body.fact_sheet as FactSheet,
+            stakeholders:
+              multiArtifacts?.stakeholders ?? (body.stakeholders as Stakeholder[] | undefined) ?? [],
+            injects: [
+              ...((body.storyline_injects as SocialInject[]) || []),
+              ...Object.values(
+                (body.team_storylines || {}) as Record<string, SocialInject[]>,
+              ).flat(),
+              ...((body.shared_injects as SocialInject[]) || []),
+              ...convergenceGates,
+              ...(multiArtifacts?.extraInjects ??
+                ((body.stakeholder_injects as SocialInject[]) || [])),
+              ...strategyInjects,
+            ],
+            branchSink: convergenceGates,
+            stripCarry: true,
+          });
+        } catch (branchErr) {
+          logger.warn({ branchErr }, 'Response branch generation failed (non-critical)');
         }
 
         const payload = assemblePayload(

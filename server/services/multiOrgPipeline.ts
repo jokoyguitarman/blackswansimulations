@@ -65,6 +65,12 @@ import {
 import { sanitizeExpectedActions, SENTIMENT_DIMENSIONS } from './teamCharterService.js';
 import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
 import {
+  attachResponseBranches,
+  type ResponseBranchClient,
+} from './generation/responseBranchService.js';
+
+export { attachResponseBranches } from './generation/responseBranchService.js';
+import {
   completeCast,
   detectLabourSignal,
   detectProductSafetySignal,
@@ -630,6 +636,12 @@ export interface ConvergencePipelineResult {
  * Convergence stage, extracted from the route so the durable build calls the same code.
  * `blueprint` is already coerced (or null). Pass `jobId` to keep the route's log lines.
  */
+export interface ConvergenceBranchInput {
+  stakeholders?: Stakeholder[];
+  stakeholderInjects?: SocialInject[];
+  client?: ResponseBranchClient;
+}
+
 export async function runConvergencePipeline(
   orgsResult: Extract<OrganisationsValidation, { ok: true }> | null,
   crisisContext: ConvergenceCrisisContext,
@@ -638,6 +650,7 @@ export async function runConvergencePipeline(
   factSheet: FactSheet,
   blueprint: ScenarioBlueprint | null,
   jobId?: string,
+  branchInput?: ConvergenceBranchInput,
 ): Promise<ConvergencePipelineResult> {
   // Explicit valid team names (never the wizard's synthetic "Shared" key) and the
   // org grouping that lets dependencies cross agencies and borders.
@@ -691,6 +704,29 @@ export async function runConvergencePipeline(
       },
       'Convergence generation completed',
     );
+  }
+  try {
+    await attachResponseBranches({
+      crisis: {
+        crisisType: crisisContext.crisisType,
+        duration: crisisContext.duration,
+        context: crisisContext.context,
+        country: crisisContext.country,
+        location: crisisContext.location,
+      },
+      factSheet,
+      stakeholders: branchInput?.stakeholders ?? [],
+      injects: [
+        ...Object.values(teamStorylines).flat(),
+        ...Object.values(data.intel_injects).flat(),
+        ...(branchInput?.stakeholderInjects ?? []),
+        ...data.convergenceGates,
+      ],
+      branchSink: data.convergenceGates,
+      client: branchInput?.client,
+    });
+  } catch (err) {
+    logger.warn({ err, jobId }, 'Response branch generation failed (non-critical)');
   }
   return data;
 }

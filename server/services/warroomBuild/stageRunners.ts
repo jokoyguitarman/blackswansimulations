@@ -111,6 +111,11 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         input.personas,
         input.factSheet,
         blueprintFor(input.request),
+        undefined,
+        {
+          stakeholders: input.stakeholders,
+          stakeholderInjects: input.stakeholderInjects,
+        },
       );
       throwIfAborted(ctx.signal);
       return result;

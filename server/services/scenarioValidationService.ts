@@ -14,6 +14,9 @@ import {
 } from '../lib/stakeholderContract.js';
 import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateCast } from './castCompletenessService.js';
+import { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
+
+export { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
 
 type PersistableTeamCharter = TeamCharter & {
   org_key?: string | null;
@@ -101,11 +104,30 @@ export function validateScenarioPayload(
   const pagesByKey = new Map(
     (normalizeOrgPages(is.org_page) as Array<OrgConfig>).map((p) => [p.org_key, p]),
   );
-  const injects: SocialInject[] = [
+  let injects: SocialInject[] = [
     ...payload.time_injects,
     ...payload.condition_injects,
     ...payload.decision_injects,
   ];
+  const conditional = validateConditionalInjects({
+    duration_minutes: payload.scenario.duration_minutes,
+    injects,
+  });
+  const keepConditional = new Set(conditional.injects);
+  if (keepConditional.size !== injects.length) {
+    payload.time_injects = payload.time_injects.filter((inject) => keepConditional.has(inject));
+    payload.condition_injects = payload.condition_injects.filter((inject) =>
+      keepConditional.has(inject),
+    );
+    payload.decision_injects = payload.decision_injects.filter((inject) =>
+      keepConditional.has(inject),
+    );
+    injects = conditional.injects as unknown as SocialInject[];
+  }
+  for (const issue of conditional.issues) {
+    if (issue.severity === 'error') fail(issue.code, issue.path, issue.message);
+    else warn(issue.code, issue.path, issue.message);
+  }
   const multiOrg = orgs.length > 1;
 
   // ── Registry ──
