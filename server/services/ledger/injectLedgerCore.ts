@@ -66,6 +66,10 @@ export interface CommsDelivery {
     attribution: string;
     judgement_status: string;
     judgement: JudgementV1 | null;
+    /** Response row id. Tie-break for two judgements in the same session minute. */
+    id?: string;
+    /** `inject_responses.created_at`. Later values are the later reply. */
+    created_at?: string | null;
     meta?: Record<string, unknown>;
   }>;
 }
@@ -430,6 +434,8 @@ export interface LedgerResponseRow {
   judgement_status?: string | null;
   judgement?: unknown;
   responded_at?: string | null;
+  created_at?: string | null;
+  id?: string;
   meta?: unknown;
 }
 
@@ -441,6 +447,15 @@ function asJudgement(value: unknown): JudgementV1 | null {
 function responseMeta(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   return value as Record<string, unknown>;
+}
+
+/** Same session minute: later created_at, then id. Ascending, so the last row is latest. */
+function compareResponses(a: LedgerResponseRow, b: LedgerResponseRow): number {
+  const minute = a.response_minute - b.response_minute;
+  if (minute !== 0) return minute;
+  const created = (a.created_at ?? '').localeCompare(b.created_at ?? '');
+  if (created !== 0) return created;
+  return (a.id ?? '').localeCompare(b.id ?? '');
 }
 
 function newestFirst<T extends { at?: string | null; minute: number; id: string }>(
@@ -511,9 +526,7 @@ export function buildCommsState(args: {
   }
 
   const built: CommsDelivery[] = keptDeliveries.map(({ row }) => {
-    const responsesForDelivery = (byDelivery.get(row.id) ?? [])
-      .slice()
-      .sort((a, b) => a.response_minute - b.response_minute);
+    const responsesForDelivery = (byDelivery.get(row.id) ?? []).slice().sort(compareResponses);
     const firstResponseByTeam: Record<string, number> = {};
     let firstMinute: number | null = null;
     let firstTeam: string | null = null;
@@ -570,6 +583,8 @@ export function buildCommsState(args: {
           attribution: response.attribution,
           judgement_status: response.judgement_status ?? 'pending',
           judgement: asJudgement(response.judgement),
+          ...(response.id ? { id: response.id } : {}),
+          ...(response.created_at ? { created_at: response.created_at } : {}),
           ...(meta ? { meta } : {}),
         };
       }),

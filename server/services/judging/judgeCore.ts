@@ -26,6 +26,9 @@ export type ScoreDimension = (typeof SCORE_DIMENSIONS)[number];
 export const INJECT_PROMPT_CHARS = 1200;
 export const RESPONSE_PROMPT_CHARS = 2000;
 export const COALESCE_WINDOW_MS = 20_000;
+export const JUDGE_TIMEOUT_MS = 15_000;
+/** After this, a `scheduled` mark no longer hides a row from the sweep. */
+export const SCHEDULED_STALE_MS = COALESCE_WINDOW_MS + JUDGE_TIMEOUT_MS;
 export const JUDGE_ATTEMPTS = 2;
 
 const EMPATHETIC_RELATIONSHIPS = new Set(['community', 'client', 'union']);
@@ -409,6 +412,36 @@ export async function judgeWithClient(args: {
     }
   }
   return { status: 'failed', judgement: null, model: null };
+}
+
+/**
+ * The burst job finished. Every admitted id leaves `scheduled`. Ids this job
+ * did not write stay `queued` so the sweep can finish them without a restart.
+ * Returns those unwritten ids.
+ */
+export function releaseUnwrittenBurstIds(
+  scheduled: Set<string>,
+  admitted: readonly string[],
+  written: readonly string[],
+): string[] {
+  const done = new Set(written);
+  const released: string[] = [];
+  for (const id of admitted) {
+    scheduled.delete(id);
+    if (!done.has(id)) released.push(id);
+  }
+  for (const id of written) scheduled.delete(id);
+  return released;
+}
+
+/** True while an in-memory schedule mark should keep the sweep from enqueueing this row. */
+export function sweepKeepsScheduledHold(args: {
+  scheduled: boolean;
+  ageMs: number;
+  staleAfterMs: number;
+}): boolean {
+  if (!args.scheduled) return false;
+  return args.ageMs < args.staleAfterMs;
 }
 
 function clip(text: string, max: number, keep: 'head' | 'tail'): string {

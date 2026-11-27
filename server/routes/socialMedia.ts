@@ -20,7 +20,10 @@ import {
   generateVideoThumbnail,
   getImageStyleForFormat,
 } from '../services/mediaGenerationService.js';
-import { describeConditionKey } from '../services/conditionEvaluatorService.js';
+import {
+  callerSeesJudgements,
+  describeConditionKey,
+} from '../services/conditionEvaluatorService.js';
 import { buildConditionEvaluationContext } from '../services/conditions/conditionContextService.js';
 import {
   attributeEmailHandling,
@@ -2738,13 +2741,18 @@ router.get(
       // 1. Get session with scenario_id and current_state
       const { data: session, error: sessErr } = await supabaseAdmin
         .from('sessions')
-        .select('id, scenario_id, current_state, start_time, status')
+        .select('id, scenario_id, current_state, start_time, status, trainer_id')
         .eq('id', sessionId)
         .single();
 
       if (sessErr || !session) {
         return res.status(404).json({ error: 'Session not found' });
       }
+
+      const user = req.user!;
+      const revealJudgement = callerSeesJudgements(user, {
+        trainer_id: (session.trainer_id as string | null) ?? null,
+      });
 
       const elapsedMinutes = session.start_time
         ? Math.floor((Date.now() - new Date(session.start_time as string).getTime()) / 60000)
@@ -2831,7 +2839,7 @@ router.get(
         }
 
         const conditions = keys.map((key) => {
-          const described = describeConditionKey(key, evalContext);
+          const described = describeConditionKey(key, evalContext, { revealJudgement });
           return { key, met: described.met, label: described.label, detail: described.detail };
         });
 

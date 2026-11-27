@@ -351,17 +351,23 @@ function replyKey(kind: ReplyKind, input: KeyInput): KeyResult {
     case 'best_passed':
       return { met: judged.some((row) => row.judgement?.passed === true), detail: line };
     case 'criterion':
-      return { met: flagAt(judgement.criteria, numberArg(input.args, 1), 'met'), detail: line };
+      return {
+        met: slotAt(judgement.criteria, numberArg(input.args, 1), 'met') === true,
+        detail: line,
+      };
     case 'missing_criterion':
-      return { met: !flagAt(judgement.criteria, numberArg(input.args, 1), 'met'), detail: line };
+      return {
+        met: slotAt(judgement.criteria, numberArg(input.args, 1), 'met') === false,
+        detail: line,
+      };
     case 'answered_ask':
       return {
-        met: flagAt(judgement.asks_answered, numberArg(input.args, 1), 'answered'),
+        met: slotAt(judgement.asks_answered, numberArg(input.args, 1), 'answered') === true,
         detail: line,
       };
     case 'missed_ask':
       return {
-        met: !flagAt(judgement.asks_answered, numberArg(input.args, 1), 'answered'),
+        met: slotAt(judgement.asks_answered, numberArg(input.args, 1), 'answered') === false,
         detail: line,
       };
     case 'tone':
@@ -407,7 +413,15 @@ function judgedResponses(
   return eachDelivery(view)
     .flatMap((delivery) => delivery.responses)
     .filter((response) => accept(response) && isJudged(response))
-    .sort((a, b) => a.minute - b.minute);
+    .sort(compareJudged);
+}
+
+function compareJudged(a: ResponseRow, b: ResponseRow): number {
+  const minute = a.minute - b.minute;
+  if (minute !== 0) return minute;
+  const created = (a.created_at ?? '').localeCompare(b.created_at ?? '');
+  if (created !== 0) return created;
+  return (a.id ?? '').localeCompare(b.id ?? '');
 }
 
 function isJudged(response: ResponseRow): boolean {
@@ -447,14 +461,16 @@ function judgementSummary(judgement: JudgementV1): string {
   return `${tone}, ${met}/${total} criteria`;
 }
 
-function flagAt(
+/** `true` met, `false` present and unmet, `null` when that slot was not in the judgement. */
+function slotAt(
   items: ReadonlyArray<{ met?: boolean; answered?: boolean }> | undefined,
   index: number,
   field: 'met' | 'answered',
-): boolean {
-  if (!Number.isInteger(index) || index < 1) return false;
+): boolean | null {
+  if (!Number.isInteger(index) || index < 1) return null;
   const item = items?.[index - 1];
-  return item?.[field] === true;
+  if (!item) return null;
+  return item[field] === true;
 }
 
 function scoreCompare(

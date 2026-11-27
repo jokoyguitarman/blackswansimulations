@@ -366,7 +366,7 @@ export async function loadCommsState(
       supabaseAdmin
         .from('inject_responses')
         .select(
-          'delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, meta',
+          'id, delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, created_at, meta',
         )
         .eq('session_id', sessionId)
         .order('responded_at', { ascending: false })

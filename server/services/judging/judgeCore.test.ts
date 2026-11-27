@@ -1,15 +1,23 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { explainCommsKey } from '../conditions/commsConditionsCore.js';
+import {
+  callerSeesJudgements,
+  describeConditionKey,
+  type EvaluationContext,
+} from '../conditionEvaluatorService.js';
 import { CONDITION_CATALOG, parseConditionKey } from '../conditions/conditionCatalog.js';
 import type { CommsDelivery, CommsState, JudgementV1 } from '../ledger/injectLedgerCore.js';
 import {
   JUDGE_SYSTEM_PROMPT,
   JUDGE_TONES,
+  SCHEDULED_STALE_MS,
   buildJudgeUserMessage,
   deriveGenericRubric,
   judgeWithClient,
   planCoalesce,
+  releaseUnwrittenBurstIds,
+  sweepKeepsScheduledHold,
   validateJudgeOutput,
   type JudgeChatClient,
   type ResponseRubric,
@@ -174,6 +182,41 @@ describe('judge output', () => {
   });
 });
 
+describe('burst schedule', () => {
+  test('a chat reply the sibling read missed is released and the sweep can see it', () => {
+    const scheduled = new Set<string>(['a', 'b']);
+    const released = releaseUnwrittenBurstIds(scheduled, ['a', 'b'], ['a']);
+    assert.deepEqual(released, ['b']);
+    assert.equal(scheduled.has('a'), false);
+    assert.equal(scheduled.has('b'), false);
+    assert.equal(
+      sweepKeepsScheduledHold({
+        scheduled: scheduled.has('b'),
+        ageMs: 60_000,
+        staleAfterMs: SCHEDULED_STALE_MS,
+      }),
+      false,
+    );
+
+    assert.equal(
+      sweepKeepsScheduledHold({
+        scheduled: true,
+        ageMs: SCHEDULED_STALE_MS - 1,
+        staleAfterMs: SCHEDULED_STALE_MS,
+      }),
+      true,
+    );
+    assert.equal(
+      sweepKeepsScheduledHold({
+        scheduled: true,
+        ageMs: SCHEDULED_STALE_MS,
+        staleAfterMs: SCHEDULED_STALE_MS,
+      }),
+      false,
+    );
+  });
+});
+
 describe('coalescing', () => {
   test('three chat replies five seconds apart become one job on the last id', () => {
     const start = Date.parse('2026-11-27T10:00:00.000Z');
@@ -290,6 +333,9 @@ describe('reply keys', () => {
     assert.equal(met('reply_criterion:k:1', state), false);
     assert.equal(met('reply_missing_criterion:k:1', state), true);
     assert.equal(met('reply_missing_criterion:k:3', state), false);
+    assert.equal(met('reply_missing_criterion:k:9', state), false);
+    assert.equal(met('reply_missed_ask:k:1', state), true);
+    assert.equal(met('reply_missed_ask:k:4', state), false);
     assert.equal(met('reply_answered_ask:k:1', state), false);
     assert.equal(met('reply_missed_ask:k:1', state), true);
     assert.equal(met('reply_tone:k:defensive', state), true);
@@ -358,6 +404,95 @@ describe('reply keys', () => {
 
     const toneDef = CONDITION_CATALOG.find((def) => def.id === 'reply_tone');
     assert.deepEqual(toneDef?.params?.[1]?.enum, [...JUDGE_TONES]);
+  });
+
+  test('the same session minute uses created_at, then id', () => {
+    const passed = { ...early, passed: true, tone: 'professional' as const };
+    const failed = { ...latest, passed: false, tone: 'defensive' as const };
+    const sameMinute = comms([
+      delivery({
+        delivery_id: 'legal',
+        inject_key: 'k',
+        recipient_teams: ['Legal'],
+        responses: [
+          reply({
+            minute: 15,
+            id: 'late',
+            created_at: '2026-11-27T10:00:30.000Z',
+            judgement: passed,
+          }),
+          reply({
+            minute: 15,
+            id: 'early',
+            created_at: '2026-11-27T10:00:00.000Z',
+            judgement: failed,
+          }),
+        ],
+      }),
+    ]);
+    assert.equal(met('reply_passed:k', sameMinute), true);
+    assert.equal(met('reply_tone:k:professional', sameMinute), true);
+
+    const sameTime = comms([
+      delivery({
+        delivery_id: 'legal',
+        inject_key: 'k',
+        recipient_teams: ['Legal'],
+        responses: [
+          reply({
+            minute: 15,
+            id: 'b',
+            created_at: '2026-11-27T10:00:00.000Z',
+            judgement: failed,
+          }),
+          reply({
+            minute: 15,
+            id: 'a',
+            created_at: '2026-11-27T10:00:00.000Z',
+            judgement: passed,
+          }),
+        ],
+      }),
+    ]);
+    assert.equal(met('reply_failed:k', sameTime), true);
+    assert.equal(met('reply_passed:k', sameTime), false);
+  });
+
+  test('a player does not receive the judgement clause', () => {
+    const context = {
+      sessionId: 's',
+      scenarioId: 'sc',
+      elapsedMinutes: 20,
+      currentState: { comms_state: state },
+      executedDecisions: [],
+      publishedScenarioInjectIds: [],
+    } satisfies EvaluationContext;
+    const hidden = describeConditionKey('reply_failed:k', context, { revealJudgement: false });
+    assert.equal(hidden.met, true);
+    assert.equal(hidden.detail.includes('tone'), false);
+    assert.equal(hidden.detail.includes('criteria'), false);
+    assert.equal(hidden.detail, 'Legal replied T+18');
+    const shown = describeConditionKey('reply_failed:k', context);
+    assert.equal(shown.detail, 'Legal replied T+18 — tone defensive, 2/4 criteria');
+    const responded = describeConditionKey('responded:k', context, { revealJudgement: false });
+    assert.equal(responded.detail.includes('tone'), false);
+
+    assert.equal(
+      callerSeesJudgements({ id: 'trainer-1', role: 'trainer' }, { trainer_id: 'trainer-1' }),
+      true,
+    );
+    assert.equal(
+      callerSeesJudgements({ id: 'player-1', role: 'trainer' }, { trainer_id: 'trainer-1' }),
+      false,
+    );
+    assert.equal(
+      callerSeesJudgements({ id: 'admin-1', role: 'admin' }, { trainer_id: 'trainer-1' }),
+      true,
+    );
+    assert.equal(
+      callerSeesJudgements({ id: 'player-1', role: 'player' }, { trainer_id: 'trainer-1' }),
+      false,
+    );
   });
 });
 

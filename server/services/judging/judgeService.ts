@@ -11,11 +11,14 @@ import { resolveTarget, type AiTier, type ProviderConfig } from '../ai/chatCore.
 import { formatTranscript, type TranscriptTurn } from '../calls/callCore.js';
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from '../ledger/ledgerSchema.js';
 import {
+  SCHEDULED_STALE_MS,
   buildJudgeUserMessage,
   isCoalesceChannel,
   judgeWithClient,
   planCoalesce,
+  releaseUnwrittenBurstIds,
   resolveRubric,
+  sweepKeepsScheduledHold,
   type CoalesceRow,
   type JudgeChatClient,
   type JudgeChatResult,
@@ -50,6 +53,8 @@ interface ResponseRecord {
 interface QueuedJob {
   sessionId: string;
   responseId: string;
+  /** Ids admitted to this chat/DM burst. Absent for a single reply. */
+  admitted?: readonly string[];
 }
 
 const queue: QueuedJob[] = [];
@@ -58,6 +63,7 @@ const groupLocks = new Set<string>();
 let globalActive = 0;
 const sessionActive = new Map<string, number>();
 const bursts = new Map<string, { startedAt: number; timer: ReturnType<typeof setTimeout> }>();
+const burstMembers = new Map<string, Set<string>>();
 const budgetLoggedAt = new Map<string, number>();
 let callTurnsWarned = false;
 
@@ -88,7 +94,10 @@ export function sweepPendingJudgements(sessionId: string): void {
 }
 
 async function admit(responseId: string, immediate: boolean): Promise<void> {
-  if (scheduled.has(responseId)) return;
+  if (scheduled.has(responseId)) {
+    if (!immediate) return;
+    scheduled.delete(responseId);
+  }
   const row = await loadResponse(responseId);
   if (!row || !OPEN_STATUSES.includes(row.judgement_status)) return;
   if (!env.aiEnabled) {
@@ -109,12 +118,17 @@ async function admit(responseId: string, immediate: boolean): Promise<void> {
 
 function holdBurst(row: ResponseRecord): void {
   const key = groupKey(row);
+  const members = burstMembers.get(key) ?? new Set<string>();
+  members.add(row.id);
+  burstMembers.set(key, members);
   const now = Date.now();
   const existing = bursts.get(key);
   if (existing && now - existing.startedAt < COALESCE_WINDOW_MS) return;
   const timer = setTimeout(() => {
+    const admitted = [...(burstMembers.get(key) ?? new Set([row.id]))];
+    burstMembers.delete(key);
     bursts.delete(key);
-    pushJob({ sessionId: row.session_id, responseId: row.id });
+    pushJob({ sessionId: row.session_id, responseId: row.id, admitted });
   }, COALESCE_WINDOW_MS);
   timer.unref?.();
   bursts.set(key, { startedAt: now, timer });
@@ -149,7 +163,7 @@ function pump(): void {
 
 async function runJob(job: QueuedJob): Promise<void> {
   try {
-    await judgeResponse(job.responseId);
+    await judgeResponse(job);
   } catch (err) {
     logger.warn(
       { err, responseId: job.responseId, event: 'judge_job_failed' },
@@ -158,8 +172,17 @@ async function runJob(job: QueuedJob): Promise<void> {
   }
 }
 
-async function judgeResponse(responseId: string): Promise<void> {
-  const row = await loadResponse(responseId);
+async function judgeResponse(job: QueuedJob): Promise<void> {
+  const written: string[] = [];
+  try {
+    await judgeLoaded(job, written);
+  } finally {
+    if (job.admitted?.length) releaseUnwrittenBurstIds(scheduled, job.admitted, written);
+  }
+}
+
+async function judgeLoaded(job: QueuedJob, written: string[]): Promise<void> {
+  const row = await loadResponse(job.responseId);
   if (!row || !OPEN_STATUSES.includes(row.judgement_status)) return;
   if (!env.aiEnabled) {
     await markTerminal(
@@ -167,6 +190,7 @@ async function judgeResponse(responseId: string): Promise<void> {
       { status: 'skipped', judgement: null, model: null },
       { skip_reason: 'ai_disabled' },
     );
+    written.push(row.id);
     return;
   }
   if (!isCoalesceChannel(row.channel) || !row.user_id) {
@@ -176,29 +200,36 @@ async function judgeResponse(responseId: string): Promise<void> {
   const key = groupKey(row);
   if (groupLocks.has(key)) return;
   groupLocks.add(key);
-  let held: ResponseRecord[] = [];
+  const admitted = job.admitted?.length ? [...job.admitted] : [row.id];
   try {
     const siblings = await loadOpenSiblings(row);
-    const rows = siblings.some((item) => item.id === row.id) ? siblings : [row, ...siblings];
-    held = rows;
+    const byId = new Map(siblings.map((item) => [item.id, item]));
+    if (!byId.has(row.id)) byId.set(row.id, row);
+    for (const id of admitted) {
+      if (byId.has(id)) continue;
+      const loaded = await loadResponse(id);
+      if (loaded && OPEN_STATUSES.includes(loaded.judgement_status)) byId.set(id, loaded);
+    }
+    const rows = [...byId.values()];
     const plan = planCoalesce(rows.map(toCoalesceRow));
-    const job = plan.jobs.find((item) => item.sourceIds.includes(row.id));
-    if (!job) return;
-    const target = rows.find((item) => item.id === job.responseId) ?? row;
-    const stored = await judgeSingle(target, job.text);
+    const burstJob = plan.jobs.find((item) => item.sourceIds.includes(row.id));
+    if (!burstJob) return;
+    const target = rows.find((item) => item.id === burstJob.responseId) ?? row;
+    const stored = await judgeSingle(target, burstJob.text);
     if (!stored) return;
+    written.push(target.id);
     for (const skip of plan.skipped) {
-      if (skip.into !== job.responseId) continue;
+      if (skip.into !== burstJob.responseId) continue;
       const earlier = rows.find((item) => item.id === skip.id);
       if (!earlier) continue;
       await markTerminal(
         earlier,
         { status: 'skipped', judgement: null, model: null },
-        { coalesced_into: job.responseId },
+        { coalesced_into: burstJob.responseId },
       );
+      written.push(earlier.id);
     }
   } finally {
-    for (const item of held) scheduled.delete(item.id);
     groupLocks.delete(key);
   }
 }
@@ -303,16 +334,27 @@ async function sweepSession(sessionId: string): Promise<void> {
   try {
     const { data, error } = await supabaseAdmin
       .from('inject_responses')
-      .select('id, judgement_status')
+      .select('id, judgement_status, created_at')
       .eq('session_id', sessionId)
       .in('judgement_status', OPEN_STATUSES)
       .lt('created_at', cutoff)
       .order('created_at', { ascending: true })
       .limit(SWEEP_LIMIT);
     if (failLedger(error, 'judge.sweep')) return;
+    const now = Date.now();
     for (const row of data ?? []) {
       const id = String(row.id);
-      if (scheduled.has(id)) continue;
+      const createdAt = Date.parse(String(row.created_at ?? ''));
+      const ageMs = Number.isFinite(createdAt) ? now - createdAt : SCHEDULED_STALE_MS;
+      if (
+        sweepKeepsScheduledHold({
+          scheduled: scheduled.has(id),
+          ageMs,
+          staleAfterMs: SCHEDULED_STALE_MS,
+        })
+      ) {
+        continue;
+      }
       enqueueJudgement(id, { immediate: true });
     }
   } catch (err) {
