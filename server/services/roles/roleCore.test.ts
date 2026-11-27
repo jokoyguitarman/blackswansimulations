@@ -10,6 +10,8 @@ import {
   chainStepHeld,
   moodScope,
   planReroute,
+  rerouteClaim,
+  rerouteRepeat,
   shouldPromptUnreachable,
   timedFallbackDue,
   waitMinutesExcludingHeld,
@@ -102,6 +104,7 @@ describe('runtime roles', () => {
     assert.equal(email?.chain_root_id, 'mail-1');
     assert.equal(email?.fallback_reason, 'trainer_reroute');
     assert.equal(call?.fallback_reason, 'trainer_reroute');
+    assert.equal(call?.call_group_id, 'group-1');
     assert.equal(plan.deliveries.some((item) => item.source_id === 'old'), false);
     const timed = planReroute(
       [{ id: 'mail-2', kind: 'delivery', channel: 'npc_dm', inject_id: 'inj-2' }],
@@ -110,6 +113,19 @@ describe('runtime roles', () => {
     assert.equal(timed.deliveries[0]?.channel, 'npc_dm');
     assert.equal(timed.deliveries[0]?.fallback_reason, 'role_fallback_after_minutes');
     assert.equal(timed.deliveries[0]?.chain_root_id, 'mail-2');
+    const repeat = rerouteRepeat(
+      [
+        { id: 'mail-1', kind: 'delivery', channel: 'email', inject_id: 'inj-mail' },
+        { id: 'group-1', kind: 'call_group', channel: 'call', inject_id: 'inj-call', delivery_id: 'call-del' },
+      ],
+      { teamName: 'Customer Service' },
+    );
+    assert.equal(repeat.first.length, 2);
+    assert.equal(repeat.second.length, 0);
+    assert.equal(rerouteClaim({ markerWritable: true, originalStamped: false, childExists: false }), 'deliver');
+    assert.equal(rerouteClaim({ markerWritable: true, originalStamped: true, childExists: false }), 'skip_already');
+    assert.equal(rerouteClaim({ markerWritable: true, originalStamped: false, childExists: true }), 'skip_already');
+    assert.equal(rerouteClaim({ markerWritable: false, originalStamped: false, childExists: false }), 'skip_unwritable');
   });
 
   test('line_after_minutes reroutes at the threshold and not when the player returns', () => {

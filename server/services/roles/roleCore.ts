@@ -34,6 +34,7 @@ export interface LinkedRedelivery {
   /** Original delivery this new one is linked to. Null when the call has not been delivered yet. */
   chain_root_id: string | null;
   inject_id?: string;
+  call_group_id?: string;
 }
 
 export function roleIdFromTitle(title: string, taken: readonly string[] = []): string {
@@ -157,6 +158,38 @@ export function timedFallbackDue(input: {
   return { due: false };
 }
 
+export type RerouteClaim = 'deliver' | 'skip_already' | 'skip_unwritable';
+
+/**
+ * A repeat pass is a no-op once the original is stamped or a linked child exists.
+ * If the marker column cannot be written, skip the copy instead of sending it again.
+ */
+export function rerouteClaim(input: {
+  markerWritable: boolean;
+  originalStamped: boolean;
+  childExists: boolean;
+}): RerouteClaim {
+  if (input.originalStamped || input.childExists) return 'skip_already';
+  if (!input.markerWritable) return 'skip_unwritable';
+  return 'deliver';
+}
+
+/** Second pass sees the originals stamped by the first pass's deliveries. */
+export function rerouteRepeat(pending: readonly PendingContact[], options?: { teamName?: string; reason?: FallbackReason }): {
+  first: LinkedRedelivery[];
+  second: LinkedRedelivery[];
+} {
+  const first = planReroute(pending, options);
+  const stampedIds = new Set(
+    first.deliveries.flatMap((item) => [item.source_id, item.chain_root_id].filter((id): id is string => Boolean(id))),
+  );
+  const second = planReroute(
+    pending.map((item) => (stampedIds.has(item.id) ? { ...item, already_linked: true } : item)),
+    options,
+  );
+  return { first: first.deliveries, second: second.deliveries };
+}
+
 export function planReroute(
   pending: readonly PendingContact[],
   options?: { teamName?: string; reason?: FallbackReason },
@@ -187,6 +220,7 @@ export function planReroute(
       fallback_reason: reason,
       chain_root_id: item.kind === 'delivery' ? item.id : (item.delivery_id ?? null),
       ...(item.inject_id ? { inject_id: item.inject_id } : {}),
+      ...(item.kind === 'call_group' ? { call_group_id: item.id } : {}),
     });
   }
   const collapsed: LinkedRedelivery[] = [];
@@ -206,6 +240,7 @@ export function planReroute(
       ...previous,
       chain_root_id: previous.chain_root_id ?? item.chain_root_id,
       source_id: previous.source_id,
+      call_group_id: previous.call_group_id ?? item.call_group_id,
     });
   }
   collapsed.push(...callByInject.values());

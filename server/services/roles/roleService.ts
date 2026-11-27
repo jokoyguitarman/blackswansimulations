@@ -2,12 +2,14 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import type { CommsState } from '../ledger/injectLedgerCore.js';
 import { logger } from '../../lib/logger.js';
 import { getWebSocketService } from '../websocketService.js';
-import { parsePlayerRoles, planReroute, shouldPromptUnreachable, timedFallbackDue, validateRoleAssignment, type LinkedRedelivery, type PendingContact, type PlayerRoleDef } from './roleCore.js';
+import { parsePlayerRoles, planReroute, rerouteClaim, shouldPromptUnreachable, timedFallbackDue, validateRoleAssignment, type LinkedRedelivery, type PendingContact, type PlayerRoleDef } from './roleCore.js';
 import { readFallback, type RoleFallback } from '../calls/lineCore.js';
 import { isRolesSchemaMissing, rolesFeatureReady } from './rolesSchema.js';
 import { insertSessionEvent } from '../../lib/sessionEvents.js';
 import { recordDelivery } from '../ledger/injectLedgerService.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
+import { handleFor } from '../../lib/identity.js';
+import { randomUUID } from 'node:crypto';
 import { inBootGrace, presenceEnginesOn, sessionUserOnline } from '../presence/sessionPresenceService.js';
 import { listLines, loadCallPolicy } from '../calls/lineService.js';
 
@@ -182,15 +184,6 @@ export async function rerouteRole(input: {
     teamName: role?.team_name ?? '',
     reason: input.reason ?? 'trainer_reroute',
   });
-  const now = new Date().toISOString();
-  for (const groupId of plan.cancelCallGroups) {
-    await supabaseAdmin
-      .from('sim_calls')
-      .update({ status: 'cancelled', end_reason: input.reason ?? 'trainer_reroute', ended_at: now })
-      .eq('session_id', input.sessionId)
-      .eq('call_group_id', groupId)
-      .eq('status', 'scheduled');
-  }
   let delivered = 0;
   for (const item of plan.deliveries) {
     if (await deliverLinked(input.sessionId, input.roleId, item)) delivered += 1;
@@ -353,7 +346,88 @@ async function pendingForRole(sessionId: string, roleId: string): Promise<Pendin
   return pending;
 }
 
+const claimWarned = new Set<string>();
+
+/** Claim the original delivery before copying. A missing marker column skips the copy. */
+async function claimOriginal(id: string, reason: string): Promise<'claimed' | 'taken' | 'unwritable'> {
+  const child = await supabaseAdmin
+    .from('inject_deliveries')
+    .select('id')
+    .eq('chain_root_delivery_id', id)
+    .limit(1);
+  if (child.error) {
+    if (isRolesSchemaMissing(child.error)) return noteUnwritable(child.error.code);
+    noteClaimError(child.error.code, 'child');
+    return 'unwritable';
+  }
+  const childExists = (child.data ?? []).length > 0;
+  if (rerouteClaim({ markerWritable: true, originalStamped: false, childExists }) === 'skip_already') {
+    await supabaseAdmin.from('inject_deliveries').update({ fallback_reason: reason }).eq('id', id).is('fallback_reason', null);
+    return 'taken';
+  }
+  const claimed = await supabaseAdmin
+    .from('inject_deliveries')
+    .update({ fallback_reason: reason })
+    .eq('id', id)
+    .is('fallback_reason', null)
+    .select('id');
+  if (claimed.error) {
+    if (isRolesSchemaMissing(claimed.error)) return noteUnwritable(claimed.error.code);
+    noteClaimError(claimed.error.code, 'stamp');
+    return 'unwritable';
+  }
+  if ((claimed.data ?? []).length === 0) return 'taken';
+  return 'claimed';
+}
+
+function noteUnwritable(code: string | undefined): 'unwritable' {
+  const key = `missing:${code ?? 'unknown'}`;
+  if (!claimWarned.has(key)) {
+    claimWarned.add(key);
+    logger.warn(
+      { code, event: 'reroute_marker_unavailable' },
+      'Role reroute is skipped because the delivery marker column is not applied',
+    );
+  }
+  return 'unwritable';
+}
+
+async function cancelScheduledGroup(sessionId: string, groupId: string, reason: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('sim_calls')
+    .update({ status: 'cancelled', end_reason: reason, ended_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .eq('call_group_id', groupId)
+    .eq('status', 'scheduled')
+    .select('id');
+  if (error) {
+    noteClaimError(error.code, 'cancel');
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+function noteClaimError(code: string | undefined, where: string): void {
+  const key = `${where}:${code ?? 'unknown'}`;
+  if (claimWarned.has(key)) return;
+  claimWarned.add(key);
+  logger.warn({ code, where, event: 'reroute_claim_failed' }, 'Role reroute claim failed');
+}
+
 async function deliverLinked(sessionId: string, roleId: string, item: LinkedRedelivery): Promise<boolean> {
+  const rootId = item.chain_root_id ?? (item.channel === 'call' ? null : item.source_id);
+  if (rootId) {
+    const claim = await claimOriginal(rootId, item.fallback_reason);
+    if (claim === 'taken' && item.call_group_id) {
+      await cancelScheduledGroup(sessionId, item.call_group_id, item.fallback_reason);
+    }
+    if (claim !== 'claimed') return false;
+  } else if (!item.call_group_id || !(await cancelScheduledGroup(sessionId, item.call_group_id, item.fallback_reason))) {
+    return false;
+  }
+  if (rootId && item.call_group_id) {
+    await cancelScheduledGroup(sessionId, item.call_group_id, item.fallback_reason);
+  }
   const members = await teamUserIds(sessionId, item.team_name);
   if (item.channel === 'call') {
     if (!item.inject_id) return false;
@@ -364,6 +438,7 @@ async function deliverLinked(sessionId: string, roleId: string, item: LinkedRede
       teamName: item.team_name,
       chainRootDeliveryId: item.chain_root_id,
       fallbackReason: item.fallback_reason,
+      targetRoleId: roleId,
     });
   }
   const original = await supabaseAdmin
@@ -390,7 +465,7 @@ async function deliverLinked(sessionId: string, roleId: string, item: LinkedRede
     channel: item.channel === 'chat' ? 'chat' : item.channel,
     refTable: copied.refTable,
     refId: copied.refId,
-    recipientUserIds: members,
+    recipientUserIds: copied.recipientUserIds ?? members,
     recipientTeams: item.team_name ? [item.team_name] : [],
     stakeholderId: (source.stakeholder_id as string | null) ?? null,
     senderName: (source.sender_name as string | null) ?? null,
@@ -412,7 +487,13 @@ async function copySurface(input: {
   injectId: string;
   members: string[];
   teamName: string;
-}): Promise<{ refTable: 'sim_emails' | 'chat_messages' | 'sim_direct_messages'; refId: string; chatChannelId?: string; threadId?: string } | null> {
+}): Promise<{
+  refTable: 'sim_emails' | 'chat_messages' | 'sim_direct_messages';
+  refId: string;
+  chatChannelId?: string;
+  threadId?: string;
+  recipientUserIds?: string[];
+} | null> {
   if (input.channel === 'email' || input.refTable === 'sim_emails') {
     const { data } = await supabaseAdmin.from('sim_emails').select('*').eq('id', input.refId).maybeSingle();
     if (!data) return null;
@@ -441,30 +522,41 @@ async function copySurface(input: {
   if (input.channel === 'messenger_dm' || input.refTable === 'sim_direct_messages') {
     const { data } = await supabaseAdmin.from('sim_direct_messages').select('*').eq('id', input.refId).maybeSingle();
     if (!data || input.members.length === 0) return null;
-    const { data: profile } = await supabaseAdmin
+    const { data: profiles } = await supabaseAdmin
       .from('user_profiles')
       .select('id, full_name')
-      .eq('id', input.members[0])
-      .maybeSingle();
-    const handle = String(profile?.full_name ?? 'player').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'player';
-    const { data: copy, error } = await supabaseAdmin
-      .from('sim_direct_messages')
-      .insert({
+      .in('id', input.members);
+    const names = new Map((profiles ?? []).map((row) => [String(row.id), String(row.full_name ?? 'Player')]));
+    const sent: string[] = [];
+    let first: { id: string; thread_id?: string | null } | null = null;
+    for (const userId of input.members) {
+      const sameRecipient = userId === String(data.recipient_user_id ?? '');
+      const row = {
         session_id: input.sessionId,
         sender_handle: data.sender_handle,
         sender_display_name: data.sender_display_name,
         sender_type: data.sender_type,
-        recipient_handle: handle,
-        recipient_user_id: input.members[0],
+        recipient_handle: handleFor(names.get(userId) ?? 'Player'),
+        recipient_user_id: userId,
         content: data.content,
         platform: data.platform ?? 'facebook',
-        thread_id: data.thread_id,
-        inject_id: input.injectId,
-      })
-      .select('id, thread_id')
-      .maybeSingle();
-    if (error || !copy) return null;
-    return { refTable: 'sim_direct_messages', refId: String(copy.id), threadId: String(copy.thread_id ?? copy.id) };
+        thread_id: sameRecipient ? data.thread_id : randomUUID(),
+      };
+      let inserted = await supabaseAdmin.from('sim_direct_messages').insert({ ...row, inject_id: input.injectId }).select('id, thread_id').maybeSingle();
+      if (inserted.error && isRolesSchemaMissing(inserted.error)) {
+        inserted = await supabaseAdmin.from('sim_direct_messages').insert(row).select('id, thread_id').maybeSingle();
+      }
+      if (inserted.error || !inserted.data) continue;
+      sent.push(userId);
+      if (!first) first = inserted.data;
+    }
+    if (!first) return null;
+    return {
+      refTable: 'sim_direct_messages',
+      refId: String(first.id),
+      threadId: String(first.thread_id ?? first.id),
+      recipientUserIds: sent,
+    };
   }
   const content = await originalChatText(input.refTable, input.refId);
   if (!content || !input.teamName) return null;

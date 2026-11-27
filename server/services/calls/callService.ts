@@ -198,6 +198,7 @@ export interface CallApi {
     teamName: string;
     chainRootDeliveryId: string | null;
     fallbackReason: string;
+    targetRoleId?: string | null;
   }): Promise<boolean>;
 }
 
@@ -386,6 +387,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     teamName: string;
     chainRootDeliveryId: string | null;
     fallbackReason: string;
+    targetRoleId?: string | null;
   }): Promise<boolean> {
     if (!(await store.ready())) return false;
     const existing = await store.listSession(input.sessionId);
@@ -447,6 +449,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       maxSeconds: prior.maxSeconds,
       lineTeam: input.teamName,
       targetMode: 'line',
+      targetRoleId: input.targetRoleId ?? null,
       rungUserIds: rung,
       missedReason: missedNow ? 'line_unattended' : null,
       endReason: missedNow ? 'line_unattended' : null,
@@ -473,6 +476,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         attemptNo: linked.attemptNo,
         chainRootDeliveryId: input.chainRootDeliveryId,
         lineTeam: input.teamName,
+        targetRoleId: input.targetRoleId ?? null,
         fallbackReason: input.fallbackReason,
       });
       if (deliveryId) deliveryIds.set(linked.id, deliveryId);
@@ -1966,6 +1970,7 @@ export async function ringFallbackCall(input: {
   teamName: string;
   chainRootDeliveryId: string | null;
   fallbackReason: string;
+  targetRoleId?: string | null;
 }): Promise<boolean> {
   return callService.ringFallback(input);
 }
