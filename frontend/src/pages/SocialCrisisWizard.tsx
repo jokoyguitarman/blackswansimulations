@@ -59,6 +59,8 @@ import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon'
 import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
 import { OriginBadge } from '../components/UI/OriginBadge';
 import { SHELL_ART, artFor } from '../lib/scenarioArt';
+import { STAGE_LABEL, legacyErrorCardBody, legacyTransportBody } from '../lib/legacyBuildCopy';
+import { useWakeLock } from '../lib/useWakeLock';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -235,10 +237,6 @@ interface TeamCharterWire {
 // "Blueprint Review" step is inserted between Setup and Building. When off, the
 // wizard behaves exactly as before.
 const DOC_BLUEPRINT_ENABLED = import.meta.env.VITE_ENABLE_DOC_BLUEPRINT === 'true';
-
-/** Shown when a streaming stage ends without a result: the connection was cut upstream. */
-const STREAM_DROPPED_MESSAGE =
-  'The connection dropped before the storyline finished — a proxy or network timeout while the server was still generating. Retry; the server now sends keep-alives to prevent this.';
 
 /** Shown when a generation job disappears from the server (restart or deploy mid-build). */
 const JOB_LOST_MESSAGE =
@@ -788,6 +786,15 @@ export const SocialCrisisWizard = () => {
   const [buildError, setBuildError] = useState<
     'characters' | 'storyline' | 'convergence' | 'pages' | null
   >(null);
+  // Legacy path: keep the screen on for the whole chained build. A phone that
+  // locks mid-storyline drops the one open NDJSON response.
+  useWakeLock(
+    (buildStage === 'characters' ||
+      buildStage === 'storyline' ||
+      buildStage === 'convergence' ||
+      buildStage === 'pages') &&
+      buildError == null,
+  );
 
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
@@ -1347,6 +1354,8 @@ export const SocialCrisisWizard = () => {
         stakeholders: StakeholderWire[];
         pressureOrganisations: PressureOrgDraft[];
       } | null = null;
+      // Distinguishes a stream cut after progress from a request that never started.
+      let receivedAnyLine = false;
 
       try {
         const headers = await authHeaders();
@@ -1389,6 +1398,7 @@ export const SocialCrisisWizard = () => {
 
             for (const line of lines) {
               if (!line.trim()) continue;
+              receivedAnyLine = true;
               try {
                 const msg = JSON.parse(line);
                 if (msg.type === 'heartbeat') {
@@ -1469,10 +1479,11 @@ export const SocialCrisisWizard = () => {
               }
             }
           }
-          // The stream closed without a `complete` or `error` line: the connection was cut
-          // upstream (proxy idle timeout, network) while the server was still generating.
+          // The stream closed without a `complete` or `error` line. A line already
+          // received means the connection was cut mid-stage; none means it never started.
+          if (buffer.trim()) receivedAnyLine = true;
           if (!result && !streamErrored) {
-            setStep3Error(STREAM_DROPPED_MESSAGE);
+            setStep3Error(legacyTransportBody(STAGE_LABEL.storyline, receivedAnyLine));
           }
         } else {
           setStep3Error(
@@ -1482,7 +1493,7 @@ export const SocialCrisisWizard = () => {
           );
         }
       } catch {
-        setStep3Error('Network error generating storyline.');
+        setStep3Error(legacyTransportBody(STAGE_LABEL.storyline, receivedAnyLine));
       }
       setStep3Loading(false);
       return result;
@@ -1663,6 +1674,7 @@ export const SocialCrisisWizard = () => {
       const stakeholdersIn = stakeholdersArg ?? stakeholders;
       const factSheetIn = factSheetArg ?? factSheet;
       const pressureIn = pressureArg ?? pressureOrgs;
+      let receivedAnyLine = false;
       try {
         const headers = await authHeaders();
         const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-org-page'), {
@@ -1719,6 +1731,7 @@ export const SocialCrisisWizard = () => {
 
             for (const line of lines) {
               if (!line.trim()) continue;
+              receivedAnyLine = true;
               try {
                 const msg = JSON.parse(line);
                 if (msg.type === 'complete' && msg.org_page) {
@@ -1749,11 +1762,14 @@ export const SocialCrisisWizard = () => {
               }
             }
           }
+          if (buffer.trim()) receivedAnyLine = true;
           return true;
         }
         return false;
       } catch {
-        /* non-critical -- org page is optional */
+        // Pages stay optional: a dropped stream does not fail the build. The same
+        // split as storyline tells a mid-stage cut from a request that never started.
+        void legacyTransportBody(STAGE_LABEL.pages, receivedAnyLine);
         return false;
       }
     },
@@ -3230,11 +3246,8 @@ export const SocialCrisisWizard = () => {
               <WrIcon name="alert" size={24} />
             </div>
             <div>
-              <h4>The {buildError} stage failed</h4>
-              <p>
-                {errorMsg || 'The generator did not return a result.'} Retry to rebuild the scenario
-                from this stage.
-              </p>
+              <h4>The {STAGE_LABEL[buildError]} stage failed</h4>
+              <p>{legacyErrorCardBody(errorMsg)}</p>
             </div>
             <button onClick={() => void generateAll()} className="wr-btn accent">
               <WrIcon name="refresh" /> Retry
