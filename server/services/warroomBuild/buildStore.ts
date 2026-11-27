@@ -171,37 +171,6 @@ export function compileClaimable(
   return Date.parse(row.compile_heartbeat_at) < now.getTime() - 90_000;
 }
 
-/**
- * PostgREST 12 and 13 re-apply an `or` filter to an updated row, so a claim
- * UPDATE that used `.or()` plus `.select()` comes back `[]` after it landed.
- * The caller re-reads. This is a claim when the row is running at the instant
- * this call wrote. The returned heartbeat is the string PostgREST stored, which
- * later `.eq` fences must use.
- */
-export function compileClaimFromReread(
-  writtenHeartbeat: string,
-  read: {
-    compile_status: string | null;
-    compile_heartbeat_at: string | null;
-    credit_ledger_id: string | null;
-    credit_invoice_id: string | null;
-  } | null,
-): {
-  credit_ledger_id: string | null;
-  credit_invoice_id: string | null;
-  compile_heartbeat_at: string;
-} | null {
-  if (!read || read.compile_status !== 'running' || read.compile_heartbeat_at == null) return null;
-  const written = Date.parse(writtenHeartbeat);
-  const stored = Date.parse(read.compile_heartbeat_at);
-  if (!Number.isFinite(written) || written !== stored) return null;
-  return {
-    credit_ledger_id: read.credit_ledger_id,
-    credit_invoice_id: read.credit_invoice_id,
-    compile_heartbeat_at: read.compile_heartbeat_at,
-  };
-}
-
 const ACTIVE: BuildStatus[] = ['queued', 'running'];
 const TERMINAL: BuildStatus[] = ['succeeded', 'failed', 'cancelled'];
 
@@ -1251,28 +1220,41 @@ export class SupabaseBuildStore implements BuildStore {
   } | null> {
     const writtenHeartbeat = now.toISOString();
     const cutoff = new Date(now.getTime() - 90_000).toISOString();
-    // No `.select()` here. On PostgREST 12.2.3 and 13.0.8 an UPDATE whose
-    // filter is `.or()` reapplies that filter to the new row, so RETURNING is
-    // `[]` after a successful claim. The re-read below is the result.
-    const { error } = await supabaseAdmin
+    // The affected-row count is the claim. Two calls in the same millisecond
+    // write the same heartbeat, so a re-read that matches that instant lets
+    // both of them through. PostgREST also returns an empty body for this
+    // `or` filter on 12 and 13. `count: 'exact'` is 1 for the winner and 0
+    // for a racer on 12, 13 and 14, with no `.select()`.
+    const { count, error } = await supabaseAdmin
       .from('warroom_builds')
-      .update({
-        compile_status: 'running',
-        compile_heartbeat_at: writtenHeartbeat,
-      })
+      .update(
+        {
+          compile_status: 'running',
+          compile_heartbeat_at: writtenHeartbeat,
+        },
+        { count: 'exact' },
+      )
       .eq('id', buildId)
       .eq('status', 'succeeded')
       .or(
         `compile_status.is.null,compile_status.eq.failed,and(compile_status.eq.running,compile_heartbeat_at.lt.${cutoff})`,
       );
     if (error) throw error;
+    if (count !== 1) return null;
     const { data, error: readError } = await supabaseAdmin
       .from('warroom_builds')
-      .select('compile_status, compile_heartbeat_at, credit_ledger_id, credit_invoice_id')
+      .select('compile_heartbeat_at, credit_ledger_id, credit_invoice_id')
       .eq('id', buildId)
       .maybeSingle();
     if (readError) throw readError;
-    return compileClaimFromReread(writtenHeartbeat, data);
+    if (!data?.compile_heartbeat_at) {
+      throw new Error('compile claim re-read missed the heartbeat');
+    }
+    return {
+      credit_ledger_id: data.credit_ledger_id ?? null,
+      credit_invoice_id: data.credit_invoice_id ?? null,
+      compile_heartbeat_at: data.compile_heartbeat_at,
+    };
   }
 
   async saveCompileCredit(

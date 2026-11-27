@@ -79,20 +79,41 @@ import type { Response, NextFunction } from 'express';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const compileBuilds = new SupabaseBuildStore();
 
-/** The fenced success missed, so this scenario is not the build's. Remove it. */
+/**
+ * The fenced success missed, so this scenario is not the build's. Remove it.
+ * Returns the scenario the winning compile stored, or this id when the delete
+ * itself failed. Null means the client should follow the build: the winner has
+ * not stored a scenario yet.
+ *
+ * A heartbeat write can commit and still lose its response. This process then
+ * holds a stale heartbeat and deletes the only scenario, because that row looks
+ * the same as a takeover that has not stored one yet. The charge is kept, and a
+ * compile after 90 seconds reuses it.
+ */
 async function dropOrphanScenario(scenarioId: string, buildId: string): Promise<string | null> {
   const { error } = await supabaseAdmin.from('scenarios').delete().eq('id', scenarioId);
   if (error) {
     logger.error({ err: error, scenarioId, buildId }, 'compile_orphan_scenario_delete_failed');
-  } else {
-    logger.warn({ scenarioId, buildId }, 'compile_orphan_scenario');
+    return scenarioId;
   }
+  logger.warn({ scenarioId, buildId }, 'compile_orphan_scenario');
   try {
     const fresh = await compileBuilds.get(buildId);
     return fresh?.scenario_id ?? null;
   } catch (err) {
     logger.warn({ err, buildId }, 'compile_orphan_reread_failed');
     return null;
+  }
+}
+
+/** The ledger points at a scenario only after that scenario is the build's. */
+async function attachLedgerScenario(ledgerId: string, scenarioId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('credit_ledger')
+    .update({ scenario_id: scenarioId })
+    .eq('id', ledgerId);
+  if (error) {
+    logger.warn({ err: error, ledgerId, scenarioId }, 'compile_ledger_scenario_failed');
   }
 }
 
@@ -298,7 +319,7 @@ function beginNdjson(res: import('express').Response): () => void {
 const aiJobs = new Map<
   string,
   {
-    status: 'generating' | 'completed' | 'failed';
+    status: 'generating' | 'completed' | 'failed' | 'superseded';
     data?: unknown;
     error?: string;
     startedAt: number;
@@ -478,6 +499,9 @@ router.get('/job-status/:jobId', requireAuth, async (req: AuthenticatedRequest, 
   }
   if (job.status === 'failed') {
     return res.json({ status: 'failed', error: job.error });
+  }
+  if (job.status === 'superseded') {
+    return res.json({ status: 'superseded', error: job.error });
   }
   return res.json({ status: 'generating' });
 });
@@ -1125,6 +1149,9 @@ router.post(
               else if (timer) clearInterval(timer);
             })
             .catch((err) => {
+              // The update may have committed. myHeartbeat then stays on the
+              // previous value, and the fence miss below can delete this
+              // process's own scenario. See dropOrphanScenario.
               logger.warn({ err, buildId: durableBuildId }, 'compile_heartbeat_failed');
             });
         }, 30_000);
@@ -1316,12 +1343,11 @@ router.post(
           );
         }
 
-        // Backfill the scenario id onto the credit spend row for auditing.
-        if (creditLedgerId) {
-          await supabaseAdmin
-            .from('credit_ledger')
-            .update({ scenario_id: scenarioId })
-            .eq('id', creditLedgerId);
+        // A durable compile attaches the ledger only after the fenced write
+        // lands, so a lost race cannot point the shared charge at a scenario
+        // this process is about to delete. The legacy compile has no fence.
+        if (creditLedgerId && !durableBuildId) {
+          await attachLedgerScenario(creditLedgerId, scenarioId);
         }
 
         // Pre-generate images in background (doesn't block compile result)
@@ -1376,7 +1402,7 @@ router.post(
           }
         })();
 
-        let reportedScenarioId = scenarioId;
+        let reportedScenarioId: string | null = scenarioId;
         if (durableBuildId && myHeartbeat) {
           try {
             const wrote = await compileBuilds.succeedCompile(
@@ -1384,9 +1410,10 @@ router.post(
               scenarioId,
               myHeartbeat,
             );
-            if (!wrote) {
-              const kept = await dropOrphanScenario(scenarioId, durableBuildId);
-              if (kept) reportedScenarioId = kept;
+            if (wrote) {
+              if (creditLedgerId) await attachLedgerScenario(creditLedgerId, scenarioId);
+            } else {
+              reportedScenarioId = await dropOrphanScenario(scenarioId, durableBuildId);
             }
           } catch (err) {
             // The scenario rows exist. Refunding here would hand the trainer a
@@ -1397,19 +1424,29 @@ router.post(
             );
           }
         }
-        aiJobs.set(jobId, {
-          status: 'completed',
-          data: {
-            scenario_id: reportedScenarioId,
-            title: payload.scenario.title,
-            inject_count:
-              payload.time_injects.length +
-              payload.condition_injects.length +
-              payload.decision_injects.length,
-          },
-          startedAt: Date.now(),
-        });
-        logger.info({ jobId, scenarioId: reportedScenarioId }, 'Compile completed');
+        const injectCount =
+          payload.time_injects.length +
+          payload.condition_injects.length +
+          payload.decision_injects.length;
+        if (reportedScenarioId) {
+          aiJobs.set(jobId, {
+            status: 'completed',
+            data: {
+              scenario_id: reportedScenarioId,
+              title: payload.scenario.title,
+              inject_count: injectCount,
+            },
+            startedAt: Date.now(),
+          });
+          logger.info({ jobId, scenarioId: reportedScenarioId }, 'Compile completed');
+        } else {
+          aiJobs.set(jobId, {
+            status: 'superseded',
+            error: 'Another compile took this build. Reopen the draft to open its scenario.',
+            startedAt: Date.now(),
+          });
+          logger.info({ jobId, buildId: durableBuildId }, 'compile_superseded');
+        }
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
         if (!scenarioWritten) {
@@ -1438,7 +1475,21 @@ router.post(
                 scenarioId,
                 myHeartbeat,
               );
-              if (!wrote) await dropOrphanScenario(scenarioId, durableBuildId);
+              if (wrote) {
+                if (creditLedgerId) await attachLedgerScenario(creditLedgerId, scenarioId);
+              } else {
+                const kept = await dropOrphanScenario(scenarioId, durableBuildId);
+                if (!kept) {
+                  aiJobs.set(jobId, {
+                    status: 'superseded',
+                    error:
+                      'Another compile took this build. Reopen the draft to open its scenario.',
+                    startedAt: Date.now(),
+                  });
+                  return;
+                }
+                scenarioId = kept;
+              }
             } catch (writeErr) {
               logger.error(
                 { err: writeErr, buildId: durableBuildId, scenarioId },

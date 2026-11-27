@@ -2372,6 +2372,14 @@ export const SocialCrisisWizard = () => {
           }
           if (!pollRes.ok) continue;
           const pollJson = await pollRes.json();
+          if (pollJson.status === 'superseded') {
+            addProgress(
+              pollJson.error ||
+                'Another compile took this build. Reopen the draft to open its scenario.',
+            );
+            setCompiling(false);
+            return;
+          }
           if (pollJson.status === 'completed' && pollJson.data) {
             const d = pollJson.data;
             setScenarioId(String(d.scenario_id));
