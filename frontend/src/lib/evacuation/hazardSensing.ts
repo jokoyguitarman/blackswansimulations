@@ -2318,9 +2318,13 @@ export class RouteRegions {
     }
     // Any doorway a body fits through is open across its whole width, wherever
     // it falls on the grid. The jamb bands alone can close a 0.8 m door.
+    const carved = new Uint8Array(n);
     for (const wall of walls) {
       const gap = planGap(wall);
-      if (gap) this.carveGap(open, inside, gap[0], gap[1]);
+      if (!gap) continue;
+      for (const [a, b] of this.passablePieces(gap[0], gap[1])) {
+        this.carveGap(open, inside, carved, a, b);
+      }
     }
     this.label = new Int32Array(n).fill(-1);
     let next = 0;
@@ -2343,6 +2347,11 @@ export class RouteRegions {
         ];
         for (const j of near) {
           if (j < 0 || !open[j] || this.label[j] >= 0) continue;
+          // A carved cell can sit in another wall's band, one step from that
+          // wall's far side. The band no longer seals there, so the step must.
+          if ((carved[i] || carved[j]) && this.crossesWall(this.centreOf(i), this.centreOf(j))) {
+            continue;
+          }
           this.label[j] = next;
           queue[tail++] = j;
         }
@@ -2415,7 +2424,45 @@ export class RouteRegions {
     return false;
   }
 
-  private carveGap(open: Uint8Array, inside: Uint8Array, a: Vec2, b: Vec2) {
+  /**
+   * A doorway split where another wall meets it. Only pieces a body fits
+   * through are carved: a wall ending in the opening leaves a slot, not a door.
+   */
+  private passablePieces(a: Vec2, b: Vec2): Array<[Vec2, Vec2]> {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-6) return [];
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    const cuts = [0, len];
+    const tol = 0.05;
+    for (const [c, d] of this.solid) {
+      const ex = d.x - c.x;
+      const ey = d.y - c.y;
+      const plen = Math.hypot(ex, ey);
+      const denom = ux * ey - uy * ex;
+      if (plen < 1e-6 || Math.abs(denom) < 1e-9) continue;
+      const t = ((c.x - a.x) * ey - (c.y - a.y) * ex) / denom;
+      const u = ((c.x - a.x) * uy - (c.y - a.y) * ux) / denom;
+      if (t > tol && t < len - tol && u >= -tol / plen && u <= 1 + tol / plen) cuts.push(t);
+    }
+    cuts.sort((p, q) => p - q);
+    const pieces: Array<[Vec2, Vec2]> = [];
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      if (cuts[k + 1] - cuts[k] < 2 * BODY_RADIUS_M - 1e-6) continue;
+      pieces.push([
+        { x: a.x + ux * cuts[k], y: a.y + uy * cuts[k] },
+        { x: a.x + ux * cuts[k + 1], y: a.y + uy * cuts[k + 1] },
+      ]);
+    }
+    return pieces;
+  }
+
+  private centreOf(i: number): Vec2 {
+    const c = i % this.cols;
+    return this.centre(c, (i - c) / this.cols);
+  }
+
+  private carveGap(open: Uint8Array, inside: Uint8Array, carved: Uint8Array, a: Vec2, b: Vec2) {
     const pad = REGION_DOOR_CARVE_M;
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len < 1e-6) return;
@@ -2438,7 +2485,12 @@ export class RouteRegions {
         const p = this.centre(c, r);
         const along = (p.x - a.x) * ux + (p.y - a.y) * uy;
         const off = Math.abs((p.x - a.x) * uy - (p.y - a.y) * ux);
-        if (along >= 0 && along <= len && off <= pad) open[i] = 1;
+        if (!(along >= 0 && along <= len && off <= pad)) continue;
+        // Only what the doorway itself can see: not through a wall behind it.
+        const foot = { x: a.x + ux * along, y: a.y + uy * along };
+        if (this.crossesWall(foot, p)) continue;
+        if (!open[i]) carved[i] = 1;
+        open[i] = 1;
       }
     }
   }
