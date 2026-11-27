@@ -2909,6 +2909,8 @@ interface LayerAdvance {
   burnedFraction: number;
   phi: number;
   burn: LayerBurn;
+  /** Convected heat of fuel that burned in the spill this slice, kW. */
+  qDoorKw: number;
   plumeKgS: number;
   /** Inflow that fills the lower layer. The deposited jet's own inflow is out. */
   makeupKgS: number;
@@ -3095,6 +3097,7 @@ function layerAdvance(
   return {
     massRateKgS: gained - carried - storeKgS,
     burnedFraction,
+    qDoorKw,
     phi: burn.phi,
     burn,
     plumeKgS: plume,
@@ -3226,6 +3229,14 @@ export function stepZone(
   inKT: number;
   /** Outflow enthalpy over the step, kg·K. Each slice leaves at its own layer. */
   outKT: number;
+  /**
+   * Convected heat given to the layer energy equation, kJ. This is the
+   * fire's (1 − χ)Q at the fraction the temperature step used, plus door
+   * fuel that burned in the spill. The oxygen scale can lower
+   * `burnedFraction` after this heat is already in the temperature. A
+   * ±400 K/s clip can still discard some of it.
+   */
+  convectedKj: number;
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -3277,6 +3288,7 @@ function stepZoneNow(
   let upperLossSum = 0;
   let lowerLossSum = 0;
   let lossSlices = 0;
+  let convectedKj = 0;
   let left = Math.max(0, dt);
   let lastFraction = state.lastBurnFraction ?? 1;
   const gainKjM2 = hold && hold.size > 0 ? ({} as Record<string, number>) : undefined;
@@ -3790,6 +3802,9 @@ function stepZoneNow(
       const fitted = upperTemperatureForMassKg(spec, z, lower, target);
       if (fitted != null) temp = fitted;
     }
+    // The oxygen scale lowers the reported fraction after this heat is
+    // already in the temperature. Door fuel is the spill's convected part.
+    convectedKj += (q * advance.burnedFraction + advance.qDoorKw) * slice;
     const carried = mass > 1e-6 ? (soot / mass) * hotSum * slice : 0;
     const extracted = mass > 1e-6 ? (soot / mass) * limited.fanUpperKgS * slice : 0;
     const displacedSoot = mass > 1e-6 ? (soot / mass) * sliceExtra : 0;
@@ -3881,6 +3896,7 @@ function stepZoneNow(
     inKgByVent: inKg,
     inKT: stepInKT,
     outKT: stepOutKT,
+    convectedKj,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }

@@ -1029,6 +1029,101 @@ test('a floor clamp books the mass the vents moved', () => {
   assert.ok(Math.abs(clamp) < 0.05, `floor residual ${clamp.toFixed(3)} kg`);
 });
 
+test('the room energy budget closes on the heat the layer actually took', () => {
+  // Stored enthalpy is m cp T. With ρ T = 353 that is 353 times the layer
+  // volume, so a room of fixed volume stores none of the fire. A sealed
+  // room's heat is the enthalpy of the mass the density law releases. A
+  // free interface sends the same heat out of the vents. Radiation stays
+  // on the boundaries, and the wall term is only the film the gas pays.
+  // The oxygen scale lowers the reported fraction after this heat is
+  // already in the temperature, which is why a floor clamp's reported
+  // convected heat does not close the same balance.
+  const RHO_T = 353;
+  const dt = 1 / 60;
+  const stored = (
+    spec: LayerSpec,
+    z: number,
+    upper: number,
+    lower: number,
+  ): { mass: number; kj: number } => {
+    const vu = upperLayerVolumeM3(spec, z);
+    const mu = (RHO_T / upper) * vu;
+    const ml = gasMassKg(spec, z, upper, lower) - mu;
+    return { mass: mu + ml, kj: mu * upper + ml * lower };
+  };
+  const room = (area: number, heatKw: number, diameter: number, vent: boolean): LayerSpec => ({
+    areaM2: area,
+    ceilingM: 4,
+    boundaries: [
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: 80, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw, diameterM: diameter }],
+    vents: vent ? [{ widthM: 1.2, sillM: 0, soffitM: 2.2 }] : [],
+  });
+  const tally = (spec: LayerSpec, state0: ReturnType<typeof freshLayer>, steps: number) => {
+    let state = state0;
+    let balance = 0;
+    let applied = 0;
+    let reported = 0;
+    const prescribed = spec.fires.reduce(
+      (sum, fire) => sum + (fire.heatKw > 0 ? fire.heatKw : 0),
+      0,
+    );
+    const convectedKw = (1 - RADIATIVE_FRACTION) * prescribed;
+    for (let i = 0; i < steps; i++) {
+      const lower0 = state.lowerK ?? AMBIENT_K;
+      const before = stored(spec, state.interfaceM, state.upperK, lower0);
+      const step = stepZone(state, spec, dt);
+      const lower1 = step.state.lowerK ?? AMBIENT_K;
+      const after = stored(spec, step.state.interfaceM, step.state.upperK, lower1);
+      const walls = (step.upperLossKw + step.lowerLossKw) * dt;
+      const vent = step.inKT - step.outKT;
+      const dm = after.mass - before.mass - step.bookedKg;
+      balance += step.convectedKj + vent - walls - (after.kj - before.kj) + dm * step.state.upperK;
+      applied += step.convectedKj;
+      reported += convectedKw * step.burnedFraction * dt;
+      state = step.state;
+    }
+    return { balance, applied, reported };
+  };
+  const sealed = tally(
+    room(80, 4000, 2.8, false),
+    { ...freshLayer(4), interfaceM: 2, upperK: AMBIENT_K + 20, upperO2: 0.23, lowerO2: 0.23 },
+    600,
+  );
+  assert.ok(Math.abs(sealed.applied - 26000) < 100, `sealed heat ${sealed.applied.toFixed(0)} kJ`);
+  assert.ok(Math.abs(sealed.balance) < 50, `sealed budget ${sealed.balance.toFixed(1)} kJ`);
+
+  const open = tally(
+    room(400, 2000, 2, true),
+    { ...freshLayer(4), interfaceM: 2, upperK: AMBIENT_K + 40, upperO2: 0.23, lowerO2: 0.23 },
+    600,
+  );
+  assert.ok(Math.abs(open.applied - 13000) < 100, `open heat ${open.applied.toFixed(0)} kJ`);
+  assert.ok(Math.abs(open.reported - open.applied) < 50, 'the free layer was not oxygen-scaled');
+  assert.ok(Math.abs(open.balance) < 50, `open budget ${open.balance.toFixed(1)} kJ`);
+
+  const floor = tally(
+    room(400, 20000, 10, true),
+    {
+      ...freshLayer(4),
+      interfaceM: 0.05,
+      upperK: AMBIENT_K + 250,
+      upperO2: 0.18,
+      lowerO2: 0.23,
+    },
+    900,
+  );
+  assert.ok(Math.abs(floor.applied - 195000) < 500, `floor heat ${floor.applied.toFixed(0)} kJ`);
+  assert.ok(
+    floor.applied - floor.reported > 20000,
+    `scale gap ${(floor.applied - floor.reported).toFixed(0)} kJ`,
+  );
+  assert.ok(Math.abs(floor.balance) < 2000, `floor budget ${floor.balance.toFixed(0)} kJ`);
+});
+
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
   // No fire, so the stream is not consumed. Its oxygen, soot and fuel
   // arrive with the mass. CO is not a layer species; the stud dose reads
