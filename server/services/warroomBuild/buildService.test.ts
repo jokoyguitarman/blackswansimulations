@@ -1074,7 +1074,10 @@ describe('build service', () => {
     }
   });
 
-  test('claim, renew and sweep failures do not escape as unhandled rejections', async () => {
+  test('claim, renew and sweep failures do not escape as unhandled rejections', async (t) => {
+    // Real 20 ms intervals race each other: a claim tick that finds a lease due
+    // renews instead of claiming. Virtual time fires renew, claim, sweep in order.
+    t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
     let release: () => void = () => undefined;
     const { service, store } = harness({
       clock: { now: () => new Date() },
@@ -1121,9 +1124,11 @@ describe('build service', () => {
     try {
       service.startClaimLoop(20);
       service.startSweepLoop(20);
-      const deadline = Date.now() + 1000;
-      while (Date.now() < deadline && (claims < 2 || renews < 2 || sweeps < 2)) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+      for (let step = 0; step < 10 && (claims < 2 || renews < 2 || sweeps < 2); step += 1) {
+        t.mock.timers.tick(20);
+        for (let turn = 0; turn < 10; turn += 1) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
       }
       assert.ok(claims >= 2);
       assert.ok(renews >= 2);
