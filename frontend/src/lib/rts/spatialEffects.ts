@@ -965,10 +965,14 @@ export class SpatialEffectsEngine {
   /**
    * Shaft pairs for stairs and lifts. `widthM` and `heightByLevel` are optional;
    * omitted values use the 1.2 m stair and the 4 m storey. The vent uses the
-   * landing door and the storey height, not the old 400 K mix.
+   * landing door and the storey height, not the old 400 K mix. A blocked
+   * stair or lift is shut: no vent, no column, no landing flux. A shut door
+   * is a wall in the layer solve, so a shut shaft gets no leakage either.
    */
   setVerticalLinks(links: ShaftLink[]) {
-    this.verticalPairs = shaftPairs([...this.studIndex.values()], links);
+    this.verticalPairs = shaftPairs([...this.studIndex.values()], links).filter(
+      (pair) => !pair.blocked,
+    );
     this.fireSim.setShaftPairs(this.verticalPairs);
     this.shaftK.clear();
     this.shaftHold.clear();

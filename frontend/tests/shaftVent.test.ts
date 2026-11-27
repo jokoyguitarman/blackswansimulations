@@ -687,3 +687,79 @@ describe('stair shaft scene', () => {
     eng.destroy();
   });
 });
+
+describe('blocked shaft', () => {
+  test('ground-floor smoke reaches the upper storey through an open stair, not a blocked one', () => {
+    const scene = stairShaftSample.scene;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const studs = projectSceneStuds(polygon, stairShaftStuds(polygon, ['G', 'L1'])).map((stud) => ({
+      id: stud.id,
+      simPos: stud.simPos,
+      spatialContext: stud.spatialContext,
+      level: storeyId(stud.floor),
+    }));
+    const levels = scene.levels as LevelDef[];
+    const exits = scene.exits as unknown as ExitDef[];
+    const stairOnly = scene.stairwells.filter((shaft) => shaft.kind === 'stair');
+    assert.ok(stairOnly.length > 0, 'the scene has no stair');
+    const blast = scene.blastSite;
+    const upper = studs.filter(
+      (stud) => stud.level === 'L1' && stud.spatialContext === 'inside_building',
+    );
+    assert.ok(upper.length > 0, 'no indoor studs upstairs');
+    const upperSmoke = (blocked: boolean) => {
+      const engine = new SpatialEffectsEngine();
+      engine.init(studs);
+      engine.registerHazard(
+        'blast-direct',
+        [
+          {
+            triggerTimeSec: 0,
+            eventType: 'explode',
+            spreadType: 'fire',
+            spreadRadius: blast.radius,
+            spreadRate: 10,
+            description: 'Direct blast ignition',
+            severity: 'critical',
+          },
+        ],
+        { initial: 'Pre', triggered: 'Blast', worsening: 'Spreading', critical: 'Engulfed' },
+      );
+      engine.setFuelCells(confirmedFuelCells(stairShaftFuelObjects(studs), studs));
+      attachBuilding(engine, {
+        stairwells: stairOnly.map((shaft) => ({ ...shaft, blocked })),
+        levels,
+        vertices: projectPolygon(polygon),
+        exits,
+      });
+      const zone: HazardZone = {
+        id: 'blast-direct',
+        pos: { x: blast.x, y: blast.y },
+        radius: blast.radius,
+        hazardType: 'ignitable',
+        severity: 'high',
+        label: 'Blast',
+        description: 'Direct blast ignition',
+        photos: [],
+        level: 'G',
+      };
+      engine.runPreview(300, [], [zone]);
+      const ground = Math.max(
+        ...studs
+          .filter((stud) => stud.level === 'G' && stud.spatialContext === 'inside_building')
+          .map((stud) => engine.studStates.get(stud.id)?.smoke ?? 0),
+      );
+      const top = Math.max(...upper.map((stud) => engine.studStates.get(stud.id)?.smoke ?? 0));
+      const view = engine as unknown as { shaftK: Map<string, number> };
+      const hottest = Math.max(AMBIENT_K, ...view.shaftK.values());
+      return { ground, top, hottest };
+    };
+    const open = upperSmoke(false);
+    const shut = upperSmoke(true);
+    assert.ok(open.top > 0.1, `upper smoke ${open.top} through the open stair`);
+    assert.ok(open.hottest > AMBIENT_K + 1, `open stair column ${open.hottest} K never warmed`);
+    assert.ok(shut.ground > 0.1, `ground smoke ${shut.ground}: the fire never made smoke`);
+    assert.ok(shut.top < 0.01, `upper smoke ${shut.top} through a blocked stair`);
+    assert.equal(shut.hottest, AMBIENT_K, 'a blocked stair carried heat up its column');
+  });
+});

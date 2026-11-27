@@ -171,7 +171,7 @@ export interface ShaftPair {
   lower: string;
   upper: string;
   kind: 'stair' | 'lift';
-  /** Crowd flag. The shaft vent stays open either way. */
+  /** Shut to people and to gas. The layer step drops a blocked pair. */
   blocked: boolean;
   /** Legacy mix. The layer vent does not read it. */
   coeffPerS: number;
