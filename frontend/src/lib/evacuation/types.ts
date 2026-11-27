@@ -77,4 +77,6 @@ export interface EvacShowcaseOptions {
   seed?: number;
   /** Above-ground building height. The SCDF distance is max(this, 20 m). */
   buildingHeightM?: number;
+  /** Overrides SHOWCASE.FREEZE_PERMILLE. 0 turns freezing off. */
+  freezePermille?: number;
 }

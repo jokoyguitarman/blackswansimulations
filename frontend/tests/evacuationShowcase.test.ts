@@ -1029,6 +1029,126 @@ test('someone pressed against a wall keeps their own side of it', () => {
   }
 });
 
+describe('freezing in fear', () => {
+  const verts: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 20 },
+    { x: 0, y: 20 },
+  ];
+  const sealed = [
+    { startX: 30, startY: 0, endX: 30, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+    { startX: 30, startY: 6, endX: 40, endY: 6, hasDoor: false, doorWidth: 1.6, doorPosition: 0.5 },
+  ];
+  type Label = {
+    pedId: number;
+    state: string;
+    reactAt: number;
+    frozen?: boolean;
+    freezeRollDone?: boolean;
+    sheltering?: boolean;
+  };
+  const smokeEverywhere = (smoke: number) => {
+    const studs: HazardStud[] = [];
+    const states: Record<string, { smoke: number; fire: string }> = {};
+    for (let x = 0.5; x < 40; x += 1) {
+      for (let y = 0.5; y < 20; y += 1) {
+        const id = `s_${x}_${y}`;
+        studs.push({ id, simPos: { x, y }, indoor: true });
+        states[id] = { smoke, fire: 'none' };
+      }
+    }
+    return field(studs, states);
+  };
+  const engine = (permille: number | undefined, walls = [] as typeof sealed, count = 1) => {
+    const eng = new PolygonEvacuationEngine(
+      {
+        vertices: verts,
+        pedestrianCount: count,
+        pedestrianRadius: 0.25,
+        desiredSpeed: 1.4,
+        panicFactor: 0,
+        dt: 1 / 60,
+      },
+      [exit({ id: 'west', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 })],
+      walls,
+      [],
+      { afterExit: 'zone', zones: [], seed: 1, ...(permille != null ? { freezePermille: permille } : {}) },
+    );
+    eng.setHazardField(smokeEverywhere(0.4));
+    return eng;
+  };
+  const start = (eng: PolygonEvacuationEngine, i: number, pos: Vec2) => {
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[i];
+    Matter.Body.setPosition(body, pos);
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (body as Matter.Body & { __ped: Label }).__ped;
+    ped.state = 'reacting';
+    ped.reactAt = 0;
+    return { body, ped };
+  };
+
+  test('in smoke, a frozen person stands still until a responder reaches them', () => {
+    const eng = engine(1000);
+    const { body, ped } = start(eng, 0, { x: 20, y: 10 });
+    for (let i = 0; i < 120; i++) eng.step();
+    assert.equal(ped.frozen, true);
+    assert.ok(Math.abs(body.position.x - 20) < 0.05, `held at x=${body.position.x.toFixed(3)}`);
+    assert.equal(eng.getSnapshots()[0].frozen, true);
+    assert.equal(eng.getMetrics().showcase?.frozen, 1);
+    // A responder out of reach does nothing; one at arm's length gets them going.
+    eng.setResponders([{ id: 'marshal-1', pos: { x: 22, y: 10 } }]);
+    for (let i = 0; i < 30; i++) eng.step();
+    assert.equal(ped.frozen, true);
+    eng.setResponders([{ id: 'marshal-1', pos: { x: 21, y: 10 } }]);
+    for (let i = 0; i < 120; i++) eng.step();
+    assert.equal(ped.frozen, false);
+    assert.equal(ped.freezeRollDone, true);
+    assert.ok(body.position.x < 19.8, `walking to the west exit, x=${body.position.x.toFixed(2)}`);
+    assert.equal(eng.getMetrics().showcase?.unfrozen, 1);
+    assert.equal(eng.getMetrics().showcase?.frozen, 0);
+    eng.destroy();
+  });
+
+  test('a zero rate never freezes, and clean air is no trigger', () => {
+    const off = engine(0);
+    const a = start(off, 0, { x: 20, y: 10 });
+    for (let i = 0; i < 120; i++) off.step();
+    assert.notEqual(a.ped.frozen, true);
+    assert.ok(a.body.position.x < 19.8);
+    off.destroy();
+    const clean = engine(1000);
+    clean.setHazardField(smokeEverywhere(0));
+    const b = start(clean, 0, { x: 20, y: 10 });
+    for (let i = 0; i < 120; i++) clean.step();
+    assert.notEqual(b.ped.frozen, true);
+    assert.notEqual(b.ped.freezeRollDone, true);
+    clean.destroy();
+  });
+
+  test('someone sheltering with no route is not frozen', () => {
+    const eng = engine(1000, sealed);
+    const { ped } = start(eng, 0, { x: 35, y: 3 });
+    for (let i = 0; i < 120; i++) eng.step();
+    assert.equal(ped.sheltering, true);
+    assert.notEqual(ped.frozen, true);
+    assert.notEqual(eng.getSnapshots()[0].frozen, true);
+    eng.destroy();
+  });
+
+  test('the default roll is seeded per person at about one in twenty', () => {
+    const eng = engine(undefined, [], 1);
+    const roll = (id: number) =>
+      (eng as unknown as { freezeRoll(id: number): number }).freezeRoll(id);
+    let frozen = 0;
+    for (let id = 0; id < 4000; id++) if (roll(id) < SHOWCASE.FREEZE_PERMILLE / 1000) frozen++;
+    assert.equal(SHOWCASE.FREEZE_PERMILLE, 50);
+    assert.ok(Math.abs(frozen / 4000 - 0.05) < 0.01, `share ${frozen / 4000}`);
+    assert.equal(roll(7), roll(7));
+    eng.destroy();
+  });
+});
+
 test('posture resets outside and crawling counts only evacuating people', () => {
   const eng = showcaseEngine(2);
   const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;

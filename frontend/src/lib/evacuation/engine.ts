@@ -120,6 +120,8 @@ export interface PedSnapshot {
   fumeDown?: boolean;
   /** Down because the heat dose reached 1. */
   heatDown?: boolean;
+  /** Frozen in fear and waiting for a responder. Not the same as sheltering with no route. */
+  frozen?: boolean;
   zoneId?: string | null;
   /** Effective pressure for someone inside the minor ring, in kPa. */
   blastKpa?: number;
@@ -148,6 +150,10 @@ export interface ShowcaseMetrics {
   heatDown: number;
   minorInjured: number;
   reroutes: number;
+  /** People frozen in fear right now. */
+  frozen: number;
+  /** Frozen people a responder has got moving again. */
+  unfrozen: number;
   /** Set when every zone was unsafe and people were sent to the farthest one. */
   unsafeZoneNote?: string | null;
   /** Present only when a level plan was passed to the engine. */
@@ -195,6 +201,10 @@ interface PedLabel {
   wanderUntil?: number;
   spawn?: Vec2;
   smokeRollDone?: boolean;
+  /** Frozen in fear: standing still until a responder reaches them. */
+  frozen?: boolean;
+  /** The one-time freeze roll has been made. */
+  freezeRollDone?: boolean;
   /** Exit the lookahead already acted on. Cleared when that heading is clear again. */
   latchedExitId?: string | null;
   /** Exits the lookahead left because of fire or untenable smoke, until that route clears. */
@@ -301,6 +311,8 @@ export class PolygonEvacuationEngine {
   private zones: ShowcaseZone[] = [];
   private blast: { site: Vec2; radius: number; glassInjuryM?: number } | null = null;
   private turnedBackCount = 0;
+  private unfrozenCount = 0;
+  private responders: Array<{ id: string; pos: Vec2; level?: string }> = [];
   private rerouteCount = 0;
   private unsafeZoneNote: string | null = null;
   private leftMapCount = 0;
@@ -967,6 +979,7 @@ export class PolygonEvacuationEngine {
         continue;
       }
       if (ped.state === 'evacuating') {
+        if (this.holdFrozen(body, ped)) continue;
         this.stepEvacuating(body, ped);
         continue;
       }
@@ -1002,6 +1015,67 @@ export class PolygonEvacuationEngine {
 
   private posOf(body: Matter.Body): Vec2 {
     return { x: body.position.x, y: body.position.y };
+  }
+
+  /**
+   * Responders who can get a frozen person moving: positions in sim metres.
+   * Unset level means the single floor.
+   */
+  setResponders(responders: ReadonlyArray<{ id: string; pos: Vec2; level?: string }>) {
+    this.responders = responders.map((r) => ({ id: r.id, pos: { ...r.pos }, level: r.level }));
+  }
+
+  /**
+   * Freezing in fear. The first time smoke at FREEZE_TRIGGER_K or a burning
+   * stud reaches an evacuee who has a route, a seeded per-person roll may
+   * freeze them. They stand still, still breathing the smoke, until a
+   * responder comes within FREEZE_RELEASE_M; then they re-choose and go.
+   * The roll is keyed on the person, not drawn from the shared stream, so it
+   * leaves every other seeded draw where it was. Someone sheltering with no
+   * route is not frozen; that is a different state.
+   */
+  private holdFrozen(body: Matter.Body, ped: PedLabel): boolean {
+    if (ped.frozen) {
+      if (this.responderNear(body, ped)) {
+        ped.frozen = false;
+        ped.nextCheckAt = this.elapsed;
+        this.unfrozenCount++;
+        return false;
+      }
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      return true;
+    }
+    if (ped.freezeRollDone || ped.sheltering) return false;
+    const pos = this.posOf(body);
+    const field = this.field(ped.level);
+    const smoky = extinctionK(field.sample(pos.x, pos.y).smoke) >= SHOWCASE.FREEZE_TRIGGER_K;
+    const fire =
+      !smoky &&
+      field
+        .firesNear(pos.x, pos.y, SHOWCASE.FIRE_AVOID_RADIUS_M)
+        .some((f) => f.state === 'burning');
+    if (!smoky && !fire) return false;
+    ped.freezeRollDone = true;
+    const permille = this.showcase?.freezePermille ?? SHOWCASE.FREEZE_PERMILLE;
+    if (!(permille > 0) || this.freezeRoll(ped.pedId) >= permille / 1000) return false;
+    if (this.responderNear(body, ped)) return false;
+    ped.frozen = true;
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    return true;
+  }
+
+  private freezeRoll(pedId: number): number {
+    const seed = (this.showcase?.seed ?? SHOWCASE.RNG_SEED) >>> 0;
+    return mulberry32((seed ^ Math.imul(pedId + 1, 0x9e3779b1)) >>> 0)();
+  }
+
+  private responderNear(body: Matter.Body, ped: PedLabel): boolean {
+    const reach = SHOWCASE.FREEZE_RELEASE_M;
+    for (const r of this.responders) {
+      if ((r.level ?? '') !== (ped.level ?? '') && r.level != null && ped.level != null) continue;
+      if (Math.hypot(r.pos.x - body.position.x, r.pos.y - body.position.y) <= reach) return true;
+    }
+    return false;
   }
 
   private stepIdle(body: Matter.Body, ped: PedLabel) {
@@ -2411,6 +2485,7 @@ export class PolygonEvacuationEngine {
       if (ped.fec != null && ped.fec > 0) snap.fumeFec = ped.fec;
       if (ped.fumeHeld) snap.fumeHeld = true;
       if (ped.fumeDown) snap.fumeDown = true;
+      if (ped.frozen) snap.frozen = true;
       if (ped.heatDown) snap.heatDown = true;
       snap.zoneId = ped.zoneId ?? null;
       if (ped.blastKpa != null) {
@@ -2461,6 +2536,7 @@ export class PolygonEvacuationEngine {
     let lethal = 0;
     let serious = 0;
     let fumeHeld = 0;
+    let frozen = 0;
     let fumeDown = 0;
     let heatDown = 0;
     for (const s of snaps) {
@@ -2474,6 +2550,7 @@ export class PolygonEvacuationEngine {
       if (s.state === 'down' && s.injury === 'lethal') lethal++;
       if (s.state === 'down' && s.injury === 'serious') serious++;
       if (s.fumeHeld && s.state !== 'down') fumeHeld++;
+      if (s.frozen && s.state === 'evacuating') frozen++;
       if (s.fumeDown) fumeDown++;
       if (s.heatDown) heatDown++;
     }
@@ -2495,6 +2572,8 @@ export class PolygonEvacuationEngine {
       heatDown,
       minorInjured,
       reroutes: this.rerouteCount,
+      frozen,
+      unfrozen: this.unfrozenCount,
       unsafeZoneNote: this.unsafeZoneNote,
       ...(this.levelPlan
         ? { byLevel: this.metricsByLevel(snaps), stairQueues: this.metricsQueues() }

@@ -667,10 +667,19 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
     ring = true;
   }
 
+  // Frozen in fear: pale ice fill and a square, so it reads apart from crawl and dose rings.
+  if (ped.frozen) fill = '#e0f2fe';
+
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
+  if (ped.frozen) {
+    const side = (r + 3) * 2;
+    ctx.strokeStyle = '#0ea5e9';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.cx - side / 2, p.cy - side / 2, side, side);
+  }
   if (ring) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;

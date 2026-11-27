@@ -2418,6 +2418,11 @@ export function DebugRTSSim() {
                 kind: zoneKindsRef.current[e.id] ?? 'assembly',
               })),
           );
+          evac.setResponders(
+            rts.state.units
+              .filter((u) => u.def.abilities.includes('unfreeze'))
+              .map((u) => ({ id: u.id, pos: u.pos })),
+          );
           const evacSteps = takeSteps(
             evacAccRef.current,
             dt,
@@ -6655,6 +6660,10 @@ export function DebugRTSSim() {
                   serious
                 </div>
                 <div>Fume crawl {showcaseHud.metrics.fumeHeld}</div>
+                <div>
+                  Frozen {showcaseHud.metrics.frozen} (marshals freed {showcaseHud.metrics.unfrozen}
+                  )
+                </div>
                 <div>Fume down {showcaseHud.metrics.fumeDown}</div>
                 <div>Minor injured {showcaseHud.metrics.minorInjured}</div>
                 <div>Reroutes {showcaseHud.metrics.reroutes}</div>

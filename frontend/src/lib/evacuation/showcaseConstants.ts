@@ -45,6 +45,12 @@ export const SHOWCASE = {
   TURN_BACK_PERMILLE: 300,
   /** How long a turn-back keeps that exit off the list. The roll itself is one-time. */
   TURN_BACK_HOLD_S: 30,
+  /** Share of evacuees, per thousand, who freeze the first time smoke or fire reaches them. */
+  FREEZE_PERMILLE: 50,
+  /** Extinction at the person's position, per metre, that counts as smoke reaching them. */
+  FREEZE_TRIGGER_K: 1.0,
+  /** A responder this close gets a frozen person moving again. */
+  FREEZE_RELEASE_M: 1.5,
   FIRE_AVOID_RADIUS_M: 5.0,
   HEAT_AVOID_RADIUS_M: 2,
   SAMPLE_STEP_M: 1.5,
@@ -178,6 +184,12 @@ export const SHOWCASE_SOURCES: Record<ShowcaseKey, ShowcaseValueSource> = {
     ref: 'knowledge-seeds/fire-smoke-tenability/tenability-response.pending.json#bryan_wood_smoke_movement',
   },
   TURN_BACK_HOLD_S: { status: 'assumed', ref: 'assumed: numerical' },
+  FREEZE_PERMILLE: {
+    status: 'assumed',
+    ref: 'assumed: no seed; freezing or inaction is a small minority of fire occupants',
+  },
+  FREEZE_TRIGGER_K: { status: 'assumed', ref: 'assumed: smoke a person can see around them' },
+  FREEZE_RELEASE_M: { status: 'assumed', ref: 'assumed: arm-reach plus a step' },
   FIRE_AVOID_RADIUS_M: {
     status: 'seed_pending',
     ref: 'knowledge-seeds/fire-smoke-tenability/fire-growth-spread.pending.json#point_source_radiation',
