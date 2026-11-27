@@ -670,7 +670,9 @@ export class SupabaseBuildStore implements BuildStore {
       .eq('id', buildId)
       .eq('lease_token', leaseToken)
       .eq('status', 'running')
-      .select('id');
+      // PostgREST 12/13 rejects an UPDATE whose filters mention a column the
+      // RETURNING list omits (42703). Keep every filtered column in the select.
+      .select('id, lease_token, status');
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
@@ -702,7 +704,7 @@ export class SupabaseBuildStore implements BuildStore {
       .eq('id', buildId)
       .eq('lease_token', leaseToken)
       .eq('status', 'running')
-      .select('id');
+      .select('id, lease_token, status');
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
@@ -727,7 +729,7 @@ export class SupabaseBuildStore implements BuildStore {
       .eq('id', buildId)
       .eq('lease_token', leaseToken)
       .eq('status', 'running')
-      .select('id');
+      .select('id, lease_token, status');
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
@@ -745,7 +747,7 @@ export class SupabaseBuildStore implements BuildStore {
       .eq('id', buildId)
       .eq('lease_token', leaseToken)
       .eq('status', 'running')
-      .select('id');
+      .select('id, lease_token, status');
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
@@ -781,7 +783,7 @@ export class SupabaseBuildStore implements BuildStore {
       .eq('id', buildId)
       .eq('lease_token', leaseToken)
       .eq('status', 'running')
-      .select('id');
+      .select('id, lease_token, status');
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
@@ -839,8 +841,10 @@ export class SupabaseBuildStore implements BuildStore {
       })
       .eq('id', buildId)
       .in('status', ['paused', 'failed', 'cancelled'])
+      // Keep NULL cancel_reason (a plain neq drops those rows). The select must
+      // name cancel_reason: PostgREST 12.2.3 and 13.0.8 otherwise answer 42703.
       .or('cancel_reason.is.null,cancel_reason.neq.replaced')
-      .select('id');
+      .select('id, status, cancel_reason');
     if (error?.code === '23505') return 'active_conflict';
     if (error) throw error;
     if ((data?.length ?? 0) > 0) return 'ok';
@@ -966,7 +970,7 @@ export class SupabaseBuildStore implements BuildStore {
       .delete()
       .in('status', TERMINAL)
       .lt('finished_at', cutoff)
-      .select('id');
+      .select('id, status, finished_at');
     if (error) throw error;
     return data?.length ?? 0;
   }
