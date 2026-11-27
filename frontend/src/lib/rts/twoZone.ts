@@ -2863,10 +2863,10 @@ export function gasMassKg(
 /**
  * Upper temperature that makes the two-layer mass `massKg` at a fixed
  * interface. Returns null when the lower layer already weighs more than the
- * target. A shaft-fed room sitting on the floor clamp uses this so the
- * stored density matches the mass the vents actually moved: the pressure
- * root may stop short of the relief the clamp requires, and cooling would
- * otherwise invent mass in a volume that cannot grow.
+ * target. A room sitting on the floor clamp uses this so the stored
+ * density matches the mass the vents actually moved: the pressure root
+ * may stop short of the relief the clamp requires, and the clamped
+ * volume would otherwise keep mass the vents did not move.
  */
 function upperTemperatureForMassKg(
   spec: LayerSpec,
@@ -3767,9 +3767,11 @@ function stepZoneNow(
     // and the door's hot flow follows. The midpoint is the steady height,
     // the same mean the floor gauge already publishes. That move does not
     // cross a vent, so the upper temperature is refit to the kilograms the
-    // book had already balanced. A room that then sits exactly on the
-    // floor still cannot move the interface to the mass the vents
-    // balanced; a shaft refits that remainder below, and that fit wins.
+    // book had already balanced. A room that then sits on the floor,
+    // including the tenth of a millimetre the midpoint can leave, still
+    // cannot move the interface to the mass the vents balanced. The refit
+    // below gives that mass to every such room, and it wins over the
+    // midpoint temperature.
     const zBooked = z;
     if (
       zStart < INTERFACE_FLOOR_M + 0.003 &&
@@ -3781,7 +3783,7 @@ function stepZoneNow(
       const fitted = upperTemperatureForMassKg(spec, z, lower, kept);
       if (fitted != null) temp = fitted;
     }
-    if (spec.vents.some((vent) => vent.shaft) && z <= INTERFACE_FLOOR_M + 1e-9) {
+    if (z <= INTERFACE_FLOOR_M + 1e-4) {
       const net =
         (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS) * slice;
       const target = gasMassKg(spec, zStart, tempStart, lowerStart) + net;

@@ -648,6 +648,40 @@ describe('confirmed fuel gate', () => {
     assert.equal(sim.states.get('next')?.state, 'burning');
   });
 
+  test('a starved latch stays dark, and the room lights when oxygen returns', () => {
+    const sim = new FireSimulation({
+      ...DEFAULT_FIRE_PARAMS,
+      ambientSpread: true,
+      ambientHeatSec: 30,
+    });
+    sim.init([
+      { id: 'src', simPos: { x: 0, y: 0 }, spatialContext: 'inside_building' },
+      { id: 'next', simPos: { x: 3, y: 0 }, spatialContext: 'inside_building' },
+    ]);
+    sim.setFuelStuds(new Set(['src', 'next']));
+    const starved = new Map([
+      ['src', 0.153],
+      ['next', 0.153],
+    ]);
+    sim.setIgnitionOxygen(starved);
+    sim.ignite(['src']);
+    let seconds = 0;
+    while (!sim.isFlashed('src') && seconds < 400) {
+      sim.step(1, [], []);
+      seconds += 1;
+    }
+    assert.ok(sim.isFlashed('src'), 'the room never latched');
+    assert.notEqual(sim.states.get('next')?.state, 'burning');
+    sim.setIgnitionOxygen(
+      new Map([
+        ['src', 0.2],
+        ['next', 0.2],
+      ]),
+    );
+    sim.step(1, [], []);
+    assert.equal(sim.states.get('next')?.state, 'burning');
+  });
+
   test('igniteRadius on the fire sim refuses a stud that is not confirmed fuel', () => {
     const sim = new FireSimulation({
       ...DEFAULT_FIRE_PARAMS,

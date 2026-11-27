@@ -66,6 +66,7 @@ import {
   equivalenceRatio,
   layerBurn,
   lowerOxygenCoefficient,
+  oxygenAllowsFlame,
   oxygenCapacityKw,
   ventilationLimitedKw,
   mechanicalExtract,
@@ -926,6 +927,106 @@ test('a flame that has gone out does not relight past the oxygen cutoff', () => 
     if ((state.upperO2 ?? 1) < 0.14 && i > 200) break;
   }
   assert.equal(flips, 0, `the extinction period-3 returned, ${flips} strict flips`);
+});
+
+test('a flame that has gone out relights when a door brings fresh air', () => {
+  // The hold is only the extinguished side. A vitiated door keeps the
+  // fraction at the floor. The same door, opened onto fresh air, puts
+  // the layer back on the burning side and the flame returns.
+  const bounds = [
+    { areaM2: 25, lining: LINING.concrete },
+    { areaM2: 25, lining: LINING.concrete },
+    { areaM2: 60, lining: LINING.concrete },
+  ];
+  const spec = (fresh: boolean): LayerSpec => ({
+    areaM2: 25,
+    ceilingM: 3,
+    boundaries: bounds,
+    fires: [{ heatKw: 800, diameterM: 2 }],
+    vents: [
+      {
+        widthM: 2,
+        sillM: 0,
+        soffitM: 2,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + (fresh ? 10 : 80),
+          floorPressurePa: fresh ? 15 : 1,
+          upperO2: fresh ? 0.23 : 0.1,
+        },
+      },
+    ],
+  });
+  let state: ZoneState = {
+    ...freshLayer(3),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 160,
+    upperO2: 0.145,
+    lowerO2: 0.23,
+    lastBurnFraction: 0,
+  };
+  let maxOut = 0;
+  for (let i = 0; i < 120; i++) {
+    const stepped = stepZone(state, spec(false), 1 / 60);
+    maxOut = Math.max(maxOut, stepped.burnedFraction);
+    state = stepped.state;
+  }
+  assert.ok(maxOut < 0.1, `the vitiated door let the flame reach ${maxOut.toFixed(3)}`);
+  assert.equal(oxygenAllowsFlame(state.upperO2 ?? 0), false);
+  let relit = -1;
+  for (let i = 0; i < 600; i++) {
+    const stepped = stepZone(state, spec(true), 1 / 60);
+    state = stepped.state;
+    if (stepped.burnedFraction > 0.5 && oxygenAllowsFlame(state.upperO2 ?? 0)) {
+      relit = i;
+      break;
+    }
+  }
+  assert.ok(relit >= 0, 'fresh air did not relight the flame');
+});
+
+test('a floor clamp books the mass the vents moved', () => {
+  // The interface cannot fall through the floor, so a hot layer keeps
+  // the kilograms the vents did not carry. Refitting the upper
+  // temperature to that mass leaves well under a tenth of a kilogram
+  // where the same room used to keep a few.
+  const area = 400;
+  const spec: LayerSpec = {
+    areaM2: area,
+    ceilingM: 4,
+    boundaries: [
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: area, lining: LINING.concrete },
+      { areaM2: 80, lining: LINING.concrete },
+    ],
+    fires: [{ heatKw: 20000, diameterM: 10 }],
+    vents: [{ widthM: 1.2, sillM: 0, soffitM: 2.2 }],
+  };
+  let state = {
+    ...freshLayer(4),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 250,
+    upperO2: 0.18,
+    lowerO2: 0.23,
+  };
+  let clamp = 0;
+  let onFloor = 0;
+  for (let i = 0; i < 900; i++) {
+    const lower0 = state.lowerK ?? AMBIENT_K;
+    const before = gasMassKg(spec, state.interfaceM, state.upperK, lower0);
+    const z0 = state.interfaceM;
+    const stepped = stepZone(state, spec, 1 / 60);
+    const lower1 = stepped.state.lowerK ?? AMBIENT_K;
+    const after = gasMassKg(spec, stepped.state.interfaceM, stepped.state.upperK, lower1);
+    const z1 = stepped.state.interfaceM;
+    if (z0 <= 0.0501 && z1 <= 0.0501) {
+      clamp += after - before - stepped.bookedKg;
+      onFloor += 1;
+    }
+    state = stepped.state;
+  }
+  assert.ok(onFloor > 600, `the interface left the floor after ${onFloor} steps`);
+  assert.ok(Math.abs(clamp) < 0.05, `floor residual ${clamp.toFixed(3)} kg`);
 });
 
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
