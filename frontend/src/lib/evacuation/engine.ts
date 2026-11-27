@@ -201,7 +201,11 @@ interface PedLabel {
   fumeDown?: boolean;
   /** True when the heat dose put them down. */
   heatDown?: boolean;
-  /** Projected FED at the far door when a dead-end stair crawl was first taken. */
+  /**
+   * Projected FED at the far door when a dead-end stair crawl was first
+   * taken. Set once, on that first decision, and never reset by later route
+   * checks, reroutes or arrival.
+   */
   crawlProjection?: number;
   reactAt?: number;
   exitCost?: number;
@@ -367,11 +371,11 @@ export class PolygonEvacuationEngine {
   private blastLevel: string | null = null;
   private wallsByLevel = new Map<string, InteriorWallDef[]>();
   private levelRegions = new Map<string, RouteRegions>();
-  /** Per-stud dose rates at the last two trend samples, keyed `level:studId`. */
-  private trendNow = new Map<string, { fed: number; heat: number }>();
-  private trendPrev = new Map<string, { fed: number; heat: number }>();
-  private trendAt = -Infinity;
-  private trendPrevAt = -Infinity;
+  /**
+   * Per-stud dose rates at the last DOSE_TREND_SAMPLES trend samples, oldest
+   * first, keyed `level:studId`.
+   */
+  private trend: Array<{ t: number; rates: Map<string, { fed: number; heat: number }> }> = [];
   private motionSerial = 0;
   private staticIndexSerial = -1;
   private grids = new Map<
@@ -3069,9 +3073,13 @@ export class PolygonEvacuationEngine {
   /**
    * The same crawl across one stair: no door on this storey, but a stair the
    * person can reach lands next to a door on the storey beside it. It is
-   * taken only if the crawl is survivable: either FED, projected to the far
-   * door by crawlDose, stays under DEAD_END_CRAWL_MAX_FED. Otherwise staying
-   * put is the better bet, and the person shelters. The check runs again on
+   * taken if the crawl is survivable: either FED, projected to the far door
+   * by crawlDose, stays under DEAD_END_CRAWL_MAX_FED. A crawl over that is
+   * started only when staying is projected to incapacitate (the same
+   * projection, standing where they are for DEFEND_HORIZON_S, reaches 1)
+   * and the crawl projects under DEAD_END_OVER_LIMIT_CAP. The stay
+   * projection is used only as that lethal-or-not test, never as a dose to
+   * trade against. Otherwise the person defends in place. The check runs again on
    * every route check, so a crawl that has become lethal is not started
    * late. A crawl already under way is kept until the projection reaches the
    * incapacitating dose, so nobody stops on the landing for a small rise.
@@ -3084,6 +3092,11 @@ export class PolygonEvacuationEngine {
     const here = this.storeyRegions(from);
     const verts = this.config.vertices;
     const queues = this.queueLengths();
+    let stay: number | null = null;
+    const stayDose = () =>
+      (stay ??= this.crawlDose(ped, [
+        { levels: [from], a: pos, b: pos, holdS: LEVEL.DEFEND_HORIZON_S },
+      ]));
     let best: { choice: RouteChoice; dose: number; dist: number } | null = null;
     for (const stair of this.levelPlan.stairs) {
       if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
@@ -3109,7 +3122,13 @@ export class PolygonEvacuationEngine {
             { levels: [to], a: stair.pos, b: approach },
             { levels: [to], a: approach, b: exit.center },
           ]);
-          if (!(dose < limit)) continue;
+          // Over the limit, a crawl is started only when staying is itself
+          // projected to incapacitate, and only up to the cap. One already
+          // under way keeps going while it projects lower than staying.
+          const overLimitOk = held
+            ? stayDose() >= 1 && dose < stayDose()
+            : stayDose() >= 1 && dose < LEVEL.DEAD_END_OVER_LIMIT_CAP;
+          if (!(dose < limit) && !overLimitOk) continue;
           const dist =
             Math.hypot(stair.pos.x - pos.x, stair.pos.y - pos.y) +
             Math.hypot(exit.center.x - stair.pos.x, exit.center.y - stair.pos.y);
@@ -3128,12 +3147,14 @@ export class PolygonEvacuationEngine {
   }
 
   /**
-   * Every DOSE_TREND_S, each storey's dose rates per stud, so crawlDose can
+   * Every DOSE_TREND_S, each storey's dose rates per stud, kept for the last
+   * DOSE_TREND_SAMPLES samples, so crawlDose can
    * carry a growing fire forward instead of freezing it at this instant.
    */
   private sampleDoseTrend() {
     if (!this.levelPlan) return;
-    if (this.elapsed + 1e-9 < this.trendAt + LEVEL.DOSE_TREND_S) return;
+    const last = this.trend.at(-1);
+    if (last && this.elapsed + 1e-9 < last.t + LEVEL.DOSE_TREND_S) return;
     const next = new Map<string, { fed: number; heat: number }>();
     for (const [level, field] of this.hazardFields) {
       field.forEachStud((stud) => {
@@ -3144,24 +3165,46 @@ export class PolygonEvacuationEngine {
         });
       });
     }
-    this.trendPrev = this.trendNow;
-    this.trendPrevAt = this.trendAt;
-    this.trendNow = next;
-    this.trendAt = this.elapsed;
+    this.trend.push({ t: this.elapsed, rates: next });
+    if (this.trend.length > LEVEL.DOSE_TREND_SAMPLES) this.trend.shift();
   }
 
-  /** Per-minute dose-rate rise per second at the stud read here, never negative. */
+  /**
+   * Per-minute dose-rate rise per second at the stud read here, never
+   * negative: the least-squares slope over the trend window, so one spiky
+   * sample does not swing the projection.
+   */
   private doseSlope(level: string, field: HazardField, p: Vec2): { fed: number; heat: number } {
-    const span = this.trendAt - this.trendPrevAt;
     const id = field.nearestId(p.x, p.y);
-    if (!id || !(span > 0)) return { fed: 0, heat: 0 };
-    const now = this.trendNow.get(`${level}:${id}`);
-    const before = this.trendPrev.get(`${level}:${id}`);
-    if (!now || !before) return { fed: 0, heat: 0 };
-    return {
-      fed: Math.max(0, (now.fed - before.fed) / span),
-      heat: Math.max(0, (now.heat - before.heat) / span),
-    };
+    if (!id || this.trend.length < 2) return { fed: 0, heat: 0 };
+    const key = `${level}:${id}`;
+    let n = 0;
+    let st = 0;
+    let sf = 0;
+    let sh = 0;
+    for (const sample of this.trend) {
+      const rate = sample.rates.get(key);
+      if (!rate) continue;
+      n++;
+      st += sample.t;
+      sf += rate.fed;
+      sh += rate.heat;
+    }
+    if (n < 2) return { fed: 0, heat: 0 };
+    const tMean = st / n;
+    let stt = 0;
+    let stf = 0;
+    let sth = 0;
+    for (const sample of this.trend) {
+      const rate = sample.rates.get(key);
+      if (!rate) continue;
+      const dt = sample.t - tMean;
+      stt += dt * dt;
+      stf += dt * (rate.fed - sf / n);
+      sth += dt * (rate.heat - sh / n);
+    }
+    if (!(stt > 0)) return { fed: 0, heat: 0 };
+    return { fed: Math.max(0, stf / stt), heat: Math.max(0, sth / stt) };
   }
 
   /**

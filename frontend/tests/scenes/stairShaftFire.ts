@@ -13,6 +13,7 @@ import { DEFAULT_POLYGON_CONFIG, type ExitDef, type Vec2 } from '../../src/lib/e
 import { HazardField } from '../../src/lib/evacuation/hazardSensing.ts';
 import { blastEffectsTriggerSec } from '../../src/lib/evacuation/showcase.ts';
 import { SHOWCASE } from '../../src/lib/evacuation/showcaseConstants.ts';
+import { LEVEL } from '../../src/lib/evacuation/levelConstants.ts';
 import { FX } from '../../src/lib/rts/fx/fxConstants.ts';
 import { createAccumulator, stepEffectsFixed } from '../../src/lib/rts/fx/simClock.ts';
 import { SpatialEffectsEngine, blastSmokeStudIds } from '../../src/lib/rts/spatialEffects.ts';
@@ -53,6 +54,8 @@ export interface StairShaftResult {
   site: Vec2;
   /** End of run, by the storey each person started on. */
   perFloor: Record<string, FloorTally>;
+  /** Everyone at the end: start floor, state, and the larger FED carried. */
+  people: Array<{ pedId: number; home: string; state: string; sheltering: boolean; dose: number }>;
   /** Steps on which someone's move crossed a wall on their own storey. */
   wallCrossings: number;
   /**
@@ -83,6 +86,7 @@ interface Label {
   heatFed?: number;
   frozen?: boolean;
   crawlProjection?: number;
+  reactAt?: number;
 }
 
 const OUT_STATES = new Set(['outside', 'left_map', 'arrived']);
@@ -106,8 +110,34 @@ function stateOf(ped: Label, inStair: boolean): string {
  * editor-frame partitions, each on its own storey.
  */
 export function runStairShaft(
-  opts: { site?: Vec2; durationS?: number; groundOnly?: boolean; walls?: InteriorWall[] } = {},
+  opts: {
+    site?: Vec2;
+    durationS?: number;
+    groundOnly?: boolean;
+    walls?: InteriorWall[];
+    /** Sim seconds when the upper floor hears the alarm. Default: with the blast. */
+    upperAlarmAtS?: number;
+    /**
+     * Shafts whose doors are shut to smoke: they stay walkable, but the
+     * effects engine gets no vertical link for them. (The effects engine does
+     * not read a link's `blocked` flag.)
+     */
+    closedShafts?: string[];
+    /** Override for LEVEL.DEAD_END_CRAWL_MAX_FED, for a counterfactual run. */
+    crawlMaxFed?: number;
+  } = {},
 ): StairShaftResult {
+  const limits = LEVEL as { DEAD_END_CRAWL_MAX_FED: number };
+  const savedLimit = limits.DEAD_END_CRAWL_MAX_FED;
+  if (opts.crawlMaxFed != null) limits.DEAD_END_CRAWL_MAX_FED = opts.crawlMaxFed;
+  try {
+    return runScene(opts);
+  } finally {
+    limits.DEAD_END_CRAWL_MAX_FED = savedLimit;
+  }
+}
+
+function runScene(opts: Parameters<typeof runStairShaft>[0] & object): StairShaftResult {
   const scene = stairShaftSample.scene;
   const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
   const levels = scene.levels
@@ -178,15 +208,17 @@ export function runStairShaft(
   const effects = new SpatialEffectsEngine(DEFAULT_FIRE_PARAMS);
   effects.init(fireStuds);
   effects.setVerticalLinks(
-    stairs.map((sw) => ({
-      id: sw.id,
-      pos: sw.pos,
-      levels: linkLevels(sw, levels),
-      kind: sw.kind ?? 'stair',
-      blocked: sw.blocked,
-      widthM: sw.widthM,
-      heightByLevel: heights,
-    })),
+    stairs
+      .filter((sw) => !(opts.closedShafts ?? []).includes(sw.id))
+      .map((sw) => ({
+        id: sw.id,
+        pos: sw.pos,
+        levels: linkLevels(sw, levels),
+        kind: sw.kind ?? 'stair',
+        blocked: sw.blocked,
+        widthM: sw.widthM,
+        heightByLevel: heights,
+      })),
   );
   const cells = confirmedFuelCells(objects, fireStuds);
   effects.setHoodFanWhen(scene.hoodFanWhen);
@@ -275,7 +307,16 @@ export function runStairShaft(
   for (let step = 1; step <= durationS * fps; step += 1) {
     evac.setHazardStates(effects.studStates);
     evac.syncExits(exits);
-    if (step === blastStep) evac.triggerBlast(site, radius);
+    if (step === blastStep) {
+      evac.triggerBlast(site, radius);
+      if (opts.upperAlarmAtS != null) {
+        const late = opts.upperAlarmAtS - SHOWCASE.BLAST_AT_GAME_S;
+        for (const { ped } of everyone()) {
+          if (ped.level === 'G' || ped.state !== 'reacting') continue;
+          ped.reactAt = (ped.reactAt ?? 0) + late;
+        }
+      }
+    }
     evac.step();
     effects.setHoodFanWhen(scene.hoodFanWhen);
     effects.setFuelCells(cells);
@@ -339,6 +380,13 @@ export function runStairShaft(
     if (ped.fumeDown) row.fumeDown++;
     if (ped.sheltering && ped.state !== 'down') row.sheltering++;
   }
+  const people = everyone().map(({ ped }) => ({
+    pedId: ped.pedId,
+    home: home.get(ped.pedId) ?? 'G',
+    state: ped.state ?? 'unknown',
+    sheltering: ped.sheltering === true,
+    dose: Math.max(ped.fed ?? 0, ped.heatFed ?? 0),
+  }));
   evac.destroy();
-  return { site, perFloor, wallCrossings, crawlers, marks, shelteredAt, outIds };
+  return { site, perFloor, people, wallCrossings, crawlers, marks, shelteredAt, outIds };
 }
