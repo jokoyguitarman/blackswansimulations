@@ -1082,20 +1082,31 @@ describe('multi-floor crowd sensing and storey walls', () => {
     eng.destroy();
   });
 
-  function upperDeadEnd(headTempC?: number, prep?: (ped: Label & Record<string, unknown>) => void) {
+  function upperDeadEnd(
+    headTempC?: number,
+    prep?: (ped: Label & Record<string, unknown>) => void,
+    upperHeadTempC?: number,
+  ) {
     const { eng, inner } = twoStorey({
       counts: { G: 0, L1: 1 },
       stairs: [stairAt({ x: 10, y: 10 })],
     });
     // The ground door's inside approach is (2, 10): no finite route from L1.
     const fire = burningAt('g', { x: 2, y: 10 }, headTempC);
+    const upperStuds =
+      upperHeadTempC != null ? [{ id: 'u', simPos: { x: 20, y: 10 }, indoor: true }] : [];
     eng.setHazardFields(
       new Map([
         ['G', new HazardField([fire.stud], 3)],
-        ['L1', new HazardField([], 3)],
+        ['L1', new HazardField(upperStuds, 3)],
       ]),
     );
-    eng.setHazardStates(new Map([fire.state]));
+    eng.setHazardStates(
+      new Map<string, { smoke: number; fire: { state: string }; headTempC?: number }>([
+        fire.state,
+        ['u', { smoke: 1, fire: { state: 'none' }, headTempC: upperHeadTempC }],
+      ]),
+    );
     const body = inner.pedestrians[0];
     const ped = labelOf(body);
     Matter.Body.setPosition(body, { x: 20, y: 10 });
@@ -1119,6 +1130,15 @@ describe('multi-floor crowd sensing and storey walls', () => {
     const { eng, ped } = upperDeadEnd(300);
     assert.equal(ped.sheltering, true);
     assert.equal(ped.targetStairId, null);
+    eng.destroy();
+  });
+
+  it('crawls down a lethal-looking stair when staying put projects worse', () => {
+    // 300 °C at the door projects over the limit, but 120 °C where the person
+    // stands, held for DEFEND_HORIZON_S, projects higher still.
+    const { eng, ped } = upperDeadEnd(300, undefined, 120);
+    assert.equal(ped.sheltering, false);
+    assert.equal(ped.targetStairId, 's');
     eng.destroy();
   });
 

@@ -89,6 +89,31 @@ test(
 );
 
 test(
+  'lethal descent: with smoke-tight shafts and a late alarm upstairs, the upper floor shelters and lives',
+  { skip: slowScene, timeout: 10 * 60 * 1000 },
+  () => {
+    // The stair and lift doors hold smoke back, so L1 stays clean. L1 hears
+    // the alarm at T+300, when the ground floor is fully involved and the
+    // only way out runs through it. Staying put is right here.
+    const scene = { durationS: 480, upperAlarmAtS: 300, closedShafts: ['stair-nw', 'lift-ne'] };
+    const run = runStairShaft(scene);
+    const upper = run.people.filter((person) => person.home === 'L1');
+    const floors = JSON.stringify(run.perFloor);
+    assert.equal(run.perFloor.L1.sheltering, 20, floors);
+    assert.equal(run.perFloor.L1.down, 0, floors);
+    assert.equal(run.crawlers.filter((crawler) => crawler.pedId >= 20).length, 0);
+    const worstInPlace = Math.max(...upper.map((person) => person.dose));
+    assert.ok(worstInPlace < 0.1, `worst dose in place ${worstInPlace.toFixed(3)}`);
+
+    // The same people sent down the stair regardless: every one is down.
+    const forced = runStairShaft({ ...scene, crawlMaxFed: Infinity });
+    const sent = forced.people.filter((person) => person.home === 'L1');
+    assert.equal(forced.perFloor.L1.down, 20, JSON.stringify(forced.perFloor));
+    assert.ok(Math.min(...sent.map((person) => person.dose)) > worstInPlace);
+  },
+);
+
+test(
   'walled scene: the sealed room shelters, the split upper floor walks round, nobody crosses a wall',
   { skip: slowScene, timeout: 10 * 60 * 1000 },
   () => {
