@@ -2428,6 +2428,19 @@ export class RouteRegions {
     return false;
   }
 
+  /** The exits whose inside approach shares `pos`'s region. Off the floor, every exit. */
+  reachableExits<T extends ExitDef>(pos: Vec2, exits: readonly T[], verts: Vec2[]): T[] {
+    const here = this.regionAt(pos);
+    if (here < 0) return [...exits];
+    return exits.filter((exit) => this.regionAt(exitApproachInside(exit, verts, 1)) === here);
+  }
+
+  /** True when `b` is in `a`'s region, or `a` is off the floor. */
+  connects(a: Vec2, b: Vec2): boolean {
+    const here = this.regionAt(a);
+    return here < 0 || this.regionAt(b) === here;
+  }
+
   private centre(c: number, r: number): Vec2 {
     return {
       x: this.minX + (c + 0.5) * REGION_CELL_M,

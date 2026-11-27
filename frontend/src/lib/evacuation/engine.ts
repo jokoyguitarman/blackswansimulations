@@ -49,6 +49,7 @@ import {
   RouteRegions,
   type ExitChoice,
   type Familiarity,
+  type RouteChoice,
   type Posture,
   type StudStateLike,
   type WallLike,
@@ -69,11 +70,14 @@ import {
   exposureIncapacitates,
   fecImpairs,
   fecOf,
+  fedPerMin,
+  heatFedPerMin,
 } from '../rts/toxicDose';
 import {
   levelCategories,
   levelIndex,
   levelOf,
+  linkLevels,
   normaliseStairwell,
   sortLevels,
   stairFlowPerS,
@@ -291,6 +295,23 @@ export interface InteriorWallDef {
   doorExposedSec?: number;
   doorFailed?: boolean;
   doorPinned?: boolean;
+}
+
+/**
+ * The §2.6 crawl takes the held or the straight-line nearest door. A door
+ * behind a wall would pin the person on the wall, so a forced pick outside
+ * their region is made again from the doors they can reach.
+ */
+function forcedWithinWalls(
+  choice: ExitChoice | null,
+  regions: RouteRegions,
+  args: Parameters<typeof chooseExit>,
+): ExitChoice | null {
+  if (!choice?.forced) return choice;
+  const [pos, exits, verts, ...rest] = args;
+  const reach = regions.reachableExits(pos, exits, verts);
+  if (reach.length === 0 || reach.some((exit) => exit.id === choice.id)) return choice;
+  return chooseExit(pos, reach, verts, ...rest);
 }
 
 export class PolygonEvacuationEngine {
@@ -1929,7 +1950,7 @@ export class PolygonEvacuationEngine {
   /** chooseExit, or null (shelter in place) when walls leave no route to any usable exit. */
   private routedChoice(...args: Parameters<typeof chooseExit>): ExitChoice | null {
     if (!this.routeOut(args[0])) return null;
-    return chooseExit(...args);
+    return forcedWithinWalls(chooseExit(...args), this.regions(), args);
   }
 
   private pickInitialExit(pos: Vec2): ExitChoice | null {
@@ -2965,8 +2986,14 @@ export class PolygonEvacuationEngine {
       this.wallsByLevel,
     );
     if (!choice) {
+      const door = this.storeyFallback(ped, pos);
+      const stair = door ? null : this.stairCrawl(ped, pos);
+      if (stair) {
+        this.assignStair(ped, stair, count, true);
+        return;
+      }
       ped.targetStairId = null;
-      this.assignChoice(ped, pos, this.storeyFallback(ped, pos), count);
+      this.assignChoice(ped, pos, door, count);
       return;
     }
     if (choice.kind === 'exit') {
@@ -2980,6 +3007,11 @@ export class PolygonEvacuationEngine {
       );
       return;
     }
+    this.assignStair(ped, choice, count, false);
+  }
+
+  private assignStair(ped: PedLabel, choice: RouteChoice, count: boolean, forced: boolean) {
+    const wasForced = ped.forcedCrawl === true && !ped.sheltering;
     const changed = ped.targetStairId !== choice.id || ped.stairDir !== choice.dir;
     ped.targetStairId = choice.id;
     ped.stairDir = choice.dir ?? 'down';
@@ -2987,31 +3019,129 @@ export class PolygonEvacuationEngine {
     ped.targetExitId = '';
     ped.exitCost = choice.cost;
     ped.sheltering = false;
-    ped.forcedCrawl = false;
-    if (count && changed) this.rerouteCount++;
+    ped.forcedCrawl = forced;
+    if (forced) ped.posture = 'crawl';
+    if (count && changed && !(wasForced && forced)) this.rerouteCount++;
+  }
+
+  private storeyRegions(level: string): RouteRegions {
+    let regions = this.levelRegions.get(level);
+    if (!regions) {
+      regions = new RouteRegions(this.config.vertices, this.wallsByLevel.get(level) ?? []);
+      this.levelRegions.set(level, regions);
+    }
+    return regions;
+  }
+
+  /** Doors a person on `level` at `pos` can walk to without crossing a wall. */
+  private reachableDoors(level: string, pos: Vec2): ExitDef[] {
+    const local = this.exits.filter(
+      (e) => levelOf(e) === level && e.exitType !== 'service' && e.status !== 'blocked',
+    );
+    return this.storeyRegions(level).reachableExits(pos, local, this.config.vertices);
   }
 
   /**
-   * No stair or door has a finite cost. As on a single floor (§2.6), smoke
-   * and fire alone do not make anyone shelter: a person with a door on their
-   * own storey crawls for it. Shelter is for walls that cut them off, or a
-   * storey whose only way out runs down a stair through the fire.
+   * No stair or door has a finite cost. As on a single floor (§2.6 in
+   * chooseExit), smoke and fire alone do not make anyone shelter: a person
+   * with a door they can reach on their own storey crawls for it. Only the
+   * doors inside their walls are candidates.
    */
   private storeyFallback(ped: PedLabel, pos: Vec2): ExitChoice | null {
     const level = ped.level ?? '';
-    const local = this.exits.filter((e) => levelOf(e) === level);
-    const walls = this.wallsByLevel.get(level) ?? [];
-    let regions = this.levelRegions.get(level);
-    if (!regions) {
-      regions = new RouteRegions(this.config.vertices, walls);
-      this.levelRegions.set(level, regions);
-    }
-    if (!regions.hasRouteOut(pos, local, this.config.vertices)) return null;
-    const held = local.some((e) => e.id === ped.targetExitId) ? this.currentChoice(ped) : null;
-    return chooseExit(pos, local, this.config.vertices, this.field(ped.level), held, {
-      walls,
+    const reach = this.reachableDoors(level, pos);
+    if (reach.length === 0) return null;
+    const held = reach.some((e) => e.id === ped.targetExitId) ? this.currentChoice(ped) : null;
+    return chooseExit(pos, reach, this.config.vertices, this.field(ped.level), held, {
+      walls: this.wallsByLevel.get(level) ?? [],
       blockedDoors: this.blockedDoorsFor(ped),
     });
+  }
+
+  /**
+   * The same crawl across one stair: no door on this storey, but a stair the
+   * person can reach lands next to a door on the storey beside it. It is
+   * taken only if the crawl is survivable on the present smoke and heat:
+   * either FED, projected to the far door, stays under
+   * DEAD_END_CRAWL_MAX_FED. Otherwise staying put is the better bet, and the
+   * person shelters. The check runs again on every route check, so a crawl
+   * that has become lethal is not started late.
+   */
+  private stairCrawl(ped: PedLabel, pos: Vec2): RouteChoice | null {
+    if (!this.levelPlan || !ped.level) return null;
+    const from = ped.level;
+    const fromDef = this.levelDefs.find((l) => l.id === from);
+    if (!fromDef) return null;
+    const here = this.storeyRegions(from);
+    const verts = this.config.vertices;
+    let best: { choice: RouteChoice; dose: number; dist: number } | null = null;
+    for (const stair of this.levelPlan.stairs) {
+      if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
+      const span = linkLevels(stair, this.levelDefs);
+      const at = span.indexOf(from);
+      if (at < 0 || !here.connects(pos, stair.pos)) continue;
+      for (const to of [span[at - 1], span[at + 1]]) {
+        if (!to || Math.abs(levelIndex(to) - levelIndex(from)) !== 1) continue;
+        const dir = levelIndex(to) < levelIndex(from) ? 'down' : 'up';
+        const travelS = stairTravelS(fromDef, dir);
+        for (const exit of this.reachableDoors(to, stair.pos)) {
+          const approach = exitApproachInside(exit, verts);
+          const dose = this.crawlDose(ped, [
+            { level: from, a: pos, b: stair.pos },
+            { level: from, a: stair.pos, b: stair.pos, holdS: travelS },
+            { level: to, a: stair.pos, b: approach },
+            { level: to, a: approach, b: exit.center },
+          ]);
+          const dist =
+            Math.hypot(stair.pos.x - pos.x, stair.pos.y - pos.y) +
+            Math.hypot(exit.center.x - stair.pos.x, exit.center.y - stair.pos.y);
+          if (best && (dose > best.dose || (dose === best.dose && dist >= best.dist))) continue;
+          best = {
+            choice: { kind: 'stair', id: stair.id, cost: Infinity, dir, toLevel: to },
+            dose,
+            dist,
+          };
+        }
+      }
+    }
+    if (!best || !(best.dose < LEVEL.DEAD_END_CRAWL_MAX_FED)) return null;
+    return best.choice;
+  }
+
+  /**
+   * The larger of the asphyxiant and heat FED this person would carry at the
+   * end of `legs`, crawling, on the stud states as they are now. `holdS` is
+   * time spent at `a` (the stair flight).
+   */
+  private crawlDose(
+    ped: PedLabel,
+    legs: Array<{ level: string; a: Vec2; b: Vec2; holdS?: number }>,
+  ): number {
+    const injury = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
+    const speed = walkingSpeed(0, 'crawl', SHOWCASE.SHOWCASE_PANIC, injury);
+    let fed = ped.fed ?? 0;
+    let heat = ped.heatFed ?? 0;
+    const add = (field: HazardField, p: Vec2, seconds: number) => {
+      const s = field.sample(p.x, p.y);
+      fed += fedPerMin(s.fumes, s.oxygenVolumePercent, s.co2VolumePercent) * (seconds / 60);
+      heat += heatFedPerMin(s.headTempC, s.radiantKwM2) * (seconds / 60);
+    };
+    for (const leg of legs) {
+      const field = this.field(leg.level);
+      if (leg.holdS) add(field, leg.a, leg.holdS);
+      const len = Math.hypot(leg.b.x - leg.a.x, leg.b.y - leg.a.y);
+      if (len < 1e-6) continue;
+      const n = Math.max(1, Math.ceil(len / SHOWCASE.SAMPLE_STEP_M));
+      for (let i = 1; i <= n; i++) {
+        const t = i / n;
+        add(
+          field,
+          { x: leg.a.x + (leg.b.x - leg.a.x) * t, y: leg.a.y + (leg.b.y - leg.a.y) * t },
+          len / n / speed,
+        );
+      }
+    }
+    return Math.max(fed, heat);
   }
 
   private queueLengths(): Map<string, { up: number; down: number }> {
