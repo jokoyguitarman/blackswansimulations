@@ -71,6 +71,10 @@ export interface CommsDelivery {
     attribution: string;
     judgement_status: string;
     judgement: JudgementV1 | null;
+    /** Minutes from the episode anchor when this reply arrived. Null when no episode was open. */
+    wait_minutes?: number | null;
+    /** Rung at arrival, before recovery. */
+    mood_rung?: string | null;
     /** Response row id. Tie-break for two judgements in the same session minute. */
     id?: string;
     /** `inject_responses.created_at`. Later values are the later reply. */
@@ -141,6 +145,19 @@ export interface CommsState {
   >;
   /** WP11 sets this when a stakeholder's gave-up rung should stop chains. */
   mood_stops?: Record<string, { stop_chains?: boolean }>;
+  /**
+   * Current mood rows. Absent when migration 273 is not applied; mood keys are then false.
+   * `ladder_ids` is the rung order used by `mood_at_least`.
+   */
+  moods?: Array<{
+    stakeholder_id: string;
+    scope_team: string;
+    rung_id: string;
+    rung_index: number;
+    ladder_ids: string[];
+    history: Array<{ rung: string }>;
+    terminal: boolean;
+  }>;
   /** Live line and role facts. Absent when migration 271 is not applied. */
   line_runtime?: Array<{
     team: string;
@@ -482,6 +499,8 @@ export interface LedgerResponseRow {
   created_at?: string | null;
   id?: string;
   meta?: unknown;
+  wait_minutes?: number | null;
+  mood_rung?: string | null;
 }
 
 function asJudgement(value: unknown): JudgementV1 | null {
@@ -632,6 +651,8 @@ export function buildCommsState(args: {
           attribution: response.attribution,
           judgement_status: response.judgement_status ?? 'pending',
           judgement: asJudgement(response.judgement),
+          wait_minutes: response.wait_minutes ?? null,
+          mood_rung: response.mood_rung ?? null,
           ...(response.id ? { id: response.id } : {}),
           ...(response.created_at ? { created_at: response.created_at } : {}),
           ...(meta ? { meta } : {}),

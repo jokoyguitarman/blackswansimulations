@@ -467,6 +467,7 @@ const urgencyParam: ConditionParam = {
   type: 'enum',
   enum: ['reminder', 'follow_up', 'urgent', 'final', 'escalated'],
 };
+const rungParam: ConditionParam = { name: 'rung', type: 'string' };
 
 function comms(
   id: string,
@@ -1068,6 +1069,60 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'neutral',
     'A follow-up chain for {inject} reached {urgency}',
     'The highest follow-up sent on an in-scope chain is at least this urgency.',
+    true,
+  ),
+  comms(
+    'mood_is',
+    [stakeholderParam, rungParam],
+    'stakeholder',
+    'neutral',
+    '{stakeholder} is {rung}',
+    'The stakeholder\'s current mood rung in scope is this one.',
+    true,
+  ),
+  comms(
+    'mood_at_least',
+    [stakeholderParam, rungParam],
+    'stakeholder',
+    'negative',
+    '{stakeholder} is at least {rung}',
+    'The current rung is this far along the ladder, or further.',
+    true,
+  ),
+  comms(
+    'mood_reached',
+    [stakeholderParam, rungParam],
+    'stakeholder',
+    'neutral',
+    '{stakeholder} has been {rung}',
+    'This rung appears in the stakeholder\'s mood history.',
+    true,
+  ),
+  comms(
+    'stakeholder_gave_up',
+    [stakeholderParam],
+    'stakeholder',
+    'negative',
+    '{stakeholder} gave up waiting',
+    'The stakeholder reached the terminal mood rung.',
+    true,
+  ),
+  comms(
+    'replied_late',
+    [injectParam, minutesParam],
+    'cross',
+    'negative',
+    'The first reply to {inject} took at least {N} minutes',
+    'The first in-scope response waited at least this many minutes.',
+    true,
+  ),
+  comms(
+    'mood_at_reply',
+    [injectParam, rungParam],
+    'cross',
+    'neutral',
+    'The first reply to {inject} arrived while the sender was {rung}',
+    'The first in-scope response was recorded on this mood rung.',
     true,
   ),
 ];

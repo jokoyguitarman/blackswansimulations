@@ -366,7 +366,91 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   followups_sent_gte: (input) => chainKey('followups_sent_gte', input),
   chain_stopped_by_step: (input) => chainKey('chain_stopped_by_step', input),
   urgency_reached: (input) => chainKey('urgency_reached', input),
+  mood_is: ({ args, team, role, state }) => moodIs(state, args[0] ?? '', args[1] ?? '', team, role),
+  mood_at_least: ({ args, team, role, state }) => moodAtLeast(state, args[0] ?? '', args[1] ?? '', team, role),
+  mood_reached: ({ args, team, role, state }) => moodReached(state, args[0] ?? '', args[1] ?? '', team, role),
+  stakeholder_gave_up: ({ args, team, role, state }) => moodGaveUp(state, args[0] ?? '', team, role),
+  replied_late: ({ args, team, role, state }) => lateReply(state, args[0] ?? '', numberArg(args, 1), team, role),
+  mood_at_reply: ({ args, team, role, state }) => replyMood(state, args[0] ?? '', args[1] ?? '', team, role),
 };
+
+type MoodRow = NonNullable<CommsState['moods']>[number];
+
+function moodRows(state: CommsState, stakeholderId: string, team: string | undefined, role: string | undefined): MoodRow[] {
+  return (state.moods ?? []).filter((row) => {
+    if (row.stakeholder_id !== stakeholderId) return false;
+    if (role) return row.scope_team === `role:${role}`;
+    if (team) return slugifyTeamName(row.scope_team) === team;
+    return true;
+  });
+}
+
+function moodIs(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+  if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
+  const rows = moodRows(state, stakeholderId, team, role);
+  const met = rows.some((row) => row.rung_id === rung);
+  return { met, detail: met ? `${stakeholderId} is ${rung}` : `${stakeholderId} is not ${rung}` };
+}
+
+function moodAtLeast(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+  if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
+  const met = moodRows(state, stakeholderId, team, role).some((row) => {
+    const target = row.ladder_ids.indexOf(rung);
+    if (target < 0) return false;
+    const current = row.ladder_ids.indexOf(row.rung_id);
+    return current >= target;
+  });
+  return { met, detail: met ? `${stakeholderId} is at least ${rung}` : `${stakeholderId} is below ${rung}` };
+}
+
+function moodReached(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+  if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
+  const met = moodRows(state, stakeholderId, team, role).some(
+    (row) => row.rung_id === rung || row.history.some((item) => item.rung === rung),
+  );
+  return { met, detail: met ? `${stakeholderId} reached ${rung}` : `${stakeholderId} has not reached ${rung}` };
+}
+
+function moodGaveUp(state: CommsState, stakeholderId: string, team?: string, role?: string): KeyResult {
+  if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
+  const met = moodRows(state, stakeholderId, team, role).some((row) => row.terminal);
+  return { met, detail: met ? `${stakeholderId} gave up` : `${stakeholderId} is still waiting` };
+}
+
+function firstScopedResponse(
+  state: CommsState,
+  injectKey: string,
+  team: string | undefined,
+  role: string | undefined,
+): ResponseRow | null {
+  const view = viewFor(state, injectKey, team);
+  let best: ResponseRow | null = null;
+  for (const root of view.roots) {
+    for (const delivery of bundleOf(view, root)) {
+      if (role && delivery.target_role_id !== role) continue;
+      for (const response of delivery.responses) {
+        if (team && slugifyTeamName(response.team ?? '') !== team) continue;
+        if (!best || response.minute < best.minute || (response.minute === best.minute && (response.id ?? '') < (best.id ?? ''))) {
+          best = response;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function lateReply(state: CommsState, injectKey: string, minutes: number, team?: string, role?: string): KeyResult {
+  const first = firstScopedResponse(state, injectKey, team, role);
+  const wait = first?.wait_minutes;
+  const met = first != null && wait != null && Number.isFinite(minutes) && wait >= minutes;
+  return { met, detail: wait == null ? 'No timed reply yet' : `First reply waited ${wait} minutes` };
+}
+
+function replyMood(state: CommsState, injectKey: string, rung: string, team?: string, role?: string): KeyResult {
+  const first = firstScopedResponse(state, injectKey, team, role);
+  const met = first?.mood_rung === rung;
+  return { met, detail: met ? `First reply on ${rung}` : `First reply was ${first?.mood_rung ?? 'unrecorded'}` };
+}
 
 function chainKey(id: string, input: KeyInput): KeyResult {
   const rows = (input.state.chains?.[input.args[0] ?? ''] ?? []) as ChainSnapshot[];

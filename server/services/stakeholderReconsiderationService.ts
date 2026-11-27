@@ -71,6 +71,8 @@ export interface EffectiveGrievance {
   hard_constraints: string[];
   /** `base` = authored grievance; `override:<reason>` when a runtime engine has replaced it. */
   source: 'base' | `override:${string}`;
+  /** Set when a mood rung locked every verdict to keep. */
+  verdict_lock?: { rung: string } | null;
 }
 
 /**
@@ -238,7 +240,7 @@ export async function getEffectiveGrievance(
       const override = await grievanceOverrideResolver(sessionId, stakeholder);
       if (override) {
         const { reason, ...rest } = override;
-        return { ...rest, source: `override:${reason}` };
+        return applyMoodLocks(sessionId, stakeholder.id, { ...rest, source: `override:${reason}` });
       }
     } catch (err) {
       logger.debug(
@@ -247,13 +249,37 @@ export async function getEffectiveGrievance(
       );
     }
   }
-  return {
+  const base: EffectiveGrievance = {
     grievance: stakeholder.grievance,
     resolution_criteria: stakeholder.resolution_criteria,
     persuadability: stakeholder.persuadability,
     hard_constraints: stakeholder.hard_constraints,
     source: 'base',
   };
+  return applyMoodLocks(sessionId, stakeholder.id, base);
+}
+
+async function applyMoodLocks(
+  sessionId: string,
+  stakeholderId: string,
+  base: EffectiveGrievance,
+): Promise<EffectiveGrievance> {
+  try {
+    const { locksForStakeholder } = await import('./mood/moodService.js');
+    const locks = await locksForStakeholder(sessionId, stakeholderId);
+    if (!locks) return base;
+    const appended = locks.grievance_append?.filter(Boolean) ?? [];
+    const persuadability = (locks.persuadability as EffectiveGrievance['persuadability'] | undefined) ?? base.persuadability;
+    return {
+      ...base,
+      grievance: appended.length > 0 ? `${base.grievance}\n${appended.join('\n')}`.trim() : base.grievance,
+      persuadability,
+      verdict_lock: locks.verdict === 'keep' ? { rung: locks.verdict_rung || 'locked' } : null,
+      source: locks.persuadability || appended.length > 0 ? 'override:mood' : base.source,
+    };
+  } catch {
+    return base;
+  }
 }
 
 // ─── Enforcement (never trust the model) ─────────────────────────────────────
@@ -307,6 +333,17 @@ export function enforceVerdict(
     delayMinutes = Number.isFinite(d) ? Math.min(MAX_DELAY_MINUTES, Math.max(1, d)) : 5;
   }
   if (!reason) reason = verdict === 'keep' ? 'Concern not addressed' : 'Judged from conversation';
+
+  if (eff.verdict_lock?.rung) {
+    return {
+      inject_id: pending.id,
+      verdict: 'keep',
+      reason: `mood: ${eff.verdict_lock.rung}`,
+      criteria_met: criteriaMet,
+      modified_content: null,
+      delay_minutes: null,
+    };
+  }
 
   return {
     inject_id: pending.id,

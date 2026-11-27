@@ -147,6 +147,7 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
     const clock = await loadSessionClock(input.sessionId);
     const deliveredAt = input.deliveredAt ?? new Date().toISOString();
     const deliveredMinute = input.deliveredMinute ?? sessionMinuteAt(clock.startTime, deliveredAt);
+    const stamped = await stampDeliveryMood(input, deliveredMinute);
     const row: Record<string, unknown> = {
       session_id: input.sessionId,
       inject_id: input.injectId,
@@ -172,7 +173,7 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
     assignIfSet(row, 'chain_root_key', input.chainRootKey);
     assignIfSet(row, 'chain_step', input.chainStep);
     assignIfSet(row, 'urgency', input.urgency);
-    assignIfSet(row, 'mood_rung', input.moodRung);
+    assignIfSet(row, 'mood_rung', stamped.moodRung);
     if (deliveryRoleColumns) {
       assignIfSet(row, 'line_team', input.lineTeam);
       assignIfSet(row, 'target_role_id', input.targetRoleId);
@@ -282,6 +283,8 @@ export async function recordOpen(input: RecordOpenInput): Promise<void> {
 export async function recordResponse(input: RecordResponseInput): Promise<string | null> {
   if (ledgerTablesMissing()) return null;
   try {
+    const withMood = await stampResponseMood(input);
+    input = withMood;
     const judging = env.aiEnabled;
     const meta = { ...(input.meta ?? {}) };
     if (!judging) meta.skip_reason = 'ai_disabled';
@@ -405,7 +408,7 @@ export async function loadCommsState(
       supabaseAdmin
         .from('inject_responses')
         .select(
-          'id, delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, created_at, meta',
+          'id, delivery_id, response_minute, team_name, user_id, is_bot, attribution, judgement_status, judgement, responded_at, created_at, meta, wait_minutes, mood_rung',
         )
         .eq('session_id', sessionId)
         .order('responded_at', { ascending: false })
@@ -534,6 +537,50 @@ async function simCallsAvailable(): Promise<boolean> {
   }
 }
 
+async function loadMoodIndexSafe(sessionId: string): Promise<Pick<CommsState, 'moods' | 'mood_stops'>> {
+  try {
+    const { loadMoodIndex } = await import('../mood/moodService.js');
+    return await loadMoodIndex(sessionId);
+  } catch (err) {
+    warnFactOnce('stakeholder_moods_unavailable', err, 'Stakeholder moods could not be loaded');
+    return {};
+  }
+}
+
+async function stampDeliveryMood(input: RecordDeliveryInput, minute: number): Promise<RecordDeliveryInput> {
+  if (!input.stakeholderId || input.moodRung) return input;
+  try {
+    const { rungForDelivery } = await import('../mood/moodService.js');
+    const rung = await rungForDelivery({
+      sessionId: input.sessionId,
+      stakeholderId: input.stakeholderId,
+      targetRoleId: input.targetRoleId,
+      lineTeam: input.lineTeam,
+      recipientTeams: input.recipientTeams,
+      minute,
+    });
+    return rung ? { ...input, moodRung: rung } : input;
+  } catch {
+    return input;
+  }
+}
+
+async function stampResponseMood(input: RecordResponseInput): Promise<RecordResponseInput> {
+  if (input.moodRung && input.waitMinutes != null) return input;
+  try {
+    const { moodForResponse } = await import('../mood/moodService.js');
+    const snap = await moodForResponse(input.sessionId, input.deliveryId, input.responseMinute);
+    if (!snap) return input;
+    return {
+      ...input,
+      moodRung: input.moodRung ?? snap.rungId,
+      waitMinutes: snap.episodeAnchorMinute != null ? snap.waitMinutes : input.waitMinutes,
+    };
+  } catch {
+    return input;
+  }
+}
+
 async function loadChainIndexSafe(sessionId: string): Promise<CommsState['chains']> {
   try {
     const { loadChainIndex } = await import('../escalation/escalationService.js');
@@ -562,6 +609,7 @@ async function attachCommsFacts(
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
     const emailKnown = email.known && stakeholders.known && actions.known;
     const chains = await loadChainIndexSafe(sessionId);
+    const moods = await loadMoodIndexSafe(sessionId);
     return {
       ...state,
       calls_available: callsAvailable,
@@ -580,6 +628,7 @@ async function attachCommsFacts(
       action_facts_known: actions.known,
       action_counts_truncated: actions.known && actions.truncated,
       chains,
+      ...moods,
     };
   } catch (err) {
     warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');

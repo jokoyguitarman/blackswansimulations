@@ -11,7 +11,7 @@ import { getWebSocketService } from '../websocketService.js';
 import { chatJson } from '../ai/chatClient.js';
 import { publishInjectToSession } from '../../routes/injects.js';
 import { sessionMinuteAt, type CommsState, type CommsDelivery } from '../ledger/injectLedgerCore.js';
-import { collectConditionKeys } from '../conditions/conditionCatalog.js';
+import { collectConditionKeys, slugifyTeamName } from '../conditions/conditionCatalog.js';
 import { buildCharacterPrompt, loadScenarioCtx } from '../stakeholderReplyService.js';
 import { findById } from '../stakeholderService.js';
 import { chainScopeForRole, chainStepHeld } from '../roles/roleCore.js';
@@ -551,12 +551,59 @@ function contactMinute(comms: CommsState | null, stakeholderId: string | null): 
 function gaveUp(comms: CommsState | null, clock: ChainClock): boolean {
   const stops = comms?.mood_stops;
   if (!stops) return false;
+  const scope = clock.scope_role ? `role:${clock.scope_role}` : (clock.scope_team ?? '');
+  if (clock.stakeholder_id && stops[`${clock.stakeholder_id}|${scope}`]?.stop_chains) return true;
   const keys = [
     clock.stakeholder_id,
     clock.scope_role ? `role:${clock.scope_role}` : null,
     clock.scope_team,
   ].filter((key): key is string => Boolean(key));
   return keys.some((key) => stops[key]?.stop_chains === true);
+}
+
+export async function stopChainsForMood(input: {
+  sessionId: string;
+  stakeholderId: string;
+  scope: string;
+  minute: number;
+  trainerId: string | null;
+}): Promise<void> {
+  const { data, error } = await supabaseAdmin
+    .from('escalation_chains')
+    .select('id, scope_team, config, waiting_on_call_group_id, stakeholder_id')
+    .eq('session_id', input.sessionId)
+    .eq('stakeholder_id', input.stakeholderId)
+    .eq('status', 'active');
+  if (isEscalationSchemaMissing(error)) {
+    noteEscalationUnavailable();
+    return;
+  }
+  if (error) return;
+  for (const row of data ?? []) {
+    const config = (row.config ?? {}) as { scope_role?: string | null };
+    const roleScope = config.scope_role ? `role:${config.scope_role}` : null;
+    const team = (row.scope_team as string | null) ?? '';
+    const matches = input.scope.startsWith('role:')
+      ? roleScope === input.scope
+      : input.scope
+        ? slugifyTeamName(team) === slugifyTeamName(input.scope)
+        : !team && !roleScope;
+    if (!matches) continue;
+    if (row.waiting_on_call_group_id) {
+      await cancelScheduledRedials(String(row.waiting_on_call_group_id), 'chain_stopped', input.trainerId);
+    }
+    await patchChain(String(row.id), {
+      status: 'stopped',
+      stopped_reason: 'gave_up',
+      stopped_minute: input.minute,
+      waiting_on_call_group_id: null,
+    });
+    emitTrainer(input.trainerId, 'escalation.stopped', {
+      chain_id: String(row.id),
+      reason: 'gave_up',
+      minute: input.minute,
+    });
+  }
 }
 
 function roleHeld(
@@ -702,13 +749,23 @@ async function deliverStep(
   if (!root) return false;
   const step = resolveStep(input.clock.config, stepNo, root.app);
   if (!step) return false;
-  const vars = templateVars(input, stepNo, root);
+  const moodStakeholder = step.sender_stakeholder_id ?? input.clock.stakeholder_id;
+  const moodScope = input.clock.scope_role ? `role:${input.clock.scope_role}` : (input.clock.scope_team ?? '');
+  const mood = await moodForFollowUp({
+    sessionId: input.sessionId,
+    stakeholderId: moodStakeholder,
+    scope: moodScope,
+    atMinute: input.elapsed,
+    injectLadder: (root.delivery_config as { mood_ladder?: unknown } | undefined)?.mood_ladder,
+  });
+  const vars = templateVars(input, stepNo, root, mood?.line ?? '');
   const rendered = await renderFollowUp({
     sessionId: input.sessionId,
     scenarioId: root.scenario_id || input.scenarioId,
     step,
     vars,
-    stakeholderId: step.sender_stakeholder_id ?? input.clock.stakeholder_id,
+    stakeholderId: moodStakeholder,
+    moodBlock: mood?.block ?? null,
   });
   const composed = composeFollowUp({
     app: step.appResolved,
@@ -822,10 +879,27 @@ async function deliverStep(
   return true;
 }
 
+async function moodForFollowUp(input: {
+  sessionId: string;
+  stakeholderId: string | null;
+  scope: string;
+  atMinute: number;
+  injectLadder?: unknown;
+}): Promise<{ line: string; block: string | null } | null> {
+  if (!input.stakeholderId) return null;
+  try {
+    const { moodForChain } = await import('../mood/moodService.js');
+    return await moodForChain(input);
+  } catch {
+    return null;
+  }
+}
+
 function templateVars(
   input: { clock: ChainClock; elapsed: number; comms: CommsState | null },
   stepNo: number,
   root: StoredRoot,
+  moodLine = '',
 ): TemplateVars {
   const subject = emailSubject(root.content, root.title);
   const team = input.clock.scope_team || root.target_teams[0] || 'the team';
@@ -840,6 +914,7 @@ function templateVars(
     missed_calls: missedCalls(input.comms, input.clock.root_key),
     step: stepNo,
     max_steps: input.clock.max_steps,
+    mood_line: moodLine,
   };
 }
 
@@ -849,6 +924,7 @@ async function renderFollowUp(input: {
   step: NonNullable<ReturnType<typeof resolveStep>>;
   vars: TemplateVars;
   stakeholderId: string | null;
+  moodBlock?: string | null;
 }): Promise<{ text: string; mode: 'template' | 'ai' }> {
   const fallback = () =>
     renderChainTemplate(input.step.template ?? defaultTemplate(input.step.urgency), {
@@ -860,6 +936,7 @@ async function renderFollowUp(input: {
     const stakeholder = input.stakeholderId ? await findById(input.scenarioId, input.stakeholderId) : null;
     const ctx = await loadScenarioCtx(input.scenarioId);
     const character = stakeholder ? buildCharacterPrompt(stakeholder, [], ctx) : '';
+    const mood = input.moodBlock?.trim() ? `\n${input.moodBlock.trim()}` : '';
     const suffix = followUpSystemSuffix({
       appNoun: appNoun(input.step.appResolved),
       recipientTeam: input.vars.recipient_team,
@@ -879,7 +956,7 @@ async function renderFollowUp(input: {
       budgetKey: `escalation:${input.sessionId}`,
       budgetLimit: env.escalationAiBudgetPerSessionHour,
       messages: [
-        { role: 'system', content: `${character}\n${suffix}`.trim() },
+        { role: 'system', content: `${character}\n${suffix}${mood}`.trim() },
         { role: 'user', content: 'Write the follow-up now.' },
       ],
     });

@@ -16,6 +16,7 @@ import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateCast } from './castCompletenessService.js';
 import { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
 import { validateEscalation } from './escalation/escalationCore.js';
+import { validateMoodLadder } from './mood/moodCore.js';
 import { collectConditionKeys } from './conditions/conditionCatalog.js';
 
 export { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
@@ -496,6 +497,33 @@ export function validateScenarioPayload(
         if (issue.level === 'error') fail('ESC-001', path, issue.message);
         else warn('ESC-002', path, issue.message);
       }
+    }
+    const moodLadder = (dc as { mood_ladder?: unknown }).mood_ladder;
+    if (moodLadder != null) {
+      const known = injects
+        .filter((other) => other !== inj)
+        .map((other) => ({
+          key: typeof other.delivery_config?.inject_key === 'string' ? other.delivery_config.inject_key : '',
+          conditional: other.trigger_time_minutes == null,
+        }))
+        .filter((other) => other.key);
+      for (const issue of validateMoodLadder({ ladder: moodLadder, knownInjects: known })) {
+        fail('MOOD-001', path, issue.message);
+      }
+    }
+  }
+  for (const stakeholder of stakeholders) {
+    const ladder = (stakeholder as { mood_ladder?: unknown }).mood_ladder;
+    if (ladder == null) continue;
+    const known = injects
+      .map((other) => ({
+        key: typeof other.delivery_config?.inject_key === 'string' ? other.delivery_config.inject_key : '',
+        conditional: other.trigger_time_minutes == null,
+      }))
+      .filter((other) => other.key);
+    for (const issue of validateMoodLadder({ ladder, knownInjects: known })) {
+      if (!issue.message.includes('publish_inject')) continue;
+      fail('MOOD-001', `stakeholders.${stakeholder.id}`, issue.message);
     }
   }
   if (teamNames.size > 0) {
