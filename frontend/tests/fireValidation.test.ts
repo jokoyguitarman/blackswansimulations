@@ -69,7 +69,7 @@ import {
 } from './fixtures/fireValidation/nbsPlan.ts';
 
 /** Recorded corridor extinction, 1/m, mean over 300–880 s. */
-const FV4_CORRIDOR_K = 0.3539;
+const FV4_CORRIDOR_K = 0.3409;
 
 // ── Flashover correlations, 4 m × 5 m × 2.6 m concrete room, 0.9 × 2.0 m door ──
 
@@ -370,9 +370,11 @@ test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', 
   // The entry stud is merged into the corridor, so the jet enters one 45 m²
   // room and is not cooled in a separate entry. The arrival door sees the
   // fire room. Booking the lower layer from the root's flows puts the
-  // interface at 0.947 m, 7 mm outside ±0.37 m of 1.32 m. The rise stays
+  // interface at 0.901 m, about 5 cm outside ±0.37 m of 1.32 m. The rise stays
   // short because the plan's fire room is near 100 K (the test's is 246 K)
-  // and concrete takes most of the jet enthalpy. Both are FV-4.
+  // and concrete takes most of the jet enthalpy. Both are FV-4. The fire
+  // room keeps the enthalpy of the corridor's return flow, which moved the
+  // interface from 0.947 m.
   const c = NBS_CORRIDOR;
   const plan = runNbsPlan(c.window[1]);
   assert.ok(Math.abs(plan.fireKw - NBS_PLAN_FIRE_KW) < 1, `burner ${plan.fireKw} kW`);
@@ -411,7 +413,7 @@ test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', 
       target: measuredZ,
       tolerance: { absolute: TOLERANCE.interfaceM(c.spec.ceilingM) },
     },
-    { id: 'FV-4', recorded: 0.947, pin: 0.01, roadmap },
+    { id: 'FV-4', recorded: 0.901, pin: 0.01, roadmap },
   );
   expectKnownGap(
     t,
@@ -423,7 +425,7 @@ test('NBS MV100A corridor: the door jet forms a layer, rise is known gap FV-4', 
       target: measuredRise,
       tolerance: { relative: TOLERANCE.riseFraction },
     },
-    { id: 'FV-4', recorded: 39.5, pin: 1, roadmap },
+    { id: 'FV-4', recorded: 40.3, pin: 1, roadmap },
   );
   // No measurement of extinction. The soot now sits in the corridor layer.
   const corridorK = mean(corridor, 'meanK');

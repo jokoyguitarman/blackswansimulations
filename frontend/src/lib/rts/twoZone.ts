@@ -1070,6 +1070,12 @@ export interface LimitedBurn {
    * inside `inKgS`. It is not fresh lower-layer air.
    */
   farUpperInKgS: number;
+  /** Temperature of that inflow, kelvin. Ambient when there is none. */
+  farUpperInK: number;
+  /** Inflow enthalpy, kg·K/s. Mass times the temperature it arrived at. */
+  inKT: number;
+  /** Outflow enthalpy, kg·K/s. Mass times the layer it left. */
+  outKT: number;
   fanUpperKgS: number;
   fanLowerKgS: number;
   /** Inflow that enters the lower layer, kg/s. Already inside `inKgS`. */
@@ -1094,6 +1100,11 @@ interface PressureScalars {
   lowerInKgS: number;
   /** That inflow times its temperature, kg·K/s. */
   lowerInKT: number;
+  /**
+   * Inflow from above a neighbour's interface, times its temperature,
+   * kg·K/s. Already inside the mass of `farUpperInKgS`.
+   */
+  farUpperInKT: number;
 }
 
 /** A steady balance. Heating and cooling pass the mass the step actually gains. */
@@ -1185,6 +1196,9 @@ function limitedFrom(
     inByVentKgS: flows.inByVent,
     hotOutByVentKgS: flows.hotOutByVent,
     farUpperInKgS: flows.farUpperInKgS,
+    farUpperInK: flows.farUpperInKgS > 0 ? flows.farUpperInKT / flows.farUpperInKgS : AMBIENT_K,
+    inKT: flows.inKT,
+    outKT: flows.outKT,
     fanUpperKgS: flows.fanUpperKgS,
     fanLowerKgS: flows.fanLowerKgS,
     lowerInKgS: flows.lowerInKgS,
@@ -2044,10 +2058,16 @@ interface SliceFlows {
   hotOutKgS: number;
   /** Inflow from above a neighbour's interface, kg/s. Already inside `inKgS`. */
   farUpperInKgS: number;
+  /** That inflow times its temperature, kg·K/s. */
+  farUpperInKT: number;
   /** Inflow that enters below this room's interface, kg/s. Already inside `inKgS`. */
   lowerInKgS: number;
   /** That inflow times its temperature, kg·K/s. */
   lowerInKT: number;
+  /** Every inflow times its temperature, kg·K/s. */
+  inKT: number;
+  /** Every outflow times its temperature, kg·K/s. */
+  outKT: number;
 }
 
 interface Flows extends SliceFlows {
@@ -2115,8 +2135,11 @@ const ventScratch: SliceFlows = {
   outKgS: 0,
   hotOutKgS: 0,
   farUpperInKgS: 0,
+  farUpperInKT: 0,
   lowerInKgS: 0,
   lowerInKT: 0,
+  inKT: 0,
+  outKT: 0,
 };
 
 function addSliceFlows(
@@ -2129,7 +2152,9 @@ function addSliceFlows(
   rhoU: number,
   rhoA: number,
   widthM: number,
-  outside?: VentOutside,
+  outside: VentOutside | undefined,
+  upperK: number,
+  lowerK: number,
 ): void {
   if (!(z1 > z0 + 1e-9)) return;
   const p0in = pressureAt(z0, interfaceM, dP0, rhoL, rhoU);
@@ -2151,8 +2176,34 @@ function addSliceFlows(
     // That dropped the inflow for one step and the burn followed it.
     const pad = Math.min(1e-6, (z1 - z0) * 0.25);
     if (zN > z0 + pad && zN < z1 - pad) {
-      addSliceFlows(into, z0, zN, interfaceM, dP0, rhoL, rhoU, rhoA, widthM, outside);
-      addSliceFlows(into, zN, z1, interfaceM, dP0, rhoL, rhoU, rhoA, widthM, outside);
+      addSliceFlows(
+        into,
+        z0,
+        zN,
+        interfaceM,
+        dP0,
+        rhoL,
+        rhoU,
+        rhoA,
+        widthM,
+        outside,
+        upperK,
+        lowerK,
+      );
+      addSliceFlows(
+        into,
+        zN,
+        z1,
+        interfaceM,
+        dP0,
+        rhoL,
+        rhoU,
+        rhoA,
+        widthM,
+        outside,
+        upperK,
+        lowerK,
+      );
       return;
     }
   }
@@ -2176,14 +2227,24 @@ function addSliceFlows(
     into.outKgS += mass;
     // Above the interface the gas is the hot layer. Below it the outflow
     // is lower-layer air, and that is not a door jet.
-    if (mid > interfaceM) into.hotOutKgS += mass;
+    if (mid > interfaceM) {
+      into.hotOutKgS += mass;
+      into.outKT += mass * upperK;
+    } else into.outKT += mass * lowerK;
   } else {
     into.inKgS += mass;
-    if (outside && mid > outside.interfaceM) into.farUpperInKgS += mass;
-    else if (mid <= interfaceM) {
+    if (outside && mid > outside.interfaceM) {
+      into.farUpperInKgS += mass;
+      into.farUpperInKT += mass * outside.upperK;
+      into.inKT += mass * outside.upperK;
+    } else if (mid <= interfaceM) {
       into.lowerInKgS += mass;
       const tin = outside?.lowerK != null && outside.lowerK > 0 ? outside.lowerK : AMBIENT_K;
       into.lowerInKT += mass * tin;
+      into.inKT += mass * tin;
+    } else {
+      const tin = outside?.lowerK != null && outside.lowerK > 0 ? outside.lowerK : AMBIENT_K;
+      into.inKT += mass * tin;
     }
   }
 }
@@ -2196,15 +2257,22 @@ function accumulateVent(
   rhoL: number,
   rhoU: number,
   rhoA: number,
+  upperK: number,
+  lowerK: number,
 ): void {
   if (vent.imposedKgS != null && Number.isFinite(vent.imposedKgS) && vent.imposedKgS !== 0) {
     const rate = vent.imposedKgS;
     if (rate >= 0) {
       into.inKgS += rate;
       into.farUpperInKgS += rate;
+      const tin =
+        vent.outside?.upperK != null && vent.outside.upperK > 0 ? vent.outside.upperK : AMBIENT_K;
+      into.farUpperInKT += rate * tin;
+      into.inKT += rate * tin;
     } else {
       into.outKgS += -rate;
       into.hotOutKgS += -rate;
+      into.outKT += -rate * upperK;
     }
   }
   const sill = Math.min(vent.sillM, vent.soffitM);
@@ -2260,6 +2328,8 @@ function accumulateVent(
       rhoA,
       vent.widthM,
       far,
+      upperK,
+      lowerK,
     );
   }
 }
@@ -2276,8 +2346,11 @@ function ventFlows(
     outKgS: 0,
     hotOutKgS: 0,
     farUpperInKgS: 0,
+    farUpperInKT: 0,
     lowerInKgS: 0,
     lowerInKT: 0,
+    inKT: 0,
+    outKT: 0,
     outByVent: vents.map(() => 0),
     inByVent: vents.map(() => 0),
     hotOutByVent: vents.map(() => 0),
@@ -2293,7 +2366,7 @@ function ventFlows(
     const before = flows.outKgS;
     const beforeIn = flows.inKgS;
     const beforeHot = flows.hotOutKgS;
-    accumulateVent(flows, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
+    accumulateVent(flows, vent, interfaceM, dP0, rhoL, rhoU, rhoA, upperK, lowerK);
     flows.outByVent[v] = flows.outKgS - before;
     flows.inByVent[v] = flows.inKgS - beforeIn;
     flows.hotOutByVent[v] = flows.hotOutKgS - beforeHot;
@@ -2317,12 +2390,15 @@ function pressureNet(
   ventScratch.outKgS = 0;
   ventScratch.hotOutKgS = 0;
   ventScratch.farUpperInKgS = 0;
+  ventScratch.farUpperInKT = 0;
   ventScratch.lowerInKgS = 0;
   ventScratch.lowerInKT = 0;
+  ventScratch.inKT = 0;
+  ventScratch.outKT = 0;
   for (let v = 0; v < vents.length; v++) {
     const vent = vents[v];
     if (!vent) continue;
-    accumulateVent(ventScratch, vent, interfaceM, dP0, rhoL, rhoU, rhoA);
+    accumulateVent(ventScratch, vent, interfaceM, dP0, rhoL, rhoU, rhoA, upperK, lowerK);
   }
   const extracted = mechanicalExtract(fans, interfaceM, upperK, dP0, lowerK);
   // Copy before the mass callback. It solves the burn and the sheet loss,
@@ -2336,6 +2412,7 @@ function pressureNet(
     fanLowerKgS: extracted.lowerKgS,
     lowerInKgS: ventScratch.lowerInKgS,
     lowerInKT: ventScratch.lowerInKT,
+    farUpperInKT: ventScratch.farUpperInKT,
   };
   // CFAST's pressure equation. in − out − fans = dM/dt. The caller
   // passes dM/dt, and it does not depend on this candidate. A steady
@@ -2754,6 +2831,15 @@ function layerAdvance(
   const atInterface = Math.max(sectionAreaM2(spec, z), 1e-6);
   let dT = (qGas - plume * CP_KJ_KGK * (temp - lowerK) - qLoss) / denom;
   if (ctx.depositKgS > 0) dT += (ctx.depositKgS * CP_KJ_KGK * (ctx.jetT - temp)) / denom;
+  // A fire room leaves the carrier jet to the orifice, so this inflow is
+  // not deposited. It still arrives from the neighbour's upper layer, and
+  // that enthalpy has to enter here. A jet already mixes its own mass, so
+  // only the part of the orifice stream the jet does not cover is added.
+  const bareUpperKgS = Math.max(0, scalars.farUpperInKgS - ctx.depositKgS);
+  if (bareUpperKgS > 0) {
+    const farT = scalars.farUpperInKT / scalars.farUpperInKgS;
+    dT += (bareUpperKgS * CP_KJ_KGK * (farT - temp)) / denom;
+  }
   if (mEnt > 0 || qDoorKw > 0) {
     dT += (qDoorKw - mEnt * CP_KJ_KGK * (temp - lowerK)) / denom;
   }
@@ -2762,7 +2848,9 @@ function layerAdvance(
   if (dT > 400) dT = 400;
   if (dT < -400) dT = -400;
   const areaRho = Math.max(LEVEL.RHO_AIR * atInterface, 1e-3);
-  const skipFar = ctx.depositKgS > 0 ? scalars.farUpperInKgS : 0;
+  // The neighbour's upper gas is not cool air filling the lower layer,
+  // whether or not a jet already carries part of it.
+  const skipFar = scalars.farUpperInKgS;
   const makeupKgS = Math.max(0, scalars.inKgS - skipFar);
   const lowerOutKgS = Math.max(0, scalars.outKgS - hotSum);
   let dZ = (makeupKgS - plume - scalars.fanLowerKgS - lowerOutKgS) / areaRho;
@@ -2881,7 +2969,7 @@ export function stepZone(
   lowerLossKw: number;
   /**
    * Last substep's inflow booked to the lower layer, kg/s. The root's vent
-   * inflow, with a deposited jet left out. Already in `inKgS`.
+   * inflow, with upper-layer inflow left out. Already in `inKgS`.
    */
   lowerInKgS: number;
   /**
@@ -2900,6 +2988,13 @@ export function stepZone(
   outKgByVent: number[];
   /** Orifice mass that entered each vent over the step, kilograms. */
   inKgByVent: number[];
+  /**
+   * Inflow enthalpy over the step, kg·K. Each slice is its mass times the
+   * temperature it arrived at, including a shaft correction.
+   */
+  inKT: number;
+  /** Outflow enthalpy over the step, kg·K. Each slice leaves at its own layer. */
+  outKT: number;
 } {
   return withFluxMemo(() => stepZoneNow(state, spec, dt, sootGPerS, jet, hold));
 }
@@ -2931,6 +3026,8 @@ function stepZoneNow(
   const inKg = spec.vents.map(() => 0);
   let bookedKg = 0;
   let shellKg = 0;
+  let stepInKT = 0;
+  let stepOutKT = 0;
   let burnedFraction = 1;
   let phi = 0;
   let lastIn = 0;
@@ -3034,6 +3131,7 @@ function stepZoneNow(
         fanLowerKgS: exchange.fanLowerKgS,
         lowerInKgS: exchange.lowerInKgS,
         lowerInKT: exchange.lowerInKgS * exchange.lowerInK,
+        farUpperInKT: exchange.farUpperInKgS * exchange.farUpperInK,
       },
       true,
     );
@@ -3054,6 +3152,7 @@ function stepZoneNow(
         advance.plumeKgS +
         advance.mEnt +
         (depositKgS > 0 ? depositKgS : 0) +
+        Math.max(0, exchange.farUpperInKgS - (depositKgS > 0 ? depositKgS : 0)) +
         advance.storeKgS -
         exchangeHot -
         extraHotKgS -
@@ -3142,7 +3241,7 @@ function stepZoneNow(
     // and it moves no mass. Any other shortfall keeps the unclipped volume.
     const bookOf = (flows: LimitedBurn, hot: number) => {
       const lowerOut = Math.max(0, flows.outKgS - hot);
-      const makeup = Math.max(0, flows.inKgS - (depositKgS > 0 ? flows.farUpperInKgS : 0));
+      const makeup = Math.max(0, flows.inKgS - flows.farUpperInKgS);
       const below = flows.lowerInKgS;
       const rho0 = densityKgM3(lower);
       const v0 = lowerVolumeM3(spec, z);
@@ -3286,6 +3385,8 @@ function stepZoneNow(
     lastHot = hotSum;
     lastHotByVent = limited.hotOutByVentKgS.map((rate) => rate ?? 0);
     lastFar = limited.farUpperInKgS;
+    stepInKT += limited.inKT * slice;
+    stepOutKT += (limited.outKT + limited.fanUpperKgS * temp + limited.fanLowerKgS * lower) * slice;
     lastPlume = plume;
     lastFanL = limited.fanLowerKgS;
     lastFanU = limited.fanUpperKgS;
@@ -3441,6 +3542,8 @@ function stepZoneNow(
     shellKg,
     outKgByVent: outKg,
     inKgByVent: inKg,
+    inKT: stepInKT,
+    outKT: stepOutKT,
     ...(gainKjM2 && Object.keys(gainKjM2).length > 0 ? { sheetGainKjM2: gainKjM2 } : {}),
   };
 }

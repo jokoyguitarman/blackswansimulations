@@ -2578,12 +2578,13 @@ export class SpatialEffectsEngine {
       // A room with its own fire already solves the door. The neighbour's
       // layer is the far side of that door, so the return flow is in the
       // orifice. Adding the carrier jet on top of that flow would fill the
-      // layer a second time. The fuel in the jet is not that carrier. It
-      // burns here on the oxygen this room's plume has not taken, and what
-      // cannot burn stays in the layer. A room with no fire of its own takes
-      // the carrier, and the orifice then leaves that upper-layer inflow
-      // out. The step itself waits until every room is known, so a shared
-      // partition is integrated once from both sides.
+      // layer a second time. The orifice still carries that inflow's
+      // enthalpy into the layer. The fuel in the jet is not that carrier.
+      // It burns here on the oxygen this room's plume has not taken, and
+      // what cannot burn stays in the layer. A room with no fire of its own
+      // takes the carrier, and the orifice then leaves that upper-layer
+      // inflow out. The step itself waits until every room is known, so a
+      // shared partition is integrated once from both sides.
       const fuelJet =
         incoming != null && (incoming.fuelY ?? 0) > 0 ? { ...incoming, fuelOnly: true } : undefined;
       pending.push({

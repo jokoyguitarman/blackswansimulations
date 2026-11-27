@@ -185,8 +185,7 @@ test('a deposited jet keeps the lower-layer air budget', () => {
     const lower1 = stepped.state.lowerK ?? AMBIENT_K;
     const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
     const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
-    const flow =
-      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const flow = stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
     const unmatched = Math.max(0, jet.kgS - stepped.farUpperInKgS);
     const jetVolume = (unmatched * dt) / rhoAt(jet.tempK);
     residualKg += m1 - (m0 + flow * dt - rhoAt(lower1) * jetVolume);
@@ -280,7 +279,10 @@ test('expansion above the soffit leaves with the lower layer', () => {
     checked += 1;
   }
   assert.ok(checked >= 10, `only ${checked} steps stayed above the soffit`);
-  assert.ok(worstLower < 0.02, `lower layer missed the expelled air by ${worstLower.toFixed(4)} kg/s`);
+  assert.ok(
+    worstLower < 0.02,
+    `lower layer missed the expelled air by ${worstLower.toFixed(4)} kg/s`,
+  );
   assert.ok(worstUpper < 0.02, `upper layer missed the plume by ${worstUpper.toFixed(4)} kg/s`);
 });
 
@@ -336,8 +338,7 @@ test('a burning room books outflow from below its interface', () => {
     const lower1 = stepped.state.lowerK ?? AMBIENT_K;
     const m1 = rhoAt(lower1) * spec.areaM2 * stepped.state.interfaceM;
     const lowerOut = Math.max(0, stepped.outKgS - stepped.hotOutKgS);
-    const flow =
-      stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
+    const flow = stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS;
     residualKg += m1 - (m0 + flow * dt);
     const clamp = (dZ: number) => Math.max(-2, Math.min(2, dZ));
     const areaRho = rhoAt(lower0) * spec.areaM2;
@@ -355,8 +356,7 @@ test('a burning room books outflow from below its interface', () => {
     Math.abs(residualKg) < 0.05,
     `lower-layer budget residual ${residualKg.toFixed(3)} kg at ${state.interfaceM.toFixed(3)} m`,
   );
-  const omittedKg =
-    rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
+  const omittedKg = rhoAt(state.lowerK ?? AMBIENT_K) * spec.areaM2 * (omittedZ - state.interfaceM);
   assert.ok(omittedKg > 1, `leaving the lower outflow out only moves ${omittedKg.toFixed(3)} kg`);
 });
 
@@ -401,7 +401,8 @@ test('a floor-clamped layer entrains only the air the floor can give', () => {
     const net = stepped.inKgS - stepped.outKgS - stepped.fanUpperKgS - stepped.fanLowerKgS;
     if (z1 <= 0.0501) {
       clamped += 1;
-      lowerKg += m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
+      lowerKg +=
+        m1 - (m0 + (stepped.lowerInKgS - lowerOut - stepped.plumeKgS - stepped.fanLowerKgS) * dt);
       totalKg += after - (before + net * dt);
       plumeKg += stepped.plumeKgS * dt;
       inflowKg += stepped.lowerInKgS * dt;
@@ -410,7 +411,10 @@ test('a floor-clamped layer entrains only the air the floor can give', () => {
     state = stepped.state;
   }
   assert.ok(clamped >= 200, `only ${clamped} steps sat on the floor`);
-  assert.ok(maxPlume < asked / 2, `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`);
+  assert.ok(
+    maxPlume < asked / 2,
+    `clamped plume ${maxPlume.toFixed(2)} kg/s against Heskestad ${asked.toFixed(1)}`,
+  );
   // The difference is the mass above the floor taken as the interface arrives.
   // An uncapped Heskestad plume is hundreds of kilograms over this run.
   assert.ok(
@@ -460,6 +464,36 @@ test('a burning room that takes a jet does not burn the neighbour upper layer', 
     stepped.burnedFraction < 0.01,
     `the flame burned ${(stepped.burnedFraction * 5000).toFixed(0)} kW on the neighbour layer`,
   );
+});
+
+test('a fire room keeps the enthalpy of a neighbour upper inflow', () => {
+  // No deposited jet: this is the fire-room path, where the orifice carries
+  // the neighbour's upper gas. That inflow used to enter as cool makeup.
+  const spec: LayerSpec = {
+    areaM2: 20,
+    ceilingM: 3,
+    vents: [
+      {
+        widthM: 1.2,
+        sillM: 0,
+        soffitM: 2,
+        outside: { interfaceM: 0.2, upperK: 900, floorPressurePa: 4 },
+      },
+    ],
+    boundaries: [{ areaM2: 80, lining: LINING.concrete }],
+    fires: [{ heatKw: 200, diameterM: 0.5 }],
+  };
+  let state = { ...freshLayer(3), interfaceM: 1.5, upperK: AMBIENT_K + 80 };
+  let energy = 0;
+  for (let i = 0; i < 20; i++) {
+    const stepped = stepZone(state, spec, 0.5);
+    energy += stepped.inKT - stepped.outKT - (stepped.upperLossKw + stepped.lowerLossKw) * 0.5;
+    state = stepped.state;
+  }
+  const rise = state.upperK - AMBIENT_K;
+  // Without the inflow enthalpy the layer stays near its 80 K rise.
+  assert.ok(rise > 150, `upper rise ${rise.toFixed(0)} K after 10 s of 900 K inflow`);
+  assert.ok(energy / 1000 < 1, `energy residual ${(energy / 1000).toFixed(1)} MJ`);
 });
 
 test('a hot neighbour on the door cuts the outflow', () => {
@@ -2836,10 +2870,7 @@ test('a burning room keeps the fuel a neighbour jets in', () => {
   );
   const kept = connected.hall.fuelKg ?? 0;
   const own = alone.hall.fuelKg ?? 0;
-  assert.ok(
-    kept > own + 0.05,
-    `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`,
-  );
+  assert.ok(kept > own + 0.05, `hall kept ${kept.toFixed(3)} kg; alone kept ${own.toFixed(3)} kg`);
 });
 
 test('a jet-fed room keeps its head-height soot when it catches fire', () => {
@@ -2993,8 +3024,7 @@ test('a smoke-logged fireless room keeps its layer after the jet stops', () => {
     >;
   };
   exposed.fireSim.ignite(['fire']);
-  const hallOf = () =>
-    [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
+  const hallOf = () => [...exposed.layerState.values()].find((row) => row.members.includes('hall'));
   const smokeOf = () => engine.studStates.get('hall')?.smoke ?? 0;
   let logged = false;
   let best = 'none';
