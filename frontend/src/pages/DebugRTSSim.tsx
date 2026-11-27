@@ -129,6 +129,11 @@ import {
   stairShaftStuds,
 } from '../lib/rts/stairShaftTest';
 import {
+  officeTowerFuelObjects,
+  officeTowerSample,
+  officeTowerStuds,
+} from '../lib/rts/officeTowerFire';
+import {
   SpatialEffectsEngine,
   blastSmokeStudIds,
   type StudEffectState,
@@ -2137,6 +2142,94 @@ export function DebugRTSSim() {
       setBlastLevel('G');
       setManualRadius(true);
       setBlastRadius(storedBlast.radiusM ?? 4);
+    }
+    setShowcase(true);
+    effectsEngineRef.current = null;
+    setEffectStates(null);
+    setGasJetCount(0);
+    setArcCount(0);
+    setSprayCount(0);
+    const verts = projectPolygon(polygon);
+    rtsRef.current = new RTSEngine();
+    rtsRef.current.setBuildingVertices(verts);
+    rtsRef.current.setExits(scene.exits as unknown as ExitDef[]);
+    setWallPoints(generateWallPoints(polygon, verts));
+    setPhase('rts');
+  }, []);
+
+  const handleLoadOfficeTower = useCallback(() => {
+    setLiveOnly(false);
+    setLiveNote(null);
+    setLayoutLabels([]);
+    const scene = officeTowerSample.scene;
+    hoodFanWhenRef.current = scene.hoodFanWhen;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const savedLevels = scene.levels.map((level) => ({ ...level }));
+    const levelIds = savedLevels.map((level) => level.id);
+    const grid: GridItem = {
+      buildingIndex: 0,
+      buildingName: scene.buildingName,
+      polygon,
+      floors: levelIds,
+      spacingM: 3,
+      studs: officeTowerStuds(polygon),
+    };
+    setUserGeoPos({ lat: scene.centerLat, lng: scene.centerLng });
+    setLat(String(scene.centerLat));
+    setLng(String(scene.centerLng));
+    setFetchResult({
+      grids: [grid],
+      buildings: [
+        {
+          name: scene.buildingName,
+          lat: scene.centerLat,
+          lng: scene.centerLng,
+          levels: 3,
+          use: 'office',
+          polygonPoints: polygon.length,
+        },
+      ],
+    });
+    setSelectedGridIdx(0);
+    setSceneConfigId(null);
+    setExits(scene.exits.map((exit) => ({ ...exit, photos: [...exit.photos] })) as ExitDef[]);
+    setInteriorWalls(
+      scene.interiorWalls.map((wall) => ({
+        ...wall,
+        photos: [...wall.photos],
+        start: { ...wall.start },
+        end: { ...wall.end },
+      })),
+    );
+    setHazardZones([]);
+    const projected = projectSceneStuds(polygon, grid.studs);
+    setPlacedObjects(
+      officeTowerFuelObjects(
+        projected.map((stud) => ({
+          id: stud.id,
+          simPos: stud.simPos,
+          spatialContext: stud.spatialContext,
+          level: stud.floor,
+        })),
+      ),
+    );
+    setActiveObjectId(null);
+    setPlacingObject(false);
+    setObjectNotice(null);
+    setStairwells(scene.stairwells.map((shaft) => ({ ...shaft, pos: { ...shaft.pos } })));
+    setCasualtyPins([]);
+    setPlantedItems([]);
+    setPedestrianCount(scene.pedestrianCount);
+    setLevels(savedLevels as LevelDef[]);
+    setActiveLevel('G');
+    setSelectedStairId(scene.stairwells[0]?.id ?? null);
+    const storedBlast = readStoredBlast(scene.blastSite);
+    if (storedBlast) {
+      blastRecordRef.current = storedBlast.record;
+      setBlastSite(storedBlast.pos);
+      setBlastLevel('G');
+      setManualRadius(true);
+      setBlastRadius(storedBlast.radiusM ?? 2);
     }
     setShowcase(true);
     effectsEngineRef.current = null;
@@ -6368,6 +6461,13 @@ export function DebugRTSSim() {
                 className="w-full text-xs text-left px-2 py-1.5 mt-1 rounded border border-amber-700 text-amber-200 hover:border-amber-400"
               >
                 Load stair shaft test
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadOfficeTower}
+                className="w-full text-xs text-left px-2 py-1.5 mt-1 rounded border border-amber-700 text-amber-200 hover:border-amber-400"
+              >
+                Load three-storey office fire
               </button>
               <button
                 type="button"
