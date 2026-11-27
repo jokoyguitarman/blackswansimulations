@@ -14,6 +14,7 @@
 
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
+import { currentAbortSignal, runWithAbortSignal } from './abortContext.js';
 import {
   HourlyBudget,
   SerialQueue,
@@ -168,6 +169,10 @@ function providerConfig(): ProviderConfig {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+function abortedByCaller(label?: string): AiCallError {
+  return new AiCallError('aborted by caller', undefined, undefined, label);
+}
+
 interface RawCompletion {
   choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
   usage?: ChatUsage;
@@ -186,6 +191,7 @@ async function post(
 ): Promise<
   { ok: true; data: RawCompletion } | { ok: false; error: AiCallError; retryable: boolean }
 > {
+  const ext = currentAbortSignal();
   try {
     const response = await fetch(target.url, {
       method: 'POST',
@@ -194,7 +200,9 @@ async function post(
         Authorization: `Bearer ${target.apiKey}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: ext
+        ? AbortSignal.any([AbortSignal.timeout(timeoutMs), ext])
+        : AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -216,6 +224,9 @@ async function post(
     const data = (await response.json()) as RawCompletion;
     return { ok: true, data };
   } catch (err) {
+    if (ext?.aborted) {
+      return { ok: false, error: abortedByCaller(label), retryable: false };
+    }
     const message = err instanceof Error ? err.message : String(err);
     const isAbort =
       err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
@@ -248,6 +259,13 @@ function fail(opts: ChatOptions, error: AiCallError): null {
  * gate on `env.aiEnabled`; the client also returns null when the active provider has no key.
  */
 export async function chat(opts: ChatOptions): Promise<ChatResult | null> {
+  // Straight away, and again inside `run`: a disconnect while this call is
+  // waiting on the serial queue must not start a provider request.
+  const signal = currentAbortSignal();
+  if (signal?.aborted) {
+    return fail(opts, abortedByCaller(opts.label));
+  }
+
   if (!env.aiEnabled) {
     return fail(
       opts,
@@ -269,11 +287,21 @@ export async function chat(opts: ChatOptions): Promise<ChatResult | null> {
     }
   }
 
-  const run = () => execute(opts);
-  return opts.serialize ? queue.enqueue(run) : run();
+  const run = (): Promise<ChatResult | null> => {
+    if (currentAbortSignal()?.aborted) {
+      return Promise.resolve(fail(opts, abortedByCaller(opts.label)));
+    }
+    return execute(opts);
+  };
+  // SerialQueue invokes the task later, outside this async context.
+  if (opts.serialize) {
+    return queue.enqueue(() => (signal ? runWithAbortSignal(signal, run) : run()));
+  }
+  return run();
 }
 
 async function execute(opts: ChatOptions): Promise<ChatResult | null> {
+  const ext = currentAbortSignal();
   const config = providerConfig();
   let target: ResolvedTarget;
   try {
@@ -304,6 +332,8 @@ async function execute(opts: ChatOptions): Promise<ChatResult | null> {
   const startedAt = Date.now();
 
   for (let attempt = 1; ; attempt++) {
+    if (ext?.aborted) return fail(opts, abortedByCaller(opts.label));
+
     const body = buildRequestBody(config, target, {
       tier: opts.tier,
       messages: opts.messages,
@@ -343,6 +373,7 @@ async function execute(opts: ChatOptions): Promise<ChatResult | null> {
             'ai.chat rate limited; honouring Retry-After',
           );
         }
+        if (ext?.aborted) return fail(opts, abortedByCaller(opts.label));
         await sleep(wait);
         continue;
       }

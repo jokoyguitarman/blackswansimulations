@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { randomUUID } from 'crypto';
+import { currentAbortSignal } from './ai/abortContext.js';
 
 type ImageStyle =
   | 'meme'
@@ -81,6 +82,9 @@ export async function generatePostImage(
   style: ImageStyle | string = 'meme',
   scenarioContext?: string,
 ): Promise<string | null> {
+  const ext = currentAbortSignal();
+  if (ext?.aborted) return null;
+
   if (!env.openAiApiKey) {
     logger.warn('No OPENAI_API_KEY for GPT Image generation');
     return null;
@@ -106,6 +110,7 @@ export async function generatePostImage(
         size: getImageSize(style),
         quality: 'medium',
       }),
+      ...(ext ? { signal: ext } : {}),
     });
 
     if (!response.ok) {
@@ -125,6 +130,8 @@ export async function generatePostImage(
       return null;
     }
 
+    if (ext?.aborted) return null;
+
     if (imageItem.b64_json) {
       const imageBuffer = Buffer.from(imageItem.b64_json, 'base64');
       const url = await uploadToStorage(imageBuffer, 'png', 'image/png');
@@ -133,7 +140,7 @@ export async function generatePostImage(
     }
 
     if (imageItem.url) {
-      const imgResponse = await fetch(imageItem.url);
+      const imgResponse = await fetch(imageItem.url, ext ? { signal: ext } : undefined);
       if (!imgResponse.ok) {
         logger.warn({ status: imgResponse.status }, 'Failed to download GPT image from URL');
         return null;
@@ -148,6 +155,7 @@ export async function generatePostImage(
     logger.warn({ keys: Object.keys(imageItem) }, 'GPT Image API: unrecognized response format');
     return null;
   } catch (err) {
+    if (ext?.aborted) return null;
     logger.error({ err }, 'GPT Image 2 generation failed');
     return null;
   }
