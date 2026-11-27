@@ -142,7 +142,10 @@ export function ventMeanVelocity(tempK: number, depthM: number): number {
   return (2 / 3) * LEVEL.ORIFICE_C * Math.sqrt((2 * dRho * LEVEL.G * depthM) / rhoS);
 }
 
-/** Density-transfer coefficient per 3 m cell, upward only. */
+/**
+ * Old smoke mix, per 3 m cell, upward only, at a fixed 400 K. The shaft
+ * vent does not read it. The oracle in the level tests still does.
+ */
 export function shaftCoeffPerS(
   kind: 'stair' | 'lift',
   widthM: number,
@@ -168,8 +171,16 @@ export interface ShaftPair {
   lower: string;
   upper: string;
   kind: 'stair' | 'lift';
+  /** Crowd flag. The shaft vent stays open either way. */
   blocked: boolean;
+  /** Legacy mix. The layer vent does not read it. */
   coeffPerS: number;
+  /** Stair or lift this landing belongs to. */
+  linkId?: string;
+  /** Landing door width, metres. A lift uses the lift door. */
+  widthM?: number;
+  /** Floor-to-floor height the link was built with, metres. */
+  storeyHeightM?: number;
 }
 
 /** Same-level neighbours within `radius`, in original array order. */
@@ -229,11 +240,13 @@ export function shaftPairs(
       if (levelIndex(upperId) !== levelIndex(lowerId) + 1) continue;
       const height = link.heightByLevel?.[lowerId] ?? LEVEL.DEFAULT_STOREY_HEIGHT_M;
       const coeffPerS = shaftCoeffPerS(link.kind, width, height);
+      const doorWidth = link.kind === 'lift' ? LEVEL.LIFT_DOOR_WIDTH_M : width;
       const near = (id: string) =>
         studs.filter(
           (s) =>
             levelOf(s) === id &&
-            Math.hypot(s.simPos.x - link.pos.x, s.simPos.y - link.pos.y) <= LEVEL.STAIR_STUD_RADIUS_M,
+            Math.hypot(s.simPos.x - link.pos.x, s.simPos.y - link.pos.y) <=
+              LEVEL.STAIR_STUD_RADIUS_M,
         );
       for (const lo of near(lowerId)) {
         let best: (typeof studs)[number] | null = null;
@@ -247,11 +260,14 @@ export function shaftPairs(
         }
         if (!best) continue;
         pairs.push({
+          linkId: link.id,
           lower: lo.id,
           upper: best.id,
           kind: link.kind,
           blocked: link.blocked,
           coeffPerS,
+          widthM: doorWidth,
+          storeyHeightM: height,
         });
       }
     }

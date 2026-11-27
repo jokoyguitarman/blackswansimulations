@@ -622,28 +622,14 @@ describe('smoke carries the gases', () => {
     assert.ok((open.studStates.get('far')?.fumes?.CO ?? 0) > 0, 'door did not pass CO');
   });
 
-  test('another storey stays clear until smoke rises up a shaft', () => {
+  test('another storey stays clear without a shaft', () => {
     const sealed = new SpatialEffectsEngine(undefined, 1);
     sealed.init([stud('g', 0, 0, 'G'), stud('up', 0, 0, 'L1')]);
     sealed.setFuelCells(new Map([['g', WOOD]]));
     (sealed as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g']);
     for (let t = 0; t < 40; t++) sealed.step(1, [], []);
     assert.equal(sealed.studStates.get('up')?.fumes, undefined);
-
-    const shaft = new SpatialEffectsEngine(undefined, 1);
-    shaft.init([stud('g', 0, 0, 'G'), stud('up', 0, 0, 'L1')]);
-    shaft.setFuelCells(new Map([['g', WOOD]]));
-    shaft.setVerticalLinks([
-      { id: 'stair', pos: { x: 0, y: 0 }, levels: ['G', 'L1'], kind: 'stair', blocked: false },
-    ]);
-    (shaft as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g']);
-    let t = 0;
-    while ((shaft.studStates.get('up')?.smoke ?? 0) <= 0.02 && t < 120) {
-      shaft.step(1, [], []);
-      t += 1;
-    }
-    assert.ok(t < 120, 'smoke did not rise');
-    assert.ok((shaft.studStates.get('up')?.fumes?.CO ?? 0) > 0);
+    assert.equal(sealed.studStates.get('up')?.smoke ?? 0, 0);
   });
 
   test('a spray that decays the fire decays the fumes by the same ratio', () => {

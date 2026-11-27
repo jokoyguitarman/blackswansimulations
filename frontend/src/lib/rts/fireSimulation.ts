@@ -1,5 +1,4 @@
 import type { Vec2 } from '../evacuation/types';
-import { LEVEL } from '../evacuation/levelConstants';
 import type { InteriorWall, HazardZone } from './types';
 import { levelOf, neighborIdsByLevel, type ShaftPair } from './levels';
 import {
@@ -313,8 +312,6 @@ export class FireSimulation {
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
-  private shaftPairs: ShaftPair[] = [];
-  private shaftBurn = new Map<string, number>();
   /**
    * Null means the caller named no fuel: indoor studs stand in as light wood.
    * A set, including an empty one, is the library: only those studs ignite.
@@ -367,8 +364,6 @@ export class FireSimulation {
     this.states.clear();
     this.neighborCache.clear();
     this.wallBreachTimers.clear();
-    this.shaftPairs = [];
-    this.shaftBurn.clear();
     this.burn.clear();
     this.wallTick.clear();
     this.compartmentOf.clear();
@@ -418,9 +413,38 @@ export class FireSimulation {
     this.buildNeighborCache([...this.studIndex.values()]);
   }
 
+  /**
+   * Kept so a scene can still name its shafts here. The layer step reads
+   * the same links itself; the 60 s landing timer that used to live on
+   * this list is gone.
+   */
   setShaftPairs(pairs: ShaftPair[]) {
-    this.shaftPairs = pairs;
-    this.shaftBurn.clear();
+    void pairs;
+  }
+
+  /**
+   * Thick-solid dose from the shaft gas on one landing. The flux is the
+   * black upper layer (the same σT⁴ the people read). Below the critical
+   * flux the dose stays. A lift does not call this: the car is shut, and
+   * the landing is not in the shaft.
+   */
+  applyLandingFlux(id: string, fluxKwM2: number, dt: number): void {
+    if (!(dt > 0) || !(fluxKwM2 > 0)) return;
+    if (!this.acceptsFuel(id) || this.coverFrom.has(id)) return;
+    const state = this.states.get(id);
+    if (!state || state.state === 'burning' || state.state === 'burnt_out') return;
+    const cell = this.cellFor(id);
+    if (!cell) return;
+    const dose = addIgnitionDose(state.dose ?? 0, fluxKwM2, cell.chfKwM2, cell.trp, dt);
+    state.dose = dose;
+    if (dose >= 1) {
+      this.catchFire(id);
+      return;
+    }
+    if (dose > 0) {
+      state.state = 'heating';
+      state.approach = Math.max(state.approach ?? 0, Math.min(1, dose));
+    }
   }
 
   /** Pass null for the indoor light-wood stand-in. The set survives init. */
@@ -1066,21 +1090,6 @@ export class FireSimulation {
         fState.state = 'heating';
         fState.approach = Math.max(slot.approach, Math.min(1, dose));
       }
-    }
-
-    for (const pair of this.shaftPairs) {
-      if (pair.kind !== 'stair') continue;
-      const lower = this.states.get(pair.lower);
-      const key = `${pair.lower}->${pair.upper}`;
-      if (lower?.state !== 'burning') continue;
-      const burned = (this.shaftBurn.get(key) ?? 0) + dt;
-      this.shaftBurn.set(key, burned);
-      if (burned + 1e-9 < LEVEL.STAIR_FIRE_HEAT_S) continue;
-      if (!this.acceptsFuel(pair.upper)) continue;
-      if (this.coverFrom.has(pair.upper)) continue;
-      const upper = this.states.get(pair.upper);
-      if (!upper || upper.state !== 'none') continue;
-      this.catchFire(pair.upper);
     }
   }
 
