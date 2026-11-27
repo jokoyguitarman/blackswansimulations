@@ -27,6 +27,7 @@ import {
   flightWaitS,
   flightWidthM,
   mergePick,
+  stairDensitySpeed,
 } from '../src/lib/evacuation/stairFlow.ts';
 import { isInsidePolygon } from '../src/lib/evacuation/geometry.ts';
 import { heatFedPerMin } from '../src/lib/rts/toxicDose.ts';
@@ -226,6 +227,21 @@ describe('stair flight arithmetic', () => {
     assert.deepEqual(picks, ['stream', 'floor', 'stream', 'floor']);
   });
 
+  it('slows descent with density on the SFPE hydraulic curve, peaking at the specific flow', () => {
+    // k = 4 × 0.266 × 1.01 = 1.075 m/s (SFPE ch. 59 gives 1.08 for 7/11).
+    const k = 4 * 0.266 * 1.01;
+    assert.ok(Math.abs(stairDensitySpeed(0) - k) < 1e-12);
+    assert.ok(Math.abs(stairDensitySpeed(1) - k * (1 - 0.266)) < 1e-12);
+    // The optimum: D = 1/(2a) = 1.88 p/m², S = k/2, S·D = 1.01 p/s/m.
+    const dOpt = 1 / (2 * 0.266);
+    assert.ok(Math.abs(stairDensitySpeed(dOpt) * dOpt - 1.01) < 1e-9);
+    // Denser than the optimum is a queue, not a slower walk.
+    assert.equal(stairDensitySpeed(3), stairDensitySpeed(dOpt));
+    // The engine's free descent, 0.694 m/s, binds below about 1.33 p/m².
+    const binds = (1 - LEVEL.STAIR_SPEED_DOWN / k) / 0.266;
+    assert.ok(binds > 1.3 && binds < 1.36, `${binds}`);
+  });
+
   it('prices a wait by the people ahead and the other stream’s share', () => {
     assert.equal(flightWaitS(9, 0, 0.5, 0.9), 10);
     // Ten ahead at the door and plenty on the stair: every door release waits one stair release.
@@ -395,6 +411,50 @@ describe('stair flights in the engine', () => {
       assert.ok(Math.abs(got - expected) <= rate * DT + 1e-9, `${got} vs ${expected}`);
     }
     for (const o of queued) assert.equal(o.label.heatFed ?? 0, 0);
+    eng.destroy();
+  });
+
+  it('takes longer down a crowded flight than an empty one, never slower than k/2', () => {
+    const stair = stairOf('s', 'G', 'L1');
+    const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 20 }, [stair]);
+    for (let i = 0; i < 20; i++) enqueue(inner, labels[i], 's', 'L1', 'G', 0);
+    const durations = new Map<number, number>();
+    for (let i = 0; i < Math.round(25 / DT); i++) {
+      eng.step();
+      for (const o of inner.stairPeople) {
+        if (o.phase === 'travel' && !durations.has(o.label.pedId)) {
+          durations.set(o.label.pedId, o.travelDuration);
+        }
+      }
+    }
+    const list = [...durations.values()];
+    const free = (4 * LEVEL.STAIR_TRAVEL_FACTOR) / LEVEL.STAIR_SPEED_DOWN;
+    const packed = (4 * LEVEL.STAIR_TRAVEL_FACTOR) / ((4 * 0.266 * 1.01) / 2);
+    assert.ok(Math.abs(list[0] - free) < 1e-9, `first ${list[0]} vs ${free}`);
+    assert.ok(Math.max(...list) > free + 1, `slowest ${Math.max(...list)}`);
+    assert.ok(Math.max(...list) <= packed + 1e-9);
+    eng.destroy();
+  });
+
+  it('breathes the shaft column’s heat on a flight when the effects engine reports one', () => {
+    const stair = stairOf('s', 'G', 'L1');
+    const { eng, inner, labels } = build(['G', 'L1'], { G: 0, L1: 1 }, [stair]);
+    const clear = new HazardField([], 3);
+    eng.setHazardFields(
+      new Map([
+        ['G', clear],
+        ['L1', clear],
+      ]),
+    );
+    eng.setShaftColumns([{ linkId: 's', lowerLevel: 'G', upperLevel: 'L1', tempK: 393.15 }]);
+    enqueue(inner, labels[0], 's', 'L1', 'G', 0);
+    for (let i = 0; i < Math.round(4 / DT); i++) eng.step();
+    const walker = inner.stairPeople[0];
+    assert.equal(walker.phase, 'travel');
+    // 120 °C throughout the flight, though both landings are clear.
+    const expected = (heatFedPerMin(120, undefined) / 60) * (4 - walker.travelStart);
+    const got = labels[0].heatFed ?? 0;
+    assert.ok(Math.abs(got - expected) <= expected * 0.02 + 1e-9, `${got} vs ${expected}`);
     eng.destroy();
   });
 

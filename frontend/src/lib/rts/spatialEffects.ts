@@ -553,6 +553,19 @@ export function blastSmokeStudIds(
 // ── Main engine ──────────────────────────────────────────────────────────
 
 /** One shaft orifice a pressure root solved this step. */
+/** One shaft column between two adjacent storeys, as `shaftColumns()` reports it. */
+export interface ShaftColumnView {
+  /** Stair or lift id. */
+  linkId: string;
+  kind: 'stair' | 'lift';
+  lowerStudId: string;
+  upperStudId: string;
+  lowerLevel: string;
+  upperLevel: string;
+  /** Column gas temperature, kelvin. */
+  tempK: number;
+}
+
 interface ShaftMove {
   key: string;
   pair: ShaftPair;
@@ -3832,6 +3845,42 @@ export class SpatialEffectsEngine {
       this.step(stepSize, walls, hazards);
     }
     return new Map(this.studStates);
+  }
+
+  /**
+   * Read-only view of every unblocked shaft column: the link, the two
+   * landing studs and their storeys, and the column temperature. A column
+   * that has never carried gas, or whose landings are not in a layer room,
+   * reads ambient. The column holds heat only; the gas it passes is carried
+   * between the landing studs.
+   */
+  shaftColumns(): ShaftColumnView[] {
+    const roomOf = (studId: string): string | undefined => {
+      let fallback: string | undefined;
+      for (const [room, live] of this.layerState) {
+        if (!live.members.includes(studId)) continue;
+        if (live.active) return room;
+        fallback ??= room;
+      }
+      return fallback;
+    };
+    const out: ShaftColumnView[] = [];
+    for (const pair of this.verticalPairs) {
+      const lowerRoom = roomOf(pair.lower);
+      const upperRoom = roomOf(pair.upper);
+      const key = `${pair.linkId ?? pair.lower}|${lowerRoom}|${upperRoom}`;
+      const tempK = lowerRoom && upperRoom ? (this.shaftK.get(key) ?? AMBIENT_K) : AMBIENT_K;
+      out.push({
+        linkId: pair.linkId ?? pair.lower,
+        kind: pair.kind,
+        lowerStudId: pair.lower,
+        upperStudId: pair.upper,
+        lowerLevel: levelOf(this.studIndex.get(pair.lower) ?? {}),
+        upperLevel: levelOf(this.studIndex.get(pair.upper) ?? {}),
+        tempK,
+      });
+    }
+    return out;
   }
 
   getStats() {

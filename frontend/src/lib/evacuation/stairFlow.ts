@@ -105,3 +105,22 @@ export function stairFlights(
   }
   return out;
 }
+
+/**
+ * SFPE hydraulic-model descent speed at density `density` (persons per m²
+ * of effective flight area): S = k(1 − a D), with k set so the peak specific
+ * flow S·D is STAIR_SPECIFIC_FLOW. Density is read on the uncongested branch,
+ * so it stops at the optimum 1/(2a): denser than that is a queue, which the
+ * release cap and the flight storage hold.
+ */
+export function stairDensitySpeed(density: number): number {
+  const a = LEVEL.STAIR_DENSITY_SPEED_COEFF;
+  const k = 4 * a * LEVEL.STAIR_SPECIFIC_FLOW;
+  const d = Math.min(Math.max(0, density), 1 / (2 * a));
+  return k * (1 - a * d);
+}
+
+/** Walking length times effective width of one flight, m². */
+export function flightAreaM2(sw: Stairwell, from: LevelDef): number {
+  return from.heightM * LEVEL.STAIR_TRAVEL_FACTOR * stairEffectiveWidthM(sw);
+}
