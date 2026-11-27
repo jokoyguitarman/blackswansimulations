@@ -6,6 +6,7 @@ import { doorCanBePushed, doorHeldShut, leafWidthM } from '../rts/doorLeaf';
 import type { LevelDef, Stairwell } from '../rts/types';
 import { levelIndex, levelOf, linkLevels, stairFlowPerS, stairTravelS } from '../rts/levels';
 import type { FumeGrams } from '../rts/toxicDose';
+import { flightKey, type FlightWait } from './stairFlow';
 
 export type HeadSmokeClass = 'clear' | 'light' | 'thick' | 'untenable';
 export type FireCell = 'none' | 'heating' | 'burning' | 'burnt_out';
@@ -2090,6 +2091,12 @@ export function chooseRoute(
   current?: { id: string; cost: number } | null,
   blockedDoors?: ReadonlyMap<string, readonly WallLike[]>,
   wallsByLevel?: ReadonlyMap<string, readonly WallLike[]>,
+  stairOpts?: {
+    /** Seconds a newcomer waits at each flight head, by flightKey. Replaces `queues`. */
+    flightWaits?: ReadonlyMap<string, FlightWait>;
+    /** The person is already on the stair, on a landing of `level`. */
+    entry?: 'floor' | 'stream';
+  },
 ): RouteChoice | null {
   const fieldOf = (id: string) => fields.get(id);
   interface Node {
@@ -2180,12 +2187,21 @@ export function chooseRoute(
       const lower = levels.find((l) => l.id === lowerId);
       const upper = levels.find((l) => l.id === upperId);
       if (!lower || !upper) continue;
+      // A flight from the person's own storey is joined at the door, unless
+      // they are already on the stair. Every flight after that is joined
+      // from the stair stream on its landing.
+      const waitS = (dir: 'up' | 'down', fromId: string, legacy: number): number => {
+        const wait = stairOpts?.flightWaits?.get(flightKey(sw.id, dir, fromId));
+        if (!wait) return legacy / flow;
+        const atDoor = fromId === level && stairOpts?.entry !== 'stream';
+        return atDoor ? wait.floor : wait.stream;
+      };
       const upM =
         stairTravelS(lower, 'up') * SHOWCASE.FREE_WALK_SPEED +
-        (q.up / flow) * SHOWCASE.FREE_WALK_SPEED;
+        waitS('up', lowerId, q.up) * SHOWCASE.FREE_WALK_SPEED;
       const downM =
         stairTravelS(upper, 'down') * SHOWCASE.FREE_WALK_SPEED +
-        (q.down / flow) * SHOWCASE.FREE_WALK_SPEED;
+        waitS('down', upperId, q.down) * SHOWCASE.FREE_WALK_SPEED;
       add(`stair:${sw.id}:${lowerId}`, `stair:${sw.id}:${upperId}`, upM);
       add(`stair:${sw.id}:${upperId}`, `stair:${sw.id}:${lowerId}`, downM);
     }

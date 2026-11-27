@@ -38,6 +38,7 @@ jobs:
           - frontend/tests/smokeCorridor.test.ts
           - frontend/tests/stairShaftCrowd.test.ts
           - frontend/tests/officeTowerSpeeds.test.ts
+          - frontend/tests/officeTowerStairs.test.ts
     env:
       RUN_SLOW_TESTS: '1'
     steps:

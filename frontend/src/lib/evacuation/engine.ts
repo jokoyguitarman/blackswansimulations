@@ -80,10 +80,19 @@ import {
   linkLevels,
   normaliseStairwell,
   sortLevels,
-  stairFlowPerS,
   stairTravelS,
 } from '../rts/levels';
 import type { LevelDef, Stairwell } from '../rts/types';
+import {
+  flightFlowPerS,
+  flightKey,
+  flightStorage,
+  flightWaitS,
+  mergePick,
+  stairFlights,
+  type FlightWait,
+  type StairSource,
+} from './stairFlow';
 
 export type { Posture } from './hazardSensing';
 
@@ -102,6 +111,31 @@ const STATIC_CELL_M = 2;
 const CELL_BIAS = 4096;
 const CELL_STRIDE = 8192;
 const CELL_STAMP_SLOTS = 8192;
+/** Spacing of drawn door-queue places: hexagonal, about 3.2 p/m². Display only. */
+const QUEUE_SPACING_M = 0.6;
+/** Farthest a drawn door-queue place sits from the stair point. Display only. */
+const QUEUE_REACH_M = 8;
+/** Door-queue places start outside the stair point's own disc. Display only. */
+const QUEUE_CLEAR_M = 0.9;
+
+interface FlightLoad {
+  /** Waiting at the floor door. */
+  floor: number;
+  /** Waiting on the landing, already on the stair. */
+  stream: number;
+  moving: number;
+  responders: number;
+}
+
+const NO_LOAD: FlightLoad = { floor: 0, stream: 0, moving: 0, responders: 0 };
+
+function demandOf(load: FlightLoad): number {
+  return load.floor + load.stream + load.moving;
+}
+
+function opposite(dir: 'up' | 'down'): 'up' | 'down' {
+  return dir === 'up' ? 'down' : 'up';
+}
 
 export interface PedSnapshot {
   id: number;
@@ -135,7 +169,40 @@ export interface PedSnapshot {
   nearWall?: boolean;
   /** Present only when a level plan is in use. */
   level?: string;
-  inStair?: { stairId: string; dir: 'up' | 'down'; progress: number };
+  inStair?: {
+    stairId: string;
+    dir: 'up' | 'down';
+    progress: number;
+    /** Waiting at the flight's head, or walking it. Absent means walking. */
+    phase?: 'queue' | 'travel';
+    /** Floor door queue, or the stair stream waiting on the landing. */
+    queue?: StairSource;
+    /** Storey the flight leads to. */
+    toLevel?: string;
+  };
+}
+
+/** One flight of one stair in one direction, as the debug page shows it. */
+export interface StairFlightView {
+  stairId: string;
+  dir: 'up' | 'down';
+  fromLevel: string;
+  toLevel: string;
+  /** Waiting at the floor door to step on. */
+  door: number;
+  /** Already on the stair, waiting on the landing to go on down or up. */
+  landing: number;
+  /** Walking the flight now. */
+  moving: number;
+  /** Responders among `door`, `landing` and `moving`. */
+  responders: number;
+  /** Release rate for this direction right now, persons per second. */
+  flowPerS: number;
+  /** Most the flight holds, walking plus waiting at its foot. */
+  storage: number;
+  counterflow: boolean;
+  /** Releases held because the flight below the landing is full. */
+  full: boolean;
 }
 
 export interface ShowcaseMetrics {
@@ -166,6 +233,7 @@ export interface ShowcaseMetrics {
   /** Present only when a level plan was passed to the engine. */
   byLevel?: Record<string, { remaining: number; crawling: number }>;
   stairQueues?: Record<string, { up: number; down: number }>;
+  stairFlights?: StairFlightView[];
 }
 
 export interface EvacMetrics {
@@ -263,20 +331,40 @@ export interface EvacLevelPlan {
   heights?: Record<string, number>;
 }
 
-interface StairOccupant {
-  label: PedLabel;
+interface FlightOccupant {
   stairId: string;
   dir: 'up' | 'down';
+  /** Storey at the head of the flight now being queued for or walked. */
   fromLevel: string;
   toLevel: string;
   phase: 'queue' | 'travel';
+  /** Came in at the floor door, or stayed on the stair from the flight before. Absent means floor. */
+  source?: StairSource;
   enqueuedAt: number;
   travelStart: number;
   travelDuration: number;
+}
+
+interface StairOccupant extends FlightOccupant {
+  label: PedLabel;
   /** The remaining stair time was stretched for irritant smoke. */
   fumeStretched?: boolean;
   /** Factor applied to the remaining time while the irritant crawl is on. */
   fumeStretch?: number;
+}
+
+/**
+ * A responder climbing or descending a stair. Not an evacuee: breathing
+ * apparatus, so no dose, and not in the crowd counts. It takes flight
+ * capacity like anyone else, and against the crowd it is counterflow.
+ */
+interface StairResponder extends FlightOccupant {
+  id: string;
+  finalLevel: string;
+}
+
+function isPerson(occ: FlightOccupant): occ is StairOccupant {
+  return 'label' in occ;
 }
 
 export interface ObstaclePoint {
@@ -362,8 +450,18 @@ export class PolygonEvacuationEngine {
   private levelPlan: EvacLevelPlan | null = null;
   private levelDefs: LevelDef[] = [];
   private stairPeople: StairOccupant[] = [];
-  /** Release slot of the last person let onto each stair and direction. */
+  private stairResponders: StairResponder[] = [];
+  /** Responders who have reached their storey: id, storey, seconds. */
+  private responderArrivals: Array<{ id: string; level: string; atS: number }> = [];
+  /** Release slot of the last person let onto each flight, by flightKey. */
   private stairLastRelease = new Map<string, number>();
+  /** Floor-share credit carried between merged releases, by flightKey. */
+  private mergeCredit = new Map<string, number>();
+  /** Flights holding releases for want of room below, by flightKey, last step. */
+  private flightFull = new Set<string>();
+  private flightWaitCache: { at: number; waits: Map<string, FlightWait> } | null = null;
+  /** Queue places around each stair on each storey, by `stairId:level`. */
+  private queueSlots = new Map<string, Vec2[]>();
   private pendingCapture: Matter.Body[] = [];
   private hazardFields = new Map<string, HazardField>();
   /** Last map passed to setHazardStates. A field installed later starts on it. */
@@ -2609,16 +2707,43 @@ export class PolygonEvacuationEngine {
     const snaps = this.pedestrians.map((body) =>
       this.snapshotOf(this.pedOf(body), body.position, body.velocity),
     );
+    const ranks = new Map<string, number>();
+    const queued = this.stairPeople
+      .filter((occ) => occ.phase === 'queue')
+      .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
     for (const occ of this.stairPeople) {
       const stair = this.stairById(occ.stairId);
-      const pos = stair?.pos ?? { x: 0, y: 0 };
+      let pos = stair?.pos ?? { x: 0, y: 0 };
       const progress =
         occ.phase === 'travel'
           ? Math.min(1, (this.elapsed - occ.travelStart) / Math.max(1e-6, occ.travelDuration))
           : 0;
+      const source = occ.source ?? 'floor';
+      if (stair && occ.phase === 'queue') {
+        // Up and down door queues at one landing share the floor there.
+        const key = `${occ.stairId}:${occ.fromLevel}:${source}`;
+        let rank = ranks.get(`${key}#${occ.label.pedId}`);
+        if (rank == null) {
+          let n = 0;
+          for (const other of queued) {
+            if (other.stairId !== occ.stairId || other.fromLevel !== occ.fromLevel) continue;
+            if ((other.source ?? 'floor') !== source) continue;
+            ranks.set(`${key}#${other.label.pedId}`, n++);
+          }
+          rank = ranks.get(`${key}#${occ.label.pedId}`) ?? 0;
+        }
+        pos = this.queuePlace(stair, occ.fromLevel, source, rank);
+      }
       const snap = this.snapshotOf(occ.label, pos, { x: 0, y: 0 });
       snap.level = occ.fromLevel;
-      snap.inStair = { stairId: occ.stairId, dir: occ.dir, progress };
+      snap.inStair = {
+        stairId: occ.stairId,
+        dir: occ.dir,
+        progress,
+        phase: occ.phase,
+        toLevel: occ.toLevel,
+        ...(occ.phase === 'queue' ? { queue: source } : {}),
+      };
       snaps.push(snap);
     }
     return snaps;
@@ -2740,7 +2865,11 @@ export class PolygonEvacuationEngine {
       unfrozen: this.unfrozenCount,
       unsafeZoneNote: this.unsafeZoneNote,
       ...(this.levelPlan
-        ? { byLevel: this.metricsByLevel(snaps), stairQueues: this.metricsQueues() }
+        ? {
+            byLevel: this.metricsByLevel(snaps),
+            stairQueues: this.metricsQueues(),
+            stairFlights: this.getStairFlights(),
+          }
         : {}),
     };
   }
@@ -2996,6 +3125,7 @@ export class PolygonEvacuationEngine {
       current,
       this.blockedDoorsByLevel,
       this.wallsByLevel,
+      { flightWaits: this.flightWaits() },
     );
     if (!choice) {
       const door = this.storeyFallback(ped, pos);
@@ -3091,7 +3221,7 @@ export class PolygonEvacuationEngine {
     if (!fromDef) return null;
     const here = this.storeyRegions(from);
     const verts = this.config.vertices;
-    const queues = this.queueLengths();
+    const waits = this.flightWaits();
     let stay: number | null = null;
     const stayDose = () =>
       (stay ??= this.crawlDose(ped, [
@@ -3106,8 +3236,11 @@ export class PolygonEvacuationEngine {
       for (const to of [span[at - 1], span[at + 1]]) {
         if (!to || Math.abs(levelIndex(to) - levelIndex(from)) !== 1) continue;
         const dir = levelIndex(to) < levelIndex(from) ? 'down' : 'up';
+        // The flight is crawled, as the floor legs are, so it takes
+        // 1/STAIR_CRAWL_FACTOR of the walking time on the shaft's air.
         const holdS =
-          (queues.get(stair.id)?.[dir] ?? 0) / stairFlowPerS(stair) + stairTravelS(fromDef, dir);
+          (waits.get(flightKey(stair.id, dir, from))?.floor ?? 0) +
+          stairTravelS(fromDef, dir) / LEVEL.STAIR_CRAWL_FACTOR;
         const held =
           ped.forcedCrawl === true &&
           !ped.sheltering &&
@@ -3271,6 +3404,49 @@ export class PolygonEvacuationEngine {
     return map;
   }
 
+  private flightLoads(): Map<string, FlightLoad> {
+    const out = new Map<string, FlightLoad>();
+    const add = (occ: FlightOccupant, responder: boolean) => {
+      const key = flightKey(occ.stairId, occ.dir, occ.fromLevel);
+      let row = out.get(key);
+      if (!row) {
+        row = { floor: 0, stream: 0, moving: 0, responders: 0 };
+        out.set(key, row);
+      }
+      if (occ.phase === 'travel') row.moving++;
+      else if (occ.source === 'stream') row.stream++;
+      else row.floor++;
+      if (responder) row.responders++;
+    };
+    for (const occ of this.stairPeople) add(occ, false);
+    for (const occ of this.stairResponders) add(occ, true);
+    return out;
+  }
+
+  /** Waits at every flight head this step, for route costs. */
+  private flightWaits(): Map<string, FlightWait> {
+    if (this.flightWaitCache?.at === this.elapsed) return this.flightWaitCache.waits;
+    const waits = new Map<string, FlightWait>();
+    if (this.levelPlan) {
+      const loads = this.flightLoads();
+      const share = LEVEL.STAIR_MERGE_FLOOR_SHARE;
+      for (const stair of this.levelPlan.stairs) {
+        if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
+        for (const f of stairFlights(linkLevels(stair, this.levelDefs), levelIndex)) {
+          const own = loads.get(flightKey(stair.id, f.dir, f.from)) ?? NO_LOAD;
+          const opp = loads.get(flightKey(stair.id, opposite(f.dir), f.to)) ?? NO_LOAD;
+          const flow = flightFlowPerS(stair, demandOf(own) + 1, demandOf(opp));
+          waits.set(flightKey(stair.id, f.dir, f.from), {
+            floor: flightWaitS(own.floor, own.stream, share, flow),
+            stream: flightWaitS(own.stream, own.floor, 1 - share, flow),
+          });
+        }
+      }
+    }
+    this.flightWaitCache = { at: this.elapsed, waits };
+    return waits;
+  }
+
   private stairById(id: string): Stairwell | undefined {
     return this.levelPlan?.stairs.find((s) => s.id === id);
   }
@@ -3281,7 +3457,22 @@ export class PolygonEvacuationEngine {
     for (const occ of this.stairPeople) {
       const stair = this.stairById(occ.stairId);
       if (!stair) continue;
-      if (this.breathe(occ.label, stair.pos.x, stair.pos.y, dt)) collapsed.push(occ);
+      // On a flight the air goes from the landing left to the landing ahead
+      // in step with the walk, so the shaft's gas from the next storey is
+      // breathed on the way down to it. At a door or on a landing it is
+      // that storey's stud.
+      let weights: Array<{ level: string; weight: number }> | undefined;
+      if (occ.phase === 'travel') {
+        const p = Math.min(
+          1,
+          Math.max(0, (this.elapsed - occ.travelStart) / Math.max(1e-6, occ.travelDuration)),
+        );
+        weights = [
+          { level: occ.fromLevel, weight: 1 - p },
+          { level: occ.toLevel, weight: p },
+        ];
+      }
+      if (this.breathe(occ.label, stair.pos.x, stair.pos.y, dt, weights)) collapsed.push(occ);
     }
     for (const occ of collapsed) {
       occ.toLevel = occ.fromLevel;
@@ -3316,21 +3507,50 @@ export class PolygonEvacuationEngine {
    * One breath of the smoke on the nearest stud, and the heat at that head.
    * Walking speed stays on the smoke density. FEC at 1 makes them crawl
    * until the next breath under 1. The asphyxiant FED and the heat FED are
-   * separate. Either one at 1 puts them down, and that stays.
+   * separate. Either one at 1 puts them down, and that stays. `weights`
+   * blends the studs at (x, y) on several storeys, each dose by its weight;
+   * unset means the person's own storey.
    */
-  private breathe(ped: PedLabel, x: number, y: number, dt: number): boolean {
+  private breathe(
+    ped: PedLabel,
+    x: number,
+    y: number,
+    dt: number,
+    weights?: ReadonlyArray<{ level: string; weight: number }>,
+  ): boolean {
     if (ped.state === 'down' || ped.state === 'left_map') return false;
-    const sample = this.field(ped.level).sample(x, y);
-    const fumes = sample.fumes;
-    ped.fed = advanceFed(
-      ped.fed ?? 0,
-      fumes,
-      dt,
-      sample.oxygenVolumePercent,
-      sample.co2VolumePercent,
-    );
-    ped.heatFed = advanceHeatFed(ped.heatFed ?? 0, sample.headTempC, sample.radiantKwM2, dt);
-    ped.fec = fecOf(fumes);
+    if (!weights) {
+      const sample = this.field(ped.level).sample(x, y);
+      ped.fed = advanceFed(
+        ped.fed ?? 0,
+        sample.fumes,
+        dt,
+        sample.oxygenVolumePercent,
+        sample.co2VolumePercent,
+      );
+      ped.heatFed = advanceHeatFed(ped.heatFed ?? 0, sample.headTempC, sample.radiantKwM2, dt);
+      ped.fec = fecOf(sample.fumes);
+    } else {
+      // Both doses grow linearly in time, so blending the increments is the
+      // dose of the blended exposure.
+      const fed0 = ped.fed ?? 0;
+      const heat0 = ped.heatFed ?? 0;
+      let fed = fed0;
+      let heatFed = heat0;
+      let fec = 0;
+      for (const { level, weight } of weights) {
+        if (!(weight > 0)) continue;
+        const s = this.field(level).sample(x, y);
+        fed +=
+          weight *
+          (advanceFed(fed0, s.fumes, dt, s.oxygenVolumePercent, s.co2VolumePercent) - fed0);
+        heatFed += weight * (advanceHeatFed(heat0, s.headTempC, s.radiantKwM2, dt) - heat0);
+        fec += weight * fecOf(s.fumes);
+      }
+      ped.fed = fed;
+      ped.heatFed = heatFed;
+      ped.fec = fec;
+    }
     ped.fumeHeld = fecImpairs(ped.fec);
     const gasDown = (ped.fed ?? 0) >= 1;
     const heatDown = (ped.heatFed ?? 0) >= 1;
@@ -3345,41 +3565,91 @@ export class PolygonEvacuationEngine {
   }
 
   private advanceStairs() {
-    const done: StairOccupant[] = [];
-    for (const occ of this.stairPeople) {
+    const done: FlightOccupant[] = [];
+    for (const occ of [...this.stairPeople, ...this.stairResponders]) {
       if (occ.phase !== 'travel') continue;
       if (this.elapsed - occ.travelStart + 1e-9 >= occ.travelDuration) done.push(occ);
     }
-    for (const occ of done) this.arriveFromStair(occ);
+    for (const occ of done) {
+      if (isPerson(occ)) this.landPerson(occ);
+      else this.landResponder(occ as StairResponder);
+    }
   }
 
+  /**
+   * Each flight releases at its own headway: the specific flow on the width
+   * this direction has, which a reverse stream narrows. Floor and stair
+   * streams waiting at the same head share the releases by
+   * STAIR_MERGE_FLOOR_SHARE. Nobody steps on while the flight and the
+   * landing at its foot already hold the flight's storage.
+   */
   private releaseStairs(dt: number) {
     if (!this.levelPlan) return;
+    this.flightFull.clear();
+    const all: FlightOccupant[] = [...this.stairPeople, ...this.stairResponders];
+    if (all.length === 0) return;
+    const loads = this.flightLoads();
     for (const stair of this.levelPlan.stairs) {
       if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
-      const headway = 1 / stairFlowPerS(stair);
-      for (const dir of ['up', 'down'] as const) {
-        const key = `${stair.id}:${dir}`;
-        const waiting = this.stairPeople
-          .filter((p) => p.stairId === stair.id && p.dir === dir && p.phase === 'queue')
+      for (const f of stairFlights(linkLevels(stair, this.levelDefs), levelIndex)) {
+        const waiting = all
+          .filter(
+            (o) =>
+              o.phase === 'queue' &&
+              o.stairId === stair.id &&
+              o.dir === f.dir &&
+              o.fromLevel === f.from,
+          )
           .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
         if (waiting.length === 0) continue;
-        if (waiting[0].label.fumeHeld) waiting[0].label.posture = 'crawl';
+        const head = waiting[0];
+        if (isPerson(head) && head.label.fumeHeld) head.label.posture = 'crawl';
+        const key = flightKey(stair.id, f.dir, f.from);
+        const own = loads.get(key) ?? NO_LOAD;
+        const opp = loads.get(flightKey(stair.id, opposite(f.dir), f.to)) ?? NO_LOAD;
+        const headway = 1 / flightFlowPerS(stair, demandOf(own), demandOf(opp));
+        const fromDef = this.levelDefs.find((l) => l.id === f.from);
+        const storage = fromDef ? flightStorage(stair, fromDef) : Infinity;
+        const atFoot = loads.get(flightKey(stair.id, f.dir, f.to))?.stream ?? 0;
+        let held = own.moving + atFoot;
+        const floorQ = waiting.filter((o) => o.source !== 'stream');
+        const streamQ = waiting.filter((o) => o.source === 'stream');
         // The headway holds across an empty queue, so a trickle of arrivals
         // is held to the same cap as a crowd. A standing queue chains on the
         // slot, not the step, so the rate stays exact.
         let last = this.stairLastRelease.get(key) ?? -Infinity;
-        while (waiting.length > 0 && this.elapsed + 1e-9 >= last + headway) {
+        let credit = this.mergeCredit.get(key) ?? 0;
+        while (floorQ.length + streamQ.length > 0 && this.elapsed + 1e-9 >= last + headway) {
+          if (held >= storage) {
+            this.flightFull.add(key);
+            break;
+          }
+          let next: FlightOccupant;
+          if (floorQ.length > 0 && streamQ.length > 0) {
+            const merged = mergePick(credit, LEVEL.STAIR_MERGE_FLOOR_SHARE);
+            credit = merged.credit;
+            next = merged.pick === 'floor' ? floorQ.shift()! : streamQ.shift()!;
+          } else {
+            next = floorQ.length > 0 ? floorQ.shift()! : streamQ.shift()!;
+          }
           last = Math.max(last + headway, this.elapsed - dt);
-          this.beginTravel(waiting.shift()!);
+          this.beginTravel(next);
+          held++;
         }
         this.stairLastRelease.set(key, last);
+        this.mergeCredit.set(key, credit);
       }
     }
   }
 
-  private beginTravel(occ: StairOccupant) {
+  private beginTravel(occ: FlightOccupant) {
     const from = this.levelDefs.find((l) => l.id === occ.fromLevel);
+    occ.phase = 'travel';
+    occ.travelStart = this.elapsed;
+    if (!isPerson(occ)) {
+      occ.travelDuration = from ? stairTravelS(from, occ.dir) : 1;
+      return;
+    }
     if (occ.label.fumeHeld) occ.label.posture = 'crawl';
     const stair = this.stairById(occ.stairId);
     const pos = stair?.pos ?? { x: 0, y: 0 };
@@ -3397,9 +3667,212 @@ export class PolygonEvacuationEngine {
     // the remaining time returns to the pace they had without it.
     occ.fumeStretched = occ.label.fumeHeld === true;
     occ.fumeStretch = occ.label.fumeHeld ? factor : undefined;
-    occ.phase = 'travel';
-    occ.travelStart = this.elapsed;
     occ.travelDuration = from ? stairTravelS(from, occ.dir) / factor : 1;
+  }
+
+  /** The storey after `level` on this stair going `dir`, if the stair goes on. */
+  private nextOnStair(stair: Stairwell, level: string, dir: 'up' | 'down'): string | null {
+    const want = levelIndex(level) + (dir === 'down' ? -1 : 1);
+    return linkLevels(stair, this.levelDefs).find((id) => levelIndex(id) === want) ?? null;
+  }
+
+  /**
+   * End of a flight. Someone whose route still runs on down (or up) the same
+   * stair stays in it and joins the landing's stair stream for the next
+   * flight. Anyone else steps off onto the storey.
+   */
+  private landPerson(occ: StairOccupant) {
+    const next = this.continueOnStair(occ);
+    if (!next) {
+      this.arriveFromStair(occ);
+      return;
+    }
+    occ.fromLevel = occ.toLevel;
+    occ.toLevel = next;
+    occ.phase = 'queue';
+    occ.source = 'stream';
+    occ.enqueuedAt = this.elapsed;
+    occ.travelStart = this.elapsed;
+    occ.travelDuration = 1;
+    occ.fumeStretched = false;
+    occ.fumeStretch = undefined;
+    occ.label.level = occ.fromLevel;
+    occ.label.stairToLevel = next;
+  }
+
+  private continueOnStair(occ: StairOccupant): string | null {
+    const ped = occ.label;
+    if (!this.levelPlan || ped.forcedCrawl || ped.state === 'down') return null;
+    const stair = this.stairById(occ.stairId);
+    if (!stair || stair.blocked) return null;
+    const next = this.nextOnStair(stair, occ.toLevel, occ.dir);
+    if (!next) return null;
+    const choice = chooseRoute(
+      stair.pos,
+      occ.toLevel,
+      this.exits,
+      this.levelPlan.stairs,
+      this.levelDefs,
+      this.hazardFields,
+      this.config.vertices,
+      this.queueLengths(),
+      { id: stair.id, cost: ped.exitCost ?? Infinity },
+      this.blockedDoorsByLevel,
+      this.wallsByLevel,
+      { flightWaits: this.flightWaits(), entry: 'stream' },
+    );
+    if (
+      choice?.kind !== 'stair' ||
+      choice.id !== stair.id ||
+      choice.dir !== occ.dir ||
+      choice.toLevel !== next
+    ) {
+      return null;
+    }
+    ped.exitCost = choice.cost;
+    return next;
+  }
+
+  private landResponder(occ: StairResponder) {
+    const stair = this.stairById(occ.stairId);
+    const next =
+      stair && occ.toLevel !== occ.finalLevel
+        ? this.nextOnStair(stair, occ.toLevel, occ.dir)
+        : null;
+    if (!next) {
+      this.stairResponders = this.stairResponders.filter((r) => r !== occ);
+      this.responderArrivals.push({ id: occ.id, level: occ.toLevel, atS: this.elapsed });
+      return;
+    }
+    occ.fromLevel = occ.toLevel;
+    occ.toLevel = next;
+    occ.phase = 'queue';
+    occ.source = 'stream';
+    occ.enqueuedAt = this.elapsed;
+    occ.travelStart = this.elapsed;
+    occ.travelDuration = 1;
+  }
+
+  /**
+   * Send responders along a stair, from one storey to another, as RTS crews
+   * climbing against the crowd. They queue at the door of `fromLevel` and
+   * walk every flight to `toLevel`. Defaults: the lowest storey the stair
+   * serves to its highest. Returns the responder ids, empty when the stair
+   * cannot be used.
+   */
+  sendStairResponders(
+    stairId: string,
+    count: number,
+    opts: { fromLevel?: string; toLevel?: string; idPrefix?: string } = {},
+  ): string[] {
+    const stair = this.stairById(stairId);
+    if (!stair || stair.blocked || (stair.kind ?? 'stair') === 'lift') return [];
+    const span = linkLevels(stair, this.levelDefs);
+    const from = opts.fromLevel ?? span[0];
+    const to = opts.toLevel ?? span[span.length - 1];
+    if (!span.includes(from) || !span.includes(to) || from === to) return [];
+    const dir: 'up' | 'down' = levelIndex(to) > levelIndex(from) ? 'up' : 'down';
+    const first = this.nextOnStair(stair, from, dir);
+    if (!first) return [];
+    const ids: string[] = [];
+    const prefix = opts.idPrefix ?? `responder-${stairId}`;
+    for (let i = 0; i < count; i++) {
+      const id = `${prefix}-${this.stairResponders.length + this.responderArrivals.length + 1}`;
+      ids.push(id);
+      this.stairResponders.push({
+        id,
+        stairId,
+        dir,
+        fromLevel: from,
+        toLevel: first,
+        finalLevel: to,
+        phase: 'queue',
+        source: 'floor',
+        enqueuedAt: this.elapsed + i * 1e-6,
+        travelStart: this.elapsed,
+        travelDuration: 1,
+      });
+    }
+    return ids;
+  }
+
+  /** Responders who have reached their storey, in arrival order. */
+  getResponderArrivals(): ReadonlyArray<{ id: string; level: string; atS: number }> {
+    return this.responderArrivals;
+  }
+
+  /** Every flight with someone on it or waiting for it. */
+  getStairFlights(): StairFlightView[] {
+    if (!this.levelPlan) return [];
+    const loads = this.flightLoads();
+    const out: StairFlightView[] = [];
+    for (const stair of this.levelPlan.stairs) {
+      if (stair.blocked || (stair.kind ?? 'stair') === 'lift') continue;
+      for (const f of stairFlights(linkLevels(stair, this.levelDefs), levelIndex)) {
+        const key = flightKey(stair.id, f.dir, f.from);
+        const own = loads.get(key);
+        if (!own) continue;
+        const opp = loads.get(flightKey(stair.id, opposite(f.dir), f.to)) ?? NO_LOAD;
+        const fromDef = this.levelDefs.find((l) => l.id === f.from);
+        out.push({
+          stairId: stair.id,
+          dir: f.dir,
+          fromLevel: f.from,
+          toLevel: f.to,
+          door: own.floor,
+          landing: own.stream,
+          moving: own.moving,
+          responders: own.responders,
+          flowPerS: flightFlowPerS(stair, demandOf(own), demandOf(opp)),
+          storage: fromDef ? flightStorage(stair, fromDef) : 0,
+          counterflow: demandOf(opp) > 0,
+          full: this.flightFull.has(key),
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Where a queued person stands. The door queue packs outward from the
+   * stair on the floor, nearest first, on places the person could reach
+   * from the stair; the stair stream stands close round the stair point.
+   */
+  private queuePlace(stair: Stairwell, level: string, source: StairSource, rank: number): Vec2 {
+    if (source === 'stream') {
+      const r = Math.min(0.45, 0.15 + 0.08 * Math.sqrt(rank));
+      const a = rank * 2.39996;
+      return { x: stair.pos.x + Math.cos(a) * r, y: stair.pos.y + Math.sin(a) * r };
+    }
+    const slots = this.floorQueueSlots(stair, level);
+    return slots[rank] ?? slots[slots.length - 1] ?? stair.pos;
+  }
+
+  private floorQueueSlots(stair: Stairwell, level: string): Vec2[] {
+    const key = `${stair.id}:${level}`;
+    const cached = this.queueSlots.get(key);
+    if (cached) return cached;
+    const regions = this.storeyRegions(level);
+    const spacing = QUEUE_SPACING_M;
+    const rowH = (spacing * Math.sqrt(3)) / 2;
+    const reach = QUEUE_REACH_M;
+    const out: Array<{ p: Vec2; d: number }> = [];
+    for (let row = -Math.ceil(reach / rowH); row <= Math.ceil(reach / rowH); row++) {
+      const y = stair.pos.y + row * rowH;
+      const shift = row % 2 === 0 ? 0 : spacing / 2;
+      for (let col = -Math.ceil(reach / spacing); col <= Math.ceil(reach / spacing); col++) {
+        const x = stair.pos.x + col * spacing + shift;
+        const d = Math.hypot(x - stair.pos.x, y - stair.pos.y);
+        if (d < QUEUE_CLEAR_M || d > reach) continue;
+        if (!isInsidePolygon(x, y, this.config.vertices)) continue;
+        if (!regions.connects(stair.pos, { x, y })) continue;
+        out.push({ p: { x, y }, d });
+      }
+    }
+    out.sort((a, b) => a.d - b.d);
+    const slots = out.map((o) => o.p);
+    this.queueSlots.set(key, slots);
+    return slots;
   }
 
   private arriveFromStair(occ: StairOccupant) {
@@ -3479,6 +3952,7 @@ export class PolygonEvacuationEngine {
         fromLevel: ped.level,
         toLevel: ped.stairToLevel,
         phase: 'queue',
+        source: 'floor',
         enqueuedAt: this.elapsed,
         travelStart: this.elapsed,
         travelDuration: 1,
