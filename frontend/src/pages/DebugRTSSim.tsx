@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MapContainer,
@@ -314,6 +314,78 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 /** Screen pixels a right-press must travel before it pans instead of ordering a move. */
 const PAN_THRESHOLD_PX = 5;
 
+type PaneCount = 1 | 2 | 4;
+interface PaneRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Equal cells, primary first: side by side for two (stacked in portrait), 2×2 for four. */
+function layoutPanes(count: PaneCount, w: number, h: number, portrait: boolean): PaneRect[] {
+  const cols = count === 4 ? 2 : count === 2 && !portrait ? 2 : 1;
+  const rows = count === 4 ? 2 : count === 2 && portrait ? 2 : 1;
+  const rects: PaneRect[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c * w) / cols);
+      const y = Math.round((r * h) / rows);
+      rects.push({
+        x,
+        y,
+        w: Math.round(((c + 1) * w) / cols) - x,
+        h: Math.round(((r + 1) * h) / rows) - y,
+      });
+    }
+  }
+  return rects;
+}
+
+/** Levels for panes 2..n: the other storeys lowest first, then every storey again in turn. */
+function defaultPaneLevels(count: PaneCount, levelIds: string[], active: string): string[] {
+  const all = sortLevels(levelIds);
+  const others = all.filter((id) => id !== active);
+  return Array.from({ length: count - 1 }, (_, i) =>
+    i < others.length ? others[i] : all[(i - others.length) % all.length],
+  );
+}
+
+function levelSummary(
+  levelId: string,
+  studs: Array<{ id: string; floor: string }>,
+  effectStates: Map<string, StudEffectState> | null,
+  pedestrians: PedSnapshot[],
+): { remaining: number; burning: number; meanSmoke: number } {
+  const floorStuds = studs.filter((s) => storeyId(s.floor) === levelId);
+  let burning = 0;
+  let smoke = 0;
+  for (const s of floorStuds) {
+    const st = effectStates?.get(s.id);
+    if (!st) continue;
+    if (st.fire.state === 'burning') burning += 1;
+    smoke += st.smoke;
+  }
+  const remaining = pedestrians.filter(
+    (p) =>
+      (p.level ?? 'G') === levelId &&
+      (p.state === 'idle' ||
+        p.state === 'reacting' ||
+        p.state === 'evacuating' ||
+        (!p.state && !p.evacuated)),
+  ).length;
+  return { remaining, burning, meanSmoke: floorStuds.length > 0 ? smoke / floorStuds.length : 0 };
+}
+
+/** What the render loop needs from a secondary level pane. */
+interface PaneHandle {
+  map: L.Map | null;
+  canvas: HTMLCanvasElement | null;
+  level: string;
+  fx: HazardFxRenderer | null;
+  fxCtx: HazardFxContext | null;
+}
+
 const ENABLE_CASUALTY_PLACEMENT = false;
 const ENABLE_AI_ENRICHMENT = false;
 const ENABLE_MICROSOFT_FOOTPRINT = false;
@@ -616,6 +688,43 @@ export function DebugRTSSim() {
   const [pedestrianCount, setPedestrianCount] = useState(120);
   const [newExitWidth, setNewExitWidth] = useState(3);
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
+
+  // ── Split level view ──────────────────────────────────────────────────
+  const [paneCount, setPaneCount] = useState<PaneCount>(1);
+  const [paneLevels, setPaneLevels] = useState<string[]>([]);
+  const [panesLinked, setPanesLinked] = useState(true);
+  const panesLinkedRef = useRef(panesLinked);
+  panesLinkedRef.current = panesLinked;
+  const panesRef = useRef(new Map<number, PaneHandle>());
+  const registerPane = useCallback((index: number, patch: Partial<PaneHandle> | null) => {
+    const panes = panesRef.current;
+    if (patch === null) {
+      panes.get(index)?.fx?.dispose();
+      panes.delete(index);
+      return;
+    }
+    const pane = panes.get(index) ?? { map: null, canvas: null, level: 'G', fx: null, fxCtx: null };
+    panes.set(index, { ...pane, ...patch });
+  }, []);
+  const setPaneLevel = useCallback((index: number, id: string) => {
+    setPaneLevels((prev) => {
+      const next = [...prev];
+      next[index - 1] = id;
+      return next;
+    });
+  }, []);
+  const panPane = useCallback((map: L.Map, dx: number, dy: number) => {
+    const target = panesLinkedRef.current ? (leafletMapRef.current ?? map) : map;
+    target.panBy([dx, dy], { animate: false });
+  }, []);
+  const zoomPane = useCallback((map: L.Map, point: L.Point, delta: number) => {
+    const target = panesLinkedRef.current ? (leafletMapRef.current ?? map) : map;
+    const zoom = Math.min(
+      target.getMaxZoom(),
+      Math.max(target.getMinZoom(), target.getZoom() + delta),
+    );
+    target.setZoomAround(point, zoom);
+  }, []);
 
   // ── Layout: collapsible panels and the floating levels box ────────────
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -1154,6 +1263,26 @@ export function DebugRTSSim() {
     leafletMapRef.current?.invalidateSize();
     return () => obs.disconnect();
   }, [phase]);
+
+  const shownPanes: PaneCount = phase === 'rts' ? paneCount : 1;
+  const paneRects = layoutPanes(shownPanes, canvasSize.w, canvasSize.h, isPortrait);
+  const primaryRect = paneRects[0];
+  // MapContainer fixes its style at mount, so the primary pane is sized on its element.
+  const primaryPaneBox = shownPanes > 1 ? primaryRect : null;
+  const primaryPaneKey = primaryPaneBox
+    ? `${primaryPaneBox.x},${primaryPaneBox.y},${primaryPaneBox.w},${primaryPaneBox.h}`
+    : 'full';
+  useLayoutEffect(() => {
+    const map = leafletMapRef.current;
+    if (!map) return;
+    const style = map.getContainer().style;
+    style.position = primaryPaneBox ? 'absolute' : '';
+    style.left = primaryPaneBox ? `${primaryPaneBox.x}px` : '';
+    style.top = primaryPaneBox ? `${primaryPaneBox.y}px` : '';
+    style.width = primaryPaneBox ? `${primaryPaneBox.w}px` : '100%';
+    style.height = primaryPaneBox ? `${primaryPaneBox.h}px` : '100%';
+    map.invalidateSize({ pan: true });
+  }, [primaryPaneKey]);
 
   // ── Map phase handlers ────────────────────────────────────────────────
   const handleFetch = useCallback(async () => {
@@ -2374,6 +2503,13 @@ export function DebugRTSSim() {
     }
     renderCtxRef.current = computeMapRenderContext(map, selectedGrid.polygon, projectedVerts);
   }, [selectedGrid, projectedVerts]);
+  const paneRenderCtx = useCallback(
+    (map: L.Map): RenderContext | null =>
+      selectedGrid && projectedVerts.length >= 3
+        ? computeMapRenderContext(map, selectedGrid.polygon, projectedVerts)
+        : null,
+    [selectedGrid, projectedVerts],
+  );
 
   // ── Refs for animation loop (avoid stale closures & constant recreation) ──
   const exitsRef = useRef(exits);
@@ -2662,33 +2798,163 @@ export function DebugRTSSim() {
 
       updateRenderCtx();
 
+      const fillFxCtx = (fxCtx: HazardFxContext, level: string) => {
+        const layout = activeRasterLayout(
+          rasterCacheRef.current,
+          simStudsRef.current,
+          3,
+          levelsRef.current.length > 1,
+          level,
+        );
+        fxCtx.quality = fxQualityRef.current;
+        fxCtx.reducedMotion = reducedMotionRef.current;
+        fxCtx.nowMs = performance.now();
+        fxCtx.layout = layout;
+        fxCtx.states = effectsEngineRef.current?.studStates ?? null;
+        const layerSnap = smokeLayersRef.current;
+        fxCtx.layers =
+          layerSnap.engine != null && layerSnap.engine === effectsEngineRef.current
+            ? layerSnap.layers
+            : null;
+        fxCtx.buildingVerts = projectedVertsRef.current;
+        fxCtx.cellM = 3;
+        return layout;
+      };
+
+      const drawLevelView = (
+        ctx: CanvasRenderingContext2D,
+        w: number,
+        h: number,
+        viewRc: RenderContext,
+        level: string,
+        hazardFx: { renderer: HazardFxRenderer; ctx: HazardFxContext } | null,
+      ) => {
+        const planted = new Set(plantedItemsRef.current.map((p) => p.wallPointId));
+        const discovered = new Set(
+          plantedItemsRef.current.filter((p) => p.discovered).map((p) => p.wallPointId),
+        );
+        renderRTS(
+          ctx,
+          w,
+          h,
+          viewRc,
+          rts.state,
+          projectedVertsRef.current,
+          exitsRef.current,
+          pedestriansRef.current,
+          true,
+          wallPointsRef.current,
+          activeWallPointRef.current?.id ?? null,
+          planted,
+          discovered,
+          [],
+          null,
+          casualtyPinsRef.current,
+          activeCasualtyRef.current?.id ?? null,
+          interiorWallsRef.current,
+          showcaseOn && !blastFiredRef.current
+            ? hazardZonesRef.current.filter((h) => h.id !== 'blast-direct')
+            : hazardZonesRef.current,
+          stairwellsRef.current,
+          showcaseOn && rts.state.clock.phase !== 'setup' && !blastFiredRef.current
+            ? null
+            : levelsRef.current.length > 1 && blastLevelRef.current !== level
+              ? null
+              : blastSiteRef.current,
+          showGameZonesRef.current ? gameZonesRef.current : undefined,
+          (() => {
+            const mode = rtsRef.current.state.interactionMode;
+            if (mode.type === 'draw_wall' && mode.startPoint) {
+              return {
+                start: mode.startPoint,
+                cursor: hoverSimPosRef.current ?? mode.startPoint,
+              };
+            }
+            return null;
+          })(),
+          gpsSimPosRef.current
+            ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
+            : null,
+          showcaseOn || !showStudGridRef.current
+            ? null
+            : simStudsRef.current.filter(
+                (s) => levelsRef.current.length <= 1 || storeyId(s.floor) === level,
+              ),
+          effectStatesRef.current,
+          showcaseOn ? blastRadiusRef.current : undefined,
+          showcaseOn ? false : true,
+          showGameZonesRef.current,
+          null,
+          showcaseOn
+            ? {
+                hazardStuds: simStudsRef.current.filter(
+                  (s) => levelsRef.current.length <= 1 || storeyId(s.floor) === level,
+                ),
+                effectStates: effectsEngineRef.current?.studStates ?? null,
+                cellM: 3,
+                explosion: (() => {
+                  if (!explosionStartRef.current || !blastSiteRef.current) return null;
+                  const ageS = (performance.now() - explosionStartRef.current) / 1000;
+                  if (ageS > SHOWCASE.FX_FIREBALL_S) return null;
+                  return {
+                    pos: blastSiteRef.current,
+                    radiusM: blastRadiusRef.current,
+                    ageS,
+                    reducedMotion: reducedMotionRef.current,
+                  };
+                })(),
+                injuryRings:
+                  showcaseOn &&
+                  blastSiteRef.current &&
+                  (rts.state.clock.phase === 'setup' || blastFiredRef.current)
+                    ? showcaseInjuryRings(
+                        blastSiteRef.current,
+                        manualRadiusRef.current,
+                        blastRadiusRef.current,
+                        ringsRef.current,
+                        rts.state.clock.phase === 'setup' && !blastFiredRef.current,
+                      )
+                    : null,
+                zones: rts.state.equipment
+                  .filter((e) => e.def.kind === 'assembly_point' && e.active)
+                  .map((e) => ({
+                    id: e.id,
+                    pos: e.pos,
+                    radius: e.def.radius,
+                    label: e.def.label,
+                    kind: zoneKindsRef.current[e.id] ?? ('assembly' as const),
+                  })),
+                zoneCounts: evac?.getMetrics().showcase?.arrived ?? {},
+                assemblyRingM:
+                  rts.state.clock.phase === 'setup'
+                    ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
+                    : null,
+                hazardFx: hazardFx,
+              }
+            : null,
+          levelsRef.current.length > 1
+            ? {
+                active: level,
+                levels: sortLevels(levelsRef.current.map((l) => l.id)),
+                ghostAlpha: LEVEL.GHOST_ALPHA,
+                showGhostPeople: true,
+              }
+            : null,
+          placedObjectDraws(placedObjectsRef.current),
+          effectsEngineRef.current?.gasJets() ?? null,
+          effectsEngineRef.current?.electricalArcs() ?? null,
+          effectsEngineRef.current?.sprays() ?? null,
+        );
+      };
+
       const canvas = canvasRef.current;
       const rc = renderCtxRef.current;
       if (canvas && rc) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           if (showcaseOn) {
-            const layout = activeRasterLayout(
-              rasterCacheRef.current,
-              simStudsRef.current,
-              3,
-              levelsRef.current.length > 1,
-              activeLevelRef.current,
-            );
-            rasterLayoutRef.current = layout;
             const fxCtx = hazardFxCtxRef.current;
-            fxCtx.quality = fxQualityRef.current;
-            fxCtx.reducedMotion = reducedMotionRef.current;
-            fxCtx.nowMs = performance.now();
-            fxCtx.layout = layout;
-            fxCtx.states = effectsEngineRef.current?.studStates ?? null;
-            const layerSnap = smokeLayersRef.current;
-            fxCtx.layers =
-              layerSnap.engine != null && layerSnap.engine === effectsEngineRef.current
-                ? layerSnap.layers
-                : null;
-            fxCtx.buildingVerts = projectedVertsRef.current;
-            fxCtx.cellM = 3;
+            rasterLayoutRef.current = fillFxCtx(fxCtx, activeLevelRef.current);
             const renderer = hazardFxRef.current;
             const slot = hazardFxSlotRef.current;
             if (renderer && slot) {
@@ -2698,123 +2964,13 @@ export function DebugRTSSim() {
               hazardFxSlotRef.current = { renderer, ctx: fxCtx };
             }
           }
-          const planted = new Set(plantedItemsRef.current.map((p) => p.wallPointId));
-          const discovered = new Set(
-            plantedItemsRef.current.filter((p) => p.discovered).map((p) => p.wallPointId),
-          );
-          renderRTS(
+          drawLevelView(
             ctx,
             canvas.width,
             canvas.height,
             rc,
-            rts.state,
-            projectedVertsRef.current,
-            exitsRef.current,
-            pedestriansRef.current,
-            true,
-            wallPointsRef.current,
-            activeWallPointRef.current?.id ?? null,
-            planted,
-            discovered,
-            [],
-            null,
-            casualtyPinsRef.current,
-            activeCasualtyRef.current?.id ?? null,
-            interiorWallsRef.current,
-            showcaseOn && !blastFiredRef.current
-              ? hazardZonesRef.current.filter((h) => h.id !== 'blast-direct')
-              : hazardZonesRef.current,
-            stairwellsRef.current,
-            showcaseOn && rts.state.clock.phase !== 'setup' && !blastFiredRef.current
-              ? null
-              : levelsRef.current.length > 1 && blastLevelRef.current !== activeLevelRef.current
-                ? null
-                : blastSiteRef.current,
-            showGameZonesRef.current ? gameZonesRef.current : undefined,
-            (() => {
-              const mode = rtsRef.current.state.interactionMode;
-              if (mode.type === 'draw_wall' && mode.startPoint) {
-                return {
-                  start: mode.startPoint,
-                  cursor: hoverSimPosRef.current ?? mode.startPoint,
-                };
-              }
-              return null;
-            })(),
-            gpsSimPosRef.current
-              ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
-              : null,
-            showcaseOn || !showStudGridRef.current
-              ? null
-              : simStudsRef.current.filter(
-                  (s) =>
-                    levelsRef.current.length <= 1 || storeyId(s.floor) === activeLevelRef.current,
-                ),
-            effectStatesRef.current,
-            showcaseOn ? blastRadiusRef.current : undefined,
-            showcaseOn ? false : true,
-            showGameZonesRef.current,
-            null,
-            showcaseOn
-              ? {
-                  hazardStuds: simStudsRef.current.filter(
-                    (s) =>
-                      levelsRef.current.length <= 1 || storeyId(s.floor) === activeLevelRef.current,
-                  ),
-                  effectStates: effectsEngineRef.current?.studStates ?? null,
-                  cellM: 3,
-                  explosion: (() => {
-                    if (!explosionStartRef.current || !blastSiteRef.current) return null;
-                    const ageS = (performance.now() - explosionStartRef.current) / 1000;
-                    if (ageS > SHOWCASE.FX_FIREBALL_S) return null;
-                    return {
-                      pos: blastSiteRef.current,
-                      radiusM: blastRadiusRef.current,
-                      ageS,
-                      reducedMotion: reducedMotionRef.current,
-                    };
-                  })(),
-                  injuryRings:
-                    showcaseOn &&
-                    blastSiteRef.current &&
-                    (rts.state.clock.phase === 'setup' || blastFiredRef.current)
-                      ? showcaseInjuryRings(
-                          blastSiteRef.current,
-                          manualRadiusRef.current,
-                          blastRadiusRef.current,
-                          ringsRef.current,
-                          rts.state.clock.phase === 'setup' && !blastFiredRef.current,
-                        )
-                      : null,
-                  zones: rts.state.equipment
-                    .filter((e) => e.def.kind === 'assembly_point' && e.active)
-                    .map((e) => ({
-                      id: e.id,
-                      pos: e.pos,
-                      radius: e.def.radius,
-                      label: e.def.label,
-                      kind: zoneKindsRef.current[e.id] ?? ('assembly' as const),
-                    })),
-                  zoneCounts: evac?.getMetrics().showcase?.arrived ?? {},
-                  assemblyRingM:
-                    rts.state.clock.phase === 'setup'
-                      ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
-                      : null,
-                  hazardFx: hazardFxSlotRef.current,
-                }
-              : null,
-            levelsRef.current.length > 1
-              ? {
-                  active: activeLevelRef.current,
-                  levels: sortLevels(levelsRef.current.map((l) => l.id)),
-                  ghostAlpha: LEVEL.GHOST_ALPHA,
-                  showGhostPeople: true,
-                }
-              : null,
-            placedObjectDraws(placedObjectsRef.current),
-            effectsEngineRef.current?.gasJets() ?? null,
-            effectsEngineRef.current?.electricalArcs() ?? null,
-            effectsEngineRef.current?.sprays() ?? null,
+            activeLevelRef.current,
+            hazardFxSlotRef.current,
           );
           if (showcaseOn && fxQualityRef.current !== 'classic' && hazardFxRef.current) {
             const sample = hazardFxRef.current.last.ms;
@@ -2890,10 +3046,33 @@ export function DebugRTSSim() {
         }
       }
 
+      const primaryMap = leafletMapRef.current;
+      for (const pane of panesRef.current.values()) {
+        if (!pane.map || !pane.canvas) continue;
+        if (panesLinkedRef.current && primaryMap) {
+          const center = primaryMap.getCenter();
+          const zoom = primaryMap.getZoom();
+          if (pane.map.getZoom() !== zoom || !pane.map.getCenter().equals(center)) {
+            pane.map.setView(center, zoom, { animate: false });
+          }
+        }
+        const paneRc = paneRenderCtx(pane.map);
+        const paneCtx = pane.canvas.getContext('2d');
+        if (!paneRc || !paneCtx) continue;
+        let paneFx: { renderer: HazardFxRenderer; ctx: HazardFxContext } | null = null;
+        if (showcaseOn) {
+          pane.fx ??= new HazardFxRenderer(FX.FX_RNG_SEED);
+          pane.fxCtx ??= { ...hazardFxCtxRef.current };
+          fillFxCtx(pane.fxCtx, pane.level);
+          paneFx = { renderer: pane.fx, ctx: pane.fxCtx };
+        }
+        drawLevelView(paneCtx, pane.canvas.width, pane.canvas.height, paneRc, pane.level, paneFx);
+      }
+
       rerender();
       rafRef.current = requestAnimationFrame(loop);
     },
-    [rerender, updateRenderCtx],
+    [rerender, updateRenderCtx, paneRenderCtx],
   );
 
   useEffect(() => {
@@ -4420,6 +4599,22 @@ export function DebugRTSSim() {
     initEffectsEngine();
   }, [exits, enrichResult, hazardZones, handleEnrichScene, initEvacEngine, initEffectsEngine]);
 
+  const levelIds = levels.map((l) => l.id);
+  const paneLevelAt = (index: number) => {
+    const id = paneLevels[index - 1];
+    return id && levelIds.includes(id) ? id : activeLevel;
+  };
+  const choosePaneCount = (count: PaneCount) => {
+    const defaults = defaultPaneLevels(count, levelIds, activeLevel);
+    setPaneLevels((prev) =>
+      defaults.map((id, i) => (prev[i] && levelIds.includes(prev[i]) ? prev[i] : id)),
+    );
+    setPaneCount(count);
+  };
+  const primaryMapView = leafletMapRef.current
+    ? { center: leafletMapRef.current.getCenter(), zoom: leafletMapRef.current.getZoom() }
+    : null;
+
   // =====================================================================
   // RENDER
   // =====================================================================
@@ -4438,6 +4633,46 @@ export function DebugRTSSim() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          {phase === 'rts' && (
+            <div className="flex items-center gap-1" role="group" aria-label="Level panes">
+              <span className="text-xs text-green-700">Panes</span>
+              {([1, 2, 4] as const).map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => choosePaneCount(count)}
+                  aria-pressed={paneCount === count}
+                  title={count === 1 ? 'One map' : `Show ${count} levels side by side, in step`}
+                  className={`text-xs border rounded px-2 py-1 ${
+                    paneCount === count
+                      ? 'text-cyan-300 border-cyan-600 bg-cyan-900/30'
+                      : 'text-green-600 hover:text-green-400 border-green-800'
+                  }`}
+                >
+                  {count}
+                </button>
+              ))}
+              {paneCount > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setPanesLinked((linked) => !linked)}
+                  aria-pressed={panesLinked}
+                  title={
+                    panesLinked
+                      ? 'Panes pan and zoom together; click to move each on its own'
+                      : 'Each pane pans and zooms on its own; click to follow the main pane'
+                  }
+                  className={`text-xs border rounded px-2 py-1 ${
+                    panesLinked
+                      ? 'text-cyan-300 border-cyan-600 bg-cyan-900/30'
+                      : 'text-green-600 hover:text-green-400 border-green-800'
+                  }`}
+                >
+                  {panesLinked ? 'Linked' : 'Unlinked'}
+                </button>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={toggleFocusMode}
@@ -4947,14 +5182,14 @@ export function DebugRTSSim() {
             <>
               <canvas
                 ref={canvasRef}
-                width={canvasSize.w}
-                height={canvasSize.h}
+                width={primaryRect.w}
+                height={primaryRect.h}
                 style={{
                   position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: canvasSize.w,
-                  height: canvasSize.h,
+                  top: primaryRect.y,
+                  left: primaryRect.x,
+                  width: primaryRect.w,
+                  height: primaryRect.h,
                   pointerEvents: 'auto',
                   zIndex: 1000,
                   touchAction: 'none',
@@ -4975,6 +5210,48 @@ export function DebugRTSSim() {
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               />
+              {shownPanes > 1 && (
+                <>
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: primaryRect.x,
+                      top: primaryRect.y,
+                      width: primaryRect.w,
+                      height: primaryRect.h,
+                      zIndex: 1050,
+                    }}
+                  >
+                    <PaneLevelChip
+                      level={activeLevel}
+                      levels={levels}
+                      summary={levelSummary(activeLevel, allSimStuds, effectStates, pedestrians)}
+                      primary
+                      onLevel={setActiveLevel}
+                    />
+                  </div>
+                  {paneRects.slice(1).map((rect, i) => (
+                    <LevelPane
+                      key={i + 1}
+                      index={i + 1}
+                      rect={rect}
+                      level={paneLevelAt(i + 1)}
+                      levels={levels}
+                      summary={levelSummary(
+                        paneLevelAt(i + 1),
+                        allSimStuds,
+                        effectStates,
+                        pedestrians,
+                      )}
+                      initialView={primaryMapView}
+                      onLevel={setPaneLevel}
+                      register={registerPane}
+                      onPan={panPane}
+                      onZoom={zoomPane}
+                    />
+                  ))}
+                </>
+              )}
               {levelsBoxOpen ? (
                 <LevelSwitcher
                   onClose={() => setLevelsBoxOpen(false)}
@@ -8065,6 +8342,161 @@ function StairEditor({
   );
 }
 
+function PaneLevelChip({
+  level,
+  levels,
+  summary,
+  primary,
+  onLevel,
+}: {
+  level: string;
+  levels: LevelDef[];
+  summary: { remaining: number; burning: number; meanSmoke: number };
+  primary: boolean;
+  onLevel: (id: string) => void;
+}) {
+  const ordered = [...levels].sort((a, b) => b.index - a.index);
+  return (
+    <div
+      className="absolute top-2 right-2 bg-black/85 border border-slate-600 rounded px-1.5 py-1 text-xs text-slate-200 flex items-center gap-2 pointer-events-auto"
+      style={{ zIndex: 1050 }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      <select
+        value={level}
+        onChange={(e) => onLevel(e.target.value)}
+        title={primary ? 'Level of the main pane (where you edit)' : 'Level shown in this pane'}
+        className="bg-gray-900 border border-slate-600 text-slate-100 text-xs rounded px-1 py-0.5"
+      >
+        {ordered.map((lv) => (
+          <option key={lv.id} value={lv.id}>
+            {lv.name}
+          </option>
+        ))}
+      </select>
+      <span className="text-slate-400 whitespace-nowrap">
+        {summary.remaining} in · {summary.burning} burn · smoke {summary.meanSmoke.toFixed(2)}
+      </span>
+      {primary && <span className="text-cyan-400 whitespace-nowrap">● main</span>}
+    </div>
+  );
+}
+
+/**
+ * A view-only map pane for one level. The page's render loop draws into its
+ * canvas; any drag pans and the wheel zooms, on the main map when linked.
+ */
+function LevelPane({
+  index,
+  rect,
+  level,
+  levels,
+  summary,
+  initialView,
+  onLevel,
+  register,
+  onPan,
+  onZoom,
+}: {
+  index: number;
+  rect: PaneRect;
+  level: string;
+  levels: LevelDef[];
+  summary: { remaining: number; burning: number; meanSmoke: number };
+  initialView: { center: L.LatLng; zoom: number } | null;
+  onLevel: (index: number, id: string) => void;
+  register: (index: number, patch: Partial<PaneHandle> | null) => void;
+  onPan: (map: L.Map, dx: number, dy: number) => void;
+  onZoom: (map: L.Map, point: L.Point, delta: number) => void;
+}) {
+  const mapRef = useRef<L.Map | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragRef = useRef<{ id: number; x: number; y: number } | null>(null);
+  const [initial] = useState(initialView);
+  const [mapReady, setMapReady] = useState(false);
+  const setMap = useCallback((map: L.Map) => {
+    mapRef.current = map;
+    setMapReady(true);
+  }, []);
+  useEffect(() => () => register(index, null), [index, register]);
+  useEffect(() => {
+    register(index, { map: mapRef.current, canvas: canvasRef.current, level });
+  }, [index, level, mapReady, register]);
+  useEffect(() => {
+    mapRef.current?.invalidateSize({ pan: true });
+  }, [rect.w, rect.h]);
+  return (
+    <div
+      className={`absolute overflow-hidden border-green-800 ${rect.x > 0 ? 'border-l' : ''} ${rect.y > 0 ? 'border-t' : ''}`}
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+    >
+      <MapContainer
+        center={initial?.center ?? [1.3, 103.8]}
+        zoom={initial?.zoom ?? 18}
+        maxZoom={22}
+        style={{ height: '100%', width: '100%' }}
+        zoomControl={false}
+        attributionControl={false}
+        dragging={false}
+        scrollWheelZoom={false}
+        doubleClickZoom={false}
+        boxZoom={false}
+        keyboard={false}
+        touchZoom={false}
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxNativeZoom={19}
+          maxZoom={22}
+        />
+        <MapRefSync onMap={setMap} />
+      </MapContainer>
+      <canvas
+        ref={canvasRef}
+        width={Math.max(1, rect.w)}
+        height={Math.max(1, rect.h)}
+        className="cursor-grab active:cursor-grabbing"
+        style={{ position: 'absolute', inset: 0, zIndex: 1000, touchAction: 'none' }}
+        onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        }}
+        onPointerMove={(e) => {
+          const drag = dragRef.current;
+          const map = mapRef.current;
+          if (!drag || drag.id !== e.pointerId || !map) return;
+          onPan(map, drag.x - e.clientX, drag.y - e.clientY);
+          drag.x = e.clientX;
+          drag.y = e.clientY;
+        }}
+        onPointerUp={() => {
+          dragRef.current = null;
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+        }}
+        onWheel={(e) => {
+          const map = mapRef.current;
+          if (!map || e.deltaY === 0) return;
+          const box = e.currentTarget.getBoundingClientRect();
+          onZoom(map, L.point(e.clientX - box.left, e.clientY - box.top), e.deltaY < 0 ? 1 : -1);
+        }}
+      />
+      <PaneLevelChip
+        level={level}
+        levels={levels}
+        summary={summary}
+        primary={false}
+        onLevel={(id) => onLevel(index, id)}
+      />
+    </div>
+  );
+}
+
 function PanelCollapseButton({
   side,
   portrait,
@@ -8206,24 +8638,11 @@ function LevelSwitcher({
           : plan.assumedFrom
             ? `Assumed: copy of ${plan.assumedFrom}`
             : 'Undesigned';
-        const floorStuds = studs.filter((s) => storeyId(s.floor) === lv.id);
-        let burning = 0;
-        let smoke = 0;
-        for (const s of floorStuds) {
-          const st = effectStates?.get(s.id);
-          if (!st) continue;
-          if (st.fire.state === 'burning') burning += 1;
-          smoke += st.smoke;
-        }
-        const mean = floorStuds.length > 0 ? smoke / floorStuds.length : 0;
-        const remaining = pedestrians.filter(
-          (p) =>
-            (p.level ?? 'G') === lv.id &&
-            (p.state === 'idle' ||
-              p.state === 'reacting' ||
-              p.state === 'evacuating' ||
-              (!p.state && !p.evacuated)),
-        ).length;
+        const {
+          remaining,
+          burning,
+          meanSmoke: mean,
+        } = levelSummary(lv.id, studs, effectStates, pedestrians);
         return (
           <button
             key={lv.id}
