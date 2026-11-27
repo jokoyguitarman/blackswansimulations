@@ -22,6 +22,28 @@ import {
 import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
 import { slugifyTeamName } from '@shared/conditionKeyGrammar';
 import { isInjectKey, uniqueInjectKey } from '@shared/injectKeySlug';
+import {
+  defaultLadderFor,
+  ladderFromUnknown,
+  mergeLadders,
+  validateMoodLadder,
+  type MoodLadder,
+} from '@shared/moodLadder';
+import { EscalationPanel, type ChainInjectOption } from './EscalationPanel';
+import { MoodLadderEditor, type LadderInjectOption } from './MoodLadderEditor';
+import { RedialFields } from './RedialFields';
+import {
+  applyPhoneDraft,
+  conditionKeysOf,
+  escalationConfigFromDraft,
+  escalationDraftFrom,
+  escalationDraftIssues,
+  isChaseableApp,
+  redialDraftFrom,
+  redialFieldErrors,
+  type EscalationDraft,
+  type RedialDraft,
+} from './chainEditorModel';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
@@ -612,6 +634,7 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
             <StakeholdersSection
               scenarioId={scenarioId}
               locked={locked}
+              injects={injectList}
               onInjectsChanged={() => {
                 api.scenarios
                   .getInjects(scenarioId)
@@ -644,6 +667,7 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               teamList={teamList}
               initialState={initialState}
               saveInitialState={saveInitialState}
+              durationMinutes={scen.duration_minutes}
               locked={locked}
             />
             <TeamsSection
@@ -1434,6 +1458,8 @@ interface StakeholderOption {
   id: string;
   name: string;
   handle: string;
+  persuadability: string;
+  mood_ladder?: unknown;
 }
 
 function readStakeholderOptions(initialState: Record<string, unknown>): StakeholderOption[] {
@@ -1447,7 +1473,14 @@ function readStakeholderOptions(initialState: Record<string, unknown>): Stakehol
     if (!id) continue;
     const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : id;
     const handle = typeof row.handle === 'string' ? row.handle.trim() : '';
-    options.push({ id, name, handle });
+    const persuadability = typeof row.persuadability === 'string' ? row.persuadability : 'medium';
+    options.push({
+      id,
+      name,
+      handle,
+      persuadability,
+      ...(row.mood_ladder != null ? { mood_ladder: row.mood_ladder } : {}),
+    });
   }
   return options;
 }
@@ -1459,6 +1492,7 @@ const InjectsSection = ({
   teamList,
   initialState,
   saveInitialState,
+  durationMinutes,
   locked,
 }: {
   scenarioId: string;
@@ -1469,6 +1503,7 @@ const InjectsSection = ({
   saveInitialState: (
     mutate: (state: Record<string, unknown>) => Record<string, unknown>,
   ) => Promise<unknown>;
+  durationMinutes: number;
   locked: boolean;
 }) => {
   const personas = (initialState.npc_personas || []) as PersonaShape[];
@@ -1658,6 +1693,7 @@ const InjectsSection = ({
                     teamList={teamList}
                     playerRoles={readPlayerRoles(initialState)}
                     injects={injectList}
+                    durationMinutes={durationMinutes}
                     saveInitialState={saveInitialState}
                     onSaved={onSaved}
                     onPeerUpdated={onPeerUpdated}
@@ -1690,6 +1726,7 @@ const InjectsSection = ({
             teamList={teamList}
             playerRoles={readPlayerRoles(initialState)}
             injects={injectList}
+            durationMinutes={durationMinutes}
             saveInitialState={saveInitialState}
             onSaved={onCreated}
             onPeerUpdated={onPeerUpdated}
@@ -1839,6 +1876,18 @@ interface ConditionCatalogPayload {
   teams: { name: string; slug: string }[];
 }
 
+function authoredLadder(
+  people: StakeholderOption[],
+  stakeholderId: string,
+  override: unknown,
+): MoodLadder {
+  const found = people.find((item) => item.id === stakeholderId);
+  const base = found?.mood_ladder
+    ? ladderFromUnknown(found.mood_ladder, found.persuadability)
+    : defaultLadderFor(found?.persuadability);
+  return override == null ? base : mergeLadders(base, override);
+}
+
 const InjectForm = ({
   scenarioId,
   inject,
@@ -1847,6 +1896,7 @@ const InjectForm = ({
   stakeholders,
   teamList,
   playerRoles = [],
+  durationMinutes,
   saveInitialState,
   onSaved,
   onPeerUpdated,
@@ -1860,6 +1910,7 @@ const InjectForm = ({
   stakeholders: StakeholderOption[];
   teamList: TeamRow[];
   playerRoles?: ReturnType<typeof readPlayerRoles>;
+  durationMinutes: number;
   saveInitialState?: (
     mutate: (state: Record<string, unknown>) => Record<string, unknown>,
   ) => Promise<unknown>;
@@ -1925,6 +1976,14 @@ const InjectForm = ({
   );
   const [localInjectKey, setLocalInjectKey] = useState(
     typeof dcInit.inject_key === 'string' ? dcInit.inject_key : '',
+  );
+  const [escalation, setEscalation] = useState<EscalationDraft>(() =>
+    escalationDraftFrom(dcInit.escalation, String(dcInit.stakeholder_id ?? '').trim() !== ''),
+  );
+  const [redial, setRedial] = useState<RedialDraft>(() => redialDraftFrom(dcInit));
+  const [moodOverride, setMoodOverride] = useState(dcInit.mood_ladder != null);
+  const [moodLadder, setMoodLadder] = useState<MoodLadder>(() =>
+    authoredLadder(stakeholders, String(dcInit.stakeholder_id ?? ''), dcInit.mood_ladder),
   );
 
   useEffect(() => {
@@ -2031,6 +2090,11 @@ const InjectForm = ({
     if (rubricBody) dc.response_rubric = rubricBody;
     else delete dc.response_rubric;
     if (localInjectKey && isInjectKey(localInjectKey)) dc.inject_key = localInjectKey;
+    applyPhoneDraft(dc, app, redial);
+    if (isChaseableApp(app) && escalation.enabled) dc.escalation = escalationConfigFromDraft(escalation);
+    else delete dc.escalation;
+    if (moodOverride) dc.mood_ladder = moodLadder;
+    else delete dc.mood_ladder;
     return dc;
   };
 
@@ -2088,12 +2152,67 @@ const InjectForm = ({
           ),
         )
       : null;
+  const chainInjects: ChainInjectOption[] = injects.map((item) => {
+    const stored = item.delivery_config?.inject_key;
+    const key =
+      inject?.id === item.id && localInjectKey
+        ? localInjectKey
+        : typeof stored === 'string'
+          ? stored
+          : '';
+    return {
+      id: item.id,
+      title: item.title,
+      injectKey: isInjectKey(key) ? key : null,
+      triggerTime: item.trigger_time_minutes,
+      conditionKeys: conditionKeysOf(item.conditions_to_appear, item.conditions_to_cancel),
+    };
+  });
+  const ladderInjects: LadderInjectOption[] = chainInjects.flatMap((item) =>
+    item.injectKey
+      ? [{ key: item.injectKey, title: item.title, conditional: item.triggerTime == null }]
+      : [],
+  );
+  const rootKey = isInjectKey(localInjectKey) ? localInjectKey : null;
+  const chainErrors = isChaseableApp(app)
+    ? escalationDraftIssues({
+        draft: escalation,
+        rootApp: app,
+        rootStakeholderId: stakeholderId.trim() || null,
+        stakeholderIds: stakeholders.map((item) => item.id),
+        durationMinutes,
+        rootKey,
+        rootTriggerMinute:
+          triggerMode === 'timed' && time.trim() !== '' && Number.isFinite(Number(time))
+            ? Number(time)
+            : null,
+        otherInjects: chainInjects
+          .filter((item) => item.injectKey && item.injectKey !== rootKey)
+          .map((item) => ({
+            key: item.injectKey as string,
+            trigger_time_minutes: item.triggerTime,
+            condition_keys: item.conditionKeys,
+          })),
+      }).filter((issue) => issue.level === 'error')
+    : [];
+  const phoneErrors = app === 'phone_call' ? redialFieldErrors(redial) : [];
+  const moodErrors = moodOverride
+    ? validateMoodLadder({ ladder: moodLadder, knownInjects: ladderInjects }).map(
+        (issue) => issue.message,
+      )
+    : [];
   const timeInvalid =
     triggerMode === 'timed' && (time.trim() === '' || !Number.isFinite(Number(time)));
   const conditionInvalid =
     triggerMode === 'conditional' &&
     (!catalog || !draft || !compiled || compiled.errors.length > 0);
-  const triggerBlocked = timeInvalid || conditionInvalid || rubricErrors(rubric).length > 0;
+  const triggerBlocked =
+    timeInvalid ||
+    conditionInvalid ||
+    rubricErrors(rubric).length > 0 ||
+    chainErrors.length > 0 ||
+    phoneErrors.length > 0 ||
+    moodErrors.length > 0;
   const storedConflict =
     inject != null && inject.trigger_time_minutes != null && injectHasConditions(inject);
 
@@ -2522,6 +2641,64 @@ const InjectForm = ({
           </label>
         </div>
       </div>
+
+      {app === 'phone_call' && (
+        <>
+          <RedialFields
+            fieldId={inject?.id ?? 'new'}
+            draft={redial}
+            onChange={setRedial}
+            senderLabel={
+              stakeholders.find((item) => item.id === stakeholderId)?.name ||
+              authorName.trim() ||
+              'the sender'
+            }
+          />
+          {phoneErrors.map((message) => (
+            <p key={message} className="text-[11px] text-danger mt-1">
+              {message}
+            </p>
+          ))}
+        </>
+      )}
+      {isChaseableApp(app) && (
+        <EscalationPanel
+          fieldId={inject?.id ?? 'new'}
+          rootApp={app}
+          draft={escalation}
+          onChange={setEscalation}
+          stakeholders={stakeholders.map((item) => ({ id: item.id, name: item.name }))}
+          teams={teamList.map((team) => team.team_name)}
+          injects={chainInjects}
+          rootKey={rootKey}
+          rootStakeholderId={stakeholderId.trim() || null}
+          rootTriggerMinute={
+            triggerMode === 'timed' && time.trim() !== '' && Number.isFinite(Number(time))
+              ? Number(time)
+              : null
+          }
+          durationMinutes={durationMinutes}
+          content={content}
+          title={title}
+        />
+      )}
+      <label className="flex items-center gap-2 text-[11px] text-ink mt-2">
+        <input
+          type="checkbox"
+          checked={moodOverride}
+          onChange={(event) => setMoodOverride(event.target.checked)}
+        />
+        Override mood ladder
+      </label>
+      {moodOverride && (
+        <MoodLadderEditor
+          fieldId={`inject-${inject?.id ?? 'new'}`}
+          ladder={moodLadder}
+          onChange={setMoodLadder}
+          injects={ladderInjects}
+          errors={moodErrors}
+        />
+      )}
 
       <RubricPanel value={rubric} onChange={setRubric} />
 
