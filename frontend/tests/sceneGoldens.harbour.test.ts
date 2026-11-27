@@ -27,6 +27,12 @@
  * 20 still inside and none of them in the mall. Late mean smoke is
  * 0.786. Mean smoke at T+180, T+240 and T+300 is 0.384, 0.385 and 0.681
  * in both crowds. Flashover stays 79.88 s and the peak stays 163.5 MW.
+ * The six people in the sealed concrete room have no route to any exit,
+ * so they shelter in place, crawling, instead of walking at an exit
+ * they cannot reach. The open crowd counts 7 crawling at T+300, those
+ * six and one other. The blocked crowd records 48 reroutes, five fewer:
+ * people in the room no longer switch between exits they cannot reach,
+ * as when E2-east closes. Outs and downs do not move.
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
