@@ -45,14 +45,12 @@ export function flightFlowPerS(sw: Stairwell, demand: number, opposing: number):
 }
 
 /**
- * The most a flight holds at once: walking length per storey times nominal
- * width at the stopped density. Counts people walking it and people waiting
- * on the landing at its foot to go on.
+ * The most a flight holds at once: its effective area (the same area the
+ * descent density is read on) at the stopped density. Counts people walking
+ * it and people waiting on the landing at its foot to go on.
  */
 export function flightStorage(sw: Stairwell, from: LevelDef): number {
-  const width = sw.widthM ?? LEVEL.DEFAULT_STAIR_WIDTH_M;
-  const area = from.heightM * LEVEL.STAIR_TRAVEL_FACTOR * width;
-  return Math.max(1, Math.floor(area * LEVEL.STAIR_JAM_DENSITY_PM2));
+  return Math.max(1, Math.floor(flightAreaM2(sw, from) * LEVEL.STAIR_JAM_DENSITY_PM2));
 }
 
 /**
@@ -120,7 +118,15 @@ export function stairDensitySpeed(density: number): number {
   return k * (1 - a * d);
 }
 
-/** Walking length times effective width of one flight, m². */
-export function flightAreaM2(sw: Stairwell, from: LevelDef): number {
-  return from.heightM * LEVEL.STAIR_TRAVEL_FACTOR * stairEffectiveWidthM(sw);
+/**
+ * Walking length times width of one flight, m². The width defaults to the
+ * whole effective width; pass `flightWidthM` for the share one direction
+ * has under counterflow.
+ */
+export function flightAreaM2(
+  sw: Stairwell,
+  from: LevelDef,
+  widthM: number = stairEffectiveWidthM(sw),
+): number {
+  return from.heightM * LEVEL.STAIR_TRAVEL_FACTOR * widthM;
 }

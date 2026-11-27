@@ -364,16 +364,20 @@ describe('shaft between two storeys', () => {
         ]),
       );
       (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g0', 'g1']);
-      const first = engine.shaftColumns();
+      const unsolved = engine.shaftColumns();
+      let first: ReturnType<SpatialEffectsEngine['shaftColumns']> = [];
       let peakK = AMBIENT_K;
       for (let t = 0; t < 120; t++) {
         engine.step(1, walls, []);
+        if (t === 0) first = engine.shaftColumns();
         if (read) peakK = Math.max(peakK, ...engine.shaftColumns().map((c) => c.tempK));
       }
       const states = JSON.stringify([...engine.studStates.entries()]);
-      return { first, peakK, states };
+      return { unsolved, first, peakK, states };
     };
     const read = run(true);
+    // Before the first step no landing is in a layer room: no column, not an ambient one.
+    assert.deepEqual(read.unsolved, []);
     assert.deepEqual(read.first, [
       {
         linkId: 'stair',
@@ -388,6 +392,52 @@ describe('shaft between two storeys', () => {
     assert.ok(read.peakK > AMBIENT_K + 20, `column peak ${read.peakK} K`);
     // Calling the getter every step leaves the fire exactly as it was.
     assert.equal(read.states, run(false).states);
+  });
+
+  test('shaftColumns reads a hot column before the far storey holds a layer', () => {
+    const { engine, walls } = shaftRoom();
+    engine.setFuelCells(
+      new Map([
+        ['g0', hotFuel()],
+        ['g1', hotFuel()],
+      ]),
+    );
+    (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g0', 'g1']);
+    const view = engine as unknown as {
+      shaftK: Map<string, number>;
+      layerState: Map<string, LiveLayer>;
+    };
+    const upperHasRoom = () =>
+      [...view.layerState.values()].some((row) => row.members.includes('u0'));
+    let seen: { shaftK: number; reported: number } | null = null;
+    for (let t = 0; t < 180 && !seen; t++) {
+      engine.step(1, walls, []);
+      const hottest = Math.max(AMBIENT_K, ...view.shaftK.values());
+      // The upper storey has no layer entry at all yet, but the column is warm.
+      if (hottest > AMBIENT_K + 0.5 && !upperHasRoom()) {
+        seen = { shaftK: hottest, reported: engine.shaftColumns()[0]?.tempK ?? NaN };
+      }
+    }
+    assert.ok(seen, 'the column never ran hot ahead of the upper layer');
+    assert.equal(seen.reported, seen.shaftK);
+  });
+
+  test('shaftColumns leaves out a column whose landing is in no compartment', () => {
+    const { engine, walls } = shaftRoom();
+    engine.setFuelCells(
+      new Map([
+        ['g0', hotFuel()],
+        ['g1', hotFuel()],
+      ]),
+    );
+    (engine as unknown as { fireSim: FireSimulation }).fireSim.ignite(['g0', 'g1']);
+    for (let t = 0; t < 60; t++) engine.step(1, walls, []);
+    assert.equal(engine.shaftColumns().length, 1);
+    const view = engine as unknown as { shaftRooms: Map<string, string> };
+    const rooms = new Map(view.shaftRooms);
+    rooms.delete('u0');
+    view.shaftRooms = rooms;
+    assert.deepEqual(engine.shaftColumns(), []);
   });
 
   test('a deep upper layer sends smoke back down the stair', () => {
