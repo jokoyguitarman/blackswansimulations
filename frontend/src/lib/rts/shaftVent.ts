@@ -9,8 +9,7 @@
  * exceeds that draft. A fixed 400 K and an upward-only mix are not used.
  *
  * The door is the 2 m landing door. Smoke enters only once the upper
- * layer has reached that head. Blocked is a crowd flag: the vent stays
- * open.
+ * layer has reached that head. A blocked shaft has no vent at all.
  */
 import { LEVEL } from '../evacuation/levelConstants';
 import { AMBIENT_K, DOOR_SOFFIT_M } from './twoZone';
