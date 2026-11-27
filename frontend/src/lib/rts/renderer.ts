@@ -65,6 +65,8 @@ export interface ShowcaseRenderFx {
   assemblyRingM?: number | null;
   /** Animated overlay. Classic, or a missing renderer, keeps the square field. */
   hazardFx?: { renderer: HazardFxRenderer; ctx: HazardFxContext } | null;
+  /** Draw the legend box. The level grid shows one legend for all panes instead. */
+  legend?: boolean;
 }
 
 /** Trailing view filter. Absent keeps today's single-storey drawing. */
@@ -392,7 +394,7 @@ export function renderRTS(
   if (showcaseFx && fxFrame && showcaseFx.explosion) {
     drawExplosionFx(ctx, w, h, rc, showcaseFx.explosion.pos, fxFrame);
   }
-  if (showcaseFx) drawShowcaseLegend(ctx, h);
+  if (showcaseFx && showcaseFx.legend !== false) drawShowcaseLegend(ctx, h);
 
   if (shake) ctx.restore();
 }
@@ -1104,17 +1106,18 @@ function drawExplosionFx(
   }
 }
 
+export const SHOWCASE_LEGEND_LINES = [
+  'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable',
+  'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre',
+  'Frozen in fear: pale dot in a blue square, stays put until a marshal reaches them · sealed-room shelter: crawl purple + ring',
+] as const;
+
 function drawShowcaseLegend(ctx: CanvasRenderingContext2D, h: number) {
   ctx.save();
   ctx.font = '11px monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  const line1 =
-    'Smoke (K, 1/m): < 0.15 clear · ≥ 0.15 visitors go low · ≥ 0.5 staff go low · > 1.5 reroute / turn back (30 %) / exit unusable';
-  const line2 =
-    'People: idle grey · reacting yellow · walk by speed · crouch purple · crawl purple + ring · outside cyan · arrived green ring · down × · minor yellow outline · staff white centre';
-  const line3 =
-    'Frozen in fear: pale dot in a blue square, stays put until a marshal reaches them · sealed-room shelter: crawl purple + ring';
+  const [line1, line2, line3] = SHOWCASE_LEGEND_LINES;
   const pad = 8;
   const boxW =
     Math.max(
