@@ -1068,6 +1068,26 @@ export function layerBurn(
 /** The interface cannot fall through this. The same clamp the stepper uses. */
 const INTERFACE_FLOOR_M = 0.05;
 
+/**
+ * Share of the upper-layer oxygen a flame on the clamp may burn. It is 1
+ * on the floor and for the first 2 mm, which is as far as one full slice
+ * lifts the interface, and 0 once the interface is 5 cm above the floor.
+ * A smooth step covers the rest. A hard cut at the floor chatters: the
+ * full slice lifts the interface by about a millimetre and the next
+ * slice drops back to fresh air. Five centimetres is the sliver the
+ * clamp book already treats as marginal. Above it a real lower layer
+ * keeps the inflow-only sizing.
+ */
+function floorLayerWeight(interfaceM: number): number {
+  const depth = interfaceM - INTERFACE_FLOOR_M;
+  const holdM = 0.002;
+  const bandM = 0.05;
+  if (!(depth > holdM)) return 1;
+  if (depth >= bandM) return 0;
+  const x = (depth - holdM) / (bandM - holdM);
+  return 1 - x * x * (3 - 2 * x);
+}
+
 export interface LimitedBurn {
   burn: LayerBurn;
   plumeKgS: number;
@@ -1354,17 +1374,72 @@ function flameSupply(
   const extraMass = Math.max(0, streamInCap - entrained.lowerAirKgS);
   const freshKw =
     oxygenCapacityKw(entrained.lowerAirKgS, yMix) + oxygenCapacityKw(extraMass, yStream);
-  const onFloor = interfaceM <= INTERFACE_FLOOR_M + 1e-9;
+  const layerWeight = floorLayerWeight(interfaceM);
   const yU = yUpper > 0 ? yUpper : 0;
   // A zero flame entrains nothing, so the walk starts at the prescribed
   // fire and comes down to the oxygen the upper plume can actually take.
   // The inflow is already in freshKw. The upper term is the room's layer.
-  // The logistic inside the oxygen capacity is the only switch: a hard
-  // cutoff beside it steps the release as the layer crosses the limit.
-  const layerFeeds = onFloor && prescribed > freshKw + 1 && yU > 0;
-  let flames = spec.fires;
-  let raw = entrained;
-  if (layerFeeds) {
+  // The logistic inside the oxygen capacity is the only switch on the
+  // oxygen fraction. How much of that layer the flame may use fades with
+  // the interface, so the release does not step as the clamp is crossed.
+  const close = (
+    rawIn: LayerBurn,
+    flamesIn: typeof spec.fires,
+  ): { burn: LayerBurn; plumeKgS: number } => {
+    const extraAfter = Math.max(0, streamInCap - rawIn.lowerAirKgS);
+    const streamKw = Math.min(
+      oxygenCapacityKw(extraAfter, yStream),
+      Math.max(0, rawIn.burnedKw - oxygenCapacityKw(rawIn.lowerAirKgS, yMix)),
+    );
+    const streamO2 = DELTA_H_O2_KJ_PER_KG > 0 ? streamKw / DELTA_H_O2_KJ_PER_KG : 0;
+    const burn: LayerBurn = {
+      prescribedKw: prescribed,
+      burnedKw: rawIn.burnedKw,
+      phi: equivalenceRatio(
+        prescribed,
+        oxygenSupplyKw(rawIn.lowerAirKgS, yMix) + oxygenSupplyKw(extraAfter, yStream),
+      ),
+      fraction: prescribed > 0 ? rawIn.burnedKw / prescribed : 1,
+      lowerAirKgS: rawIn.lowerAirKgS,
+      oxygenLowerKgS: rawIn.oxygenLowerKgS + streamO2,
+      oxygenUpperKgS: Math.max(0, rawIn.oxygenUpperKgS - streamO2),
+    };
+    // Mass taken from the lower layer. Heskestad at the interface, for
+    // the flame the fresh air can support. It cannot exceed the air the
+    // vents and the layer can give this step: a thin layer would otherwise
+    // be stripped of oxygen in one substep. Eq. 3.18 caps the enthalpy
+    // once. Neither cap is fed back into the oxygen supply.
+    const qGas = Math.max(0, (1 - chi) * burn.burnedKw);
+    const riseNow = Math.max(upperK - AMBIENT_K, 1);
+    const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
+    let plume = 0;
+    for (const fire of flamesIn) {
+      if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
+      plume += heskestadEntrainmentKgS(
+        fire.heatKw,
+        heightAboveFuelM(interfaceM, fire.baseM),
+        fire.diameterM,
+        chi,
+      );
+    }
+    if (plume > airCap) plume = airCap;
+    if (!(qGas > 0)) plume = 0;
+    else if (plume > enthalpyCap) plume = enthalpyCap;
+    return { burn, plumeKgS: plume };
+  };
+  const freshSupply = () => {
+    const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
+    const flames =
+      freshFraction < 1
+        ? spec.fires.map((fire) => ({
+            heatKw: fire.heatKw > 0 ? fire.heatKw * freshFraction : 0,
+            diameterM: fire.diameterM,
+            baseM: fire.baseM,
+          }))
+        : spec.fires;
+    return close(layerBurn(flames, interfaceM, yMix, yUpper, chi, airCap), flames);
+  };
+  const floorSupply = () => {
     const at = (qKw: number) => {
       const fraction = Math.min(1, qKw / prescribed);
       const trial =
@@ -1379,6 +1454,8 @@ function flameSupply(
       const upperKw = burned.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG;
       return { trial, burned, next: Math.min(prescribed, freshKw + upperKw) };
     };
+    let flames = spec.fires;
+    let raw = entrained;
     let q = prescribed;
     let step = at(q);
     for (let i = 0; i < 8; i++) {
@@ -1394,58 +1471,29 @@ function flameSupply(
       raw = step.burned;
       flames = step.trial;
     }
-  } else {
-    const freshFraction = prescribed > 0 ? Math.min(1, freshKw / prescribed) : 1;
-    flames =
-      freshFraction < 1
-        ? spec.fires.map((fire) => ({
-            heatKw: fire.heatKw > 0 ? fire.heatKw * freshFraction : 0,
-            diameterM: fire.diameterM,
-            baseM: fire.baseM,
-          }))
-        : spec.fires;
-    raw = layerBurn(flames, interfaceM, yMix, yUpper, chi, airCap);
-  }
-  const extraAfter = Math.max(0, streamInCap - raw.lowerAirKgS);
-  const streamKw = Math.min(
-    oxygenCapacityKw(extraAfter, yStream),
-    Math.max(0, raw.burnedKw - oxygenCapacityKw(raw.lowerAirKgS, yMix)),
-  );
-  const streamO2 = DELTA_H_O2_KJ_PER_KG > 0 ? streamKw / DELTA_H_O2_KJ_PER_KG : 0;
-  const burn: LayerBurn = {
-    prescribedKw: prescribed,
-    burnedKw: raw.burnedKw,
-    phi: equivalenceRatio(
-      prescribed,
-      oxygenSupplyKw(raw.lowerAirKgS, yMix) + oxygenSupplyKw(extraAfter, yStream),
-    ),
-    fraction: prescribed > 0 ? raw.burnedKw / prescribed : 1,
-    lowerAirKgS: raw.lowerAirKgS,
-    oxygenLowerKgS: raw.oxygenLowerKgS + streamO2,
-    oxygenUpperKgS: Math.max(0, raw.oxygenUpperKgS - streamO2),
+    return close(raw, flames);
   };
-  // Mass taken from the lower layer. Heskestad at the interface, for
-  // the flame the fresh air can support. It cannot exceed the air the
-  // vents and the layer can give this step: a thin layer would otherwise
-  // be stripped of oxygen in one substep. Eq. 3.18 caps the enthalpy
-  // once. Neither cap is fed back into the oxygen supply.
-  const qGas = Math.max(0, (1 - chi) * burn.burnedKw);
-  const riseNow = Math.max(upperK - AMBIENT_K, 1);
-  const enthalpyCap = qGas > 0 ? qGas / (CP_KJ_KGK * riseNow) : 0;
-  let plume = 0;
-  for (const fire of flames) {
-    if (!(fire.heatKw > 0) || !(fire.diameterM > 0)) continue;
-    plume += heskestadEntrainmentKgS(
-      fire.heatKw,
-      heightAboveFuelM(interfaceM, fire.baseM),
-      fire.diameterM,
-      chi,
-    );
-  }
-  if (plume > airCap) plume = airCap;
-  if (!(qGas > 0)) plume = 0;
-  else if (plume > enthalpyCap) plume = enthalpyCap;
-  return { burn, plumeKgS: plume };
+  const wantsLayer = prescribed > freshKw + 1 && yU > 0;
+  if (!(layerWeight > 0) || !wantsLayer) return freshSupply();
+  if (layerWeight >= 1) return floorSupply();
+  const floor = floorSupply();
+  const fresh = freshSupply();
+  const mix = (floorN: number, freshN: number) => layerWeight * floorN + (1 - layerWeight) * freshN;
+  const burnedKw = mix(floor.burn.burnedKw, fresh.burn.burnedKw);
+  const floorPhi = Number.isFinite(floor.burn.phi) ? floor.burn.phi : 1e6;
+  const freshPhi = Number.isFinite(fresh.burn.phi) ? fresh.burn.phi : 1e6;
+  return {
+    burn: {
+      prescribedKw: prescribed,
+      burnedKw,
+      phi: mix(floorPhi, freshPhi),
+      fraction: prescribed > 0 ? burnedKw / prescribed : 1,
+      lowerAirKgS: mix(floor.burn.lowerAirKgS, fresh.burn.lowerAirKgS),
+      oxygenLowerKgS: mix(floor.burn.oxygenLowerKgS, fresh.burn.oxygenLowerKgS),
+      oxygenUpperKgS: mix(floor.burn.oxygenUpperKgS, fresh.burn.oxygenUpperKgS),
+    },
+    plumeKgS: mix(floor.plumeKgS, fresh.plumeKgS),
+  };
 }
 
 export interface MechanicalVent {
@@ -3089,6 +3137,13 @@ export function stepZone(
    * Door-fuel oxygen is not in it.
    */
   flameOxygenKg: number;
+  /**
+   * Lower and stream oxygen the sliver could not hand over, booked from
+   * the upper layer, kg. Zero when that block does not run.
+   */
+  oxygenShortKg: number;
+  /** True when a clamp slice scaled the burn down to the oxygen on hand. */
+  burnScaled: boolean;
   /** Equivalence ratio on that substep, before the lower-oxygen cutoff. */
   phi: number;
   /** Energy into each held sheet this step, kJ/m². Absent when nothing is held. */
@@ -3178,6 +3233,8 @@ function stepZoneNow(
   let burnedFraction = 1;
   let phi = 0;
   let flameOxygenKg = 0;
+  let oxygenShortKg = 0;
+  let burnScaled = false;
   let lastIn = 0;
   let lastOut = 0;
   let lastHot = 0;
@@ -3420,11 +3477,11 @@ function stepZoneNow(
           flows.farUpperInKgS > 1e-9 ? Math.max(0, flows.farUpperO2KgS) / flows.farUpperInKgS : y;
         const streamTaken = Math.min(bare, recirc);
         if (advance.burn.burnedKw > 0) {
-          // On the floor the plume above the clamp is the room's layer.
-          // That oxygen is already on the burn, with the inflow taken out
-          // of it, so the stream term does not count it again.
+          // Across the clamp fade the plume above the floor is still the
+          // room's layer. That oxygen is already on the burn, with the
+          // inflow taken out of it, so the stream term does not count it again.
           const layerKw =
-            z <= INTERFACE_FLOOR_M + 1e-9 ? advance.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG : 0;
+            floorLayerWeight(z) > 0 ? advance.burn.oxygenUpperKgS * DELTA_H_O2_KJ_PER_KG : 0;
           const capacity =
             oxygenCapacityKw(advance.burn.lowerAirKgS * freshScale, y) +
             oxygenCapacityKw(streamTaken, yStream) +
@@ -3606,14 +3663,17 @@ function stepZoneNow(
     // and the bare inflow often cannot hand that oxygen over. Leaving the
     // gap unbooked keeps it in the layer, and the next slice burns it again.
     let useU = Math.min(burn.oxygenUpperKgS * book.burnScale * slice, Math.max(0, yU * mass));
-    if (z <= INTERFACE_FLOOR_M + 1e-9) {
+    if (floorLayerWeight(z) > 0) {
       const short = Math.max(0, useWanted - useL);
       const room = Math.max(0, yU * mass - useU);
-      useU += Math.min(short, room);
+      const booked = Math.min(short, room);
+      useU += booked;
+      oxygenShortKg += booked;
       const demanded = useWanted + burn.oxygenUpperKgS * book.burnScale * slice;
       const covered = useL + useU;
       if (demanded > covered + 1e-9 && demanded > 0 && burnedFraction > 0) {
         burnedFraction *= covered / demanded;
+        burnScaled = true;
       }
     }
     flameOxygenKg += useL + useU;
@@ -3657,6 +3717,17 @@ function stepZoneNow(
     temp = book.tempNext;
     lower = book.lowerK;
     z = book.z;
+    // A sliver a few millimetres deep is one substep of air. Burning it
+    // drops the interface to the floor, the next substep grows it back,
+    // and the door's hot flow follows. The midpoint is the steady height,
+    // the same mean the floor gauge already publishes.
+    if (
+      zStart < INTERFACE_FLOOR_M + 0.003 &&
+      z < INTERFACE_FLOOR_M + 0.003 &&
+      Math.abs(z - zStart) > 1e-6
+    ) {
+      z = 0.5 * (z + zStart);
+    }
     if (spec.vents.some((vent) => vent.shaft) && z <= INTERFACE_FLOOR_M + 1e-9) {
       const net =
         (limited.inKgS - limited.outKgS - limited.fanUpperKgS - limited.fanLowerKgS) * slice;
@@ -3732,6 +3803,8 @@ function stepZoneNow(
     })),
     burnedFraction,
     flameOxygenKg,
+    oxygenShortKg,
+    burnScaled,
     phi,
     neutralM,
     floorPressurePa,

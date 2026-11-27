@@ -543,7 +543,7 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'none');
   });
 
-  test('a blast lights a confirmed table, and the sealed room latches on its layer', () => {
+  test('a blast lights a confirmed table, and the sealed room waits for the front', () => {
     const { engine, zone } = blastEngine(new Set(['table', 'next']));
     engine.step(0.1, [], [zone]);
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
@@ -551,11 +551,10 @@ describe('confirmed fuel gate', () => {
     assert.equal(engine.studStates.get('table')?.fire.state, 'burning');
     assert.notEqual(engine.studStates.get('next')?.fire.state, 'burning');
 
-    // Three indoor studs, no opening. Once the interface is on the floor
-    // the flame stands in the upper layer and burns that oxygen. The layer
-    // still holds oxygen when the wood curve reaches 1 MW, so the room
-    // latch lights the next fuelled stud at that age. It does not wait for
-    // the geometric front, which is 3 m at the entry's spread speed.
+    // Three indoor studs, no opening. The flame stands in the upper layer
+    // and burns that oxygen smoothly. The layer reaches the extinction
+    // limit while the wood curve is still under 1 MW, so the room latch
+    // does not fire. The next stud is 3 m away and lights with the front.
     const fuel = defaultLightFuel();
     const flash = flashoverAgeSec(fuel);
     const frontSec =
@@ -571,7 +570,10 @@ describe('confirmed fuel gate', () => {
         burningAtLatch = true;
     }
     assert.equal(burningAtLatch, false);
-    assert.ok(seconds > flash && seconds < flash + 6, `room lit the next stud at ${seconds}s`);
+    assert.ok(
+      seconds > frontSec && seconds < frontSec + 2,
+      `front lit the next stud at ${seconds}s`,
+    );
     assert.equal(engine.studStates.get('tile')?.fire.state, 'none');
     assert.equal(engine.studStates.get('yard')?.fire.state, 'none');
   });

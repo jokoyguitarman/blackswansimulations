@@ -3,15 +3,15 @@
     "doorMw": 22.1,
     "at180": {
       "prescribedMw": 46.5,
-      "burnedMw": 25.2,
-      "o2Upper": 0.192
+      "burnedMw": 27.1,
+      "o2Upper": 0.189
     },
     "burnedMw": {
-      "t200": 48.2,
-      "t290": 15.2,
-      "t320": 9.6,
-      "minFrom180": 9.6,
-      "maxFrom180": 48.2
+      "t200": 50.2,
+      "t290": 15.1,
+      "t320": 12,
+      "minFrom180": 12,
+      "maxFrom180": 50.2
     }
   },
   "kitchen": {

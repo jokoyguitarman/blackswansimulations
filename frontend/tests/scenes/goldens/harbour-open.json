@@ -13,7 +13,7 @@
   "mall": {
     "active": true,
     "interfaceM": 1.48,
-    "riseK": 69.6
+    "riseK": 66.7
   },
   "marks": {
     "t180": {
@@ -26,7 +26,7 @@
       "burning": 94
     },
     "t240": {
-      "smoke": "0.656",
+      "smoke": "0.376",
       "out": 101,
       "down": 12,
       "heatDown": 5,
@@ -35,7 +35,7 @@
       "burning": 94
     },
     "t300": {
-      "smoke": "0.658",
+      "smoke": "0.652",
       "out": 101,
       "down": 12,
       "heatDown": 5,
@@ -50,13 +50,13 @@
     "out": 101,
     "inMall": 1,
     "maxFed": 1,
-    "maxHeatFed": 1,
+    "maxHeatFed": 1.001,
     "heatDown": 5,
     "mallFed": 1,
     "mall": {
       "active": true,
-      "interfaceM": 1.12,
-      "riseK": 79.4
+      "interfaceM": 1.11,
+      "riseK": 78.8
     },
     "smoke": "0.774"
   }

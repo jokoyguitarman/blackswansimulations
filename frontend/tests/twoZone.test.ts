@@ -686,6 +686,122 @@ test('a clamped fire releases 13100 kJ per kilogram of oxygen it removes', () =>
   );
 });
 
+test('a fire just off the clamp burns within a few percent of the floor', () => {
+  // The upper-layer credit fades over the first 5 cm. A hard cut at
+  // 0.05 m drops this flame to the fresh air in the sliver, which is
+  // almost none. Two millimetres of interface motion must not do that.
+  const fires = [{ heatKw: 8000, diameterM: 1.2 }];
+  const spec: LayerSpec = {
+    areaM2: 30,
+    ceilingM: 2.6,
+    boundaries: [{ areaM2: 110, lining: LINING.concrete }],
+    fires,
+    vents: [],
+  };
+  const burnAt = (z: number) =>
+    oxygenLimitedBurn(spec, z, AMBIENT_K + 200, 0.2, 0.2, 0.1).burn.burnedKw;
+  const heights = [0.05, 0.052, 0.054, 0.056];
+  const kw = heights.map(burnAt);
+  assert.ok(kw[0]! > 0.95 * 8000, `floor burn ${kw[0]!.toFixed(0)} kW`);
+  for (let i = 1; i < kw.length; i++) {
+    const swing = Math.abs(kw[i]! - kw[i - 1]!) / kw[i - 1]!;
+    assert.ok(swing < 0.05, `${heights[i]} m moved the burn by ${(swing * 100).toFixed(1)}%`);
+  }
+  let state = {
+    ...freshLayer(2.6),
+    interfaceM: 0.052,
+    upperK: AMBIENT_K + 200,
+    upperO2: 0.2,
+    lowerO2: 0.2,
+  };
+  let prev = kw[1]! / 8000;
+  for (let i = 0; i < 20; i++) {
+    const stepped = stepZone(state, spec, 0.1);
+    const swing = Math.abs(stepped.burnedFraction - prev);
+    assert.ok(swing < 0.05, `slice ${i} swung by ${swing.toFixed(3)}`);
+    assert.ok(
+      stepped.burnedFraction > 0.9,
+      `slice ${i} burned ${stepped.burnedFraction.toFixed(3)}`,
+    );
+    prev = stepped.burnedFraction;
+    state = stepped.state;
+  }
+});
+
+test('a clamp shortfall is booked against the upper layer', () => {
+  // The sliver's oxygen is almost gone, and the door's fresh inflow is
+  // counted in the flame before the sliver can hand it over. That gap is
+  // non-zero, so dropping the booking block fails this, and the heat per
+  // kilogram removed stays on 13,100.
+  const heatKw = 8000;
+  const spec: LayerSpec = {
+    areaM2: 8,
+    ceilingM: 2.6,
+    boundaries: [{ areaM2: 40, lining: LINING.concrete }],
+    fires: [{ heatKw, diameterM: 1.2 }],
+    vents: [
+      {
+        widthM: 1.2,
+        sillM: 0,
+        soffitM: 2,
+        outside: {
+          interfaceM: 0.05,
+          upperK: AMBIENT_K + 40,
+          floorPressurePa: 8,
+          upperO2: 0.23,
+        },
+      },
+    ],
+  };
+  const state = {
+    ...freshLayer(2.6),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 150,
+    upperO2: 0.2,
+    lowerO2: 0.02,
+  };
+  const stepped = stepZone(state, spec, 0.1);
+  assert.ok(stepped.oxygenShortKg > 0.005, `shortfall ${stepped.oxygenShortKg.toFixed(5)} kg`);
+  assert.ok(stepped.flameOxygenKg > stepped.oxygenShortKg);
+  const heatKj = heatKw * stepped.burnedFraction * 0.1;
+  const perKg = heatKj / stepped.flameOxygenKg;
+  assert.ok(
+    Math.abs(perKg - DELTA_H_O2_KJ_PER_KG) <= 0.01 * DELTA_H_O2_KJ_PER_KG,
+    `${perKg.toFixed(0)} kJ/kg`,
+  );
+  assert.ok((stepped.state.upperO2 ?? 1) < 0.2, `layer oxygen ${stepped.state.upperO2}`);
+});
+
+test('a clamp slice scales the burn to the oxygen the layer holds', () => {
+  // One slice of this flame asks for more oxygen than the room holds.
+  // The burn has to shrink to that oxygen, or the heat per kilogram
+  // removed leaves 13,100.
+  const heatKw = 200000;
+  const spec: LayerSpec = {
+    areaM2: 1.2,
+    ceilingM: 2,
+    boundaries: [{ areaM2: 12, lining: LINING.concrete }],
+    fires: [{ heatKw, diameterM: 1.2 }],
+    vents: [],
+  };
+  const state = {
+    ...freshLayer(2),
+    interfaceM: 0.05,
+    upperK: AMBIENT_K + 800,
+    upperO2: 0.18,
+    lowerO2: 0.18,
+  };
+  const stepped = stepZone(state, spec, 0.1);
+  assert.equal(stepped.burnScaled, true);
+  assert.ok(stepped.burnedFraction < 0.5, `fraction ${stepped.burnedFraction.toFixed(3)}`);
+  assert.ok(stepped.flameOxygenKg > 0.05, `oxygen ${stepped.flameOxygenKg.toFixed(4)} kg`);
+  const perKg = (heatKw * stepped.burnedFraction * 0.1) / stepped.flameOxygenKg;
+  assert.ok(
+    Math.abs(perKg - DELTA_H_O2_KJ_PER_KG) <= 0.01 * DELTA_H_O2_KJ_PER_KG,
+    `${perKg.toFixed(0)} kJ/kg`,
+  );
+});
+
 test('a bare neighbour stream carries its oxygen, soot and fuel', () => {
   // No fire, so the stream is not consumed. Its oxygen, soot and fuel
   // arrive with the mass. CO is not a layer species; the stud dose reads
