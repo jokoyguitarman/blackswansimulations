@@ -50,7 +50,12 @@ import {
 import { HOLLAND_BOMB, layoutHawkerCentre, type LayoutLabel } from '../lib/rts/hawkerLayout';
 import { EMPTY_HAWKER_FACTS, type HawkerFacts } from '@shared/hawkerFacts';
 import { RTSEngine } from '../lib/rts/engine';
-import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
+import {
+  SHOWCASE_LEGEND_LINES,
+  computeMapRenderContext,
+  renderRTS,
+  toSim as rcToSim,
+} from '../lib/rts/renderer';
 import type { PlacedObjectDraw } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
 import { BLAST_DATASET } from '../lib/rts/blast/blastDataset';
@@ -312,6 +317,8 @@ const PAN_THRESHOLD_PX = 5;
  * a building fill any pane. Tiles stop at 19 and are scaled up past it.
  */
 const MAX_MAP_ZOOM = 24;
+/** Room under a pane's level chip, top-right, for anything else in that corner. */
+const LEVEL_CHIP_CLEARANCE_PX = 44;
 
 type PaneCount = 1 | 2 | 4;
 interface PaneRect {
@@ -1270,18 +1277,33 @@ export function DebugRTSSim() {
   }, [phase]);
 
   const shownPanes: PaneCount = phase === 'rts' ? paneCount : 1;
+  const shownPanesRef = useRef(shownPanes);
+  shownPanesRef.current = shownPanes;
+  /** With several panes the hint bar and the legend fold into one button instead of covering panes. */
+  const [gridHelpOpen, setGridHelpOpen] = useState(false);
   const paneRects = layoutPanes(shownPanes, canvasSize.w, canvasSize.h, isPortrait);
   const primaryRect = paneRects[0];
+  /** With several panes the box opens under the main pane's level chip and stays in that pane. */
+  const levelsBoxPlace =
+    shownPanes > 1
+      ? {
+          top: primaryRect.y + LEVEL_CHIP_CLEARANCE_PX,
+          maxHeight: Math.max(120, primaryRect.h - LEVEL_CHIP_CLEARANCE_PX - 8),
+        }
+      : null;
   // MapContainer fixes its style at mount, so the primary pane is sized on its element.
   const primaryPaneBox = shownPanes > 1 ? primaryRect : null;
   const primaryPaneKey = primaryPaneBox
     ? `${primaryPaneBox.x},${primaryPaneBox.y},${primaryPaneBox.w},${primaryPaneBox.h}`
     : 'full';
+  /** The container position Leaflet set at init ('relative'), put back on returning to 1 pane. */
+  const mapPositionRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const map = leafletMapRef.current;
     if (!map) return;
     const style = map.getContainer().style;
-    style.position = primaryPaneBox ? 'absolute' : '';
+    mapPositionRef.current ??= style.position;
+    style.position = primaryPaneBox ? 'absolute' : mapPositionRef.current;
     style.left = primaryPaneBox ? `${primaryPaneBox.x}px` : '';
     style.top = primaryPaneBox ? `${primaryPaneBox.y}px` : '';
     style.width = primaryPaneBox ? `${primaryPaneBox.w}px` : '100%';
@@ -3051,6 +3073,7 @@ export function DebugRTSSim() {
                     ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
                     : null,
                 hazardFx: hazardFx,
+                legend: shownPanesRef.current === 1,
               }
             : null,
           levelsRef.current.length > 1
@@ -3161,9 +3184,11 @@ export function DebugRTSSim() {
             ctx.textBaseline = 'top';
             ctx.fillStyle = 'rgba(0,0,0,0.6)';
             const box = ctx.measureText(label).width + 16;
-            ctx.fillRect(canvas.width - box - 8, 8, box, 20);
+            // With several panes the level chip and the levels box hold the top of the main pane.
+            const top = shownPanesRef.current > 1 ? canvas.height - 48 : 8;
+            ctx.fillRect(canvas.width - box - 8, top, box, 20);
             ctx.fillStyle = '#bbf7d0';
-            ctx.fillText(label, canvas.width - 16, 11);
+            ctx.fillText(label, canvas.width - 16, top + 3);
             ctx.restore();
           }
         }
@@ -5401,6 +5426,7 @@ export function DebugRTSSim() {
               {levelsBoxOpen ? (
                 <LevelSwitcher
                   onClose={() => setLevelsBoxOpen(false)}
+                  place={levelsBoxPlace}
                   levels={levels}
                   activeLevel={activeLevel}
                   interiorWalls={interiorWalls}
@@ -5443,7 +5469,7 @@ export function DebugRTSSim() {
                   onMouseDown={(e) => e.stopPropagation()}
                   title="Show the levels box"
                   className="absolute top-2 left-2 bg-black/85 border border-slate-600 hover:border-slate-400 rounded px-2 py-1 text-xs text-slate-200"
-                  style={{ zIndex: 1100 }}
+                  style={{ zIndex: 1100, ...(levelsBoxPlace ? { top: levelsBoxPlace.top } : {}) }}
                 >
                   ▤ Levels · {levels.find((l) => l.id === activeLevel)?.name ?? activeLevel}
                 </button>
@@ -5458,23 +5484,56 @@ export function DebugRTSSim() {
                 </div>
               )}
               {/* Mode indicator overlay */}
-              <div
-                className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none"
-                style={{ zIndex: 1001 }}
-              >
-                {gameState.interactionMode.type !== 'select' ? (
-                  <span className="text-amber-400">
-                    Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
-                    to place, middle or Space+drag pan, ESC to cancel
-                  </span>
-                ) : (
-                  <span>
-                    Mouse: click select · drag box · right-click move · scroll zoom · right/middle
-                    or Space+drag pan | Touch: tap select · long-press move · drag box · pinch zoom
-                    · 2-finger drag pan
-                  </span>
-                )}
-              </div>
+              {gameState.interactionMode.type !== 'select' || shownPanes === 1 ? (
+                <div
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none"
+                  style={{ zIndex: 1001 }}
+                >
+                  {gameState.interactionMode.type !== 'select' ? (
+                    <span className="text-amber-400">
+                      Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} —
+                      click to place, middle or Space+drag pan, ESC to cancel
+                    </span>
+                  ) : (
+                    <span>
+                      Mouse: click select · drag box · right-click move · scroll zoom · right/middle
+                      or Space+drag pan | Touch: tap select · long-press move · drag box · pinch
+                      zoom · 2-finger drag pan
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-xs"
+                  style={{ zIndex: 1001, maxWidth: 'calc(100% - 16px)' }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  {gridHelpOpen && (
+                    <div className="bg-slate-900/90 border border-slate-600 rounded px-3 py-2 text-slate-200 space-y-1">
+                      <div className="text-green-400">
+                        Mouse: click select · drag box · right-click move · scroll zoom ·
+                        right/middle or Space+drag pan | Touch: tap select · long-press move · drag
+                        box · pinch zoom · 2-finger drag pan
+                      </div>
+                      {showcase &&
+                        SHOWCASE_LEGEND_LINES.map((line) => <div key={line}>{line}</div>)}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setGridHelpOpen((open) => !open)}
+                    aria-expanded={gridHelpOpen}
+                    className="bg-black/80 border border-slate-600 hover:border-slate-400 rounded px-2 py-1 text-slate-200"
+                  >
+                    {gridHelpOpen
+                      ? 'Hide controls and legend'
+                      : showcase
+                        ? 'Controls and legend'
+                        : 'Controls'}
+                  </button>
+                </div>
+              )}
 
               {/* ── Floating photo card ── */}
               {activeWallPoint && (
@@ -8702,6 +8761,7 @@ function LevelSwitcher({
   onCopy,
   pedestrianCount,
   onClose,
+  place,
 }: {
   levels: LevelDef[];
   activeLevel: string;
@@ -8720,6 +8780,8 @@ function LevelSwitcher({
   onCopy: (from: string, targets: string[]) => void;
   pedestrianCount: number;
   onClose: () => void;
+  /** Where the box sits in the map area. Defaults to the top-left corner. */
+  place?: { top: number; maxHeight: number } | null;
 }) {
   const ordered = [...levels].sort((a, b) => b.index - a.index);
   const active = levels.find((l) => l.id === activeLevel) ?? levels[0];
@@ -8749,7 +8811,12 @@ function LevelSwitcher({
   return (
     <div
       className="absolute top-2 left-2 bg-black/85 border border-slate-600 rounded p-1.5 text-xs text-slate-200 space-y-1 overflow-auto"
-      style={{ zIndex: 1100, pointerEvents: 'auto', maxHeight: '75%' }}
+      style={{
+        zIndex: 1100,
+        pointerEvents: 'auto',
+        maxHeight: place ? place.maxHeight : '75%',
+        ...(place ? { top: place.top } : {}),
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
