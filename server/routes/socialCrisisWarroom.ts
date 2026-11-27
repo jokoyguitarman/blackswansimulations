@@ -79,6 +79,23 @@ import type { Response, NextFunction } from 'express';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const compileBuilds = new SupabaseBuildStore();
 
+/** The fenced success missed, so this scenario is not the build's. Remove it. */
+async function dropOrphanScenario(scenarioId: string, buildId: string): Promise<string | null> {
+  const { error } = await supabaseAdmin.from('scenarios').delete().eq('id', scenarioId);
+  if (error) {
+    logger.error({ err: error, scenarioId, buildId }, 'compile_orphan_scenario_delete_failed');
+  } else {
+    logger.warn({ scenarioId, buildId }, 'compile_orphan_scenario');
+  }
+  try {
+    const fresh = await compileBuilds.get(buildId);
+    return fresh?.scenario_id ?? null;
+  } catch (err) {
+    logger.warn({ err, buildId }, 'compile_orphan_reread_failed');
+    return null;
+  }
+}
+
 const router = Router();
 
 /**
@@ -1359,18 +1376,7 @@ router.post(
           }
         })();
 
-        aiJobs.set(jobId, {
-          status: 'completed',
-          data: {
-            scenario_id: scenarioId,
-            title: payload.scenario.title,
-            inject_count:
-              payload.time_injects.length +
-              payload.condition_injects.length +
-              payload.decision_injects.length,
-          },
-          startedAt: Date.now(),
-        });
+        let reportedScenarioId = scenarioId;
         if (durableBuildId && myHeartbeat) {
           try {
             const wrote = await compileBuilds.succeedCompile(
@@ -1379,7 +1385,8 @@ router.post(
               myHeartbeat,
             );
             if (!wrote) {
-              logger.warn({ buildId: durableBuildId, scenarioId }, 'compile_orphan_scenario');
+              const kept = await dropOrphanScenario(scenarioId, durableBuildId);
+              if (kept) reportedScenarioId = kept;
             }
           } catch (err) {
             // The scenario rows exist. Refunding here would hand the trainer a
@@ -1390,7 +1397,19 @@ router.post(
             );
           }
         }
-        logger.info({ jobId, scenarioId }, 'Compile completed');
+        aiJobs.set(jobId, {
+          status: 'completed',
+          data: {
+            scenario_id: reportedScenarioId,
+            title: payload.scenario.title,
+            inject_count:
+              payload.time_injects.length +
+              payload.condition_injects.length +
+              payload.decision_injects.length,
+          },
+          startedAt: Date.now(),
+        });
+        logger.info({ jobId, scenarioId: reportedScenarioId }, 'Compile completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
         if (!scenarioWritten) {
@@ -1419,9 +1438,7 @@ router.post(
                 scenarioId,
                 myHeartbeat,
               );
-              if (!wrote) {
-                logger.warn({ buildId: durableBuildId, scenarioId }, 'compile_orphan_scenario');
-              }
+              if (!wrote) await dropOrphanScenario(scenarioId, durableBuildId);
             } catch (writeErr) {
               logger.error(
                 { err: writeErr, buildId: durableBuildId, scenarioId },

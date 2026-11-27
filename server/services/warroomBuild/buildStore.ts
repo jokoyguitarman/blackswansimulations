@@ -171,6 +171,37 @@ export function compileClaimable(
   return Date.parse(row.compile_heartbeat_at) < now.getTime() - 90_000;
 }
 
+/**
+ * PostgREST 12 and 13 re-apply an `or` filter to an updated row, so a claim
+ * UPDATE that used `.or()` plus `.select()` comes back `[]` after it landed.
+ * The caller re-reads. This is a claim when the row is running at the instant
+ * this call wrote. The returned heartbeat is the string PostgREST stored, which
+ * later `.eq` fences must use.
+ */
+export function compileClaimFromReread(
+  writtenHeartbeat: string,
+  read: {
+    compile_status: string | null;
+    compile_heartbeat_at: string | null;
+    credit_ledger_id: string | null;
+    credit_invoice_id: string | null;
+  } | null,
+): {
+  credit_ledger_id: string | null;
+  credit_invoice_id: string | null;
+  compile_heartbeat_at: string;
+} | null {
+  if (!read || read.compile_status !== 'running' || read.compile_heartbeat_at == null) return null;
+  const written = Date.parse(writtenHeartbeat);
+  const stored = Date.parse(read.compile_heartbeat_at);
+  if (!Number.isFinite(written) || written !== stored) return null;
+  return {
+    credit_ledger_id: read.credit_ledger_id,
+    credit_invoice_id: read.credit_invoice_id,
+    compile_heartbeat_at: read.compile_heartbeat_at,
+  };
+}
+
 const ACTIVE: BuildStatus[] = ['queued', 'running'];
 const TERMINAL: BuildStatus[] = ['succeeded', 'failed', 'cancelled'];
 
@@ -1218,30 +1249,30 @@ export class SupabaseBuildStore implements BuildStore {
     credit_invoice_id: string | null;
     compile_heartbeat_at: string;
   } | null> {
+    const writtenHeartbeat = now.toISOString();
     const cutoff = new Date(now.getTime() - 90_000).toISOString();
-    const { data, error } = await supabaseAdmin
+    // No `.select()` here. On PostgREST 12.2.3 and 13.0.8 an UPDATE whose
+    // filter is `.or()` reapplies that filter to the new row, so RETURNING is
+    // `[]` after a successful claim. The re-read below is the result.
+    const { error } = await supabaseAdmin
       .from('warroom_builds')
       .update({
         compile_status: 'running',
-        compile_heartbeat_at: now.toISOString(),
+        compile_heartbeat_at: writtenHeartbeat,
       })
       .eq('id', buildId)
       .eq('status', 'succeeded')
       .or(
         `compile_status.is.null,compile_status.eq.failed,and(compile_status.eq.running,compile_heartbeat_at.lt.${cutoff})`,
-      )
-      // Filtered columns stay in RETURNING. PostgREST 12/13 otherwise answers 42703.
-      .select(
-        'id, status, compile_status, compile_heartbeat_at, credit_ledger_id, credit_invoice_id, scenario_id, created_by',
       );
     if (error) throw error;
-    const row = data?.[0];
-    if (!row?.compile_heartbeat_at) return null;
-    return {
-      credit_ledger_id: row.credit_ledger_id ?? null,
-      credit_invoice_id: row.credit_invoice_id ?? null,
-      compile_heartbeat_at: row.compile_heartbeat_at,
-    };
+    const { data, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('compile_status, compile_heartbeat_at, credit_ledger_id, credit_invoice_id')
+      .eq('id', buildId)
+      .maybeSingle();
+    if (readError) throw readError;
+    return compileClaimFromReread(writtenHeartbeat, data);
   }
 
   async saveCompileCredit(

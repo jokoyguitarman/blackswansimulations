@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { initialStageStates } from './buildCore.js';
 import { beginCompileCharge, failCompileCharge, type CompileChargeStore } from './compileCharge.js';
-import { compileClaimable } from './buildStore.js';
+import { compileClaimable, compileClaimFromReread } from './buildStore.js';
 import type { BuildRow } from './buildTypes.js';
 
 const NOW = new Date('2026-06-01T00:00:00.000Z');
@@ -231,6 +231,38 @@ describe('compile charge', () => {
       consume: async () => ({ ok: true, ledgerId: 'ledger-x', invoiceId: null }),
     });
     assert.equal(result.outcome, 'in_progress');
+  });
+
+  test('an empty UPDATE body is still a claim when the re-read shows this heartbeat', () => {
+    const written = '2026-11-27T09:26:41.037Z';
+    const stored = '2026-11-27T09:26:41.037+00:00';
+    const claimed = compileClaimFromReread(written, {
+      compile_status: 'running',
+      compile_heartbeat_at: stored,
+      credit_ledger_id: 'ledger-1',
+      credit_invoice_id: 'invoice-1',
+    });
+    assert.equal(claimed?.compile_heartbeat_at, stored);
+    assert.equal(claimed?.credit_ledger_id, 'ledger-1');
+    assert.equal(
+      compileClaimFromReread(written, {
+        compile_status: 'running',
+        compile_heartbeat_at: '2026-11-27T09:26:41.038+00:00',
+        credit_ledger_id: 'ledger-1',
+        credit_invoice_id: null,
+      }),
+      null,
+    );
+    assert.equal(
+      compileClaimFromReread(written, {
+        compile_status: 'succeeded',
+        compile_heartbeat_at: stored,
+        credit_ledger_id: null,
+        credit_invoice_id: null,
+      }),
+      null,
+    );
+    assert.equal(compileClaimFromReread(written, null), null);
   });
 
   test('a save that matches no row refunds the unstored credit', async () => {
