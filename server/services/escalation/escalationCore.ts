@@ -153,6 +153,7 @@ const KNOWN_PLACEHOLDERS = new Set([
   'missed_calls',
   'step',
   'max_steps',
+  'mood_line',
 ]);
 
 export interface TemplateVars {
@@ -166,6 +167,8 @@ export interface TemplateVars {
   missed_calls: number;
   step: number;
   max_steps: number;
+  /** First script line of the current mood rung. Empty when the stakeholder is calm. */
+  mood_line?: string;
 }
 
 export function urgencyRank(urgency: Urgency): number {
@@ -210,6 +213,7 @@ export function renderChainTemplate(template: string, vars: TemplateVars): strin
     missed_calls: String(vars.missed_calls),
     step: String(vars.step),
     max_steps: String(vars.max_steps),
+    mood_line: vars.mood_line ?? '',
   };
   return template.replace(/\{([a-z0-9_]+)\}/gi, (token, name: string) => {
     if (!KNOWN_PLACEHOLDERS.has(name)) return '';

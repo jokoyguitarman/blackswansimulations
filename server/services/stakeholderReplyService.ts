@@ -214,11 +214,25 @@ export async function resolveContext(
   return parts.join('\n');
 }
 
+async function moodForPlayerReply(
+  sessionId: string,
+  stakeholderId: string,
+  team: string,
+  userId: string,
+): Promise<string | undefined> {
+  try {
+    const { moodBlockForReply } = await import('./mood/moodService.js');
+    return (await moodBlockForReply({ sessionId, stakeholderId, team, userId })) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildCharacterPrompt(
   s: Stakeholder,
   _log: ConversationRow[],
   ctx: ScenarioCtx,
-  extra?: { context?: string },
+  extra?: { context?: string; mood?: string },
 ): string {
   const facts = ctx.fact_sheet as {
     confirmed_facts?: string[];
@@ -242,7 +256,7 @@ ${s.will_not_disclose.length ? s.will_not_disclose.map((k) => `- ${k}`).join('\n
 Crisis context: ${ctx.description.slice(0, 600)}
 ${confirmed ? `Confirmed facts (do not contradict): ${confirmed}` : ''}
 ${claims ? `Unverified public claims: ${claims}` : ''}
-${extra?.context ? `\nWhat you currently know and feel about recent events (this overrides your default posture where they conflict):\n${extra.context}\n` : ''}
+${extra?.context ? `\nWhat you currently know and feel about recent events (this overrides your default posture where they conflict):\n${extra.context}\n` : ''}${extra?.mood ? `\n${extra.mood}\n` : ''}
 Conduct rules:
 - Stay in character as this specific person on every channel; you remember every previous exchange listed below regardless of channel.
 - ${s.relationship === 'internal' ? 'You are staff of this organisation and the players are your colleagues; leadership and your own function lead can give you instructions, which you carry out (acknowledge, act, report — flag a risk once, do not argue). Share verified facts, request status, flag constraints. NEVER draft public statements, talking points, suggested messaging or PR strategy for the players — they must craft their own response.' : 'Reflect your own interests and concerns; you are not on the response team and do not coach them on messaging.'}
@@ -400,10 +414,16 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
       resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
       resolvePlayerRef(ctx.sessionId, ctx.userId, identity),
     ]);
+    const mood = await moodForPlayerReply(
+      ctx.sessionId,
+      ctx.stakeholder.id,
+      identity?.team_name ?? '',
+      ctx.userId,
+    );
     const result = await decideAndReply({
       sessionId: ctx.sessionId,
       stakeholder: ctx.stakeholder,
-      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx, { context }),
+      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx, { context, mood }),
       log,
       channel: ctx.channel,
       latestPlayerMessage: ctx.content,

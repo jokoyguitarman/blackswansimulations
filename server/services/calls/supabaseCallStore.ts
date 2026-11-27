@@ -11,6 +11,7 @@ import type { CallScript, CallStatus } from './callCore.js';
 import type { TargetMode } from './lineCore.js';
 
 let extraColumns = true;
+let moodColumns = true;
 const otherWarned = new Set<string>();
 
 function noteOther(err: unknown, where: string): void {
@@ -47,8 +48,9 @@ export const supabaseCallStore: CallStore = {
       const existing = await findClash(call);
       return existing ? { call: existing, created: false } : null;
     }
-    if (first.error && extraColumns && isMissingColumn(first.error)) {
-      extraColumns = false;
+    if (first.error && isMissingColumn(first.error) && (moodColumns || extraColumns)) {
+      if (moodColumns) moodColumns = false;
+      else extraColumns = false;
       return supabaseCallStore.insert(call);
     }
     if (unavailable(first.error, 'insert') || !first.data) return null;
@@ -78,8 +80,9 @@ export const supabaseCallStore: CallStore = {
     delete payload.id;
     delete payload.created_at;
     const first = await supabaseAdmin.from('sim_calls').update(payload).eq('id', call.id);
-    if (first.error && extraColumns && isMissingColumn(first.error)) {
-      extraColumns = false;
+    if (first.error && isMissingColumn(first.error) && (moodColumns || extraColumns)) {
+      if (moodColumns) moodColumns = false;
+      else extraColumns = false;
       await supabaseCallStore.save(call);
       return;
     }
@@ -325,6 +328,10 @@ function toRow(call: SimCall): Record<string, unknown> {
     row.rung_user_ids = call.rungUserIds;
     row.missed_reason = call.missedReason;
   }
+  if (moodColumns) {
+    row.mood_rung = call.moodRung ?? null;
+    row.wait_profile = call.waitProfile ?? null;
+  }
   return row;
 }
 
@@ -373,6 +380,8 @@ function fromRow(row: Record<string, unknown>, fallback?: SimCall): SimCall {
     targetRoleId: (row.target_role_id as string | null) ?? fallback?.targetRoleId ?? null,
     rungUserIds: (row.rung_user_ids as string[] | null) ?? fallback?.rungUserIds ?? [],
     missedReason: (row.missed_reason as string | null) ?? fallback?.missedReason ?? null,
+    moodRung: (row.mood_rung as string | null) ?? fallback?.moodRung ?? null,
+    waitProfile: row.wait_profile ?? fallback?.waitProfile ?? null,
   };
 }
 

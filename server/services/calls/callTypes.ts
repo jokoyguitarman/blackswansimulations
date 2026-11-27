@@ -62,6 +62,9 @@ export interface SimCall {
   targetRoleId: string | null;
   rungUserIds: string[];
   missedReason: string | null;
+  /** Trainer-only snapshot taken when the call is answered or returned. */
+  moodRung?: string | null;
+  waitProfile?: unknown;
 }
 
 export interface StoredTurn {

@@ -1197,6 +1197,17 @@ export class InjectSchedulerService {
       logger.warn({ err: chainErr, sessionId: session.id }, 'escalation chain tick failed');
     }
 
+    try {
+      const { updateMoods } = await import('./mood/moodService.js');
+      await updateMoods({
+        sessionId: session.id,
+        elapsedMinutes,
+        comms: (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
+      });
+    } catch (moodErr) {
+      logger.warn({ err: moodErr, sessionId: session.id }, 'stakeholder mood tick failed');
+    }
+
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
     try {
       await evaluatePinResolution(session.id);

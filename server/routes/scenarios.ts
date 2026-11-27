@@ -43,6 +43,7 @@ import {
   type InjectTriggerShape,
 } from '../services/conditions/injectTriggerShape.js';
 import { phoneConfigError } from '../services/calls/callCore.js';
+import { inspectMoodLadder, moodLadderError } from '../services/mood/moodService.js';
 import { responseRubricError } from '../services/judging/judgeCore.js';
 import { inspectEscalation } from '../services/escalation/escalationService.js';
 import { dmDeliveryConfigError } from '../services/dm/dmDeliveryCore.js';
@@ -978,6 +979,22 @@ function rejectDmDeliveryConfig(res: Response, config: unknown): boolean {
   return true;
 }
 
+async function rejectMoodLadder(res: Response, scenarioId: string, deliveryConfig: unknown): Promise<boolean> {
+  const structural = moodLadderError(deliveryConfig);
+  if (structural) {
+    res.status(400).json({ error: structural });
+    return true;
+  }
+  if (!deliveryConfig || typeof deliveryConfig !== 'object') return false;
+  const ladder = (deliveryConfig as { mood_ladder?: unknown }).mood_ladder;
+  if (ladder == null) return false;
+  const issues = await inspectMoodLadder({ scenarioId, ladder });
+  const error = issues.find((issue) => issue.level === 'error');
+  if (!error) return false;
+  res.status(400).json({ error: error.message });
+  return true;
+}
+
 async function rejectEscalation(
   res: Response,
   scenarioId: string,
@@ -1114,6 +1131,7 @@ router.patch(
       if (updates.delivery_config !== undefined) {
         const phoneError = phoneConfigError(updates.delivery_config);
         if (phoneError) return res.status(400).json({ error: phoneError });
+        if (await rejectMoodLadder(res, id, updates.delivery_config)) return;
         const rubricError = rubricErrorOf(updates.delivery_config);
         if (rubricError) return res.status(400).json({ error: rubricError });
         const teamsForRole = (updates.target_teams ?? existing.target_teams ?? []) as string[];
@@ -1201,6 +1219,7 @@ router.post(
       }
       const phoneError = phoneConfigError(body.delivery_config ?? null);
       if (phoneError) return res.status(400).json({ error: phoneError });
+      if (await rejectMoodLadder(res, id, body.delivery_config ?? null)) return;
       const rubricError = rubricErrorOf(body.delivery_config ?? null);
       if (rubricError) return res.status(400).json({ error: rubricError });
       if (await rejectRoleTarget(res, id, body.delivery_config ?? null, body.target_teams ?? []))

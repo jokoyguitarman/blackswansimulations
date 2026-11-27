@@ -559,6 +559,10 @@ async function markTerminal(
       .eq('id', row.id)
       .in('judgement_status', OPEN_STATUSES);
     failLedger(error, 'judge.write');
+    if (!error && outcome.status === 'done' && outcome.judgement?.passed === true) {
+      const { noteGoodReply } = await import('../mood/moodService.js');
+      await noteGoodReply(row.session_id, row.delivery_id);
+    }
   } catch (err) {
     failLedger(err, 'judge.write');
   }

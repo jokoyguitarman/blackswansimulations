@@ -120,6 +120,8 @@ export interface CallSummary {
   target_mode: 'ring_all' | 'line' | 'role' | 'player';
   missed_reason: string | null;
   opening: string;
+  /** Present for the trainer only. Players never receive a mood label. */
+  mood_rung?: string;
 }
 
 export interface VoiceAnswer {
@@ -592,9 +594,12 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       emit(userId, 'sim_call.taken', { call_id: call.id, answered_by_name: actor.id });
     }
     const channel = await chooseChannel(call.sessionId, capabilities);
+    const atMinute = sessionMinuteFrom(session?.startTime ?? null, at);
+    const mood = await callMood(claimed, atMinute);
+    const spoken = await rememberMood(claimed, mood.rungId, mood.profile);
+    const opening = mood.opening ?? openingForAttempt(spoken.script, spoken.attemptNo, spoken.callerName);
     if (channel === 'voice') {
-      const opening = openingForAttempt(claimed.script, claimed.attemptNo, claimed.callerName);
-      const instructions = await instructionsFor(claimed, opening);
+      const instructions = await instructionsFor(spoken, opening, undefined, mood.block);
       const minted = await realtime.mintClientSecret(
         realtimeSessionBody({
           model,
@@ -605,7 +610,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       );
       if (!minted.ok) {
         logger.warn({ status: minted.status, event: 'realtime_mint_failed' }, 'Realtime client secret mint failed');
-        return activateText(claimed, actor, opening, 'mint_failed');
+        return activateText(spoken, actor, opening, 'mint_failed');
       }
       arm(claimed);
       emitBoth(claimed, session?.trainerId ?? null, 'sim_call.state', { call_id: call.id, status: 'connecting', mode: 'voice' });
@@ -623,9 +628,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         },
       };
     }
-    const opening = openingForAttempt(claimed.script, claimed.attemptNo, claimed.callerName);
-    if (channel === 'scripted_only') return playScript(claimed, actor, opening);
-    return activateText(claimed, actor, opening, null);
+    if (channel === 'scripted_only') return playScript(spoken, actor, opening);
+    return activateText(spoken, actor, opening, null);
   }
 
   async function decline(callId: string, actor: CallActor): Promise<CallSuccess<null> | CallFailure> {
@@ -788,7 +792,10 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const first = group.find((call) => call.attemptNo === 1) ?? seed;
     const waitMinutes = Math.max(0, Math.round((now().getTime() - Date.parse(first.ringStartedAt)) / 60000));
     const missed = group.filter((call) => call.status === 'missed' || call.status === 'declined').length;
-    const script = callbackScript(first.script, waitMinutes, callbackWindow);
+    const mood = await callMood(first, sessionMinuteFrom(session?.startTime ?? null, now()));
+    const script = mood.opening
+      ? { ...first.script, opening: mood.opening, redial_openings: undefined }
+      : callbackScript(first.script, waitMinutes, callbackWindow);
     const id = randomUUID();
     const at = now().toISOString();
     const row = blankCall({
@@ -818,6 +825,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     row.direction = 'callback';
     row.parentCallId = latest.id;
     row.stakeholderId = seed.stakeholderId;
+    row.moodRung = mood.rungId;
+    row.waitProfile = mood.profile;
     row.answeredBy = actor.id;
     row.answeredAt = at;
     row.script = { ...row.script, opening: script.opening };
@@ -837,7 +846,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
             wait_minutes: waitMinutes,
             missed_calls: missed,
             unanswered_messages: 0,
-          }),
+          }, mood.block),
           voice: row.voice,
           transcribeModel,
         }),
@@ -868,7 +877,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const session = await store.session(sessionId);
     const names = await lookupNames(calls.map((call) => call.answeredBy).filter((id): id is string => Boolean(id)));
     const visible = await visibilityFor(sessionId, actor, session?.trainerId);
-    return calls.filter((call) => visible(call)).map((call) => toSummary(call, calls, names));
+    const forTrainer = actor.role === 'admin' || actor.role === 'trainer' || actor.id === session?.trainerId;
+    return calls.filter((call) => visible(call)).map((call) => toSummary(call, calls, names, forTrainer));
   }
 
   async function get(
@@ -883,7 +893,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const calls = await store.listSession(call.sessionId);
     const names = call.answeredBy ? await lookupNames([call.answeredBy]) : {};
     const turns = await store.turns(call.id);
-    return { ok: true, status: 200, body: { ...toSummary(call, calls, names), turns } };
+    const forTrainer = actor.role === 'admin' || actor.role === 'trainer' || actor.id === session?.trainerId;
+    return { ok: true, status: 200, body: { ...toSummary(call, calls, names, forTrainer), turns } };
   }
 
   async function badge(sessionId: string, actor: CallActor): Promise<{ missed_unseen: number }> {
@@ -1281,16 +1292,57 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     });
   }
 
+  async function callMood(call: SimCall, atMinute: number): Promise<{
+    opening: string | null;
+    block: string | null;
+    rungId: string | null;
+    profile: unknown;
+  }> {
+    if (!call.stakeholderId) return { opening: null, block: null, rungId: null, profile: null };
+    try {
+      const { moodForCall } = await import('../mood/moodService.js');
+      const mood = await moodForCall({
+        sessionId: call.sessionId,
+        stakeholderId: call.stakeholderId,
+        targetRoleId: call.targetRoleId,
+        lineTeam: call.lineTeam,
+        recipientTeams: call.recipientTeams,
+        atMinute,
+        injectLadder: call.script.ledger_config?.mood_ladder,
+      });
+      if (!mood) return { opening: null, block: null, rungId: null, profile: null };
+      return {
+        opening: mood.opening,
+        block: mood.block,
+        rungId: mood.rung.id,
+        profile: mood.profile,
+      };
+    } catch {
+      return { opening: null, block: null, rungId: null, profile: null };
+    }
+  }
+
+  async function rememberMood(call: SimCall, rungId: string | null, profile: unknown): Promise<SimCall> {
+    if (!rungId) return call;
+    const next = { ...call, moodRung: rungId, waitProfile: profile };
+    await store.save(next);
+    return next;
+  }
+
   async function instructionsFor(
     call: SimCall,
     opening: string,
     context?: Parameters<typeof buildRealtimeInstructions>[0]['context'],
+    moodBlock?: string | null,
   ): Promise<string> {
     const character = await loadCharacter(call);
+    const mood = moodBlock === undefined ? await callMood(call, sessionMinuteFrom((await store.session(call.sessionId))?.startTime ?? null, now())) : null;
+    const block = moodBlock === undefined ? mood?.block : moodBlock;
+    const spoken = mood?.opening ?? opening;
     return buildRealtimeInstructions({
       character,
-      injectContent: call.script.inject_content || opening,
-      script: { ...call.script, opening },
+      injectContent: call.script.inject_content || spoken,
+      script: { ...call.script, opening: spoken },
       maxMinutes: Math.max(1, Math.round(call.maxSeconds / 60)),
       context: context ?? (call.attemptNo > 1
         ? {
@@ -1302,6 +1354,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
             voicemails: call.script.voicemail_posted_attempts.length,
           }
         : null),
+      mood: block,
     });
   }
 
@@ -1627,6 +1680,13 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     };
   }
 
+  function sessionMinuteFrom(startTime: string | null, at: Date): number {
+    if (!startTime) return 0;
+    const start = Date.parse(startTime);
+    if (!Number.isFinite(start)) return 0;
+    return Math.max(0, Math.floor((at.getTime() - start) / 60000));
+  }
+
   async function minute(sessionId: string, at: Date): Promise<number> {
     return sessionMinute(sessionId, at);
   }
@@ -1764,7 +1824,7 @@ function counted(calls: SimCall[]): CountedAttempt[] {
   }));
 }
 
-function toSummary(call: SimCall, all: SimCall[], names: Record<string, string>): CallSummary {
+function toSummary(call: SimCall, all: SimCall[], names: Record<string, string>, forTrainer = false): CallSummary {
   const counts = counted(all);
   const group = all.filter((row) => row.callGroupId === call.callGroupId);
   const scheduled = group.find((row) => row.status === 'scheduled');
@@ -1798,6 +1858,7 @@ function toSummary(call: SimCall, all: SimCall[], names: Record<string, string>)
     target_mode: call.targetMode,
     missed_reason: call.missedReason,
     opening: call.script.opening,
+    ...(forTrainer && call.moodRung ? { mood_rung: call.moodRung } : {}),
   };
 }
 

@@ -6,6 +6,7 @@
  * Pure module: no DB access, no side effects.
  */
 import { z } from 'zod';
+import { validateMoodLadder } from '../services/mood/moodCore.js';
 
 // ─── Relationship / persuadability vocabularies (contract §3) ────────────────
 
@@ -121,6 +122,8 @@ export const StakeholderSchema = z
     sensitivities: z.array(z.string()).optional(),
     /** Spokesperson of a pressure page (reverse link to orgs[].org_key). */
     page_org_key: z.string().optional(),
+    /** Authorable mood ladder. Absent stakeholders use the default ladder at runtime. */
+    mood_ladder: z.unknown().optional(),
   })
   .passthrough()
   .superRefine((s, ctx) => {
@@ -137,6 +140,15 @@ export const StakeholderSchema = z
         path: ['resolution_criteria'],
         message: 'a stakeholder with a grievance needs at least one resolution criterion',
       });
+    }
+    if (s.mood_ladder != null) {
+      for (const issue of validateMoodLadder({ ladder: s.mood_ladder })) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['mood_ladder'],
+          message: issue.message,
+        });
+      }
     }
   });
 
