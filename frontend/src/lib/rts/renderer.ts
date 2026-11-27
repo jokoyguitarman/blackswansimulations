@@ -298,7 +298,8 @@ export function renderRTS(
   if (stairsToDraw && stairsToDraw.length > 0) {
     for (const sw of stairsToDraw) {
       const badge = sw.levels ? `${sw.levels.from}→${sw.levels.to}` : undefined;
-      drawStairwell(ctx, sw, rc, badge);
+      const inside = pedestrians.filter((ped) => ped.inStair?.stairId === sw.id).length;
+      drawStairwell(ctx, sw, rc, badge, inside);
     }
   }
 
@@ -1715,6 +1716,7 @@ function drawStairwell(
   sw: Stairwell,
   rc: RenderContext,
   badge?: string,
+  inside = 0,
 ) {
   const p = toCanvas(sw.pos.x, sw.pos.y, rc);
   const r = 10;
@@ -1753,6 +1755,16 @@ function drawStairwell(
     ctx.font = 'bold 8px monospace';
     ctx.fillStyle = '#93c5fd';
     ctx.fillText(badge, p.cx + r + 4, p.cy + 3);
+    ctx.restore();
+  }
+  // Queued and walking occupants all sit on the stair point, so the count
+  // is the only sign of the queue.
+  if (inside > 0) {
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#fde68a';
+    ctx.fillText(`${inside} in stair`, p.cx + r + 4, p.cy + 13);
     ctx.restore();
   }
 

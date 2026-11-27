@@ -17,14 +17,18 @@ import {
   type UpperGas,
 } from '../src/lib/rts/shaftVent.ts';
 import { SpatialEffectsEngine } from '../src/lib/rts/spatialEffects.ts';
-import { shaftPairs } from '../src/lib/rts/levels.ts';
+import { normaliseStairwell, shaftPairs } from '../src/lib/rts/levels.ts';
 import { projectSceneStuds } from '../src/lib/rts/sceneStuds.ts';
 import {
   stairShaftFuelObjects,
   stairShaftSample,
   stairShaftStuds,
 } from '../src/lib/rts/stairShaftTest.ts';
-import type { InteriorWall } from '../src/lib/rts/types.ts';
+import type { InteriorWall, LevelDef } from '../src/lib/rts/types.ts';
+import Matter from 'matter-js';
+import { PolygonEvacuationEngine } from '../src/lib/evacuation/engine.ts';
+import { projectPolygon } from '../src/lib/evacuation/geometry.ts';
+import { DEFAULT_POLYGON_CONFIG, type ExitDef } from '../src/lib/evacuation/types.ts';
 import { AMBIENT_K, blackLayerRadiantKwM2 } from '../src/lib/rts/twoZone.ts';
 
 function close(actual: number, expected: number, label: string) {
@@ -520,5 +524,51 @@ describe('stair shaft scene', () => {
       pairs.some((pair) => pair.kind === 'lift'),
       'the lift missed every stud',
     );
+  });
+
+  test('the upper crowd walks down the stair and the ground crowd uses its door', () => {
+    const scene = stairShaftSample.scene;
+    const polygon = scene.buildingPolygon.map((pair) => [pair[0], pair[1]] as [number, number]);
+    const exits = scene.exits as unknown as ExitDef[];
+    const levels = scene.levels as LevelDef[];
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: projectPolygon(polygon), pedestrianCount: 0 },
+      exits,
+      [],
+      [],
+      { afterExit: 'zone', zones: [], seed: 5 },
+      {
+        ids: levels.map((level) => level.id),
+        exitsByLevel: Object.fromEntries(
+          levels.map((level) => [level.id, exits.filter((exit) => exit.level === level.id)]),
+        ),
+        wallsByLevel: { G: [], L1: [] },
+        stairs: scene.stairwells.map((shaft) => normaliseStairwell(shaft, levels)),
+        counts: Object.fromEntries(levels.map((level) => [level.id, level.pedestrianCount])),
+        heights: Object.fromEntries(levels.map((level) => [level.id, level.heightM])),
+      },
+    );
+    type Label = { state: string; nextCheckAt: number; pedId: number; level: string };
+    const labelOf = (body: Matter.Body) => (body as Matter.Body & { __ped: Label }).__ped;
+    const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+    const upper = new Set(
+      bodies.filter((b) => labelOf(b).level === 'L1').map((b) => labelOf(b).pedId),
+    );
+    assert.equal(upper.size, 20);
+    for (const body of bodies) {
+      labelOf(body).state = 'evacuating';
+      labelOf(body).nextCheckAt = 0;
+    }
+    const used = new Map<number, string>();
+    const occ = eng as unknown as {
+      stairPeople: Array<{ stairId: string; dir: string; label: Label }>;
+    };
+    for (let i = 0; i < Math.round(60 / DEFAULT_POLYGON_CONFIG.dt); i++) {
+      eng.step();
+      for (const row of occ.stairPeople) used.set(row.label.pedId, `${row.stairId}:${row.dir}`);
+    }
+    assert.deepEqual([...used.keys()].sort(), [...upper].sort());
+    assert.ok([...used.values()].every((v) => v === 'stair-nw:down'));
+    eng.destroy();
   });
 });
