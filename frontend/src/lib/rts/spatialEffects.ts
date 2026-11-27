@@ -23,6 +23,7 @@ import {
   MIN_LAYER_FIRE_KW,
   diameterForReleaseKw,
   enclosureFromGrid,
+  facadeSideRatio,
   facadeWindPa,
   heskestadFlameHeightM,
   type FacadeOpening,
@@ -77,7 +78,14 @@ import {
 } from './liningFire';
 import { layerLiningFor } from './materialLibrary';
 import { LEVEL } from '../evacuation/levelConstants';
-import { levelOf, neighborIdsByLevel, shaftPairs, type ShaftLink, type ShaftPair } from './levels';
+import {
+  floorElevationM,
+  levelOf,
+  neighborIdsByLevel,
+  shaftPairs,
+  type ShaftLink,
+  type ShaftPair,
+} from './levels';
 import {
   doorHeadInUpper,
   moveUpperGas,
@@ -656,6 +664,8 @@ export class SpatialEffectsEngine {
   private verticalPairs: ShaftPair[] = [];
   /** Shaft column temperature, kelvin, keyed by link and the two rooms. */
   private shaftK = new Map<string, number>();
+  /** Compartment of every stud at the last layer step: the rooms `shaftK` is keyed by. */
+  private shaftRooms: ReadonlyMap<string, string> = new Map();
   /**
    * Upper-layer gas a shaft has delivered to a storey that has no layer
    * yet. It becomes a layer once the depth and the rise say so.
@@ -705,9 +715,11 @@ export class SpatialEffectsEngine {
    */
   private hoodFanWhen: HoodFanWhen = HOOD_FAN_WHEN;
   /**
-   * Wind at the openings. Speed 0 is still air: outdoor vents keep the
-   * ambient gauge and the goldens do not move. Direction is where the wind
-   * is going, radians, 0 along +x.
+   * Open-country station speed at 10 m. Speed 0 is still air: outdoor
+   * vents keep the ambient gauge and the goldens do not move. Direction
+   * is where the wind is going, radians, 0 along +x. The site is suburban,
+   * so an opening takes the ASHRAE terrain conversion at its own height,
+   * and the plan's side ratio.
    */
   private windSpeedMs = 0;
   private windToRad = 0;
@@ -733,6 +745,7 @@ export class SpatialEffectsEngine {
   private fumeIds: string[] = [];
   /** Outside wall. Indoor–outdoor links are blocked unless they cross an exit. */
   private shellKey = '';
+  private shellVertices: Vec2[] = [];
   private shellGaps: ShellOpening[] = [];
   private shellReady = false;
   private shellBlocked = new Map<string, Set<string>>();
@@ -833,6 +846,7 @@ export class SpatialEffectsEngine {
     this.neighborCache.clear();
     this.verticalPairs = [];
     this.shaftK.clear();
+    this.shaftRooms = new Map();
     this.shaftHold.clear();
     this.shaftFumeTo.clear();
     this.ventNetKg = 0;
@@ -1085,6 +1099,7 @@ export class SpatialEffectsEngine {
     const key = shellSignature(vertices, exits);
     if (key === this.shellKey) return;
     this.shellKey = key;
+    this.shellVertices = vertices.map((vertex) => ({ x: vertex.x, y: vertex.y }));
     this.shellGaps = shellOpenings(vertices, exits);
     this.shellReady = false;
     this.shellBlocked.clear();
@@ -1132,10 +1147,13 @@ export class SpatialEffectsEngine {
   }
 
   /**
-   * Wind at outdoor openings. `speedMs` is the speed at the face. `directionRad`
-   * is the direction the wind travels, 0 along +x, counter-clockwise. The
-   * coefficient follows Swami and Chandra (1988) with the wind angle.
-   * Speed 0, or a speed that is not a positive number, is still air.
+   * Wind at outdoor openings. `speedMs` is the open-country station speed
+   * at 10 m, not the speed at the wall. `directionRad` is the direction the
+   * wind travels, 0 along +x, counter-clockwise. The site is suburban, so
+   * the station speed is converted with the ASHRAE terrain factors before
+   * the power law to the opening. The coefficient follows Swami and Chandra
+   * (1988) with the wind angle and the plan's side ratio. Speed 0, or a
+   * speed that is not a positive number, is still air.
    */
   setWind(speedMs: number, directionRad: number): void {
     this.windSpeedMs = Number.isFinite(speedMs) && speedMs > 0 ? speedMs : 0;
@@ -2430,11 +2448,22 @@ export class SpatialEffectsEngine {
     gauges: ReadonlyMap<string, VentOutside>,
   ): Vent[] {
     const memberSet = new Set(members);
+    let level = 'G';
+    for (const id of members) {
+      const stud = this.gridStuds.get(id);
+      if (!stud) continue;
+      level = stud.level;
+      break;
+    }
+    const floorM = this.windSpeedMs > 0 ? floorElevationM(level, this.storeyHeights) : 0;
     return vents.map((vent, i) => {
       const outside = neighbourVentOutside(receivers[i] ?? [], room, memberSet, rooms, gauges);
       if (outside) return { ...vent, outside };
       if (!(this.windSpeedMs > 0) || vent.windFace == null) return vent;
-      const windPa = facadeWindPa(vent.windFace, this.windToRad, this.windSpeedMs);
+      const mid = 0.5 * (vent.sillM + vent.soffitM);
+      const heightM = floorM + (Number.isFinite(mid) ? mid : 0);
+      const side = facadeSideRatio(this.shellVertices, vent.windFace);
+      const windPa = facadeWindPa(vent.windFace, this.windToRad, this.windSpeedMs, heightM, side);
       if (windPa === 0) return vent;
       return { ...vent, windPa };
     });
@@ -2475,6 +2504,7 @@ export class SpatialEffectsEngine {
     this.fireSim.clearBurnLimits();
     this.syncLayerWalls(walls);
     const rooms = this.fireSim.compartmentsOf(walls);
+    this.shaftRooms = rooms;
     const groups = new Map<string, string[]>();
     for (const [id, room] of rooms) {
       const list = groups.get(room);
@@ -4005,26 +4035,22 @@ export class SpatialEffectsEngine {
   /**
    * Read-only view of every unblocked shaft column: the link, the two
    * landing studs and their storeys, and the column temperature. A column
-   * that has never carried gas, or whose landings are not in a layer room,
-   * reads ambient. The column holds heat only; the gas it passes is carried
+   * that has never carried gas reads ambient. The rooms are the compartments
+   * of the last layer step, the ones the vent keys the column by, whether or
+   * not either holds a layer yet. A column the vent cannot solve (before the
+   * first step, or with a landing in no compartment, or both in one) is left
+   * out, so the crowd keeps its landing-blend fallback rather than reading
+   * ambient. The column holds heat only; the gas it passes is carried
    * between the landing studs.
    */
   shaftColumns(): ShaftColumnView[] {
-    const roomOf = (studId: string): string | undefined => {
-      let fallback: string | undefined;
-      for (const [room, live] of this.layerState) {
-        if (!live.members.includes(studId)) continue;
-        if (live.active) return room;
-        fallback ??= room;
-      }
-      return fallback;
-    };
     const out: ShaftColumnView[] = [];
     for (const pair of this.verticalPairs) {
-      const lowerRoom = roomOf(pair.lower);
-      const upperRoom = roomOf(pair.upper);
+      const lowerRoom = this.shaftRooms.get(pair.lower);
+      const upperRoom = this.shaftRooms.get(pair.upper);
+      if (!lowerRoom || !upperRoom || lowerRoom === upperRoom) continue;
       const key = `${pair.linkId ?? pair.lower}|${lowerRoom}|${upperRoom}`;
-      const tempK = lowerRoom && upperRoom ? (this.shaftK.get(key) ?? AMBIENT_K) : AMBIENT_K;
+      const tempK = this.shaftK.get(key) ?? AMBIENT_K;
       out.push({
         linkId: pair.linkId ?? pair.lower,
         kind: pair.kind,

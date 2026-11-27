@@ -111,11 +111,39 @@ describe('phoneCallMessage', () => {
       { from_address: 'press@cna.sim' },
     );
     assert.equal(msg.sender_display_name, 'Unknown caller');
-    assert.equal(msg.sender_stakeholder_id, 'npc:unknown_caller');
+    assert.equal(
+      msg.sender_stakeholder_id,
+      'npc:unknown_caller:cna_producer_requests_on_record_statement_need_it_in_10',
+    );
     assert.equal(
       msg.content,
       '📞 Incoming call: CNA producer requests on-record statement\n\nNeed it in 10.',
     );
+  });
+
+  test('nameless callers from different injects do not share a sender id', () => {
+    const first = phoneCallMessage({ id: 'inj-a', title: 'Desk check', content: 'Hello' }, {});
+    const second = phoneCallMessage({ id: 'inj-b', title: 'Desk check', content: 'Hello' }, {});
+    assert.equal(first.sender_stakeholder_id, 'npc:unknown_caller:inj-a');
+    assert.equal(second.sender_stakeholder_id, 'npc:unknown_caller:inj-b');
+    assert.notEqual(first.sender_stakeholder_id, second.sender_stakeholder_id);
+    assert.equal(first.sender_display_name, 'Unknown caller');
+    const again = phoneCallMessage({ id: 'inj-a', title: 'Desk check', content: 'Hello' }, {});
+    assert.equal(again.sender_stakeholder_id, first.sender_stakeholder_id);
+  });
+
+  test('a nameless caller with an inject_key or a number keeps that identity', () => {
+    const keyed = phoneCallMessage(
+      { title: 'Callback', content: 'Ring me' },
+      { inject_key: 'press_callback_1' },
+    );
+    assert.equal(keyed.sender_stakeholder_id, 'npc:unknown_caller:press_callback_1');
+    const numbered = phoneCallMessage(
+      { title: 'T', content: '' },
+      { from_number: '+65 6000 0000' },
+    );
+    assert.equal(numbered.sender_stakeholder_id, 'npc:unknown_caller:6560000000');
+    assert.equal(numbered.sender_display_name, 'Unknown caller');
   });
 
   test('type stays within the chat_messages type CHECK', () => {

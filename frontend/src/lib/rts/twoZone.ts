@@ -715,23 +715,68 @@ export interface VentOutside {
 export const FACADE_CP_NORMAL = 0.6;
 
 /**
- * Normalized wall coefficient, square plan. Swami and Chandra, FSEC-CR-163-86
- * Eq. 2.1, published as ASHRAE Transactions 94(1):243–266 (1988). α is the
- * angle between the outward normal and the direction the wind comes from,
- * 0 when the wind blows straight onto the face, π when it blows off it.
- * The side ratio is 1, so G = ln(S) is 0 and those terms drop out. The
- * result is 1 at α = 0, within the fit.
+ * Side ratios in the Swami and Chandra wall fit. Outside this the log
+ * argument is not the curve they published. FSEC-CR-163-86, Table 2-32's
+ * low-rise split used 0.25, 0.5, 1, 2 and 4.
  */
-export function swamiChandraNormalCp(incidenceRad: number): number {
+export const FACADE_SIDE_RATIO_MIN = 0.25;
+export const FACADE_SIDE_RATIO_MAX = 4;
+
+/**
+ * Open-country meteorological station and the suburban site.
+ * ASHRAE Handbook of Fundamentals (2005), Chapter 16. The station is
+ * flat open country: exponent 0.14, gradient height 270 m, measured at
+ * 10 m. The site is suburban (the wooded / urban-industrial row):
+ * exponent 0.22, gradient height 370 m. Converting the station speed
+ * to the site multiplies by about 0.72 at 10 m. Openings below 1 m use
+ * 1 m, so a sill on the ground is not a zero. Below grade is sheltered
+ * and takes no wind.
+ */
+export const WIND_REF_HEIGHT_M = 10;
+export const WIND_MET_EXPONENT = 0.14;
+export const WIND_MET_GRADIENT_M = 270;
+export const WIND_PROFILE_EXPONENT = 0.22;
+export const WIND_SITE_GRADIENT_M = 370;
+export const WIND_PROFILE_MIN_M = 1;
+
+/**
+ * Local suburban speed divided by the open-country station speed.
+ * U(z) / U_met = (δ_met / 10)^α_met × (z / δ)^α. At 10 m this is about 0.72.
+ */
+export function windTerrainFactor(heightM: number): number {
+  if (!Number.isFinite(heightM) || heightM <= 0) return 0;
+  const z = Math.max(heightM, WIND_PROFILE_MIN_M);
+  const fromStation = Math.pow(WIND_MET_GRADIENT_M / WIND_REF_HEIGHT_M, WIND_MET_EXPONENT);
+  return fromStation * Math.pow(z / WIND_SITE_GRADIENT_M, WIND_PROFILE_EXPONENT);
+}
+
+/**
+ * Normalized wall coefficient. Swami and Chandra, FSEC-CR-163-86 Eq. 2.1,
+ * published as ASHRAE Transactions 94(1):243–266 (1988). α is the angle
+ * between the outward normal and the direction the wind comes from, 0 when
+ * the wind blows straight onto the face, π when it blows off it.
+ * `sideRatio` is the width of this wall over the adjacent wall. G = ln(S).
+ * A square plan is 1, the G terms drop out, and the result is 1 at α = 0,
+ * within the fit. Head-on, the G terms are zero for every side ratio.
+ */
+export function swamiChandraNormalCp(incidenceRad: number, sideRatio = 1): number {
   const alpha = Math.abs(incidenceRad);
   const half = alpha / 2;
   const s = Math.sin(alpha);
+  const ratio = sideRatio > 0 && Number.isFinite(sideRatio) ? sideRatio : 1;
+  const clamped = Math.min(FACADE_SIDE_RATIO_MAX, Math.max(FACADE_SIDE_RATIO_MIN, ratio));
+  const g = Math.log(clamped);
+  const sinHalf = Math.sin(half);
+  const sinG = Math.sin(2 * alpha * g);
+  const cosHalf = Math.cos(half);
   const arg =
     1.248 -
-    0.703 * Math.sin(half) -
+    0.703 * sinHalf -
     1.175 * s * s +
-    0.769 * Math.cos(half) +
-    0.717 * Math.cos(half) * Math.cos(half);
+    0.131 * sinG * sinG * sinG +
+    0.769 * cosHalf +
+    0.071 * g * g * sinHalf * sinHalf +
+    0.717 * cosHalf * cosHalf;
   if (!(arg > 0)) return 0;
   return Math.log(arg);
 }
@@ -739,25 +784,78 @@ export function swamiChandraNormalCp(incidenceRad: number): number {
 /**
  * Coefficient for one outdoor face. `windFaceRad` is the outward normal,
  * 0 along +x, counter-clockwise. `windToRad` is the direction the wind
- * travels, the same convention. The value follows the wind angle instead
- * of switching at 45°.
+ * travels, the same convention. The value follows the wind angle and the
+ * plan's side ratio instead of switching at 45°.
  */
-export function facadeCp(windFaceRad: number, windToRad: number): number {
+export function facadeCp(windFaceRad: number, windToRad: number, sideRatio = 1): number {
   const from = windToRad + Math.PI;
   const incidence = Math.atan2(Math.sin(from - windFaceRad), Math.cos(from - windFaceRad));
-  return FACADE_CP_NORMAL * swamiChandraNormalCp(incidence);
+  return FACADE_CP_NORMAL * swamiChandraNormalCp(incidence, sideRatio);
 }
 
 /**
- * Wind pressure on an outdoor opening, Pa. p = Cp · ½ ρ∞ U², the form used
- * for a vent in smoke control (Klote and Milke, Handbook of Smoke Control
- * Engineering). U is the speed at the opening. There is no height profile.
- * Positive pressure is on the windward side, so flow enters that face.
- * Still air is 0.
+ * Local speed at `heightM` from an open-country station speed at 10 m.
+ * Still air stays 0. Below grade stays 0.
  */
-export function facadeWindPa(windFaceRad: number, windToRad: number, speedMs: number): number {
-  if (!(speedMs > 0) || !Number.isFinite(speedMs) || !Number.isFinite(windFaceRad)) return 0;
-  return facadeCp(windFaceRad, windToRad) * 0.5 * LEVEL.RHO_AIR * speedMs * speedMs;
+export function windSpeedAtHeight(metSpeedMs: number, heightM: number): number {
+  if (!(metSpeedMs > 0) || !Number.isFinite(metSpeedMs)) return 0;
+  return metSpeedMs * windTerrainFactor(heightM);
+}
+
+/**
+ * Wind pressure on an outdoor opening, Pa. p = Cp · ½ ρ∞ U(z)², the form
+ * used for a vent in smoke control (Klote and Milke, Handbook of Smoke
+ * Control Engineering). U(z) is the suburban speed at the opening's
+ * mid-height, converted from the open-country station. `speedMs` is that
+ * station speed at 10 m. Leave the height out and the opening is taken at
+ * 10 m on the suburban profile. Positive pressure is on the windward side,
+ * so flow enters that face. Still air is 0.
+ */
+export function facadeWindPa(
+  windFaceRad: number,
+  windToRad: number,
+  speedMs: number,
+  heightM = WIND_REF_HEIGHT_M,
+  sideRatio = 1,
+): number {
+  if (!Number.isFinite(windFaceRad)) return 0;
+  const speed = windSpeedAtHeight(speedMs, heightM);
+  if (!(speed > 0)) return 0;
+  return facadeCp(windFaceRad, windToRad, sideRatio) * 0.5 * LEVEL.RHO_AIR * speed * speed;
+}
+
+/**
+ * Plan side ratio for the face whose outward normal is `outwardRad`.
+ * S = W/D, the extent along the wall over the extent along the normal.
+ * Swami and Chandra, FSEC-CR-163-86 Figure 1-4. A rectangle gives the two
+ * wall lengths. Any other outline uses that same projected box. An empty
+ * plan, or a square one, is 1.
+ */
+export function facadeSideRatio(
+  vertices: readonly { x: number; y: number }[],
+  outwardRad: number,
+): number {
+  if (vertices.length < 2 || !Number.isFinite(outwardRad)) return 1;
+  const tx = -Math.sin(outwardRad);
+  const ty = Math.cos(outwardRad);
+  const nx = Math.cos(outwardRad);
+  const ny = Math.sin(outwardRad);
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  let nMin = Infinity;
+  let nMax = -Infinity;
+  for (const vertex of vertices) {
+    const along = vertex.x * tx + vertex.y * ty;
+    const across = vertex.x * nx + vertex.y * ny;
+    if (along < tMin) tMin = along;
+    if (along > tMax) tMax = along;
+    if (across < nMin) nMin = across;
+    if (across > nMax) nMax = across;
+  }
+  const width = tMax - tMin;
+  const depth = nMax - nMin;
+  if (!(width > 0) || !(depth > 0)) return 1;
+  return width / depth;
 }
 
 export interface Vent {
@@ -4352,6 +4450,29 @@ function paramAlongWall(
   return u;
 }
 
+/**
+ * Outward normal of a wall, radians, 0 along +x. The interior points pick
+ * the side: outward is away from them, perpendicular to the wall. A centroid
+ * drawn toward a receiver skews on an L-shaped plan; this stays on the wall.
+ */
+function wallOutwardRad(
+  wall: GridWall,
+  interior: readonly { x: number; y: number }[],
+): number | undefined {
+  const dx = wall.x2 - wall.x1;
+  const dy = wall.y2 - wall.y1;
+  if (dx * dx + dy * dy < 1e-8) return undefined;
+  let side = 0;
+  for (const point of interior) {
+    side += dx * (point.y - wall.y1) - dy * (point.x - wall.x1);
+  }
+  if (!(Math.abs(side) > 1e-8)) return undefined;
+  // Interior on the left of travel: outward is to the right, (dy, −dx).
+  const ox = side > 0 ? dy : -dy;
+  const oy = side > 0 ? -dx : dx;
+  return Math.atan2(oy, ox);
+}
+
 function segmentsCross(
   ax: number,
   ay: number,
@@ -4401,7 +4522,10 @@ export function enclosureFromGrid(
   const wallHits = new Map<string, GridWall>();
   const doorLinks = new Map<string, Array<{ id: string; t: number; from: string }>>();
   const faceLinks = new Map<string, string[]>();
+  const interiorByWall = new Map<string, { x: number; y: number }[]>();
   const spillReceivers: string[] = [];
+  const spillEdges: number[] = [];
+  let spillFromOpenLink = false;
   const exitSlots = new Map<string, { widthM: number; receivers: string[]; outwardRad?: number }>();
   const facadeWalls: number[] = [];
   const exteriorWalls = new Set<string>();
@@ -4464,6 +4588,9 @@ export function enclosureFromGrid(
       }
       if (wall) {
         wallHits.set(wall.id, wall);
+        const inside = interiorByWall.get(wall.id) ?? [];
+        inside.push({ x: stud.x, y: stud.y });
+        interiorByWall.set(wall.id, inside);
         const t = paramAlongWall(stud.x, stud.y, other.x, other.y, wall);
         if (t != null) {
           const faces = faceLinks.get(wall.id) ?? [];
@@ -4495,6 +4622,7 @@ export function enclosureFromGrid(
         } else {
           spillWidth += reach;
           spillReceivers.push(nId);
+          spillFromOpenLink = true;
         }
       }
     }
@@ -4556,6 +4684,17 @@ export function enclosureFromGrid(
     const windFace = outwardRad(receivers);
     return windFace == null ? vent : { ...vent, windFace };
   };
+  const ventOnWall = (
+    vent: Vent,
+    wall: GridWall,
+    receivers: readonly string[],
+    exposed: boolean,
+  ): Vent => {
+    if (!exposed) return vent;
+    const edge = wallOutwardRad(wall, interiorByWall.get(wall.id) ?? []);
+    if (edge == null) return ventWithFace(vent, receivers, true);
+    return { ...vent, windFace: edge };
+  };
 
   const pushHead = (widthM: number, receivers: readonly string[], edgeRad?: number) => {
     const soffit = Math.min(DOOR_SOFFIT_M, ceilingM);
@@ -4580,8 +4719,9 @@ export function enclosureFromGrid(
       if (openWidth > 0) {
         const receivers = [...new Set(faceLinks.get(wall.id) ?? [])];
         vents.push(
-          ventWithFace(
+          ventOnWall(
             { widthM: openWidth, sillM: 0, soffitM: ceilingM },
+            wall,
             receivers,
             exteriorWalls.has(wall.id) || facade == null,
           ),
@@ -4602,7 +4742,12 @@ export function enclosureFromGrid(
     const doorExposed = exteriorWalls.has(wall.id) || facade == null;
     if (doorWidth > 0 && soffit < ceilingM - RESERVOIR_SOFFIT_GAP_M) {
       vents.push(
-        ventWithFace({ widthM: doorWidth, sillM: 0, soffitM: soffit }, across, doorExposed),
+        ventOnWall(
+          { widthM: doorWidth, sillM: 0, soffitM: soffit },
+          wall,
+          across,
+          doorExposed,
+        ),
       );
       ventReceivers.push(across);
       const wallArea = Math.max(0, length * ceilingM - doorWidth * soffit);
@@ -4610,6 +4755,8 @@ export function enclosureFromGrid(
     } else if (doorWidth > 0) {
       spillWidth += doorWidth;
       spillReceivers.push(...across);
+      const edge = wallOutwardRad(wall, interiorByWall.get(wall.id) ?? []);
+      spillEdges.push(edge ?? Number.NaN);
       const wallArea = Math.max(0, (length - doorWidth) * ceilingM);
       if (wallArea > 0) boundaries.push({ id: wall.id, areaM2: wallArea, lining, place: 'wall' });
     } else {
@@ -4619,9 +4766,24 @@ export function enclosureFromGrid(
   if (spillWidth > 0) {
     const receivers = [...new Set(spillReceivers)];
     // A spill next to a shell is an internal opening. Without a shell the
-    // open boundary is the weather, and it takes a facing.
+    // open boundary is the weather. A full-height door uses its wall normal
+    // when every such door faces the same way. Mixed walls keep the centroid.
+    const firstEdge = spillEdges[0];
+    const sharedEdge =
+      !spillFromOpenLink &&
+      firstEdge != null &&
+      spillEdges.length > 0 &&
+      spillEdges.every((edge) => {
+        const turn = Math.atan2(Math.sin(edge - firstEdge), Math.cos(edge - firstEdge));
+        return Math.abs(turn) < 1e-6;
+      })
+        ? firstEdge
+        : undefined;
+    const spill = { widthM: spillWidth, sillM: 0, soffitM: ceilingM };
     vents.push(
-      ventWithFace({ widthM: spillWidth, sillM: 0, soffitM: ceilingM }, receivers, facade == null),
+      sharedEdge != null && facade == null
+        ? { ...spill, windFace: sharedEdge }
+        : ventWithFace(spill, receivers, facade == null),
     );
     ventReceivers.push(receivers);
   }

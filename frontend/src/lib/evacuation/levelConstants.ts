@@ -158,11 +158,11 @@ export const LEVEL_SOURCES: Record<
   },
   STAIR_JAM_DENSITY_PM2: {
     status: 'assumed',
-    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing',
+    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer): S = k(1 - 0.266 D) reaches zero at D = 1/0.266 = 3.76 p/m². Used as the most a flight can hold standing, on its effective area (nominal width less the boundary layers), the area the descent density is read on',
   },
   STAIR_DENSITY_SPEED_COEFF: {
     status: 'assumed',
-    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer and Fruin): S = k(1 - a D), a = 0.266 m²/p. The engine takes k = 4 a × STAIR_SPECIFIC_FLOW = 1.075 m/s (the ch. 59 table gives 1.08 for a 7/11 stair), so the peak of S D is exactly STAIR_SPECIFIC_FLOW, at D = 1.88 p/m². Descent runs at the lower of STAIR_SPEED_DOWN (times posture) and S(D), so the slope binds above about 1.33 p/m². As in the hydraulic model, D is read on the uncongested branch, up to 1.88: above that the release cap and the flight storage hold people in a queue rather than slowing the walk',
+    ref: 'SFPE Handbook 5th ed. ch. 59 (Gwynne & Rosenbaum, after Nelson & Mowrer and Fruin): S = k(1 - a D), a = 0.266 m²/p. The engine takes k = 4 a × STAIR_SPECIFIC_FLOW = 1.075 m/s (the ch. 59 table gives 1.08 for a 7/11 stair), so the peak of S D is exactly STAIR_SPECIFIC_FLOW, at D = 1.88 p/m². Descent runs at the lower of STAIR_SPEED_DOWN (times posture) and S(D), so the slope binds above about 1.33 p/m². Under counterflow D is read on the width the descent keeps (its demand share, or the rest after one reverse lane), so climbers pack it. As in the hydraulic model, D is read on the uncongested branch, up to 1.88: above that the release cap and the flight storage hold people in a queue rather than slowing the walk',
   },
   GHOST_ALPHA: { status: 'assumed', ref: 'assumed: UX' },
   MAX_LEVELS: { status: 'assumed', ref: 'PR #23 LAYOUT_LIMITS.maxStoreys' },

@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../lib/logger.js';
+import { isKnownConditionKey } from './conditions/conditionCatalog.js';
 
 // ---------------------------------------------------------------------------
 // Types (contract with inject engine)
@@ -51,9 +52,7 @@ export interface EvaluationContext {
 }
 
 export type EvaluatorResult =
-  | { status: 'appear_met' }
-  | { status: 'cancel_met' }
-  | { status: 'not_eligible' };
+  { status: 'appear_met' } | { status: 'cancel_met' } | { status: 'not_eligible' };
 
 type ConditionFn = (ctx: EvaluationContext) => boolean;
 
@@ -101,8 +100,7 @@ function getEnvAreas(
   ctx: EvaluationContext,
 ): Array<{ area_id?: string; label?: string; crowd_density?: number }> {
   const env = ctx.currentState?.environmental_state as
-    | { areas?: Array<{ area_id?: string; label?: string; crowd_density?: number }> }
-    | undefined;
+    { areas?: Array<{ area_id?: string; label?: string; crowd_density?: number }> } | undefined;
   return Array.isArray(env?.areas) ? env.areas : [];
 }
 
@@ -157,8 +155,7 @@ conditionRegistry.evacuation_gate_not_met = (ctx) => {
 function getTriageZoneProperties(ctx: EvaluationContext): Record<string, unknown> | null {
   const triageState = ctx.currentState?.triage_state as Record<string, unknown> | undefined;
   const claimed = triageState?.claimed_locations as
-    | Record<string, Record<string, unknown>>
-    | undefined;
+    Record<string, Record<string, unknown>> | undefined;
   if (claimed) {
     const first = Object.values(claimed)[0];
     if (first) return first;
@@ -168,8 +165,7 @@ function getTriageZoneProperties(ctx: EvaluationContext): Record<string, unknown
 function getEvacHoldingProperties(ctx: EvaluationContext): Record<string, unknown> | null {
   const evacState = ctx.currentState?.evacuation_state as Record<string, unknown> | undefined;
   const claimed = evacState?.claimed_locations as
-    | Record<string, Record<string, unknown>>
-    | undefined;
+    Record<string, Record<string, unknown>> | undefined;
   if (claimed) {
     const first = Object.values(claimed)[0];
     if (first) return first;
@@ -532,6 +528,22 @@ conditionRegistry.player_message_is_consistent_across_channels = (ctx) =>
 conditionRegistry.player_message_inconsistent_across_channels = (ctx) =>
   getSocialState(ctx).player_message_inconsistent_across_channels === true;
 
+/** Keys with a hand-written evaluator. The catalogue must match this list. */
+export const REGISTERED_CONDITION_KEYS: readonly string[] = Object.keys(conditionRegistry);
+
+const unknownConditionKeyWarned = new Set<string>();
+
+function noteUnknownConditionKey(key: string, sessionId: string): void {
+  if (isKnownConditionKey(key)) return;
+  const token = `${sessionId}\0${key}`;
+  if (unknownConditionKeyWarned.has(token)) return;
+  unknownConditionKeyWarned.add(token);
+  logger.warn(
+    { event: 'unknown_condition_key', key, sessionId },
+    'Unknown condition key, treating as false',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------
@@ -596,8 +608,7 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   if (key.startsWith(prefixLocationClaimed)) {
     const targetLabel = key.slice(prefixLocationClaimed.length).toLowerCase().replace(/_/g, ' ');
     const locationState = context.currentState?.location_state as
-      | Record<string, { claimed_by?: string; label?: string }>
-      | undefined;
+      Record<string, { claimed_by?: string; label?: string }> | undefined;
     if (!locationState) return false;
     return Object.values(locationState).some((entry) => {
       if (!entry?.claimed_by) return false;
@@ -640,9 +651,7 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   const fn = conditionRegistry[key];
   if (fn) return fn(context);
 
-  if (process.env.NODE_ENV !== 'production') {
-    logger.debug({ key, sessionId: context.sessionId }, 'Unknown condition key, treating as false');
-  }
+  noteUnknownConditionKey(key, context.sessionId);
   return false;
 }
 

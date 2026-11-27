@@ -12,6 +12,7 @@ import { cloneScenarioPinsForSession } from '../services/sessionPinCloningServic
 import { getWebSocketService } from '../services/websocketService.js';
 import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService.js';
 import { resolveBotUserId, resolveBotRole } from '../services/demoActionDispatcher.js';
+import { normalizeSessionTeamName } from '../lib/sessionTeamName.js';
 import { getDemoPlaybackService, listDemoScripts } from '../services/demoScriptPlaybackService.js';
 import { resolveScenarioCenter } from '../services/scenarioCenterService.js';
 import { getDemoAIAgentService } from '../services/demoAIAgentService.js';
@@ -130,7 +131,7 @@ router.post(
           {
             session_id: sessionId,
             user_id: botUserId,
-            team_name: teamName,
+            team_name: normalizeSessionTeamName(teamName),
             assigned_by: trainerId,
           },
           { onConflict: 'session_id,user_id,team_name' },

@@ -30,6 +30,15 @@ export async function checkResponseDeadlines(sessionId: string): Promise<void> {
     const deadlineAt = new Date(createdAt.getTime() + deadlineMs);
 
     if (now > deadlineAt) {
+      const { data: already } = await supabaseAdmin
+        .from('session_events')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('metadata->>type', 'response_deadline_missed')
+        .eq('metadata->>post_id', post.id)
+        .limit(1);
+      if (already && already.length > 0) continue;
+
       logger.warn(
         { sessionId, postId: post.id, deadlineMinutes: post.response_deadline_minutes },
         'Response deadline exceeded',

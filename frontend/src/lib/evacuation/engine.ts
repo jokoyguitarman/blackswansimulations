@@ -90,6 +90,7 @@ import {
   flightKey,
   flightStorage,
   flightWaitS,
+  flightWidthM,
   mergePick,
   stairDensitySpeed,
   stairFlights,
@@ -3633,6 +3634,7 @@ export class PolygonEvacuationEngine {
         const key = flightKey(stair.id, f.dir, f.from);
         const own = loads.get(key) ?? NO_LOAD;
         const opp = loads.get(flightKey(stair.id, opposite(f.dir), f.to)) ?? NO_LOAD;
+        const widthM = flightWidthM(stair, demandOf(own), demandOf(opp));
         const headway = 1 / flightFlowPerS(stair, demandOf(own), demandOf(opp));
         const fromDef = this.levelDefs.find((l) => l.id === f.from);
         const storage = fromDef ? flightStorage(stair, fromDef) : Infinity;
@@ -3659,7 +3661,7 @@ export class PolygonEvacuationEngine {
             next = floorQ.length > 0 ? floorQ.shift()! : streamQ.shift()!;
           }
           last = Math.max(last + headway, this.elapsed - dt);
-          this.beginTravel(next);
+          this.beginTravel(next, widthM);
           held++;
         }
         this.stairLastRelease.set(key, last);
@@ -3668,9 +3670,9 @@ export class PolygonEvacuationEngine {
     }
   }
 
-  private beginTravel(occ: FlightOccupant) {
+  private beginTravel(occ: FlightOccupant, widthM: number) {
     const from = this.levelDefs.find((l) => l.id === occ.fromLevel);
-    const cap = this.descentCapMps(occ, from);
+    const cap = this.descentCapMps(occ, from, widthM);
     occ.phase = 'travel';
     occ.travelStart = this.elapsed;
     if (!from) {
@@ -3707,10 +3709,12 @@ export class PolygonEvacuationEngine {
 
   /**
    * Most a descent can go at, m/s, from the density on the flight as this
-   * person steps on (themselves included): the SFPE hydraulic speed. Ascent
-   * is not capped.
+   * person steps on (themselves included): the SFPE hydraulic speed. The
+   * density is read on `widthM`, the width this direction has, so people
+   * and responders climbing against it pack the descent into its lane.
+   * Ascent is not capped.
    */
-  private descentCapMps(occ: FlightOccupant, from: LevelDef | undefined): number {
+  private descentCapMps(occ: FlightOccupant, from: LevelDef | undefined, widthM: number): number {
     if (occ.dir !== 'down' || !from) return Infinity;
     const stair = this.stairById(occ.stairId);
     if (!stair) return Infinity;
@@ -3719,7 +3723,7 @@ export class PolygonEvacuationEngine {
       if (o === occ || o.phase !== 'travel') continue;
       if (o.stairId === occ.stairId && o.dir === 'down' && o.fromLevel === occ.fromLevel) on++;
     }
-    return stairDensitySpeed(on / flightAreaM2(stair, from));
+    return stairDensitySpeed(on / flightAreaM2(stair, from, widthM));
   }
 
   /** The storey after `level` on this stair going `dir`, if the stair goes on. */

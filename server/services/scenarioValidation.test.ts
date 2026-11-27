@@ -1,6 +1,10 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateScenarioPayload, MultiOrgValidationError } from './scenarioValidationService.js';
+import {
+  validateScenarioPayload,
+  MultiOrgValidationError,
+  unplayedTeamTargetWarnings,
+} from './scenarioValidationService.js';
 import type { SocialCrisisPayload, SocialInject } from './socialCrisisGeneratorService.js';
 import type { PersistableTeamCharter } from './socialCrisisPersistenceService.js';
 import type { Stakeholder } from '../lib/stakeholderContract.js';
@@ -252,6 +256,35 @@ describe('pressure registry links', () => {
     ).orgs[1].control_mode = 'player';
     assert.deepEqual(
       codes(() => validateScenarioPayload(f.payload, f.charters)),
+      [],
+    );
+  });
+});
+
+describe('unplayed team targets', () => {
+  test('warns when a team_specific inject names a team players cannot join', () => {
+    const playable = new Set(['Communications', 'Legal']);
+    const warnings = unplayedTeamTargetWarnings(
+      [
+        {
+          title: 'DBS legal note',
+          inject_scope: 'team_specific',
+          target_teams: ['Legal—DBS', 'Legal'],
+        },
+        { title: 'Everyone', inject_scope: 'universal', target_teams: ['Legal—DBS'] },
+      ],
+      playable,
+    );
+    assert.deepEqual(
+      warnings.map((w) => w.code),
+      ['MO-INJ-009'],
+    );
+    assert.match(warnings[0].message, /Legal—DBS/);
+    assert.deepEqual(
+      unplayedTeamTargetWarnings(
+        [{ inject_scope: 'team_specific', target_teams: ['Ghost'] }],
+        new Set(),
+      ),
       [],
     );
   });

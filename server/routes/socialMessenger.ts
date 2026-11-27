@@ -299,14 +299,17 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.post('/:messageId/read', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { messageId } = req.params;
+    const user = req.user!;
 
     const { data: msg } = await supabaseAdmin
       .from('sim_direct_messages')
-      .select('id, session_id')
+      .select('id, session_id, is_read')
       .eq('id', messageId)
       .single();
 
     if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    const alreadyRead = msg.is_read === true;
 
     const { error } = await supabaseAdmin
       .from('sim_direct_messages')
@@ -316,6 +319,12 @@ router.post('/:messageId/read', requireAuth, async (req: AuthenticatedRequest, r
     if (error) {
       logger.error({ error, messageId }, 'Failed to mark message as read');
       return res.status(500).json({ error: 'Failed to mark message as read' });
+    }
+
+    if (!alreadyRead && msg.session_id) {
+      void recordPlayerAction(msg.session_id, user.id, 'dm_read', messageId, null).catch((err) => {
+        logger.warn({ err, messageId }, 'Failed to record dm_read');
+      });
     }
 
     res.json({ success: true });
