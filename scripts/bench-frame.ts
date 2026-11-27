@@ -58,6 +58,9 @@ let lastFrameS = 1 / 60;
 const result = runOfficeFrames(speed, live ? () => lastFrameS : fixedFrame, end, {
   counts,
   budget: budgetMs ? { budgetMs, now: () => performance.now() } : undefined,
+  onStart: () => {
+    last = performance.now();
+  },
   onFrame: (steps) => {
     const now = performance.now();
     frames.push({ ms: now - last, steps });

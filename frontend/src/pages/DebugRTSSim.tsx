@@ -68,10 +68,13 @@ import {
   type FxQuality,
 } from '../lib/rts/fx/fxConstants';
 import {
-  advanceSharedFrame,
+  advanceGameFrame,
   cappedFrameDt,
   createSharedClock,
+  createSpeedMeter,
+  noteFrameSpeed,
   resetSharedClock,
+  speedLabel,
 } from '../lib/rts/fx/simClock';
 import {
   activeRasterLayout,
@@ -1052,6 +1055,9 @@ export function DebugRTSSim() {
   const rasterCacheRef = useRef(createRasterLayoutCache());
   const rasterLayoutRef = useRef<RasterLayout | null>(null);
   const simClockRef = useRef(createSharedClock());
+  const speedMeterRef = useRef(createSpeedMeter());
+  /** '10x (running 3.1x)' while the clock runs slower than the chosen speed. */
+  const [slowedSpeed, setSlowedSpeed] = useState<string | null>(null);
   const [showcaseHud, setShowcaseHud] = useState<{
     metrics: ShowcaseMetrics | null;
     burning: number;
@@ -2802,7 +2808,8 @@ export function DebugRTSSim() {
             text: `EXPLOSION · ${rts.formatClock()}`,
           });
         };
-        const ran = advanceSharedFrame(
+        const ran = advanceGameFrame(
+          rts,
           simClockRef.current,
           dt,
           clock.speed,
@@ -2835,8 +2842,16 @@ export function DebugRTSSim() {
           { budgetMs: FX.SIM_BUDGET_MS, now: () => performance.now() },
         );
         effectSteps = ran.effectSteps;
-        if (ran.crowdSteps > 0) rts.tick((ran.crowdSteps * FX.FIXED_DT) / clock.speed);
-        rts.syncElapsed(simClockRef.current.crowdSteps * FX.FIXED_DT);
+        const meter = speedMeterRef.current;
+        const speedBefore = meter.speed;
+        if (
+          noteFrameSpeed(meter, clock.speed, dt, ran.crowdSteps * FX.FIXED_DT) ||
+          meter.speed !== speedBefore
+        ) {
+          const label = speedLabel(clock.speed, meter.effective);
+          const slowed = label === `${clock.speed}x` ? null : label;
+          setSlowedSpeed((prev) => (prev === slowed ? prev : slowed));
+        }
       }
 
       if (evac && simRunning) {
@@ -4672,6 +4687,8 @@ export function DebugRTSSim() {
     setShowcaseHud(null);
     hudAtRef.current = 0;
     resetSharedClock(simClockRef.current);
+    speedMeterRef.current = createSpeedMeter();
+    setSlowedSpeed(null);
 
     if (!enrichResult && hazardZones.length > 0) {
       setDetonationLoading(true);
@@ -4782,6 +4799,14 @@ export function DebugRTSSim() {
           {phase === 'rts' && (
             <>
               <span className="text-amber-300 text-sm font-bold">{clockDisplay}</span>
+              {slowedSpeed && !gameState.clock.paused && (
+                <span
+                  className="text-amber-500 text-xs"
+                  title="The clock is running slower than the chosen speed to keep frames responsive"
+                >
+                  {slowedSpeed}
+                </span>
+              )}
               <button
                 onClick={backToMap}
                 className="text-xs text-green-600 hover:text-green-400 border border-green-800 rounded px-2 py-1"
@@ -6632,6 +6657,11 @@ export function DebugRTSSim() {
                       {s}x
                     </button>
                   ))}
+                </div>
+              )}
+              {slowedSpeed && !gameState.clock.paused && gameState.clock.phase !== 'setup' && (
+                <div className="text-center text-amber-500 text-xs mt-1">
+                  {slowedSpeed}: frames are too slow for the chosen speed
                 </div>
               )}
             </div>

@@ -76,20 +76,31 @@ export const CROWD_STEPS_PER_EFFECTS_STEP = Math.round(FX.EFFECTS_DT / FX.FIXED_
 export interface SharedSimClock extends StepAccumulator {
   crowdSteps: number;
   effectSteps: number;
-  /** Smoothed wall time of one crowd step with its share of effects, ms. 0 until measured. */
+  /**
+   * Smoothed wall time of one crowd step with its share of effects, ms.
+   * Starts at SIM_STEP_SEED_MS; the first measurement replaces the seed.
+   */
   msPerStep: number;
+  costMeasured: boolean;
 }
 
 export function createSharedClock(): SharedSimClock {
-  return { acc: 0, dropped: 0, crowdSteps: 0, effectSteps: 0, msPerStep: 0 };
+  return {
+    acc: 0,
+    dropped: 0,
+    crowdSteps: 0,
+    effectSteps: 0,
+    msPerStep: FX.SIM_STEP_SEED_MS,
+    costMeasured: false,
+  };
 }
 
+/** Start a new run. The measured step cost carries over, so its first frame is budgeted. */
 export function resetSharedClock(clock: SharedSimClock): void {
   clock.acc = 0;
   clock.dropped = 0;
   clock.crowdSteps = 0;
   clock.effectSteps = 0;
-  clock.msPerStep = 0;
 }
 
 /** Real seconds of this frame the game clock may count at `speed`. */
@@ -150,12 +161,79 @@ export function advanceSharedFrame(
   }
   if (budget && n > 0) {
     const perStep = (budget.now() - startMs) / n;
-    clock.msPerStep =
-      clock.msPerStep > 0
-        ? clock.msPerStep + STEP_COST_SMOOTHING * (perStep - clock.msPerStep)
-        : perStep;
+    clock.msPerStep = clock.costMeasured
+      ? clock.msPerStep + STEP_COST_SMOOTHING * (perStep - clock.msPerStep)
+      : perStep;
+    clock.costMeasured = true;
   }
   return { crowdSteps: n, effectSteps };
+}
+
+/**
+ * advanceSharedFrame, then move the game by the simulated time the frame
+ * actually ran: responder units tick on it, and the clock is set to the
+ * crowd's step count, so units, crowd, effects and clock stay in step.
+ */
+export function advanceGameFrame(
+  game: { tick(dtReal: number): void; syncElapsed(seconds: number): void },
+  clock: SharedSimClock,
+  frameDt: number,
+  speed: number,
+  hooks: SharedFrameHooks,
+  budget?: SharedFrameBudget,
+): { crowdSteps: number; effectSteps: number } {
+  const ran = advanceSharedFrame(clock, frameDt, speed, hooks, budget);
+  if (ran.crowdSteps > 0) game.tick((ran.crowdSteps * FX.FIXED_DT) / speed);
+  game.syncElapsed(clock.crowdSteps * FX.FIXED_DT);
+  return ran;
+}
+
+/**
+ * Simulated seconds per real second over the last SPEED_WINDOW_S of running
+ * frames. The window restarts when the chosen speed changes.
+ */
+export interface SpeedMeter {
+  speed: number;
+  realS: number;
+  simS: number;
+  effective: number | null;
+}
+
+export function createSpeedMeter(): SpeedMeter {
+  return { speed: 0, realS: 0, simS: 0, effective: null };
+}
+
+/** Count one running frame. Returns true when `effective` has a new reading. */
+export function noteFrameSpeed(
+  meter: SpeedMeter,
+  speed: number,
+  frameDt: number,
+  simDt: number,
+): boolean {
+  if (meter.speed !== speed) {
+    meter.speed = speed;
+    meter.realS = 0;
+    meter.simS = 0;
+    meter.effective = null;
+  }
+  if (!(frameDt > 0)) return false;
+  meter.realS += frameDt;
+  meter.simS += simDt;
+  if (meter.realS < FX.SPEED_WINDOW_S) return false;
+  meter.effective = meter.simS / meter.realS;
+  meter.realS = 0;
+  meter.simS = 0;
+  return true;
+}
+
+/** Below this share of the chosen speed, the HUD shows the effective speed. */
+const SLOWED_FRACTION = 0.9;
+
+/** '10x', or '10x (running 3.1x)' when the budget or the frame cap is slowing the clock. */
+export function speedLabel(speed: number, effective: number | null): string {
+  const chosen = `${speed}x`;
+  if (effective == null || effective >= speed * SLOWED_FRACTION) return chosen;
+  return `${chosen} (running ${effective.toFixed(1)}x)`;
 }
 
 export const SIM_CLOCK = {
