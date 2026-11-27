@@ -53,6 +53,7 @@ import {
   type Posture,
   type StudStateLike,
   type WallLike,
+  sightBlocked,
 } from './hazardSensing';
 import { SHOWCASE } from './showcaseConstants';
 import { blastInjuryBand } from './showcase';
@@ -1211,6 +1212,8 @@ export class PolygonEvacuationEngine {
    * Unset level means the single floor.
    */
   setResponders(responders: ReadonlyArray<{ id: string; pos: Vec2; level?: string }>) {
+    // In a multi-storey scene a responder releases only people on its own
+    // storey, so one without a level releases nobody.
     this.responders = responders.map((r) => ({ id: r.id, pos: { ...r.pos }, level: r.level }));
   }
 
@@ -1218,7 +1221,8 @@ export class PolygonEvacuationEngine {
    * Freezing in fear. The first time smoke at FREEZE_TRIGGER_K or a burning
    * stud reaches an evacuee who has a route, a seeded per-person roll may
    * freeze them. They stand still, still breathing the smoke, until a
-   * responder comes within FREEZE_RELEASE_M; then they re-choose and go.
+   * responder on their storey comes within FREEZE_RELEASE_M with no wall
+   * between them; then they re-choose and go.
    * Nothing else ends a freeze. The freeze roll and the smoke turn-back roll
    * are both keyed on the person, not drawn from the shared stream, so
    * someone held frozen moves nobody else's pre-movement or turn-back draw.
@@ -1269,9 +1273,16 @@ export class PolygonEvacuationEngine {
 
   private responderNear(body: Matter.Body, ped: PedLabel): boolean {
     const reach = SHOWCASE.FREEZE_RELEASE_M;
+    const pos = this.posOf(body);
+    let walls: WallLike[] | null = null;
     for (const r of this.responders) {
-      if ((r.level ?? '') !== (ped.level ?? '') && r.level != null && ped.level != null) continue;
-      if (Math.hypot(r.pos.x - body.position.x, r.pos.y - body.position.y) <= reach) return true;
+      if (this.levelPlan && (r.level == null || r.level !== ped.level)) continue;
+      if (Math.hypot(r.pos.x - pos.x, r.pos.y - pos.y) > reach) continue;
+      // Interior walls and the shell, with exit gaps open: a marshal outside an
+      // exit can reach someone in it, not someone behind the wall beside it.
+      walls ??= [...this.wallsNear(ped), ...this.shellWalls(ped.level)];
+      if (sightBlocked(r.pos, pos, walls)) continue;
+      return true;
     }
     return false;
   }

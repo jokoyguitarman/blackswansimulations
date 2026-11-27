@@ -386,6 +386,8 @@ export interface RTSUnit {
   id: string;
   def: UnitDef;
   pos: Vec2;
+  /** Storey the unit is on. Unset in a single-storey scene. */
+  level?: string;
   waypoints: Vec2[];
   state: 'idle' | 'moving' | 'working';
   workTimer: number;

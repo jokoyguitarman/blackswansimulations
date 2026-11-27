@@ -2655,6 +2655,8 @@ export function DebugRTSSim() {
   stairwellsRef.current = stairwells;
   const levelsRef = useRef(levels);
   levelsRef.current = levels;
+  /** A unit placed in a multi-storey scene stands on the storey in view. */
+  const unitLevel = () => (levelsRef.current.length > 1 ? activeLevelRef.current : undefined);
   const activeLevelRef = useRef(activeLevel);
   activeLevelRef.current = activeLevel;
   const blastLevelRef = useRef(blastLevel);
@@ -2753,7 +2755,7 @@ export function DebugRTSSim() {
         evac.setResponders(
           rts.state.units
             .filter((u) => u.def.abilities.includes('unfreeze'))
-            .map((u) => ({ id: u.id, pos: u.pos })),
+            .map((u) => ({ id: u.id, pos: u.pos, level: u.level })),
         );
       }
 
@@ -3854,7 +3856,7 @@ export function DebugRTSSim() {
 
       if (mode.type === 'spawn_unit') {
         const spawnPos = rts.state.stagingArea ?? sim;
-        const u = rts.spawnUnit(mode.unitKind, spawnPos);
+        const u = rts.spawnUnit(mode.unitKind, spawnPos, unitLevel());
         if (rts.state.stagingArea) {
           rts.issueMove([u.id], sim, false);
         }
@@ -4391,7 +4393,7 @@ export function DebugRTSSim() {
           rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'spawn_unit') {
           const spawnPos = rts.state.stagingArea ?? sim;
-          const u = rts.spawnUnit(mode.unitKind, spawnPos);
+          const u = rts.spawnUnit(mode.unitKind, spawnPos, unitLevel());
           if (rts.state.stagingArea) rts.issueMove([u.id], sim, false);
           rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'place_equipment') {

@@ -1490,6 +1490,94 @@ describe('freezing in fear', () => {
     assert.deepEqual(free.turned, free.expected);
   });
 
+  const hold = (eng: PolygonEvacuationEngine, i: number, pos: Vec2, level?: string) => {
+    const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[i];
+    Matter.Body.setPosition(body, pos);
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    const ped = (
+      body as Matter.Body & {
+        __ped: Label & { nextCheckAt?: number; level?: string; targetExitId?: string };
+      }
+    ).__ped;
+    ped.state = 'evacuating';
+    ped.frozen = true;
+    ped.freezeRollDone = true;
+    ped.nextCheckAt = 1e9;
+    if (level) ped.level = level;
+    return ped;
+  };
+  const releasedBy = (
+    eng: PolygonEvacuationEngine,
+    ped: Label,
+    responder: { pos: Vec2; level?: string },
+  ) => {
+    eng.setResponders([{ id: 'marshal-1', ...responder }]);
+    for (let i = 0; i < 30; i++) eng.step();
+    return ped.frozen !== true;
+  };
+
+  test('a marshal releases only someone they can see, not through a wall or the shell', () => {
+    const partition = (door: boolean) => [
+      { startX: 20, startY: 0, endX: 20, endY: 20, hasDoor: door, doorWidth: 1.6, doorPosition: 0.5 },
+    ];
+    // 1 m away, the far side of a wall with no door.
+    const walled = engine(0, partition(false));
+    const behind = hold(walled, 0, { x: 19.5, y: 4 });
+    assert.equal(releasedBy(walled, behind, { pos: { x: 20.5, y: 4 } }), false);
+    assert.equal(releasedBy(walled, behind, { pos: { x: 18.5, y: 4 } }), true);
+    walled.destroy();
+    // The same 1 m through an open doorway.
+    const doorway = engine(0, partition(true));
+    const inDoor = hold(doorway, 0, { x: 19.5, y: 10 });
+    assert.equal(releasedBy(doorway, inDoor, { pos: { x: 20.5, y: 10 } }), true);
+    doorway.destroy();
+    // A shut leaf is a wall.
+    const shut = engine(0, partition(true).map((w) => ({ ...w, openFraction: 0 })));
+    const behindLeaf = hold(shut, 0, { x: 19.5, y: 10 });
+    assert.equal(releasedBy(shut, behindLeaf, { pos: { x: 20.5, y: 10 } }), false);
+    shut.destroy();
+    // Outside the building: through the west exit, yes; through the wall beside it, no.
+    const shell = engine(0);
+    const byWall = hold(shell, 0, { x: 0.5, y: 3 });
+    assert.equal(releasedBy(shell, byWall, { pos: { x: -0.5, y: 3 } }), false);
+    shell.destroy();
+    const atExit = engine(0);
+    const inExit = hold(atExit, 0, { x: 0.5, y: 10 });
+    assert.equal(releasedBy(atExit, inExit, { pos: { x: -0.5, y: 10 } }), true);
+    atExit.destroy();
+  });
+
+  test('a marshal releases only someone on their own storey', () => {
+    const groundExit = { ...exit({ id: 'out', center: { x: 0, y: 10 }, edgeIndex: 3, width: 4 }), level: 'G' };
+    const make = () =>
+      new PolygonEvacuationEngine(
+        { vertices: verts, pedestrianCount: 0, pedestrianRadius: 0.25, desiredSpeed: 1.4, panicFactor: 0, dt: 1 / 60 },
+        [groundExit],
+        [],
+        [],
+        { afterExit: 'zone', zones: [], seed: 1, freezePermille: 0 },
+        {
+          ids: ['G', 'L1'],
+          exitsByLevel: { G: [groundExit], L1: [] },
+          wallsByLevel: { G: [], L1: [] },
+          stairs: [],
+          counts: { G: 0, L1: 1 },
+          heights: { G: 4, L1: 4 },
+        },
+      );
+    const eng = make();
+    const upstairs = hold(eng, 0, { x: 20, y: 10 }, 'L1');
+    // Directly below, on the ground floor: no.
+    assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 }, level: 'G' }), false);
+    // No storey given in a multi-storey scene: no.
+    assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 } }), false);
+    assert.equal(eng.getMetrics().showcase?.unfrozen, 0);
+    // On their storey: yes.
+    assert.equal(releasedBy(eng, upstairs, { pos: { x: 20.5, y: 10 }, level: 'L1' }), true);
+    assert.equal(eng.getMetrics().showcase?.unfrozen, 1);
+    eng.destroy();
+  });
+
   test('the default roll is seeded per person at about one in twenty', () => {
     const eng = engine(undefined, [], 1);
     const roll = (id: number) =>

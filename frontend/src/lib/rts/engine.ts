@@ -103,12 +103,13 @@ export class RTSEngine {
   }
 
   // ── Unit management ───────────────────────────────────────────────────
-  spawnUnit(kind: UnitKind, pos: Vec2): RTSUnit {
+  spawnUnit(kind: UnitKind, pos: Vec2, level?: string): RTSUnit {
     const def = UNIT_CATALOG[kind];
     const unit: RTSUnit = {
       id: nextId(kind),
       def,
       pos: { ...pos },
+      ...(level != null ? { level } : {}),
       waypoints: [],
       state: 'idle',
       workTimer: 0,
