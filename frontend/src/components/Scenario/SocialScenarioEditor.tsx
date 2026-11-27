@@ -1,5 +1,27 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
-import { InjectSendTo, PlayerRolesSection, readPlayerRoles, type SendToValue } from './PlayerRolesEditor';
+import {
+  InjectSendTo,
+  PlayerRolesSection,
+  readPlayerRoles,
+  type SendToValue,
+} from './PlayerRolesEditor';
+import { ConditionBuilder, type InjectChoice } from './ConditionBuilder';
+import {
+  compileDraft,
+  draftFromStored,
+  type ConditionDraft,
+  type ConditionNames,
+} from './conditionDraft';
+import {
+  RubricPanel,
+  rubricErrors,
+  rubricFromDelivery,
+  rubricPayload,
+  type RubricDraft,
+} from './RubricPanel';
+import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
+import { slugifyTeamName } from '@shared/conditionKeyGrammar';
+import { isInjectKey, uniqueInjectKey } from '@shared/injectKeySlug';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
@@ -28,6 +50,8 @@ interface InjectRow {
   trigger_time_minutes: number | null;
   trigger_condition: string | null;
   conditions_to_appear?: unknown;
+  conditions_to_cancel?: unknown;
+  eligible_after_minutes?: number | null;
   type: string;
   title: string;
   content: string;
@@ -1442,7 +1466,9 @@ const InjectsSection = ({
   setInjectList: React.Dispatch<React.SetStateAction<InjectRow[]>>;
   teamList: TeamRow[];
   initialState: Record<string, unknown>;
-  saveInitialState: (mutate: (state: Record<string, unknown>) => Record<string, unknown>) => Promise<unknown>;
+  saveInitialState: (
+    mutate: (state: Record<string, unknown>) => Record<string, unknown>,
+  ) => Promise<unknown>;
   locked: boolean;
 }) => {
   const personas = (initialState.npc_personas || []) as PersonaShape[];
@@ -1528,6 +1554,10 @@ const InjectsSection = ({
   const onSaved = (updated: InjectRow) => {
     setInjectList((list) => list.map((x) => (x.id === updated.id ? updated : x)));
     setExpandedId(null);
+  };
+
+  const onPeerUpdated = (updated: InjectRow) => {
+    setInjectList((list) => list.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
   };
 
   const onDeleted = (id: string) => {
@@ -1627,8 +1657,10 @@ const InjectsSection = ({
                     stakeholders={stakeholders}
                     teamList={teamList}
                     playerRoles={readPlayerRoles(initialState)}
+                    injects={injectList}
                     saveInitialState={saveInitialState}
                     onSaved={onSaved}
+                    onPeerUpdated={onPeerUpdated}
                     onDeleted={onDeleted}
                     onCancel={() => setExpandedId(null)}
                   />
@@ -1657,8 +1689,10 @@ const InjectsSection = ({
             stakeholders={stakeholders}
             teamList={teamList}
             playerRoles={readPlayerRoles(initialState)}
+            injects={injectList}
             saveInitialState={saveInitialState}
             onSaved={onCreated}
+            onPeerUpdated={onPeerUpdated}
             onDeleted={() => undefined}
             onCancel={() => setAdding(false)}
           />
@@ -1789,26 +1823,48 @@ function injectHasConditions(inject: InjectRow | null): boolean {
   return false;
 }
 
+function initialTriggerMode(inject: InjectRow | null): 'timed' | 'conditional' | 'decision' {
+  if (!inject) return 'timed';
+  const decision = !!inject.trigger_condition?.trim();
+  const timed = inject.trigger_time_minutes != null;
+  const conditional = injectHasConditions(inject);
+  if (decision && !timed && !conditional) return 'decision';
+  if (conditional) return 'conditional';
+  return 'timed';
+}
+
+interface ConditionCatalogPayload {
+  defs: ConditionDefSpec[];
+  stakeholders: { id: string; name: string }[];
+  teams: { name: string; slug: string }[];
+}
+
 const InjectForm = ({
   scenarioId,
   inject,
+  injects = [],
   personas,
   stakeholders,
   teamList,
   playerRoles = [],
   saveInitialState,
   onSaved,
+  onPeerUpdated,
   onDeleted,
   onCancel,
 }: {
   scenarioId: string;
   inject: InjectRow | null; // null = create new
+  injects?: InjectRow[];
   personas: PersonaShape[];
   stakeholders: StakeholderOption[];
   teamList: TeamRow[];
   playerRoles?: ReturnType<typeof readPlayerRoles>;
-  saveInitialState?: (mutate: (state: Record<string, unknown>) => Record<string, unknown>) => Promise<unknown>;
+  saveInitialState?: (
+    mutate: (state: Record<string, unknown>) => Record<string, unknown>,
+  ) => Promise<unknown>;
   onSaved: (row: InjectRow) => void;
+  onPeerUpdated?: (row: InjectRow) => void;
   onDeleted: (id: string) => void;
   onCancel: () => void;
 }) => {
@@ -1824,10 +1880,17 @@ const InjectForm = ({
   const [targetTeams, setTargetTeams] = useState<string[]>(inject?.target_teams ?? []);
   const [app, setApp] = useState(String(dcInit.app ?? 'social_feed'));
   const [sendTo, setSendTo] = useState<SendToValue>({
-    mode: typeof dcInit.target_role_id === 'string' ? 'role' : dcInit.call_target && (dcInit.call_target as { mode?: string }).mode === 'ring_all' ? 'ring_all' : 'team',
+    mode:
+      typeof dcInit.target_role_id === 'string'
+        ? 'role'
+        : dcInit.call_target && (dcInit.call_target as { mode?: string }).mode === 'ring_all'
+          ? 'ring_all'
+          : 'team',
     roleId: typeof dcInit.target_role_id === 'string' ? dcInit.target_role_id : '',
     fallback:
-      dcInit.role_fallback === 'line' || dcInit.role_fallback === 'line_after_minutes' ? dcInit.role_fallback : 'none',
+      dcInit.role_fallback === 'line' || dcInit.role_fallback === 'line_after_minutes'
+        ? dcInit.role_fallback
+        : 'none',
     minutes: typeof dcInit.role_fallback_minutes === 'number' ? dcInit.role_fallback_minutes : 10,
   });
   const [platform, setPlatform] = useState(String(dcInit.platform ?? 'x_twitter'));
@@ -1852,18 +1915,59 @@ const InjectForm = ({
       : '',
   );
   const [intelSummary, setIntelSummary] = useState(String(dcInit.intel_summary ?? ''));
-  const [conditionsCleared, setConditionsCleared] = useState(false);
+  const [triggerMode, setTriggerMode] = useState(initialTriggerMode(inject));
+  const [catalog, setCatalog] = useState<ConditionCatalogPayload | null>(null);
+  const [extraKeys, setExtraKeys] = useState<string[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ConditionDraft | null>(null);
+  const [rubric, setRubric] = useState<RubricDraft>(() =>
+    rubricFromDelivery(dcInit.response_rubric),
+  );
+  const [localInjectKey, setLocalInjectKey] = useState(
+    typeof dcInit.inject_key === 'string' ? dcInit.inject_key : '',
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    api.scenarios
+      .getConditionCatalog(scenarioId)
+      .then((res) => {
+        if (cancelled) return;
+        setCatalog(res.data);
+        setCatalogError(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setCatalogError(err.message);
+      });
+    api.scenarios
+      .getConditionConfig(scenarioId)
+      .then((res) => {
+        if (!cancelled) setExtraKeys(res.data.condition_keys.map((entry) => entry.key));
+      })
+      .catch(() => {
+        if (!cancelled) setExtraKeys([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scenarioId]);
+
+  useEffect(() => {
+    if (!catalog || draft) return;
+    setDraft(
+      draftFromStored(
+        inject?.conditions_to_appear,
+        inject?.conditions_to_cancel,
+        inject?.eligible_after_minutes ?? null,
+        catalog.defs,
+      ),
+    );
+  }, [catalog, draft, inject]);
 
   const contentChanged =
     inject !== null &&
     (content !== inject.content || authorHandle !== String(dcInit.author_handle ?? ''));
   const imageStale = contentChanged && mediaUrls.length > 0;
-  const timeBlank = time.trim() === '';
-  const hasConditions = injectHasConditions(inject) && !conditionsCleared;
-  const timedWithConditions = !timeBlank && hasConditions;
-  const conditionalWithoutConditions =
-    timeBlank && !hasConditions && !inject?.trigger_condition?.trim();
-  const triggerBlocked = timedWithConditions || conditionalWithoutConditions;
   const dmApp = app === 'messenger_dm' || app === 'npc_dm';
   const dmBlocked =
     (app === 'npc_dm' && stakeholderId.trim() === '') ||
@@ -1923,7 +2027,118 @@ const InjectForm = ({
       if (app === 'phone_call') dc.call_target = { mode: 'line' };
       else delete dc.call_target;
     }
+    const rubricBody = rubricPayload(rubric);
+    if (rubricBody) dc.response_rubric = rubricBody;
+    else delete dc.response_rubric;
+    if (localInjectKey && isInjectKey(localInjectKey)) dc.inject_key = localInjectKey;
     return dc;
+  };
+
+  const injectChoices: InjectChoice[] = injects.map((item) => {
+    const stored = item.delivery_config?.inject_key;
+    const key =
+      inject?.id === item.id && localInjectKey
+        ? localInjectKey
+        : typeof stored === 'string'
+          ? stored
+          : '';
+    return {
+      id: item.id,
+      title: item.title,
+      injectKey: isInjectKey(key) ? key : null,
+      triggerTime: item.trigger_time_minutes,
+    };
+  });
+  const teamChoices =
+    catalog && catalog.teams.length > 0
+      ? catalog.teams
+      : teamList.flatMap((team) => {
+          const slug = slugifyTeamName(team.team_name);
+          return slug ? [{ name: team.team_name, slug }] : [];
+        });
+  const stakeholderChoices = [
+    ...stakeholders.map((item) => ({ id: item.id, name: item.name })),
+    ...(catalog?.stakeholders ?? []).filter(
+      (item) => !stakeholders.some((known) => known.id === item.id),
+    ),
+  ];
+  const conditionNames: ConditionNames = {
+    injectTitle: (key) => injectChoices.find((item) => item.injectKey === key)?.title,
+    stakeholderName: (id) => stakeholderChoices.find((item) => item.id === id)?.name,
+    teamName: (slug) => teamChoices.find((item) => item.slug === slug)?.name,
+    roleTitle: (roleId) => playerRoles.find((role) => role.role_id === roleId)?.title,
+  };
+  const compiled =
+    triggerMode === 'conditional' && draft && catalog
+      ? compileDraft(
+          draft,
+          catalog.defs,
+          conditionNames,
+          extraKeys,
+          injectChoices.flatMap((item) =>
+            item.injectKey
+              ? [
+                  {
+                    inject_key: item.injectKey,
+                    title: item.title,
+                    trigger_time_minutes: item.triggerTime,
+                  },
+                ]
+              : [],
+          ),
+        )
+      : null;
+  const timeInvalid =
+    triggerMode === 'timed' && (time.trim() === '' || !Number.isFinite(Number(time)));
+  const conditionInvalid =
+    triggerMode === 'conditional' &&
+    (!catalog || !draft || !compiled || compiled.errors.length > 0);
+  const triggerBlocked = timeInvalid || conditionInvalid || rubricErrors(rubric).length > 0;
+  const storedConflict =
+    inject != null && inject.trigger_time_minutes != null && injectHasConditions(inject);
+
+  const buildFields = (): Record<string, unknown> => {
+    const fields: Record<string, unknown> = {
+      title,
+      content,
+      severity,
+      requires_response: requiresResponse,
+      inject_scope: scope,
+      target_teams: scope === 'team_specific' ? targetTeams : [],
+      delivery_config: buildDeliveryConfig(),
+    };
+    if (triggerMode === 'timed') {
+      fields.trigger_time_minutes = Number(time);
+      fields.conditions_to_appear = null;
+      fields.conditions_to_cancel = null;
+      fields.eligible_after_minutes = null;
+    } else if (triggerMode === 'conditional' && compiled) {
+      fields.trigger_time_minutes = null;
+      fields.conditions_to_appear = compiled.conditions_to_appear;
+      fields.conditions_to_cancel = compiled.conditions_to_cancel;
+      fields.eligible_after_minutes = compiled.eligible_after_minutes;
+    }
+    return fields;
+  };
+
+  const assignInjectKey = async (injectId: string): Promise<string> => {
+    const target = injects.find((item) => item.id === injectId);
+    if (!target) throw new Error('That inject is not on this scenario');
+    const taken = new Set<string>();
+    for (const item of injects) {
+      const existing = item.delivery_config?.inject_key;
+      if (typeof existing === 'string' && isInjectKey(existing)) taken.add(existing);
+    }
+    if (isInjectKey(localInjectKey)) taken.add(localInjectKey);
+    const key = uniqueInjectKey(target.title, taken);
+    const config =
+      inject?.id === injectId ? buildDeliveryConfig() : { ...(target.delivery_config ?? {}) };
+    config.inject_key = key;
+    const res = await api.scenarios.updateInject(scenarioId, injectId, { delivery_config: config });
+    const updated = res.data as unknown as InjectRow;
+    if (inject?.id === injectId) setLocalInjectKey(key);
+    onPeerUpdated?.(updated);
+    return key;
   };
 
   const save = async () => {
@@ -1936,17 +2151,7 @@ const InjectForm = ({
     setSaving(true);
     setMsg(null);
     try {
-      const fields: Record<string, unknown> = {
-        title,
-        content,
-        severity,
-        requires_response: requiresResponse,
-        inject_scope: scope,
-        target_teams: scope === 'team_specific' ? targetTeams : [],
-        trigger_time_minutes: time.trim() === '' ? null : Number(time),
-        delivery_config: buildDeliveryConfig(),
-      };
-      if (conditionsCleared) fields.conditions_to_appear = null;
+      const fields = buildFields();
       if (inject === null) {
         fields.type = app === 'social_feed' ? 'social_post' : app;
         const res = await api.scenarios.createInject(scenarioId, fields);
@@ -1993,18 +2198,7 @@ const InjectForm = ({
     try {
       // Persist current edits first so the image is generated from what will
       // actually fire, then regenerate.
-      const fields: Record<string, unknown> = {
-        title,
-        content,
-        severity,
-        requires_response: requiresResponse,
-        inject_scope: scope,
-        target_teams: scope === 'team_specific' ? targetTeams : [],
-        trigger_time_minutes: time.trim() === '' ? null : Number(time),
-        delivery_config: buildDeliveryConfig(),
-      };
-      if (conditionsCleared) fields.conditions_to_appear = null;
-      await api.scenarios.updateInject(scenarioId, inject.id, fields);
+      await api.scenarios.updateInject(scenarioId, inject.id, buildFields());
       const res = await api.scenarios.regenerateInjectImage(scenarioId, inject.id);
       const updated = res.data as unknown as InjectRow;
       const newDc = (updated.delivery_config || {}) as Record<string, unknown>;
@@ -2033,53 +2227,90 @@ const InjectForm = ({
           <label className={labelCls}>Title</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
         </div>
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <label className={labelCls}>Trigger time (min)</label>
+        <div>
+          <label className={labelCls}>Severity</label>
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value)}
+            className={inputCls}
+          >
+            {SEVERITIES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-ink">
+        <span className="text-muted font-medium">Trigger</span>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="radio"
+            name={`trigger-${inject?.id ?? 'new'}`}
+            checked={triggerMode === 'timed'}
+            disabled={triggerMode === 'decision'}
+            onChange={() => setTriggerMode('timed')}
+          />
+          At time T+
+          {triggerMode === 'timed' && (
             <input
+              aria-label="Trigger time minutes"
               type="number"
               min={0}
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder={inject?.trigger_condition ? 'decision-driven' : 'required'}
-              className={inputCls}
+              className={`${inputCls} w-16`}
             />
-          </div>
-          <div className="flex-1">
-            <label className={labelCls}>Severity</label>
-            <select
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value)}
-              className={inputCls}
-            >
-              {SEVERITIES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+          )}
+          min
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="radio"
+            name={`trigger-${inject?.id ?? 'new'}`}
+            checked={triggerMode === 'conditional'}
+            disabled={triggerMode === 'decision'}
+            onChange={() => setTriggerMode('conditional')}
+          />
+          When conditions are met
+        </label>
+        <label className="flex items-center gap-1.5 text-muted">
+          <input type="radio" checked={triggerMode === 'decision'} disabled />
+          Decision-driven (legacy, read-only)
+        </label>
       </div>
-      {timedWithConditions && (
+      {triggerMode === 'decision' && inject?.trigger_condition && (
+        <p className="text-[11px] text-muted mt-1">Legacy trigger: {inject.trigger_condition}</p>
+      )}
+      {storedConflict && triggerMode === 'conditional' && (
         <p className="text-[11px] text-warning mt-1">
-          An inject is either timed or conditional. Clear the trigger time to keep the conditions,
-          or{' '}
-          <button type="button" className="underline" onClick={() => setConditionsCleared(true)}>
-            clear the conditions
-          </button>{' '}
-          to keep the time. Use eligible-after minutes for &quot;not before&quot;.
+          This inject has both a time and conditions. Saving keeps the conditions and clears the
+          clock. Switch to “At time” to drop the conditions instead.
         </p>
       )}
-      {conditionsCleared && !timeBlank && (
-        <p className="text-[11px] text-muted mt-1">
-          Conditions will be removed when you save. The inject stays timed.
-        </p>
+      {triggerMode === 'conditional' && catalogError && (
+        <p className="text-[11px] text-danger mt-1">{catalogError}</p>
       )}
-      {conditionalWithoutConditions && (
-        <p className="text-[11px] text-warning mt-1">
-          A conditional inject needs at least one condition. Enter a trigger time.
-        </p>
+      {triggerMode === 'conditional' && !catalog && !catalogError && (
+        <p className="text-[11px] text-muted mt-1">Loading the condition catalogue…</p>
+      )}
+      {triggerMode === 'conditional' && catalog && draft && (
+        <ConditionBuilder
+          defs={catalog.defs}
+          draft={draft}
+          onChange={setDraft}
+          injects={injectChoices}
+          stakeholders={stakeholderChoices}
+          teams={teamChoices}
+          roles={playerRoles}
+          names={conditionNames}
+          extraKeys={extraKeys}
+          onAssignInjectKey={assignInjectKey}
+        />
+      )}
+      {timeInvalid && (
+        <p className="text-[11px] text-warning mt-1">A timed inject needs a trigger minute.</p>
       )}
 
       <label className={`${labelCls} mt-2`}>Content</label>
@@ -2291,6 +2522,8 @@ const InjectForm = ({
           </label>
         </div>
       </div>
+
+      <RubricPanel value={rubric} onChange={setRubric} />
 
       {/* Attached image + regenerate / remove */}
       {inject !== null && (mediaUrls.length > 0 || regenerating) && !mediaRemoved && (

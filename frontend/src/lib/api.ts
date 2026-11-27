@@ -10,6 +10,7 @@ import type {
   TrainerEnrollment,
 } from '@shared/trainerAgreements';
 import type { PageCoverage } from '@shared/sessionPageCoverage';
+import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
 
 export type SessionPageCoverageDTO = PageCoverage & { applies: boolean };
 
@@ -385,6 +386,23 @@ export const api = {
           scenario_type?: string;
         };
       }>(await fetch(apiUrl(`/api/scenarios/${id}/condition-config`), { headers }));
+    },
+    /** Condition catalogue plus this scenario's inject keys, stakeholders and teams. */
+    getConditionCatalog: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          defs: ConditionDefSpec[];
+          inject_keys: Array<{
+            inject_key: string;
+            title: string;
+            app: string;
+            inject_id: string;
+          }>;
+          stakeholders: Array<{ id: string; name: string }>;
+          teams: Array<{ name: string; slug: string }>;
+        };
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/condition-catalog`), { headers }));
     },
     /** Get all injects for a scenario (trainer only). */
     getInjects: async (id: string) => {
@@ -1134,9 +1152,14 @@ export const api = {
     },
     getRoles: async (sessionId: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: Array<{ role_id: string; title: string; team_name: string; players: Array<{ user_id: string; name: string; online: boolean }> }> }>(
-        await fetch(apiUrl(`/api/sessions/${sessionId}/roles`), { headers }),
-      );
+      return handleResponse<{
+        data: Array<{
+          role_id: string;
+          title: string;
+          team_name: string;
+          players: Array<{ user_id: string; name: string; online: boolean }>;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/roles`), { headers }));
     },
     setRoles: async (sessionId: string, roleId: string, userIds: string[]) => {
       const headers = await getAuthHeaders();
@@ -1161,7 +1184,11 @@ export const api = {
     getCallLines: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
-        data: Array<{ team_name: string; holders: Array<{ user_id: string; name: string; online: boolean; source: string }>; unattended_since: string | null }>;
+        data: Array<{
+          team_name: string;
+          holders: Array<{ user_id: string; name: string; online: boolean; source: string }>;
+          unattended_since: string | null;
+        }>;
         policy: { show_line_holders: boolean; callback_by: string; line_log_visible_to: string };
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/call-lines`), { headers }));
     },

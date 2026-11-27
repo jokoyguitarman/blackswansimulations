@@ -43,6 +43,7 @@ import {
   type InjectTriggerShape,
 } from '../services/conditions/injectTriggerShape.js';
 import { phoneConfigError } from '../services/calls/callCore.js';
+import { responseRubricError } from '../services/judging/judgeCore.js';
 import { dmDeliveryConfigError } from '../services/dm/dmDeliveryCore.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 import {
@@ -962,6 +963,13 @@ const TIMED_WITH_CONDITIONS =
   'An inject is either timed or conditional. Use eligible_after_minutes for "not before".';
 const CONDITIONAL_WITHOUT_CONDITIONS = 'A conditional inject needs at least one condition.';
 
+function rubricErrorOf(config: unknown): string | null {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+  const rubric = (config as { response_rubric?: unknown }).response_rubric;
+  if (rubric === undefined) return null;
+  return responseRubricError(rubric);
+}
+
 function rejectDmDeliveryConfig(res: Response, config: unknown): boolean {
   const error = dmDeliveryConfigError(config);
   if (!error) return false;
@@ -1079,6 +1087,8 @@ router.patch(
       if (updates.delivery_config !== undefined) {
         const phoneError = phoneConfigError(updates.delivery_config);
         if (phoneError) return res.status(400).json({ error: phoneError });
+        const rubricError = rubricErrorOf(updates.delivery_config);
+        if (rubricError) return res.status(400).json({ error: rubricError });
         const teamsForRole = (updates.target_teams ?? existing.target_teams ?? []) as string[];
         if (await rejectRoleTarget(res, id, updates.delivery_config, teamsForRole)) return;
       }
@@ -1159,7 +1169,10 @@ router.post(
       }
       const phoneError = phoneConfigError(body.delivery_config ?? null);
       if (phoneError) return res.status(400).json({ error: phoneError });
-      if (await rejectRoleTarget(res, id, body.delivery_config ?? null, body.target_teams ?? [])) return;
+      const rubricError = rubricErrorOf(body.delivery_config ?? null);
+      if (rubricError) return res.status(400).json({ error: rubricError });
+      if (await rejectRoleTarget(res, id, body.delivery_config ?? null, body.target_teams ?? []))
+        return;
       const teamNames = await loadTeamNames(id);
       const sanitized = sanitizeTeamTargeting(
         {
@@ -3763,8 +3776,14 @@ async function rejectRoleTarget(
   targetTeams: string[],
 ): Promise<boolean> {
   if (!config || typeof config !== 'object') return false;
-  const { data } = await supabaseAdmin.from('scenarios').select('initial_state').eq('id', scenarioId).maybeSingle();
-  const roles = parsePlayerRoles((data?.initial_state as { player_roles?: unknown } | null)?.player_roles);
+  const { data } = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state')
+    .eq('id', scenarioId)
+    .maybeSingle();
+  const roles = parsePlayerRoles(
+    (data?.initial_state as { player_roles?: unknown } | null)?.player_roles,
+  );
   const result = injectRoleTargetError({
     config: config as Record<string, unknown>,
     roles,
@@ -3776,7 +3795,10 @@ async function rejectRoleTarget(
     return true;
   }
   if (result.warning) {
-    logger.warn({ scenarioId, warning: result.warning, event: 'role_team_mismatch' }, result.warning);
+    logger.warn(
+      { scenarioId, warning: result.warning, event: 'role_team_mismatch' },
+      result.warning,
+    );
   }
   return false;
 }
