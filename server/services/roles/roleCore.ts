@@ -18,6 +18,22 @@ export interface PlayerRoleDef {
 export interface PendingContact {
   id: string;
   kind: 'delivery' | 'call_group' | 'chain';
+  channel?: 'email' | 'npc_dm' | 'messenger_dm' | 'chat' | 'call';
+  inject_id?: string;
+  /** Ledger id of the original delivery, when this row is a scheduled call group. */
+  delivery_id?: string;
+  /** Already re-delivered or itself a linked fallback. */
+  already_linked?: boolean;
+}
+
+export interface LinkedRedelivery {
+  source_id: string;
+  channel: 'email' | 'npc_dm' | 'messenger_dm' | 'chat' | 'call';
+  team_name: string;
+  fallback_reason: FallbackReason;
+  /** Original delivery this new one is linked to. Null when the call has not been delivered yet. */
+  chain_root_id: string | null;
+  inject_id?: string;
 }
 
 export function roleIdFromTitle(title: string, taken: readonly string[] = []): string {
@@ -141,24 +157,64 @@ export function timedFallbackDue(input: {
   return { due: false };
 }
 
-export function planReroute(pending: readonly PendingContact[]): {
+export function planReroute(
+  pending: readonly PendingContact[],
+  options?: { teamName?: string; reason?: FallbackReason },
+): {
   rerouted: PendingContact[];
   cancelCallGroups: string[];
   pauseChains: string[];
   fallback_reason: FallbackReason;
+  deliveries: LinkedRedelivery[];
 } {
+  const reason = options?.reason ?? 'trainer_reroute';
+  const team = options?.teamName ?? '';
   const seen = new Set<string>();
   const rerouted: PendingContact[] = [];
   for (const item of pending) {
-    if (seen.has(item.id)) continue;
+    if (item.already_linked || seen.has(item.id)) continue;
     seen.add(item.id);
     rerouted.push(item);
   }
+  const deliveries: LinkedRedelivery[] = [];
+  for (const item of rerouted) {
+    if (item.kind === 'chain') continue;
+    const channel = item.kind === 'call_group' ? 'call' : (item.channel ?? 'email');
+    deliveries.push({
+      source_id: item.id,
+      channel,
+      team_name: team,
+      fallback_reason: reason,
+      chain_root_id: item.kind === 'delivery' ? item.id : (item.delivery_id ?? null),
+      ...(item.inject_id ? { inject_id: item.inject_id } : {}),
+    });
+  }
+  const collapsed: LinkedRedelivery[] = [];
+  const callByInject = new Map<string, LinkedRedelivery>();
+  for (const item of deliveries) {
+    if (item.channel !== 'call') {
+      collapsed.push(item);
+      continue;
+    }
+    const key = item.inject_id ?? item.source_id;
+    const previous = callByInject.get(key);
+    if (!previous) {
+      callByInject.set(key, item);
+      continue;
+    }
+    callByInject.set(key, {
+      ...previous,
+      chain_root_id: previous.chain_root_id ?? item.chain_root_id,
+      source_id: previous.source_id,
+    });
+  }
+  collapsed.push(...callByInject.values());
   return {
     rerouted,
     cancelCallGroups: rerouted.filter((item) => item.kind === 'call_group').map((item) => item.id),
     pauseChains: rerouted.filter((item) => item.kind === 'chain').map((item) => item.id),
-    fallback_reason: 'trainer_reroute',
+    fallback_reason: reason,
+    deliveries: collapsed,
   };
 }
 

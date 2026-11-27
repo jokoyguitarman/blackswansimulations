@@ -81,4 +81,21 @@ ALTER TABLE session_role_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_call_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_call_takers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE session_role_assignments, session_call_lines, session_call_takers FROM anon, authenticated;
+
+-- Full list from migration 205, plus the lobby override and the line-move log.
+ALTER TABLE session_events DROP CONSTRAINT IF EXISTS session_events_event_type_check;
+ALTER TABLE session_events ADD CONSTRAINT session_events_event_type_check CHECK (event_type IN (
+  'decision', 'decision_executed', 'inject', 'inject_cancelled', 'ai_step_start', 'ai_step_end',
+  'communication', 'resource_change', 'status_update', 'incident', 'media_post', 'message',
+  'bomb_squad_sweep', 'patient_queue_processed', 'hazard_queue_processed',
+  'quality_failure_inject_fired', 'zone_skip_violation', 'friction_inject_fired',
+  'state_effect_managed', 'direction_intent',
+  'trainer_alert', 'consequence_inject', 'antagonist_post', 'antagonist_reply',
+  'extremist_post', 'extremist_reply', 'director_action', 'evaluator_result',
+  'inject_modified', 'inject_delayed', 'stakeholder_verdict',
+  'decision_recorded', 'obligation_met', 'obligation_lapsed',
+  'decision_detected', 'decision_propagated', 'decision_dismissed', 'decision_reversed',
+  'pressure_post', 'pressure_reply', 'pressure_stand_down',
+  'start_with_unfilled', 'call_taker_changed'
+));
 COMMIT;

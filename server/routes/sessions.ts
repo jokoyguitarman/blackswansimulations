@@ -46,6 +46,7 @@ import {
 import { getSessionCallCoverage } from '../services/callCoverageService.js';
 import { endLines, ensureCallLines } from '../services/calls/lineService.js';
 import { endRoles } from '../services/roles/roleService.js';
+import { insertSessionEvent } from '../lib/sessionEvents.js';
 
 const router = Router();
 
@@ -1511,7 +1512,7 @@ router.patch(
               'Start override was not stored. Migration 271 may be unapplied. The start is still allowed.',
             );
           }
-          await supabaseAdmin.from('session_events').insert({
+          await insertSessionEvent({
             session_id: id,
             event_type: event.event_type,
             metadata: { ...event.metadata, by: user.id, at: record.at },

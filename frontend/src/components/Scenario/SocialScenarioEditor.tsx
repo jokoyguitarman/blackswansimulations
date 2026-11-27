@@ -1957,7 +1957,10 @@ const InjectForm = ({
       }
       if (
         saveInitialState &&
-        (sendTo.mode === 'role' || sendTo.mode === 'ring_all' || sendTo.fallback !== 'none')
+        (sendTo.mode === 'role' ||
+          sendTo.mode === 'ring_all' ||
+          sendTo.fallback !== 'none' ||
+          (app === 'phone_call' && sendTo.mode === 'team'))
       ) {
         await saveInitialState((state) => ({ ...state, call_coverage_gate: 'enforce' }));
       }

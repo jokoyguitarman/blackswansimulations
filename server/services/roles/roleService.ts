@@ -2,9 +2,12 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import type { CommsState } from '../ledger/injectLedgerCore.js';
 import { logger } from '../../lib/logger.js';
 import { getWebSocketService } from '../websocketService.js';
-import { parsePlayerRoles, planReroute, shouldPromptUnreachable, timedFallbackDue, validateRoleAssignment, type PendingContact, type PlayerRoleDef } from './roleCore.js';
+import { parsePlayerRoles, planReroute, shouldPromptUnreachable, timedFallbackDue, validateRoleAssignment, type LinkedRedelivery, type PendingContact, type PlayerRoleDef } from './roleCore.js';
 import { readFallback, type RoleFallback } from '../calls/lineCore.js';
 import { isRolesSchemaMissing, rolesFeatureReady } from './rolesSchema.js';
+import { insertSessionEvent } from '../../lib/sessionEvents.js';
+import { recordDelivery } from '../ledger/injectLedgerService.js';
+import { injectKeyOf } from '../../lib/injectKey.js';
 import { inBootGrace, presenceEnginesOn, sessionUserOnline } from '../presence/sessionPresenceService.js';
 import { listLines, loadCallPolicy } from '../calls/lineService.js';
 
@@ -76,7 +79,26 @@ export async function rolePlayersById(sessionId: string): Promise<{
     players[role.role_id] = role.players.map((player) => player.user_id);
     for (const player of role.players) names[player.user_id] = player.name;
   }
-  return { players, teams, names, vacated: [] };
+  const vacated: string[] = [];
+  if (await rolesFeatureReady()) {
+    const { data, error } = await supabaseAdmin
+      .from('session_role_assignments')
+      .select('role_id, end_reason')
+      .eq('session_id', sessionId)
+      .eq('active', false);
+    if (!error) {
+      for (const role of views) {
+        if (role.players.length > 0) continue;
+        const ended = (data ?? []).some(
+          (row) =>
+            row.role_id === role.role_id &&
+            (row.end_reason === 'trainer_removed' || row.end_reason === 'left_team' || row.end_reason === 'left_session'),
+        );
+        if (ended) vacated.push(role.role_id);
+      }
+    }
+  }
+  return { players, teams, names, vacated };
 }
 
 export async function replaceRolePlayers(input: {
@@ -155,7 +177,11 @@ export async function rerouteRole(input: {
   if (!(await rolesFeatureReady())) return { ok: false, error: 'roles_unavailable', status: 503 };
   const pending = await pendingForRole(input.sessionId, input.roleId);
   const chosen = input.pendingIds ? pending.filter((item) => input.pendingIds?.includes(item.id)) : pending;
-  const plan = planReroute(chosen);
+  const role = (await listRoleAssignments(input.sessionId)).find((row) => row.role_id === input.roleId);
+  const plan = planReroute(chosen, {
+    teamName: role?.team_name ?? '',
+    reason: input.reason ?? 'trainer_reroute',
+  });
   const now = new Date().toISOString();
   for (const groupId of plan.cancelCallGroups) {
     await supabaseAdmin
@@ -165,14 +191,19 @@ export async function rerouteRole(input: {
       .eq('call_group_id', groupId)
       .eq('status', 'scheduled');
   }
-  await supabaseAdmin.from('session_events').insert({
+  let delivered = 0;
+  for (const item of plan.deliveries) {
+    if (await deliverLinked(input.sessionId, input.roleId, item)) delivered += 1;
+  }
+  await insertSessionEvent({
     session_id: input.sessionId,
     event_type: 'trainer_alert',
     metadata: {
       kind: 'role_reroute',
       role_id: input.roleId,
       fallback_reason: input.reason ?? plan.fallback_reason,
-      items: plan.rerouted,
+      items: plan.rerouted.map((item) => item.id),
+      delivered,
     },
   });
   await notifyTrainer(input.sessionId, 'role.unassigned_target', {
@@ -180,7 +211,7 @@ export async function rerouteRole(input: {
     fallback: input.reason ?? plan.fallback_reason,
   });
   prompted.delete(promptKey(input.sessionId, input.roleId));
-  return { ok: true, rerouted: plan.rerouted.length };
+  return { ok: true, rerouted: delivered };
 }
 
 export async function attachCoverageFacts(sessionId: string, state: CommsState): Promise<CommsState> {
@@ -285,29 +316,199 @@ async function pendingForRole(sessionId: string, roleId: string): Promise<Pendin
   const pending: PendingContact[] = [];
   const calls = await supabaseAdmin
     .from('sim_calls')
-    .select('call_group_id, target_role_id, status')
+    .select('call_group_id, target_role_id, status, inject_id')
     .eq('session_id', sessionId)
     .eq('status', 'scheduled');
   if (!calls.error) {
     for (const row of calls.data ?? []) {
       if (row.target_role_id !== roleId) continue;
-      pending.push({ id: String(row.call_group_id), kind: 'call_group' });
+      pending.push({
+        id: String(row.call_group_id),
+        kind: 'call_group',
+        channel: 'call',
+        inject_id: row.inject_id ? String(row.inject_id) : undefined,
+      });
     }
   } else if (!isRolesSchemaMissing(calls.error)) {
     logger.warn({ code: calls.error.code, event: 'role_pending_calls_failed' }, 'pending role calls unread');
   }
   const deliveries = await supabaseAdmin
     .from('inject_deliveries')
-    .select('id, target_role_id, first_response_at')
+    .select('id, target_role_id, first_response_at, channel, inject_id, fallback_reason, chain_root_delivery_id')
     .eq('session_id', sessionId)
     .is('first_response_at', null);
   if (!deliveries.error) {
     for (const row of deliveries.data ?? []) {
       if (row.target_role_id !== roleId) continue;
-      pending.push({ id: String(row.id), kind: 'delivery' });
+      const channel = row.channel as PendingContact['channel'];
+      pending.push({
+        id: String(row.id),
+        kind: 'delivery',
+        channel,
+        inject_id: row.inject_id ? String(row.inject_id) : undefined,
+        already_linked: Boolean(row.fallback_reason || row.chain_root_delivery_id),
+      });
     }
   }
   return pending;
+}
+
+async function deliverLinked(sessionId: string, roleId: string, item: LinkedRedelivery): Promise<boolean> {
+  const members = await teamUserIds(sessionId, item.team_name);
+  if (item.channel === 'call') {
+    if (!item.inject_id) return false;
+    const { ringFallbackCall } = await import('../calls/callService.js');
+    return ringFallbackCall({
+      sessionId,
+      injectId: item.inject_id,
+      teamName: item.team_name,
+      chainRootDeliveryId: item.chain_root_id,
+      fallbackReason: item.fallback_reason,
+    });
+  }
+  const original = await supabaseAdmin
+    .from('inject_deliveries')
+    .select('id, inject_id, inject_key, ref_table, ref_id, channel, stakeholder_id, sender_name')
+    .eq('id', item.chain_root_id ?? item.source_id)
+    .maybeSingle();
+  if (original.error || !original.data) return false;
+  const source = original.data;
+  const copied = await copySurface({
+    sessionId,
+    channel: item.channel,
+    refTable: String(source.ref_table),
+    refId: String(source.ref_id),
+    injectId: String(source.inject_id),
+    members,
+    teamName: item.team_name,
+  });
+  if (!copied) return false;
+  const deliveryId = await recordDelivery({
+    sessionId,
+    injectId: String(source.inject_id),
+    injectKey: String(source.inject_key || injectKeyOf({ id: String(source.inject_id), delivery_config: null })),
+    channel: item.channel === 'chat' ? 'chat' : item.channel,
+    refTable: copied.refTable,
+    refId: copied.refId,
+    recipientUserIds: members,
+    recipientTeams: item.team_name ? [item.team_name] : [],
+    stakeholderId: (source.stakeholder_id as string | null) ?? null,
+    senderName: (source.sender_name as string | null) ?? null,
+    chainRootDeliveryId: item.chain_root_id,
+    lineTeam: item.team_name || null,
+    targetRoleId: roleId,
+    fallbackReason: item.fallback_reason,
+    chatChannelId: copied.chatChannelId,
+    threadId: copied.threadId,
+  });
+  return Boolean(deliveryId);
+}
+
+async function copySurface(input: {
+  sessionId: string;
+  channel: LinkedRedelivery['channel'];
+  refTable: string;
+  refId: string;
+  injectId: string;
+  members: string[];
+  teamName: string;
+}): Promise<{ refTable: 'sim_emails' | 'chat_messages' | 'sim_direct_messages'; refId: string; chatChannelId?: string; threadId?: string } | null> {
+  if (input.channel === 'email' || input.refTable === 'sim_emails') {
+    const { data } = await supabaseAdmin.from('sim_emails').select('*').eq('id', input.refId).maybeSingle();
+    if (!data) return null;
+    const { data: copy, error } = await supabaseAdmin
+      .from('sim_emails')
+      .insert({
+        session_id: input.sessionId,
+        inject_id: input.injectId,
+        direction: 'inbound',
+        from_address: data.from_address,
+        from_name: data.from_name,
+        to_addresses: data.to_addresses ?? ['team@crisisresponse.sim'],
+        subject: data.subject,
+        body_html: data.body_html,
+        body_text: data.body_text,
+        priority: data.priority ?? 'normal',
+        email_category: data.email_category ?? 'general',
+        recipient_user_ids: input.members,
+        target_teams: input.teamName ? [input.teamName] : [],
+      })
+      .select('id')
+      .maybeSingle();
+    if (error || !copy) return null;
+    return { refTable: 'sim_emails', refId: String(copy.id), threadId: String(copy.id) };
+  }
+  if (input.channel === 'messenger_dm' || input.refTable === 'sim_direct_messages') {
+    const { data } = await supabaseAdmin.from('sim_direct_messages').select('*').eq('id', input.refId).maybeSingle();
+    if (!data || input.members.length === 0) return null;
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, full_name')
+      .eq('id', input.members[0])
+      .maybeSingle();
+    const handle = String(profile?.full_name ?? 'player').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'player';
+    const { data: copy, error } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .insert({
+        session_id: input.sessionId,
+        sender_handle: data.sender_handle,
+        sender_display_name: data.sender_display_name,
+        sender_type: data.sender_type,
+        recipient_handle: handle,
+        recipient_user_id: input.members[0],
+        content: data.content,
+        platform: data.platform ?? 'facebook',
+        thread_id: data.thread_id,
+        inject_id: input.injectId,
+      })
+      .select('id, thread_id')
+      .maybeSingle();
+    if (error || !copy) return null;
+    return { refTable: 'sim_direct_messages', refId: String(copy.id), threadId: String(copy.thread_id ?? copy.id) };
+  }
+  const content = await originalChatText(input.refTable, input.refId);
+  if (!content || !input.teamName) return null;
+  const { data: channel } = await supabaseAdmin
+    .from('chat_channels')
+    .select('id')
+    .eq('session_id', input.sessionId)
+    .eq('type', 'team')
+    .eq('team_name', input.teamName)
+    .limit(1)
+    .maybeSingle();
+  if (!channel) return null;
+  const { data: message, error } = await supabaseAdmin
+    .from('chat_messages')
+    .insert({
+      channel_id: channel.id,
+      session_id: input.sessionId,
+      sender_id: null,
+      content,
+      type: 'text',
+      inject_id: input.injectId,
+    })
+    .select('id')
+    .maybeSingle();
+  if (error || !message) return null;
+  return { refTable: 'chat_messages', refId: String(message.id), chatChannelId: String(channel.id) };
+}
+
+async function originalChatText(refTable: string, refId: string): Promise<string | null> {
+  if (refTable === 'chat_messages') {
+    const { data } = await supabaseAdmin.from('chat_messages').select('content').eq('id', refId).maybeSingle();
+    return typeof data?.content === 'string' ? data.content : null;
+  }
+  if (refTable === 'sim_emails') {
+    const { data } = await supabaseAdmin.from('sim_emails').select('body_text, subject').eq('id', refId).maybeSingle();
+    return typeof data?.body_text === 'string' ? data.body_text : null;
+  }
+  return null;
+}
+
+async function teamUserIds(sessionId: string, teamName: string): Promise<string[]> {
+  if (!teamName) return [];
+  const { data } = await supabaseAdmin.from('session_teams').select('user_id').eq('session_id', sessionId).eq('team_name', teamName);
+  return (data ?? []).map((row) => String(row.user_id));
 }
 
 async function fallbackForPending(

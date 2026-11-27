@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
+import { insertSessionEvent } from '../../lib/sessionEvents.js';
+import { getWebSocketService } from '../websocketService.js';
 import { resolveMessageRecipients, resolveTargetMode, type MessageRecipients } from '../calls/lineCore.js';
 import { rolePlayersById } from './roleService.js';
 import { rolesFeatureReady } from './rolesSchema.js';
@@ -57,6 +59,38 @@ export async function routeRoleMessage(input: {
       { event: 'role_fallback_used', sessionId: input.sessionId, role: routed.target_role_id, reason: routed.fallback_reason },
       'role-targeted message fell back',
     );
+    if (
+      routed.fallback_reason === 'role_unassigned' ||
+      routed.fallback_reason === 'role_vacated' ||
+      routed.fallback_reason === 'unknown_role'
+    ) {
+      await insertSessionEvent({
+        session_id: input.sessionId,
+        event_type: 'trainer_alert',
+        metadata: {
+          kind: 'role_unassigned_target',
+          role_id: routed.target_role_id,
+          fallback: routed.fallback_reason,
+        },
+      });
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('trainer_id')
+        .eq('id', input.sessionId)
+        .maybeSingle();
+      const trainer = session?.trainer_id as string | null;
+      if (trainer) {
+        try {
+          getWebSocketService().emitToUser(trainer, {
+            type: 'role.unassigned_target',
+            data: { role_id: routed.target_role_id, fallback: routed.fallback_reason },
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          /* websocket not initialised */
+        }
+      }
+    }
   }
   return {
     playerIds: routed.undeliverable ? [] : routed.userIds,

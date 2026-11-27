@@ -321,6 +321,84 @@ export function mergeCallPolicy(override: Partial<CallPolicy> | null | undefined
   return { ...DEFAULT_CALL_POLICY, ...(override ?? {}) };
 }
 
+/** Who a missed attempt is recorded against when nobody was actually rung. */
+export function audienceForAttempt(input: {
+  outcome: RingOutcome;
+  ring: readonly string[];
+  callWaiting: readonly string[];
+  rolePlayers: readonly string[];
+  holders: readonly string[];
+  teamMembers: readonly string[];
+}): string[] {
+  if (input.outcome === 'role_offline') return dedupe(input.rolePlayers);
+  if (input.outcome === 'line_unattended') {
+    const holders = dedupe(input.holders);
+    return holders.length > 0 ? holders : dedupe(input.teamMembers);
+  }
+  return dedupe([...input.ring, ...input.callWaiting]);
+}
+
+/** Team Recents. Addressed users and role players always see their own calls. */
+export function recentsVisible(input: {
+  lineLog: CallPolicy['line_log_visible_to'];
+  isStaff: boolean;
+  isAnswerer: boolean;
+  isAddressed: boolean;
+  isTeamMember: boolean;
+  isHolder: boolean;
+  isRolePlayer: boolean;
+}): boolean {
+  if (input.isStaff || input.isAnswerer || input.isAddressed || input.isRolePlayer) return true;
+  if (input.lineLog === 'team' && input.isTeamMember) return true;
+  if (input.lineLog === 'line_holders' && input.isHolder) return true;
+  return false;
+}
+
+/**
+ * A later attempt keeps the inject's fallback. An attempt that already fell
+ * back stays on the line.
+ */
+export function redialRingConfig(input: {
+  injectTargetMode?: string | null;
+  roleFallback?: string | null;
+  fallbackReason?: string | null;
+  targetRoleId?: string | null;
+  lineTeam?: string | null;
+  playerUserId?: string | null;
+}): {
+  mode: TargetMode;
+  target_role_id?: string;
+  role_fallback: RoleFallback;
+  stakeholder_team?: string;
+  playerUserId?: string;
+} {
+  const fallback: RoleFallback =
+    input.roleFallback === 'line' || input.roleFallback === 'line_after_minutes' ? input.roleFallback : 'none';
+  if (input.fallbackReason) {
+    return {
+      mode: 'line',
+      role_fallback: fallback,
+      ...(input.lineTeam ? { stakeholder_team: input.lineTeam } : {}),
+    };
+  }
+  const mode: TargetMode =
+    input.injectTargetMode === 'role' ||
+    input.injectTargetMode === 'line' ||
+    input.injectTargetMode === 'player' ||
+    input.injectTargetMode === 'ring_all'
+      ? input.injectTargetMode
+      : input.targetRoleId
+        ? 'role'
+        : 'line';
+  return {
+    mode,
+    ...(mode === 'role' && input.targetRoleId ? { target_role_id: input.targetRoleId } : {}),
+    role_fallback: fallback,
+    ...(input.lineTeam ? { stakeholder_team: input.lineTeam } : {}),
+    ...(mode === 'player' && input.playerUserId ? { playerUserId: input.playerUserId } : {}),
+  };
+}
+
 function resolveRingAll(input: RingSetInput): RingGroup[] {
   const teams = concreteTeamNames(input.targetTeams);
   const teamKeys: Array<string | null> = teams.length > 0 ? teams : [null];

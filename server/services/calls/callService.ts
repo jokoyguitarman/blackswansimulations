@@ -25,10 +25,18 @@ import { createNotificationsForUsers } from '../notificationService.js';
 import { supabaseCallStore } from './supabaseCallStore.js';
 import { createRealtimeClient, WEBRTC_URL, type RealtimeClient, type Sideband } from './realtimeClient.js';
 import type { CallStore, SimCall, StoredScript, StoredTurn } from './callTypes.js';
-import { callbackAllowed, resolveCallRingSet, type RingGroup } from './lineCore.js';
+import {
+  audienceForAttempt,
+  callbackAllowed,
+  readFallback,
+  recentsVisible,
+  redialRingConfig,
+  resolveCallRingSet,
+  type RingGroup,
+} from './lineCore.js';
 import { buildRingSetInput, owningTeamFor } from './callRouting.js';
 import { holdersByTeam, loadCallPolicy } from './lineService.js';
-import { rolePlayersById } from '../roles/roleService.js';
+import { listRoleAssignments, rolePlayersById } from '../roles/roleService.js';
 import { rolesFeatureReady } from '../roles/rolesSchema.js';
 import {
   ACTIVE_SWEEP_GRACE_SECONDS,
@@ -184,6 +192,13 @@ export interface CallApi {
   badge(sessionId: string, actor: CallActor): Promise<{ missed_unseen: number }>;
   markViewed(sessionId: string, actor: CallActor): Promise<void>;
   reportAudio(callId: string, actor: CallActor, firstAudioMs: number): Promise<CallSuccess<null> | CallFailure>;
+  ringFallback(input: {
+    sessionId: string;
+    injectId: string;
+    teamName: string;
+    chainRootDeliveryId: string | null;
+    fallbackReason: string;
+  }): Promise<boolean>;
 }
 
 export function createCallService(deps: CallServiceDeps = {}): CallApi {
@@ -218,6 +233,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     badge,
     markViewed,
     reportAudio,
+    ringFallback,
   };
   return api;
 
@@ -270,6 +286,9 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       }
     }
     const existing = await store.listSession(sessionId);
+    const roster = await rolePlayersById(sessionId);
+    const holderMap = await holdersByTeam(sessionId);
+    const roleTitles = new Map((await listRoleAssignments(sessionId)).map((role) => [role.role_id, role.title]));
     for (const group of groups) {
       const teamKey = group.line_team ?? '';
       const already = existing.find(
@@ -289,12 +308,22 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       nextFree = queue.nextFreeMs;
       const stored = baseScript(script, redial, inject, ringSeconds, group);
       const id = randomUUID();
-      const recipientsForGroup = [...group.ring, ...group.call_waiting];
+      const teamMembers = (members[group.line_team ?? ''] ?? []).filter((member) => !member.is_bot).map((member) => member.user_id);
+      const audience = audienceForAttempt({
+        outcome: group.outcome,
+        ring: group.ring,
+        callWaiting: group.call_waiting,
+        rolePlayers: roster.players[group.target_role_id ?? ''] ?? [],
+        holders: holderMap[group.line_team ?? ''] ?? [],
+        teamMembers,
+      });
+      const rung = [...group.ring, ...group.call_waiting];
       const missedNow =
         group.outcome === 'line_unattended' ||
         group.outcome === 'role_offline' ||
-        recipientsForGroup.length === 0 ||
+        (rung.length === 0 && group.outcome !== 'held') ||
         queue.missed;
+      const recipientsForGroup = missedNow ? audience : rung;
       const delayed = !missedNow && queue.startMs > at.getTime();
       const reasonNow = missedReasonFor(group.outcome);
       const row = blankCall({
@@ -305,7 +334,13 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         callerName,
         callerNumber: caller.number,
         voice,
-        script: { ...stored, fallback_reason: group.fallback_reason, role_title: roleTitle(config) },
+        script: {
+          ...stored,
+          fallback_reason: group.fallback_reason,
+          role_title: group.target_role_id
+            ? roleTitles.get(group.target_role_id) || group.target_role_id
+            : undefined,
+        },
         recipientUserIds: recipientsForGroup,
         recipientTeams: group.line_team ? [group.line_team] : [],
         status: missedNow ? 'missed' : delayed ? 'scheduled' : 'ringing',
@@ -336,9 +371,117 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         });
       }
       if (row.status === 'ringing') await beginRing(inserted.call, group);
-      if (row.status === 'missed') await afterTerminal(inserted.call, row.endReason ?? 'no_answer');
+      if (row.status === 'missed') {
+        await recordAttemptDelivery(inserted.call, 'missed');
+        await announceMiss(inserted.call);
+        await afterTerminal(inserted.call, row.endReason ?? 'no_answer');
+      }
     }
     return 'started';
+  }
+
+  async function ringFallback(input: {
+    sessionId: string;
+    injectId: string;
+    teamName: string;
+    chainRootDeliveryId: string | null;
+    fallbackReason: string;
+  }): Promise<boolean> {
+    if (!(await store.ready())) return false;
+    const existing = await store.listSession(input.sessionId);
+    const prior = existing.find((call) => call.injectId === input.injectId);
+    if (!prior) return false;
+    const members = await store.teamMembers(input.sessionId, [input.teamName]);
+    const open = await store.listOpen(input.sessionId);
+    const busy = new Set(
+      open.filter((call) => call.status === 'connecting' || call.status === 'active').map((call) => call.answeredBy).filter((id): id is string => Boolean(id)),
+    );
+    const groups = resolveCallRingSet(
+      await buildRingSetInput({
+        sessionId: input.sessionId,
+        config: { call_target: { mode: 'line' }, stakeholder_team: input.teamName, role_fallback: 'none' },
+        teams: [input.teamName],
+        members,
+        recipients: null,
+        busy: (id) => busy.has(id),
+        attemptNo: 1,
+        owningTeam: input.teamName,
+      }),
+    );
+    const group = groups[0];
+    if (!group) return false;
+    const holderMap = await holdersByTeam(input.sessionId);
+    const teamMembers = (members[input.teamName] ?? []).filter((member) => !member.is_bot).map((member) => member.user_id);
+    const audience = audienceForAttempt({
+      outcome: group.outcome,
+      ring: group.ring,
+      callWaiting: group.call_waiting,
+      rolePlayers: [],
+      holders: holderMap[input.teamName] ?? [],
+      teamMembers,
+    });
+    const rung = [...group.ring, ...group.call_waiting];
+    const missedNow = group.outcome === 'line_unattended';
+    const recipients = missedNow ? audience : rung;
+    const at = now();
+    const attemptNo = Math.max(0, ...existing.filter((call) => call.injectId === input.injectId).map((call) => call.attemptNo)) + 1;
+    const id = randomUUID();
+    const row = blankCall({
+      id,
+      sessionId: input.sessionId,
+      injectId: input.injectId,
+      stakeholderId: prior.stakeholderId,
+      callerName: prior.callerName,
+      callerNumber: prior.callerNumber,
+      voice: prior.voice,
+      script: { ...prior.script, fallback_reason: input.fallbackReason, call_waiting: group.call_waiting, queue_hold: false },
+      recipientUserIds: recipients,
+      recipientTeams: [input.teamName],
+      status: missedNow ? 'missed' : 'ringing',
+      callGroupId: id,
+      attemptNo: attemptNo === 1 ? 2 : attemptNo,
+      maxAttempts: 1,
+      scheduledFor: null,
+      ringStartedAt: at.toISOString(),
+      ringDeadlineAt: new Date(at.getTime() + prior.script.ring_seconds * 1000).toISOString(),
+      maxSeconds: prior.maxSeconds,
+      lineTeam: input.teamName,
+      targetMode: 'line',
+      rungUserIds: rung,
+      missedReason: missedNow ? 'line_unattended' : null,
+      endReason: missedNow ? 'line_unattended' : null,
+      endedAt: missedNow ? at.toISOString() : null,
+    });
+    const inserted = await store.insert(row);
+    if (!inserted?.created) return false;
+    const linked = { ...inserted.call, script: { ...inserted.call.script, fallback_reason: input.fallbackReason } };
+    if (useLedger && input.chainRootDeliveryId) {
+      const deliveryId = await recordDelivery({
+        sessionId: input.sessionId,
+        injectId: input.injectId,
+        injectKey: callKey(linked),
+        channel: 'call',
+        refTable: 'sim_calls',
+        refId: linked.id,
+        recipientUserIds: recipients,
+        recipientTeams: [input.teamName],
+        stakeholderId: linked.stakeholderId,
+        senderName: linked.callerName,
+        requiresResponse: linked.script.requires_response,
+        callState: missedNow ? 'missed' : 'ringing',
+        callGroupId: linked.callGroupId,
+        attemptNo: linked.attemptNo,
+        chainRootDeliveryId: input.chainRootDeliveryId,
+        lineTeam: input.teamName,
+        fallbackReason: input.fallbackReason,
+      });
+      if (deliveryId) deliveryIds.set(linked.id, deliveryId);
+    } else if (missedNow) {
+      await recordAttemptDelivery(linked, 'missed');
+    }
+    if (missedNow) await announceMiss(linked);
+    else await beginRing(linked, group);
+    return true;
   }
 
   async function beginRing(call: SimCall, group?: RingGroup): Promise<void> {
@@ -358,8 +501,14 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         target_role_id: call.targetRoleId,
       });
     }
-    if (useLedger && call.injectId) {
-      const deliveryId = await recordDelivery({
+    if (useLedger && call.injectId) await recordAttemptDelivery(call, 'ringing');
+    arm(call);
+  }
+
+  async function recordAttemptDelivery(call: SimCall, callState: 'ringing' | 'missed'): Promise<void> {
+    if (!useLedger || !call.injectId) return;
+    if (await deliveryFor(call)) return;
+    const deliveryId = await recordDelivery({
         sessionId: call.sessionId,
         injectId: call.injectId,
         injectKey: callKey(call),
@@ -372,7 +521,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         senderName: call.callerName,
         requiresResponse: call.script.requires_response,
         responseWindowMinutes: call.script.response_window_minutes,
-        callState: 'ringing',
+        callState,
         callGroupId: call.callGroupId,
         attemptNo: call.attemptNo,
         deliveredAt: call.ringStartedAt,
@@ -380,9 +529,36 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
         targetRoleId: call.targetRoleId,
         fallbackReason: call.script.fallback_reason ?? null,
       });
-      if (deliveryId) deliveryIds.set(call.id, deliveryId);
+    if (deliveryId) deliveryIds.set(call.id, deliveryId);
+  }
+
+  async function announceMiss(call: SimCall): Promise<void> {
+    const session = await store.session(call.sessionId);
+    const recipients = call.recipientUserIds ?? [];
+    for (const userId of recipients) {
+      emit(userId, 'sim_call.missed', {
+        call_id: call.id,
+        call_group_id: call.callGroupId,
+        attempt_no: call.attemptNo,
+        max_attempts: call.maxAttempts,
+        caller_name: call.callerName,
+        line_team: call.lineTeam,
+        target_role_id: call.targetRoleId,
+        missed_reason: call.missedReason,
+      });
     }
-    arm(call);
+    if (session?.trainerId) {
+      emit(session.trainerId, 'sim_call.missed', {
+        call_id: call.id,
+        call_group_id: call.callGroupId,
+        attempt_no: call.attemptNo,
+        caller_name: call.callerName,
+        line_team: call.lineTeam,
+        target_role_id: call.targetRoleId,
+        missed_reason: call.missedReason,
+      });
+    }
+    await notify(call, 1);
   }
 
   async function answer(
@@ -685,9 +861,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const calls = await store.listSession(sessionId);
     const session = await store.session(sessionId);
     const names = await lookupNames(calls.map((call) => call.answeredBy).filter((id): id is string => Boolean(id)));
-    return calls
-      .filter((call) => canAccess(call, actor, session?.trainerId))
-      .map((call) => toSummary(call, calls, names));
+    const visible = await visibilityFor(sessionId, actor, session?.trainerId);
+    return calls.filter((call) => visible(call)).map((call) => toSummary(call, calls, names));
   }
 
   async function get(
@@ -697,7 +872,8 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const call = await store.get(callId);
     if (!call) return fail(404, 'not_found');
     const session = await store.session(call.sessionId);
-    if (!canAccess(call, actor, session?.trainerId)) return fail(403, 'forbidden');
+    const visible = await visibilityFor(call.sessionId, actor, session?.trainerId);
+    if (!visible(call)) return fail(403, 'forbidden');
     const calls = await store.listSession(call.sessionId);
     const names = call.answeredBy ? await lookupNames([call.answeredBy]) : {};
     const turns = await store.turns(call.id);
@@ -825,14 +1001,22 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     const busyIds = new Set(
       open.filter((row) => row.status === 'connecting' || row.status === 'active').map((row) => row.answeredBy).filter((id): id is string => Boolean(id)),
     );
+    const carried = redialRingConfig({
+      injectTargetMode: call.script.inject_target_mode ?? call.targetMode,
+      roleFallback: call.script.role_fallback,
+      fallbackReason: call.script.fallback_reason,
+      targetRoleId: call.targetRoleId,
+      lineTeam: call.lineTeam,
+      playerUserId: call.recipientUserIds?.[0],
+    });
     const groups = resolveCallRingSet(
       await buildRingSetInput({
         sessionId: call.sessionId,
         config: {
-          target_role_id: call.targetRoleId,
-          call_target: { mode: call.targetMode, user_id: call.recipientUserIds?.[0] },
-          role_fallback: call.script.fallback_reason === 'role_offline_fallback' ? 'line' : 'none',
-          stakeholder_team: call.lineTeam,
+          target_role_id: carried.target_role_id,
+          call_target: { mode: carried.mode, user_id: carried.playerUserId },
+          role_fallback: carried.role_fallback,
+          stakeholder_team: carried.stakeholder_team ?? call.lineTeam,
         },
         teams: call.lineTeam ? [call.lineTeam] : call.recipientTeams,
         members,
@@ -850,7 +1034,30 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
     }
     if (!group || group.outcome === 'line_unattended' || group.outcome === 'role_offline') {
       const reason = group?.outcome === 'role_offline' ? 'role_offline' : 'line_unattended';
-      await finish({ ...call, missedReason: reason, targetRoleId: group?.target_role_id ?? call.targetRoleId }, 'missed', reason, null);
+      const roster = await rolePlayersById(call.sessionId);
+      const holderMap = await holdersByTeam(call.sessionId);
+      const teamName = group?.line_team ?? call.lineTeam ?? '';
+      const audience = audienceForAttempt({
+        outcome: reason,
+        ring: [],
+        callWaiting: [],
+        rolePlayers: roster.players[group?.target_role_id ?? call.targetRoleId ?? ''] ?? [],
+        holders: holderMap[teamName] ?? [],
+        teamMembers: (members[teamName] ?? []).filter((member) => !member.is_bot).map((member) => member.user_id),
+      });
+      await finish(
+        {
+          ...call,
+          recipientUserIds: audience,
+          missedReason: reason,
+          targetRoleId: group?.target_role_id ?? call.targetRoleId,
+          lineTeam: group?.line_team ?? call.lineTeam,
+          script: { ...call.script, fallback_reason: group?.fallback_reason ?? call.script.fallback_reason },
+        },
+        'missed',
+        reason,
+        null,
+      );
       return;
     }
     const ringing: SimCall = {
@@ -885,7 +1092,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       durationSeconds: duration,
       missedReason:
         status === 'missed'
-          ? call.missedReason ?? (reason === 'line_unattended' ? 'line_unattended' : reason === 'line_busy' ? 'line_busy' : 'no_answer')
+          ? call.missedReason ?? missedReasonFor(reason as RingGroup['outcome'])
           : status === 'declined'
             ? 'declined'
             : call.missedReason,
@@ -901,6 +1108,7 @@ export function createCallService(deps: CallServiceDeps = {}): CallApi {
       await setState(next, status === 'ended' ? 'ended' : status === 'failed' ? 'failed' : status);
     }
     const session = await store.session(call.sessionId);
+    if (status === 'missed') await recordAttemptDelivery(next, 'missed');
     const recipients = next.recipientUserIds ?? [];
     if (status === 'missed' || status === 'declined') {
       const all = await store.listSession(call.sessionId);
@@ -1486,6 +1694,39 @@ function logFirstAudio(callId: string, ms: number): void {
   logger.info({ event: 'call_answer_to_first_audio_ms', callId, ms: Math.round(ms) }, 'call first audio');
 }
 
+async function visibilityFor(
+  sessionId: string,
+  actor: CallActor,
+  trainerId?: string | null,
+): Promise<(call: SimCall) => boolean> {
+  if (!(await rolesFeatureReady())) {
+    return (call) => canAccess(call, actor, trainerId);
+  }
+  const policy = await loadCallPolicy(sessionId);
+  const roles = await rolePlayersById(sessionId);
+  const holderMap = await holdersByTeam(sessionId);
+  const { supabaseAdmin } = await import('../../lib/supabaseAdmin.js');
+  const { data } = await supabaseAdmin
+    .from('session_teams')
+    .select('team_name')
+    .eq('session_id', sessionId)
+    .eq('user_id', actor.id);
+  const teams = new Set((data ?? []).map((row) => String(row.team_name)));
+  return (call) =>
+    recentsVisible({
+      lineLog: policy.line_log_visible_to,
+      isStaff: actor.role === 'admin' || actor.role === 'trainer' || trainerId === actor.id,
+      isAnswerer: call.answeredBy === actor.id,
+      isAddressed:
+        call.recipientUserIds == null ||
+        call.recipientUserIds.includes(actor.id) ||
+        call.rungUserIds.includes(actor.id),
+      isTeamMember: Boolean(call.lineTeam && teams.has(call.lineTeam)) || call.recipientTeams.some((team) => teams.has(team)),
+      isHolder: (holderMap[call.lineTeam ?? ''] ?? []).includes(actor.id),
+      isRolePlayer: (roles.players[call.targetRoleId ?? ''] ?? []).includes(actor.id),
+    });
+}
+
 function canAccess(call: SimCall, actor: CallActor, trainerId?: string | null): boolean {
   if (actor.role === 'admin' || actor.role === 'trainer' || (trainerId && trainerId === actor.id)) return true;
   if (call.answeredBy === actor.id) return true;
@@ -1566,6 +1807,14 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
 
 function baseScript(script: ReturnType<typeof deriveCallScript>, redial: ReturnType<typeof parseRedial>, inject: PhoneInjectInput, ringSeconds: number, group: RingGroup): StoredScript {
   const config = inject.delivery_config ?? {};
+  const fallback = readFallback(config);
+  const explicit = (config.call_target as { mode?: unknown } | undefined)?.mode;
+  const injectMode =
+    explicit === 'line' || explicit === 'role' || explicit === 'player' || explicit === 'ring_all'
+      ? explicit
+      : typeof config.target_role_id === 'string' && config.target_role_id
+        ? 'role'
+        : 'line';
   return {
     ...script,
     redial,
@@ -1576,9 +1825,12 @@ function baseScript(script: ReturnType<typeof deriveCallScript>, redial: ReturnT
     channel_type: typeof config.channel_type === 'string' ? config.channel_type : undefined,
     voicemail_posted_attempts: [],
     call_waiting: group.call_waiting,
-        response_window_minutes:
+    response_window_minutes:
       typeof config.response_window_minutes === 'number' ? config.response_window_minutes : null,
     inject_key: typeof config.inject_key === 'string' ? config.inject_key : undefined,
+    inject_target_mode: injectMode,
+    role_fallback: fallback.fallback,
+    role_fallback_minutes: fallback.minutes,
   };
 }
 
@@ -1641,15 +1893,16 @@ async function callbackPermitted(
   });
 }
 
-function missedReasonFor(outcome: RingGroup['outcome']): string {
-  if (outcome === 'line_busy' || outcome === 'line_unattended' || outcome === 'role_busy' || outcome === 'role_offline') {
+function missedReasonFor(outcome: string): string {
+  if (
+    outcome === 'line_busy' ||
+    outcome === 'line_unattended' ||
+    outcome === 'role_busy' ||
+    outcome === 'role_offline'
+  ) {
     return outcome;
   }
   return 'no_answer';
-}
-
-function roleTitle(config: { target_role_id?: unknown }): string | undefined {
-  return typeof config.target_role_id === 'string' ? config.target_role_id : undefined;
 }
 
 function blankCall(input: Omit<SimCall, 'direction' | 'stakeholderId' | 'mode' | 'declinedUserIds' | 'answeredBy' | 'answeredAt' | 'declinedBy' | 'openaiCallId' | 'transcriptSource' | 'beatsDone' | 'durationSeconds' | 'createdAt' | 'targetMode' | 'targetRoleId' | 'parentCallId'> & Partial<SimCall>): SimCall {
@@ -1706,6 +1959,16 @@ async function displayNames(ids: string[]): Promise<Record<string, string>> {
 }
 
 export const callService = createCallService();
+
+export async function ringFallbackCall(input: {
+  sessionId: string;
+  injectId: string;
+  teamName: string;
+  chainRootDeliveryId: string | null;
+  fallbackReason: string;
+}): Promise<boolean> {
+  return callService.ringFallback(input);
+}
 
 export async function startInjectCall(
   sessionId: string,

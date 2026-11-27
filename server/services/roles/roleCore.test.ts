@@ -84,14 +84,32 @@ describe('runtime roles', () => {
       }).emit,
       false,
     );
-    const plan = planReroute([
-      { id: 'group-1', kind: 'call_group' },
-      { id: 'group-1', kind: 'call_group' },
-      { id: 'mail-1', kind: 'delivery' },
-    ]);
+    const plan = planReroute(
+      [
+        { id: 'group-1', kind: 'call_group', channel: 'call', inject_id: 'inj-call' },
+        { id: 'group-1', kind: 'call_group', channel: 'call', inject_id: 'inj-call' },
+        { id: 'mail-1', kind: 'delivery', channel: 'email', inject_id: 'inj-mail' },
+        { id: 'old', kind: 'delivery', channel: 'email', already_linked: true, inject_id: 'inj-old' },
+      ],
+      { teamName: 'Customer Service', reason: 'trainer_reroute' },
+    );
     assert.equal(plan.rerouted.length, 2);
     assert.deepEqual(plan.cancelCallGroups, ['group-1']);
     assert.equal(plan.fallback_reason, 'trainer_reroute');
+    const email = plan.deliveries.find((item) => item.channel === 'email');
+    const call = plan.deliveries.find((item) => item.channel === 'call');
+    assert.equal(email?.team_name, 'Customer Service');
+    assert.equal(email?.chain_root_id, 'mail-1');
+    assert.equal(email?.fallback_reason, 'trainer_reroute');
+    assert.equal(call?.fallback_reason, 'trainer_reroute');
+    assert.equal(plan.deliveries.some((item) => item.source_id === 'old'), false);
+    const timed = planReroute(
+      [{ id: 'mail-2', kind: 'delivery', channel: 'npc_dm', inject_id: 'inj-2' }],
+      { teamName: 'Operations', reason: 'role_fallback_after_minutes' },
+    );
+    assert.equal(timed.deliveries[0]?.channel, 'npc_dm');
+    assert.equal(timed.deliveries[0]?.fallback_reason, 'role_fallback_after_minutes');
+    assert.equal(timed.deliveries[0]?.chain_root_id, 'mail-2');
   });
 
   test('line_after_minutes reroutes at the threshold and not when the player returns', () => {

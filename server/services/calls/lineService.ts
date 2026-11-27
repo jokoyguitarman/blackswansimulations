@@ -11,6 +11,7 @@ import {
 } from './lineCore.js';
 import { isRolesSchemaMissing, markRolesTablesMissing, rolesFeatureReady } from '../roles/rolesSchema.js';
 import { inBootGrace, presenceEnginesOn, sessionUserOnline } from '../presence/sessionPresenceService.js';
+import { insertSessionEvent } from '../../lib/sessionEvents.js';
 
 export interface LineHolderRow {
   user_id: string;
@@ -280,7 +281,7 @@ export async function sweepLines(sessionId: string): Promise<void> {
         source: 'auto_reassign',
         active: true,
       });
-      await supabaseAdmin.from('session_events').insert({
+      await insertSessionEvent({
         session_id: sessionId,
         event_type: 'call_taker_changed',
         metadata: { team_name: line.team_name, reason: 'offline', user_id: plan.assign },

@@ -397,6 +397,9 @@ function normalizeScript(script: CallScript | null | undefined, fallback?: SimCa
     response_window_minutes: base?.response_window_minutes ?? null,
     role_title: base?.role_title,
     fallback_reason: base?.fallback_reason,
+    inject_target_mode: base?.inject_target_mode,
+    role_fallback: base?.role_fallback,
+    role_fallback_minutes: base?.role_fallback_minutes,
   };
 }
 

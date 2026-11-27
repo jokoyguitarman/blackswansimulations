@@ -8,6 +8,9 @@ import {
   onlineForAssignment,
   pickAutofill,
   planOfflineReassignment,
+  audienceForAttempt,
+  recentsVisible,
+  redialRingConfig,
   resolveCallRingSet,
   resolveMessageRecipients,
   resolveUniversalLine,
@@ -316,6 +319,79 @@ describe('lobby auto-fill and line maintenance', () => {
       }),
     );
     assert.deepEqual(groups[0]?.ring, ['ben']);
+  });
+});
+
+describe('missed audience, recents and redial fallback', () => {
+  test('an offline role and an unattended line are recorded against someone', () => {
+    assert.deepEqual(
+      audienceForAttempt({
+        outcome: 'role_offline',
+        ring: [],
+        callWaiting: [],
+        rolePlayers: ['aisha'],
+        holders: ['ben'],
+        teamMembers: ['aisha', 'ben'],
+      }),
+      ['aisha'],
+    );
+    assert.deepEqual(
+      audienceForAttempt({
+        outcome: 'line_unattended',
+        ring: [],
+        callWaiting: [],
+        rolePlayers: [],
+        holders: ['ben'],
+        teamMembers: ['aisha', 'ben'],
+      }),
+      ['ben'],
+    );
+    assert.deepEqual(
+      audienceForAttempt({
+        outcome: 'line_unattended',
+        ring: [],
+        callWaiting: [],
+        rolePlayers: [],
+        holders: [],
+        teamMembers: ['aisha'],
+      }),
+      ['aisha'],
+    );
+  });
+
+  test('team Recents show a missed line call to a non-holder only when the policy says team', () => {
+    const shared = {
+      isStaff: false,
+      isAnswerer: false,
+      isAddressed: false,
+      isTeamMember: true,
+      isHolder: false,
+      isRolePlayer: false,
+    };
+    assert.equal(recentsVisible({ ...shared, lineLog: 'team' }), true);
+    assert.equal(recentsVisible({ ...shared, lineLog: 'line_holders' }), false);
+    assert.equal(recentsVisible({ ...shared, lineLog: 'line_holders', isHolder: true }), true);
+  });
+
+  test('a later attempt keeps role_fallback line, and an attempt that already fell back stays on the line', () => {
+    const again = redialRingConfig({
+      injectTargetMode: 'role',
+      roleFallback: 'line',
+      targetRoleId: 'cs_head',
+      lineTeam: 'Customer Service',
+    });
+    assert.equal(again.mode, 'role');
+    assert.equal(again.role_fallback, 'line');
+    assert.equal(again.target_role_id, 'cs_head');
+    const fallen = redialRingConfig({
+      injectTargetMode: 'role',
+      roleFallback: 'line',
+      fallbackReason: 'role_offline_fallback',
+      targetRoleId: 'cs_head',
+      lineTeam: 'Customer Service',
+    });
+    assert.equal(fallen.mode, 'line');
+    assert.equal(fallen.target_role_id, undefined);
   });
 });
 
