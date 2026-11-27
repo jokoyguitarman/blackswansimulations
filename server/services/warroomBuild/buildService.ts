@@ -20,6 +20,7 @@ import type { BuildStore, LogDraft, StartResult } from './buildStore.js';
 import type { StageContext, StageRunner } from './stageRunners.js';
 import {
   STAGE_LABEL,
+  STAGES,
   type BuildRequest,
   type BuildRow,
   type BuildStage,
@@ -166,14 +167,18 @@ export class BuildService {
   async resume(buildId: string): Promise<BuildRow> {
     const row = await this.store.get(buildId);
     if (!row) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
-    if (!toView(row).resumable) {
-      throw new BuildServiceError('Build cannot be resumed', 'BUILD_NOT_RESUMABLE');
-    }
     const outcome = await this.store.resume(buildId, resetForResume(row.stage_states));
+    if (outcome === 'missing') throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
     if (outcome === 'active_conflict') {
       throw new BuildServiceError('A build is already running for this draft.', 'BUILD_ACTIVE');
     }
-    if (outcome === 'missing') throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
+    if (outcome === 'not_resumable') {
+      const current = await this.store.get(buildId);
+      if (!current) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
+      // The other resume already queued or claimed this build. That call is a no-op.
+      if (current.status === 'queued' || current.status === 'running') return current;
+      throw new BuildServiceError('Build cannot be resumed', 'BUILD_NOT_RESUMABLE');
+    }
     await this.tick();
     const next = await this.store.get(buildId);
     if (!next) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
@@ -234,16 +239,22 @@ export class BuildService {
     this.shuttingDown = true;
     const jobs = [...this.running.entries()];
     for (const [, job] of jobs) job.controller.abort(new ShutdownError());
-    await Promise.all(jobs.map(([, job]) => job.done));
+    // A runner that ignores the abort must not hold the release past the 5 s
+    // process grace. Release anyway after 3 s; the token fence stops a late write.
+    await waitForSettled(
+      jobs.map(([, job]) => job.done),
+      3_000,
+    );
     for (const [buildId, job] of jobs) {
       const row = await this.store.get(buildId);
       if (!row || row.lease_token !== job.token || !job.stage) continue;
       const stageStates = markInterrupted(row.stage_states, job.stage, this.iso());
-      const released = await this.store.releaseForRestart(buildId, job.token, stageStates);
-      if (!released) continue;
-      await this.store.appendLog(buildId, [
-        { kind: 'system', stage: job.stage, message: restartLine(job.stage) },
-      ]);
+      await this.store.appendLog(
+        buildId,
+        [{ kind: 'system', stage: job.stage, message: restartLine(job.stage) }],
+        job.token,
+      );
+      await this.store.releaseForRestart(buildId, job.token, stageStates);
     }
   }
 
@@ -294,7 +305,7 @@ export class BuildService {
       while (!this.shuttingDown && !controller.signal.aborted) {
         const fresh = await this.store.get(row.id);
         if (!fresh || fresh.lease_token !== token || fresh.status !== 'running') return;
-        const paused = await this.pauseIfUnwatched(fresh, token, job.stage);
+        const paused = await this.pauseIfUnwatched(fresh, token);
         if (paused) return;
         const stage = nextStage(states);
         if (!stage) {
@@ -311,7 +322,7 @@ export class BuildService {
         });
         if (!marked) return;
         log('stage', stageStartedLine(stage, states[stage].attempts), stage);
-        await this.flush(row.id, buffer);
+        await this.flush(row.id, buffer, token);
         let output: unknown;
         try {
           const input = stageInput(stage, fresh.request, await this.store.getOutputs(row.id));
@@ -322,12 +333,12 @@ export class BuildService {
             } satisfies StageContext),
           );
         } catch (err) {
-          await this.flush(row.id, buffer);
+          await this.flush(row.id, buffer, token);
           await this.onRunnerError(row.id, token, stage, states, controller.signal, err);
           return;
         }
         if (controller.signal.aborted) {
-          await this.flush(row.id, buffer);
+          await this.flush(row.id, buffer, token);
           await this.onRunnerError(
             row.id,
             token,
@@ -338,7 +349,7 @@ export class BuildService {
           );
           return;
         }
-        await this.flush(row.id, buffer);
+        await this.flush(row.id, buffer, token);
         states = markDone(states, stage, this.iso());
         const next = nextStage(states);
         const attempts = states[stage].attempts;
@@ -356,25 +367,41 @@ export class BuildService {
         if (!next) return;
       }
     } finally {
-      await this.flush(row.id, buffer);
+      await this.flush(row.id, buffer, token);
       this.running.delete(row.id);
       resolveDone();
     }
   }
 
-  private async pauseIfUnwatched(
-    row: BuildRow,
-    token: string,
-    previous: BuildStage | null,
-  ): Promise<boolean> {
+  /** The last stage that actually finished. Not the stage a claim is about to run. */
+  private lastFinishedStage(states: StageStates): BuildStage | null {
+    let previous: BuildStage | null = null;
+    for (const stage of STAGES) {
+      const status = states[stage]?.status;
+      if (status === 'done' || status === 'skipped') previous = stage;
+      else break;
+    }
+    return previous;
+  }
+
+  private async pauseIfUnwatched(row: BuildRow, token: string): Promise<boolean> {
     const seen = Date.parse(row.last_seen_at);
     const ageMs = this.clock.now().getTime() - seen;
     if (ageMs < this.unwatchedPauseMin * 60_000) return false;
-    const paused = await this.store.pauseUnwatched(row.id, token);
-    if (!paused) return true;
-    await this.store.appendLog(row.id, [
-      { kind: 'system', stage: previous, message: UNWATCHED_LOG(this.unwatchedPauseMin, previous) },
-    ]);
+    const previous = this.lastFinishedStage(row.stage_states);
+    const written = await this.store.appendLog(
+      row.id,
+      [
+        {
+          kind: 'system',
+          stage: previous,
+          message: UNWATCHED_LOG(this.unwatchedPauseMin, previous),
+        },
+      ],
+      token,
+    );
+    if (written.length === 0) return true;
+    await this.store.pauseUnwatched(row.id, token);
     return true;
   }
 
@@ -412,19 +439,21 @@ export class BuildService {
     if (reason instanceof LeaseLostError) return;
     if (reason instanceof CancelledError) {
       const interrupted = markInterrupted(states, stage, this.iso());
-      const settled = await this.store.settleCancel(buildId, token, interrupted, 'user');
-      if (settled) {
-        await this.store.appendLog(buildId, [
-          { kind: 'system', stage, message: 'Build cancelled.' },
-        ]);
-      }
+      await this.store.appendLog(
+        buildId,
+        [{ kind: 'system', stage, message: 'Build cancelled.' }],
+        token,
+      );
+      await this.store.settleCancel(buildId, token, interrupted, 'user');
       return;
     }
     if (stage === 'pages') {
       const skipped = markSkipped(states, stage, PAGES_SKIP_WARNING, this.iso());
-      await this.store.appendLog(buildId, [
-        { kind: 'warning', stage, message: PAGES_SKIP_WARNING },
-      ]);
+      await this.store.appendLog(
+        buildId,
+        [{ kind: 'warning', stage, message: PAGES_SKIP_WARNING }],
+        token,
+      );
       const next = nextStage(skipped);
       await this.store.completeStage({
         buildId,
@@ -440,19 +469,29 @@ export class BuildService {
     }
     const message = describeGenerationFailure(reason, STAGE_LABEL[stage]);
     const failed = markFailed(states, stage, message, this.iso());
-    const wrote = await this.store.failRunning(buildId, token, {
+    await this.store.appendLog(buildId, [{ kind: 'error', stage, message }], token);
+    await this.store.failRunning(buildId, token, {
       stageStates: failed,
       error: message,
       errorCode: 'stage_failed',
     });
-    if (wrote) {
-      await this.store.appendLog(buildId, [{ kind: 'error', stage, message }]);
-    }
   }
 
-  private async flush(buildId: string, buffer: LogDraft[]): Promise<void> {
+  private async flush(buildId: string, buffer: LogDraft[], token: string): Promise<void> {
     if (buffer.length === 0) return;
     const lines = buffer.splice(0, buffer.length);
-    await this.store.appendLog(buildId, lines);
+    await this.store.appendLog(buildId, lines, token);
   }
+}
+
+/** Resolves when every job finishes, or when `ms` elapses, whichever is first. */
+function waitForSettled(jobs: Promise<void>[], ms: number): Promise<void> {
+  if (jobs.length === 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    void Promise.all(jobs).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }

@@ -387,6 +387,105 @@ describe('build service', () => {
     release();
   });
 
+  test('two resumes at once run the failed stage once', async () => {
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const { service } = harness({
+      runners: {
+        storyline: async () => {
+          calls += 1;
+          if (calls === 1) throw Object.assign(new Error('slow down'), { status: 429 });
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-1',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'key-1',
+    });
+    await service.whenIdle();
+    const id = started.buildId!;
+    const resumed = await Promise.all([service.resume(id), service.resume(id)]);
+    assert.equal(resumed.length, 2);
+    await waitFor(async () => calls >= 2);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls, 2);
+    release();
+    await service.whenIdle();
+  });
+
+  test('an unwatched pause names the last finished stage, not the one about to run', async () => {
+    const { service, store, clock } = harness({
+      runners: {
+        storyline: async (_input, ctx) => {
+          await new Promise((_resolve, reject) => {
+            ctx.signal.addEventListener('abort', () => reject(ctx.signal.reason));
+          });
+          return storylineOut;
+        },
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-1',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'key-1',
+    });
+    const id = started.buildId!;
+    await waitFor(async () => (await store.get(id))?.stage_states.storyline.status === 'running');
+    await service.shutdown();
+    clock.advance(46 * 60 * 1000);
+    let storylineAgain = 0;
+    const next = harness({
+      store,
+      clock,
+      runners: {
+        storyline: async () => {
+          storylineAgain += 1;
+          return storylineOut;
+        },
+      },
+    });
+    await next.service.tick();
+    await next.service.whenIdle();
+    assert.equal((await store.get(id))?.status, 'paused');
+    assert.equal(storylineAgain, 0);
+    const log = await store.listLog(id, 0, 200);
+    assert.ok(log.some((line) => line.message.includes('after the Characters stage')));
+    assert.equal(
+      log.some((line) => line.message.includes('after the Storyline stage')),
+      false,
+    );
+  });
+
+  test('shutdown releases a runner that ignores the abort within 5 seconds', async () => {
+    const { service, store } = harness({
+      runners: {
+        characters: async () => new Promise(() => undefined),
+      },
+    });
+    const started = await service.start({
+      draftId: 'draft-1',
+      userId: 'user-1',
+      request: request(),
+      idempotencyKey: 'key-1',
+    });
+    const began = Date.now();
+    await service.shutdown();
+    const elapsed = Date.now() - began;
+    assert.ok(elapsed < 5_000, `shutdown took ${elapsed}ms`);
+    assert.ok(elapsed >= 2_500, `shutdown returned in ${elapsed}ms without waiting out the runner`);
+    const row = await store.get(started.buildId!);
+    assert.equal(row?.status, 'queued');
+    assert.equal(row?.lease_token, null);
+    assert.equal(row?.stage_states.characters.status, 'interrupted');
+  });
+
   test('S6 a storyline failure resumes from storyline only', async () => {
     let failed = false;
     const { service, store, calls } = harness({

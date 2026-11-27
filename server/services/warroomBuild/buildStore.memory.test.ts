@@ -140,6 +140,55 @@ describe('MemoryBuildStore matches the migration 267 functions', () => {
     assert.equal((await store.get(untouched.buildId!))?.status, 'queued');
   });
 
+  test('resume only updates a paused, failed, or cancelled build that was not replaced', async () => {
+    const clock = new ManualClock();
+    const store = new MemoryBuildStore(() => clock.now());
+    const started = await store.start(args(clock));
+    const id = started.buildId!;
+    const claimed = await store.claim('pool-a', 'instance-a', 60);
+    const token = claimed!.lease_token!;
+    assert.equal(await store.resume(id, claimed!.stage_states), 'not_resumable');
+    assert.equal((await store.get(id))?.lease_token, token);
+
+    await store.failRunning(id, token, {
+      stageStates: claimed!.stage_states,
+      error: 'boom',
+      errorCode: 'stage_failed',
+    });
+    assert.equal(await store.resume(id, claimed!.stage_states), 'ok');
+    assert.equal((await store.get(id))?.status, 'queued');
+    assert.equal(await store.resume(id, claimed!.stage_states), 'not_resumable');
+    assert.equal((await store.get(id))?.status, 'queued');
+    assert.equal((await store.get(id))?.lease_token, null);
+  });
+
+  test('a replaced build cannot be resumed', async () => {
+    const store = new MemoryBuildStore();
+    const started = await store.start(args(new ManualClock()));
+    const claimed = await store.claim('pool-a', 'instance-a', 60);
+    await store.settleCancel(
+      started.buildId!,
+      claimed!.lease_token!,
+      claimed!.stage_states,
+      'replaced',
+    );
+    assert.equal(await store.resume(started.buildId!, claimed!.stage_states), 'not_resumable');
+    assert.equal((await store.get(started.buildId!))?.status, 'cancelled');
+  });
+
+  test('appendLog with a lease token writes nothing after the lease is gone', async () => {
+    const store = new MemoryBuildStore();
+    const started = await store.start(args(new ManualClock()));
+    const id = started.buildId!;
+    const claimed = await store.claim('pool-a', 'instance-a', 60);
+    const token = claimed!.lease_token!;
+    const line = { stage: 'storyline', kind: 'progress' as const, message: 'kept' };
+    assert.deepEqual(await store.appendLog(id, [line], 'stale-token'), []);
+    const written = await store.appendLog(id, [line], token);
+    assert.equal(written.length, 1);
+    assert.equal(written[0]?.message, 'kept');
+  });
+
   test('the log keeps 500 lines and then says it was truncated', async () => {
     const store = new MemoryBuildStore();
     const started = await store.start(args(new ManualClock()));

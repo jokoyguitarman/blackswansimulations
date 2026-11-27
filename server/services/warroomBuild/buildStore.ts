@@ -94,10 +94,17 @@ export interface BuildStore {
   ): Promise<boolean>;
   requestCancel(buildId: string, reason: CancelReason): Promise<BuildRow | null>;
   cancelQueued(buildId: string, reason: CancelReason): Promise<BuildRow | null>;
-  resume(buildId: string, stageStates: StageStates): Promise<'ok' | 'active_conflict' | 'missing'>;
+  resume(
+    buildId: string,
+    stageStates: StageStates,
+  ): Promise<'ok' | 'active_conflict' | 'missing' | 'not_resumable'>;
   get(buildId: string): Promise<BuildRow | null>;
   getOutputs(buildId: string): Promise<StageOutputs>;
-  appendLog(buildId: string, lines: LogDraft[]): Promise<LogLine[]>;
+  /**
+   * When `leaseToken` is set, write only while that lease is still held.
+   * A stale owner then cannot append lines after the lease moved on.
+   */
+  appendLog(buildId: string, lines: LogDraft[], leaseToken?: string): Promise<LogLine[]>;
   listLog(buildId: string, after: number, limit: number): Promise<LogLine[]>;
   touchSeen(buildId: string): Promise<void>;
   countActive(userId: string): Promise<number>;
@@ -426,10 +433,17 @@ export class MemoryBuildStore implements BuildStore {
     });
   }
 
-  resume(buildId: string, stageStates: StageStates): Promise<'ok' | 'active_conflict' | 'missing'> {
+  resume(
+    buildId: string,
+    stageStates: StageStates,
+  ): Promise<'ok' | 'active_conflict' | 'missing' | 'not_resumable'> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
       if (!row) return 'missing';
+      const resumable =
+        (row.status === 'paused' || row.status === 'failed' || row.status === 'cancelled') &&
+        row.cancel_reason !== 'replaced';
+      if (!resumable) return 'not_resumable';
       const other = [...this.rows.values()].find(
         (candidate) =>
           candidate.id !== row.id && candidate.draft_id === row.draft_id && isActive(candidate),
@@ -464,11 +478,17 @@ export class MemoryBuildStore implements BuildStore {
     return this.lock(() => clone(this.outputs.get(buildId) ?? {}));
   }
 
-  appendLog(buildId: string, lines: LogDraft[]): Promise<LogLine[]> {
+  appendLog(buildId: string, lines: LogDraft[], leaseToken?: string): Promise<LogLine[]> {
     return this.lock(() => {
       const row = this.rows.get(buildId);
       const bucket = this.logs.get(buildId);
       if (!row || !bucket) return [];
+      if (
+        leaseToken !== undefined &&
+        (row.lease_token !== leaseToken || row.status !== 'running')
+      ) {
+        return [];
+      }
       const accepted = capLogBatch(bucket.length, lines);
       const written: LogLine[] = [];
       for (const line of accepted) {
@@ -736,14 +756,24 @@ export class SupabaseBuildStore implements BuildStore {
     stageStates: StageStates,
     reason: CancelReason,
   ): Promise<boolean> {
+    const { data: current, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('cancel_requested_at')
+      .eq('id', buildId)
+      .eq('lease_token', leaseToken)
+      .eq('status', 'running')
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!current) return false;
+    const now = this.iso();
     const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({
         status: 'cancelled',
         cancel_reason: reason,
-        cancel_requested_at: this.iso(),
+        cancel_requested_at: current.cancel_requested_at ?? now,
         stage_states: stageStates,
-        finished_at: this.iso(),
+        finished_at: now,
         lease_owner: null,
         lease_token: null,
         lease_expires_at: null,
@@ -789,9 +819,9 @@ export class SupabaseBuildStore implements BuildStore {
   async resume(
     buildId: string,
     stageStates: StageStates,
-  ): Promise<'ok' | 'active_conflict' | 'missing'> {
+  ): Promise<'ok' | 'active_conflict' | 'missing' | 'not_resumable'> {
     const now = this.iso();
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('warroom_builds')
       .update({
         stage_states: stageStates,
@@ -807,10 +837,20 @@ export class SupabaseBuildStore implements BuildStore {
         lease_expires_at: null,
         finished_at: null,
       })
-      .eq('id', buildId);
+      .eq('id', buildId)
+      .in('status', ['paused', 'failed', 'cancelled'])
+      .or('cancel_reason.is.null,cancel_reason.neq.replaced')
+      .select('id');
     if (error?.code === '23505') return 'active_conflict';
     if (error) throw error;
-    return 'ok';
+    if ((data?.length ?? 0) > 0) return 'ok';
+    const { data: existing, error: readError } = await supabaseAdmin
+      .from('warroom_builds')
+      .select('id')
+      .eq('id', buildId)
+      .maybeSingle();
+    if (readError) throw readError;
+    return existing ? 'not_resumable' : 'missing';
   }
 
   async get(buildId: string): Promise<BuildRow | null> {
@@ -837,8 +877,19 @@ export class SupabaseBuildStore implements BuildStore {
     return outputs;
   }
 
-  async appendLog(buildId: string, lines: LogDraft[]): Promise<LogLine[]> {
+  async appendLog(buildId: string, lines: LogDraft[], leaseToken?: string): Promise<LogLine[]> {
     if (lines.length === 0) return [];
+    if (leaseToken !== undefined) {
+      const { data: held, error: heldError } = await supabaseAdmin
+        .from('warroom_builds')
+        .select('id')
+        .eq('id', buildId)
+        .eq('lease_token', leaseToken)
+        .eq('status', 'running')
+        .maybeSingle();
+      if (heldError) throw heldError;
+      if (!held) return [];
+    }
     const { count, error: countError } = await supabaseAdmin
       .from('warroom_build_log')
       .select('seq', { count: 'exact', head: true })
@@ -851,10 +902,16 @@ export class SupabaseBuildStore implements BuildStore {
       .insert(accepted.map((line) => ({ build_id: buildId, ...line })))
       .select('seq, stage, kind, message, created_at');
     if (error) throw error;
-    await supabaseAdmin
+    const logCount = supabaseAdmin
       .from('warroom_builds')
       .update({ log_count: (count ?? 0) + accepted.length })
       .eq('id', buildId);
+    const fenced =
+      leaseToken === undefined
+        ? logCount
+        : logCount.eq('lease_token', leaseToken).eq('status', 'running');
+    const { error: countWriteError } = await fenced;
+    if (countWriteError) throw countWriteError;
     return (data ?? []).map((row) => ({
       seq: Number(row.seq),
       stage: row.stage,
