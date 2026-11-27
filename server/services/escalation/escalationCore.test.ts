@@ -9,6 +9,7 @@ import {
   decideChainAction,
   extractAsk,
   nextDueAfterSend,
+  planExhaustPublish,
   planStepMaterialisation,
   renderChainTemplate,
   resolveStep,
@@ -458,6 +459,16 @@ describe('escalation validation', () => {
     });
     assert.ok(chaser.some((issue) => issue.level === 'warning'));
     assert.equal(chaser.some((issue) => issue.level === 'error'), false);
+  });
+});
+
+describe('planExhaustPublish', () => {
+  test('a consequence key with no conditional inject closes the chain, and a transient publish retries', () => {
+    assert.equal(planExhaustPublish('unresolved'), 'mark_unresolved');
+    assert.equal(planExhaustPublish('transient'), 'retry');
+    assert.equal(planExhaustPublish('deferred'), 'retry');
+    assert.equal(planExhaustPublish('published'), 'mark');
+    assert.equal(planExhaustPublish('no_key'), 'mark');
   });
 });
 

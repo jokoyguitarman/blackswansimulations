@@ -994,6 +994,18 @@ export type StepMaterialisation = 'create' | 'resume' | 'publish_existing' | 'st
  * A lost claim with no inject id stops. The owner that inserted the step row
  * is the only sender until the row is old enough to be abandoned.
  */
+export type ExhaustPublishOutcome = 'no_key' | 'published' | 'unresolved' | 'transient' | 'deferred';
+
+/**
+ * A consequence key that matches no conditional inject closes the chain once.
+ * A transient publish failure, or a tick that is already at the publish cap, retries.
+ */
+export function planExhaustPublish(outcome: ExhaustPublishOutcome): 'retry' | 'mark' | 'mark_unresolved' {
+  if (outcome === 'transient' || outcome === 'deferred') return 'retry';
+  if (outcome === 'unresolved') return 'mark_unresolved';
+  return 'mark';
+}
+
 export function planStepMaterialisation(input: {
   claim: 'won' | 'lost' | 'unavailable';
   existingInjectId: string | null;

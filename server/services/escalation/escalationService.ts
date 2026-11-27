@@ -27,6 +27,7 @@ import {
   maxUrgencySent,
   nextDueAfterSend,
   parseEscalation,
+  planExhaustPublish,
   planStepMaterialisation,
   renderChainTemplate,
   resolveStep,
@@ -637,26 +638,39 @@ async function applyDecision(input: {
   }
   if (input.decision.kind === 'exhaust') {
     const key = input.clock.config.on_exhausted?.publish_inject_key;
-    if (key && input.remaining <= 0) {
-      logger.info(
-        { event: 'escalation_publish_deferred', sessionId: input.sessionId, chainId: id },
-        'Exhausted chain publish deferred to a later tick',
-      );
-      return 0;
-    }
-    if (key) {
-      const published = await publishTemplateKey(input, key);
-      if (!published) {
+    const outcome = !key
+      ? ('no_key' as const)
+      : input.remaining <= 0
+        ? ('deferred' as const)
+        : await publishTemplateKey(input, key);
+    const plan = planExhaustPublish(outcome);
+    if (plan === 'retry') {
+      if (outcome === 'transient') {
         logger.warn(
           { event: 'escalation_exhaust_retry', sessionId: input.sessionId, chainId: id, key },
           'Exhausted chain stays active until its consequence inject is published',
         );
-        return 0;
+      } else {
+        logger.info(
+          { event: 'escalation_publish_deferred', sessionId: input.sessionId, chainId: id },
+          'Exhausted chain publish deferred to a later tick',
+        );
       }
+      return 0;
     }
     await patchChain(id, { status: 'exhausted', next_due_minute: null, waiting_on_call_group_id: null });
-    emitTrainer(input.trainerId, 'escalation.exhausted', { chain_id: id, root_key: input.clock.root_key });
-    return key ? 1 : 0;
+    if (plan === 'mark_unresolved') {
+      logger.warn(
+        { event: 'escalation_exhaust_unresolved', sessionId: input.sessionId, chainId: id, key },
+        'Exhaust consequence does not match a conditional inject; the chain is exhausted',
+      );
+    }
+    emitTrainer(input.trainerId, 'escalation.exhausted', {
+      chain_id: id,
+      root_key: input.clock.root_key,
+      ...(plan === 'mark_unresolved' ? { unresolved_key: key } : {}),
+    });
+    return plan === 'mark' && key ? 1 : 0;
   }
   if (input.remaining <= 0) {
     logger.info(
@@ -944,7 +958,7 @@ function supabaseStepStore(sessionId: string, trainerId: string | null, io: Sock
 async function publishTemplateKey(
   input: { scenarioId: string; sessionId: string; trainerId: string | null; io: SocketServer | null },
   key: string,
-): Promise<boolean> {
+): Promise<'published' | 'unresolved' | 'transient'> {
   const { data, error } = await supabaseAdmin
     .from('scenario_injects')
     .select('id, trigger_time_minutes')
@@ -953,14 +967,15 @@ async function publishTemplateKey(
     .eq('delivery_config->>inject_key', key)
     .limit(1)
     .maybeSingle();
-  if (error || !data || data.trigger_time_minutes != null) return false;
+  if (error) return 'transient';
+  if (!data || data.trigger_time_minutes != null) return 'unresolved';
   try {
     const io = await resolveIo(input.io);
     await publishInjectToSession(String(data.id), input.sessionId, input.trainerId ?? String(data.id), io);
-    return true;
+    return 'published';
   } catch (err) {
     logger.warn({ err, sessionId: input.sessionId, key }, 'exhaust inject publish failed');
-    return false;
+    return 'transient';
   }
 }
 
