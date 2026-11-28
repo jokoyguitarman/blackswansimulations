@@ -10,6 +10,7 @@ import {
   type ThemeUsageEntry,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
+import { recordInjectTrigger } from './conditions/injectTriggerService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { applyMediaChallengePressure } from './heatMeterService.js';
@@ -686,8 +687,7 @@ export class AIInjectSchedulerService {
 
           let impactTeamDoctrines: Record<string, string> | undefined;
           const rawTeamDoctrines = insiderKnowledge.team_doctrines as
-            | Record<string, unknown[]>
-            | undefined;
+            Record<string, unknown[]> | undefined;
           if (rawTeamDoctrines && Object.keys(rawTeamDoctrines).length > 0) {
             const { standardsToPromptBlock } = await import('./warroomResearchService.js');
             impactTeamDoctrines = {};
@@ -1093,6 +1093,12 @@ export class AIInjectSchedulerService {
     }
 
     await publishInjectToSession(createdInject.id, session.id, session.trainer_id, this.io);
+    void recordInjectTrigger({
+      sessionId: session.id,
+      injectId: createdInject.id,
+      origin: 'decision',
+      causeDepth: 1,
+    });
 
     logger.info(
       {
@@ -1225,6 +1231,12 @@ export class AIInjectSchedulerService {
     }
 
     await publishInjectToSession(createdInject.id, session.id, session.trainer_id, this.io);
+    void recordInjectTrigger({
+      sessionId: session.id,
+      injectId: createdInject.id,
+      origin: 'decision',
+      causeDepth: 1,
+    });
 
     logger.info(
       {

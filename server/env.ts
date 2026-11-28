@@ -186,6 +186,13 @@ export const env = {
   callbackWindowMinutes: envInt('CALLBACK_WINDOW_MINUTES', 30),
   // How many conditional injects one session may publish in a single scheduler tick.
   conditionPublishMaxPerTick: envInt('CONDITION_PUBLISH_MAX_PER_TICK', 3),
+  // Cross-team throttle, pressure ceiling, loop guard and cascade cap.
+  // Recording stays off until migration 278 is applied.
+  crossTeamMaxPerTeamWindow: envInt('CROSS_TEAM_MAX_PER_TEAM_WINDOW', 2),
+  crossTeamWindowMinutes: envInt('CROSS_TEAM_WINDOW_MINUTES', 15),
+  teamPressureMaxDeliveries10Min: envInt('TEAM_PRESSURE_MAX_DELIVERIES_10MIN', 6),
+  crossTeamLoopWindowMinutes: envInt('CROSS_TEAM_LOOP_WINDOW_MINUTES', 20),
+  crossTeamMaxCascadeDepth: envInt('CROSS_TEAM_MAX_CASCADE_DEPTH', 3),
   // AI follow-ups one chain may write in a session-hour. A denied budget uses the template.
   escalationAiBudgetPerSessionHour: envInt('ESCALATION_AI_BUDGET_PER_SESSION_HOUR', 120),
   // Chat-completion calls that may judge inject replies in one session-hour.

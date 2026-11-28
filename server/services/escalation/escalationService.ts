@@ -11,7 +11,12 @@ import { env } from '../../env.js';
 import { getWebSocketService } from '../websocketService.js';
 import { chatJson } from '../ai/chatClient.js';
 import { publishInjectToSession } from '../../routes/injects.js';
-import { sessionMinuteAt, type CommsState, type CommsDelivery } from '../ledger/injectLedgerCore.js';
+import { recordInjectTrigger } from '../conditions/injectTriggerService.js';
+import {
+  sessionMinuteAt,
+  type CommsState,
+  type CommsDelivery,
+} from '../ledger/injectLedgerCore.js';
 import { collectConditionKeys, slugifyTeamName } from '../conditions/conditionCatalog.js';
 import { buildCharacterPrompt, loadScenarioCtx } from '../stakeholderReplyService.js';
 import { findById } from '../stakeholderService.js';
@@ -61,7 +66,10 @@ export interface ChainStepStore {
     contentMode: string;
   }): Promise<'claimed' | 'exists' | 'unavailable'>;
   /** The step row after a lost insert. Age is how long ago it was claimed. */
-  existingStep(chainId: string, stepNo: number): Promise<{ injectId: string | null; ageMs: number } | null>;
+  existingStep(
+    chainId: string,
+    stepNo: number,
+  ): Promise<{ injectId: string | null; ageMs: number } | null>;
   /**
    * Insert the runtime inject. `exists` means this deterministic id is already stored.
    * `failed` means the row was not written and must not be published.
@@ -88,7 +96,10 @@ export interface StepDraft {
  * inject. A conflicting claim stops. An abandoned row (no inject id, old enough)
  * may be resumed through the same deterministic inject id.
  */
-export async function sendStep(draft: StepDraft, store: ChainStepStore): Promise<{ created: boolean; injectId: string | null }> {
+export async function sendStep(
+  draft: StepDraft,
+  store: ChainStepStore,
+): Promise<{ created: boolean; injectId: string | null }> {
   const claim = await store.claim({
     chainId: draft.chainId,
     stepNo: draft.stepNo,
@@ -96,7 +107,8 @@ export async function sendStep(draft: StepDraft, store: ChainStepStore): Promise
     app: draft.app,
     contentMode: draft.contentMode,
   });
-  const existing = claim === 'claimed' ? null : await store.existingStep(draft.chainId, draft.stepNo);
+  const existing =
+    claim === 'claimed' ? null : await store.existingStep(draft.chainId, draft.stepNo);
   const plan = planStepMaterialisation({
     claim: claim === 'claimed' ? 'won' : claim === 'exists' ? 'lost' : 'unavailable',
     existingInjectId: existing?.injectId ?? null,
@@ -133,7 +145,9 @@ export async function startChainForDelivery(input: {
   try {
     const { data: inject, error } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, scenario_id, title, content, type, severity, inject_scope, target_teams, delivery_config')
+      .select(
+        'id, scenario_id, title, content, type, severity, inject_scope, target_teams, delivery_config',
+      )
       .eq('id', input.injectId)
       .maybeSingle();
     if (isEscalationSchemaMissing(error)) {
@@ -147,17 +161,22 @@ export async function startChainForDelivery(input: {
     const stakeholderId =
       input.stakeholderId ??
       (typeof deliveryConfig.stakeholder_id === 'string' ? deliveryConfig.stakeholder_id : null);
-    const roleId = input.targetRoleId ?? (typeof deliveryConfig.target_role_id === 'string' ? deliveryConfig.target_role_id : null);
+    const roleId =
+      input.targetRoleId ??
+      (typeof deliveryConfig.target_role_id === 'string' ? deliveryConfig.target_role_id : null);
     let scopeTeam: string | null =
       config.scope === 'any_recipient'
         ? null
         : input.recipientTeams.length === 1
           ? input.recipientTeams[0]
-          : input.lineTeam ?? input.recipientTeams[0] ?? null;
+          : (input.lineTeam ?? input.recipientTeams[0] ?? null);
     let scopeRole: string | null = null;
     let scope = config.scope;
     if (roleId) {
-      const scoped = chainScopeForRole(roleId, input.lineTeam || scopeTeam || input.recipientTeams[0] || '');
+      const scoped = chainScopeForRole(
+        roleId,
+        input.lineTeam || scopeTeam || input.recipientTeams[0] || '',
+      );
       scopeTeam = scoped.scope_team || null;
       scopeRole = scoped.scope_role;
       scope = 'per_team';
@@ -175,7 +194,9 @@ export async function startChainForDelivery(input: {
         type: String(inject?.type ?? 'message'),
         severity: String(inject?.severity ?? 'medium'),
         inject_scope: String(inject?.inject_scope ?? 'universal'),
-        target_teams: Array.isArray(inject?.target_teams) ? inject.target_teams : input.recipientTeams,
+        target_teams: Array.isArray(inject?.target_teams)
+          ? inject.target_teams
+          : input.recipientTeams,
         scenario_id: String(inject?.scenario_id ?? ''),
         delivery_config: rootConfig,
       },
@@ -200,7 +221,10 @@ export async function startChainForDelivery(input: {
       return;
     }
     if (insertError) {
-      logger.warn({ err: insertError, deliveryId: input.deliveryId }, 'escalation chain was not started');
+      logger.warn(
+        { err: insertError, deliveryId: input.deliveryId },
+        'escalation chain was not started',
+      );
     }
   } catch (err) {
     if (isEscalationSchemaMissing(err)) noteEscalationUnavailable();
@@ -213,7 +237,9 @@ export async function loadChainIndex(sessionId: string): Promise<Record<string, 
   try {
     const { data, error } = await supabaseAdmin
       .from('escalation_chains')
-      .select('id, root_key, scope_team, config, status, steps_sent, max_steps, stopped_reason, stopped_minute')
+      .select(
+        'id, root_key, scope_team, config, status, steps_sent, max_steps, stopped_reason, stopped_minute',
+      )
       .eq('session_id', sessionId);
     if (isEscalationSchemaMissing(error)) {
       noteEscalationUnavailable();
@@ -279,7 +305,9 @@ export async function runEscalationChains(input: {
       names: {} as Record<string, string>,
       vacated: [] as string[],
     }));
-    const policy = await loadCallPolicy(input.sessionId).catch(() => ({ offline_grace_seconds: 60 }));
+    const policy = await loadCallPolicy(input.sessionId).catch(() => ({
+      offline_grace_seconds: 60,
+    }));
     let remaining = input.remainingCap;
     for (const row of rows) {
       const stored = storedConfig(row.config);
@@ -291,13 +319,22 @@ export async function runEscalationChains(input: {
         responses: responsesFor(input.comms, clock.root_key),
         contactMinute: contactMinute(input.comms, clock.stakeholder_id),
         callGroup: clock.waiting_on_call_group_id
-          ? await loadCallGroup(clock.waiting_on_call_group_id, input.startTime, input.elapsedMinutes)
+          ? await loadCallGroup(
+              clock.waiting_on_call_group_id,
+              input.startTime,
+              input.elapsedMinutes,
+            )
           : null,
         elapsed: input.elapsedMinutes,
         sessionStatus: input.status,
         gaveUpStopChains: gaveUp(input.comms, clock),
-        held: roleHeld(input.sessionId, clock.scope_role, roles.players, policy.offline_grace_seconds),
-        rolePlayerIds: clock.scope_role ? roles.players[clock.scope_role] ?? [] : [],
+        held: roleHeld(
+          input.sessionId,
+          clock.scope_role,
+          roles.players,
+          policy.offline_grace_seconds,
+        ),
+        rolePlayerIds: clock.scope_role ? (roles.players[clock.scope_role] ?? []) : [],
       });
       const spent = await applyDecision({
         row,
@@ -395,7 +432,11 @@ export async function stopEscalation(input: {
   }
   if (!data || data.status !== 'active') return false;
   if (data.waiting_on_call_group_id) {
-    await cancelScheduledRedials(String(data.waiting_on_call_group_id), 'chain_stopped', input.trainerId);
+    await cancelScheduledRedials(
+      String(data.waiting_on_call_group_id),
+      'chain_stopped',
+      input.trainerId,
+    );
   }
   const minute = await currentMinute(input.sessionId);
   const { error: updateError } = await supabaseAdmin
@@ -495,7 +536,11 @@ function storedConfig(value: unknown): StoredChain | null {
   };
 }
 
-function clockFrom(row: Record<string, unknown>, config: EscalationConfig, stored: StoredChain): ChainClock {
+function clockFrom(
+  row: Record<string, unknown>,
+  config: EscalationConfig,
+  stored: StoredChain,
+): ChainClock {
   return {
     scope: config.scope,
     scope_team: (row.scope_team as string | null) ?? null,
@@ -591,7 +636,11 @@ export async function stopChainsForMood(input: {
         : !team && !roleScope;
     if (!matches) continue;
     if (row.waiting_on_call_group_id) {
-      await cancelScheduledRedials(String(row.waiting_on_call_group_id), 'chain_stopped', input.trainerId);
+      await cancelScheduledRedials(
+        String(row.waiting_on_call_group_id),
+        'chain_stopped',
+        input.trainerId,
+      );
     }
     await patchChain(String(row.id), {
       status: 'stopped',
@@ -646,7 +695,11 @@ async function applyDecision(input: {
   }
   if (input.decision.kind === 'stop') {
     if (input.clock.waiting_on_call_group_id) {
-      await cancelScheduledRedials(input.clock.waiting_on_call_group_id, 'chain_stopped', input.trainerId);
+      await cancelScheduledRedials(
+        input.clock.waiting_on_call_group_id,
+        'chain_stopped',
+        input.trainerId,
+      );
     }
     await patchChain(id, {
       status: 'stopped',
@@ -671,7 +724,8 @@ async function applyDecision(input: {
     const stored = { ...input.stored };
     if (input.decision.clearCall) {
       patch.waiting_on_call_group_id = null;
-      patch.last_step_delivered_minute = input.decision.lastStepMinute ?? input.clock.last_step_delivered_minute;
+      patch.last_step_delivered_minute =
+        input.decision.lastStepMinute ?? input.clock.last_step_delivered_minute;
     }
     if (input.decision.nextDueMinute != null) patch.next_due_minute = input.decision.nextDueMinute;
     if (input.decision.held) {
@@ -706,7 +760,11 @@ async function applyDecision(input: {
       }
       return 0;
     }
-    await patchChain(id, { status: 'exhausted', next_due_minute: null, waiting_on_call_group_id: null });
+    await patchChain(id, {
+      status: 'exhausted',
+      next_due_minute: null,
+      waiting_on_call_group_id: null,
+    });
     if (plan === 'mark_unresolved') {
       logger.warn(
         { event: 'escalation_exhaust_unresolved', sessionId: input.sessionId, chainId: id, key },
@@ -722,7 +780,12 @@ async function applyDecision(input: {
   }
   if (input.remaining <= 0) {
     logger.info(
-      { event: 'escalation_publish_deferred', sessionId: input.sessionId, chainId: id, stepNo: input.decision.stepNo },
+      {
+        event: 'escalation_publish_deferred',
+        sessionId: input.sessionId,
+        chainId: id,
+        stepNo: input.decision.stepNo,
+      },
       'Chain step deferred to a later tick',
     );
     return 0;
@@ -751,7 +814,9 @@ async function deliverStep(
   const step = resolveStep(input.clock.config, stepNo, root.app);
   if (!step) return false;
   const moodStakeholder = step.sender_stakeholder_id ?? input.clock.stakeholder_id;
-  const moodScope = input.clock.scope_role ? `role:${input.clock.scope_role}` : (input.clock.scope_team ?? '');
+  const moodScope = input.clock.scope_role
+    ? `role:${input.clock.scope_role}`
+    : (input.clock.scope_team ?? '');
   const mood = await moodForFollowUp({
     sessionId: input.sessionId,
     stakeholderId: moodStakeholder,
@@ -776,11 +841,14 @@ async function deliverStep(
   });
   const effects = urgencyEffects(step.urgency);
   const teams = stepTeams(step, input.clock.scope_team, root.target_teams);
-  const thread = step.appResolved === 'email' ? await emailThread(input.clock.root_delivery_id) : null;
+  const thread =
+    step.appResolved === 'email' ? await emailThread(input.clock.root_delivery_id) : null;
   const base = { ...root.delivery_config };
   delete base.escalation;
   delete base.chain;
-  const senderId = step.sender_stakeholder_id ?? (typeof base.stakeholder_id === 'string' ? base.stakeholder_id : null);
+  const senderId =
+    step.sender_stakeholder_id ??
+    (typeof base.stakeholder_id === 'string' ? base.stakeholder_id : null);
   const deliveryConfig: Record<string, unknown> = {
     ...base,
     app: step.appResolved,
@@ -801,7 +869,10 @@ async function deliverStep(
       : {}),
     ...(step.appResolved === 'social_feed'
       ? {
-          content_flags: { ...(base.content_flags as object | undefined), is_organized_pressure: false },
+          content_flags: {
+            ...(base.content_flags as object | undefined),
+            is_organized_pressure: false,
+          },
           virality_score: effects.viralityScore,
           ...(await socialAuthor(root.scenario_id || input.scenarioId, senderId)),
         }
@@ -841,13 +912,19 @@ async function deliverStep(
     },
   };
   const io = await resolveIo(input.io);
-  const result = await sendStep(draft, supabaseStepStore(input.sessionId, input.trainerId, io));
+  const result = await sendStep(
+    draft,
+    supabaseStepStore(input.sessionId, input.trainerId, io, input.elapsed),
+  );
   if (!result.injectId) return false;
   if (input.clock.steps_sent >= stepNo) return false;
-  const groupId = step.appResolved === 'phone_call' ? await callGroupForInject(result.injectId) : null;
+  const groupId =
+    step.appResolved === 'phone_call' ? await callGroupForInject(result.injectId) : null;
   const following = resolveStep(input.clock.config, stepNo + 1, root.app);
   const followingAfter =
-    stepNo >= input.clock.max_steps ? step.after_minutes : following?.after_minutes ?? step.after_minutes;
+    stepNo >= input.clock.max_steps
+      ? step.after_minutes
+      : (following?.after_minutes ?? step.after_minutes);
   const nextDue = groupId
     ? null
     : nextDueAfterSend({
@@ -934,7 +1011,9 @@ async function renderFollowUp(input: {
     });
   if (input.step.content_mode !== 'ai') return { text: fallback(), mode: 'template' };
   try {
-    const stakeholder = input.stakeholderId ? await findById(input.scenarioId, input.stakeholderId) : null;
+    const stakeholder = input.stakeholderId
+      ? await findById(input.scenarioId, input.stakeholderId)
+      : null;
     const ctx = await loadScenarioCtx(input.scenarioId);
     const character = stakeholder ? buildCharacterPrompt(stakeholder, [], ctx) : '';
     const mood = input.moodBlock?.trim() ? `\n${input.moodBlock.trim()}` : '';
@@ -970,12 +1049,20 @@ async function renderFollowUp(input: {
         : text;
     return { text: withSubject.slice(0, textLimit(input.step.appResolved) + 80), mode: 'ai' };
   } catch (err) {
-    logger.warn({ err, sessionId: input.sessionId }, 'escalation follow-up fell back to the template');
+    logger.warn(
+      { err, sessionId: input.sessionId },
+      'escalation follow-up fell back to the template',
+    );
     return { text: fallback(), mode: 'template' };
   }
 }
 
-function supabaseStepStore(sessionId: string, trainerId: string | null, io: SocketServer): ChainStepStore {
+function supabaseStepStore(
+  sessionId: string,
+  trainerId: string | null,
+  io: SocketServer,
+  minute: number,
+): ChainStepStore {
   return {
     async claim(step) {
       const { data, error } = await supabaseAdmin
@@ -992,7 +1079,8 @@ function supabaseStepStore(sessionId: string, trainerId: string | null, io: Sock
       if (error?.code === '23505') return 'exists';
       if (error || !data) {
         if (isEscalationSchemaMissing(error)) noteEscalationUnavailable();
-        else if (error) logger.warn({ err: error, chainId: step.chainId }, 'escalation step was not claimed');
+        else if (error)
+          logger.warn({ err: error, chainId: step.chainId }, 'escalation step was not claimed');
         return 'unavailable';
       }
       return 'claimed';
@@ -1010,7 +1098,11 @@ function supabaseStepStore(sessionId: string, trainerId: string | null, io: Sock
       return { injectId: (data.inject_id as string | null) ?? null, ageMs };
     },
     async insertInject(row) {
-      const { data, error } = await supabaseAdmin.from('scenario_injects').insert(row).select('id').maybeSingle();
+      const { data, error } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert(row)
+        .select('id')
+        .maybeSingle();
       if (!error && data) return 'inserted';
       if (error?.code === '23505') return 'exists';
       logger.warn({ err: error, sessionId }, 'escalation runtime inject was not created');
@@ -1028,13 +1120,28 @@ function supabaseStepStore(sessionId: string, trainerId: string | null, io: Sock
       return (data?.length ?? 0) > 0;
     },
     async publish(injectId) {
-      await publishInjectToSession(injectId, sessionId, trainerId ?? injectId, io, { awaitDelivery: true });
+      await publishInjectToSession(injectId, sessionId, trainerId ?? injectId, io, {
+        awaitDelivery: true,
+      });
+      void recordInjectTrigger({
+        sessionId,
+        injectId,
+        origin: 'chain',
+        minute,
+        causeDepth: 1,
+      });
     },
   };
 }
 
 async function publishTemplateKey(
-  input: { scenarioId: string; sessionId: string; trainerId: string | null; io: SocketServer | null },
+  input: {
+    scenarioId: string;
+    sessionId: string;
+    trainerId: string | null;
+    io: SocketServer | null;
+    elapsed?: number;
+  },
   key: string,
 ): Promise<'published' | 'unresolved' | 'transient'> {
   const { data, error } = await activeTemplateInjects(
@@ -1051,7 +1158,20 @@ async function publishTemplateKey(
   if (!data || data.trigger_time_minutes != null) return 'unresolved';
   try {
     const io = await resolveIo(input.io);
-    await publishInjectToSession(String(data.id), input.sessionId, input.trainerId ?? String(data.id), io);
+    await publishInjectToSession(
+      String(data.id),
+      input.sessionId,
+      input.trainerId ?? String(data.id),
+      io,
+    );
+    void recordInjectTrigger({
+      sessionId: input.sessionId,
+      injectId: String(data.id),
+      injectKey: key,
+      origin: 'chain',
+      minute: input.elapsed,
+      causeDepth: 1,
+    });
     return 'published';
   } catch (err) {
     logger.warn({ err, sessionId: input.sessionId, key }, 'exhaust inject publish failed');
@@ -1073,12 +1193,17 @@ async function socialAuthor(
       author_type: 'npc_public',
     };
   } catch (err) {
-    logger.warn({ err, scenarioId, stakeholderId }, 'social follow-up could not load its stakeholder');
+    logger.warn(
+      { err, scenarioId, stakeholderId },
+      'social follow-up could not load its stakeholder',
+    );
     return {};
   }
 }
 
-async function emailThread(rootDeliveryId: string): Promise<{ threadId: string | null; repliedToId: string | null } | null> {
+async function emailThread(
+  rootDeliveryId: string,
+): Promise<{ threadId: string | null; repliedToId: string | null } | null> {
   const root = await supabaseAdmin
     .from('inject_deliveries')
     .select('channel, ref_id')
@@ -1125,7 +1250,10 @@ async function loadCallGroup(
   }
   const answered = data.some(
     (row) =>
-      Boolean(row.answered_by) || row.status === 'ended' || row.status === 'connecting' || row.status === 'active',
+      Boolean(row.answered_by) ||
+      row.status === 'ended' ||
+      row.status === 'connecting' ||
+      row.status === 'active',
   );
   const open = data.some((row) =>
     ['scheduled', 'ringing', 'connecting', 'active'].includes(String(row.status)),
@@ -1139,7 +1267,11 @@ async function loadCallGroup(
   return { finished: !open, finish_minute: finish ?? elapsed, answered };
 }
 
-async function cancelScheduledRedials(groupId: string, reason: string, trainerId: string | null): Promise<void> {
+async function cancelScheduledRedials(
+  groupId: string,
+  reason: string,
+  trainerId: string | null,
+): Promise<void> {
   const { data } = await supabaseAdmin
     .from('sim_calls')
     .select('id, recipient_user_ids')
@@ -1175,7 +1307,11 @@ async function patchChain(id: string, patch: Record<string, unknown>): Promise<v
 async function loadScenarioFacts(
   scenarioId: string,
   injectId: string | null,
-): Promise<{ stakeholderIds: string[] | null; durationMinutes: number | null; injects: KnownInjectRef[] }> {
+): Promise<{
+  stakeholderIds: string[] | null;
+  durationMinutes: number | null;
+  injects: KnownInjectRef[];
+}> {
   try {
     const scenario = await supabaseAdmin
       .from('scenarios')
@@ -1217,7 +1353,11 @@ async function loadScenarioFacts(
 }
 
 async function currentMinute(sessionId: string): Promise<number> {
-  const { data } = await supabaseAdmin.from('sessions').select('start_time').eq('id', sessionId).maybeSingle();
+  const { data } = await supabaseAdmin
+    .from('sessions')
+    .select('start_time')
+    .eq('id', sessionId)
+    .maybeSingle();
   return sessionMinuteAt(data?.start_time as string | null, new Date().toISOString());
 }
 
@@ -1232,7 +1372,11 @@ function emitTrainer(trainerId: string | null, type: string, data: Record<string
   getWebSocketService().emitToUser(trainerId, { type, data, timestamp: new Date().toISOString() });
 }
 
-function stepTeams(step: { target_team?: string; cc_team?: string }, scopeTeam: string | null, rootTeams: string[]): string[] {
+function stepTeams(
+  step: { target_team?: string; cc_team?: string },
+  scopeTeam: string | null,
+  rootTeams: string[],
+): string[] {
   const primary = step.target_team ? [step.target_team] : scopeTeam ? [scopeTeam] : rootTeams;
   const extra = step.cc_team && !primary.includes(step.cc_team) ? [step.cc_team] : [];
   return [...primary, ...extra].filter(Boolean);
@@ -1253,7 +1397,8 @@ function senderName(root: StoredRoot): string {
 function missedCalls(comms: CommsState | null, rootKey: string): number {
   const rows: CommsDelivery[] = comms?.by_key?.[rootKey] ?? [];
   return rows.filter(
-    (row) => row.channel === 'call' && (row.call_state === 'missed' || row.call_state === 'declined'),
+    (row) =>
+      row.channel === 'call' && (row.call_state === 'missed' || row.call_state === 'declined'),
   ).length;
 }
 
