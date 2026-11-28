@@ -13,6 +13,7 @@ import {
   type PeekTeam,
   type SetupEditAllowance,
 } from '../lib/scenarioLibraryApi';
+import { scenarioLockState, type ScenarioLockState } from '../lib/scenarioLock';
 import { setupEditButtonState } from '../lib/setupEditButton';
 import { EditHistoryList } from '../components/Scenario/SetupEditPanels';
 import { ApiError, api } from '../lib/api';
@@ -32,7 +33,7 @@ type Scenario = LibraryScenario;
 type TypeFilter = 'all' | 'field' | 'social';
 type StatusFilter = 'all' | 'active' | 'draft' | 'live' | 'locked';
 type SortKey = 'compiled' | 'run' | 'sessions' | 'az';
-type LockState = 'editable' | 'locked-live' | 'locked-credits' | 'draft';
+type LockState = ScenarioLockState;
 
 const isSocial = (s: Scenario) => s.category === 'social_media_crisis';
 
@@ -188,13 +189,8 @@ export const Scenarios = () => {
   };
 
   const lockState = useCallback(
-    (s: Scenario): LockState => {
-      if (s.summary?.live_session_id) return 'locked-live';
-      if (!s.is_active) return 'draft';
-      if (sessionCredits === 0) return 'locked-credits';
-      return 'editable';
-    },
-    [sessionCredits],
+    (s: Scenario): LockState => scenarioLockState(s, isAdmin, sessionCredits),
+    [sessionCredits, isAdmin],
   );
 
   const counts = useMemo(() => {
