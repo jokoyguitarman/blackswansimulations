@@ -53,12 +53,25 @@ export function hasPendingProposals(sessionId: string): boolean {
   return (pendingCount.get(sessionId) ?? 0) > 0;
 }
 
-/** Replace counts from a discovery query. A later discovery heals a drifted count. */
+/**
+ * Fold a discovery read into the in-memory counts.
+ * The higher count wins, so a proposal inserted between the read and this
+ * merge is not wiped, and a discovery that found more rows raises a low count.
+ */
 export function replacePendingCounts(counts: ReadonlyMap<string, number>): void {
-  pendingCount.clear();
+  const next = new Map<string, number>();
   for (const [sessionId, count] of counts) {
-    if (count > 0) pendingCount.set(sessionId, count);
+    if (count > 0) next.set(sessionId, count);
   }
+  for (const [sessionId, count] of pendingCount) {
+    if (count > 0) next.set(sessionId, Math.max(next.get(sessionId) ?? 0, count));
+  }
+  pendingCount.clear();
+  for (const [sessionId, count] of next) pendingCount.set(sessionId, count);
+}
+
+export function pendingProposalCount(sessionId: string): number {
+  return pendingCount.get(sessionId) ?? 0;
 }
 
 /**

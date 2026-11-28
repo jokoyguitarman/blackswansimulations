@@ -2,6 +2,8 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   decisionFacts,
+  dependencySignalKeys,
+  directorNeedsTeamSignals,
   gradesByTeam,
   latestActivity,
   needsTeamSignalFacts,
@@ -66,6 +68,53 @@ describe('team signal facts', () => {
         cancelled,
       ),
       true,
+    );
+  });
+
+  test('a dependency edge or a live director keeps the reads on after the injects have fired', () => {
+    const published = new Set(['fired']);
+    const cancelled = new Set<string>();
+    const fired = [{ id: 'fired', keys: ['duty_missed:review|team=legal'] }];
+    const edges = [
+      { broken_when: { all: ['team_silent:15|team=@upstream'] }, met_when: { all: ['duty_done:review|team=@upstream'] } },
+    ];
+    assert.equal(
+      teamSignalReadsNeeded(fired, published, cancelled, { extraKeys: dependencySignalKeys(edges) }),
+      true,
+    );
+    assert.equal(
+      teamSignalReadsNeeded(fired, published, cancelled, { directorOn: true }),
+      true,
+    );
+    assert.equal(teamSignalReadsNeeded(fired, published, cancelled), false);
+    assert.equal(
+      directorNeedsTeamSignals({
+        enabled: true,
+        modeMax: 'auto',
+        defaultMode: 'auto',
+        initialState: {},
+        initialStateKnown: true,
+      }),
+      true,
+    );
+    assert.equal(
+      directorNeedsTeamSignals({
+        enabled: true,
+        modeMax: 'auto',
+        defaultMode: 'auto',
+        initialState: { director: { mode: 'off' } },
+        initialStateKnown: true,
+      }),
+      false,
+    );
+    assert.equal(
+      directorNeedsTeamSignals({
+        enabled: true,
+        modeMax: 'auto',
+        defaultMode: 'auto',
+        initialStateKnown: false,
+      }),
+      false,
     );
   });
 

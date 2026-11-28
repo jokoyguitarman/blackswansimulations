@@ -102,7 +102,8 @@ describe('dependency reads per tick', () => {
       currentState: {},
       dependencyTick: tick,
     });
-    await updateDependencyStates(session, ctx, 12, tick ?? undefined);
+    assert.ok(tick);
+    await updateDependencyStates(session, ctx, 12, tick);
     assert.equal(count('scenarios'), 1);
     assert.equal(count('session_dependency_states'), 1);
     assert.equal(count('scenario_teams'), 1);
@@ -122,7 +123,8 @@ describe('dependency reads per tick', () => {
       currentState: {},
       dependencyTick: tick,
     });
-    await updateDependencyStates(session, ctx, 12, tick ?? undefined);
+    assert.ok(tick);
+    await updateDependencyStates(session, ctx, 12, tick);
     assert.equal(count('scenarios'), 0);
     assert.equal(count('session_dependency_states'), 1);
     assert.equal(count('scenario_teams'), 1);

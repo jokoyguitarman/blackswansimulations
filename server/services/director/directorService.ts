@@ -128,10 +128,7 @@ export interface DirectorStore {
   loadTeams(scenarioId: string): Promise<Array<{ name: string }>>;
   loadMemberships(sessionId: string): Promise<Array<{ user_id: string; team_name: string }>>;
   loadUpcoming(scenarioId: string, minute: number): Promise<UpcomingInject[]>;
-  /**
-   * Validated cast. Required so a test store cannot fall through to
-   * `getStakeholders` and the database. Production passes `loadPublishPeople`.
-   */
+  /** Validated cast. Required so tests cannot fall through to `getStakeholders`. */
   loadStakeholders(scenarioId: string): Promise<DirectorPerson[]>;
   saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missing'>;
   insertProposal(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'>;
@@ -500,7 +497,10 @@ function observationOf(
     signals: [],
     cast: parts.people.map((person) => ({ id: person.id, name: person.name })),
     npcs: readNpcs(scenario.initial).map((npc) => ({ handle: npc.handle })),
-    protectedTeams: [...parts.settings.protected, ...snoozedTeams(input.sessionId, Date.now())],
+      protectedTeams: [
+        ...parts.settings.protected,
+        ...snoozedTeams(input.sessionId, Date.now()),
+      ],
     busyTeams: roster
       .filter(
         (team) => (unansweredByTeam(parts.deliveryRows)[slugifyTeamName(team.name)] ?? 0) >= 3,
@@ -1073,28 +1073,19 @@ function countdownFor(draft: DirectorDraft): string | null {
   return new Date(Date.now() + env.directorAutoGraceSeconds * 1000).toISOString();
 }
 
-async function insertProposalRow(
-  row: Record<string, unknown>,
-): Promise<'ok' | 'missing' | 'error'> {
+async function insertProposalRow(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'> {
   const first = await insertProposalOnce(row);
   if (first !== 'column') return first;
   if (!('auto_publish_at' in row)) return 'error';
-  warnOnce(
-    'auto_publish_at',
-    new Error('auto_publish_at'),
-    'director countdown column is missing',
-    {
-      sessionId: row.session_id,
-    },
-  );
+  warnOnce('auto_publish_at', new Error('auto_publish_at'), 'director countdown column is missing', {
+    sessionId: row.session_id,
+  });
   const { auto_publish_at: _dropped, ...rest } = row;
   const second = await insertProposalOnce(rest);
   return second === 'column' ? 'error' : second;
 }
 
-async function insertProposalOnce(
-  row: Record<string, unknown>,
-): Promise<'ok' | 'missing' | 'error' | 'column'> {
+async function insertProposalOnce(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error' | 'column'> {
   const { error } = await supabaseAdmin.from('director_proposals').insert(row);
   if (!error) return 'ok';
   if (SCHEMA_CODES.has(error.code ?? '')) {
@@ -1512,9 +1503,7 @@ export function scheduleDirectorWake(
 
 /**
  * Pending proposals on in-progress sessions, newest first.
- * The scheduler loop runs this on an interval, including its first pass.
- * Returns false when the read failed and the caller should try again; true
- * when the count is current or the director is off.
+ * Returns false when the read failed. True when the count was merged or the director is off.
  */
 export async function discoverPendingDirectorProposals(): Promise<boolean> {
   if (directorUnavailable || !env.directorEnabled) return true;
@@ -1531,11 +1520,7 @@ export async function discoverPendingDirectorProposals(): Promise<boolean> {
         noteUnavailable(error);
         return true;
       }
-      warnOnce(
-        `discover:${error.code ?? 'unknown'}`,
-        error,
-        'director pending rows were not discovered',
-      );
+      warnOnce(`discover:${error.code ?? 'unknown'}`, error, 'director pending rows were not discovered');
       return false;
     }
     const counts = new Map<string, number>();
@@ -1556,7 +1541,7 @@ export async function discoverPendingDirectorProposals(): Promise<boolean> {
   }
 }
 
-/** Inner-join rows for an ended session stay out even if the filter was ignored. */
+/** Ended sessions stay out even if a row slips past the status filter. */
 function liveSessionId(row: { session_id?: unknown; session?: unknown }): string {
   const embedded = Array.isArray(row.session) ? row.session[0] : row.session;
   const status =
@@ -1631,9 +1616,7 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
       .eq('id', sessionId);
     if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
     if (error) {
-      warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', {
-        sessionId,
-      });
+      warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', { sessionId });
       return 'error';
     }
     invalidateDirectorSession(sessionId);
@@ -1664,11 +1647,7 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
   },
   publishFacts: factsForPublish,
   insertInject: async (row) => {
-    const { data, error } = await supabaseAdmin
-      .from('scenario_injects')
-      .insert(row)
-      .select('id')
-      .maybeSingle();
+    const { data, error } = await supabaseAdmin.from('scenario_injects').insert(row).select('id').maybeSingle();
     if (error || !data) {
       logger.warn({ err: error }, 'director inject was not created');
       return null;
@@ -1700,11 +1679,9 @@ async function requestDirectorWake(
   actorId: string,
   body: { team?: string; hint?: string },
 ): Promise<CommandResult> {
-  if (directorIsPaused(sessionId))
-    return { ok: false, status: 409, error: 'AI director is paused' };
+  if (directorIsPaused(sessionId)) return { ok: false, status: 409, error: 'AI director is paused' };
   const session = await loadSessionDirector(sessionId);
-  if (session === 'missing')
-    return { ok: false, status: 503, error: 'AI director is not available' };
+  if (session === 'missing') return { ok: false, status: 503, error: 'AI director is not available' };
   if (!session) return { ok: false, status: 404, error: 'Session not found' };
   const scenarioMode = await loadScenarioMode(session.scenarioId);
   const mode = resolveDirectorMode(
@@ -1865,9 +1842,7 @@ function consoleProposalFrom(row: Record<string, unknown>): ConsoleProposal {
     reason: typeof raw?.reason === 'string' ? raw.reason : null,
     proposal: (row.proposal as ConsoleProposal['proposal']) ?? null,
     signals: Array.isArray(row.signals) ? (row.signals as ConsoleProposal['signals']) : [],
-    guardrails: Array.isArray(row.guardrails)
-      ? (row.guardrails as ConsoleProposal['guardrails'])
-      : [],
+    guardrails: Array.isArray(row.guardrails) ? (row.guardrails as ConsoleProposal['guardrails']) : [],
     consistencyStatus: typeof consistency?.status === 'string' ? consistency.status : null,
     fairness: (row.fairness as ConsoleProposal['fairness']) ?? null,
     autoPublishAt: row.auto_publish_at ? String(row.auto_publish_at) : null,
@@ -1922,14 +1897,7 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
     facts: readFacts(scenario.initial),
     recentTexts: deliveryRows
       .filter((row) => minute - row.minute <= 30)
-      .flatMap((row) =>
-        row.teams.map((team) => ({
-          team,
-          minute: row.minute,
-          title: row.title,
-          content: row.content,
-        })),
-      ),
+      .flatMap((row) => row.teams.map((team) => ({ team, minute: row.minute, title: row.title, content: row.content }))),
     upcoming: [],
     capEvents: publishedCapEvents(
       history.map((row) => ({

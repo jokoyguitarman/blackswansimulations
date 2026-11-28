@@ -3,7 +3,7 @@ import { after, describe, test } from 'node:test';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { dutiesByTeam, type ObservedAction } from '../teamTasksCore.js';
 import { gradesByTeam, latestActivity, type GradeHit } from './teamSignalsCore.js';
-import { loadTeamSignalFacts } from './teamSignalService.js';
+import { loadTeamSignalFacts, resetTeamSignalAggregatesForTests } from './teamSignalService.js';
 import { activityMinute } from '../../lib/peaceGate.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 
@@ -165,7 +165,7 @@ describe('narrowed team-signal queries', () => {
   function errorFor(table: string, select: string): { code: string; message: string } | null {
     if (aggregates) return null;
     if (select.includes('.min()') || select.includes('.max()') || select.includes('.count()')) {
-      return { code: 'PGRST100', message: `${table} aggregates disabled` };
+      return { code: 'PGRST123', message: `${table} aggregates disabled` };
     }
     return null;
   }
@@ -206,12 +206,19 @@ describe('narrowed team-signal queries', () => {
     if (table === 'chat_messages' && select.includes('created_at.max()')) return chatMax;
     if (table === 'chat_messages') return chatRows;
     if (table === 'social_posts' && select.includes('id.count()')) return gradeCounts;
+    if (table === 'social_posts' && select.includes('->>overall')) {
+      return gradeRows.map((row) => ({
+        posted_by_user_id: row.posted_by_user_id,
+        overall: (row.sop_compliance_score as { overall: number }).overall,
+      }));
+    }
     if (table === 'social_posts') return gradeRows;
     if (table === 'sim_emails') return [];
     return [];
   }
 
   test('aggregate reads match a full scan, including hint matching and score counts', async () => {
+    resetTeamSignalAggregatesForTests();
     install();
     aggregates = true;
     const aggregated = await loadTeamSignalFacts(SESSION, START);
@@ -284,5 +291,19 @@ describe('narrowed team-signal queries', () => {
       );
     }
     assert.equal(aggregated.team_activity.legal?.last_minute === 50, false);
+    assert.ok(selects.some((line) => line.includes('->>overall')));
+    assert.equal(
+      selects.some((line) => line.includes('social_posts') && line.endsWith('sop_compliance_score')),
+      false,
+    );
+
+    selects.length = 0;
+    const again = await loadTeamSignalFacts(SESSION, START);
+    assert.equal(
+      selects.some((line) => line.includes('.min()') || line.includes('.max()') || line.includes('.count()')),
+      false,
+    );
+    assert.deepEqual(again.duties, expectedDuties);
+    assert.deepEqual(again.team_activity, expectedActivity);
   });
 });

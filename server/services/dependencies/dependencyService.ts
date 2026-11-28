@@ -427,26 +427,18 @@ export async function updateDependencyStates(
   session: DependencySession,
   ctx: EvaluationContext,
   elapsed: number,
-  preloaded?: readonly TeamDependencyEdge[] | DependencyTickLoad,
+  tick: DependencyTickLoad,
 ): Promise<Record<string, DependencyRuntimeState> | null> {
   if (!env.crossTeamDependencies) return null;
-  const tick = isDependencyTick(preloaded) ? preloaded : null;
-  const suppliedEdges = Array.isArray(preloaded) ? preloaded : null;
-  const list = tick
-    ? [...tick.edges]
-    : suppliedEdges
-      ? [...suppliedEdges]
-      : await loadScenarioDependencyEdges(session.scenario_id);
+  const list = [...tick.edges];
   if (list.length === 0) {
     rememberDependencySources(session.id, new Map());
     rememberDependencyReferences(session.id, new Map());
     return null;
   }
-  const stored = tick
-    ? { missing: tick.missing, rows: tick.rows ?? [] }
-    : await loadRows(session.id);
+  const stored = { missing: tick.missing, rows: tick.rows ?? [] };
   if (stored.missing) return publishMap(ctx, session.id, {});
-  const teams = tick ? tick.teams : await loadTeams(session.scenario_id);
+  const teams = tick.teams;
   const rowsById = new Map(stored.rows.map((row) => [row.dep_id, row]));
   const evidenceById = new Map<string, readonly { key: string }[]>(
     stored.rows.map((row) => [row.dep_id, row.evidence]),
@@ -479,12 +471,6 @@ export async function updateDependencyStates(
     if (state) emitChanged(session.trainer_id, session.id, depId, state);
   }
   return map;
-}
-
-function isDependencyTick(
-  value: readonly TeamDependencyEdge[] | DependencyTickLoad | undefined,
-): value is DependencyTickLoad {
-  return value != null && !Array.isArray(value) && 'missing' in value && 'teams' in value;
 }
 
 /** Map for a context that does not already carry one. Null leaves the caller's state alone. */

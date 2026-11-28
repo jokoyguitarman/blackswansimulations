@@ -420,6 +420,30 @@ test('approve refuses a suggestion older than the TTL before the sweep expires i
   const fresh = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
   assert.equal(fresh.status, 200);
   assert.equal(published.length, 1);
+
+  reset();
+  rows = [
+    row({
+      mode: 'auto',
+      createdAt: new Date(now.getTime() - 6 * 60_000).toISOString(),
+      autoPublishAt: new Date(now.getTime() + 30_000).toISOString(),
+    }),
+  ];
+  const countdown = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(countdown.status, 200);
+
+  reset();
+  rows = [
+    row({
+      mode: 'auto',
+      createdAt: now.toISOString(),
+      autoPublishAt: new Date(now.getTime() - (60 + 5 * 60) * 1000 - 1000).toISOString(),
+    }),
+  ];
+  const stale = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(stale.status, 409);
+  assert.match(stale.json.error ?? '', /expired/i);
+  assert.equal(published.length, 0);
 });
 
 test('approve twice publishes once, and a meta-word edit is rejected', async () => {

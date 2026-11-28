@@ -5,6 +5,8 @@ import {
   DIRECTOR_PENDING_DISCOVERY_INTERVAL_MS,
   DIRECTOR_PENDING_DISCOVERY_LIMIT,
   hasPendingProposals,
+  noteProposalPending,
+  pendingProposalCount,
   resetDirectorRuntime,
 } from './directorRuntime.js';
 import { discoverPendingDirectorProposals, resetDirectorProcessState } from './directorService.js';
@@ -13,8 +15,7 @@ mock.module('../../index.js', {
   namedExports: { io: {}, app: {}, server: {} },
 });
 
-const { InjectSchedulerService, runSchedulerLoopForTests } =
-  await import('../injectSchedulerService.js');
+const { InjectSchedulerService } = await import('../injectSchedulerService.js');
 
 const LIVE = '11111111-1111-4111-8111-111111111111';
 const ENDED = '22222222-2222-4222-8222-222222222222';
@@ -104,6 +105,15 @@ describe('pending director discovery', () => {
     assert.equal(query?.limit, DIRECTOR_PENDING_DISCOVERY_LIMIT);
     assert.equal(hasPendingProposals(LIVE), true);
     assert.equal(hasPendingProposals(ENDED), false);
+
+    resetDirectorRuntime();
+    noteProposalPending(LIVE);
+    noteProposalPending(LIVE);
+    noteProposalPending(ENDED);
+    install([{ session_id: LIVE, session: { status: 'in_progress' } }]);
+    assert.equal(await discoverPendingDirectorProposals(), true);
+    assert.equal(pendingProposalCount(LIVE), 2);
+    assert.equal(pendingProposalCount(ENDED), 1);
   });
 
   test('the scheduler loop rediscovers on the interval and retries a failed read', async () => {
@@ -138,25 +148,21 @@ describe('pending director discovery', () => {
 
     const discoveries = () => calls.filter((table) => table === 'director_proposals').length;
     const scheduler = new InjectSchedulerService(undefined, () => now);
-    await runSchedulerLoopForTests(scheduler);
+    await scheduler.runLoopForTests();
     assert.equal(hasPendingProposals(LIVE), false);
     assert.deepEqual(calls.slice(0, 2), ['director_proposals', 'sessions']);
 
-    await runSchedulerLoopForTests(scheduler);
-    assert.equal(discoveries(), 2);
+    await scheduler.runLoopForTests();
+    assert.equal(discoveries(), 1);
 
+    now += DIRECTOR_PENDING_DISCOVERY_INTERVAL_MS;
     fail = false;
-    await runSchedulerLoopForTests(scheduler);
+    await scheduler.runLoopForTests();
+    assert.equal(discoveries(), 2);
     assert.equal(hasPendingProposals(LIVE), true);
-    const found = discoveries();
 
     now += DIRECTOR_PENDING_DISCOVERY_INTERVAL_MS - 1;
-    await runSchedulerLoopForTests(scheduler);
-    assert.equal(discoveries(), found);
-    assert.equal(calls.at(-1), 'sessions');
-
-    now += 1;
-    await runSchedulerLoopForTests(scheduler);
-    assert.equal(discoveries(), found + 1);
+    await scheduler.runLoopForTests();
+    assert.equal(discoveries(), 2);
   });
 });

@@ -402,12 +402,16 @@ export async function loadCommsState(
   elapsedMinutes: number,
   options?: {
     teamSignals?: boolean;
-    /** Called with scenarios.initial_state when this load already read it. */
-    rememberInitialState?: (initialState: unknown) => void;
+    /** Scenario initial_state the tick already loaded. */
+    initialState?: unknown;
+    initialStateKnown?: boolean;
   },
 ): Promise<CommsState> {
   const teamSignals = options?.teamSignals !== false;
-  const rememberInitialState = options?.rememberInitialState;
+  const scenarioState = {
+    initialState: options?.initialState,
+    initialStateKnown: options?.initialStateKnown === true,
+  };
   if (ledgerTablesMissing()) {
     return attachCommsFacts(
       sessionId,
@@ -416,7 +420,7 @@ export async function loadCommsState(
       emptyCommsState(elapsedMinutes),
       teamSignals,
       undefined,
-      rememberInitialState,
+      scenarioState,
     );
   }
   try {
@@ -445,7 +449,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
-        rememberInitialState,
+        scenarioState,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -456,7 +460,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
-        rememberInitialState,
+        scenarioState,
       );
     }
     const built = buildCommsState({
@@ -474,7 +478,7 @@ export async function loadCommsState(
       built,
       teamSignals,
       clock.openedAt,
-      rememberInitialState,
+      scenarioState,
     );
   } catch (err) {
     failLedger(err, 'loadCommsState');
@@ -485,7 +489,7 @@ export async function loadCommsState(
       emptyCommsState(elapsedMinutes),
       teamSignals,
       undefined,
-      rememberInitialState,
+      scenarioState,
     );
   }
 }
@@ -652,7 +656,7 @@ async function attachCommsFacts(
   state: CommsState,
   teamSignals = true,
   openedAt?: string | null,
-  rememberInitialState?: (initialState: unknown) => void,
+  scenarioState?: { initialState?: unknown; initialStateKnown?: boolean },
 ): Promise<CommsState> {
   try {
     const needClock = startTime == null || (env.enablePeacePeriod && openedAt === undefined);
@@ -663,10 +667,14 @@ async function attachCommsFacts(
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
       loadActionCounts(sessionId, clockStart),
-      loadScenarioStakeholders(sessionId, rememberInitialState),
+      loadScenarioStakeholders(sessionId, scenarioState),
       simCallsAvailable(),
       teamSignals
-        ? loadTeamSignalFacts(sessionId, clockStart, { openedAt: opened })
+        ? loadTeamSignalFacts(sessionId, clockStart, {
+            openedAt: opened,
+            initialState: scenarioState?.initialState,
+            initialStateKnown: scenarioState?.initialStateKnown,
+          })
         : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
@@ -950,13 +958,30 @@ async function loadEmailSentFacts(
   }
 }
 
+function stakeholdersFromInitial(initialState: unknown): {
+  stakeholders: Array<{ id: string; email?: string | null }>;
+  known: boolean;
+} {
+  const initial = initialState as { stakeholders?: unknown } | null;
+  if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
+  const stakeholders: Array<{ id: string; email?: string | null }> = [];
+  for (const raw of initial.stakeholders) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as { id?: unknown; email?: unknown };
+    if (typeof row.id !== 'string') continue;
+    stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
+  }
+  return { stakeholders, known: true };
+}
+
 async function loadScenarioStakeholders(
   sessionId: string,
-  rememberInitialState?: (initialState: unknown) => void,
+  scenarioState?: { initialState?: unknown; initialStateKnown?: boolean },
 ): Promise<{
   stakeholders: Array<{ id: string; email?: string | null }>;
   known: boolean;
 }> {
+  if (scenarioState?.initialStateKnown) return stakeholdersFromInitial(scenarioState.initialState);
   try {
     const { data: session, error } = await supabaseAdmin
       .from('sessions')
@@ -972,17 +997,7 @@ async function loadScenarioStakeholders(
       .maybeSingle();
     if (scenarioError) return { stakeholders: [], known: false };
     if (!scenario) return { stakeholders: [], known: true };
-    rememberInitialState?.(scenario.initial_state ?? null);
-    const initial = scenario.initial_state as { stakeholders?: unknown } | null;
-    if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
-    const stakeholders: Array<{ id: string; email?: string | null }> = [];
-    for (const raw of initial.stakeholders) {
-      if (!raw || typeof raw !== 'object') continue;
-      const row = raw as { id?: unknown; email?: unknown };
-      if (typeof row.id !== 'string') continue;
-      stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
-    }
-    return { stakeholders, known: true };
+    return stakeholdersFromInitial(scenario.initial_state);
   } catch (err) {
     warnFactOnce(
       'stakeholder_roster_unavailable',

@@ -4,6 +4,7 @@
  */
 
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
+import { resolveDirectorMode, type DirectorMode } from '../../../shared/directorModes.js';
 import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
 
 const DECISION_CATEGORY_SET = new Set<string>(DECISION_CATEGORIES);
@@ -32,20 +33,81 @@ export interface KeyedInject {
 }
 
 /**
- * Team-signal reads stay off unless an inject that can still fire uses one of
- * the keys. Published and cancelled injects do not count.
+ * Team-signal reads stay off unless something still in play needs them:
+ * an inject that has not fired or been cancelled, a dependency edge's
+ * broken_when or met_when, or a director whose resolved mode is not off.
  */
 export function teamSignalReadsNeeded(
   injects: readonly KeyedInject[],
   publishedIds: ReadonlySet<string>,
   cancelledIds: ReadonlySet<string>,
+  options?: { extraKeys?: Iterable<string>; directorOn?: boolean },
 ): boolean {
+  if (options?.directorOn) return true;
   const keys: string[] = [];
   for (const inject of injects) {
     if (publishedIds.has(inject.id) || cancelledIds.has(inject.id)) continue;
     for (const key of inject.keys) keys.push(key);
   }
+  if (options?.extraKeys) {
+    for (const key of options.extraKeys) keys.push(key);
+  }
   return needsTeamSignalFacts(keys);
+}
+
+/** Condition keys on dependency edges. Groups are `{ all }`, `{ any }`, or `{ conditions }`. */
+export function dependencySignalKeys(
+  edges: readonly { broken_when?: unknown; met_when?: unknown }[],
+): string[] {
+  const keys: string[] = [];
+  for (const edge of edges) {
+    keys.push(...groupKeys(edge.broken_when), ...groupKeys(edge.met_when));
+  }
+  return keys;
+}
+
+function groupKeys(group: unknown): string[] {
+  if (!group || typeof group !== 'object') return [];
+  const record = group as { all?: unknown; any?: unknown; conditions?: unknown };
+  const keys: string[] = [];
+  for (const list of [record.all, record.any, record.conditions]) {
+    if (!Array.isArray(list)) continue;
+    for (const key of list) {
+      if (typeof key === 'string' && key.trim()) keys.push(key.trim());
+    }
+  }
+  return keys;
+}
+
+/**
+ * True when this session's resolved director mode is not off.
+ * An unknown scenario (initial state not loaded, no session override) does not
+ * assume the default, so a tick that has not read the scenario stays quiet.
+ */
+export function directorNeedsTeamSignals(input: {
+  enabled: boolean;
+  modeMax: DirectorMode;
+  defaultMode: DirectorMode;
+  sessionMode?: string | null;
+  initialState?: unknown;
+  initialStateKnown: boolean;
+}): boolean {
+  if (!input.enabled) return false;
+  const state = input.initialState;
+  const hasState =
+    input.initialStateKnown && state != null && typeof state === 'object' && !Array.isArray(state);
+  if (!hasState && (input.sessionMode == null || input.sessionMode === '')) return false;
+  const director = hasState
+    ? (state as { director?: { mode?: unknown } }).director
+    : null;
+  const scenarioMode = typeof director?.mode === 'string' ? director.mode : null;
+  return (
+    resolveDirectorMode(
+      { enabled: true, modeMax: input.modeMax, defaultMode: input.defaultMode },
+      { mode: input.sessionMode },
+      { mode: scenarioMode },
+    ) !== 'off'
+  );
 }
 
 export interface ActivityHit {
