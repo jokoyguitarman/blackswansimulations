@@ -9,6 +9,7 @@
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { env } from '../../env.js';
+import { openedAtOf, selectSession, type SessionClockFields } from '../../lib/peaceSchema.js';
 import { getWebSocketService } from '../websocketService.js';
 import { getPlayerTeamName } from '../teamCharterService.js';
 import { logger } from '../../lib/logger.js';
@@ -137,6 +138,7 @@ export interface RecordResponseInput {
 interface SessionClock {
   startTime: string | null;
   trainerId: string | null;
+  openedAt?: string | null;
 }
 
 const DELIVERY_COLUMNS =
@@ -435,6 +437,7 @@ export async function loadCommsState(
         clock.startTime,
         emptyCommsState(elapsedMinutes),
         teamSignals,
+        clock.openedAt,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -444,6 +447,7 @@ export async function loadCommsState(
         clock.startTime,
         emptyCommsState(elapsedMinutes),
         teamSignals,
+        clock.openedAt,
       );
     }
     const built = buildCommsState({
@@ -454,7 +458,14 @@ export async function loadCommsState(
       countBots: env.injectLedgerCountBots,
     });
     await enrichRoleDeliveryColumns(built);
-    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built, teamSignals);
+    return attachCommsFacts(
+      sessionId,
+      elapsedMinutes,
+      clock.startTime,
+      built,
+      teamSignals,
+      clock.openedAt,
+    );
   } catch (err) {
     failLedger(err, 'loadCommsState');
     return attachCommsFacts(
@@ -628,9 +639,13 @@ async function attachCommsFacts(
   startTime: string | null,
   state: CommsState,
   teamSignals = true,
+  openedAt?: string | null,
 ): Promise<CommsState> {
   try {
-    const clockStart = startTime ?? (await loadSessionClock(sessionId)).startTime;
+    const needClock = startTime == null || (env.enablePeacePeriod && openedAt === undefined);
+    const loaded = needClock ? await loadSessionClock(sessionId) : null;
+    const clockStart = startTime ?? loaded?.startTime ?? null;
+    const opened = openedAt !== undefined ? openedAt : (loaded?.openedAt ?? null);
     const [contacts, verdicts, actions, stakeholders, callsAvailable, signals] = await Promise.all([
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
@@ -638,7 +653,7 @@ async function attachCommsFacts(
       loadScenarioStakeholders(sessionId),
       simCallsAvailable(),
       teamSignals
-        ? loadTeamSignalFacts(sessionId, clockStart)
+        ? loadTeamSignalFacts(sessionId, clockStart, { openedAt: opened })
         : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
@@ -1455,17 +1470,22 @@ async function profileIsBot(userId: string): Promise<boolean> {
   }
 }
 
+interface LedgerSessionClock extends SessionClockFields {
+  start_time: string | null;
+  trainer_id: string | null;
+}
+
 async function loadSessionClock(sessionId: string): Promise<SessionClock> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('sessions')
-      .select('start_time, trainer_id')
-      .eq('id', sessionId)
-      .maybeSingle();
+    const result = await selectSession<LedgerSessionClock>('start_time, trainer_id', (query) =>
+      query.eq('id', sessionId).maybeSingle(),
+    );
+    const { data, error } = result;
     if (error || !data) return { startTime: null, trainerId: null };
     return {
-      startTime: (data.start_time as string | null) ?? null,
-      trainerId: (data.trainer_id as string | null) ?? null,
+      startTime: data.start_time ?? null,
+      trainerId: data.trainer_id ?? null,
+      openedAt: openedAtOf(data),
     };
   } catch {
     return { startTime: null, trainerId: null };

@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import {
@@ -1039,10 +1040,7 @@ router.post(
       // bypasses the once-per-session claim (re-publishing an inject is a legitimate trainer move).
       try {
         await publishInjectToSession(id, session_id, user.id, io, { force: true });
-        const started = session.start_time ? Date.parse(String(session.start_time)) : Number.NaN;
-        const minute = Number.isFinite(started)
-          ? Math.max(0, Math.floor((Date.now() - started) / 60000))
-          : 0;
+        const minute = crisisElapsedMinutes(session.start_time ? String(session.start_time) : null);
         void recordInjectTrigger({
           sessionId: session_id,
           injectId: id,

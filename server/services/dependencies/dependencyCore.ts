@@ -5,6 +5,7 @@
  */
 
 import {
+  conditionGroupKeys,
   matchTeamRef,
   type ActiveTeam,
   type NormalizedConditions,
@@ -74,11 +75,6 @@ function issue(
   return { code, path, message, severity };
 }
 
-function groupKeys(group: NormalizedConditions | null | undefined): string[] {
-  if (!group) return [];
-  return 'all' in group ? group.all : group.conditions;
-}
-
 function usesDependencyKey(key: string): boolean {
   const body = key.split('|')[0]?.trim() ?? '';
   return body.startsWith('dependency_');
@@ -102,7 +98,9 @@ function injectKeyArgs(def: ConditionDef, args: readonly string[]): string[] {
   return refs;
 }
 
-function schemaMessage(error: { issues: readonly { path: PropertyKey[]; message: string }[] }): string {
+function schemaMessage(error: {
+  issues: readonly { path: PropertyKey[]; message: string }[];
+}): string {
   return error.issues
     .map((item) => {
       const path = item.path.length ? item.path.map(String).join('.') : 'edge';
@@ -130,31 +128,7 @@ function refreshRef(ref: TeamRef, team: ActiveTeam | null): TeamRef {
   };
 }
 
-/**
- * A team is unplayable when its organisation is operated by the simulation
- * (`operation: 'ai'`). Teams with no org, and orgs that omit operation, are playable.
- */
-export function toActiveTeams(
-  rows: readonly TeamRow[],
-  orgs: readonly OrgOperationRow[] = [],
-): ActiveTeam[] {
-  const aiOrgs = new Set(
-    orgs.flatMap((org) =>
-      org.operation === 'ai' && typeof org.org_key === 'string' && org.org_key ? [org.org_key] : [],
-    ),
-  );
-  const teams: ActiveTeam[] = [];
-  for (const row of rows) {
-    if (typeof row.team_name !== 'string' || !row.team_name.trim()) continue;
-    const orgKey = typeof row.org_key === 'string' ? row.org_key : null;
-    teams.push({
-      team_uid: typeof row.team_uid === 'string' && row.team_uid ? row.team_uid : null,
-      team_name: row.team_name,
-      playable: orgKey == null || !aiOrgs.has(orgKey),
-    });
-  }
-  return teams;
-}
+export { toActiveTeams } from '../../../shared/teamDependencies.js';
 
 export function readDependencyEdges(value: unknown): { edges: unknown[] } | { error: string } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -246,15 +220,27 @@ export function validateDependencies(
         );
       } else if (team.playable === false) {
         issues.push(
-          issue('MO-DEP-004', downPath, `Downstream team "${team.team_name}" is not a playable team`),
+          issue(
+            'MO-DEP-004',
+            downPath,
+            `Downstream team "${team.team_name}" is not a playable team`,
+          ),
         );
       }
       const identity = teamIdentity(ref, team, downIndex);
       if (identity === upstreamIdentity) {
-        issues.push(issue('MO-DEP-004', downPath, 'Downstream team is the same as the upstream team'));
+        issues.push(
+          issue('MO-DEP-004', downPath, 'Downstream team is the same as the upstream team'),
+        );
       }
       if (seenDown.has(identity)) {
-        issues.push(issue('MO-DEP-004', downPath, `Downstream team "${ref.team_name}" is listed more than once`));
+        issues.push(
+          issue(
+            'MO-DEP-004',
+            downPath,
+            `Downstream team "${ref.team_name}" is listed more than once`,
+          ),
+        );
       }
       seenDown.add(identity);
     });
@@ -280,7 +266,7 @@ function reportConditions(
   byKey: ReadonlyMap<string, DependencyInjectRef>,
   issues: DependencyIssue[],
 ): void {
-  for (const key of groupKeys(group)) {
+  for (const key of conditionGroupKeys(group)) {
     if (usesDependencyKey(key)) {
       issues.push(
         issue(
@@ -299,7 +285,11 @@ function reportConditions(
     for (const ref of injectKeyArgs(parsed.def, parsed.args)) {
       if (!byKey.has(ref)) {
         issues.push(
-          issue('MO-DEP-006', path, `Condition ${key} references inject_key "${ref}", which is not in the scenario`),
+          issue(
+            'MO-DEP-006',
+            path,
+            `Condition ${key} references inject_key "${ref}", which is not in the scenario`,
+          ),
         );
       }
     }
@@ -395,12 +385,7 @@ function reportConsequences(
   );
   if (!referenced) {
     issues.push(
-      issue(
-        'MO-DEP-009',
-        path,
-        `No inject conditions on dependency ${edge.id}`,
-        'warning',
-      ),
+      issue('MO-DEP-009', path, `No inject conditions on dependency ${edge.id}`, 'warning'),
     );
   }
 }

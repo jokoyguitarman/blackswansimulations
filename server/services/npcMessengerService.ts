@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
@@ -63,8 +64,19 @@ async function resolveRecipientUserId(
   return null;
 }
 
+async function npcMessagesSkipPeace(sessionId: string): Promise<boolean> {
+  if (!env.enablePeacePeriod) return false;
+  const { data } = await supabaseAdmin
+    .from('sessions')
+    .select('start_time')
+    .eq('id', sessionId)
+    .maybeSingle();
+  return skipForPeace({ start_time: data?.start_time ?? null });
+}
+
 export async function triggerNPCMessages(sessionId: string): Promise<void> {
   if (!env.aiEnabled) return;
+  if (await npcMessagesSkipPeace(sessionId)) return;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -122,8 +134,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     }
 
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
 
     const personaList = personas
       .map(
@@ -358,8 +369,7 @@ export async function triggerNPCDMReply(
         const userId =
           playerUserId ||
           ((threadMessages || []).find((m) => m.recipient_user_id)?.recipient_user_id as
-            | string
-            | undefined) ||
+            string | undefined) ||
           (await resolveRecipientUserId(sessionId, playerHandle));
         if (!userId) return;
 

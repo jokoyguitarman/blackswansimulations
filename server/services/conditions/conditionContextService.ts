@@ -8,6 +8,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
 import { loadContextDependencyState } from '../dependencies/dependencyService.js';
 
@@ -73,10 +74,7 @@ export function sessionElapsedMinutes(
   startTime: string | null | undefined,
   now = Date.now(),
 ): number {
-  if (!startTime) return 0;
-  const start = new Date(startTime).getTime();
-  if (Number.isNaN(start)) return 0;
-  return Math.floor((now - start) / 60000);
+  return crisisElapsedMinutes(startTime, now);
 }
 
 export function usesInjectKeyConditions(
@@ -158,7 +156,10 @@ export async function buildConditionEvaluationContext(
       const dependencyState = await loadContextDependencyState(session.id, session.scenario_id);
       if (dependencyState) currentState.dependency_state = dependencyState;
     } catch (err) {
-      logger.warn({ err, sessionId: session.id }, 'dependency state was not added to the evaluation context');
+      logger.warn(
+        { err, sessionId: session.id },
+        'dependency state was not added to the evaluation context',
+      );
     }
   }
 

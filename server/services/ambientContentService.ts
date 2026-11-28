@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
@@ -708,10 +710,9 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       .single();
 
     if (!session?.start_time) return;
+    if (skipForPeace({ start_time: session.start_time })) return;
 
-    const elapsedMinutes = Math.floor(
-      (Date.now() - new Date(session.start_time).getTime()) / 60000,
-    );
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
@@ -729,8 +730,7 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
 
     const sentiment = await computeSessionSentiment(sessionId);
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
 
     const { data: recentPosts } = await supabaseAdmin
       .from('social_posts')

@@ -48,7 +48,10 @@ function envSeverity(name: string, fallback: 'low' | 'medium' | 'high'): 'low' |
   return fallback;
 }
 
-function envDirectorMode(name: string, fallback: 'off' | 'suggest' | 'auto'): 'off' | 'suggest' | 'auto' {
+function envDirectorMode(
+  name: string,
+  fallback: 'off' | 'suggest' | 'auto',
+): 'off' | 'suggest' | 'auto' {
   const raw = process.env[name]?.trim().toLowerCase();
   if (raw === 'off' || raw === 'suggest' || raw === 'auto') return raw;
   return fallback;
@@ -321,9 +324,12 @@ export const env = {
   // open one. Admins are unlimited and are not counted.
   scenarioSetupEdits: process.env.SCENARIO_SETUP_EDITS === 'true',
   scenarioSetupEditLimit: envNonNegativeInt('SCENARIO_SETUP_EDIT_LIMIT', 3),
-  // Peace period (peace-period spec §8). Off in every environment until turned
-  // on after 1 December. WP1 reads ENABLE_PEACE_PERIOD the same way.
+  // Peace period (docs/peace-period-and-spectator-spec.md §8). Off in every
+  // environment until a trainer turns it on after 1 December. With it off,
+  // start writes start_time = now and no phase gate runs.
   enablePeacePeriod: process.env.ENABLE_PEACE_PERIOD === 'true',
+  peacePeriodDefaultSeconds: envInt('PEACE_PERIOD_DEFAULT_SECONDS', 300),
+  peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', 900),
   // Durable `peace` stage, its estimate lines, and the legacy compile call.
   enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
 };

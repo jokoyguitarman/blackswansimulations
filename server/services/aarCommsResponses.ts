@@ -7,6 +7,12 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import {
+  openedAtOf,
+  selectSession as selectSessionClock,
+  type SessionClockFields,
+} from '../lib/peaceSchema.js';
+import { rosterValidAt } from '../lib/peaceGate.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
@@ -216,7 +222,9 @@ export function buildCommsResponsesSection(input: CommsResponsesInput): CommsRes
   const messages = input.directMessages ?? [];
 
   const injectById = new Map(injects.map((inject) => [inject.id, inject]));
-  const refIds = new Set(deliveries.map((delivery) => delivery.ref_id).filter((id): id is string => !!id));
+  const refIds = new Set(
+    deliveries.map((delivery) => delivery.ref_id).filter((id): id is string => !!id),
+  );
   const allDeliveries: AarDelivery[] = [...deliveries];
   for (const message of messages) {
     if (refIds.has(message.id)) continue;
@@ -258,7 +266,9 @@ export function buildCommsResponsesSection(input: CommsResponsesInput): CommsRes
 
   for (const delivery of allDeliveries) {
     const parent =
-      delivery.chain_step != null && delivery.chain_root_key ? delivery.chain_root_key : delivery.inject_key;
+      delivery.chain_step != null && delivery.chain_root_key
+        ? delivery.chain_root_key
+        : delivery.inject_key;
     if (!roots.has(parent)) continue;
     if (delivery.chain_step == null) {
       rows.push(
@@ -376,7 +386,9 @@ export function buildCommsResponsesSection(input: CommsResponsesInput): CommsRes
     const inject = injectById.get(event.inject_id);
     if (!inject) continue;
     const label = inject.inject_key || inject.title || inject.id;
-    const parents = referencedParents(inject, knownKeys).filter((key) => roots.has(key) && key !== label);
+    const parents = referencedParents(inject, knownKeys).filter(
+      (key) => roots.has(key) && key !== label,
+    );
     const verb = event.event_type === 'inject_cancelled' ? 'cancelled' : 'published';
     for (const parent of parents) {
       rows.push(
@@ -515,7 +527,10 @@ function channelOfApp(app: string): string {
 
 function referencedParents(inject: AarInject, known: ReadonlySet<string>): string[] {
   const parents = new Set<string>();
-  for (const key of collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel)) {
+  for (const key of collectConditionKeys(
+    inject.conditions_to_appear,
+    inject.conditions_to_cancel,
+  )) {
     const parsed = parseConditionKey(key);
     if ('error' in parsed) continue;
     for (const arg of parsed.args) {
@@ -533,11 +548,16 @@ function locateCall(
   const delivery = deliveries.find(
     (item) =>
       item.ref_id === call.id ||
-      (item.call_group_id === call.call_group_id && item.attempt_no === call.attempt_no && item.channel === 'call'),
+      (item.call_group_id === call.call_group_id &&
+        item.attempt_no === call.attempt_no &&
+        item.channel === 'call'),
   );
   if (delivery) {
     return {
-      parent: delivery.chain_root_key && delivery.chain_step != null ? delivery.chain_root_key : delivery.inject_key,
+      parent:
+        delivery.chain_root_key && delivery.chain_step != null
+          ? delivery.chain_root_key
+          : delivery.inject_key,
       inject: delivery.inject_key,
     };
   }
@@ -549,8 +569,17 @@ function locateCall(
 
 type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
 
-async function selectSession(table: string, columns: string, sessionId: string, limit: number): Promise<QueryResult> {
-  const result = await supabaseAdmin.from(table).select(columns).eq('session_id', sessionId).limit(limit);
+async function selectSession(
+  table: string,
+  columns: string,
+  sessionId: string,
+  limit: number,
+): Promise<QueryResult> {
+  const result = await supabaseAdmin
+    .from(table)
+    .select(columns)
+    .eq('session_id', sessionId)
+    .limit(limit);
   return result as QueryResult;
 }
 
@@ -595,6 +624,12 @@ const CALL_BASE =
   'id, inject_id, call_group_id, attempt_no, max_attempts, status, ring_started_at, answered_by, declined_by, stakeholder_id';
 const CALL_ROLE = `${CALL_BASE}, line_team, target_role_id, missed_reason`;
 
+interface AarSessionClock extends SessionClockFields {
+  start_time?: string | null;
+  created_at?: string | null;
+  scenario_id?: string | null;
+}
+
 async function loadParts(sessionId: string): Promise<LoadedParts> {
   const parts: LoadedParts = {
     deliveries: [],
@@ -609,16 +644,11 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
     names: {},
   };
 
-  const sessionResult = await supabaseAdmin
-    .from('sessions')
-    .select('start_time, created_at, scenario_id')
-    .eq('id', sessionId)
-    .maybeSingle();
-  const session = (sessionResult.data ?? null) as {
-    start_time?: string | null;
-    created_at?: string | null;
-    scenario_id?: string | null;
-  } | null;
+  const sessionResult = await selectSessionClock<AarSessionClock>(
+    'start_time, created_at, scenario_id',
+    (query) => query.eq('id', sessionId).maybeSingle(),
+  );
+  const session = sessionResult.data;
   const startIso = session?.start_time || session?.created_at || null;
   const startMs = startIso ? Date.parse(startIso) : null;
   const started = startMs != null && Number.isFinite(startMs) ? startMs : null;
@@ -631,7 +661,11 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
   parts.steps = chains.steps;
   parts.moods = await loadMoods(sessionId);
   parts.directMessages = await loadDirectMessages(sessionId, started);
-  const validAt = session?.start_time ?? new Date().toISOString();
+  const validAtRaw = rosterValidAt({
+    start_time: session?.start_time ?? null,
+    opened_at: openedAtOf(session),
+  });
+  const validAt = validAtRaw instanceof Date ? validAtRaw.toISOString() : validAtRaw;
   parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId, validAt);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
@@ -719,7 +753,10 @@ async function loadCalls(sessionId: string, startMs: number | null): Promise<Aar
   }
   if (result.error) {
     if (isMissingTable(result.error) || isUnappliedSchema(result.error)) {
-      warnUnapplied('269', 'Phone calls are off because migration 269 is not applied; call attempts are omitted');
+      warnUnapplied(
+        '269',
+        'Phone calls are off because migration 269 is not applied; call attempts are omitted',
+      );
     } else {
       warnRead('sim_calls', result.error);
     }
@@ -738,7 +775,9 @@ async function loadCalls(sessionId: string, startMs: number | null): Promise<Aar
   }));
 }
 
-async function loadChains(sessionId: string): Promise<{ chains: AarChain[]; steps: AarChainStep[] }> {
+async function loadChains(
+  sessionId: string,
+): Promise<{ chains: AarChain[]; steps: AarChainStep[] }> {
   const result = await selectSession(
     'escalation_chains',
     'id, root_key, status, steps_sent, max_steps, stopped_reason, stopped_minute',
@@ -824,14 +863,19 @@ function historyOf(value: unknown): AarMood['history'] {
     }));
 }
 
-async function loadDirectMessages(sessionId: string, startMs: number | null): Promise<AarDirectMessage[]> {
-  const result = await selectSession('sim_direct_messages', 'id, inject_id, created_at, sender_id', sessionId, 2000);
+async function loadDirectMessages(
+  sessionId: string,
+  startMs: number | null,
+): Promise<AarDirectMessage[]> {
+  const result = await selectSession(
+    'sim_direct_messages',
+    'id, inject_id, created_at, sender_id',
+    sessionId,
+    2000,
+  );
   if (result.error) {
     if (isMissingColumn(result.error) || isMissingTable(result.error)) {
-      warnUnapplied(
-        '270',
-        'Messenger inject links are off because migration 270 is not applied',
-      );
+      warnUnapplied('270', 'Messenger inject links are off because migration 270 is not applied');
     } else {
       warnRead('sim_direct_messages', result.error);
     }
@@ -879,7 +923,10 @@ async function loadInjects(
   });
 }
 
-async function loadBranchEvents(sessionId: string, startMs: number | null): Promise<AarBranchEvent[]> {
+async function loadBranchEvents(
+  sessionId: string,
+  startMs: number | null,
+): Promise<AarBranchEvent[]> {
   const result = (await supabaseAdmin
     .from('session_events')
     .select('event_type, metadata, created_at')
@@ -893,12 +940,23 @@ async function loadBranchEvents(sessionId: string, startMs: number | null): Prom
   }
   const events: AarBranchEvent[] = [];
   for (const row of asRecords(result.data)) {
-    const type = row.event_type === 'inject_cancelled' ? 'inject_cancelled' : row.event_type === 'inject' ? 'inject' : null;
+    const type =
+      row.event_type === 'inject_cancelled'
+        ? 'inject_cancelled'
+        : row.event_type === 'inject'
+          ? 'inject'
+          : null;
     const metadata =
-      row.metadata && typeof row.metadata === 'object' ? (row.metadata as { inject_id?: unknown }) : null;
+      row.metadata && typeof row.metadata === 'object'
+        ? (row.metadata as { inject_id?: unknown })
+        : null;
     const injectId = text(metadata?.inject_id);
     if (!type || !injectId) continue;
-    events.push({ event_type: type, minute: minuteAt(row.created_at, startMs), inject_id: injectId });
+    events.push({
+      event_type: type,
+      minute: minuteAt(row.created_at, startMs),
+      inject_id: injectId,
+    });
   }
   return events;
 }
@@ -923,7 +981,10 @@ function collectUserIds(parts: LoadedParts): string[] {
 
 async function loadNames(ids: string[]): Promise<Record<string, string>> {
   if (ids.length === 0) return {};
-  const result = (await supabaseAdmin.from('user_profiles').select('id, full_name').in('id', ids)) as QueryResult;
+  const result = (await supabaseAdmin
+    .from('user_profiles')
+    .select('id, full_name')
+    .in('id', ids)) as QueryResult;
   if (result.error) {
     warnRead('user_profiles', result.error);
     return {};
@@ -942,7 +1003,10 @@ export async function loadCommsResponsesSection(sessionId: string): Promise<Comm
     const parts = await loadParts(sessionId);
     return buildCommsResponsesSection(parts);
   } catch (err) {
-    logger.warn({ err, event: 'aar_comms_responses_failed', sessionId }, 'Comms response timeline omitted');
+    logger.warn(
+      { err, event: 'aar_comms_responses_failed', sessionId },
+      'Comms response timeline omitted',
+    );
     return emptyCommsResponses();
   }
 }

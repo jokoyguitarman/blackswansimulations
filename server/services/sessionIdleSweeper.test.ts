@@ -47,7 +47,7 @@ function journal(input: {
   const broadcasts: Array<{ type: string; data: Record<string, unknown> }> = [];
   const store: IdleSweepStore = {
     async listRunningSessions() {
-      return [{ id: input.id, start_time: input.startTime }];
+      return [{ id: input.id, baseline: input.startTime }];
     },
     async listBotUserIds() {
       return [];
@@ -459,7 +459,7 @@ describe('session idle sweeper', () => {
       const ended: string[] = [];
       const store: IdleSweepStore = {
         async listRunningSessions() {
-          return rows.map((row) => ({ id: row.id, start_time: row.start_time }));
+          return rows.map((row) => ({ id: row.id, baseline: row.start_time }));
         },
         async listBotUserIds() {
           return [];
@@ -472,9 +472,11 @@ describe('session idle sweeper', () => {
         async listIdleMarkers(sessionId) {
           const row = rows.find((item) => item.id === sessionId);
           const created_at = new Date(nowMs - 60_000).toISOString();
-          return (row?.warnedFor ?? []).map(
-            (reason): IdleMarker => ({ kind: 'idle_warning', reason, created_at }),
-          );
+          return (row?.warnedFor ?? []).map((reason): IdleMarker => ({
+            kind: 'idle_warning',
+            reason,
+            created_at,
+          }));
         },
         async completeIfRunning(sessionId) {
           order.push(`complete:${sessionId}`);

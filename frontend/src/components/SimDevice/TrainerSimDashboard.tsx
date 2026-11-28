@@ -10,6 +10,7 @@ import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
+import { playerClockHidden, trainerClockStart } from '../../lib/crisisClock';
 import { AiDirectorPanel } from './AiDirectorPanel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -340,7 +341,12 @@ function ExecDecisionCard({ d, onDismiss }: { d: ExecDecisionView; onDismiss: ()
 /** Stakeholder reconsideration outcomes (docs/stakeholder-runtime-plan.md §3.6). */
 interface StakeholderEvent {
   id: string;
-  event_type: 'inject_cancelled' | 'inject_modified' | 'inject_delayed' | 'stakeholder_verdict' | 'stakeholder_mood';
+  event_type:
+    | 'inject_cancelled'
+    | 'inject_modified'
+    | 'inject_delayed'
+    | 'stakeholder_verdict'
+    | 'stakeholder_mood';
   description: string;
   metadata: {
     inject_id?: string;
@@ -1045,6 +1051,7 @@ export default function TrainerSimDashboard() {
   const [intelStatus, setIntelStatus] = useState<IntelStatusRow[]>([]);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [beforeCrisis, setBeforeCrisis] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
 
@@ -1240,7 +1247,8 @@ export default function TrainerSimDashboard() {
       const json = await res.json();
       if (json.data) {
         setSessionInfo(json.data);
-        const start = (json.data.started_at ?? json.data.start_time) as string | undefined;
+        const start = trainerClockStart(json.data);
+        setBeforeCrisis(playerClockHidden(json.data));
         const end = (json.data.ended_at ?? json.data.end_time) as string | undefined;
         if (typeof start === 'string') {
           if (json.data.status === 'completed' && typeof end === 'string') {
@@ -1363,7 +1371,8 @@ export default function TrainerSimDashboard() {
     if (isReview) return;
     const id = setInterval(() => {
       const info = sessionInfo as Record<string, unknown> | null;
-      const start = info?.started_at ?? info?.start_time;
+      const start = trainerClockStart(info);
+      setBeforeCrisis(playerClockHidden(info));
       if (typeof start === 'string') {
         setElapsedMinutes(minutesAgo(start));
       }
@@ -1578,8 +1587,8 @@ export default function TrainerSimDashboard() {
               {isReview ? 'Crisis Session Review' : 'Crisis Trainer Dashboard'}
             </h1>
             <p className="text-[11px]" style={{ color: '#64748b' }}>
-              Session {sessionId ? truncate(sessionId, 12) : '—'} · {elapsedMinutes}m{' '}
-              {isReview ? 'total' : 'elapsed'}
+              Session {sessionId ? truncate(sessionId, 12) : '—'}
+              {beforeCrisis ? '' : ` · ${elapsedMinutes}m ${isReview ? 'total' : 'elapsed'}`}
             </p>
           </div>
         </div>
