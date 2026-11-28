@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import {
   listScenariosWithSummary,
@@ -29,13 +30,28 @@ import { ScenarioDetailView } from '../components/Scenario/ScenarioDetailView';
  * participant split, search + type filter, delete, detail view mount, participant brief modal.
  */
 
-type Scenario = LibraryScenario;
+type Scenario = LibraryScenario & { created_by?: string | null };
 type TypeFilter = 'all' | 'field' | 'social';
 type StatusFilter = 'all' | 'active' | 'draft' | 'live' | 'locked';
 type SortKey = 'compiled' | 'run' | 'sessions' | 'az';
 type LockState = ScenarioLockState;
 
 const isSocial = (s: Scenario) => s.category === 'social_media_crisis';
+
+/**
+ * Trainers only receive scenarios they created. When the row carries created_by,
+ * that id wins, so a trainer who does not own the scenario cannot discard.
+ */
+function viewerCreatedScenario(
+  scenario: { created_by?: string | null },
+  viewerId: string | null | undefined,
+  role: string,
+): boolean {
+  if (typeof scenario.created_by === 'string' && scenario.created_by.length > 0) {
+    return scenario.created_by === viewerId;
+  }
+  return role === 'trainer';
+}
 
 const fmtDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
@@ -132,6 +148,7 @@ const Kpis = ({ s, onDark = false }: { s: Scenario; onDark?: boolean }) => {
 };
 
 export const Scenarios = () => {
+  const { user } = useAuth();
   const { isTrainer, role } = useRoleVisibility();
   const isAdmin = role === 'admin';
   const navigate = useNavigate();
@@ -292,10 +309,26 @@ export const Scenarios = () => {
   };
 
   const openSetup = async (scenario: Scenario) => {
-    const open = setupEdits[scenario.id]?.open_edit;
-    const note = (message: string) => setSetupEditNote((prev) => ({ ...prev, [scenario.id]: message }));
+    const allowance = setupEdits[scenario.id];
+    const open = allowance?.open_edit;
+    const lock = lockState(scenario);
+    const decision = setupEditButtonState(
+      heldSetupEditInput({
+        social: isSocial(scenario),
+        allowance,
+        lock,
+        viewerId: user?.id,
+        isAdmin,
+        isCreator: viewerCreatedScenario(scenario, user?.id, role),
+      }),
+    );
+    if (decision.discardConfirm && !window.confirm(decision.discardConfirm)) return;
+
+    const note = (message: string) =>
+      setSetupEditNote((prev) => ({ ...prev, [scenario.id]: message }));
     try {
-      if (open && !open.draft_id) {
+      const mine = !!user?.id && open?.opened_by === user.id;
+      if (open && open.status === 'open' && (decision.discardConfirm || (mine && !open.draft_id))) {
         await api.scenarios.abandonSetupEdit(scenario.id, open.id);
       }
       const opened = await api.scenarios.openSetupEdit(scenario.id);
@@ -305,6 +338,12 @@ export const Scenarios = () => {
       }
       note('This edit has no draft. Abandon and start again.');
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'SETUP_EDIT_BUSY') {
+        const next = await getSetupEditAllowances(
+          scenarios.filter(isSocial).map((item) => item.id),
+        );
+        if (next) setSetupEdits(next);
+      }
       const retryable = err instanceof ApiError && err.code === 'SETUP_EDIT_CONFLICT';
       note(
         retryable
@@ -581,6 +620,7 @@ export const Scenarios = () => {
                       setupEdit={setupEdits[s.id]}
                       setupNote={setupEditNote[s.id]}
                       isAdmin={isAdmin}
+                      isCreator={viewerCreatedScenario(s, user?.id, role)}
                       onEditSetup={() => void openSetup(s)}
                       onCollapse={() => setExpandedId(null)}
                       onOpen={() => handleViewScenario(s)}
@@ -596,6 +636,8 @@ export const Scenarios = () => {
                       setupEdit={setupEdits[s.id]}
                       setupNote={setupEditNote[s.id]}
                       deleting={deleting === s.id}
+                      isAdmin={isAdmin}
+                      isCreator={viewerCreatedScenario(s, user?.id, role)}
                       onEditSetup={() => void openSetup(s)}
                       onExpand={() => (isTrainer ? setExpandedId(s.id) : handleViewScenario(s))}
                       onOpen={() => handleViewScenario(s)}
@@ -672,6 +714,8 @@ export const Scenarios = () => {
                                 lock={lock}
                                 className="wr-btn sm"
                                 note={setupEditNote[s.id]}
+                                isAdmin={isAdmin}
+                                isCreator={viewerCreatedScenario(s, user?.id, role)}
                                 onOpen={() => void openSetup(s)}
                               />
                               <button className="wr-btn sm accent" onClick={() => launch(s)}>
@@ -844,12 +888,35 @@ const setupLockTitle = (lock: LockState): string | undefined => {
   return undefined;
 };
 
+function heldSetupEditInput(args: {
+  social: boolean;
+  allowance: SetupEditAllowance | undefined;
+  lock: LockState;
+  viewerId: string | null | undefined;
+  isAdmin: boolean;
+  isCreator: boolean;
+}) {
+  return {
+    enabled: Boolean(args.social && args.allowance?.enabled),
+    remaining: args.allowance?.remaining ?? null,
+    limit: args.allowance?.limit ?? 0,
+    locked: args.lock === 'locked-live' || args.lock === 'locked-credits',
+    lockTitle: setupLockTitle(args.lock),
+    viewerId: args.viewerId ?? null,
+    isAdmin: args.isAdmin,
+    isCreator: args.isCreator,
+    openEdit: args.allowance?.open_edit ?? null,
+  };
+}
+
 const SetupEditButton = ({
   allowance,
   social,
   lock,
   className,
   note,
+  isAdmin,
+  isCreator,
   onOpen,
 }: {
   allowance: SetupEditAllowance | undefined;
@@ -857,19 +924,32 @@ const SetupEditButton = ({
   lock: LockState;
   className: string;
   note?: string;
+  isAdmin: boolean;
+  isCreator: boolean;
   onOpen: () => void;
 }) => {
-  const state = setupEditButtonState({
-    enabled: Boolean(social && allowance?.enabled),
-    remaining: allowance?.remaining ?? null,
-    limit: allowance?.limit ?? 0,
-    locked: lock === 'locked-live' || lock === 'locked-credits',
-    lockTitle: setupLockTitle(lock),
-  });
+  const { user } = useAuth();
+  const state = setupEditButtonState(
+    heldSetupEditInput({
+      social,
+      allowance,
+      lock,
+      viewerId: user?.id,
+      isAdmin,
+      isCreator,
+    }),
+  );
   if (!state.visible) return null;
-  const draftless = allowance?.open_edit && !allowance.open_edit.draft_id;
+  const ownDraftless =
+    !!user?.id &&
+    allowance?.open_edit?.status === 'open' &&
+    !allowance.open_edit.draft_id &&
+    allowance.open_edit.opened_by === user.id;
   return (
-    <span className="inline-flex flex-col items-stretch gap-1" onClick={(event) => event.stopPropagation()}>
+    <span
+      className="inline-flex flex-col items-stretch gap-1"
+      onClick={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         className={className}
@@ -877,7 +957,7 @@ const SetupEditButton = ({
         title={state.title}
         onClick={onOpen}
       >
-        {draftless ? 'Abandon and start again' : state.label}
+        {ownDraftless ? 'Abandon and start again' : state.label}
       </button>
       {note && <span className="text-[10px] text-muted">{note}</span>}
     </span>
@@ -905,6 +985,8 @@ const Poster = ({
   setupEdit,
   setupNote,
   deleting,
+  isAdmin,
+  isCreator,
   onExpand,
   onOpen,
   onLaunch,
@@ -918,6 +1000,8 @@ const Poster = ({
   setupEdit: SetupEditAllowance | undefined;
   setupNote?: string;
   deleting: boolean;
+  isAdmin: boolean;
+  isCreator: boolean;
   onExpand: () => void;
   onOpen: () => void;
   onLaunch: () => void;
@@ -1002,6 +1086,8 @@ const Poster = ({
               lock={lock}
               className="wr-btn sm"
               note={setupNote}
+              isAdmin={isAdmin}
+              isCreator={isCreator}
               onOpen={onEditSetup}
             />
           </>
@@ -1022,6 +1108,7 @@ const ExpandedPoster = ({
   setupEdit,
   setupNote,
   isAdmin,
+  isCreator,
   onEditSetup,
   onCollapse,
   onOpen,
@@ -1033,6 +1120,7 @@ const ExpandedPoster = ({
   setupEdit: SetupEditAllowance | undefined;
   setupNote?: string;
   isAdmin: boolean;
+  isCreator: boolean;
   onEditSetup: () => void;
   onCollapse: () => void;
   onOpen: () => void;
@@ -1116,6 +1204,8 @@ const ExpandedPoster = ({
                 lock={lock}
                 className="wr-btn onDark flex-1"
                 note={setupNote}
+                isAdmin={isAdmin}
+                isCreator={isCreator}
                 onOpen={onEditSetup}
               />
               <button className="wr-btn onDark flex-1" onClick={onLaunch}>
