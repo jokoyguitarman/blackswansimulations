@@ -22,7 +22,6 @@ function scripted(replies: unknown[]): PeaceFeedClient & { prompts: string[] } {
 }
 
 describe('generatePeaceFeed', () => {
-
   test('retries once with the check errors and stores the clean draft', async () => {
     const leaked = validPeaceFeed();
     leaked.posts[0].content = 'Please recall the breakfast.';
@@ -35,7 +34,10 @@ describe('generatePeaceFeed', () => {
     if (!result.ok) return;
     assert.equal(result.attempts, 2);
     assert.equal(result.dropped, 0);
-    assert.equal(result.feed.posts.some((post) => /recall/i.test(post.content)), false);
+    assert.equal(
+      result.feed.posts.some((post) => /recall/i.test(post.content)),
+      false,
+    );
     assert.match(client.prompts[0], new RegExp(PEACE_ORDINARY_LIFE_RULE));
     assert.match(client.prompts[0], /LEAK TERM SOURCE/);
     const briefAt = client.prompts[0].indexOf('LEAK TERM SOURCE');
@@ -54,12 +56,17 @@ describe('generatePeaceFeed', () => {
     if (!result.ok) return;
     assert.equal(result.dropped, 2);
     assert.ok(result.feed.posts.length >= 10);
-    assert.equal(result.feed.posts.some((post) => /recall|battery fire/i.test(post.content)), false);
+    assert.equal(
+      result.feed.posts.some((post) => /recall|battery fire/i.test(post.content)),
+      false,
+    );
   });
 
   test('stores nothing when fewer than 10 posts survive', async () => {
     const thin = validPeaceFeed();
-    thin.posts = thin.posts.slice(0, 4).map((post) => ({ ...post, content: 'Please recall this.' }));
+    thin.posts = thin.posts
+      .slice(0, 4)
+      .map((post) => ({ ...post, content: 'Please recall this.' }));
     const client = scripted([thin, thin]);
     const result = await generatePeaceFeed(
       { cast: peaceCast, crisisBrief: 'A battery fire forces a V15 recall.' },

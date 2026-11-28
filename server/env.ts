@@ -26,6 +26,14 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Fraction in [0, 1], or the fallback when unset or invalid. */
+function envUnit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+}
+
 /** Non-negative integer from the environment, or the fallback when unset or invalid. */
 function envNonNegativeInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -319,4 +327,9 @@ export const env = {
   peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', 900),
   // Durable `peace` stage, its estimate lines, and the legacy compile call.
   enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
+  // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
+  // When off, reaction prompts, grading and post inserts match today.
+  enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',
+  topicBridgeStayShare: envUnit('TOPIC_BRIDGE_STAY_SHARE', 0.4),
+  topicBridgeMinConfidence: envUnit('TOPIC_BRIDGE_MIN_CONFIDENCE', 0.6),
 };
