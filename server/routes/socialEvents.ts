@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
+import { requirePlayerWrite, requireSocialRead } from '../lib/socialSessionGuard.js';
 
 const router = Router();
 
@@ -13,6 +14,8 @@ const router = Router();
 router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const platformFilter = req.query.platform as string | undefined;
 
     let query = supabaseAdmin
@@ -64,6 +67,7 @@ router.get('/:eventId', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (eventResult.error || !eventResult.data) {
       return res.status(404).json({ error: 'Event not found' });
     }
+    if (!(await requireSocialRead(res, eventResult.data.session_id as string, user))) return;
 
     res.json({
       data: {
@@ -84,6 +88,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
     const { session_id, title, description, event_type, location, event_date, platform } = req.body;
+
+    if (!(await requirePlayerWrite(res, session_id, user))) return;
 
     const displayName = displayNameOf(user);
     const handle = handleFor(displayName);
@@ -137,6 +143,14 @@ router.post('/:eventId/respond', requireAuth, async (req: AuthenticatedRequest, 
     const { response } = req.body;
 
     const handle = handleFor(displayNameOf(user));
+
+    const { data: eventMeta } = await supabaseAdmin
+      .from('sim_events')
+      .select('session_id')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (!eventMeta?.session_id) return res.status(404).json({ error: 'Event not found' });
+    if (!(await requirePlayerWrite(res, eventMeta.session_id as string, user))) return;
 
     // Fetch current response to compute count deltas
     const { data: existing } = await supabaseAdmin
@@ -205,6 +219,17 @@ router.post('/:eventId/discuss', requireAuth, async (req: AuthenticatedRequest, 
     const { eventId } = req.params;
     const { session_id, content } = req.body;
 
+    const { data: eventRow } = await supabaseAdmin
+      .from('sim_events')
+      .select('session_id')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (!eventRow?.session_id) return res.status(404).json({ error: 'Event not found' });
+    if (session_id && session_id !== eventRow.session_id) {
+      return res.status(400).json({ error: 'Event is not in that session' });
+    }
+    if (!(await requirePlayerWrite(res, eventRow.session_id as string, user))) return;
+
     const displayName = displayNameOf(user);
     const handle = handleFor(displayName);
 
@@ -212,7 +237,7 @@ router.post('/:eventId/discuss', requireAuth, async (req: AuthenticatedRequest, 
       .from('sim_event_discussions')
       .insert({
         event_id: eventId,
-        session_id,
+        session_id: eventRow.session_id,
         author_handle: handle,
         author_display_name: displayName,
         author_type: 'player',
@@ -241,9 +266,15 @@ router.post('/:eventId/discuss', requireAuth, async (req: AuthenticatedRequest, 
         .eq('id', eventId);
     }
 
-    await recordPlayerAction(session_id, user.id, 'event_discussed', eventId, content);
+    await recordPlayerAction(
+      eventRow.session_id as string,
+      user.id,
+      'event_discussed',
+      eventId,
+      content,
+    );
 
-    getWebSocketService().broadcastToSession(session_id, {
+    getWebSocketService().broadcastToSession(eventRow.session_id as string, {
       type: 'event.discussion',
       data: { discussion, event_id: eventId },
       timestamp: new Date().toISOString(),
