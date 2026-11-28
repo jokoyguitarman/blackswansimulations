@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { env } from '../env.js';
-import { countsOnCrisisClock } from '../lib/peaceGate.js';
+import { rowCountsAsCrisisActivity } from './scoring/crisisActivityCore.js';
+import { scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 import { calculateCommunicationMetrics, calculateCoordinationScore } from './analyticsService.js';
 
 /**
@@ -64,8 +64,9 @@ export async function calculateParticipantScores(
     }
 
     // Get decision steps to calculate leadership score (decisions approved)
+    const filtersActive = scoringFiltersActive();
     let crisisStart: string | null = null;
-    if (env.enablePeacePeriod) {
+    if (filtersActive) {
       const clock = await supabaseAdmin
         .from('sessions')
         .select('start_time')
@@ -73,9 +74,13 @@ export async function calculateParticipantScores(
         .maybeSingle();
       crisisStart = (clock.data?.start_time as string | null) ?? null;
     }
-    const decisionRows = (decisions || []).filter((row) =>
-      countsOnCrisisClock(row.created_at, crisisStart),
-    );
+    const counts = (createdAt: string | null | undefined) =>
+      rowCountsAsCrisisActivity({
+        filtersActive,
+        createdAt,
+        startTime: crisisStart,
+      });
+    const decisionRows = (decisions || []).filter((row) => counts(row.created_at));
     const decisionIds = decisionRows.map((d) => d.id);
     const { data: steps, error: stepsError } =
       decisionIds.length > 0
@@ -109,9 +114,7 @@ export async function calculateParticipantScores(
       throw messagesError;
     }
 
-    const messageRows = (messages || []).filter((row) =>
-      countsOnCrisisClock(row.created_at, crisisStart),
-    );
+    const messageRows = (messages || []).filter((row) => counts(row.created_at));
 
     // Build participant role map
     const participantRoleMap: Record<string, string> = {};

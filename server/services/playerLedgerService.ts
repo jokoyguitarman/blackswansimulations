@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { selectTolerant, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 
 /**
  * Per-player "AI judgement ledger" for a social-media crisis session.
@@ -36,6 +37,8 @@ export interface LedgerEntry {
   } | null;
   /** Post sentiment label (for player posts), when present. */
   sentiment?: string | null;
+  /** Stored topic label. Absent when the column is empty or the feature is off. */
+  topic_class?: string;
 }
 
 export interface LedgerPlayer {
@@ -72,26 +75,71 @@ const SKIP_ACTION_TYPES = new Set([
   'dispute_rejected',
 ]);
 
+const LEDGER_POSTS =
+  'id, posted_by_user_id, author_display_name, content, sop_compliance_score, sentiment, reply_to_post_id, created_at';
+const LEDGER_EMAILS = 'id, sent_by_player_id, subject, body_text, sop_compliance_score, created_at';
+const LEDGER_DMS = 'id, sender_handle, sender_display_name, content, created_at';
+
+type TopicQuery = Promise<{
+  data: unknown;
+  error: { code?: string; message?: string; details?: string; hint?: string } | null;
+}>;
+
+function topicOf(row: { topic_class?: unknown }): { topic_class?: string } {
+  const label = typeof row.topic_class === 'string' ? row.topic_class : '';
+  if (!label || label === 'unclassified') return {};
+  return { topic_class: label };
+}
+
 export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger> {
+  const filtersActive = scoringFiltersActive();
   const [postsRes, emailsRes, dmsRes, actionsRes, disputesRes, snapsRes, consRes, teamsRes] =
     await Promise.all([
-      supabaseAdmin
-        .from('social_posts')
-        .select(
-          'id, posted_by_user_id, author_display_name, content, sop_compliance_score, sentiment, reply_to_post_id, created_at',
-        )
-        .eq('session_id', sessionId)
-        .eq('author_type', 'player'),
-      supabaseAdmin
-        .from('sim_emails')
-        .select('id, sent_by_player_id, subject, body_text, sop_compliance_score, created_at')
-        .eq('session_id', sessionId)
-        .not('sent_by_player_id', 'is', null),
-      supabaseAdmin
-        .from('sim_direct_messages')
-        .select('id, sender_handle, sender_display_name, content, created_at')
-        .eq('session_id', sessionId)
-        .eq('sender_type', 'player'),
+      filtersActive
+        ? selectTolerant(
+            (columns) =>
+              supabaseAdmin
+                .from('social_posts')
+                .select(columns)
+                .eq('session_id', sessionId)
+                .eq('author_type', 'player') as unknown as TopicQuery,
+            `${LEDGER_POSTS}, topic_class`,
+          ).then((data) => ({ data }))
+        : supabaseAdmin
+            .from('social_posts')
+            .select(LEDGER_POSTS)
+            .eq('session_id', sessionId)
+            .eq('author_type', 'player'),
+      filtersActive
+        ? selectTolerant(
+            (columns) =>
+              supabaseAdmin
+                .from('sim_emails')
+                .select(columns)
+                .eq('session_id', sessionId)
+                .not('sent_by_player_id', 'is', null) as unknown as TopicQuery,
+            `${LEDGER_EMAILS}, topic_class`,
+          ).then((data) => ({ data }))
+        : supabaseAdmin
+            .from('sim_emails')
+            .select(LEDGER_EMAILS)
+            .eq('session_id', sessionId)
+            .not('sent_by_player_id', 'is', null),
+      filtersActive
+        ? selectTolerant(
+            (columns) =>
+              supabaseAdmin
+                .from('sim_direct_messages')
+                .select(columns)
+                .eq('session_id', sessionId)
+                .eq('sender_type', 'player') as unknown as TopicQuery,
+            `${LEDGER_DMS}, topic_class`,
+          ).then((data) => ({ data }))
+        : supabaseAdmin
+            .from('sim_direct_messages')
+            .select(LEDGER_DMS)
+            .eq('session_id', sessionId)
+            .eq('sender_type', 'player'),
       supabaseAdmin
         .from('player_actions')
         .select(
@@ -188,6 +236,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
       content: String(p.content || ''),
       grade: (p.sop_compliance_score as Record<string, unknown>) || null,
       sentiment: p.sentiment ? String(p.sentiment) : null,
+      ...(filtersActive ? topicOf(p as { topic_class?: unknown }) : {}),
     });
   }
 
@@ -200,6 +249,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
       timestamp: String(e.created_at),
       content: subject + String(e.body_text || ''),
       grade: (e.sop_compliance_score as Record<string, unknown>) || null,
+      ...(filtersActive ? topicOf(e as { topic_class?: unknown }) : {}),
     });
   }
 
@@ -212,6 +262,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
       timestamp: String(d.created_at),
       content: String(d.content || ''),
       grade: null,
+      ...(filtersActive ? topicOf(d as { topic_class?: unknown }) : {}),
     });
   }
 

@@ -1,7 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { countsOnCrisisClock } from '../lib/peaceGate.js';
 import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
+import { actionCountsAsCrisisActivity, EMPTY_CONTENT_INDEX } from './scoring/crisisActivityCore.js';
+import { loadContentIndex, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 import { getPlayerTeamName } from './teamCharterService.js';
 
 export interface SOPComplianceResult {
@@ -35,11 +36,40 @@ export async function evaluateSOPCompliance(
 
   const elapsedMinutes = crisisElapsedFractionalMinutes(String(session.start_time)) ?? 0;
 
-  const { data: actions } = await supabaseAdmin
-    .from('player_actions')
-    .select('action_type, sop_step_matched, created_at, metadata')
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: true });
+  const filtersActive = scoringFiltersActive();
+  const { data: actions } = filtersActive
+    ? await supabaseAdmin
+        .from('player_actions')
+        .select('player_id, action_type, target_id, sop_step_matched, created_at, metadata')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true })
+    : await supabaseAdmin
+        .from('player_actions')
+        .select('action_type, sop_step_matched, created_at, metadata')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+  const contentIndex = filtersActive ? await loadContentIndex(sessionId) : EMPTY_CONTENT_INDEX;
+  const countableActions = (actions || []).filter((action) => {
+    if (!filtersActive) return true;
+    const row = action as {
+      player_id?: string | null;
+      target_id?: string | null;
+      action_type: string;
+      created_at: string;
+    };
+    return actionCountsAsCrisisActivity(
+      {
+        action_type: String(row.action_type),
+        player_id: String(row.player_id ?? ''),
+        target_id: row.target_id ? String(row.target_id) : null,
+        created_at: String(row.created_at),
+      },
+      contentIndex,
+      String(session.start_time),
+      true,
+    );
+  });
 
   const results: SOPComplianceResult[] = [];
 
@@ -79,10 +109,8 @@ export async function evaluateSOPCompliance(
       // docs/executive-decisions-organic-handover.md). Scenarios compiled with them still load.
       if (step.triggered_by_decision_key) continue;
 
-      const matchingActions = (actions || []).filter(
-        (a) =>
-          a.sop_step_matched === step.step_id &&
-          countsOnCrisisClock(a.created_at, String(session.start_time)),
+      const matchingActions = countableActions.filter(
+        (action) => action.sop_step_matched === step.step_id,
       );
 
       let status: SOPComplianceResult['status'] = 'pending';

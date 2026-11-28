@@ -2,7 +2,21 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { teamsValidAt } from '../lib/templateRows.js';
 import { env } from '../env.js';
 import { selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
-import { countsOnCrisisClock, rosterValidAt } from '../lib/peaceGate.js';
+import { rosterValidAt } from '../lib/peaceGate.js';
+import {
+  actionCountsAsCrisisActivity,
+  attributedPlayerId,
+  contentKey,
+  EMPTY_CONTENT_INDEX,
+  postGradePlan,
+  rowCountsAsCrisisActivity,
+  type ContentIndex,
+} from './scoring/crisisActivityCore.js';
+import {
+  loadContentIndex,
+  scoringFiltersActive,
+  scoringFlagsFromEnv,
+} from './scoring/crisisActivityLookup.js';
 import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
@@ -74,6 +88,8 @@ export interface TeamScore {
   intel_shared_count: number;
   composite_score: number | null;
   graded_items: number;
+  /** Bridging comments that counted. Absent when none did. */
+  bridging_comments?: number;
   /** Informational. The composite still counts every graded item. */
   content_breakdown: ContentBreakdown;
   most_urgent_overdue: { description: string; minutes_overdue: number } | null;
@@ -133,10 +149,13 @@ export function compositeScore(parts: {
   if (parts.content != null) components.push({ value: parts.content, weight: CONTENT_WEIGHT });
   if (parts.tasks != null) components.push({ value: parts.tasks, weight: TASK_WEIGHT });
   if (parts.role != null) components.push({ value: parts.role, weight: ROLE_WEIGHT });
-  if (parts.collaboration != null) components.push({ value: parts.collaboration, weight: COLLAB_WEIGHT });
+  if (parts.collaboration != null)
+    components.push({ value: parts.collaboration, weight: COLLAB_WEIGHT });
   const weightSum = components.reduce((sum, component) => sum + component.weight, 0);
   if (weightSum === 0) return null;
-  return Math.round(components.reduce((sum, component) => sum + component.value * component.weight, 0) / weightSum);
+  return Math.round(
+    components.reduce((sum, component) => sum + component.value * component.weight, 0) / weightSum,
+  );
 }
 
 function bucket(values: readonly number[]): ContentBucket {
@@ -172,29 +191,37 @@ function createdAtOf(row: { created_at?: string | null }): string | null {
 
 interface GradeRow {
   id?: string | null;
+  user_id?: string | null;
+  author_type?: string | null;
   posted_by_user_id?: string | null;
   sent_by_player_id?: string | null;
   sop_compliance_score: unknown;
   created_at?: string | null;
 }
 
-async function loadPostGrades(sessionId: string): Promise<{ data: GradeRow[] | null }> {
-  if (!env.enablePeacePeriod) {
+async function loadPostGrades(sessionId: string): Promise<GradeRow[]> {
+  const flags = scoringFlagsFromEnv();
+  if (!flags.peace && !flags.topic && !flags.attribution) {
     const { data } = await supabaseAdmin
       .from('social_posts')
       .select('id, posted_by_user_id, sop_compliance_score')
       .eq('session_id', sessionId)
       .eq('author_type', 'player')
       .not('sop_compliance_score', 'is', null);
-    return { data };
+    return data ?? [];
   }
-  const { data } = await supabaseAdmin
+  const plan = postGradePlan(flags);
+  let query = supabaseAdmin
     .from('social_posts')
-    .select('id, posted_by_user_id, sop_compliance_score, created_at')
+    .select(plan.select)
     .eq('session_id', sessionId)
-    .eq('author_type', 'player')
     .not('sop_compliance_score', 'is', null);
-  return { data };
+  query =
+    plan.authorTypes.length === 1
+      ? query.eq('author_type', 'player')
+      : query.in('author_type', ['player', 'official_account']);
+  const { data } = await query;
+  return (data ?? []) as unknown as GradeRow[];
 }
 
 async function loadDirectorGradeRefs(sessionId: string): Promise<Set<string>> {
@@ -231,15 +258,16 @@ function warnDirectorGrades(err: unknown): void {
   );
 }
 
-async function loadEmailGrades(sessionId: string): Promise<{ data: GradeRow[] | null }> {
-  if (!env.enablePeacePeriod) {
+async function loadEmailGrades(sessionId: string): Promise<GradeRow[]> {
+  const flags = scoringFlagsFromEnv();
+  if (!flags.peace && !flags.topic) {
     const { data } = await supabaseAdmin
       .from('sim_emails')
       .select('id, sent_by_player_id, sop_compliance_score')
       .eq('session_id', sessionId)
       .not('sent_by_player_id', 'is', null)
       .not('sop_compliance_score', 'is', null);
-    return { data };
+    return data ?? [];
   }
   const { data } = await supabaseAdmin
     .from('sim_emails')
@@ -247,7 +275,7 @@ async function loadEmailGrades(sessionId: string): Promise<{ data: GradeRow[] | 
     .eq('session_id', sessionId)
     .not('sent_by_player_id', 'is', null)
     .not('sop_compliance_score', 'is', null);
-  return { data };
+  return data ?? [];
 }
 
 export async function computeTeamScores(sessionId: string): Promise<TeamScoreReport> {
@@ -266,27 +294,40 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
 
   if (!session?.scenario_id) return emptyReport;
 
-  const [teamsRes, membershipRes, participantsRes, actionsRes, postsRes, emailsRes, directorRefs] =
-    await Promise.all([
-      teamsValidAt(String(session.scenario_id), rosterValidAt(session)),
-      supabaseAdmin
-        .from('session_teams')
-        .select('user_id, team_name, assigned_at')
-        .eq('session_id', sessionId)
-        .order('assigned_at', { ascending: true }),
-      supabaseAdmin
-        .from('session_participants')
-        .select('user_id, role')
-        .eq('session_id', sessionId),
-      supabaseAdmin
-        .from('player_actions')
-        .select('player_id, action_type, team_at_action, metadata, created_at')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true }),
-      loadPostGrades(sessionId),
-      loadEmailGrades(sessionId),
-      loadDirectorGradeRefs(sessionId),
-    ]);
+  const filtersActive = scoringFiltersActive();
+  const [
+    teamsRes,
+    membershipRes,
+    participantsRes,
+    actionsRes,
+    posts,
+    emails,
+    directorRefs,
+    contentIndex,
+  ] = await Promise.all([
+    teamsValidAt(String(session.scenario_id), rosterValidAt(session)),
+    supabaseAdmin
+      .from('session_teams')
+      .select('user_id, team_name, assigned_at')
+      .eq('session_id', sessionId)
+      .order('assigned_at', { ascending: true }),
+    supabaseAdmin.from('session_participants').select('user_id, role').eq('session_id', sessionId),
+    filtersActive
+      ? supabaseAdmin
+          .from('player_actions')
+          .select('player_id, action_type, team_at_action, target_id, metadata, created_at')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true })
+      : supabaseAdmin
+          .from('player_actions')
+          .select('player_id, action_type, team_at_action, metadata, created_at')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true }),
+    loadPostGrades(sessionId),
+    loadEmailGrades(sessionId),
+    loadDirectorGradeRefs(sessionId),
+    filtersActive ? loadContentIndex(sessionId) : Promise.resolve(null),
+  ]);
 
   const scenarioTeams = teamsRes.data || [];
   if (scenarioTeams.length === 0) return emptyReport;
@@ -319,6 +360,8 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
   }
   const gradesByPlayer = new Map<string, GradeAccum>();
   const scoredGrades: Array<{ playerId: string; overall: number; refKey: string }> = [];
+  const bridgesByPlayer = new Map<string, number>();
+  const index: ContentIndex | null = contentIndex;
   const accumulate = (
     pid: string | null,
     score: Record<string, unknown> | null,
@@ -346,22 +389,47 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       refKey: refId ? gradeRefKey(refTable, refId) : '',
     });
   };
-  for (const p of postsRes.data || []) {
-    if (!countsOnCrisisClock(createdAtOf(p), session.start_time ?? null)) continue;
-    accumulate(
-      p.posted_by_user_id ? String(p.posted_by_user_id) : null,
-      (p.sop_compliance_score as Record<string, unknown>) || null,
-      'social_posts',
-      p.id ? String(p.id) : null,
-    );
+  for (const p of posts) {
+    const postId = p.id ? String(p.id) : '';
+    const ref = postId && index ? index.byKey.get(contentKey('post', postId)) : undefined;
+    if (
+      !rowCountsAsCrisisActivity({
+        filtersActive,
+        createdAt: createdAtOf(p),
+        startTime: session.start_time ?? null,
+        label: ref?.label,
+        postKind: ref?.postKind,
+      })
+    ) {
+      continue;
+    }
+    const playerId = attributedPlayerId(p, env.teamScorePostAttributionFix);
+    const score = (p.sop_compliance_score as Record<string, unknown>) || null;
+    accumulate(playerId, score, 'social_posts', postId || null);
+    const overall = score ? Number(score.overall) : Number.NaN;
+    if (playerId && ref?.label === 'bridge' && !Number.isNaN(overall)) {
+      bridgesByPlayer.set(playerId, (bridgesByPlayer.get(playerId) ?? 0) + 1);
+    }
   }
-  for (const e of emailsRes.data || []) {
-    if (!countsOnCrisisClock(createdAtOf(e), session.start_time ?? null)) continue;
+  for (const e of emails) {
+    const emailId = e.id ? String(e.id) : '';
+    const ref = emailId && index ? index.byKey.get(contentKey('email', emailId)) : undefined;
+    if (
+      !rowCountsAsCrisisActivity({
+        filtersActive,
+        createdAt: createdAtOf(e),
+        startTime: session.start_time ?? null,
+        label: ref?.label,
+        postKind: ref?.postKind ?? 'crisis',
+      })
+    ) {
+      continue;
+    }
     accumulate(
       e.sent_by_player_id ? String(e.sent_by_player_id) : null,
       (e.sop_compliance_score as Record<string, unknown>) || null,
       'sim_emails',
-      e.id ? String(e.id) : null,
+      emailId || null,
     );
   }
 
@@ -382,9 +450,22 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     }
   }
 
-  const actions = (actionsRes.data || []).filter((row) =>
-    countsOnCrisisClock(String(row.created_at), session.start_time ?? null),
-  );
+  const dutyIndex = index ?? EMPTY_CONTENT_INDEX;
+  const actions = (actionsRes.data || []).filter((row) => {
+    if (!filtersActive) return true;
+    const target = (row as { target_id?: string | null }).target_id;
+    return actionCountsAsCrisisActivity(
+      {
+        action_type: String(row.action_type),
+        player_id: String(row.player_id),
+        target_id: target ? String(target) : null,
+        created_at: String(row.created_at),
+      },
+      dutyIndex,
+      session.start_time ?? null,
+      true,
+    );
+  });
   const observedActions: ObservedAction[] = actions.map((row) => ({
     player_id: String(row.player_id),
     action_type: String(row.action_type),
@@ -516,6 +597,10 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       intelSharedCount = heldIntel.filter((m) => intelShareTimes.has(m.intel_key)).length;
     }
 
+    const bridgingComments = memberIds.reduce(
+      (sum, pid) => sum + (bridgesByPlayer.get(pid) ?? 0),
+      0,
+    );
     const composite = unstaffed
       ? null
       : compositeScore({
@@ -553,6 +638,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       intel_shared_count: intelSharedCount,
       composite_score: composite,
       graded_items: overallCount,
+      ...(bridgingComments > 0 ? { bridging_comments: bridgingComments } : {}),
       content_breakdown: breakdown,
       most_urgent_overdue: mostUrgent,
     };

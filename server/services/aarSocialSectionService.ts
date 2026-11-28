@@ -11,6 +11,12 @@ import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { rosterValidAt } from '../lib/peaceGate.js';
 import { loadSharedAarSections } from './aar/aarCrossTeamService.js';
+import {
+  buildBeforeCrisisSection,
+  onCrisisTimeline,
+  type BeforeCrisisSection,
+} from './scoring/crisisActivityCore.js';
+import { loadPeaceActivityRows } from './scoring/crisisActivityLookup.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -50,7 +56,9 @@ export const SOCIAL_AAR_SECTION_KEYS = [
 
 export type SocialAARSectionKey = (typeof SOCIAL_AAR_SECTION_KEYS)[number];
 
-export type SocialSectionsMap = Partial<Record<SocialAARSectionKey, SectionEntry>>;
+export type SocialSectionsMap = Partial<Record<SocialAARSectionKey, SectionEntry>> & {
+  before_the_crisis?: SectionEntry;
+};
 
 export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_executive: 'Executive summary',
@@ -189,8 +197,15 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   const startMs = startIso ? new Date(startIso).getTime() : null;
   const endMs = session?.end_time ? new Date(session.end_time as string).getTime() : Date.now();
   const durationMinutes = startMs ? Math.max(0, Math.round((endMs - startMs) / 60000)) : null;
-  const tPlus = (iso: string | null | undefined): number | null =>
-    startMs && iso ? Math.max(0, Math.round((new Date(iso).getTime() - startMs) / 60000)) : null;
+  const peaceClock = env.enablePeacePeriod;
+  const tPlus = (iso: string | null | undefined): number | null => {
+    if (!startMs || !iso) return null;
+    const deltaMs = new Date(iso).getTime() - startMs;
+    if (peaceClock && deltaMs < 0) return null;
+    return Math.max(0, Math.round(deltaMs / 60000));
+  };
+  const crisisRow = (iso: string | null | undefined): boolean =>
+    onCrisisTimeline(iso, startMs, peaceClock);
 
   let scenarioTitle = '';
   let scenarioDescription = '';
@@ -253,6 +268,16 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       .select('user_id', { count: 'exact', head: true })
       .eq('session_id', sessionId),
   ]);
+
+  const crisisLedger = peaceClock
+    ? {
+        ...ledger,
+        players: ledger.players.map((player) => ({
+          ...player,
+          entries: player.entries.filter((entry) => crisisRow(entry.timestamp)),
+        })),
+      }
+    : ledger;
 
   const socialState = ((session?.current_state as Record<string, unknown>)?.social_state ||
     {}) as Record<string, unknown>;
@@ -383,11 +408,13 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         })
       : [];
 
-  const consequences = ledger.consequences.map((c) => ({
-    t_plus_min: tPlus(c.created_at),
-    description: trunc(c.description, 180),
-    is_positive: c.is_positive,
-  }));
+  const consequences = ledger.consequences
+    .filter((c) => crisisRow(c.created_at))
+    .map((c) => ({
+      t_plus_min: tPlus(c.created_at),
+      description: trunc(c.description, 180),
+      is_positive: c.is_positive,
+    }));
 
   const sections: SocialSectionsMap = {};
 
@@ -431,6 +458,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   // 2. Timeline reconstruction
   const timelineEvents: TimelineEvent[] = [];
   for (const e of injectEvents || []) {
+    if (!crisisRow(e.created_at as string)) continue;
     const meta = (e.metadata || {}) as Record<string, unknown>;
     if (e.event_type === 'inject') {
       timelineEvents.push({
@@ -450,6 +478,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     }
   }
   for (const w of watchdogPosts || []) {
+    if (!crisisRow(w.created_at as string)) continue;
     const flags = (w.content_flags || {}) as Record<string, unknown>;
     timelineEvents.push({
       t_plus_min: tPlus(w.created_at as string),
@@ -460,6 +489,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     });
   }
   for (const c of ledger.consequences) {
+    if (!crisisRow(c.created_at)) continue;
     timelineEvents.push({
       t_plus_min: tPlus(c.created_at),
       type: c.is_positive ? 'positive_consequence' : 'negative_consequence',
@@ -467,7 +497,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       tone: c.is_positive ? 'positive' : 'negative',
     });
   }
-  for (const player of ledger.players) {
+  for (const player of crisisLedger.players) {
     for (const entry of player.entries) {
       if ((entry.kind === 'post' || entry.kind === 'email') && entry.grade) {
         timelineEvents.push({
@@ -527,7 +557,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
 
   // 3. Public communications review
   const publicArtifacts: Array<Record<string, unknown>> = [];
-  for (const player of ledger.players) {
+  for (const player of crisisLedger.players) {
     for (const entry of player.entries) {
       if (entry.kind !== 'post' && entry.kind !== 'reply') continue;
       publicArtifacts.push({
@@ -536,6 +566,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         author: player.display_name,
         team: player.team_name,
         content: trunc(entry.content, 240),
+        ...(entry.topic_class ? { topic_class: entry.topic_class } : {}),
         overall: gradeNumber(entry.grade, 'overall'),
         accuracy: gradeNumber(entry.grade, 'accuracy'),
         tone: gradeNumber(entry.grade, 'tone'),
@@ -577,13 +608,14 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     const key = teamSectionFor(teamFunction);
     const identity = identityOf(team.team_name);
     const unstaffed = team.member_count === 0;
-    const members = ledger.players.filter((p) => p.team_name === team.team_name);
+    const members = crisisLedger.players.filter((p) => p.team_name === team.team_name);
     const memberDetails = members.map((p) => {
       const entries = p.entries.slice(0, 22).map((entry) => ({
         t_plus_min: tPlus(entry.timestamp),
         kind: entry.kind,
         action_type: entry.action_type,
         content: trunc(entry.content, 200),
+        ...(entry.topic_class ? { topic_class: entry.topic_class } : {}),
         overall: gradeNumber(entry.grade, 'overall'),
         role_fit: gradeNumber(entry.grade, 'role_fit'),
         feedback: trunc(entry.grade?.feedback, 140),
@@ -631,6 +663,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         composite: team.composite_score,
         content_quality: team.content_quality,
         content_breakdown: team.content_breakdown,
+        ...(team.bridging_comments ? { bridging_comments: team.bridging_comments } : {}),
         task_completion: team.task_completion,
         role_fit: team.role_fit,
         collaboration: team.collaboration,
@@ -683,7 +716,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
 
   // 8. Cross-team information flow
   const emailsByTeam: Record<string, number> = {};
-  for (const p of ledger.players) {
+  for (const p of crisisLedger.players) {
     const teamName = p.team_name || 'Unassigned';
     emailsByTeam[teamName] =
       (emailsByTeam[teamName] || 0) + p.entries.filter((e) => e.kind === 'email').length;
@@ -727,12 +760,14 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         hate: (socialState.unaddressed_hate_count as number) ?? 0,
         misinformation: (socialState.unaddressed_misinfo_count as number) ?? 0,
       },
-      disputes: (disputes || []).map((d) => ({
-        t_plus_min: tPlus(d.created_at as string),
-        status: String(d.status),
-        verdict_reason: trunc(d.verdict_reason, 160),
-        ai_confidence: d.ai_confidence != null ? Number(d.ai_confidence) : null,
-      })),
+      disputes: (disputes || [])
+        .filter((d) => crisisRow(d.created_at as string))
+        .map((d) => ({
+          t_plus_min: tPlus(d.created_at as string),
+          status: String(d.status),
+          verdict_reason: trunc(d.verdict_reason, 160),
+          ai_confidence: d.ai_confidence != null ? Number(d.ai_confidence) : null,
+        })),
     },
     analysis: null,
   };
@@ -740,7 +775,10 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   // 10. Sentiment journey — also feeds the report's line chart.
   sections.social_sentiment = {
     data: {
-      trajectory: downsample(social.sentiment_trajectory, 40).map((s) => ({
+      trajectory: downsample(
+        social.sentiment_trajectory.filter((s) => crisisRow(s.recorded_at)),
+        40,
+      ).map((s) => ({
         t_plus_min: tPlus(s.recorded_at),
         sentiment_score: s.sentiment_score,
         media_attention: s.media_attention,
@@ -758,15 +796,17 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     data: {
       final_posture: crisisStandards,
       doctrine_compliance: social.doctrine_compliance,
-      watchdog_challenges: (watchdogPosts || []).map((w) => {
-        const flags = (w.content_flags || {}) as Record<string, unknown>;
-        return {
-          t_plus_min: tPlus(w.created_at as string),
-          issue_type: flags.issue_type ? String(flags.issue_type) : null,
-          evidence: trunc(flags.evidence, 200),
-          post: trunc(w.content, 160),
-        };
-      }),
+      watchdog_challenges: (watchdogPosts || [])
+        .filter((w) => crisisRow(w.created_at as string))
+        .map((w) => {
+          const flags = (w.content_flags || {}) as Record<string, unknown>;
+          return {
+            t_plus_min: tPlus(w.created_at as string),
+            issue_type: flags.issue_type ? String(flags.issue_type) : null,
+            evidence: trunc(flags.evidence, 200),
+            post: trunc(w.content, 160),
+          };
+        }),
     },
     analysis: null,
   };
@@ -774,7 +814,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   // 12. Individual player performance
   sections.social_player_performance = {
     data: {
-      players: ledger.players.map((p) => {
+      players: crisisLedger.players.map((p) => {
         const graded = p.entries.filter((e) => e.grade && typeof e.grade.overall === 'number');
         const avg = (key: string) => {
           const values = graded
@@ -836,7 +876,28 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     analysis: null,
   };
 
+  if (peaceClock) {
+    const peace = await beforeCrisisSection(sessionId, session);
+    if (peace) {
+      sections.before_the_crisis = {
+        data: peace,
+        analysis:
+          'This activity happened before the crisis started. It is unscored and does not affect team grades, charter duties or SOP timing.',
+      };
+    }
+  }
+
   return sections;
+}
+
+async function beforeCrisisSection(
+  sessionId: string,
+  session: SocialSessionClock | null,
+): Promise<BeforeCrisisSection | null> {
+  const openedAt = openedAtOf(session);
+  const crisisStart = typeof session?.start_time === 'string' ? session.start_time : null;
+  const rows = await loadPeaceActivityRows(sessionId, { openedAt, crisisStart });
+  return buildBeforeCrisisSection({ openedAt, crisisStart, rows });
 }
 
 // ─── Per-section AI analysis ─────────────────────────────────────────────────

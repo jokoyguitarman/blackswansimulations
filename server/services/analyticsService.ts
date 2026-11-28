@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { rowCountsAsCrisisActivity } from './scoring/crisisActivityCore.js';
+import { scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 
 /**
  * Analytics Service
@@ -215,6 +217,23 @@ export async function calculateCommunicationMetrics(
       throw participantsError;
     }
 
+    let messageList = messages || [];
+    if (scoringFiltersActive()) {
+      const clock = await supabaseAdmin
+        .from('sessions')
+        .select('start_time')
+        .eq('id', sessionId)
+        .maybeSingle();
+      const startTime = (clock.data?.start_time as string | null) ?? null;
+      messageList = messageList.filter((message) =>
+        rowCountsAsCrisisActivity({
+          filtersActive: true,
+          createdAt: message.created_at,
+          startTime,
+        }),
+      );
+    }
+
     // Count messages per participant
     const messagesPerParticipant: Record<string, number> = {};
     const participantRoleMap: Record<string, string> = {};
@@ -224,7 +243,7 @@ export async function calculateCommunicationMetrics(
       participantRoleMap[participant.user_id] = participant.role;
     }
 
-    for (const message of messages || []) {
+    for (const message of messageList) {
       if (messagesPerParticipant[message.sender_id] !== undefined) {
         messagesPerParticipant[message.sender_id]++;
       }
@@ -232,7 +251,7 @@ export async function calculateCommunicationMetrics(
 
     // Calculate average response time (time between messages in same channel)
     const channelMessages: Record<string, Array<{ time: number; sender_id: string }>> = {};
-    for (const message of messages || []) {
+    for (const message of messageList) {
       if (!channelMessages[message.channel_id]) {
         channelMessages[message.channel_id] = [];
       }
@@ -272,7 +291,7 @@ export async function calculateCommunicationMetrics(
       { channelName: string; firstResponseMinutes: number }
     > = {};
 
-    for (const message of messages || []) {
+    for (const message of messageList) {
       if (interAgencyChannelIds.has(message.channel_id)) {
         interAgencyMessageCount++;
 
@@ -306,7 +325,7 @@ export async function calculateCommunicationMetrics(
     }));
 
     return {
-      total_messages: messages?.length || 0,
+      total_messages: messageList.length,
       messages_per_participant: messagesPerParticipant,
       avg_response_time_minutes: avgResponseTime,
       inter_agency_message_count: interAgencyMessageCount,
