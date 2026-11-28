@@ -319,6 +319,11 @@ export const env = {
   // open one. Admins are unlimited and are not counted.
   scenarioSetupEdits: process.env.SCENARIO_SETUP_EDITS === 'true',
   scenarioSetupEditLimit: envNonNegativeInt('SCENARIO_SETUP_EDIT_LIMIT', 3),
+  // Peace period (peace-period spec §8). Off in every environment until turned
+  // on after 1 December. WP1 reads ENABLE_PEACE_PERIOD the same way.
+  enablePeacePeriod: process.env.ENABLE_PEACE_PERIOD === 'true',
+  // Durable `peace` stage, its estimate lines, and the legacy compile call.
+  enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
   // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
   // When off, reaction prompts, grading and post inserts match today.
   enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',

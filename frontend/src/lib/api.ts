@@ -11,6 +11,7 @@ import type {
 } from '@shared/trainerAgreements';
 import type { PageCoverage } from '@shared/sessionPageCoverage';
 import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
+import type { PeaceFeed } from '@shared/peaceFeed';
 
 export type SessionPageCoverageDTO = PageCoverage & { applies: boolean };
 
@@ -357,6 +358,38 @@ export const api = {
           method: 'PATCH',
           headers,
           body: JSON.stringify(data),
+        }),
+      );
+    },
+    /** 404 when ENABLE_PEACE_PERIOD is off. The editor hides the card on that. */
+    getPeaceFeed: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { peace_period: PeaceFeed | null } }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), { headers }),
+      );
+    },
+    generatePeaceFeed: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          peace_period: PeaceFeed | null;
+          warning: string | null;
+          generated: boolean;
+        };
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    updatePeaceFeed: async (id: string, body: { seconds?: number; enabled?: boolean }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { peace_period: PeaceFeed | null } }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
         }),
       );
     },

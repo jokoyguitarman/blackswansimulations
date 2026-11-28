@@ -974,32 +974,61 @@ test('repeating signals keep a stable id until a later onset', () => {
     { minute: 16, comms: { content_grades: { legal: [10, 20] }, content_grades_known: true } },
     { minute: 14, signal_ids: firstGrade.map((row) => row.id) },
   );
-  assert.equal(sameGrade.some((row) => row.kind === 'content_failed'), false);
-  assert.equal(extraGrade.some((row) => row.kind === 'content_failed'), true);
+  assert.equal(
+    sameGrade.some((row) => row.kind === 'content_failed'),
+    false,
+  );
+  assert.equal(
+    extraGrade.some((row) => row.kind === 'content_failed'),
+    true,
+  );
 
   const angry = collectSignals(
     {
       minute: 8,
-      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 }] },
+      comms: {
+        moods: [
+          { stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 },
+        ],
+      },
     },
     null,
   );
   const stillAngry = collectSignals(
     {
       minute: 12,
-      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 }] },
+      comms: {
+        moods: [
+          { stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 },
+        ],
+      },
     },
     { minute: 8, signal_ids: angry.map((row) => row.id) },
   );
   const angryAgain = collectSignals(
     {
       minute: 20,
-      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 19 }] },
+      comms: {
+        moods: [
+          {
+            stakeholder_id: 'stk_maria',
+            scope_team: 'Legal',
+            rung_id: 'angry',
+            entered_minute: 19,
+          },
+        ],
+      },
     },
     { minute: 12, signal_ids: angry.map((row) => row.id) },
   );
-  assert.equal(stillAngry.some((row) => row.kind === 'mood'), false);
-  assert.equal(angryAgain.some((row) => row.kind === 'mood'), true);
+  assert.equal(
+    stillAngry.some((row) => row.kind === 'mood'),
+    false,
+  );
+  assert.equal(
+    angryAgain.some((row) => row.kind === 'mood'),
+    true,
+  );
 });
 
 test('a gated director tick reads history only, and a disabled director reads nothing', async () => {
@@ -1055,7 +1084,19 @@ test('a gated director tick reads history only, and a disabled director reads no
   queries.length = 0;
   store.loadHistory = async () => {
     queries.push('history');
-    return [{ seq: 1, minute: 18, status: 'no_action', reason: 'signals', signals: [], teams: [], kind: null, severity: null, title: null }];
+    return [
+      {
+        seq: 1,
+        minute: 18,
+        status: 'no_action',
+        reason: 'signals',
+        signals: [],
+        teams: [],
+        kind: null,
+        severity: null,
+        title: null,
+      },
+    ];
   };
   await runDirector(
     tick({

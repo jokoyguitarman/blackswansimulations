@@ -77,6 +77,10 @@ import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
 import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
+import {
+  applyCompiledPeaceFeed,
+  crisisBriefForLeakTerms,
+} from '../services/generation/peaceFeedService.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1423,6 +1427,37 @@ router.post(
         // by team scoring and the AAR doctrine-compliance section).
         (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =
           benchmarksFromCharters(teamCharters);
+
+        // Peace feed. Off unless ENABLE_PEACE_FEED_BUILD_STAGE. A durable build
+        // copies the feed on the pages output. The legacy path generates once
+        // here. Neither path fails the compile.
+        if (env.enablePeaceFeedBuildStage) {
+          let storedFeed: unknown;
+          if (durableBuildId) {
+            try {
+              storedFeed = (await compileBuilds.getOutputs(durableBuildId)).pages?.peace_period;
+            } catch (peaceErr) {
+              logger.warn(
+                { err: peaceErr, buildId: durableBuildId },
+                'peace feed output unreadable',
+              );
+            }
+          }
+          const personas = multiArtifacts ? multiArtifacts.personas : body.personas;
+          await applyCompiledPeaceFeed({
+            initialState,
+            storedFeed,
+            generate: !durableBuildId,
+            personas: Array.isArray(personas) ? personas : [],
+            orgPage: multiArtifacts ? multiArtifacts.orgPage : body.org_page,
+            crisisBrief: crisisBriefForLeakTerms({
+              crisisType: body.crisis_type,
+              context: body.context,
+              narrative: body.narrative?.description,
+              confirmedFacts: (body.fact_sheet as FactSheet | undefined)?.confirmed_facts,
+            }),
+          });
+        }
 
         // Persistence runs the contract §9 checklist first and throws MultiOrgValidationError
         // before writing anything; the trainer sees the failing rule (handled below).
