@@ -20,7 +20,6 @@ function envOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOptions 
     pageBatch: over?.pageBatch ?? env.warroomOrgPageBatch,
     personaCap: over?.personaCap ?? PERSONA_PER_COUNTRY_CAP,
     personaFloor: over?.personaFloor ?? PERSONA_PER_COUNTRY_FLOOR,
-    includePeaceFeed: over?.includePeaceFeed ?? env.enablePeaceFeedBuildStage,
   };
 }
 

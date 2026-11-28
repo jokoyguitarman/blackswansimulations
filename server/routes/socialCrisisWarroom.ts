@@ -77,7 +77,7 @@ import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
 import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
-import { applyCompiledPeaceFeed } from '../services/generation/peaceFeedService.js';
+import { applyCompiledPeaceFeed, crisisBriefForLeakTerms } from '../services/generation/peaceFeedService.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1426,28 +1426,30 @@ router.post(
           benchmarksFromCharters(teamCharters);
 
         // Peace feed. Off unless ENABLE_PEACE_FEED_BUILD_STAGE. A durable build
-        // copies the stage output; the legacy path generates once here. Neither
-        // path fails the compile.
+        // copies the feed on the pages output. The legacy path generates once
+        // here. Neither path fails the compile.
         if (env.enablePeaceFeedBuildStage) {
-          let stageOutput: Awaited<ReturnType<typeof compileBuilds.getOutputs>>['peace'] | undefined;
+          let storedFeed: unknown;
           if (durableBuildId) {
             try {
-              stageOutput = (await compileBuilds.getOutputs(durableBuildId)).peace;
+              storedFeed = (await compileBuilds.getOutputs(durableBuildId)).pages?.peace_period;
             } catch (peaceErr) {
               logger.warn({ err: peaceErr, buildId: durableBuildId }, 'peace feed output unreadable');
             }
           }
-          const facts = ((body.fact_sheet as FactSheet | undefined)?.confirmed_facts ?? []).filter(
-            (fact) => typeof fact === 'string',
-          );
+          const personas = multiArtifacts ? multiArtifacts.personas : body.personas;
           await applyCompiledPeaceFeed({
             initialState,
-            stageOutput,
-            personas: (multiArtifacts ? multiArtifacts.personas : body.personas) as NPCPersona[],
+            storedFeed,
+            generate: !durableBuildId,
+            personas: Array.isArray(personas) ? personas : [],
             orgPage: multiArtifacts ? multiArtifacts.orgPage : body.org_page,
-            crisisBrief: [body.crisis_type, body.context, body.narrative?.description, ...facts]
-              .filter((part) => typeof part === 'string' && part.trim())
-              .join('\n\n'),
+            crisisBrief: crisisBriefForLeakTerms({
+              crisisType: body.crisis_type,
+              context: body.context,
+              narrative: body.narrative?.description,
+              confirmedFacts: (body.fact_sheet as FactSheet | undefined)?.confirmed_facts,
+            }),
           });
         }
 

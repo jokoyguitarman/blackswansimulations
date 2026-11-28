@@ -11,8 +11,8 @@ import {
   runStorylinePipeline,
 } from '../multiOrgPipeline.js';
 import type { OrganisationsValidation } from '../scenarioOrgModel.js';
-import { peaceStageInput, type StageInput } from './assemble.js';
-import { runPeaceStage } from '../generation/peaceFeedService.js';
+import type { StageInput } from './assemble.js';
+import { attachPeaceToPages, crisisBriefForLeakTerms } from '../generation/peaceFeedService.js';
 import { charactersReadyLine, formatProgress, stakeholdersReadyLine } from './buildCore.js';
 import type { BuildRequest, LogKind } from './buildTypes.js';
 
@@ -22,11 +22,6 @@ export interface StageContext {
 }
 
 export type StageRunner = (input: StageInput, ctx: StageContext) => Promise<unknown>;
-
-export type PeaceStageRunner = (
-  input: ReturnType<typeof peaceStageInput>,
-  ctx: StageContext,
-) => Promise<unknown>;
 
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
@@ -60,10 +55,8 @@ async function runStage<T>(stage: string, ctx: StageContext, fn: () => Promise<T
   return result;
 }
 
-/** One runner per stage. Peace is present but a run only calls it when the flag is on. */
-export function createStageRunners(): Record<StageInput['stage'], StageRunner> & {
-  peace: PeaceStageRunner;
-} {
+/** One runner per stage. Each wraps the existing pipeline and stops if the caller aborted. */
+export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
   return {
     characters: async (input, ctx) => {
       if (input.stage !== 'characters')
@@ -161,29 +154,29 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> &
         ),
       );
       throwIfAborted(ctx.signal);
-      return {
+      const pagesOutput = {
         org_page: result.orgPage as unknown as Record<string, unknown>,
         orgs: result.orgs,
         countries: result.countries,
         pressure_injects: result.pressure_injects,
         persona_twins: result.persona_twins,
       };
-    },
-    peace: async (input, ctx) => {
-      if (input.stage !== 'peace') throw new Error('peace runner expected peace input');
-      throwIfAborted(ctx.signal);
-      const output = await runStage('peace', ctx, () =>
-        runPeaceStage(
-          {
-            personas: input.personas,
-            orgPage: input.org_page,
-            crisisBrief: input.crisisBrief,
-          },
-          ctx,
-        ),
+      return attachPeaceToPages(
+        pagesOutput,
+        {
+          personas: [...input.personas, ...(result.persona_twins ?? [])],
+          orgPage: pagesOutput.org_page,
+          crisisBrief: crisisBriefForLeakTerms({
+            crisisType: request.crisis_type,
+            context: request.context,
+            confirmedFacts: input.fact_sheet?.confirmed_facts,
+          }),
+        },
+        {
+          signal: ctx.signal,
+          warn: (message) => ctx.log('warning', message),
+        },
       );
-      throwIfAborted(ctx.signal);
-      return output;
     },
   };
 }

@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
-import { env } from '../../env.js';
+import { describe, test } from 'node:test';
 import { PEACE_ORDINARY_LIFE_RULE } from './peaceFeedCore.js';
 import { leakingPeaceFeed, peaceCast, validPeaceFeed } from './peaceFeedFixture.js';
 import {
   PEACE_FEED_EMPTY_WARNING,
   generatePeaceFeed,
-  runPeaceStage,
   type PeaceFeedClient,
 } from './peaceFeedService.js';
 
@@ -23,25 +21,7 @@ function scripted(replies: unknown[]): PeaceFeedClient & { prompts: string[] } {
   };
 }
 
-const orgPage = {
-  orgs: [
-    {
-      org_key: 'primary',
-      display_name: 'Acme',
-      is_primary: true,
-      role: 'protagonist',
-      control_mode: 'player',
-      facebook: { page_name: 'Acme', page_handle: '@acme', page_bio: 'Breakfast', follower_count: 10 },
-      x_twitter: { page_name: 'Acme', page_handle: '@acme_x', page_bio: 'Breakfast', follower_count: 10 },
-    },
-  ],
-};
-
-describe('generatePeaceFeed', { concurrency: false }, () => {
-  const previous = env.enablePeaceFeedBuildStage;
-  afterEach(() => {
-    env.enablePeaceFeedBuildStage = previous;
-  });
+describe('generatePeaceFeed', () => {
 
   test('retries once with the check errors and stores the clean draft', async () => {
     const leaked = validPeaceFeed();
@@ -86,23 +66,5 @@ describe('generatePeaceFeed', { concurrency: false }, () => {
       { client },
     );
     assert.deepEqual(result, { ok: false, reason: 'empty', warning: PEACE_FEED_EMPTY_WARNING });
-  });
-
-  test('a thrown client does not escape the stage runner', async () => {
-    env.enablePeaceFeedBuildStage = true;
-    const client = scripted([new Error('provider down')]);
-    const lines: string[] = [];
-    const output = await runPeaceStage(
-      {
-        personas: peaceCast.personas,
-        orgPage,
-        crisisBrief: 'A battery fire forces a V15 recall.',
-      },
-      { log: (_kind, message) => lines.push(message) },
-      client,
-    );
-    assert.equal(output.peace_period, null);
-    assert.equal(output.warning, PEACE_FEED_EMPTY_WARNING);
-    assert.ok(lines.includes(PEACE_FEED_EMPTY_WARNING));
   });
 });

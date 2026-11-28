@@ -11,7 +11,6 @@ export const STAGE_LABEL = {
 } as const;
 
 export type BuildStageName = keyof typeof STAGE_LABEL;
-export type RunStageName = BuildStageName | 'peace';
 
 export type BuildStatusName =
   'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'cancelled';
@@ -27,15 +26,15 @@ export interface BuildView {
   id: string;
   draft_id: string;
   status: BuildStatusName;
-  current_stage: RunStageName | null;
-  stages: Record<BuildStageName, StageView> & { peace?: StageView };
+  current_stage: BuildStageName | null;
+  stages: Record<BuildStageName, StageView>;
   error: string | null;
   error_code: string | null;
   cancel_reason: 'user' | 'replaced' | 'unwatched' | null;
   interruptions: number;
   request_hash: string;
   resumable: boolean;
-  resume_from: RunStageName | null;
+  resume_from: BuildStageName | null;
   compile: { status: 'running' | 'succeeded' | 'failed' | null; scenario_id: string | null };
   created_at: string;
   updated_at: string;
@@ -91,12 +90,12 @@ export function reducePoll(state: PollState, event: PollEvent): PollState {
   return { log, nextAfter, consecutiveErrors: 0, reconnecting: false };
 }
 
-export type WizardBuildStage = RunStageName | 'done' | null;
+export type WizardBuildStage = BuildStageName | 'done' | null;
 
 /** The stage strip the wizard already renders. */
 export function mapToWizardStage(view: BuildView): {
   buildStage: WizardBuildStage;
-  buildError: RunStageName | null;
+  buildError: BuildStageName | null;
 } {
   if (view.status === 'succeeded') return { buildStage: 'done', buildError: null };
   if (view.status === 'failed') {
@@ -121,12 +120,11 @@ export interface BuildCard {
 
 const STAGE_ORDER: BuildStageName[] = ['characters', 'storyline', 'convergence', 'pages'];
 
-function stageOf(view: BuildView): RunStageName {
+function stageOf(view: BuildView): BuildStageName {
   return view.resume_from ?? view.current_stage ?? 'characters';
 }
 
-export function stageLabel(stage: RunStageName): string {
-  if (stage === 'peace') return 'Peace feed';
+function stageLabel(stage: BuildStageName): string {
   return STAGE_LABEL[stage];
 }
 
@@ -137,7 +135,7 @@ export function stageLabel(stage: RunStageName): string {
  */
 export function buildCardFor(
   view: BuildView,
-  prevStage: RunStageName | null,
+  prevStage: BuildStageName | null,
   options?: { setupChanged?: boolean; unwatchedMinutes?: number },
 ): BuildCard | null {
   if (view.cancel_reason === 'replaced') return null;
@@ -274,7 +272,7 @@ export type StripMark = 'done' | 'running' | 'continuing' | 'failed' | 'queued';
  * interrupted stage is "continuing" while the build is queued again, then
  * "running" once a worker claims it. It is not shown as a failure.
  */
-export function stageMark(view: BuildView, stage: RunStageName): StripMark {
+export function stageMark(view: BuildView, stage: BuildStageName): StripMark {
   const status = view.stages[stage]?.status;
   if (status === 'done' || status === 'skipped') return 'done';
   if (status === 'failed') return 'failed';
@@ -289,10 +287,9 @@ export function stageMark(view: BuildView, stage: RunStageName): StripMark {
 }
 
 /** Last finished stage before `resume_from`, for the unwatched card. */
-export function previousFinishedStage(view: BuildView): RunStageName | null {
+export function previousFinishedStage(view: BuildView): BuildStageName | null {
   const from = view.resume_from;
   if (!from) return null;
-  if (from === 'peace') return 'pages';
   const index = STAGE_ORDER.indexOf(from);
   if (index <= 0) return null;
   return STAGE_ORDER[index - 1] ?? null;

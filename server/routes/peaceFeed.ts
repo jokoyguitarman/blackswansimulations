@@ -14,16 +14,19 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { canEditScenario, type EditabilityResult } from '../services/scenarioEditService.js';
 import {
+  PEACE_OFFSET_TAIL_SECONDS,
   PEACE_PERIOD_DEFAULT_SECONDS,
   PEACE_PERIOD_MAX_SECONDS,
+  usablePeaceFeed,
 } from '../services/generation/peaceFeedCore.js';
 import {
   castFromParts,
+  crisisBriefForLeakTerms,
   generatePeaceFeed,
   type GeneratePeaceFeedInput,
   type GeneratePeaceFeedResult,
 } from '../services/generation/peaceFeedService.js';
-import type { PeaceFeed } from '../services/generation/peaceFeedCore.js';
+import type { PeaceFeed } from '../../shared/peaceFeed.js';
 
 const SOCIAL = 'social_media_crisis';
 
@@ -74,24 +77,10 @@ function locked(res: Response, reason: EditabilityResult['reason']): void {
   });
 }
 
-function storedFeed(value: unknown): PeaceFeed | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const posts = (value as { posts?: unknown }).posts;
-  if (!Array.isArray(posts)) return null;
-  return value as PeaceFeed;
-}
-
-function crisisBrief(initial: Record<string, unknown>): string {
+function confirmedFacts(initial: Record<string, unknown>): unknown {
   const factSheet = initial.fact_sheet;
-  const facts =
-    factSheet && typeof factSheet === 'object' && Array.isArray((factSheet as { confirmed_facts?: unknown }).confirmed_facts)
-      ? ((factSheet as { confirmed_facts: unknown[] }).confirmed_facts ?? []).filter(
-          (fact): fact is string => typeof fact === 'string',
-        )
-      : [];
-  return [initial.description, initial.briefing, ...facts]
-    .filter((part) => typeof part === 'string' && part.trim())
-    .join('\n\n');
+  if (!factSheet || typeof factSheet !== 'object') return undefined;
+  return (factSheet as { confirmed_facts?: unknown }).confirmed_facts;
 }
 
 async function loadScenarioRow(scenarioId: string): Promise<PeaceScenarioRow | null> {
@@ -188,7 +177,7 @@ export function createPeaceFeedRouter(deps: PeaceFeedRouteDeps): Router {
     try {
       const opened = await gate(req as AuthenticatedRequest, res, false);
       if (!opened) return;
-      const feed = storedFeed(opened.row.initial_state?.peace_period);
+      const feed = usablePeaceFeed(opened.row.initial_state?.peace_period);
       res.json({ data: { peace_period: feed } });
     } catch (err) {
       logger.error({ err }, 'Peace feed read failed');
@@ -201,38 +190,31 @@ export function createPeaceFeedRouter(deps: PeaceFeedRouteDeps): Router {
       const opened = await gate(req as AuthenticatedRequest, res, true);
       if (!opened) return;
       const initial = opened.row.initial_state ?? {};
-      const previous = storedFeed(initial.peace_period);
-      const personas = (Array.isArray(initial.npc_personas) ? initial.npc_personas : []).flatMap(
-        (entry) => {
-          if (!entry || typeof entry !== 'object') return [];
-          const record = entry as Record<string, unknown>;
-          if (typeof record.handle !== 'string') return [];
-          return [
-            {
-              handle: record.handle,
-              ...(typeof record.type === 'string' ? { type: record.type } : {}),
-              ...(Array.isArray(record.normal_interests)
-                ? { normal_interests: record.normal_interests.map(String) }
-                : {}),
-            },
-          ];
-        },
-      );
+      const previous = usablePeaceFeed(initial.peace_period);
+      const personas = Array.isArray(initial.npc_personas) ? initial.npc_personas : [];
       const seconds =
-        previous && previous.seconds >= 30 ? previous.seconds : PEACE_PERIOD_DEFAULT_SECONDS;
+        previous && previous.seconds >= PEACE_OFFSET_TAIL_SECONDS
+          ? previous.seconds
+          : PEACE_PERIOD_DEFAULT_SECONDS;
       const result = await deps.generate({
         cast: castFromParts(personas, initial.org_page),
-        crisisBrief: crisisBrief(initial),
+        crisisBrief: crisisBriefForLeakTerms({
+          narrative: initial.description,
+          briefing: initial.briefing,
+          confirmedFacts: confirmedFacts(initial),
+        }),
         seconds,
         enabled: previous ? previous.enabled !== false : true,
       });
-      if (!result.ok) {
-        logger.warn({ scenarioId: req.params.id, warning: result.warning }, 'peace feed regenerate stored nothing new');
-        res.json({ data: { peace_period: previous, warning: result.warning, generated: false } });
+      const feed = result.ok ? usablePeaceFeed(result.feed) : null;
+      if (!feed) {
+        const warning = result.ok ? 'Peace feed was not stored.' : result.warning;
+        logger.warn({ scenarioId: req.params.id, warning }, 'peace feed regenerate stored nothing new');
+        res.json({ data: { peace_period: previous, warning, generated: false } });
         return;
       }
-      await deps.savePeacePeriod(req.params.id, result.feed);
-      res.json({ data: { peace_period: result.feed, warning: null, generated: true } });
+      await deps.savePeacePeriod(req.params.id, feed);
+      res.json({ data: { peace_period: feed, warning: null, generated: true } });
     } catch (err) {
       logger.error({ err }, 'Peace feed generation failed');
       res.status(500).json({ error: 'Internal Server Error' });
@@ -243,7 +225,7 @@ export function createPeaceFeedRouter(deps: PeaceFeedRouteDeps): Router {
     try {
       const opened = await gate(req as AuthenticatedRequest, res, true);
       if (!opened) return;
-      const current = storedFeed(opened.row.initial_state?.peace_period);
+      const current = usablePeaceFeed(opened.row.initial_state?.peace_period);
       if (!current) {
         res.status(409).json({
           error: 'Generate a peace feed before changing its settings.',

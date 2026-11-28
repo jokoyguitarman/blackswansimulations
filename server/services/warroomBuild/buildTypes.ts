@@ -8,7 +8,7 @@ import type {
 } from '../socialCrisisGeneratorService.js';
 import type { CountryEntry, OrgRegistryEntry, Stakeholder } from '../../lib/stakeholderContract.js';
 import type { DecisionContext } from '../multiOrgPipeline.js';
-import type { PeaceFeed } from '../generation/peaceFeedCore.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import {
   competitorsSchema,
   organisationsSchema,
@@ -34,9 +34,6 @@ export type BuildRequest = z.infer<typeof buildRequestSchema>;
 
 export const STAGES = ['characters', 'storyline', 'convergence', 'pages'] as const;
 export type BuildStage = (typeof STAGES)[number];
-/** Present on a run only when ENABLE_PEACE_FEED_BUILD_STAGE is on. */
-export const PEACE_STAGE = 'peace' as const;
-export type ExtendedStage = BuildStage | typeof PEACE_STAGE;
 export type BuildStatus = 'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'cancelled';
 export type StageStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'interrupted';
 export type CancelReason = 'user' | 'replaced' | 'unwatched';
@@ -59,7 +56,7 @@ export interface StageState {
   ms?: number;
   error?: string; // trainer-facing text (§6)
 }
-export type StageStates = Record<BuildStage, StageState> & { peace?: StageState };
+export type StageStates = Record<BuildStage, StageState>;
 
 /** A `warroom_builds` row. Timestamps are ISO strings, as PostgREST returns them. */
 export interface BuildRow {
@@ -68,7 +65,7 @@ export interface BuildRow {
   created_by: string;
   pool: string;
   status: BuildStatus;
-  current_stage: ExtendedStage | null;
+  current_stage: BuildStage | null;
   stage_states: StageStates;
   request: BuildRequest;
   request_hash: string;
@@ -99,20 +96,18 @@ export interface BuildView {
   id: string;
   draft_id: string;
   status: BuildStatus;
-  current_stage: ExtendedStage | null;
+  current_stage: BuildStage | null;
   stages: Record<
     BuildStage,
     { status: StageStatus; attempts: number; ms?: number; error?: string }
-  > & {
-    peace?: { status: StageStatus; attempts: number; ms?: number; error?: string };
-  };
+  >;
   error: string | null;
   error_code: string | null;
   cancel_reason: CancelReason | null;
   interruptions: number;
   request_hash: string;
   resumable: boolean; // status ∈ {paused, failed, cancelled} and cancel_reason !== 'replaced'
-  resume_from: ExtendedStage | null; // nextStage(stage_states) when resumable
+  resume_from: BuildStage | null; // nextStage(stage_states) when resumable
   compile: { status: 'running' | 'succeeded' | 'failed' | null; scenario_id: string | null };
   created_at: string;
   updated_at: string;
@@ -176,12 +171,8 @@ export interface PagesOutput {
   persona_twins?: NPCPersona[];
   /** Set when the stage was skipped. Review ignores page fields. */
   skipped?: boolean;
-}
-
-/** Durable peace stage. A null feed is a warning, not a failed build. */
-export interface PeaceOutput {
-  peace_period?: PeaceFeed | null;
-  warning?: string;
+  /** Peace feed generated at the end of this stage. Absent when the flag is off. */
+  peace_period?: PeaceFeed;
 }
 
 export interface StageOutputs {
@@ -189,7 +180,6 @@ export interface StageOutputs {
   storyline?: StorylineOutput;
   convergence?: ConvergenceOutput;
   pages?: PagesOutput;
-  peace?: PeaceOutput;
 }
 
 /**
@@ -220,6 +210,6 @@ export interface ReviewPayload {
   objectives: ObjectiveDef[];
   dimension_labels: Record<string, string> | null;
   org_page: Record<string, unknown> | null;
-  /** Set only when the peace stage stored a feed. Absent means today's review. */
+  /** Present only when the pages stage stored a peace feed. */
   peace_period?: PeaceFeed;
 }

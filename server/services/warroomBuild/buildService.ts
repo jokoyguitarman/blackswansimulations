@@ -1,11 +1,8 @@
-import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
 import { runWithAbortSignal } from '../ai/abortContext.js';
-import { PEACE_FEED_EMPTY_WARNING } from '../generation/peaceFeedCore.js';
-import { assembleReview, peaceStageInput, stageInput } from './assemble.js';
+import { assembleReview, stageInput } from './assemble.js';
 import {
   PAGES_SKIP_WARNING,
-  activeStages,
   canonicalHash,
   describeGenerationFailure,
   markDone,
@@ -16,20 +13,20 @@ import {
   nextStage,
   resetForResume,
   restartLine,
-  stageLabel,
   stageStartedLine,
   toView,
 } from './buildCore.js';
 import { BuildServiceError, CancelledError, LeaseLostError, ShutdownError } from './buildErrors.js';
 import { isDurableSchemaMissing, noteDurableBuildsUnavailable } from './schemaError.js';
 import type { BuildStore, LogDraft, StartResult } from './buildStore.js';
-import type { PeaceStageRunner, StageContext, StageRunner } from './stageRunners.js';
+import type { StageContext, StageRunner } from './stageRunners.js';
 import {
+  STAGE_LABEL,
+  STAGES,
   type BuildRequest,
   type BuildRow,
   type BuildStage,
   type BuildView,
-  type ExtendedStage,
   type LogLine,
   type ReviewPayload,
   type StageStates,
@@ -55,7 +52,7 @@ export class ManualClock implements Clock {
 
 export interface BuildServiceOptions {
   store: BuildStore;
-  runners: Record<BuildStage, StageRunner> & { peace?: PeaceStageRunner };
+  runners: Record<BuildStage, StageRunner>;
   pool: string;
   instanceId: string;
   clock?: Clock;
@@ -78,14 +75,14 @@ export interface BuildServiceOptions {
 interface RunningJob {
   controller: AbortController;
   token: string;
-  stage: ExtendedStage | null;
+  stage: BuildStage | null;
   nextRenew: number;
   done: Promise<void>;
 }
 
-const UNWATCHED_LOG = (minutes: number, stage: ExtendedStage | null) =>
+const UNWATCHED_LOG = (minutes: number, stage: BuildStage | null) =>
   stage
-    ? `Paused after the ${stageLabel(stage)} stage because this build wasn't open for ${minutes} minutes.`
+    ? `Paused after the ${STAGE_LABEL[stage]} stage because this build wasn't open for ${minutes} minutes.`
     : `Paused because this build wasn't open for ${minutes} minutes.`;
 
 /**
@@ -94,7 +91,7 @@ const UNWATCHED_LOG = (minutes: number, stage: ExtendedStage | null) =>
  */
 export class BuildService {
   private readonly store: BuildStore;
-  private readonly runners: Record<BuildStage, StageRunner> & { peace?: PeaceStageRunner };
+  private readonly runners: Record<BuildStage, StageRunner>;
   private readonly pool: string;
   private readonly instanceId: string;
   private readonly clock: Clock;
@@ -183,7 +180,7 @@ export class BuildService {
     if (!row) return null;
     const log = await this.store.listLog(buildId, after, 200);
     const next_after = log.length > 0 ? log[log.length - 1].seq : after;
-    return { build: toView(row, env.enablePeaceFeedBuildStage), log, next_after };
+    return { build: toView(row), log, next_after };
   }
 
   async review(buildId: string): Promise<ReviewPayload> {
@@ -206,10 +203,7 @@ export class BuildService {
   async resume(buildId: string): Promise<BuildRow> {
     const row = await this.store.get(buildId);
     if (!row) throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
-    const outcome = await this.store.resume(
-      buildId,
-      resetForResume(row.stage_states, env.enablePeaceFeedBuildStage),
-    );
+    const outcome = await this.store.resume(buildId, resetForResume(row.stage_states));
     if (outcome === 'missing') throw new BuildServiceError('Build not found', 'BUILD_NOT_FOUND');
     if (outcome === 'active_conflict') {
       throw new BuildServiceError('A build is already running for this draft.', 'BUILD_ACTIVE');
@@ -376,9 +370,9 @@ export class BuildService {
   private async beginClaimed(row: BuildRow): Promise<boolean> {
     if (!row.lease_token) return false;
     if (row.interruptions > this.maxInterruptions) {
-      const stage = nextStage(row.stage_states, this.peaceOn()) ?? row.current_stage ?? 'characters';
-      const error = `The server restarted ${row.interruptions} times while building. Retry continues from the ${stageLabel(stage)} stage.`;
-      const stageStates = markFailed(row.stage_states, stage, error, this.iso(), this.peaceOn());
+      const stage = nextStage(row.stage_states) ?? row.current_stage ?? 'characters';
+      const error = `The server restarted ${row.interruptions} times while building. Retry continues from the ${STAGE_LABEL[stage]} stage.`;
+      const stageStates = markFailed(row.stage_states, stage, error, this.iso());
       await this.store.failRunning(row.id, row.lease_token, {
         stageStates,
         error,
@@ -534,58 +528,39 @@ export class BuildService {
         }
         const paused = await this.pauseIfUnwatched(fresh, token);
         if (paused) return;
-        const stage = nextStage(states, this.peaceOn());
+        const stage = nextStage(states);
         if (!stage) {
           // Every stage is already done. This only happens if the last complete raced.
           await this.finishSucceeded(row.id, token, states);
           return;
         }
         const now = this.iso();
-        states = markRunning(states, stage, now, this.peaceOn());
+        states = markRunning(states, stage, now);
         job.stage = stage;
         const marked = await this.store.updateRunning(row.id, token, {
           stage_states: states,
           current_stage: stage,
         });
         if (!marked) return;
-        const running = states[stage];
-        log('stage', stageStartedLine(stage, running?.attempts ?? 1), stage);
+        log('stage', stageStartedLine(stage, states[stage].attempts), stage);
         await this.flush(row.id, buffer, token);
         let output: unknown;
         try {
-          const outputs = await this.store.getOutputs(row.id);
-          const ctx: StageContext = {
-            signal: controller.signal,
-            log: (kind, message) => log(kind, message, stage),
-          };
-          output = await runWithAbortSignal(controller.signal, () => {
-            if (stage === 'peace') {
-              const peaceRunner = this.runners.peace;
-              if (!peaceRunner) {
-                ctx.log('warning', PEACE_FEED_EMPTY_WARNING);
-                return Promise.resolve({ peace_period: null, warning: PEACE_FEED_EMPTY_WARNING });
-              }
-              return peaceRunner(peaceStageInput(fresh.request, outputs), ctx);
-            }
-            return this.runners[stage](stageInput(stage, fresh.request, outputs), ctx);
-          });
+          const input = stageInput(stage, fresh.request, await this.store.getOutputs(row.id));
+          output = await runWithAbortSignal(controller.signal, () =>
+            this.runners[stage](input, {
+              signal: controller.signal,
+              log: (kind, message) => log(kind, message, stage),
+            } satisfies StageContext),
+          );
         } catch (err) {
           await this.flush(row.id, buffer, token);
-          const recovered = await this.onRunnerError(
-            row.id,
-            token,
-            stage,
-            states,
-            controller.signal,
-            err,
-          );
-          if (!recovered) return;
-          states = recovered;
-          continue;
+          await this.onRunnerError(row.id, token, stage, states, controller.signal, err);
+          return;
         }
         if (controller.signal.aborted) {
           await this.flush(row.id, buffer, token);
-          const recovered = await this.onRunnerError(
+          await this.onRunnerError(
             row.id,
             token,
             stage,
@@ -593,14 +568,12 @@ export class BuildService {
             controller.signal,
             controller.signal.reason,
           );
-          if (!recovered) return;
-          states = recovered;
-          continue;
+          return;
         }
         await this.flush(row.id, buffer, token);
-        states = markDone(states, stage, this.iso(), this.peaceOn());
-        const next = nextStage(states, this.peaceOn());
-        const attempts = states[stage]?.attempts ?? 1;
+        states = markDone(states, stage, this.iso());
+        const next = nextStage(states);
+        const attempts = states[stage].attempts;
         const wrote = await this.store.completeStage({
           buildId: row.id,
           leaseToken: token,
@@ -645,13 +618,10 @@ export class BuildService {
     buildId: string,
     token: string,
     states: StageStates,
-    stage: ExtendedStage | null,
+    stage: BuildStage | null,
   ): Promise<void> {
-    const runningStage =
-      activeStages(this.peaceOn()).find((name) => states[name]?.status === 'running') ?? null;
-    const stageStates = runningStage
-      ? markInterrupted(states, runningStage, this.iso(), this.peaceOn())
-      : states;
+    const runningStage = STAGES.find((name) => states[name]?.status === 'running') ?? null;
+    const stageStates = runningStage ? markInterrupted(states, runningStage, this.iso()) : states;
     await this.store.appendLog(
       buildId,
       [{ kind: 'system', stage: runningStage ?? stage, message: 'Build cancelled.' }],
@@ -661,13 +631,9 @@ export class BuildService {
   }
 
   /** The last stage that actually finished. Not the stage a claim is about to run. */
-  private peaceOn(): boolean {
-    return env.enablePeaceFeedBuildStage;
-  }
-
-  private lastFinishedStage(states: StageStates): ExtendedStage | null {
-    let previous: ExtendedStage | null = null;
-    for (const stage of activeStages(this.peaceOn())) {
+  private lastFinishedStage(states: StageStates): BuildStage | null {
+    let previous: BuildStage | null = null;
+    for (const stage of STAGES) {
       const status = states[stage]?.status;
       if (status === 'done' || status === 'skipped') previous = stage;
       else break;
@@ -717,60 +683,35 @@ export class BuildService {
     });
   }
 
-  /**
-   * `null` stops the claim loop. A returned state means a soft skip (pages, or
-   * peace) and the loop should run whatever stage is next. Peace never fails
-   * the build.
-   */
   private async onRunnerError(
     buildId: string,
     token: string,
-    stage: ExtendedStage,
+    stage: BuildStage,
     states: StageStates,
     signal: AbortSignal,
     err: unknown,
-  ): Promise<StageStates | null> {
+  ): Promise<void> {
     const reason = signal.aborted ? signal.reason : err;
-    if (this.shuttingDown || reason instanceof ShutdownError) return null;
-    if (reason instanceof LeaseLostError) return null;
+    if (this.shuttingDown || reason instanceof ShutdownError) return;
+    if (reason instanceof LeaseLostError) return;
     if (reason instanceof CancelledError) {
-      const interrupted = markInterrupted(states, stage, this.iso(), this.peaceOn());
+      const interrupted = markInterrupted(states, stage, this.iso());
       await this.store.appendLog(
         buildId,
         [{ kind: 'system', stage, message: 'Build cancelled.' }],
         token,
       );
       await this.store.settleCancel(buildId, token, interrupted, 'user');
-      return null;
-    }
-    if (stage === 'peace') {
-      const skipped = markSkipped(states, stage, PEACE_FEED_EMPTY_WARNING, this.iso(), true);
-      await this.store.appendLog(
-        buildId,
-        [{ kind: 'warning', stage, message: PEACE_FEED_EMPTY_WARNING }],
-        token,
-      );
-      const next = nextStage(skipped, true);
-      await this.store.completeStage({
-        buildId,
-        leaseToken: token,
-        stage,
-        attempt: skipped.peace?.attempts ?? 0,
-        output: { peace_period: null, warning: PEACE_FEED_EMPTY_WARNING },
-        stageStates: skipped,
-        nextStage: next,
-        finalStatus: next ? null : 'succeeded',
-      });
-      return next ? skipped : null;
+      return;
     }
     if (stage === 'pages') {
-      const skipped = markSkipped(states, stage, PAGES_SKIP_WARNING, this.iso(), this.peaceOn());
+      const skipped = markSkipped(states, stage, PAGES_SKIP_WARNING, this.iso());
       await this.store.appendLog(
         buildId,
         [{ kind: 'warning', stage, message: PAGES_SKIP_WARNING }],
         token,
       );
-      const next = nextStage(skipped, this.peaceOn());
+      const next = nextStage(skipped);
       await this.store.completeStage({
         buildId,
         leaseToken: token,
@@ -781,17 +722,16 @@ export class BuildService {
         nextStage: next,
         finalStatus: next ? null : 'succeeded',
       });
-      return next ? skipped : null;
+      return;
     }
-    const message = describeGenerationFailure(reason, stageLabel(stage));
-    const failed = markFailed(states, stage, message, this.iso(), this.peaceOn());
+    const message = describeGenerationFailure(reason, STAGE_LABEL[stage]);
+    const failed = markFailed(states, stage, message, this.iso());
     await this.store.appendLog(buildId, [{ kind: 'error', stage, message }], token);
     await this.store.failRunning(buildId, token, {
       stageStates: failed,
       error: message,
       errorCode: 'stage_failed',
     });
-    return null;
   }
 
   private async flush(buildId: string, buffer: LogDraft[], token: string): Promise<void> {

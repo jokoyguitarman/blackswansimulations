@@ -6,25 +6,31 @@
 import { chatJson, systemUser } from '../ai/chatClient.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
-import { normalizeOrgPages, type NPCPersona, type OrgConfig } from '../socialCrisisGeneratorService.js';
-import type { LogKind, PeaceOutput } from '../warroomBuild/buildTypes.js';
-export { PEACE_FEED_EMPTY_WARNING } from './peaceFeedCore.js';
+import {
+  normalizeOrgPages,
+  type BrandedHistoryPost,
+  type OrgConfig,
+} from '../socialCrisisGeneratorService.js';
 import {
   PEACE_FEED_EMPTY_WARNING,
   PEACE_ORDINARY_LIFE_RULE,
   PEACE_PERIOD_DEFAULT_SECONDS,
+  PEACE_POST_MIN,
   buildPeaceFeedPrompt,
   canonicalPlatform,
   checkPeaceFeed,
   dropOffendingPosts,
   feedContainsLeak,
   normalisePeaceFeed,
+  usablePeaceFeed,
   type PeaceCast,
   type PeaceFeed,
   type PeaceFeedIssue,
   type PeacePage,
   type PeacePersona,
 } from './peaceFeedCore.js';
+
+export { PEACE_FEED_EMPTY_WARNING } from './peaceFeedCore.js';
 
 export interface PeaceFeedClient {
   complete(request: { system: string; user: string }): Promise<unknown>;
@@ -61,7 +67,7 @@ function issuesOf(feed: PeaceFeed | null, cast: PeaceCast): PeaceFeedIssue[] {
 }
 
 function keepable(feed: PeaceFeed, cast: PeaceCast): boolean {
-  if (feed.posts.length < 10) return false;
+  if (feed.posts.length < PEACE_POST_MIN) return false;
   if (feed.leak_terms.length === 0) return false;
   if (feedContainsLeak(feed)) return false;
   return checkPeaceFeed(feed, cast).every(
@@ -122,18 +128,35 @@ export async function generatePeaceFeed(
   };
 }
 
-function recentPosts(org: OrgConfig, fallback: OrgConfig['branded_history']): string[] {
-  const history =
-    org.branded_history && org.branded_history.length > 0
-      ? org.branded_history
-      : org.is_primary
-        ? (fallback ?? [])
-        : [];
+function voicePosts(org: OrgConfig, flat: BrandedHistoryPost[], primary: BrandedHistoryPost[] | undefined): string[] {
+  let history: BrandedHistoryPost[] = [];
+  if (org.branded_history && org.branded_history.length > 0) history = org.branded_history;
+  else if (org.is_primary && flat.length > 0) history = flat;
+  else if (org.is_primary && primary) history = primary;
   return [...history]
     .sort((a, b) => (a.days_ago ?? 0) - (b.days_ago ?? 0))
     .slice(0, 3)
     .map((post) => post.content)
-    .filter((content): content is string => typeof content === 'string' && content.trim().length > 0);
+    .filter((content) => content.trim().length > 0);
+}
+
+function orgPageRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function personaFromUnknown(value: unknown): PeacePersona | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.handle !== 'string' || !record.handle.trim()) return null;
+  const handle = record.handle.trim();
+  return {
+    handle: handle.startsWith('@') ? handle : `@${handle}`,
+    ...(typeof record.type === 'string' ? { type: record.type } : {}),
+    ...(Array.isArray(record.normal_interests)
+      ? { normal_interests: record.normal_interests.map(String) }
+      : {}),
+  };
 }
 
 function playable(org: OrgConfig): boolean {
@@ -141,41 +164,33 @@ function playable(org: OrgConfig): boolean {
 }
 
 /** Pages and personas the checker can resolve. Safe on a partial initial_state. */
-export function castFromParts(
-  personas: ReadonlyArray<Pick<NPCPersona, 'handle' | 'type' | 'normal_interests'> | PeacePersona>,
-  orgPage: unknown,
-): PeaceCast {
+export function castFromParts(personas: readonly unknown[], orgPage: unknown): PeaceCast {
   const people: PeacePersona[] = [];
   const seen = new Set<string>();
-  for (const persona of personas) {
-    if (!persona || typeof persona.handle !== 'string' || !persona.handle.trim()) continue;
-    const key = persona.handle.trim().toLowerCase();
+  for (const entry of personas) {
+    const persona = personaFromUnknown(entry);
+    if (!persona) continue;
+    const key = persona.handle.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    people.push({
-      handle: persona.handle.trim().startsWith('@') ? persona.handle.trim() : `@${persona.handle.trim()}`,
-      ...(persona.type ? { type: persona.type } : {}),
-      ...(Array.isArray(persona.normal_interests)
-        ? { normal_interests: persona.normal_interests.map(String) }
-        : {}),
-    });
+    people.push(persona);
   }
 
-  const orgs = normalizeOrgPages(orgPage as Parameters<typeof normalizeOrgPages>[0]);
+  const pageRecord = orgPageRecord(orgPage);
+  const orgs = normalizeOrgPages(pageRecord);
   const primaryHistory = orgs.find((org) => org.is_primary)?.branded_history;
-  const flatHistory =
-    orgPage && typeof orgPage === 'object' && Array.isArray((orgPage as { branded_history?: unknown }).branded_history)
-      ? ((orgPage as { branded_history: OrgConfig['branded_history'] }).branded_history ?? [])
-      : [];
+  const flatRaw = pageRecord?.branded_history;
+  const flatHistory = Array.isArray(flatRaw) ? (flatRaw as BrandedHistoryPost[]) : [];
   const pages: PeacePage[] = [];
   for (const org of orgs) {
-    const voice = recentPosts(org, org.branded_history?.length ? org.branded_history : flatHistory.length ? flatHistory : primaryHistory);
+    const voice = voicePosts(org, flatHistory, primaryHistory);
     for (const platform of ['facebook', 'x_twitter'] as const) {
       const config = org[platform];
       if (!config?.page_handle) continue;
+      const role = org.role === 'antagonist' || org.role === 'pressure' ? org.role : 'protagonist';
       pages.push({
         org_key: org.org_key,
-        role: org.role === 'antagonist' || org.role === 'pressure' ? org.role : 'protagonist',
+        role,
         playable: playable(org),
         platform: canonicalPlatform(platform),
         handle: config.page_handle,
@@ -188,105 +203,135 @@ export function castFromParts(
   return { personas: people, pages };
 }
 
-export interface PeaceStageSource {
-  personas: ReadonlyArray<PeacePersona>;
+/** Same leak-term source on the build, the legacy compile and the editor route. */
+export function crisisBriefForLeakTerms(source: {
+  crisisType?: unknown;
+  context?: unknown;
+  narrative?: unknown;
+  briefing?: unknown;
+  confirmedFacts?: unknown;
+}): string {
+  const facts = Array.isArray(source.confirmedFacts)
+    ? source.confirmedFacts.filter((fact): fact is string => typeof fact === 'string' && fact.trim().length > 0)
+    : [];
+  return [source.crisisType, source.context, source.narrative, source.briefing, ...facts]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .join('\n');
+}
+
+export interface PeaceFeedSource {
+  personas: readonly unknown[];
   orgPage: unknown;
   crisisBrief: string;
   seconds?: number;
+  enabled?: boolean;
 }
 
-export interface PeaceStageLog {
-  log(kind: Extract<LogKind, 'progress' | 'warning'>, message: string): void;
+const INTERRUPT_NAMES = new Set(['AbortError', 'AbortedByCaller', 'CancelledError', 'ShutdownError']);
+
+export function isPeaceInterrupt(err: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  return err instanceof Error && INTERRUPT_NAMES.has(err.name);
 }
 
 /**
- * Durable `peace` stage. A bad reply or a thrown client becomes a warning and
- * an empty feed. The build still succeeds.
+ * One feed for a cast. Callable on its own (the editor, legacy compile, and a
+ * later re-edit delta). Does not catch errors and does not read the build flag.
+ * Returns null when there is nothing safe to store.
  */
-export async function runPeaceStage(
-  source: PeaceStageSource,
-  ctx: PeaceStageLog,
+export async function generateScenarioPeaceFeed(
+  source: PeaceFeedSource,
   client?: PeaceFeedClient,
-): Promise<PeaceOutput> {
+): Promise<PeaceFeed | null> {
+  const cast = castFromParts(source.personas, source.orgPage);
+  if (cast.pages.length === 0) {
+    logger.warn('peace feed skipped: no organisation pages');
+    return null;
+  }
+  const result = await generatePeaceFeed(
+    {
+      cast,
+      crisisBrief: source.crisisBrief,
+      seconds: source.seconds ?? PEACE_PERIOD_DEFAULT_SECONDS,
+      enabled: source.enabled ?? true,
+    },
+    client ? { client } : {},
+  );
+  if (!result.ok) {
+    logger.warn({ warning: result.warning }, 'peace feed stored no feed');
+    return null;
+  }
+  return usablePeaceFeed(result.feed);
+}
+
+export interface AttachPeaceOptions {
+  signal?: AbortSignal;
+  warn(message: string): void;
+  client?: PeaceFeedClient;
+}
+
+/**
+ * End of the pages stage. With the build flag off, the pages output is returned
+ * unchanged. A peace failure other than abort or cancellation is a warning and
+ * leaves the pages output intact.
+ */
+export async function attachPeaceToPages<T extends object>(
+  pagesOutput: T,
+  source: PeaceFeedSource,
+  options: AttachPeaceOptions,
+): Promise<T & { peace_period?: PeaceFeed }> {
+  if (!env.enablePeaceFeedBuildStage) return pagesOutput;
   try {
-    if (!env.enablePeaceFeedBuildStage) {
-      return { peace_period: null };
+    const feed = await generateScenarioPeaceFeed(source, options.client);
+    if (options.signal?.aborted) {
+      const reason = options.signal.reason;
+      throw reason instanceof Error ? reason : new Error('aborted');
     }
-    const cast = castFromParts(source.personas, source.orgPage);
-    if (cast.pages.length === 0) {
-      ctx.log('warning', PEACE_FEED_EMPTY_WARNING);
-      logger.warn('peace feed stage has no organisation pages');
-      return { peace_period: null, warning: PEACE_FEED_EMPTY_WARNING };
+    if (!feed) {
+      options.warn(PEACE_FEED_EMPTY_WARNING);
+      return pagesOutput;
     }
-    const result = await generatePeaceFeed(
-      {
-        cast,
-        crisisBrief: source.crisisBrief,
-        seconds: source.seconds ?? PEACE_PERIOD_DEFAULT_SECONDS,
-      },
-      client ? { client } : {},
-    );
-    if (!result.ok) {
-      ctx.log('warning', result.warning);
-      logger.warn({ warning: result.warning }, 'peace feed stage stored no feed');
-      return { peace_period: null, warning: result.warning };
-    }
-    if (feedContainsLeak(result.feed)) {
-      ctx.log('warning', PEACE_FEED_EMPTY_WARNING);
-      logger.warn('peace feed stage dropped a feed that still matched a leak term');
-      return { peace_period: null, warning: PEACE_FEED_EMPTY_WARNING };
-    }
-    ctx.log('progress', `Peace feed: ${result.feed.posts.length} posts`);
-    return { peace_period: result.feed };
+    return { ...pagesOutput, peace_period: feed };
   } catch (err) {
-    ctx.log('warning', PEACE_FEED_EMPTY_WARNING);
-    logger.warn({ err }, 'peace feed stage failed');
-    return { peace_period: null, warning: PEACE_FEED_EMPTY_WARNING };
+    if (isPeaceInterrupt(err, options.signal)) throw err;
+    options.warn(PEACE_FEED_EMPTY_WARNING);
+    logger.warn({ err }, 'peace feed skipped');
+    return pagesOutput;
   }
 }
 
 export interface CompiledPeaceInput {
   initialState: Record<string, unknown>;
-  /** Set when a durable build already ran the stage. Undefined means legacy compile. */
-  stageOutput?: PeaceOutput | null;
-  personas: unknown;
+  /** Pages-stage feed from a durable build. Null means generate now (legacy compile). */
+  storedFeed?: unknown;
+  generate: boolean;
+  personas: readonly unknown[];
   orgPage: unknown;
   crisisBrief: string;
   client?: PeaceFeedClient;
 }
 
 /**
- * Legacy compile calls the generator. A durable compile copies the stage
- * output and does not call the model again. A leak never lands on initial_state.
- * Failures are warnings.
+ * Legacy compile generates. A durable compile copies the feed already stored on
+ * the pages output. Neither path fails the compile, and a leak is not stored.
  */
 export async function applyCompiledPeaceFeed(input: CompiledPeaceInput): Promise<void> {
   if (!env.enablePeaceFeedBuildStage) return;
   try {
-    if (input.stageOutput) {
-      const feed = input.stageOutput.peace_period;
-      if (feed && feed.posts.length > 0 && !feedContainsLeak(feed)) {
-        input.initialState.peace_period = feed;
-      }
+    if (!input.generate) {
+      const feed = usablePeaceFeed(input.storedFeed);
+      if (feed) input.initialState.peace_period = feed;
       return;
     }
-    const personas = Array.isArray(input.personas) ? input.personas : [];
-    const result = await generatePeaceFeed(
+    const feed = await generateScenarioPeaceFeed(
       {
-        cast: castFromParts(personas as PeacePersona[], input.orgPage),
+        personas: input.personas,
+        orgPage: input.orgPage,
         crisisBrief: input.crisisBrief,
       },
-      input.client ? { client: input.client } : {},
+      input.client,
     );
-    if (!result.ok) {
-      logger.warn({ warning: result.warning }, 'peace feed compile stored no feed');
-      return;
-    }
-    if (feedContainsLeak(result.feed)) {
-      logger.warn('peace feed compile refused a feed that matched a leak term');
-      return;
-    }
-    input.initialState.peace_period = result.feed;
+    if (feed) input.initialState.peace_period = feed;
   } catch (err) {
     logger.warn({ err }, 'peace feed compile skipped');
   }

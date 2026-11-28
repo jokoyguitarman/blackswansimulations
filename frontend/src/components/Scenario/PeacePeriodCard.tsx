@@ -1,35 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_PERIOD_MAX_SECONDS, type PeaceFeed, type PeaceFeedPost } from '@shared/peaceFeed';
 import { ApiError, api } from '../../lib/api';
 import { peaceCardVisible } from '../../lib/peacePeriodCard';
 import { WrSection } from '../UI/Collapsible';
 
-interface PeacePost {
-  ref?: string;
-  content?: string;
-  offset_seconds?: number;
-  platform?: string;
-  author?: { kind?: string; org_key?: string; handle?: string; platform?: string };
-  comments?: Array<{ author_handle?: string; content?: string; offset_seconds?: number }>;
-}
-
-interface PeacePeriod {
-  seconds: number;
-  enabled: boolean;
-  leak_terms: string[];
-  posts: PeacePost[];
-}
-
-function readPeace(value: Record<string, unknown> | null): PeacePeriod | null {
-  if (!value || !Array.isArray(value.posts)) return null;
-  return {
-    seconds: typeof value.seconds === 'number' ? value.seconds : 300,
-    enabled: value.enabled !== false,
-    leak_terms: Array.isArray(value.leak_terms) ? value.leak_terms.map(String) : [],
-    posts: value.posts as PeacePost[],
-  };
-}
-
-function authorLabel(post: PeacePost): string {
+function authorLabel(post: PeaceFeedPost): string {
   const author = post.author;
   if (author?.kind === 'page') return `${author.org_key ?? 'page'} · ${author.platform ?? post.platform ?? ''}`;
   return author?.handle || 'Persona';
@@ -38,7 +13,7 @@ function authorLabel(post: PeacePost): string {
 interface Props {
   scenarioId: string;
   locked: boolean;
-  onPeacePeriod: (peace: Record<string, unknown> | null) => void;
+  onPeacePeriod: (peace: PeaceFeed | null) => void;
 }
 
 /**
@@ -47,8 +22,8 @@ interface Props {
  */
 export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
   const [visible, setVisible] = useState(false);
-  const [feed, setFeed] = useState<PeacePeriod | null>(null);
-  const [seconds, setSeconds] = useState('300');
+  const [feed, setFeed] = useState<PeaceFeed | null>(null);
+  const [seconds, setSeconds] = useState(String(PEACE_PERIOD_DEFAULT_SECONDS));
   const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -56,12 +31,11 @@ export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
   const onPeacePeriodRef = useRef(onPeacePeriod);
   onPeacePeriodRef.current = onPeacePeriod;
 
-  const apply = useCallback((value: Record<string, unknown> | null) => {
-    const next = readPeace(value);
-    setFeed(next);
-    if (next) {
-      setSeconds(String(next.seconds));
-      setEnabled(next.enabled);
+  const apply = useCallback((value: PeaceFeed | null) => {
+    setFeed(value);
+    if (value) {
+      setSeconds(String(value.seconds));
+      setEnabled(value.enabled !== false);
     }
     onPeacePeriodRef.current(value);
   }, []);
@@ -113,9 +87,9 @@ export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
 
   const saveSettings = async () => {
     const parsed = Number(seconds);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 900) {
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > PEACE_PERIOD_MAX_SECONDS) {
       setError(true);
-      setMessage('Seconds must be a whole number from 0 to 900');
+      setMessage(`Seconds must be a whole number from 0 to ${PEACE_PERIOD_MAX_SECONDS}`);
       return;
     }
     setBusy(true);
@@ -154,7 +128,7 @@ export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
             <input
               type="number"
               min={0}
-              max={900}
+              max={PEACE_PERIOD_MAX_SECONDS}
               value={seconds}
               disabled={locked || busy || !feed}
               onChange={(event) => setSeconds(event.target.value)}

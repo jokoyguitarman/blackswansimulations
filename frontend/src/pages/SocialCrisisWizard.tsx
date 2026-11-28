@@ -980,10 +980,10 @@ export const SocialCrisisWizard = () => {
 
   /* Step 2 — Building (combined generation) progress */
   const [buildStage, setBuildStage] = useState<
-    'characters' | 'storyline' | 'convergence' | 'pages' | 'peace' | 'done' | null
+    'characters' | 'storyline' | 'convergence' | 'pages' | 'done' | null
   >(null);
   const [buildError, setBuildError] = useState<
-    'characters' | 'storyline' | 'convergence' | 'pages' | 'peace' | null
+    'characters' | 'storyline' | 'convergence' | 'pages' | null
   >(null);
   const [activeBuildId, setActiveBuildId] = useState<string | null>(null);
   const [pollNonce, setPollNonce] = useState(0);
@@ -3830,7 +3830,7 @@ export const SocialCrisisWizard = () => {
 
   const renderBuilding = () => {
     const stages: Array<{
-      key: 'characters' | 'storyline' | 'convergence' | 'pages' | 'peace';
+      key: 'characters' | 'storyline' | 'convergence' | 'pages';
       label: string;
       desc: string;
       icon: WrIconName;
@@ -3860,15 +3860,7 @@ export const SocialCrisisWizard = () => {
         icon: 'phone',
       },
     ];
-    if (durableView?.stages.peace) {
-      stages.push({
-        key: 'peace',
-        label: 'Peace feed',
-        desc: 'Ordinary posts before the crisis starts',
-        icon: 'sparkle',
-      });
-    }
-    const order = [...stages.map((stage) => stage.key), 'done'];
+    const order = ['characters', 'storyline', 'convergence', 'pages', 'done'];
     const curIdx = buildStage ? order.indexOf(buildStage) : -1;
     const loadingByKey: Record<string, boolean> = {
       characters: step2Loading,
@@ -3891,7 +3883,7 @@ export const SocialCrisisWizard = () => {
             <span
               key={s.key}
               style={{
-                width: `${100 / stages.length}%`,
+                width: '25%',
                 background:
                   i < doneCount
                     ? 'var(--success)'
@@ -3904,10 +3896,7 @@ export const SocialCrisisWizard = () => {
             />
           ))}
         </div>
-        <div
-          className="wr-groups"
-          style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}
-        >
+        <div className="wr-groups" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
           {stages.map((s) => {
             const idx = order.indexOf(s.key);
             const mark = markOf(s.key);
@@ -4108,9 +4097,7 @@ export const SocialCrisisWizard = () => {
               <WrIcon name="alert" size={24} />
             </div>
             <div>
-              <h4>
-                The {buildError === 'peace' ? 'Peace feed' : STAGE_LABEL[buildError]} stage failed
-              </h4>
+              <h4>The {STAGE_LABEL[buildError]} stage failed</h4>
               <p>{legacyErrorCardBody(errorMsg)}</p>
             </div>
             <button onClick={() => void generateAll()} className="wr-btn accent">

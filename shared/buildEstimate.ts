@@ -30,8 +30,6 @@ export interface BuildEstimateOptions {
   pageBatch: number;
   personaCap: number;
   personaFloor: number;
-  /** Count the peace-feed call and its retry. Off unless the server flag is on. */
-  includePeaceFeed?: boolean;
 }
 
 export interface BuildCallBreakdown {
@@ -51,8 +49,6 @@ export interface BuildCallBreakdown {
   primaryPage: number;
   secondaryPages: number;
   pressurePages: number;
-  /** One generation call plus one retry. Omitted when the peace stage is off. */
-  peaceFeed?: number;
   total: number;
 }
 
@@ -85,7 +81,6 @@ function estimateOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOpt
     pageBatch: over?.pageBatch ?? PAGE_BATCH_DEFAULT,
     personaCap: over?.personaCap ?? PERSONA_PER_COUNTRY_CAP,
     personaFloor: over?.personaFloor ?? PERSONA_PER_COUNTRY_FLOOR,
-    includePeaceFeed: over?.includePeaceFeed === true,
   };
 }
 
@@ -156,9 +151,8 @@ export function explainBuildCalls(
     secondaryPages: building ? secondaryPages : 0,
     pressurePages: building ? pressureCountries : 0,
   };
-  const peaceFeed = building && opts.includePeaceFeed ? 2 : 0;
-  const total = Object.values(parts).reduce((sum, n) => sum + n, 0) + peaceFeed;
-  return { ...parts, ...(peaceFeed > 0 ? { peaceFeed } : {}), total };
+  const total = Object.values(parts).reduce((sum, n) => sum + n, 0);
+  return { ...parts, total };
 }
 
 export function estimateBuildCalls(

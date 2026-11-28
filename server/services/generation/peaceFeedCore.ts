@@ -3,63 +3,45 @@
  * No database and no AI client. WP3 and WP4 import `matchesLeakTerms`.
  */
 
-export const PEACE_POST_MIN = 10;
-export const PEACE_POST_MAX = 24;
-export const PEACE_COMMENT_MAX = 3;
-export const PEACE_PERSONA_MIN = 6;
-export const PEACE_PERIOD_DEFAULT_SECONDS = 300;
-export const PEACE_PERIOD_MAX_SECONDS = 900;
-/** A post or comment must land at least this long before crisis start. */
-export const PEACE_OFFSET_TAIL_SECONDS = 30;
+import {
+  PEACE_COMMENT_MAX,
+  PEACE_LEAK_TERM_CAP,
+  PEACE_OFFSET_TAIL_SECONDS,
+  PEACE_PAGE_POST_MIN,
+  PEACE_PERIOD_DEFAULT_SECONDS,
+  PEACE_PERIOD_MAX_SECONDS,
+  PEACE_PERSONA_MIN,
+  PEACE_POST_MAX,
+  PEACE_POST_MIN,
+  type PeaceFeed,
+  type PeaceFeedAuthor,
+  type PeaceFeedComment,
+  type PeaceFeedPost,
+} from '../../../shared/peaceFeed.js';
+
+export {
+  PEACE_COMMENT_MAX,
+  PEACE_LEAK_TERM_CAP,
+  PEACE_OFFSET_TAIL_SECONDS,
+  PEACE_PAGE_POST_MIN,
+  PEACE_PERIOD_DEFAULT_SECONDS,
+  PEACE_PERIOD_MAX_SECONDS,
+  PEACE_PERSONA_MIN,
+  PEACE_POST_MAX,
+  PEACE_POST_MIN,
+  type PeaceFeed,
+  type PeaceFeedAuthor,
+  type PeaceFeedComment,
+  type PeaceFeedPost,
+  type PeacePageAuthor,
+  type PeacePersonaAuthor,
+} from '../../../shared/peaceFeed.js';
 
 export const PEACE_ORDINARY_LIFE_RULE =
   'Posts must be about ordinary life and ordinary business. Do not hint at, foreshadow or allude to the crisis.';
 
 export const PEACE_FEED_EMPTY_WARNING =
   'Peace feed could not be generated — the scenario compiles without one.';
-
-export interface PeaceFeedComment {
-  author_handle: string;
-  content: string;
-  offset_seconds: number;
-}
-
-export interface PeacePageAuthor {
-  kind: 'page';
-  org_key: string;
-  platform: string;
-}
-
-export interface PeacePersonaAuthor {
-  kind: 'persona';
-  handle: string;
-}
-
-export type PeaceFeedAuthor = PeacePageAuthor | PeacePersonaAuthor;
-
-export interface PeaceFeedPost {
-  ref: string;
-  author: PeaceFeedAuthor;
-  platform: string;
-  post_format: string;
-  content: string;
-  media_description: string;
-  offset_seconds: number;
-  comments: PeaceFeedComment[];
-}
-
-export interface PeaceFeed {
-  version: 1;
-  /** Length of the peace period. The editor's seconds field. */
-  seconds: number;
-  /**
-   * Editor off switch. `false` keeps the posts but WP3 must not run peace.
-   * Omitted on a stored feed means on.
-   */
-  enabled: boolean;
-  leak_terms: string[];
-  posts: PeaceFeedPost[];
-}
 
 export interface PeacePersona {
   handle: string;
@@ -215,7 +197,7 @@ function cleanTerms(value: unknown): string[] {
     seen.add(key);
     terms.push(trimmed);
   }
-  return terms.slice(0, 40);
+  return terms.slice(0, PEACE_LEAK_TERM_CAP);
 }
 
 function resolveAuthor(raw: unknown, cast: PeaceCast): PeaceFeedAuthor | null {
@@ -374,9 +356,17 @@ export function feedContainsLeak(feed: Pick<PeaceFeed, 'leak_terms' | 'posts'>):
   );
 }
 
-/** Every rule in §5.5. An empty list means the feed may be stored. */
-export function checkPeaceFeed(feed: PeaceFeed, cast: PeaceCast): PeaceFeedIssue[] {
-  const issues: PeaceFeedIssue[] = [];
+/** A feed that may be written onto initial_state: at least one post, and no leak term. */
+export function usablePeaceFeed(value: unknown): PeaceFeed | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const feed = value as PeaceFeed;
+  if (!Array.isArray(feed.posts) || feed.posts.length === 0) return null;
+  if (!Array.isArray(feed.leak_terms)) return null;
+  if (feedContainsLeak(feed)) return null;
+  return feed;
+}
+
+function checkFeedDocument(feed: PeaceFeed, issues: PeaceFeedIssue[]): void {
   if (feed.version !== 1) {
     issues.push({ code: 'shape', message: 'version must be 1' });
   }
@@ -398,137 +388,149 @@ export function checkPeaceFeed(feed: PeaceFeed, cast: PeaceCast): PeaceFeedIssue
       message: `the feed needs ${PEACE_POST_MIN} to ${PEACE_POST_MAX} posts, not ${feed.posts.length}`,
     });
   }
+}
 
+function checkOnePost(feed: PeaceFeed, cast: PeaceCast, post: PeaceFeedPost, issues: PeaceFeedIssue[], seenRefs: Set<string>): void {
   const window = offsetWindow(feed.seconds);
-  const seenRefs = new Set<string>();
-  for (const post of feed.posts) {
-    if (!post.ref || seenRefs.has(post.ref)) {
-      issues.push({ code: 'shape', ref: post.ref, message: `post ${post.ref || '(missing)'} needs a unique ref` });
-    }
-    seenRefs.add(post.ref);
-    if (!authorResolves(post.author, cast)) {
+  if (!post.ref || seenRefs.has(post.ref)) {
+    issues.push({ code: 'shape', ref: post.ref, message: `post ${post.ref || '(missing)'} needs a unique ref` });
+  }
+  seenRefs.add(post.ref);
+  if (!authorResolves(post.author, cast)) {
+    issues.push({
+      code: 'author',
+      ref: post.ref,
+      message: `post ${post.ref} author does not match a page or persona`,
+    });
+  }
+  if (
+    !Number.isFinite(post.offset_seconds) ||
+    post.offset_seconds < window.min ||
+    post.offset_seconds > window.max
+  ) {
+    issues.push({
+      code: 'offset',
+      ref: post.ref,
+      message: `post ${post.ref} offset must be between ${window.min} and ${window.max} seconds`,
+    });
+  }
+  if (post.comments.length > PEACE_COMMENT_MAX) {
+    issues.push({
+      code: 'comments',
+      ref: post.ref,
+      message: `post ${post.ref} has ${post.comments.length} comments; the maximum is ${PEACE_COMMENT_MAX}`,
+    });
+  }
+  for (const comment of post.comments) {
+    if (!resolveCommentAuthor(comment.author_handle, cast)) {
       issues.push({
         code: 'author',
         ref: post.ref,
-        message: `post ${post.ref} author does not match a page or persona`,
+        message: `a comment on ${post.ref} is by ${comment.author_handle}, who is not in the cast`,
       });
     }
     if (
-      !Number.isFinite(post.offset_seconds) ||
-      post.offset_seconds < window.min ||
-      post.offset_seconds > window.max
+      !Number.isFinite(comment.offset_seconds) ||
+      comment.offset_seconds < window.min ||
+      comment.offset_seconds > window.max
     ) {
       issues.push({
         code: 'offset',
         ref: post.ref,
-        message: `post ${post.ref} offset must be between ${window.min} and ${window.max} seconds`,
+        message: `a comment on ${post.ref} is outside ${window.min} to ${window.max} seconds`,
       });
     }
-    if (post.comments.length > PEACE_COMMENT_MAX) {
+  }
+  if (textsOf(post).some((text) => matchesLeakTerms(text, feed.leak_terms))) {
+    issues.push({
+      code: 'leak',
+      ref: post.ref,
+      message: `post ${post.ref} uses a leak term`,
+    });
+  }
+  if (post.author.kind === 'persona') {
+    const persona = personaByHandle(cast, post.author.handle);
+    const interests = (persona?.normal_interests ?? []).map((interest) => interest.trim()).filter(Boolean);
+    if (!persona || interests.length === 0 || !matchesLeakTerms(post.content, interests)) {
       issues.push({
-        code: 'comments',
+        code: 'interests',
         ref: post.ref,
-        message: `post ${post.ref} has ${post.comments.length} comments; the maximum is ${PEACE_COMMENT_MAX}`,
-      });
-    }
-    for (const comment of post.comments) {
-      if (!resolveCommentAuthor(comment.author_handle, cast)) {
-        issues.push({
-          code: 'author',
-          ref: post.ref,
-          message: `a comment on ${post.ref} is by ${comment.author_handle}, who is not in the cast`,
-        });
-      }
-      if (
-        !Number.isFinite(comment.offset_seconds) ||
-        comment.offset_seconds < window.min ||
-        comment.offset_seconds > window.max
-      ) {
-        issues.push({
-          code: 'offset',
-          ref: post.ref,
-          message: `a comment on ${post.ref} is outside ${window.min} to ${window.max} seconds`,
-        });
-      }
-    }
-    if (textsOf(post).some((text) => matchesLeakTerms(text, feed.leak_terms))) {
-      issues.push({
-        code: 'leak',
-        ref: post.ref,
-        message: `post ${post.ref} uses a leak term`,
-      });
-    }
-    if (post.author.kind === 'persona') {
-      const persona = personaByHandle(cast, post.author.handle);
-      const interests = (persona?.normal_interests ?? []).map((interest) => interest.trim()).filter(Boolean);
-      if (!persona || interests.length === 0 || !matchesLeakTerms(post.content, interests)) {
-        issues.push({
-          code: 'interests',
-          ref: post.ref,
-          message: `post ${post.ref} by ${post.author.handle} must be about their normal interests`,
-        });
-      }
-    }
-  }
-
-  for (const page of cast.pages) {
-    if (!page.playable || page.role !== 'protagonist') continue;
-    const count = feed.posts.filter(
-      (post) =>
-        post.author.kind === 'page' &&
-        post.author.org_key === page.org_key &&
-        canonicalPlatform(post.author.platform) === canonicalPlatform(page.platform),
-    ).length;
-    if (count < 2) {
-      issues.push({
-        code: 'protagonist',
-        message: `${page.org_key} on ${canonicalPlatform(page.platform)} needs at least 2 posts, not ${count}`,
+        message: `post ${post.ref} by ${post.author.handle} must be about their normal interests`,
       });
     }
   }
+}
 
-  const hasRival = cast.pages.some((page) => page.role === 'antagonist');
-  if (
-    hasRival &&
-    !feed.posts.some(
-      (post) => post.author.kind === 'page' && pageByKey(cast, post.author.org_key, post.author.platform)?.role === 'antagonist',
-    )
-  ) {
-    issues.push({ code: 'rival', message: 'a rival page must post at least once' });
-  }
-  const hasPressure = cast.pages.some((page) => page.role === 'pressure');
-  if (
-    hasPressure &&
-    !feed.posts.some(
-      (post) => post.author.kind === 'page' && pageByKey(cast, post.author.org_key, post.author.platform)?.role === 'pressure',
-    )
-  ) {
-    issues.push({ code: 'pressure', message: 'a pressure page must post at least once' });
-  }
+function pagePostCount(feed: PeaceFeed, orgKey: string, platform: string): number {
+  return feed.posts.filter(
+    (post) =>
+      post.author.kind === 'page' &&
+      post.author.org_key === orgKey &&
+      canonicalPlatform(post.author.platform) === canonicalPlatform(platform),
+  ).length;
+}
 
+function hasPageRole(feed: PeaceFeed, cast: PeaceCast, role: 'antagonist' | 'pressure'): boolean {
+  return feed.posts.some((post) => {
+    if (post.author.kind !== 'page') return false;
+    return pageByKey(cast, post.author.org_key, post.author.platform)?.role === role;
+  });
+}
+
+function representedPersonas(feed: PeaceFeed, cast: PeaceCast): number {
   const represented = new Set<string>();
   for (const post of feed.posts) {
-    if (post.author.kind === 'persona' && personaByHandle(cast, post.author.handle)) {
-      represented.add(personaByHandle(cast, post.author.handle)!.handle.toLowerCase());
+    if (post.author.kind === 'persona') {
+      const persona = personaByHandle(cast, post.author.handle);
+      if (persona) represented.add(persona.handle.toLowerCase());
     }
     for (const comment of post.comments) {
       const persona = personaByHandle(cast, comment.author_handle);
       if (persona) represented.add(persona.handle.toLowerCase());
     }
   }
-  const needed =
-    cast.personas.length >= PEACE_PERSONA_MIN
-      ? PEACE_PERSONA_MIN
-      : cast.personas.length;
-  if (represented.size < needed) {
+  return represented.size;
+}
+
+function checkCoverage(feed: PeaceFeed, cast: PeaceCast, issues: PeaceFeedIssue[]): void {
+  for (const page of cast.pages) {
+    if (!page.playable || page.role !== 'protagonist') continue;
+    const count = pagePostCount(feed, page.org_key, page.platform);
+    if (count < PEACE_PAGE_POST_MIN) {
+      issues.push({
+        code: 'protagonist',
+        message: `${page.org_key} on ${canonicalPlatform(page.platform)} needs at least ${PEACE_PAGE_POST_MIN} posts, not ${count}`,
+      });
+    }
+  }
+  if (cast.pages.some((page) => page.role === 'antagonist') && !hasPageRole(feed, cast, 'antagonist')) {
+    issues.push({ code: 'rival', message: 'a rival page must post at least once' });
+  }
+  if (cast.pages.some((page) => page.role === 'pressure') && !hasPageRole(feed, cast, 'pressure')) {
+    issues.push({ code: 'pressure', message: 'a pressure page must post at least once' });
+  }
+  const needed = cast.personas.length >= PEACE_PERSONA_MIN ? PEACE_PERSONA_MIN : cast.personas.length;
+  const found = representedPersonas(feed, cast);
+  if (found < needed) {
     issues.push({
       code: 'personas',
-      message: `at least ${needed} distinct personas must appear; ${represented.size} do`,
+      message: `at least ${needed} distinct personas must appear; ${found} do`,
     });
   }
+}
 
+/** Every rule in §5.5. An empty list means the feed may be stored. */
+export function checkPeaceFeed(feed: PeaceFeed, cast: PeaceCast): PeaceFeedIssue[] {
+  const issues: PeaceFeedIssue[] = [];
+  checkFeedDocument(feed, issues);
+  const seenRefs = new Set<string>();
+  for (const post of feed.posts) {
+    checkOnePost(feed, cast, post, issues, seenRefs);
+  }
+  checkCoverage(feed, cast, issues);
   return issues;
 }
+
 
 /** Posts named by a per-post failure, plus any post that still matches a leak term. */
 export function dropOffendingPosts(feed: PeaceFeed, issues: PeaceFeedIssue[]): PeaceFeed {
