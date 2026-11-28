@@ -1,4 +1,5 @@
 import { env } from '../env.js';
+import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { snapshotFinalStateOnCompletion } from './scenarioStateService.js';
@@ -232,18 +233,34 @@ function toIdleMarker(metadata: unknown, createdAt: unknown): IdleMarker | null 
 export function createSupabaseIdleSweepStore(): IdleSweepStore {
   return {
     async listRunningSessions() {
-      const { data, error } = await supabaseAdmin
+      const columns = 'id, start_time';
+      let result = await supabaseAdmin
         .from('sessions')
-        .select('id, start_time')
+        .select(
+          (env.enablePeacePeriod ? `${columns}, opened_at` : columns) as 'id, start_time',
+        )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
+      if (env.enablePeacePeriod && result.error && isPeaceSchemaMissing(result.error)) {
+        warnPeaceSchemaMissing(result.error);
+        result = await supabaseAdmin
+          .from('sessions')
+          .select(columns)
+          .eq('status', 'in_progress')
+          .not('start_time', 'is', null);
+      }
+      const { data, error } = result;
       if (error) throw error;
       const rows = Array.isArray(data) ? data : [];
       const sessions: Array<{ id: string; start_time: string }> = [];
       for (const row of rows) {
-        const record = row as { id?: unknown; start_time?: unknown };
+        const record = row as { id?: unknown; start_time?: unknown; opened_at?: unknown };
         if (typeof record.id === 'string' && typeof record.start_time === 'string') {
-          sessions.push({ id: record.id, start_time: record.start_time });
+          const baseline =
+            env.enablePeacePeriod && typeof record.opened_at === 'string'
+              ? record.opened_at
+              : record.start_time;
+          sessions.push({ id: record.id, start_time: baseline });
         }
       }
       return sessions;

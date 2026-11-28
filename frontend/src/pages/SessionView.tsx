@@ -581,6 +581,8 @@ interface Session {
   scenario_id: string;
   sim_mode?: string | null;
   start_time?: string | null;
+  /** Set only when ENABLE_PEACE_PERIOD is on. Equal to start_time (crisis start). */
+  crisis_starts_at?: string | null;
   current_state?: {
     [key: string]: unknown;
   };
@@ -1165,6 +1167,10 @@ export const SessionView = () => {
     if (!session?.start_time || session.status !== 'in_progress') {
       return null;
     }
+    if (typeof session.crisis_starts_at === 'string') {
+      const crisisAt = Date.parse(session.crisis_starts_at);
+      if (Number.isFinite(crisisAt) && currentTime.getTime() < crisisAt) return null;
+    }
 
     const start = new Date(session.start_time);
     const elapsed = currentTime.getTime() - start.getTime();
@@ -1179,7 +1185,7 @@ export const SessionView = () => {
       seconds,
       totalSeconds: Math.floor(elapsed / 1000),
     };
-  }, [session?.start_time, session?.status, currentTime]);
+  }, [session?.start_time, session?.crisis_starts_at, session?.status, currentTime]);
 
   const loadIncidents = async (sessionId: string) => {
     try {

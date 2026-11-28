@@ -7,6 +7,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { teamsValidAt } from '../../lib/templateRows.js';
 import { env } from '../../env.js';
+import { silenceActivityMinute } from '../../lib/sessionPhase.js';
 import { logger } from '../../lib/logger.js';
 import { isLedgerSchemaMissing } from '../ledger/ledgerSchema.js';
 import { sessionMinuteAt } from '../ledger/injectLedgerCore.js';
@@ -89,6 +90,7 @@ function schemaMissing(error: QueryError | null): boolean {
 export async function loadTeamSignalFacts(
   sessionId: string,
   startTime: string | null,
+  validAt: string | null = null,
 ): Promise<TeamSignalFacts> {
   const enabled = env.enableExecutiveDecisions;
   try {
@@ -105,7 +107,10 @@ export async function loadTeamSignalFacts(
       decisionRows,
       roles,
     ] = await Promise.all([
-      loadRoster(scenario, startTime ?? new Date()),
+      loadRoster(
+        scenario,
+        env.enablePeacePeriod && validAt ? validAt : (startTime ?? new Date()),
+      ),
       loadMembership(sessionId),
       loadTrainerIds(sessionId),
       loadDutyActions(sessionId),
@@ -489,7 +494,11 @@ function actionHits(
     const slug = slugifyTeamName(teamName);
     const at = instantOf(row.last_at) || instantOf(row.created_at);
     if (!slug || !at) continue;
-    hits.push({ team_slug: slug, minute: sessionMinuteAt(startTime, at) });
+    const minute = env.enablePeacePeriod
+      ? silenceActivityMinute(startTime, at)
+      : sessionMinuteAt(startTime, at);
+    if (minute == null) continue;
+    hits.push({ team_slug: slug, minute });
   }
   return hits;
 }
@@ -508,7 +517,11 @@ function chatHits(
     const slug = slugifyTeamName(teamName);
     const at = instantOf(row.last_at) || instantOf(row.created_at);
     if (!slug || !at) continue;
-    hits.push({ team_slug: slug, minute: sessionMinuteAt(startTime, at) });
+    const minute = env.enablePeacePeriod
+      ? silenceActivityMinute(startTime, at)
+      : sessionMinuteAt(startTime, at);
+    if (minute == null) continue;
+    hits.push({ team_slug: slug, minute });
   }
   return hits;
 }

@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTeams } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
+import { isCrisisPhase } from '../../lib/sessionPhase.js';
 import { getWebSocketService, type WebSocketEvent } from '../websocketService.js';
 import { ensurePool, getAccount, type BotAccount } from './accounts.js';
 import { PlayerBot } from './bot.js';
@@ -116,12 +117,20 @@ class TeammateBotService {
     try {
       const { data } = await supabaseAdmin
         .from('sessions')
-        .select('id, status, sim_mode')
+        .select(
+          (env.enablePeacePeriod
+            ? 'id, status, sim_mode, start_time'
+            : 'id, status, sim_mode') as 'id, status, sim_mode',
+        )
         .eq('id', sessionId)
         .maybeSingle();
       if (!data) return this.stopRuntime(sessionId);
-      const row = data as { status: string; sim_mode: string | null };
+      const row = data as { status: string; sim_mode: string | null; start_time?: string | null };
       if (row.status === 'in_progress' && row.sim_mode === 'social_media') {
+        if (env.enablePeacePeriod && !isCrisisPhase({ start_time: row.start_time ?? null })) {
+          this.stopRuntime(sessionId);
+          return;
+        }
         await this.syncSession(sessionId);
       } else {
         this.stopRuntime(sessionId);
@@ -143,14 +152,23 @@ class TeammateBotService {
     try {
       const { data: sessions, error } = await supabaseAdmin
         .from('sessions')
-        .select('id')
+        .select((env.enablePeacePeriod ? 'id, start_time' : 'id') as 'id')
         .eq('status', 'in_progress')
         .eq('sim_mode', 'social_media');
       if (error) {
         logger.warn({ error }, 'teammates: reconcile session query failed');
         return;
       }
-      const live = new Set((sessions ?? []).map((s) => String((s as { id: string }).id)));
+      const live = new Set<string>();
+      for (const raw of sessions ?? []) {
+        const row = raw as { id: string; start_time?: string | null };
+        const id = String(row.id);
+        if (env.enablePeacePeriod && !isCrisisPhase({ start_time: row.start_time ?? null })) {
+          this.stopRuntime(id);
+          continue;
+        }
+        live.add(id);
+      }
       for (const id of live) await this.syncSession(id);
       for (const id of Array.from(this.runtimes.keys())) if (!live.has(id)) this.stopRuntime(id);
     } catch (err) {

@@ -8,6 +8,8 @@ import { runGateEvaluationForSession } from './gateEvaluationService.js';
 import { mergeStateWithInjectEffects } from './injectPublishEffectsService.js';
 import { runPursuitResponseCheck } from './pursuitResponseTracker.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
+import { runPeaceLane } from './peace/peaceLane.js';
 import { getWebSocketService } from './websocketService.js';
 import { evaluatePinResolution } from './pinResolutionService.js';
 import { runHazardDeterioration } from './hazardDeteriorationService.js';
@@ -452,10 +454,14 @@ export class InjectSchedulerService {
     sim_mode?: string | null;
     join_token?: string | null;
   }): Promise<void> {
-    // Calculate elapsed minutes
-    const startTime = new Date(session.start_time).getTime();
+    // Peace is a future start_time. The flag check is first so a tick with the
+    // flag off does not parse the clock or query anything extra. WP3 fills the lane.
+    if (env.enablePeacePeriod && !isCrisisPhase(session)) {
+      await runPeaceLane(session);
+      return;
+    }
     const now = Date.now();
-    const elapsedMinutes = Math.floor((now - startTime) / 60000);
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time, now);
     // Booth worlds publish scripted injects on time: no AI cancellation checks, engines in their own lane.
     const boothWorld = isBoothJoinToken(session.join_token);
     const timing = { start: now, injects: 0, conditions: 0, published: 0 };
@@ -2437,6 +2443,22 @@ export class InjectSchedulerService {
       );
     }
   }
+}
+
+/** Exercises one session tick. The peace lane returns before any crisis query. */
+export async function processSessionForTests(session: {
+  id: string;
+  scenario_id: string;
+  start_time: string;
+  trainer_id: string;
+  status: string;
+  current_state?: Record<string, unknown> | null;
+  inject_state_effects?: Record<string, unknown> | null;
+  sim_mode?: string | null;
+  join_token?: string | null;
+}): Promise<void> {
+  const scheduler = new InjectSchedulerService();
+  await scheduler['processSession'](session);
 }
 
 // Singleton instance

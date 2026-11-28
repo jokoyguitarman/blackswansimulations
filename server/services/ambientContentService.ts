@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
@@ -708,10 +709,9 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       .single();
 
     if (!session?.start_time) return;
+    if (env.enablePeacePeriod && !isCrisisPhase({ start_time: session.start_time })) return;
 
-    const elapsedMinutes = Math.floor(
-      (Date.now() - new Date(session.start_time).getTime()) / 60000,
-    );
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')

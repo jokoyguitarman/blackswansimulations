@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { logger } from '../../lib/logger.js';
 import { getScenarioSnapshot } from '../../lib/scenarioCache.js';
 import { getPlayerTeamContext } from '../teamCharterService.js';
@@ -319,9 +320,7 @@ export interface PerceiveInput {
 export async function perceive(input: PerceiveInput): Promise<Situation> {
   const { api, userId, displayName, memory, charter, sessionCtx } = input;
   const now = Date.now();
-  const elapsedMinutes = sessionCtx.startTime
-    ? Math.max(0, Math.floor((now - sessionCtx.startTime) / 60_000))
-    : 0;
+  const elapsedMinutes = sessionCtx.startTime ? crisisElapsedMinutes(sessionCtx.startTime, now) : 0;
 
   const [posts, emails, dmThreads, channels, dmChannels, drafts, state, news, pages, assignments] =
     await Promise.all([

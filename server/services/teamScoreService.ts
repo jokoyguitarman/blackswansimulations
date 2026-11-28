@@ -1,5 +1,12 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { teamsValidAt } from '../lib/templateRows.js';
+import { env } from '../env.js';
+import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
+import {
+  crisisElapsedFractionalMinutes,
+  isOnOrAfterCrisis,
+  sessionValidAt,
+} from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
@@ -73,11 +80,25 @@ export interface TeamScoreReport {
 }
 
 export async function computeTeamScores(sessionId: string): Promise<TeamScoreReport> {
-  const { data: session } = await supabaseAdmin
+  const sessionColumns = 'scenario_id, start_time, trainer_id';
+  let sessionResult = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, start_time, trainer_id')
+    .select(
+      (env.enablePeacePeriod
+        ? `${sessionColumns}, opened_at`
+        : sessionColumns) as 'scenario_id, start_time, trainer_id',
+    )
     .eq('id', sessionId)
     .single();
+  if (env.enablePeacePeriod && sessionResult.error && isPeaceSchemaMissing(sessionResult.error)) {
+    warnPeaceSchemaMissing(sessionResult.error);
+    sessionResult = await supabaseAdmin
+      .from('sessions')
+      .select(sessionColumns)
+      .eq('id', sessionId)
+      .single();
+  }
+  const session = sessionResult.data;
 
   const emptyReport: TeamScoreReport = {
     teams: [],
@@ -92,7 +113,12 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     await Promise.all([
       teamsValidAt(
         String(session.scenario_id),
-        (session.start_time as string | null) ?? new Date(),
+        env.enablePeacePeriod
+          ? sessionValidAt({
+              start_time: (session.start_time as string | null) ?? null,
+              opened_at: (session as { opened_at?: string | null }).opened_at ?? null,
+            })
+          : ((session.start_time as string | null) ?? new Date()),
       ),
       supabaseAdmin
         .from('session_teams')
@@ -110,13 +136,21 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
         .order('created_at', { ascending: true }),
       supabaseAdmin
         .from('social_posts')
-        .select('posted_by_user_id, sop_compliance_score')
+        .select(
+          (env.enablePeacePeriod
+            ? 'posted_by_user_id, sop_compliance_score, created_at'
+            : 'posted_by_user_id, sop_compliance_score') as 'posted_by_user_id, sop_compliance_score',
+        )
         .eq('session_id', sessionId)
         .eq('author_type', 'player')
         .not('sop_compliance_score', 'is', null),
       supabaseAdmin
         .from('sim_emails')
-        .select('sent_by_player_id, sop_compliance_score')
+        .select(
+          (env.enablePeacePeriod
+            ? 'sent_by_player_id, sop_compliance_score, created_at'
+            : 'sent_by_player_id, sop_compliance_score') as 'sent_by_player_id, sop_compliance_score',
+        )
         .eq('session_id', sessionId)
         .not('sent_by_player_id', 'is', null)
         .not('sop_compliance_score', 'is', null),
@@ -125,8 +159,10 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
   const scenarioTeams = teamsRes.data || [];
   if (scenarioTeams.length === 0) return emptyReport;
 
-  const startTime = session.start_time ? new Date(session.start_time).getTime() : null;
-  const elapsedMinutes = startTime ? (Date.now() - startTime) / 60000 : null;
+  const startTime = session.start_time ? new Date(String(session.start_time)).getTime() : null;
+  const elapsedMinutes = startTime
+    ? crisisElapsedFractionalMinutes(String(session.start_time))
+    : null;
 
   // Player -> team (earliest assignment wins for legacy multi-team rows).
   const teamByPlayer = new Map<string, string>();
@@ -168,12 +204,30 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     }
   };
   for (const p of postsRes.data || []) {
+    if (
+      env.enablePeacePeriod &&
+      !isOnOrAfterCrisis(
+        (p as { created_at?: string }).created_at,
+        (session.start_time as string | null) ?? null,
+      )
+    ) {
+      continue;
+    }
     accumulate(
       p.posted_by_user_id ? String(p.posted_by_user_id) : null,
       (p.sop_compliance_score as Record<string, unknown>) || null,
     );
   }
   for (const e of emailsRes.data || []) {
+    if (
+      env.enablePeacePeriod &&
+      !isOnOrAfterCrisis(
+        (e as { created_at?: string }).created_at,
+        (session.start_time as string | null) ?? null,
+      )
+    ) {
+      continue;
+    }
     accumulate(
       e.sent_by_player_id ? String(e.sent_by_player_id) : null,
       (e.sop_compliance_score as Record<string, unknown>) || null,
@@ -197,7 +251,11 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     }
   }
 
-  const actions = actionsRes.data || [];
+  const actions = (actionsRes.data || []).filter(
+    (row) =>
+      !env.enablePeacePeriod ||
+      isOnOrAfterCrisis(String(row.created_at), (session.start_time as string | null) ?? null),
+  );
   const observedActions: ObservedAction[] = actions.map((row) => ({
     player_id: String(row.player_id),
     action_type: String(row.action_type),

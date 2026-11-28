@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { crisisElapsedFractionalMinutes, isOnOrAfterCrisis } from '../lib/sessionPhase.js';
 import { getPlayerTeamName } from './teamCharterService.js';
 
 export interface SOPComplianceResult {
@@ -31,8 +33,7 @@ export async function evaluateSOPCompliance(
 
   if (!session?.start_time) return [];
 
-  const startTime = new Date(session.start_time).getTime();
-  const elapsedMinutes = (Date.now() - startTime) / 60000;
+  const elapsedMinutes = crisisElapsedFractionalMinutes(String(session.start_time)) ?? 0;
 
   const { data: actions } = await supabaseAdmin
     .from('player_actions')
@@ -78,7 +79,12 @@ export async function evaluateSOPCompliance(
       // docs/executive-decisions-organic-handover.md). Scenarios compiled with them still load.
       if (step.triggered_by_decision_key) continue;
 
-      const matchingActions = (actions || []).filter((a) => a.sop_step_matched === step.step_id);
+      const matchingActions = (actions || []).filter(
+        (a) =>
+          a.sop_step_matched === step.step_id &&
+          (!env.enablePeacePeriod ||
+            isOnOrAfterCrisis(a.created_at, String(session.start_time))),
+      );
 
       let status: SOPComplianceResult['status'] = 'pending';
       let completedAt: string | undefined;

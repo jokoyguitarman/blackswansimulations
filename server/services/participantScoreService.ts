@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { isOnOrAfterCrisis } from '../lib/sessionPhase.js';
 import { calculateCommunicationMetrics, calculateCoordinationScore } from './analyticsService.js';
 
 /**
@@ -62,7 +64,19 @@ export async function calculateParticipantScores(
     }
 
     // Get decision steps to calculate leadership score (decisions approved)
-    const decisionIds = (decisions || []).map((d) => d.id);
+    let crisisStart: string | null = null;
+    if (env.enablePeacePeriod) {
+      const clock = await supabaseAdmin
+        .from('sessions')
+        .select('start_time')
+        .eq('id', sessionId)
+        .maybeSingle();
+      crisisStart = (clock.data?.start_time as string | null) ?? null;
+    }
+    const decisionRows = (decisions || []).filter(
+      (row) => !env.enablePeacePeriod || isOnOrAfterCrisis(row.created_at, crisisStart),
+    );
+    const decisionIds = (env.enablePeacePeriod ? decisionRows : decisions || []).map((d) => d.id);
     const { data: steps, error: stepsError } =
       decisionIds.length > 0
         ? await supabaseAdmin
@@ -95,6 +109,10 @@ export async function calculateParticipantScores(
       throw messagesError;
     }
 
+    const messageRows = (messages || []).filter(
+      (row) => !env.enablePeacePeriod || isOnOrAfterCrisis(row.created_at, crisisStart),
+    );
+
     // Build participant role map
     const participantRoleMap: Record<string, string> = {};
     for (const participant of participants) {
@@ -109,13 +127,15 @@ export async function calculateParticipantScores(
       const role = participant.role;
 
       // Count decisions proposed
-      const decisionsProposed = (decisions || []).filter((d) => d.proposed_by === userId).length;
+      const decisionsProposed = decisionRows.filter((d) => d.proposed_by === userId).length;
 
       // Count communications sent
-      const communicationsSent = commMetrics.messages_per_participant[userId] || 0;
+      const communicationsSent = env.enablePeacePeriod
+        ? messageRows.filter((m) => m.sender_id === userId).length
+        : commMetrics.messages_per_participant[userId] || 0;
 
       // Calculate average response time for this participant
-      const participantMessages = (messages || []).filter((m) => m.sender_id === userId);
+      const participantMessages = messageRows.filter((m) => m.sender_id === userId);
       const participantResponseTimes: number[] = [];
 
       // Group messages by channel and calculate response times
@@ -131,7 +151,7 @@ export async function calculateParticipantScores(
 
       for (const channelId in channelMessages) {
         // Get all messages in this channel (including from other participants)
-        const allChannelMessages = (messages || [])
+        const allChannelMessages = messageRows
           .filter((m) => m.channel_id === channelId)
           .map((m) => ({ time: new Date(m.created_at).getTime(), sender_id: m.sender_id }))
           .sort((a, b) => a.time - b.time);
@@ -156,7 +176,7 @@ export async function calculateParticipantScores(
 
       // Calculate coordination score (0-100)
       // Based on: inter-agency message participation and cross-agency approvals received/given
-      const participantInterAgencyMessages = (messages || []).filter((m) => {
+      const participantInterAgencyMessages = messageRows.filter((m) => {
         if (m.sender_id !== userId) return false;
         // Check if message is in inter-agency channel or to different role
         // For simplicity, use the coordination metrics overall score scaled by participation
@@ -166,7 +186,7 @@ export async function calculateParticipantScores(
 
       const totalInterAgencyMessages = coordinationMetrics.inter_agency_messages;
       const coordinationScore =
-        totalInterAgencyMessages > 0 && (messages || []).length > 0
+        totalInterAgencyMessages > 0 && messageRows.length > 0
           ? Math.min(
               100,
               Math.round(
@@ -179,7 +199,7 @@ export async function calculateParticipantScores(
 
       // Calculate leadership score (0-100)
       // Based on: decisions proposed and approved (high weight), approvals received from others (medium weight)
-      const participantDecisions = (decisions || []).filter((d) => d.proposed_by === userId);
+      const participantDecisions = decisionRows.filter((d) => d.proposed_by === userId);
       const approvedDecisions = participantDecisions.filter(
         (d) => d.status === 'approved' || d.status === 'executed',
       ).length;

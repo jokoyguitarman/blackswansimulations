@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { isCrisisPhase } from '../lib/sessionPhase.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
@@ -177,6 +178,12 @@ class ChatSurveillanceService {
       logger.info({ count: sessions.length }, 'Chat surveillance: scanning active sessions');
 
       for (const session of sessions) {
+        if (
+          env.enablePeacePeriod &&
+          !isCrisisPhase({ start_time: (session.start_time as string | null) ?? null })
+        ) {
+          continue;
+        }
         try {
           await this.scanSession(session.id, session.scenario_id, session.start_time as string);
         } catch (err) {

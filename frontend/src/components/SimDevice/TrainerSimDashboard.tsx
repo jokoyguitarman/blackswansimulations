@@ -10,6 +10,7 @@ import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
+import { playerClockHidden } from '../../lib/crisisClock';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1044,6 +1045,7 @@ export default function TrainerSimDashboard() {
   const [intelStatus, setIntelStatus] = useState<IntelStatusRow[]>([]);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [beforeCrisis, setBeforeCrisis] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
 
@@ -1239,7 +1241,10 @@ export default function TrainerSimDashboard() {
       const json = await res.json();
       if (json.data) {
         setSessionInfo(json.data);
-        const start = (json.data.started_at ?? json.data.start_time) as string | undefined;
+        const start = (json.data.crisis_starts_at ??
+          json.data.started_at ??
+          json.data.start_time) as string | undefined;
+        setBeforeCrisis(playerClockHidden(json.data as { crisis_starts_at?: string | null }));
         const end = (json.data.ended_at ?? json.data.end_time) as string | undefined;
         if (typeof start === 'string') {
           if (json.data.status === 'completed' && typeof end === 'string') {
@@ -1362,7 +1367,8 @@ export default function TrainerSimDashboard() {
     if (isReview) return;
     const id = setInterval(() => {
       const info = sessionInfo as Record<string, unknown> | null;
-      const start = info?.started_at ?? info?.start_time;
+      const start = info?.crisis_starts_at ?? info?.started_at ?? info?.start_time;
+      setBeforeCrisis(playerClockHidden(info as { crisis_starts_at?: string | null }));
       if (typeof start === 'string') {
         setElapsedMinutes(minutesAgo(start));
       }
@@ -1577,8 +1583,10 @@ export default function TrainerSimDashboard() {
               {isReview ? 'Crisis Session Review' : 'Crisis Trainer Dashboard'}
             </h1>
             <p className="text-[11px]" style={{ color: '#64748b' }}>
-              Session {sessionId ? truncate(sessionId, 12) : '—'} · {elapsedMinutes}m{' '}
-              {isReview ? 'total' : 'elapsed'}
+              Session {sessionId ? truncate(sessionId, 12) : '—'}
+              {beforeCrisis
+                ? ''
+                : ` · ${elapsedMinutes}m ${isReview ? 'total' : 'elapsed'}`}
             </p>
           </div>
         </div>

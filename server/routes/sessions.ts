@@ -48,6 +48,8 @@ import { getSessionCallCoverage } from '../services/callCoverageService.js';
 import { endLines, ensureCallLines } from '../services/calls/lineService.js';
 import { endRoles } from '../services/roles/roleService.js';
 import { insertSessionEvent } from '../lib/sessionEvents.js';
+import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
+import { resolvePeaceSeconds, startClaimFields } from '../lib/sessionPhase.js';
 
 const router = Router();
 
@@ -79,8 +81,37 @@ const updateSessionSchema = z.object({
     scheduled_start_time: z.string().datetime().optional(),
     auto_complete_on_objectives: z.boolean().optional(),
     start_override: z.object({ acknowledge: z.literal(true) }).optional(),
+    // Ignored unless ENABLE_PEACE_PERIOD is on, the session is social, and a peace feed exists.
+    peace_seconds: z.number().optional(),
   }),
 });
+
+async function peaceSecondsForStart(
+  sessionId: string,
+  scenarioId: string | undefined,
+  requested: unknown,
+): Promise<number> {
+  if (!scenarioId) return 0;
+  const [{ data: scenario }, { data: row }] = await Promise.all([
+    supabaseAdmin
+      .from('scenarios')
+      .select('category, initial_state')
+      .eq('id', scenarioId)
+      .maybeSingle(),
+    supabaseAdmin.from('sessions').select('sim_mode').eq('id', sessionId).maybeSingle(),
+  ]);
+  const simMode = (row?.sim_mode as string | null | undefined) ?? null;
+  const category = (scenario?.category as string | null | undefined) ?? null;
+  const social = simMode === 'social_media' || category === 'social_media_crisis';
+  return resolvePeaceSeconds({
+    requested,
+    initialState: scenario?.initial_state,
+    social,
+    enabled: true,
+    defaultSeconds: env.peacePeriodDefaultSeconds,
+    maxSeconds: env.peacePeriodMaxSeconds,
+  });
+}
 
 const joinSessionSchema = z.object({
   params: z.object({
@@ -1283,7 +1314,11 @@ router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedR
       'Session loaded with participants',
     );
 
-    res.json({ data: { ...session, participants: participants || [] } });
+    const payload: Record<string, unknown> = { ...session, participants: participants || [] };
+    if (env.enablePeacePeriod) {
+      payload.crisis_starts_at = (session as { start_time?: string | null }).start_time ?? null;
+    }
+    res.json({ data: payload });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /sessions/:id');
     res.status(500).json({ error: 'Internal server error' });
@@ -1453,8 +1488,14 @@ router.patch(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const { status, trainer_instructions, scheduled_start_time, auto_complete_on_objectives, start_override } =
-        req.body;
+      const {
+        status,
+        trainer_instructions,
+        scheduled_start_time,
+        auto_complete_on_objectives,
+        start_override,
+        peace_seconds,
+      } = req.body;
 
       // Check if user is trainer of this session
       const { data: session } = await supabaseAdmin
@@ -1529,8 +1570,18 @@ router.patch(
       if (auto_complete_on_objectives !== undefined)
         updates.auto_complete_on_objectives = auto_complete_on_objectives;
 
+      let claim: ReturnType<typeof startClaimFields> | null = null;
       if (claimingStart) {
-        updates.start_time = new Date().toISOString();
+        const now = new Date();
+        const peaceSeconds = env.enablePeacePeriod
+          ? await peaceSecondsForStart(
+              id,
+              (session as { scenario_id?: string }).scenario_id,
+              peace_seconds,
+            )
+          : 0;
+        claim = startClaimFields({ now, peaceSeconds });
+        Object.assign(updates, claim);
       }
       if (status === 'completed' || status === 'cancelled') {
         updates.end_time = new Date().toISOString();
@@ -1541,7 +1592,28 @@ router.patch(
       if (claimingStart) {
         updateBuilder = updateBuilder.eq('status', previousStatus).is('start_time', null);
       }
-      const updated = await updateBuilder.select().single();
+      let updated = await updateBuilder.select().single();
+      if (
+        claimingStart &&
+        claim &&
+        claim.opened_at &&
+        updated.error &&
+        isPeaceSchemaMissing(updated.error)
+      ) {
+        warnPeaceSchemaMissing(updated.error);
+        const fallback: Record<string, unknown> = { ...updates };
+        delete fallback.opened_at;
+        delete fallback.peace_seconds;
+        fallback.start_time = claim.opened_at;
+        updated = await supabaseAdmin
+          .from('sessions')
+          .update(fallback)
+          .eq('id', id)
+          .eq('status', previousStatus)
+          .is('start_time', null)
+          .select()
+          .single();
+      }
       const error = updated.error;
       let data = updated.data;
 
@@ -1765,11 +1837,17 @@ router.patch(
       // A later resume already has start_time, so claimingStart is false.
       if (claimingStart) {
         try {
-          getWebSocketService().sessionStarted(id, {
+          const row = data as Record<string, unknown>;
+          const started: Record<string, unknown> = {
             session_id: id,
             status: 'in_progress',
-            start_time: (data as Record<string, unknown>).start_time,
-          });
+            start_time: row.start_time,
+          };
+          if (env.enablePeacePeriod) {
+            started.opened_at = row.opened_at ?? null;
+            started.crisis_starts_at = row.start_time ?? null;
+          }
+          getWebSocketService().sessionStarted(id, started);
         } catch (broadcastError) {
           logger.error(
             { error: broadcastError, sessionId: id },
@@ -1790,7 +1868,14 @@ router.patch(
       }
 
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
-      res.json({ data });
+      const body =
+        data && env.enablePeacePeriod
+          ? {
+              ...(data as Record<string, unknown>),
+              crisis_starts_at: (data as { start_time?: unknown }).start_time ?? null,
+            }
+          : data;
+      res.json({ data: body });
     } catch (err) {
       logger.error({ error: err }, 'Error in PATCH /sessions/:id');
       res.status(500).json({ error: 'Internal server error' });

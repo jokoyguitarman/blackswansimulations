@@ -9,6 +9,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
 import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { addObjectivePenalty } from './objectiveTrackingService.js';
@@ -798,8 +799,7 @@ async function getSessionElapsedMinutes(sessionId: string): Promise<number> {
     .eq('id', sessionId)
     .single();
   if (!data?.started_at) return 0;
-  const startedAt = new Date(data.started_at as string);
-  return Math.max(0, (Date.now() - startedAt.getTime()) / 60000);
+  return crisisElapsedFractionalMinutes(data.started_at as string) ?? 0;
 }
 
 /**

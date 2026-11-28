@@ -7,6 +7,9 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
+import { sessionValidAt } from '../lib/sessionPhase.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
@@ -609,15 +612,25 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
     names: {},
   };
 
-  const sessionResult = await supabaseAdmin
+  const sessionColumns = 'start_time, created_at, scenario_id';
+  let sessionResult = await supabaseAdmin
     .from('sessions')
-    .select('start_time, created_at, scenario_id')
+    .select(env.enablePeacePeriod ? `${sessionColumns}, opened_at` : sessionColumns)
     .eq('id', sessionId)
     .maybeSingle();
+  if (env.enablePeacePeriod && sessionResult.error && isPeaceSchemaMissing(sessionResult.error)) {
+    warnPeaceSchemaMissing(sessionResult.error);
+    sessionResult = await supabaseAdmin
+      .from('sessions')
+      .select(sessionColumns)
+      .eq('id', sessionId)
+      .maybeSingle();
+  }
   const session = (sessionResult.data ?? null) as {
     start_time?: string | null;
     created_at?: string | null;
     scenario_id?: string | null;
+    opened_at?: string | null;
   } | null;
   const startIso = session?.start_time || session?.created_at || null;
   const startMs = startIso ? Date.parse(startIso) : null;
@@ -631,7 +644,12 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
   parts.steps = chains.steps;
   parts.moods = await loadMoods(sessionId);
   parts.directMessages = await loadDirectMessages(sessionId, started);
-  const validAt = session?.start_time ?? new Date().toISOString();
+  const validAt = env.enablePeacePeriod
+    ? sessionValidAt({
+        start_time: session?.start_time ?? null,
+        opened_at: session?.opened_at ?? null,
+      })
+    : (session?.start_time ?? new Date().toISOString());
   parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId, validAt);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));

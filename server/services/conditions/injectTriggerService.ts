@@ -8,6 +8,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
 import { activeTeams } from '../../lib/templateRows.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
@@ -644,7 +645,5 @@ async function sessionMinute(sessionId: string): Promise<number> {
     .eq('id', sessionId)
     .maybeSingle();
   if (error || !data?.start_time) return 0;
-  const started = Date.parse(String(data.start_time));
-  if (!Number.isFinite(started)) return 0;
-  return Math.max(0, Math.floor((Date.now() - started) / 60000));
+  return crisisElapsedMinutes(String(data.start_time));
 }

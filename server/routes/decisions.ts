@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
@@ -771,9 +772,7 @@ async function processExecutedDecisionInBackground(
           .eq('id', sessionId)
           .single();
         const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
-        const elapsedMinutes = startTime
-          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-          : 0;
+        const elapsedMinutes = crisisElapsedMinutes(startTime ?? null);
         await updateTeamStateFromDecision(
           sessionId,
           decisionId,

@@ -7,6 +7,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import {
@@ -355,7 +356,7 @@ export async function checkPendingEndorsements(sessionId: string): Promise<void>
     .single();
   if (!session?.start_time) return;
 
-  const elapsedMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
+  const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
   const { data: evacuatedGroups } = await supabaseAdmin
     .from('scenario_casualties')

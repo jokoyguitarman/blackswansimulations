@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
 import { runPressureEngine, flipUnstaffedOrgsToAi } from './pressureEngineService.js';
 import {
   runDecisionTick,
@@ -29,7 +30,7 @@ export function startGeneratorEngines(): void {
   }
   // Generated grievances (organic plan §6.4): the reconsideration judge asks us first.
   registerDecisionGrievanceResolver();
-  interval = setInterval(() => void tick(), TICK_MS);
+  interval = setInterval(() => void tickGeneratorEngines(), TICK_MS);
   logger.info('Generator engines started (pressure engine + organic decisions, every 60s)');
 }
 
@@ -38,7 +39,7 @@ export function stopGeneratorEngines(): void {
   interval = null;
 }
 
-async function tick(): Promise<void> {
+export async function tickGeneratorEngines(): Promise<void> {
   try {
     const { data: sessions, error } = await supabaseAdmin
       .from('sessions')
@@ -52,13 +53,18 @@ async function tick(): Promise<void> {
     }
     for (const s of sessions || []) {
       const id = String(s.id);
+      // Flag off: same loop as before, no extra read. start_time is already on the row.
+      if (
+        env.enablePeacePeriod &&
+        !isCrisisPhase({ start_time: s.start_time == null ? null : String(s.start_time) })
+      ) {
+        continue;
+      }
       if (inFlight.has(id)) continue;
       inFlight.add(id);
       // Whole minutes: downstream writes go into INTEGER minute columns (spec §15).
-      const elapsed = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(String(s.start_time)).getTime()) / 60000),
-      );
+      // Same as Math.max(0, Math.floor((now - start) / 60000)) for every finite start.
+      const elapsed = crisisElapsedMinutes(String(s.start_time));
       try {
         if (!startHandled.has(id) && elapsed <= START_GRACE_MINUTES + 1) {
           startHandled.add(id);

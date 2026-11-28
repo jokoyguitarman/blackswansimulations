@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { validate } from '../lib/validation.js';
 import {
   classifyInsiderQuestionWithAI,
@@ -140,8 +141,7 @@ router.post(
           | undefined;
 
         const startTime = (session as Record<string, unknown>).start_time as string | undefined;
-        const elapsedMinutes = startTime
-          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
+        const elapsedMinutes = startTime ? crisisElapsedMinutes(startTime)
           : undefined;
 
         const scenarioFull = await supabaseAdmin
