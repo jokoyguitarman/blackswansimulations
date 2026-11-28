@@ -32,10 +32,14 @@ export interface RosterEntryInput {
   description?: string;
   is_custom?: boolean;
   is_public_voice?: boolean;
+  /** Set on an existing team so a rename keeps the same logical team. */
+  team_uid?: string;
 }
 
 export interface OrganisationInput {
   org_key?: string;
+  /** Stable organisation id from the baseline snapshot. New cards omit it. */
+  org_uid?: string;
   display_name: string;
   short_name?: string;
   country: string;
@@ -116,6 +120,8 @@ export function defaultRegisterFor(kind: PressureKind): PressureRegister {
 export interface NormalisedTeam {
   /** Composed, scenario-unique identity ("Communications — NBI" or bare "Communications"). */
   team_name: string;
+  /** Present when the team already existed in the baseline. */
+  team_uid?: string;
   /** Catalog name or custom slug (Title Case). Never null for generated teams. */
   function_key: string;
   description: string;
@@ -125,6 +131,7 @@ export interface NormalisedTeam {
 
 export interface NormalisedOrg {
   org_key: string;
+  org_uid?: string;
   display_name: string;
   short_name: string;
   country: string;
@@ -367,10 +374,101 @@ export function composeTeamName(
 
 const MIN_TEAMS = 2;
 
+/** A baseline team an edit must keep identifiable across a rename. */
+export interface StoredTeamIdentity {
+  team_uid: string;
+  team_name: string;
+  org_key: string;
+  function_key?: string;
+  /** Kept across a display rename. Defaults from whether function_key is a preset. */
+  is_custom?: boolean;
+}
+
+/**
+ * Pin identities while editing a compiled scenario. Absent on the create path,
+ * which still derives keys and composes team names.
+ */
+export interface OrganisationIdentityOptions {
+  /** Active baseline org keys. A card key in this set is kept. */
+  baseline_org_keys: readonly string[];
+  /** Org key that is primary in the baseline. Defaults to `primary` when that key is baseline. */
+  baseline_primary_org_key?: string;
+  /** Retired keys, and any other key a newly added organisation must not reuse. */
+  retired_org_keys?: readonly string[];
+  teams?: readonly StoredTeamIdentity[];
+  /**
+   * "Use organisation short names in every team name". Existing teams whose card
+   * still shows the stored name are recomposed. An explicit rename on the card wins.
+   */
+  compose_existing_team_names?: boolean;
+  /**
+   * Card `org_key` of an existing or newly added organisation that becomes the
+   * primary. The key itself is not rewritten here; the remap planner does that.
+   */
+  make_primary?: string | null;
+}
+
+function claimProvidedKey(
+  key: string | undefined,
+  pattern: RegExp,
+  taken: Set<string>,
+  honourable: Set<string> | null,
+): string | null {
+  if (!key || !pattern.test(key)) return null;
+  if (honourable) {
+    if (!honourable.has(key)) return null;
+    honourable.delete(key);
+    taken.add(key);
+    return key;
+  }
+  if (taken.has(key)) return null;
+  taken.add(key);
+  return key;
+}
+
+/** A stored team's function stays put when the trainer only renames the display name. */
+function storedFunctionKey(stored: StoredTeamIdentity): string {
+  const explicit = stored.function_key?.trim();
+  if (explicit) return explicit;
+  const head = stored.team_name.split(' \u2014 ')[0]?.trim() || stored.team_name;
+  if (isPresetFunction(head)) return head;
+  return functionKeyFor({ team_name: stored.team_name, is_custom: true });
+}
+
+function baselinePrimaryKey(identities: OrganisationIdentityOptions): string {
+  if (identities.baseline_primary_org_key) return identities.baseline_primary_org_key;
+  return identities.baseline_org_keys.includes('primary') ? 'primary' : '';
+}
+
+function teamNameForEdit(
+  entry: RosterEntryInput,
+  functionKey: string,
+  shortName: string,
+  multiOrg: boolean,
+  identities: OrganisationIdentityOptions | undefined,
+): { team_name: string; team_uid?: string } {
+  const composed = composeTeamName(functionKey, { short_name: shortName }, multiOrg);
+  if (!identities || !entry.team_uid) return { team_name: composed };
+  const stored = identities.teams?.find((team) => team.team_uid === entry.team_uid);
+  if (!stored) return { team_name: composed, team_uid: entry.team_uid };
+  const requested = String(entry.team_name || '').trim();
+  const unchanged =
+    requested === stored.team_name || requested === (stored.function_key ?? '');
+  if (identities.compose_existing_team_names && unchanged) {
+    return {
+      team_name: composeTeamName(functionKey, { short_name: shortName }, true),
+      team_uid: stored.team_uid,
+    };
+  }
+  if (unchanged) return { team_name: stored.team_name, team_uid: stored.team_uid };
+  return { team_name: requested.slice(0, TEAM_NAME_MAX), team_uid: stored.team_uid };
+}
+
 export function validateOrganisations(
   input: OrganisationInput[],
   competitorsInput: CompetitorInput[] = [],
   pressureInput: PressureOrgInput[] = [],
+  identities?: OrganisationIdentityOptions,
 ): OrganisationsValidation {
   const details: ValidationDetail[] = [];
   const fail = (code: string, path: string, message: string) =>
@@ -382,15 +480,27 @@ export function validateOrganisations(
   }
 
   const primaries = input.filter((o) => o.is_primary);
-  if (input.length === 1) {
+  if (!identities && input.length === 1) {
     input[0].is_primary = true;
-  } else if (primaries.length !== 1) {
+  } else if (!identities && primaries.length !== 1) {
     fail('MO-ORG-002', 'organisations', 'Exactly one organisation must be marked primary');
+  } else if (identities) {
+    const baselinePrimary = baselinePrimaryKey(identities);
+    const submitted = new Set(
+      input.map((org) => org.org_key?.trim()).filter((key): key is string => !!key),
+    );
+    const named = identities.make_primary?.trim() ?? '';
+    if (baselinePrimary && !submitted.has(baselinePrimary) && !(named && submitted.has(named))) {
+      fail('MO-EDIT-001', 'organisations', 'Make another organisation primary first');
+    }
   }
 
   const seenNames = new Set<string>();
   const takenShort = new Set<string>();
-  const takenKeys = new Set<string>();
+  const honourable = identities ? new Set(identities.baseline_org_keys) : null;
+  const takenKeys = new Set<string>(
+    identities ? [...identities.baseline_org_keys, ...(identities.retired_org_keys ?? [])] : [],
+  );
   const multiOrg = input.length > 1;
   const orgs: NormalisedOrg[] = [];
 
@@ -418,10 +528,30 @@ export function validateOrganisations(
       : deriveShortName(displayName || 'Org', takenShort, country || 'Singapore');
     if (raw.short_name?.trim()) takenShort.add(shortName.toLowerCase());
 
-    const orgKey = makeOrgKey(
-      { display_name: displayName, short_name: shortName, country, is_primary: !!raw.is_primary },
-      takenKeys,
-    );
+    const provisional = raw.org_key?.trim() ?? '';
+    let orgKey: string;
+    if (identities && provisional && honourable?.has(provisional)) {
+      honourable.delete(provisional);
+      takenKeys.add(provisional);
+      orgKey = provisional;
+    } else if (identities && provisional && identities.baseline_org_keys.includes(provisional)) {
+      fail('MO-ORG-003', path, `Organisation key "${provisional}" is already used`);
+      orgKey = makeOrgKey(
+        { display_name: displayName, short_name: shortName, country, is_primary: false },
+        takenKeys,
+      );
+    } else {
+      // A new organisation never takes `primary` here. A swap re-keys in the planner.
+      orgKey = makeOrgKey(
+        {
+          display_name: displayName,
+          short_name: shortName,
+          country,
+          is_primary: identities ? false : !!raw.is_primary,
+        },
+        takenKeys,
+      );
+    }
 
     // Roster
     const roster = Array.isArray(raw.team_roster) ? raw.team_roster : [];
@@ -436,30 +566,65 @@ export function validateOrganisations(
     const seenFunctions = new Set<string>();
     let executiveCount = 0;
     for (const entry of roster) {
-      const rawName = String(entry.team_name || '').trim();
+      const storedTeam =
+        identities && entry.team_uid
+          ? identities.teams?.find((team) => team.team_uid === entry.team_uid)
+          : undefined;
+      if (storedTeam) {
+        const functionKey = storedFunctionKey(storedTeam);
+        const isCustom = storedTeam.is_custom ?? !isPresetFunction(functionKey);
+        if (isCustom && String(entry.description || '').trim().length < 10) {
+          fail(
+            'MO-TEAM-005',
+            `${path}.team_roster.${functionKey}`,
+            `Describe what "${functionKey}" does (min 10 characters)`,
+          );
+        }
+        if (seenFunctions.has(functionKey.toLowerCase())) {
+          fail(
+            'MO-TEAM-001',
+            `${path}.team_roster.${functionKey}`,
+            `${displayName}: teams must have distinct functions ("${functionKey}" repeated)`,
+          );
+        }
+        seenFunctions.add(functionKey.toLowerCase());
+        if (functionKey === EXECUTIVE_FUNCTION) executiveCount++;
+        const named = teamNameForEdit(entry, functionKey, shortName, multiOrg, identities);
+        teams.push({
+          team_name: named.team_name,
+          team_uid: storedTeam.team_uid,
+          function_key: functionKey,
+          description: String(entry.description || '').trim(),
+          is_custom: isCustom,
+          is_public_voice: !!entry.is_public_voice,
+        });
+        continue;
+      }
+      const parsedEntry = entry;
+      const rawName = String(parsedEntry.team_name || '').trim();
       if (!rawName) {
         fail('MO-TEAM-001', `${path}.team_roster`, 'Every team needs a name');
         continue;
       }
       // Retired preset names (Procurement / Sales) from older drafts map to their replacements.
-      const legacyAlias = !entry.is_custom ? canonicalPresetName(rawName) : null;
+      const legacyAlias = !parsedEntry.is_custom ? canonicalPresetName(rawName) : null;
       const name = legacyAlias && legacyAlias !== rawName ? legacyAlias : rawName;
-      const isCustom = !!entry.is_custom || !isPresetFunction(name);
-      if (!!entry.is_custom && isPresetFunction(name)) {
+      const isCustom = !!parsedEntry.is_custom || !isPresetFunction(name);
+      if (!!parsedEntry.is_custom && isPresetFunction(name)) {
         fail(
           'MO-TEAM-001',
           `${path}.team_roster.${name}`,
           `"${name}" is a preset name — rename the custom department`,
         );
       }
-      if (isCustom && String(entry.description || '').trim().length < 10) {
+      if (isCustom && String(parsedEntry.description || '').trim().length < 10) {
         fail(
           'MO-TEAM-005',
           `${path}.team_roster.${name}`,
           `Describe what "${name}" does (min 10 characters)`,
         );
       }
-      const functionKey = functionKeyFor({ ...entry, team_name: name, is_custom: isCustom });
+      const functionKey = functionKeyFor({ ...parsedEntry, team_name: name, is_custom: isCustom });
       if (seenFunctions.has(functionKey.toLowerCase())) {
         fail(
           'MO-TEAM-001',
@@ -469,12 +634,14 @@ export function validateOrganisations(
       }
       seenFunctions.add(functionKey.toLowerCase());
       if (functionKey === EXECUTIVE_FUNCTION) executiveCount++;
+      const named = teamNameForEdit(parsedEntry, functionKey, shortName, multiOrg, identities);
       teams.push({
-        team_name: composeTeamName(functionKey, { short_name: shortName }, multiOrg),
+        team_name: named.team_name,
+        ...(named.team_uid ? { team_uid: named.team_uid } : {}),
         function_key: functionKey,
-        description: String(entry.description || '').trim(),
+        description: String(parsedEntry.description || '').trim(),
         is_custom: isCustom,
-        is_public_voice: !!entry.is_public_voice,
+        is_public_voice: !!parsedEntry.is_public_voice,
       });
     }
     if (executiveCount > 1) {
@@ -497,6 +664,7 @@ export function validateOrganisations(
 
     orgs.push({
       org_key: orgKey,
+      ...(raw.org_uid?.trim() ? { org_uid: raw.org_uid.trim() } : {}),
       display_name: displayName,
       short_name: shortName,
       country,
@@ -508,10 +676,34 @@ export function validateOrganisations(
       facebook_handle: raw.facebook_handle?.trim() || undefined,
       x_handle: raw.x_handle?.trim() || undefined,
       logo_url: raw.logo_url?.trim() || undefined,
-      is_primary: !!raw.is_primary,
+      is_primary: identities ? false : !!raw.is_primary,
       teams,
       operation: raw.operation === 'ai' ? 'ai' : 'players',
     });
+  }
+  if (identities) {
+    const named = identities.make_primary?.trim() ?? '';
+    const namedIndex = named
+      ? ordered.findIndex((raw) => (raw.org_key?.trim() ?? '') === named)
+      : -1;
+    if (named && namedIndex < 0 && !details.some((detail) => detail.code === 'MO-EDIT-001')) {
+      fail('MO-ORG-002', 'organisations', 'Exactly one organisation must be marked primary');
+    }
+    const baselineIndex = named
+      ? -1
+      : orgs.findIndex((org) => org.org_key === baselinePrimaryKey(identities));
+    const primaryIndex = namedIndex >= 0 ? namedIndex : baselineIndex;
+    if (primaryIndex >= 0) {
+      orgs.forEach((org, index) => {
+        org.is_primary = index === primaryIndex;
+      });
+    }
+    if (
+      orgs.filter((org) => org.is_primary).length !== 1 &&
+      !details.some((detail) => detail.code === 'MO-EDIT-001' || detail.code === 'MO-ORG-002')
+    ) {
+      fail('MO-ORG-002', 'organisations', 'Exactly one organisation must be marked primary');
+    }
   }
   // MO-ORG-007: the primary organisation is where the human players are.
   const primaryOrg = orgs.find((o) => o.is_primary);
@@ -548,13 +740,14 @@ export function validateOrganisations(
     }
     const providedKey = c.org_key?.trim();
     const description = String(c.description || '').trim();
+    const keptKey = claimProvidedKey(
+      providedKey,
+      /^org_antagonist_[a-z0-9_]+$/,
+      takenKeys,
+      honourable,
+    );
     competitors.push({
-      org_key:
-        providedKey &&
-        /^org_antagonist_[a-z0-9_]+$/.test(providedKey) &&
-        !takenKeys.has(providedKey)
-          ? (takenKeys.add(providedKey), providedKey)
-          : makeAntagonistOrgKey(name, i, takenKeys),
+      org_key: keptKey ?? makeAntagonistOrgKey(name, i, takenKeys),
       name,
       country,
       facebook_handle: c.facebook_handle?.trim() || undefined,
@@ -563,7 +756,14 @@ export function validateOrganisations(
     });
   });
 
-  const pressureOrgs = normalisePressureOrgs(pressureInput || [], orgs, takenKeys, seenNames, fail);
+  const pressureOrgs = normalisePressureOrgs(
+    pressureInput || [],
+    orgs,
+    takenKeys,
+    seenNames,
+    fail,
+    honourable,
+  );
 
   if (details.length > 0) {
     return { ok: false, code: details[0].code, message: details[0].message, details };
@@ -602,6 +802,7 @@ function normalisePressureOrgs(
   takenKeys: Set<string>,
   seenNames: Set<string>,
   fail: (code: string, path: string, message: string) => void,
+  honourable: Set<string> | null = null,
 ): NormalisedPressureOrg[] {
   const out: NormalisedPressureOrg[] = [];
   const takenShort = new Set<string>();
@@ -642,11 +843,14 @@ function normalisePressureOrgs(
       fail('MO-PRS-003', path, `${name} has no protagonist organisation to press`);
       return;
     }
+    const keptKey = claimProvidedKey(
+      raw.org_key?.trim(),
+      /^org_pressure_[a-z0-9_]+$/,
+      takenKeys,
+      honourable,
+    );
     out.push({
-      org_key:
-        raw.org_key && /^org_pressure_[a-z0-9_]+$/.test(raw.org_key) && !takenKeys.has(raw.org_key)
-          ? (takenKeys.add(raw.org_key), raw.org_key)
-          : makePressureOrgKey(name, country, takenKeys),
+      org_key: keptKey ?? makePressureOrgKey(name, country, takenKeys),
       display_name: name,
       short_name: deriveShortName(name, takenShort, country),
       kind,

@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
+import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../../lib/templateRows.js';
+import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { isAdmin } from '../creditService.js';
 import { env } from '../../env.js';
 import {
@@ -11,6 +13,16 @@ import {
   type SetupEditStatus,
   type SetupEditSummary,
 } from './setupEditCore.js';
+import {
+  baselineHash,
+  draftInputFromSnapshot,
+  materializeLegacyPrimary,
+  snapshotFromScenario,
+  stableOrgUid,
+  type ScenarioSnapshotSource,
+  type SnapshotInjectRow,
+  type SnapshotTeamRow,
+} from './setupSnapshotCore.js';
 
 /**
  * Setup-edit allowance. scenarios.setup_edits_used changes only inside the
@@ -31,11 +43,78 @@ const OPEN_OUTCOMES = new Set<OpenSetupEditOutcome>([
 ]);
 
 let unavailableLogged = false;
+let buildsUnavailableLogged = false;
+
+class SnapshotUnavailable extends Error {}
+
+type PersistIdentityResult = { ok: true; state: unknown } | { ok: false; reason: 'conflict' };
+
+/**
+ * Write org_uid stamps only when the scenario row is still the one we read.
+ * A concurrent save wins the first attempt. Re-read once and try again. If
+ * that write also misses, the caller abandons the edit instead of snapshotting
+ * uids that were never saved.
+ */
+async function persistOrgIdentity(
+  scenarioId: string,
+  updatedAt: string | null,
+  initialState: unknown,
+): Promise<PersistIdentityResult> {
+  const next = stampOrgIdentity(materializeLegacyPrimary(initialState, scenarioId));
+  if (canonicalJson(next) === canonicalJson(initialState)) return { ok: true, state: initialState };
+  if (await writeIdentity(scenarioId, updatedAt, next)) return { ok: true, state: next };
+
+  const again = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state, updated_at')
+    .eq('id', scenarioId)
+    .maybeSingle<{ initial_state: unknown; updated_at: string | null }>();
+  if (again.error || !again.data) return { ok: false, reason: 'conflict' };
+  const restamped = stampOrgIdentity(materializeLegacyPrimary(again.data.initial_state, scenarioId));
+  if (canonicalJson(restamped) === canonicalJson(again.data.initial_state)) {
+    return { ok: true, state: again.data.initial_state };
+  }
+  if (await writeIdentity(scenarioId, again.data.updated_at, restamped)) {
+    return { ok: true, state: restamped };
+  }
+  return { ok: false, reason: 'conflict' };
+}
+
+async function writeIdentity(
+  scenarioId: string,
+  updatedAt: string | null,
+  initialState: unknown,
+): Promise<boolean> {
+  let query = supabaseAdmin.from('scenarios').update({ initial_state: initialState }).eq('id', scenarioId);
+  if (typeof updatedAt === 'string' && updatedAt) query = query.eq('updated_at', updatedAt);
+  const written = await query.select('id');
+  if (written.error) {
+    logger.error({ error: written.error, scenarioId }, 'Failed to stamp organisation identity');
+    throw new Error(`Organisation identity stamp failed: ${written.error.message}`);
+  }
+  return Array.isArray(written.data) && written.data.length > 0;
+}
+
+export interface AttachDraftContext {
+  userId: string;
+  remaining: number | null;
+}
+
+export type AttachDraftResult =
+  | { available: false }
+  | { available: true; ok: false; reason: 'not_found' | 'failed' | 'conflict' }
+  | { available: true; ok: true; draftId: string; baselineHash: string };
 
 export function noteSetupEditsUnavailable(): void {
   if (unavailableLogged) return;
   unavailableLogged = true;
   logger.warn('scenario_setup_edits_unavailable');
+}
+
+function noteBuildsUnavailable(): void {
+  if (buildsUnavailableLogged) return;
+  buildsUnavailableLogged = true;
+  logger.warn('warroom_builds_unavailable_for_setup_snapshot');
 }
 
 function firstRow<T>(data: T[] | T | null | undefined): T | null {
@@ -166,8 +245,211 @@ export async function abandonSetupEdit(
   return { available: true, outcome: 'not_open' };
 }
 
+/**
+ * After the allowance RPC inserts the placeholder baseline, store the real
+ * snapshot and a step-1 wizard draft. Does not change setup_edits_used.
+ * An older scenario is stamped with org_uid before the snapshot is taken.
+ */
+export async function attachOpenedDraft(
+  scenarioId: string,
+  editId: string,
+  ctx: AttachDraftContext,
+): Promise<AttachDraftResult> {
+  const scenario = await supabaseAdmin
+    .from('scenarios')
+    .select('id, title, description, briefing, duration_minutes, initial_state, updated_at')
+    .eq('id', scenarioId)
+    .maybeSingle<{
+      id: string;
+      title: string | null;
+      description: string | null;
+      briefing: string | null;
+      duration_minutes: number | null;
+      initial_state: unknown;
+      updated_at: string | null;
+    }>();
+  if (scenario.error) {
+    if (isSetupEditSchemaMissing(scenario.error)) {
+      noteSetupEditsUnavailable();
+      return { available: false };
+    }
+    logger.error({ error: scenario.error, scenarioId }, 'Failed to load scenario for setup snapshot');
+    throw new Error(`Setup snapshot failed: ${scenario.error.message}`);
+  }
+  if (!scenario.data) return { available: true, ok: false, reason: 'not_found' };
+
+  const persisted = await persistOrgIdentity(
+    scenarioId,
+    scenario.data.updated_at,
+    scenario.data.initial_state,
+  );
+  if (!persisted.ok) return { available: true, ok: false, reason: 'conflict' };
+  const stamped = persisted.state;
+
+  let teams: SnapshotTeamRow[];
+  let injects: SnapshotInjectRow[];
+  let buildRequest: unknown;
+  try {
+    teams = await loadActiveTeams(scenarioId);
+    injects = await loadActiveInjects(scenarioId);
+    buildRequest = await loadBuildRequest(scenarioId, stamped);
+  } catch (err) {
+    if (err instanceof SnapshotUnavailable) return { available: false };
+    throw err;
+  }
+  const source: ScenarioSnapshotSource = {
+    scenario: {
+      description: scenario.data.description,
+      briefing: scenario.data.briefing,
+      duration_minutes: scenario.data.duration_minutes,
+      initial_state: stamped,
+    },
+    teams,
+    injects,
+    build_request: buildRequest,
+  };
+  const snapshot = snapshotFromScenario(source, {
+    assignOrgUid: (orgKey) => stableOrgUid(scenarioId, orgKey),
+  });
+  const hash = baselineHash(snapshot);
+  const input = draftInputFromSnapshot(snapshot, {
+    edit_id: editId,
+    scenario_id: scenarioId,
+    scenario_title: scenario.data.title ?? '',
+    remaining: ctx.remaining,
+  });
+
+  const draft = await supabaseAdmin
+    .from('warroom_wizard_drafts')
+    .insert({
+      created_by: ctx.userId,
+      status: 'draft',
+      current_step: 1,
+      input,
+    })
+    .select('id')
+    .single<{ id: string }>();
+  if (draft.error || !draft.data) {
+    if (draft.error && isSetupEditSchemaMissing(draft.error)) {
+      noteSetupEditsUnavailable();
+      return { available: false };
+    }
+    logger.error({ error: draft.error, scenarioId, editId }, 'Failed to create setup edit draft');
+    return { available: true, ok: false, reason: 'failed' };
+  }
+
+  const updated = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .update({
+      baseline: snapshot,
+      baseline_hash: hash,
+      draft_id: draft.data.id,
+    })
+    .eq('id', editId)
+    .eq('scenario_id', scenarioId)
+    .eq('status', 'open')
+    .select('id')
+    .maybeSingle<{ id: string }>();
+  if (updated.error || !updated.data) {
+    await supabaseAdmin.from('warroom_wizard_drafts').delete().eq('id', draft.data.id);
+    if (updated.error && isSetupEditSchemaMissing(updated.error)) {
+      noteSetupEditsUnavailable();
+      return { available: false };
+    }
+    if (updated.error) {
+      logger.error({ error: updated.error, scenarioId, editId }, 'Failed to store setup baseline');
+      throw new Error(`Setup baseline update failed: ${updated.error.message}`);
+    }
+    return { available: true, ok: false, reason: 'failed' };
+  }
+  return { available: true, ok: true, draftId: draft.data.id, baselineHash: hash };
+}
+
+function columnMissing(
+  err: { code?: string; message?: string; details?: string } | null,
+  column: string,
+): boolean {
+  if (!err) return false;
+  if (err.code !== '42703' && err.code !== 'PGRST204') return false;
+  const message = `${err.message ?? ''} ${err.details ?? ''}`;
+  return message.includes(column);
+}
+
+async function loadActiveTeams(scenarioId: string): Promise<SnapshotTeamRow[]> {
+  const full =
+    'id, team_uid, team_name, team_description, org_key, function_key, charter';
+  const first = await activeTeams(
+    supabaseAdmin.from('scenario_teams').select(full).eq('scenario_id', scenarioId),
+  );
+  if (!first.error) return (first.data ?? []) as SnapshotTeamRow[];
+  if (columnMissing(first.error, 'team_uid')) {
+    const second = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('id, team_name, team_description, org_key, function_key, charter')
+        .eq('scenario_id', scenarioId),
+    );
+    if (second.error) {
+      if (isSetupEditSchemaMissing(second.error)) {
+        noteSetupEditsUnavailable();
+        throw new SnapshotUnavailable();
+      }
+      throw new Error(`Setup snapshot teams failed: ${second.error.message}`);
+    }
+    return (second.data ?? []) as SnapshotTeamRow[];
+  }
+  if (isSetupEditSchemaMissing(first.error)) {
+    noteSetupEditsUnavailable();
+    throw new SnapshotUnavailable();
+  }
+  throw new Error(`Setup snapshot teams failed: ${first.error.message}`);
+}
+
+async function loadActiveInjects(scenarioId: string): Promise<SnapshotInjectRow[]> {
+  const result = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('id, delivery_config')
+      .eq('scenario_id', scenarioId)
+      .is('session_id', null),
+  );
+  if (result.error) {
+    if (isSetupEditSchemaMissing(result.error)) {
+      noteSetupEditsUnavailable();
+      throw new SnapshotUnavailable();
+    }
+    throw new Error(`Setup snapshot injects failed: ${result.error.message}`);
+  }
+  return (result.data ?? []) as SnapshotInjectRow[];
+}
+
+async function loadBuildRequest(scenarioId: string, state: unknown): Promise<unknown> {
+  const record = state && typeof state === 'object' ? (state as Record<string, unknown>) : null;
+  const stored = record?.setup_source;
+  if (stored && typeof stored === 'object' && !Array.isArray(stored) && Object.keys(stored).length > 0) {
+    return null;
+  }
+  const result = await supabaseAdmin
+    .from('warroom_builds')
+    .select('request')
+    .eq('scenario_id', scenarioId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (result.error) {
+    if (isSetupEditSchemaMissing(result.error)) {
+      noteBuildsUnavailable();
+      return null;
+    }
+    logger.error({ error: result.error, scenarioId }, 'Failed to load build request for setup snapshot');
+    throw new Error(`Setup snapshot build request failed: ${result.error.message}`);
+  }
+  const row = (result.data ?? [])[0] as { request?: unknown } | undefined;
+  return row?.request ?? null;
+}
+
 export const setupEditService = {
   get: getSetupEdit,
   open: openSetupEdit,
   abandon: abandonSetupEdit,
+  attachOpenedDraft,
 };

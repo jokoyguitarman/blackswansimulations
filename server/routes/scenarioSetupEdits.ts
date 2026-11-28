@@ -8,7 +8,11 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { isAdmin } from '../services/creditService.js';
 import { canEditScenario, type EditabilityResult } from '../services/scenarioEditService.js';
-import { setupEditService } from '../services/setupEdits/setupEditService.js';
+import {
+  setupEditService,
+  type AttachDraftContext,
+  type AttachDraftResult,
+} from '../services/setupEdits/setupEditService.js';
 import {
   openEditOf,
   remainingEdits,
@@ -35,6 +39,11 @@ export interface SetupEditApi {
   get(scenarioId: string): Promise<SetupEditSnapshot>;
   open(scenarioId: string, user: { id: string; role?: string }): Promise<OpenSetupEditResult>;
   abandon(scenarioId: string, editId: string): Promise<AbandonSetupEditResult>;
+  attachOpenedDraft(
+    scenarioId: string,
+    editId: string,
+    ctx: AttachDraftContext,
+  ): Promise<AttachDraftResult>;
 }
 
 export interface ScenarioSetupEditsDeps {
@@ -191,8 +200,47 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
         unavailable(res);
         return;
       }
-      if (opened.outcome === 'opened') {
-        res.status(201).json({ edit_id: opened.editId, outcome: 'opened' });
+      if (opened.outcome === 'opened' && opened.editId) {
+        const allowance = await deps.service.get(req.params.id);
+        const used = allowance.available && allowance.found ? allowance.used : 0;
+        let attached: AttachDraftResult;
+        try {
+          attached = await deps.service.attachOpenedDraft(req.params.id, opened.editId, {
+            userId: user.id,
+            remaining: remainingEdits(used, deps.limit(), isAdmin(user)),
+          });
+        } catch (err) {
+          await deps.service.abandon(req.params.id, opened.editId).catch(() => undefined);
+          throw err;
+        }
+        if (!attached.available) {
+          await deps.service.abandon(req.params.id, opened.editId);
+          unavailable(res);
+          return;
+        }
+        if (!attached.ok) {
+          await deps.service.abandon(req.params.id, opened.editId);
+          if (attached.reason === 'conflict') {
+            res.status(409).json({
+              error: 'The scenario was saved while the setup edit was opening. Open it again.',
+              code: 'SETUP_EDIT_CONFLICT',
+            });
+            return;
+          }
+          res.status(attached.reason === 'not_found' ? 404 : 500).json({
+            error:
+              attached.reason === 'not_found'
+                ? 'Scenario not found'
+                : 'Could not open the setup draft',
+          });
+          return;
+        }
+        res.status(201).json({
+          edit_id: opened.editId,
+          outcome: 'opened',
+          draft_id: attached.draftId,
+          baseline_hash: attached.baselineHash,
+        });
         return;
       }
       if (opened.outcome === 'existing') {

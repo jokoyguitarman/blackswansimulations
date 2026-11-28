@@ -36,6 +36,7 @@ import {
   persistSocialCrisisScenario,
   MIGRATION_197_HINT,
 } from '../services/socialCrisisPersistenceService.js';
+import { setupSourceFromCompile } from '../services/setupEdits/setupSnapshotCore.js';
 import {
   resolveOrganisations,
   crisisContextFrom,
@@ -1002,6 +1003,10 @@ router.post(
       body: z.object({
         narrative: z.object({ title: z.string(), description: z.string(), briefing: z.string() }),
         crisis_type: z.string().optional().default(''),
+        context: z.string().optional().default(''),
+        uploaded_doc_name: z.string().max(300).optional(),
+        uploaded_doc_text: z.string().optional(),
+        auto_antagonist: z.boolean().optional(),
         org_name: z.string().optional(),
         teams: z
           .array(
@@ -1399,9 +1404,20 @@ router.post(
             : undefined,
         );
 
+        const initialState = payload.scenario.initial_state as Record<string, unknown>;
         if (body.country && !multiArtifacts) {
-          (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
+          initialState.country = body.country;
         }
+        initialState.setup_source = setupSourceFromCompile({
+          crisis_type: body.crisis_type,
+          context: body.context,
+          uploaded_doc_name: body.uploaded_doc_name,
+          uploaded_doc_text: body.uploaded_doc_text,
+          country: typeof initialState.country === 'string' ? initialState.country : body.country,
+          org_name: body.org_name,
+          duration: body.duration,
+          auto_antagonist: body.auto_antagonist,
+        });
 
         // Charter-derived benchmarks keyed to the four fixed teams (consumed
         // by team scoring and the AAR doctrine-compliance section).

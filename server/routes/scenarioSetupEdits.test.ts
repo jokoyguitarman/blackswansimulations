@@ -4,6 +4,8 @@ import { after, before, describe, test } from 'node:test';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
+import { canonicalJson } from '../../shared/canonicalJson.js';
+import { stampOrgIdentity } from '../lib/templateRows.js';
 import {
   EMPTY_SETUP_BASELINE,
   emptySetupBaselineHash,
@@ -12,6 +14,13 @@ import {
   type SetupEditSnapshot,
   type SetupEditSummary,
 } from '../services/setupEdits/setupEditCore.js';
+import {
+  baselineHash,
+  draftInputFromSnapshot,
+  snapshotFromScenario,
+  type ScenarioSnapshotSource,
+  type SetupSnapshot,
+} from '../services/setupEdits/setupSnapshotCore.js';
 import { createScenarioSetupEditsRouter, type SetupEditApi } from './scenarioSetupEdits.js';
 
 const TRAINER = { id: '11111111-1111-4111-8111-111111111111', role: 'trainer' };
@@ -34,9 +43,18 @@ interface FakeEdit {
   openedByAdmin: boolean;
   status: 'open' | 'applying' | 'applied' | 'abandoned' | 'failed';
   counted: boolean;
-  baseline: Record<string, never>;
+  baseline: Record<string, unknown>;
   baselineHash: string;
+  draftId: string | null;
   createdAt: string;
+}
+
+interface FakeDraft {
+  id: string;
+  scenarioId: string;
+  createdBy: string;
+  currentStep: number;
+  input: Record<string, unknown>;
 }
 
 interface FakeScenario {
@@ -53,15 +71,21 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
   let enabled = true;
   let openCalls = 0;
   let seq = 0;
+  let identityConflict = false;
   const scenarios = new Map<string, FakeScenario>();
   const edits: FakeEdit[] = [];
+  const drafts: FakeDraft[] = [];
+  const sources = new Map<string, ScenarioSnapshotSource>();
 
   function seed(): void {
     enabled = true;
     openCalls = 0;
     seq = 0;
+    identityConflict = false;
     edits.length = 0;
+    drafts.length = 0;
     scenarios.clear();
+    sources.clear();
     scenarios.set(SOCIAL, {
       ownerId: TRAINER.id,
       category: 'social_media_crisis',
@@ -111,6 +135,62 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       live: false,
       credits: false,
     });
+    for (const id of scenarios.keys()) sources.set(id, defaultSource());
+  }
+
+  function defaultSource(): ScenarioSnapshotSource {
+    return {
+      scenario: {
+        description: 'Plant fire',
+        briefing: 'The warehouse is burning',
+        duration_minutes: 60,
+        initial_state: {
+          org_name: 'Acme',
+          country: 'Singapore',
+          setup_source: {
+            crisis_type: 'Plant fire',
+            context: 'Night shift',
+            uploaded_doc_name: null,
+            uploaded_doc_text_hash: null,
+            country: 'Singapore',
+            org_name: 'Acme',
+            duration: 60,
+            auto_antagonist: true,
+          },
+          orgs: [
+            {
+              org_key: 'primary',
+              org_uid: 'uid-acme',
+              display_name: 'Acme',
+              short_name: 'ACME',
+              country: 'Singapore',
+              side: 'protagonist',
+              is_primary: true,
+              operation: 'players',
+            },
+          ],
+        },
+      },
+      teams: [
+        {
+          id: 't1',
+          team_uid: 'uid-comms',
+          team_name: 'Communications',
+          org_key: 'primary',
+          function_key: 'Communications',
+          team_description: 'Talk',
+        },
+        {
+          id: 't2',
+          team_uid: 'uid-legal',
+          team_name: 'Legal',
+          org_key: 'primary',
+          function_key: 'Legal',
+          team_description: 'Advise',
+        },
+      ],
+      injects: [{ id: 'inj1', delivery_config: { inject_key: 'plant_fire' } }],
+    };
   }
 
   function summary(edit: FakeEdit): SetupEditSummary {
@@ -176,10 +256,43 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
         counted: false,
         baseline: EMPTY_SETUP_BASELINE,
         baselineHash: emptySetupBaselineHash(),
+        draftId: null,
         createdAt: new Date(seq).toISOString(),
       };
       edits.push(created);
       return { available: true, outcome: 'opened', editId: created.id };
+    },
+    async attachOpenedDraft(scenarioId, editId, ctx) {
+      if (identityConflict) return { available: true, ok: false, reason: 'conflict' };
+      const source = sources.get(scenarioId);
+      const edit = edits.find((row) => row.id === editId && row.scenarioId === scenarioId);
+      if (!source || !edit) return { available: true, ok: false, reason: 'not_found' };
+      const stamped = stampOrgIdentity(source.scenario.initial_state);
+      if (canonicalJson(stamped) !== canonicalJson(source.scenario.initial_state)) {
+        source.scenario.initial_state = stamped;
+      }
+      const snapshot = snapshotFromScenario({
+        ...source,
+        scenario: { ...source.scenario, initial_state: stamped },
+      });
+      const hash = baselineHash(snapshot);
+      const draft: FakeDraft = {
+        id: `77777777-7777-4777-8777-${String(++seq).padStart(12, '0')}`,
+        scenarioId,
+        createdBy: ctx.userId,
+        currentStep: 1,
+        input: draftInputFromSnapshot(snapshot, {
+          edit_id: editId,
+          scenario_id: scenarioId,
+          scenario_title: 'Acme crisis',
+          remaining: ctx.remaining,
+        }),
+      };
+      drafts.push(draft);
+      edit.baseline = snapshot as unknown as Record<string, unknown>;
+      edit.baselineHash = hash;
+      edit.draftId = draft.id;
+      return { available: true, ok: true, draftId: draft.id, baselineHash: hash };
     },
     async abandon(scenarioId, editId): Promise<AbandonSetupEditResult> {
       if (scenarioId === BROKE) return { available: false };
@@ -287,8 +400,19 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(res.json.outcome, 'opened');
     assert.equal(scenarios.get(SOCIAL)?.used, 0);
     assert.equal(edits.length, 1);
-    assert.deepEqual(edits[0].baseline, {});
-    assert.equal(edits[0].baselineHash, emptySetupBaselineHash());
+    assert.equal(drafts.length, 1);
+    assert.equal(drafts[0].currentStep, 1);
+    assert.equal(edits[0].baselineHash, res.json.baseline_hash);
+    assert.notEqual(edits[0].baselineHash, emptySetupBaselineHash());
+    assert.equal((edits[0].baseline as unknown as SetupSnapshot).organisations[0].org_uid, 'uid-acme');
+    assert.equal((edits[0].baseline as unknown as SetupSnapshot).inject_keys[0], 'plant_fire');
+    assert.deepEqual(drafts[0].input.setup_edit, {
+      edit_id: res.json.edit_id,
+      scenario_id: SOCIAL,
+      scenario_title: 'Acme crisis',
+      remaining: 3,
+    });
+    assert.equal(drafts[0].input.crisis_description, 'Plant fire');
     assert.equal(edits[0].counted, false);
     const listed = await get(SOCIAL);
     assert.equal(listed.status, 200);
@@ -308,6 +432,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(second.json.outcome, 'existing');
     assert.equal(second.json.edit_id, first.json.edit_id);
     assert.equal(edits.length, 1);
+    assert.equal(drafts.length, 1);
     assert.equal(scenarios.get(SOCIAL)?.used, 0);
   });
 
@@ -378,6 +503,10 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     const view = await get(LIMITED, ADMIN);
     assert.equal(view.json.remaining, null);
     assert.equal(view.json.used, 3);
+    assert.equal(
+      (drafts.at(-1)?.input.setup_edit as { remaining: number | null }).remaining,
+      null,
+    );
   });
 
   test('an open edit can still be resumed once the limit is reached', async () => {
@@ -394,6 +523,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       counted: false,
       baseline: EMPTY_SETUP_BASELINE,
       baselineHash: emptySetupBaselineHash(),
+      draftId: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     });
     const res = await post(LIMITED);
@@ -431,6 +561,49 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(res.status, 404);
     assert.equal(res.json.code, 'SETUP_EDIT_UNAVAILABLE');
     assert.equal(openCalls, beforeCalls);
+  });
+
+  test('opening an older scenario stamps org_uid before the baseline is stored', async () => {
+    seed();
+    const source = sources.get(SOCIAL);
+    assert.ok(source);
+    const state = source.scenario.initial_state as {
+      orgs: Array<{ org_uid?: string }>;
+      org_key_history?: unknown;
+    };
+    delete state.orgs[0].org_uid;
+    delete state.org_key_history;
+    const res = await post(SOCIAL);
+    assert.equal(res.status, 201);
+    const stamped = source.scenario.initial_state as {
+      orgs: Array<{ org_uid: string }>;
+    };
+    assert.match(stamped.orgs[0].org_uid, /^[0-9a-f-]{36}$/);
+    assert.equal(
+      (edits[0].baseline as unknown as SetupSnapshot).organisations[0].org_uid,
+      stamped.orgs[0].org_uid,
+    );
+  });
+
+  test('a lost identity write abandons the edit and asks for a retry', async () => {
+    seed();
+    identityConflict = true;
+    const res = await post(SOCIAL);
+    assert.equal(res.status, 409);
+    assert.equal(res.json.code, 'SETUP_EDIT_CONFLICT');
+    assert.equal(edits[0].status, 'abandoned');
+    assert.equal(drafts.length, 0);
+    assert.equal(scenarios.get(SOCIAL)?.used, 0);
+  });
+
+  test('a failed draft leaves the edit abandoned and the used count unchanged', async () => {
+    seed();
+    sources.delete(SOCIAL);
+    const res = await post(SOCIAL);
+    assert.equal(res.status, 404);
+    assert.equal(edits[0].status, 'abandoned');
+    assert.equal(scenarios.get(SOCIAL)?.used, 0);
+    assert.equal(drafts.length, 0);
   });
 
   test('abandoning an open edit does not change the used count', async () => {

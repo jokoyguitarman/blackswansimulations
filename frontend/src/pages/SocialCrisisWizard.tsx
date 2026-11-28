@@ -2446,6 +2446,10 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           narrative,
           crisis_type: crisisDescription,
+          context,
+          uploaded_doc_name: uploadedDocName || undefined,
+          uploaded_doc_text: uploadedDocText || undefined,
+          auto_antagonist: autoAntagonist,
           org_name: orgName || undefined,
           objectives,
           country,
@@ -2559,6 +2563,10 @@ export const SocialCrisisWizard = () => {
     setCompiling(false);
   }, [
     crisisDescription,
+    context,
+    uploadedDocName,
+    uploadedDocText,
+    autoAntagonist,
     country,
     communities,
     personas,
