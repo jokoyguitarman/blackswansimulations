@@ -5,7 +5,7 @@ import {
   directorPanel,
   type DirectorPanelModel,
 } from '@shared/directorPanel';
-import type { DirectorMode } from '@shared/directorModes';
+import { modeWithinCeiling, type DirectorMode } from '@shared/directorModes';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -104,7 +104,7 @@ export function AiDirectorPanel({
   useEffect(() => {
     void load();
     if (preview) return;
-    const timer = window.setInterval(() => void load(), 4000);
+    const timer = window.setInterval(() => void load(), 15_000);
     const types = ['director.proposal', 'director.published', 'director.expired', 'director.rejected'];
     const offs = types.map((type) => websocketClient.on(type, () => void load()));
     return () => {
@@ -145,21 +145,18 @@ export function AiDirectorPanel({
         </h2>
         <div className="flex items-center gap-2 text-[11px]" style={{ color: '#374151' }}>
           <span>Mode:</span>
-          {modes.map((mode) => {
-            const allowed = modeRank(mode) <= modeRank(model.modeMax);
-            return (
+          {modes.map((mode) => (
               <label key={mode} className="inline-flex items-center gap-1 capitalize">
                 <input
                   type="radio"
                   name={`director-mode-${sessionId}`}
                   checked={model.mode === mode}
-                  disabled={!allowed || preview}
+                  disabled={!modeWithinCeiling(mode, model.modeMax) || preview}
                   onChange={() => void send(`/api/sessions/${sessionId}/director`, 'PATCH', { mode })}
                 />
                 {mode}
               </label>
-            );
-          })}
+          ))}
         </div>
         <span className="text-[11px]" style={{ color: '#64748b' }}>
           Budget: {left} of {model.budgetLimit} calls this hour
@@ -282,8 +279,12 @@ export function AiDirectorPanel({
                 className="text-[11px] font-semibold px-2 py-1 rounded"
                 style={{ backgroundColor: '#FFFFFF', color: '#1E3A5F', border: '1px solid #E4DFD4' }}
                 onClick={() => {
-                  setEditing(editing === card.id ? null : card.id);
+                  const opening = editing !== card.id;
+                  setEditing(opening ? card.id : null);
                   setDraft(card.content);
+                  if (opening) {
+                    void send(`/api/sessions/${sessionId}/director/proposals/${card.id}/hold`, 'POST', {});
+                  }
                 }}
               >
                 Edit…
@@ -317,12 +318,6 @@ export function AiDirectorPanel({
       </div>
     </section>
   );
-}
-
-function modeRank(mode: DirectorMode): number {
-  if (mode === 'auto') return 2;
-  if (mode === 'suggest') return 1;
-  return 0;
 }
 
 function bar(filled: number): string {

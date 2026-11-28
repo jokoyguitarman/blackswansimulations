@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { applyLiveMode } from './directorPublish.js';
 import {
   DIRECTOR_SCENARIO_CACHE_MS,
   ensureDirectorSeed,
@@ -10,6 +11,7 @@ import {
   type DirectorStore,
   type DirectorTickInput,
 } from './directorService.js';
+import type { DirectorDraft } from './directorCore.js';
 import type { DirectorClient } from './directorCore.js';
 
 const sessionId = '11111111-1111-4111-8111-111111111111';
@@ -195,4 +197,114 @@ test('switching a cached off session to auto wakes on the next tick', async () =
   await runDirector(tick(), options);
   assert.equal(calls.n, 1);
   assert.equal(historyReads, 2);
+});
+
+test('a hung or failed wake releases the session lock', async () => {
+  resetDirectorProcessState();
+  let releaseHold = () => {};
+  const hold = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  const hanging: DirectorClient = {
+    async propose() {
+      await hold;
+      return { parsed: { act: false, reason: 'late', proposal: null } };
+    },
+    async consistency() {
+      return { parsed: { verdict: 'consistent', reason: 'ok' } };
+    },
+  };
+  const first = scheduleDirectorWake(tick(), {
+    store: store(),
+    client: hanging,
+    enabled: true,
+    aiEnabled: true,
+    wakeLockMs: 30,
+  });
+  assert.equal(first, true);
+  assert.equal(
+    scheduleDirectorWake(tick(), { store: store(), client: quietClient({ n: 0 }), enabled: true, aiEnabled: true }),
+    false,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const afterTimeout = scheduleDirectorWake(tick(), {
+    store: store(),
+    client: quietClient({ n: 0 }),
+    enabled: true,
+    aiEnabled: true,
+  });
+  assert.equal(afterTimeout, true);
+  releaseHold();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  resetDirectorProcessState();
+  const failing: DirectorClient = {
+    async propose() {
+      throw new Error('model down');
+    },
+    async consistency() {
+      return { parsed: null, failed: true };
+    },
+  };
+  assert.equal(
+    scheduleDirectorWake(tick(), { store: store(), client: failing, enabled: true, aiEnabled: true }),
+    true,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(
+    scheduleDirectorWake(tick(), { store: store(), client: quietClient({ n: 0 }), enabled: true, aiEnabled: true }),
+    true,
+  );
+});
+
+test('a wake that started in auto does not store a countdown after the mode turns off', async () => {
+  const draft = {
+    status: 'proposed',
+    mode: 'auto',
+    proposal: { severity: 'medium' },
+  } as DirectorDraft;
+  assert.equal(applyLiveMode(draft, 'off').status, 'expired');
+  assert.equal(applyLiveMode(draft, 'suggest').mode, 'suggest');
+  assert.equal(applyLiveMode(draft, 'auto').mode, 'auto');
+
+  resetDirectorProcessState();
+  let mode: string | null = 'auto';
+  const stored: { row: Record<string, unknown> | null } = { row: null };
+  const backing = store();
+  backing.loadSession = async () => ({ director_mode: mode, director_seed: '1' });
+  backing.insertProposal = async (row) => {
+    stored.row = row;
+    return 'ok';
+  };
+  const client: DirectorClient = {
+    async propose() {
+      mode = 'off';
+      return {
+        parsed: {
+          act: true,
+          reason: 'Legal has been silent',
+          proposal: {
+            kind: 'consequence',
+            cause: { signal_ids: ['mood:stk_maria'], source_teams: ['Legal'] },
+            target_teams: ['Legal'],
+            target_role_id: null,
+            app: 'email',
+            sender: { stakeholder_id: 'stk_maria' },
+            title: 'Holding update',
+            content: 'Please send the holding statement today.',
+            severity: 'low',
+            requires_response: false,
+            response_rubric: null,
+            follow_up: null,
+          },
+        },
+      };
+    },
+    async consistency() {
+      return { parsed: { verdict: 'consistent', reason: 'ok' } };
+    },
+  };
+  await runDirector(tick(), { store: backing, client, enabled: true, aiEnabled: true });
+  assert.equal(stored.row?.status, 'expired');
+  assert.equal(stored.row?.auto_publish_at, null);
 });

@@ -29,7 +29,13 @@ import {
   type GuardrailResult,
   type ParsedProposal,
 } from './directorCore.js';
-import { buildDirectorInject, type DirectorNpc, type DirectorPerson } from './directorPublish.js';
+import { logger } from '../../lib/logger.js';
+import {
+  buildDirectorInject,
+  publishedCapEvents,
+  type DirectorNpc,
+  type DirectorPerson,
+} from './directorPublish.js';
 import {
   addSnooze,
   armPublishSlots,
@@ -133,6 +139,9 @@ export interface DirectorCommandDeps {
     nowIso: string,
     createdBeforeIso: string,
   ): Promise<ConsoleProposal[] | 'missing'>;
+  /** Effective mode after the env ceiling. `missing` means migration 279 is absent. */
+  resolvedMode(sessionId: string): Promise<DirectorMode | 'missing'>;
+  stakeholderNames(scenarioId: string): Promise<Record<string, string>>;
   updateProposal(
     id: string,
     expectStatus: string,
@@ -143,7 +152,6 @@ export interface DirectorCommandDeps {
   convertCountdowns(sessionId: string): Promise<string[] | 'missing'>;
   publishFacts(sessionId: string, minute: number): Promise<PublishFacts | null>;
   insertInject(row: Record<string, unknown>): Promise<{ id: string } | null>;
-  claimPublication(sessionId: string, injectId: string, userId: string): Promise<boolean>;
   publishInject(injectId: string, sessionId: string, userId: string): Promise<void>;
   recordTrigger(input: TriggerRecordInput): Promise<void>;
   emit(trainerId: string | null, type: string, data: Record<string, unknown>): void;
@@ -173,6 +181,7 @@ export interface DirectorCommands {
     actorId: string,
     reason?: string,
   ): Promise<CommandResult>;
+  hold(sessionId: string, proposalId: string): Promise<CommandResult>;
   request(
     sessionId: string,
     actorId: string,
@@ -197,7 +206,8 @@ export function createDirectorCommands(deps: DirectorCommandDeps): DirectorComma
       approveProposal(deps, sessionId, proposalId, actorId, edits),
     veto: (sessionId, proposalId, actorId, reason) =>
       vetoProposal(deps, sessionId, proposalId, actorId, reason),
-    request: (sessionId, actorId, body) => deps.requestWake(sessionId, actorId, body),
+    request: (sessionId, actorId, body) => requestDirector(deps, sessionId, actorId, body),
+    hold: (sessionId, proposalId) => holdProposal(deps, sessionId, proposalId),
     snooze: (sessionId, body) => snoozeTeam(deps, sessionId, body),
     sweep: (input) => sweepSession(deps, input),
   };
@@ -218,6 +228,7 @@ async function getConsole(deps: DirectorCommandDeps, sessionId: string): Promise
   const rows = await deps.listProposals(sessionId);
   if (rows === 'missing') return ok({ ...empty, unavailable: true });
   const latest = [...rows].reverse().find((row) => row.fairness);
+  const names = await deps.stakeholderNames(session.scenarioId);
   return ok(
     panelBody(
       deps,
@@ -228,6 +239,7 @@ async function getConsole(deps: DirectorCommandDeps, sessionId: string): Promise
       scenarioMode,
       rows,
       latest?.fairness ?? null,
+      names,
     ),
   );
 }
@@ -241,6 +253,7 @@ function panelBody(
   scenarioMode: DirectorMode | null,
   rows: ConsoleProposal[],
   fairness: FairnessState | null,
+  stakeholderNames: Record<string, string> = {},
 ): DirectorPanelModel & { unavailable?: boolean } {
   return directorPanel({
     enabled: settings.enabled,
@@ -259,6 +272,7 @@ function panelBody(
       over: team.over_cap,
     })),
     proposals: rows.map(panelRow),
+    stakeholderNames,
     now: deps.now(),
   });
 }
@@ -330,11 +344,18 @@ async function approveProposal(
   const row = rows.find((item) => item.id === proposalId);
   if (!row || !row.proposal) return fail(404, 'Proposal not found');
   if (row.status !== 'proposed') return fail(409, 'Proposal is no longer pending');
+  const live = await deps.resolvedMode(sessionId);
+  if (live === 'missing') return fail(503, 'AI director is not available');
+  if (live === 'off') return fail(409, 'AI director is off');
   const session = await deps.loadSession(sessionId);
   if (session === 'missing') return fail(503, 'AI director is not available');
   if (!session) return fail(404, 'Session not found');
   const edited = applyEdits(row.proposal, edits);
   const changed = JSON.stringify(edited) !== JSON.stringify(row.proposal);
+  if (changed && row.autoPublishAt) {
+    await deps.updateProposal(proposalId, 'proposed', { autoPublishAt: null });
+    row.autoPublishAt = null;
+  }
   const facts = await deps.publishFacts(sessionId, session.elapsedMinutes);
   if (!facts) return fail(503, 'AI director could not read the session');
   const override = Boolean(edits.fairness_override_reason?.trim());
@@ -413,6 +434,32 @@ async function vetoProposal(
   return ok({ id: proposalId, status: 'vetoed' });
 }
 
+async function requestDirector(
+  deps: DirectorCommandDeps,
+  sessionId: string,
+  actorId: string,
+  body: { team?: string; hint?: string },
+): Promise<CommandResult> {
+  const mode = await deps.resolvedMode(sessionId);
+  if (mode === 'missing') return fail(503, 'AI director is not available');
+  if (mode === 'off') return fail(409, 'AI director is off');
+  return deps.requestWake(sessionId, actorId, body);
+}
+
+async function holdProposal(
+  deps: DirectorCommandDeps,
+  sessionId: string,
+  proposalId: string,
+): Promise<CommandResult> {
+  const mode = await deps.resolvedMode(sessionId);
+  if (mode === 'missing') return fail(503, 'AI director is not available');
+  if (mode === 'off') return fail(409, 'AI director is off');
+  const claimed = await deps.updateProposal(proposalId, 'proposed', { autoPublishAt: null });
+  if (claimed === 'missing') return fail(503, 'AI director is not available');
+  if (claimed === 'lost') return fail(409, 'Proposal is no longer pending');
+  return ok({ id: proposalId, held: true });
+}
+
 async function snoozeTeam(
   deps: DirectorCommandDeps,
   sessionId: string,
@@ -432,8 +479,14 @@ async function sweepSession(
   deps: DirectorCommandDeps,
   input: { sessionId: string; elapsedMinutes: number; trainerId: string | null; remainingCap: number },
 ): Promise<void> {
-  if (!deps.settings().enabled) return;
+  const mode = await deps.resolvedMode(input.sessionId);
+  if (mode === 'missing') return;
+  if (mode === 'off') {
+    await expirePending(deps, input.sessionId, input.trainerId);
+    return;
+  }
   if (!sweepThisTick(input.sessionId)) return;
+  if (mode === 'suggest') await deps.convertCountdowns(input.sessionId);
   armPublishSlots(input.sessionId, input.remainingCap);
   const now = deps.now();
   const ttl = deps.settings().ttlMinutes;
@@ -444,48 +497,97 @@ async function sweepSession(
   if (session === 'missing' || session == null) return;
   const facts = await deps.publishFacts(input.sessionId, input.elapsedMinutes);
   if (!facts) return;
+  const trainerId = session.trainerId ?? input.trainerId;
   for (const row of due) {
-    const kind = dueKind(row, now.getTime(), ttl);
-    if (kind === 'wait' || !row.proposal) continue;
-    if (kind === 'expire') {
-      await settle(deps, row, session.trainerId ?? input.trainerId, 'expired', 'Suggestion expired');
-      continue;
+    try {
+      await sweepOne(deps, row, { ...input, trainerId, now, ttl, mode, session, facts });
+    } catch (err) {
+      await deps.updateProposal(row.id, 'auto_published', { status: 'failed' }).catch(() => 'lost');
+      await deps.updateProposal(row.id, 'proposed', { status: 'failed' }).catch(() => 'lost');
+      logger.warn({ err, proposalId: row.id }, 'director publish failed');
     }
-    if (directorIsPaused(input.sessionId)) continue;
-    const guard: GuardContext = { ...facts.guard, mode: 'auto', minute: input.elapsedMinutes };
-    const report = checkProposal(row.proposal, guard, { only: PUBLISH_GUARDS });
-    if (!report.ok) {
-      await settle(
-        deps,
-        row,
-        session.trainerId ?? input.trainerId,
-        'rejected_guardrail',
-        report.failure?.detail ?? 'Guardrail failed at publish',
-        report.results,
-      );
-      continue;
+  }
+}
+
+async function expirePending(
+  deps: DirectorCommandDeps,
+  sessionId: string,
+  trainerId: string | null,
+): Promise<void> {
+  const ids = await deps.expirePending(sessionId);
+  if (ids === 'missing') return;
+  for (const id of ids) {
+    noteProposalSettled(sessionId);
+    deps.emit(trainerId, 'director.expired', { session_id: sessionId, proposal_id: id });
+  }
+}
+
+async function sweepOne(
+  deps: DirectorCommandDeps,
+  row: ConsoleProposal,
+  input: {
+    sessionId: string;
+    elapsedMinutes: number;
+    trainerId: string | null;
+    now: Date;
+    ttl: number;
+    mode: DirectorMode;
+    session: SessionDirector;
+    facts: PublishFacts;
+  },
+): Promise<void> {
+  const kind = dueKind(row, input.now.getTime(), input.ttl);
+  if (kind === 'wait' || !row.proposal) return;
+  if (kind === 'expire' || input.mode === 'suggest') {
+    if (kind === 'expire' || suggestionExpiresAt(row.createdAt, input.ttl) <= input.now.getTime()) {
+      await settle(deps, row, input.trainerId, 'expired', 'Suggestion expired');
     }
-    const blocked = crossTeamBlock(deps, row, row.proposal, facts, input.elapsedMinutes);
-    if (blocked === 'cascade_cap') {
-      await settle(deps, row, session.trainerId ?? input.trainerId, 'rejected_guardrail', blocked);
-      continue;
-    }
-    if (blocked) continue;
-    if (!takePublishSlot(input.sessionId)) continue;
-    const claimed = await deps.updateProposal(row.id, 'proposed', {
-      status: 'auto_published',
-      decidedAt: now.toISOString(),
-      guardrails: report.results,
-    });
-    if (claimed !== 'updated') continue;
-    await commitPublish(deps, {
+    return;
+  }
+  if (directorIsPaused(input.sessionId)) {
+    await settle(deps, row, input.trainerId, 'expired', 'Countdown ended while the director was paused');
+    return;
+  }
+  const guard: GuardContext = { ...input.facts.guard, mode: 'auto', minute: input.elapsedMinutes };
+  const report = checkProposal(row.proposal, guard, { only: PUBLISH_GUARDS });
+  if (!report.ok) {
+    await settle(
+      deps,
       row,
-      session,
-      actorId: null,
-      status: 'auto_published',
-      facts,
-      minute: input.elapsedMinutes,
-    });
+      input.trainerId,
+      'rejected_guardrail',
+      report.failure?.detail ?? 'Guardrail failed at publish',
+      report.results,
+    );
+    return;
+  }
+  const blocked = crossTeamBlock(deps, row, row.proposal, input.facts, input.elapsedMinutes);
+  if (blocked === 'cascade_cap') {
+    await settle(deps, row, input.trainerId, 'rejected_guardrail', blocked);
+    return;
+  }
+  if (blocked) return;
+  if (!takePublishSlot(input.sessionId)) return;
+  const claimed = await deps.updateProposal(row.id, 'proposed', {
+    status: 'auto_published',
+    decidedAt: input.now.toISOString(),
+    guardrails: report.results,
+  });
+  if (claimed !== 'updated') return;
+  const published = await commitPublish(deps, {
+    row,
+    session: input.session,
+    actorId: null,
+    status: 'auto_published',
+    facts: input.facts,
+    minute: input.elapsedMinutes,
+  });
+  if (published.ok && row.proposal) {
+    input.facts.guard.capEvents.push(
+      ...publishedCapEvents([
+        { status: 'auto_published', minute: input.elapsedMinutes, proposal: row.proposal },
+      ]),
+    );
   }
 }
 
@@ -548,8 +650,7 @@ async function commitPublish(
     return fail(503, 'Could not create the inject');
   }
   const userId = input.actorId ?? input.session.trainerId ?? input.session.id;
-  const claimed = await deps.claimPublication(input.session.id, inserted.id, userId);
-  if (claimed) {
+  try {
     await deps.publishInject(inserted.id, input.session.id, userId);
     await deps.recordTrigger({
       sessionId: input.session.id,
@@ -571,6 +672,13 @@ async function commitPublish(
       causeDepth: draft.causeDepth,
       parentInjectKeys: draft.parentInjectKeys,
     });
+  } catch (err) {
+    await deps.updateProposal(input.row.id, input.status, {
+      status: 'failed',
+      injectId: inserted.id,
+    });
+    logger.warn({ err, proposalId: input.row.id }, 'director inject publish failed');
+    return fail(503, 'Publishing the inject failed');
   }
   await deps.updateProposal(input.row.id, input.status, { injectId: inserted.id });
   noteProposalSettled(input.session.id);

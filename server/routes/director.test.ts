@@ -4,6 +4,7 @@ import { after, before, test } from 'node:test';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { RequestHandler } from 'express';
+import { resolveDirectorMode } from '../../shared/directorModes.js';
 import { causeDepth } from '../services/conditions/crossTeamCore.js';
 import type { TriggerRecordInput } from '../services/conditions/injectTriggerService.js';
 import {
@@ -23,7 +24,8 @@ import {
 } from '../services/director/directorConsole.js';
 import { createDirectorRouter } from './director.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
-import { resetDirectorRuntime } from '../services/director/directorRuntime.js';
+import { publishedCapEvents } from '../services/director/directorPublish.js';
+import { resetDirectorRuntime, setDirectorPaused } from '../services/director/directorRuntime.js';
 import type { Signal } from '../services/director/directorSignals.js';
 
 const SESSION = '11111111-1111-4111-8111-111111111111';
@@ -55,7 +57,6 @@ let rows: ConsoleProposal[] = [];
 let injects: Array<Record<string, unknown>> = [];
 let triggers: TriggerRecordInput[] = [];
 let published: string[] = [];
-let claimed = new Set<string>();
 let overCap = false;
 let server: Server;
 let base = '';
@@ -191,7 +192,6 @@ function reset() {
   injects = [];
   triggers = [];
   published = [];
-  claimed = new Set();
   overCap = false;
 }
 
@@ -264,16 +264,19 @@ function deps(): DirectorCommandDeps {
       return ids;
     },
     async publishFacts() {
-      return facts();
+      const base = facts();
+      return { ...base, guard: { ...base.guard, capEvents: publishedCapEvents(rows) } };
+    },
+    async resolvedMode() {
+      if (!settings.enabled) return 'off';
+      return resolveDirectorMode(settings, { mode: sessionMode }, { mode: scenarioMode });
+    },
+    async stakeholderNames() {
+      return { stk_maria: 'Maria Tan' };
     },
     async insertInject(body) {
       injects.push(body);
       return { id: `inject-${injects.length}` };
-    },
-    async claimPublication(_sessionId, injectId) {
-      if (claimed.has(injectId)) return false;
-      claimed.add(injectId);
-      return true;
     },
     async publishInject(injectId) {
       published.push(injectId);
@@ -403,6 +406,7 @@ test('approve twice publishes once, and a meta-word edit is rejected', async () 
 test('auto publishes after the grace and not after a veto', async () => {
   reset();
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  assert.equal(publishedCapEvents(rows).length, 0);
   await createDirectorCommands(deps()).sweep({
     sessionId: SESSION,
     elapsedMinutes: 27,
@@ -459,6 +463,71 @@ test('high inside auto expires unapproved', async () => {
   });
   assert.equal(published.length, 0);
   assert.equal(rows[0]?.status, 'expired');
+});
+
+test('an edit cancels the countdown and a paused countdown expires', async () => {
+  reset();
+  rows = [row({ autoPublishAt: new Date(now.getTime() + 30_000).toISOString() })];
+  const edited = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {
+    content: 'This simulation is going well.',
+  });
+  assert.equal(edited.status, 422);
+  assert.equal(rows[0]?.status, 'proposed');
+  assert.equal(rows[0]?.autoPublishAt, null);
+
+  reset();
+  rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  setDirectorPaused(SESSION, true);
+  await createDirectorCommands(deps()).sweep({
+    sessionId: SESSION,
+    elapsedMinutes: 27,
+    trainerId: TRAINER,
+    remainingCap: 3,
+  });
+  assert.equal(published.length, 0);
+  assert.equal(rows[0]?.status, 'expired');
+  setDirectorPaused(SESSION, false);
+});
+
+test('the live mode and the ops ceiling gate publish', async () => {
+  const sweep = () =>
+    createDirectorCommands(deps()).sweep({
+      sessionId: SESSION,
+      elapsedMinutes: 27,
+      trainerId: TRAINER,
+      remainingCap: 3,
+    });
+  const due = () => [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+
+  reset();
+  sessionMode = 'off';
+  rows = due();
+  await sweep();
+  assert.equal(published.length, 0);
+  assert.equal(rows[0]?.status, 'expired');
+
+  reset();
+  settings.modeMax = 'suggest';
+  scenarioMode = 'auto';
+  rows = due();
+  await sweep();
+  assert.equal(published.length, 0);
+  assert.equal(rows[0]?.autoPublishAt, null);
+  assert.equal(rows[0]?.status, 'proposed');
+
+  reset();
+  settings.modeMax = 'off';
+  rows = due();
+  const capped = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(capped.status, 409);
+  assert.equal(published.length, 0);
+
+  reset();
+  settings.enabled = false;
+  rows = due();
+  const disabled = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(disabled.status, 409);
+  assert.equal(published.length, 0);
 });
 
 test('mode switches convert countdowns or expire pending proposals', async () => {

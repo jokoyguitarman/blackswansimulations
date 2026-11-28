@@ -334,7 +334,7 @@ function parentKeysOf(metKeys: readonly string[]): string[] {
   return out;
 }
 
-interface GuardFacts {
+export interface GuardFacts {
   roster: CrossTeamTeam[];
   recent: RecentCrossTeamTrigger[];
   triggersByKey: Record<string, DepthTrigger>;
@@ -390,10 +390,22 @@ async function loadGuardFacts(input: {
   elapsedMinutes: number;
   ordered: readonly ConditionalGuardItem[];
 }): Promise<GuardFacts> {
-  const needsRoles = input.ordered.some((item) =>
-    item.met_keys.some((key) => key.includes('|role=')),
-  );
-  const roster = await loadRoster(input.scenarioId, needsRoles);
+  return loadCrossTeamFacts({
+    sessionId: input.sessionId,
+    scenarioId: input.scenarioId,
+    elapsedMinutes: input.elapsedMinutes,
+    needsRoles: input.ordered.some((item) => item.met_keys.some((key) => key.includes('|role='))),
+  });
+}
+
+/** Trigger history and pressure deliveries, shared by the scheduler and the director. */
+export async function loadCrossTeamFacts(input: {
+  sessionId: string;
+  scenarioId: string;
+  elapsedMinutes: number;
+  needsRoles?: boolean;
+}): Promise<GuardFacts> {
+  const roster = await loadRoster(input.scenarioId, input.needsRoles === true);
   const triggers = await loadTriggers(input.sessionId);
   const triggersByKey: Record<string, DepthTrigger> = {};
   const recent: RecentCrossTeamTrigger[] = [];

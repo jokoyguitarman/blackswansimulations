@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { DirectorMode } from '@shared/directorModes';
+import { modeWithinCeiling, type DirectorMode } from '@shared/directorModes';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -46,15 +46,13 @@ export function DirectorModeSelect({ sessionId }: { sessionId: string }) {
         <p>Auto publishes after a short veto window. Suggest waits for you. Off stays quiet.</p>
       </div>
       <div className="flex flex-wrap gap-3 text-sm">
-        {modes.map((mode) => {
-          const allowed = rank(mode) <= rank(ceiling);
-          return (
+        {modes.map((mode) => (
             <label key={mode} className="inline-flex items-center gap-1 capitalize">
               <input
                 type="radio"
                 name="lobby-director-mode"
                 checked={selected === mode}
-                disabled={!allowed || saving}
+                disabled={!modeWithinCeiling(mode, ceiling) || saving}
                 onChange={() => {
                   setSaving(true);
                   void save(sessionId, mode)
@@ -66,8 +64,7 @@ export function DirectorModeSelect({ sessionId }: { sessionId: string }) {
               />
               {mode}
             </label>
-          );
-        })}
+        ))}
       </div>
     </div>
   );
@@ -104,10 +101,4 @@ async function save(sessionId: string, mode: DirectorMode): Promise<DirectorView
   if (!response.ok) return null;
   const body = (await response.json()) as { data?: DirectorView };
   return body.data ?? null;
-}
-
-function rank(mode: DirectorMode): number {
-  if (mode === 'auto') return 2;
-  if (mode === 'suggest') return 1;
-  return 0;
 }

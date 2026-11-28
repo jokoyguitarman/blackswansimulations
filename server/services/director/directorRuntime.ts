@@ -5,10 +5,13 @@
  */
 
 export const SWEEP_FALLBACK_TICKS = 2;
+/** A hung model call must not hold the per-session lock forever. */
+export const DIRECTOR_WAKE_LOCK_MS = 60_000;
 
 const pendingCount = new Map<string, number>();
 const sweepTick = new Map<string, number>();
 const wakes = new Set<string>();
+const wakeToken = new Map<string, number>();
 const paused = new Set<string>();
 const snoozes = new Map<string, Array<{ team: string; untilMs: number }>>();
 const publishSlots = new Map<string, number | null>();
@@ -17,6 +20,7 @@ export function resetDirectorRuntime(): void {
   pendingCount.clear();
   sweepTick.clear();
   wakes.clear();
+  wakeToken.clear();
   paused.clear();
   snoozes.clear();
   publishSlots.clear();
@@ -45,15 +49,26 @@ export function sweepThisTick(sessionId: string): boolean {
   return n % SWEEP_FALLBACK_TICKS === 1;
 }
 
-/** False when a wake is already running for the session. */
-export function tryBeginWake(sessionId: string): boolean {
-  if (wakes.has(sessionId)) return false;
+/**
+ * Start a wake. Returns its token, or null when one is already running.
+ * `endWake` retires the token so a late finish does not clear a newer wake.
+ */
+export function beginWake(sessionId: string): number | null {
+  if (wakes.has(sessionId)) return null;
+  const token = (wakeToken.get(sessionId) ?? 0) + 1;
+  wakeToken.set(sessionId, token);
   wakes.add(sessionId);
-  return true;
+  return token;
 }
 
-export function endWake(sessionId: string): void {
+export function endWake(sessionId: string, token?: number): void {
+  if (token != null && wakeToken.get(sessionId) !== token) return;
   wakes.delete(sessionId);
+  if (token != null) wakeToken.set(sessionId, token + 1);
+}
+
+export function wakeOwns(sessionId: string, token: number): boolean {
+  return wakes.has(sessionId) && wakeToken.get(sessionId) === token;
 }
 
 export function wakeInFlight(sessionId: string): boolean {

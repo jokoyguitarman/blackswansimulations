@@ -12,8 +12,8 @@ import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { resolveDirectorMode } from '../../../shared/directorModes.js';
 import { AiCallError, budgetStatus, chat, systemUser } from '../ai/chatClient.js';
 import { parseJsonLoose } from '../ai/chatCore.js';
-import { isCrossTeam, type DepthTrigger, type RecentCrossTeamTrigger, type TeamDelivery } from '../conditions/crossTeamCore.js';
-import { recordInjectTrigger } from '../conditions/injectTriggerService.js';
+import { isCrossTeam, type DepthTrigger, type TeamDelivery } from '../conditions/crossTeamCore.js';
+import { loadCrossTeamFacts, recordInjectTrigger } from '../conditions/injectTriggerService.js';
 import { publishInjectToSession } from '../../routes/injects.js';
 import type { CommsState } from '../ledger/injectLedgerCore.js';
 import { inBootGrace, sessionUserOnline } from '../presence/sessionPresenceService.js';
@@ -46,15 +46,17 @@ import {
   type PublishFacts,
   type SessionDirector,
 } from './directorConsole.js';
-import type { DirectorPerson } from './directorPublish.js';
+import { applyLiveMode, publishedCapEvents, type DirectorPerson } from './directorPublish.js';
 import { replayDirectorSession, type ReplayRow } from './directorReplay.js';
 import {
+  DIRECTOR_WAKE_LOCK_MS,
+  beginWake,
   directorIsPaused,
   endWake,
   noteProposalPending,
   resetDirectorRuntime,
   snoozedTeams,
-  tryBeginWake,
+  wakeOwns,
 } from './directorRuntime.js';
 import {
   collectSignals,
@@ -106,6 +108,10 @@ export interface DirectorRunOptions {
   client?: DirectorClient;
   /** Test hook for the scenario-cache clock. */
   now?: () => number;
+  /** Set by the scheduler. A retired token must not insert. */
+  wakeToken?: number;
+  /** Test hook. Production uses {@link DIRECTOR_WAKE_LOCK_MS}. */
+  wakeLockMs?: number;
 }
 
 export interface DirectorStore {
@@ -227,11 +233,18 @@ export async function runDirector(
   });
   const draft = await runDirectorTurn(turn, options.client ?? defaultClient);
   if (!draft.log || !draft.status || !draft.wake_reason || !draft.mode) return;
+  if (options.wakeToken != null && !wakeOwns(input.sessionId, options.wakeToken)) return;
+  const latest = await store.loadSession(input.sessionId);
+  const modeNow =
+    latest == null || latest === 'missing'
+      ? 'off'
+      : resolveMode(latest.director_mode, settings.mode);
+  const shaped = applyLiveMode(draft, modeNow);
   const seq = nextSeq(proposals);
-  const stored = await insertProposal(store, input.sessionId, seq, turn, draft);
+  const stored = await insertProposal(store, input.sessionId, seq, turn, shaped);
   if (!stored) return;
-  emitProposal(input.trainerId, input.sessionId, seq, draft);
-  void recordDirectorEvent(store, input.sessionId, seq, draft);
+  emitProposal(input.trainerId, input.sessionId, seq, shaped);
+  void recordDirectorEvent(store, input.sessionId, seq, shaped);
 }
 
 export async function replayStoredSession(sessionId: string): Promise<
@@ -1469,12 +1482,23 @@ export function scheduleDirectorWake(
   input: DirectorTickInput,
   options: DirectorRunOptions = {},
 ): boolean {
-  if (!tryBeginWake(input.sessionId)) return false;
-  void runDirector(input, options)
+  const token = beginWake(input.sessionId);
+  if (token == null) return false;
+  let released = false;
+  const clock: { timer?: ReturnType<typeof setTimeout> } = {};
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (clock.timer) clearTimeout(clock.timer);
+    endWake(input.sessionId, token);
+  };
+  clock.timer = setTimeout(release, options.wakeLockMs ?? DIRECTOR_WAKE_LOCK_MS);
+  clock.timer.unref?.();
+  void runDirector(input, { ...options, wakeToken: token })
     .catch((err) => {
       logger.warn({ err, sessionId: input.sessionId }, 'AI director wake failed');
     })
-    .finally(() => endWake(input.sessionId));
+    .finally(release);
   return true;
 }
 
@@ -1493,6 +1517,7 @@ export async function sweepDirectorSession(input: {
   trainerId: string | null;
   remainingCap: number;
 }): Promise<void> {
+  if (directorUnavailable || !env.directorEnabled) return;
   try {
     await directorCommands.sweep(input);
   } catch (err) {
@@ -1528,8 +1553,13 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
   loadSession: loadSessionDirector,
   scenarioMode: loadScenarioMode,
   listProposals: (sessionId) => loadConsoleProposals(sessionId, null),
-  dueProposals: (sessionId, nowIso, createdBeforeIso) =>
-    loadConsoleProposals(sessionId, { nowIso, createdBeforeIso }),
+  dueProposals: async (sessionId, nowIso, createdBeforeIso) => {
+    const rows = await loadConsoleProposals(sessionId, { nowIso, createdBeforeIso });
+    if (rows === 'missing') noteUnavailable(new Error('director_proposals missing'));
+    return rows;
+  },
+  resolvedMode: resolveLiveMode,
+  stakeholderNames: loadStakeholderNames,
   updateProposal: updateConsoleProposal,
   setSessionMode: async (sessionId, mode) => {
     const { error } = await supabaseAdmin
@@ -1576,7 +1606,6 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
     }
     return { id: String(data.id) };
   },
-  claimPublication: async () => true,
   publishInject: async (injectId, sessionId, userId) => {
     const { io } = await import('../../index.js');
     await publishInjectToSession(injectId, sessionId, userId, io, { awaitDelivery: true });
@@ -1617,23 +1646,50 @@ async function requestDirectorWake(
     { mode: scenarioMode },
   );
   if (mode === 'off') return { ok: false, status: 409, error: 'AI director is off' };
-  if (!tryBeginWake(sessionId)) {
+  const token = beginWake(sessionId);
+  if (token == null) {
     return { ok: false, status: 409, error: 'AI director is already working' };
   }
   try {
-    await runDirector({
-      sessionId,
-      scenarioId: session.scenarioId,
-      trainerId: session.trainerId ?? actorId,
-      status: 'in_progress',
-      elapsedMinutes: session.elapsedMinutes,
-      comms: null,
-      trainerRequest: body,
-    });
+    await runDirector(
+      {
+        sessionId,
+        scenarioId: session.scenarioId,
+        trainerId: session.trainerId ?? actorId,
+        status: 'in_progress',
+        elapsedMinutes: session.elapsedMinutes,
+        comms: null,
+        trainerRequest: body,
+      },
+      { wakeToken: token },
+    );
     return { ok: true, status: 200, body: { data: { requested: true } } };
   } finally {
-    endWake(sessionId);
+    endWake(sessionId, token);
   }
+}
+
+async function resolveLiveMode(sessionId: string): Promise<DirectorMode | 'missing'> {
+  if (!env.directorEnabled || directorUnavailable) return 'off';
+  const session = await loadSessionDirector(sessionId);
+  if (session === 'missing') return 'missing';
+  if (!session) return 'off';
+  const scenarioMode = await loadScenarioMode(session.scenarioId);
+  return resolveDirectorMode(
+    {
+      enabled: env.directorEnabled,
+      modeMax: env.directorModeMax,
+      defaultMode: env.directorDefaultMode,
+    },
+    { mode: session.directorMode },
+    { mode: scenarioMode },
+  );
+}
+
+async function loadStakeholderNames(scenarioId: string): Promise<Record<string, string>> {
+  const { getStakeholders } = await import('../stakeholderService.js');
+  const people = await getStakeholders(scenarioId);
+  return Object.fromEntries(people.map((person) => [person.id, person.name]));
 }
 
 async function loadSessionDirector(sessionId: string): Promise<SessionDirector | 'missing' | null> {
@@ -1753,21 +1809,24 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
   if (session === 'missing' || session == null) return null;
   const scenario = await rememberScenario(session.scenarioId, defaultStore, Date.now());
   if (!scenario) return null;
-  const [triggerRows, deliveryRows, teams, memberships, history] = await Promise.all([
-    loadTriggers(sessionId),
+  const [crossTeam, deliveryRows, teams, memberships, history, people] = await Promise.all([
+    loadCrossTeamFacts({
+      sessionId,
+      scenarioId: session.scenarioId,
+      elapsedMinutes: minute,
+    }),
     loadDeliveries(sessionId, minute),
     loadTeams(session.scenarioId),
     loadMemberships(sessionId),
     loadHistory(sessionId),
+    loadPublishPeople(session.scenarioId),
   ]);
   if (history == null || history === 'missing') return null;
   const settings = readDirectorSettings(scenario.initial);
   const roster = rosterOf(teams, scenario.initial, memberships);
   const limits = limitsFor(settings);
   const scaled = capsFor(limits.intensity, { per15: limits.per15, perTeam30: limits.perTeam30 });
-  const deliveries: TeamDelivery[] = deliveryRows.flatMap((row) =>
-    row.teams.map((team) => ({ team, minute: row.minute, timed: row.timed })),
-  );
+  const deliveries: TeamDelivery[] = crossTeam.deliveries;
   const mode = resolveMode(session.directorMode, settings.mode);
   const guardMode = mode === 'off' ? 'suggest' : mode;
   const guard: GuardContext = {
@@ -1783,7 +1842,7 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
     protectedTeams: [...settings.protected, ...snoozedTeams(sessionId, Date.now())],
     allowedApps: settings.apps,
     roleIds: parsePlayerRoles(scenario.initial.player_roles).map((role) => role.role_id),
-    stakeholders: readPeople(scenario.initial),
+    stakeholders: people.map((person) => ({ id: person.id, name: person.name })),
     npcs: readNpcs(scenario.initial),
     orgs: readOrgs(scenario.initial).map((org) => org.name),
     brief: readBrief(scenario),
@@ -1792,7 +1851,16 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
       .filter((row) => minute - row.minute <= 30)
       .flatMap((row) => row.teams.map((team) => ({ team, minute: row.minute, title: row.title, content: row.content }))),
     upcoming: [],
-    capEvents: exposureFrom(history, LIVE_STATUSES),
+    capEvents: publishedCapEvents(
+      history.map((row) => ({
+        status: row.status,
+        minute: row.minute,
+        proposal:
+          row.kind && row.severity
+            ? { kind: row.kind, severity: row.severity, target_teams: row.teams }
+            : null,
+      })),
+    ),
     deliveries,
     unansweredByTeam: unansweredByTeam(deliveryRows),
     priorLowMediumTeams: priorLightTeams(exposureFrom(history, RECEIVED_STATUSES)),
@@ -1806,60 +1874,27 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
     consistencyEnabled: limits.consistencyEnabled,
     consistency: null,
   };
-  const recent: RecentCrossTeamTrigger[] = triggerRows.map((row) => ({
-    inject_key: row.inject_key,
-    minute: row.minute ?? 0,
-    source_teams: row.source_teams,
-    target_teams: row.target_teams,
-    origin: row.origin,
-    cause_depth: row.cause_depth,
-    is_cross_team: row.origin === 'director' || isCrossTeam(row.source_teams, row.target_teams),
-  }));
-  const triggersByKey: Record<string, DepthTrigger | undefined> = {};
-  for (const row of triggerRows) {
-    triggersByKey[row.inject_key] = {
-      cause_depth: row.cause_depth,
-      source_teams: row.source_teams,
-      target_teams: row.target_teams,
-      origin: row.origin,
-      is_cross_team: row.origin === 'director' || isCrossTeam(row.source_teams, row.target_teams),
-    };
-  }
-  const people = readCast(scenario.initial);
   return {
     scenarioId: session.scenarioId,
     guard,
-    recent,
+    recent: crossTeam.recent,
     deliveries,
-    triggersByKey,
+    triggersByKey: crossTeam.triggersByKey,
     people,
     npcs: readNpcs(scenario.initial),
     stakeholderNames: Object.fromEntries(people.map((person) => [person.id, person.name])),
   };
 }
 
-function readCast(initial: Record<string, unknown>): DirectorPerson[] {
-  const rows = Array.isArray(initial.stakeholders) ? initial.stakeholders : [];
-  const people: DirectorPerson[] = [];
-  for (const item of rows) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as {
-      id?: string;
-      name?: string;
-      email?: string;
-      phone?: string;
-      handle?: string;
-      organisation?: string;
-    };
-    if (!row.id || !row.name) continue;
-    people.push({
-      id: row.id,
-      name: row.name,
-      email: row.email ?? null,
-      phone: row.phone ?? null,
-      handle: row.handle ?? null,
-      organisation: row.organisation ?? null,
-    });
-  }
-  return people;
+async function loadPublishPeople(scenarioId: string): Promise<DirectorPerson[]> {
+  const { getStakeholders } = await import('../stakeholderService.js');
+  const people = await getStakeholders(scenarioId);
+  return people.map((person) => ({
+    id: person.id,
+    name: person.name,
+    email: person.email,
+    phone: person.phone,
+    handle: person.handle,
+    organisation: person.organisation,
+  }));
 }

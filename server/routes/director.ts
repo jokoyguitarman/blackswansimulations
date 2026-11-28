@@ -22,6 +22,9 @@ const APPS = [
 ] as const;
 
 const sessionParams = z.object({ params: z.object({ id: z.string().uuid() }) });
+const proposalParams = z.object({
+  params: z.object({ id: z.string().uuid(), pid: z.string().uuid() }),
+});
 const patchBody = z.object({
   body: z
     .object({
@@ -158,6 +161,23 @@ export function createDirectorRouter(deps: DirectorRouterDeps): Router {
         );
       } catch (err) {
         logger.error({ err }, 'POST /sessions/:id/director/proposals/:pid/approve failed');
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.post(
+    '/:id/director/proposals/:pid/hold',
+    deps.auth,
+    validate(proposalParams),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        if (!isStaff(req.user?.role)) return res.status(403).json({ error: 'Access denied' });
+        const access = await deps.access(req.params.id, req.user!);
+        if (!access.ok) return res.status(access.status).json({ error: access.error });
+        send(res, await deps.commands.hold(req.params.id, req.params.pid));
+      } catch (err) {
+        logger.error({ err }, 'POST /sessions/:id/director/proposals/:pid/hold failed');
         res.status(500).json({ error: 'Internal server error' });
       }
     },

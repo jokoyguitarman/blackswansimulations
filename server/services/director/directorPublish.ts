@@ -4,8 +4,10 @@
  */
 
 import { causeDepth, referencedInjectKeys, type DepthTrigger } from '../conditions/crossTeamCore.js';
+import type { DirectorDraft, DirectorMode, ExposureEvent, ParsedProposal } from './directorCore.js';
 import type { Signal } from './directorSignals.js';
-import type { ParsedProposal } from './directorCore.js';
+
+const PUBLISHED_STATUSES = new Set(['approved', 'edited', 'auto_published']);
 
 const APP_TYPE: Record<string, string> = {
   email: 'email',
@@ -41,6 +43,49 @@ export interface DirectorInjectDraft {
   causeDepth: number;
   sourceTeams: string[];
   targetTeams: string[];
+}
+
+/**
+ * Cap events at publish time. Pending rows, including the one being published,
+ * do not count. Only events that already landed do.
+ */
+export function publishedCapEvents(
+  rows: ReadonlyArray<{
+    status: string;
+    minute: number;
+    proposal: {
+      kind?: string | null;
+      severity?: string | null;
+      target_teams?: readonly string[] | null;
+    } | null;
+  }>,
+): ExposureEvent[] {
+  const events: ExposureEvent[] = [];
+  for (const row of rows) {
+    if (!PUBLISHED_STATUSES.has(row.status) || !row.proposal) continue;
+    const kind = row.proposal.kind;
+    const severity = row.proposal.severity;
+    if (
+      kind !== 'consequence' &&
+      kind !== 'escalation' &&
+      kind !== 'opportunity' &&
+      kind !== 'relief'
+    ) {
+      continue;
+    }
+    if (severity !== 'low' && severity !== 'medium' && severity !== 'high') continue;
+    for (const team of row.proposal.target_teams ?? []) {
+      events.push({ minute: row.minute, team, kind, severity });
+    }
+  }
+  return events;
+}
+
+/** A wake that started in auto must not store a countdown if the mode moved. */
+export function applyLiveMode(draft: DirectorDraft, mode: DirectorMode): DirectorDraft {
+  if (draft.status !== 'proposed') return draft;
+  if (mode === 'off') return { ...draft, status: 'expired' };
+  return { ...draft, mode };
 }
 
 export function directorCauseDepth(
