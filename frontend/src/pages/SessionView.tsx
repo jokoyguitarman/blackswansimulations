@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { playerClockHidden } from '../lib/crisisClock';
 import { PAGES_UNASSIGNED } from '@shared/sessionPageCoverage';
 import { ChatInterface } from '../components/Chat/ChatInterface';
+import { ViewAsMenu } from '../components/SimDevice/ViewAsMenu';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
 import { AIInjectSystem } from '../components/Injects/AIInjectSystem';
 import { MediaFeed } from '../components/Media/MediaFeed';
@@ -1363,7 +1364,10 @@ export const SessionView = () => {
       });
       await loadSession();
     } catch (error) {
-      if (error instanceof ApiError && (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')) {
+      if (
+        error instanceof ApiError &&
+        (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')
+      ) {
         throw error;
       }
       console.error('Failed to start session:', error);
@@ -1746,6 +1750,9 @@ export const SessionView = () => {
                     Session Completed
                   </span>
                 </div>
+              )}
+              {isTrainer && (session.status === 'completed' || session.status === 'cancelled') && (
+                <ViewAsMenu sessionId={session.id} />
               )}
             </div>
             <div className="flex items-center gap-2">

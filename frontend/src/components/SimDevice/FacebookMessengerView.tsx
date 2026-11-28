@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { getAuthHeaders as spectatorHeaders } from '../../lib/api';
+import { currentViewAsFrame, withViewAsHeaders } from '../../lib/viewAsFrame';
+import { useSurfaceReadOnly } from './surfaceReadOnly';
 import {
   MessengerComposePanel,
   MessengerNewMessageButton,
   MessengerReplyBar,
 } from './surfaceComposers';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 function apiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -20,10 +22,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface Thread {
@@ -109,11 +111,12 @@ function timeAgo(dateStr: string): string {
 
 function FacebookMessengerView({
   sessionId,
-  readOnly = false,
+  readOnly: readOnlyProp = false,
   pageHandle,
   orgKey,
   platform = 'facebook',
 }: FacebookMessengerViewProps) {
+  const readOnly = readOnlyProp || useSurfaceReadOnly();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -175,6 +178,11 @@ function FacebookMessengerView({
         const {
           data: { session },
         } = await supabase.auth.getSession();
+        const viewedName = currentViewAsFrame()?.name;
+        if (viewedName) {
+          setPlayerHandle(`@${viewedName.replace(/[@.\s+,]/g, '_').toLowerCase()}`);
+          return;
+        }
         const metaName = session?.user?.user_metadata?.full_name as string | undefined;
         let name = metaName || '';
         if (!name && session?.user?.id) {

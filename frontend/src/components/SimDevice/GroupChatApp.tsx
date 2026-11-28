@@ -10,6 +10,8 @@ import { IncomingCallToast } from '../Chat/IncomingCallToast';
 import { ChatListScreen } from './TeamChat/ChatListScreen';
 import { ConversationScreen } from './TeamChat/ConversationScreen';
 import { colorFor, groupIcon, initials } from './TeamChat/avatars';
+import { WhenWritable } from './surfaceReadOnly';
+import { viewAsSubjectId } from '../../lib/viewAsFrame';
 import type { ChatListItem, ChatScreenState, ChatVariant } from './TeamChat/types';
 
 /**
@@ -27,7 +29,7 @@ export default function GroupChatApp() {
   const [screen, setScreen] = useState<ChatScreenState>({ screen: 'list' });
   const [membersOpen, setMembersOpen] = useState(false);
   const [participants, setParticipants] = useState<Array<{ id: string; full_name: string }>>([]);
-  const webrtc = useWebRTC(user?.id);
+  const webrtc = useWebRTC(viewAsSubjectId() ?? user?.id);
   const isWA = variant === 'whatsapp';
 
   useEffect(() => {
@@ -224,16 +226,18 @@ export default function GroupChatApp() {
         <span className="font-semibold text-[18px] flex-1" style={{ color: headerFg }}>
           TeamChat
         </span>
-        <button
-          onClick={() => setScreen({ screen: 'calls' })}
-          className="px-3 py-1 rounded-full text-[12px] font-medium"
-          style={{
-            backgroundColor: isWA ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
-            color: headerFg,
-          }}
-        >
-          {webrtc.state.isInCall ? 'In call' : 'Calls'}
-        </button>
+        <WhenWritable>
+          <button
+            onClick={() => setScreen({ screen: 'calls' })}
+            className="px-3 py-1 rounded-full text-[12px] font-medium"
+            style={{
+              backgroundColor: isWA ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+              color: headerFg,
+            }}
+          >
+            {webrtc.state.isInCall ? 'In call' : 'Calls'}
+          </button>
+        </WhenWritable>
       </>
     );
   };

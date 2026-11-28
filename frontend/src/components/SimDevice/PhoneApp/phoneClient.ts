@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabase';
+import { withViewAsHeaders } from '../../../lib/viewAsFrame';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 export function phoneApiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -12,10 +13,10 @@ export async function phoneAuthHeaders(): Promise<Record<string, string>> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 export interface CallSummary {
@@ -125,7 +126,10 @@ export async function hangupCall(callId: string): Promise<void> {
   });
 }
 
-export async function sendTextTurn(callId: string, text: string): Promise<{ reply: string; ended: boolean }> {
+export async function sendTextTurn(
+  callId: string,
+  text: string,
+): Promise<{ reply: string; ended: boolean }> {
   const res = await fetch(phoneApiUrl(`/api/calls/${callId}/text-turn`), {
     method: 'POST',
     headers: await phoneAuthHeaders(),
@@ -144,8 +148,12 @@ export async function loadCalls(sessionId: string): Promise<CallSummary[]> {
   return body.data ?? [];
 }
 
-export async function loadCall(callId: string): Promise<(CallSummary & { turns: CallTurn[] }) | null> {
-  const res = await fetch(phoneApiUrl(`/api/calls/${callId}`), { headers: await phoneAuthHeaders() });
+export async function loadCall(
+  callId: string,
+): Promise<(CallSummary & { turns: CallTurn[] }) | null> {
+  const res = await fetch(phoneApiUrl(`/api/calls/${callId}`), {
+    headers: await phoneAuthHeaders(),
+  });
   if (!res.ok) return null;
   const body = (await res.json()) as { data?: CallSummary & { turns: CallTurn[] } };
   return body.data ?? null;

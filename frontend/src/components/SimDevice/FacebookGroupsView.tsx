@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { withViewAsHeaders } from '../../lib/viewAsFrame';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -13,10 +14,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 function getAvatarColor(name: string): string {
