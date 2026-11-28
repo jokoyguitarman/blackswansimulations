@@ -1,13 +1,17 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { logger } from '../lib/logger.js';
 import {
   actWithinCap,
   chooseMove,
   orderLeastRecentlyPosted,
+  runPage,
   selectLeastRecentlyPosted,
   type PageProgress,
+  type PageTickOutcome,
 } from './pressureEngineService.js';
-import type { PagePosture } from './socialCrisisGeneratorService.js';
+import type { OrgConfig, PagePosture } from './socialCrisisGeneratorService.js';
 
 const p = (over: Partial<PageProgress> = {}): PageProgress => ({
   minutesSinceLastPost: Infinity,
@@ -87,11 +91,146 @@ describe('pressure tick cap', () => {
     const posts: string[] = [];
     await actWithinCap(ordered, 4, async (page) => {
       const move = chooseMove(page.register, page.progress);
-      if (move === 'skip') return false;
+      if (move === 'skip') return { posted: false, called: false };
       posts.push(page.key);
-      return true;
+      return { posted: true, called: true };
     });
     assert.deepEqual(posts, ['live-a', 'live-b']);
+  });
+
+  test('empty model replies count toward the call cap and finished pages do not', async () => {
+    const calls: string[] = [];
+    const posts: string[] = [];
+    await actWithinCap(['finished', 'empty', 'live-a', 'live-b', 'live-c'], 3, async (page) => {
+      if (page === 'finished') return { posted: false, called: false };
+      calls.push(page);
+      if (page === 'empty') return { posted: false, called: true };
+      posts.push(page);
+      return { posted: true, called: true };
+    });
+    assert.deepEqual(calls, ['empty', 'live-a', 'live-b']);
+    assert.deepEqual(posts, ['live-a', 'live-b']);
+  });
+});
+
+const skipped: PageTickOutcome = { posted: false, called: false };
+const calledOnly: PageTickOutcome = { posted: false, called: true };
+
+describe('runPage model outcomes', () => {
+  const originalFrom = supabaseAdmin.from;
+
+  function install(mode: 'empty' | 'insert-fails' | 'recent'): void {
+    (supabaseAdmin as { from: (table: string) => unknown }).from = () => {
+      let inserted = false;
+      let selected = '';
+      const query: Record<string, unknown> = {};
+      const self = () => query;
+      query.select = (columns?: string) => {
+        selected = String(columns ?? '');
+        return query;
+      };
+      query.eq = self;
+      query.in = self;
+      query.is = self;
+      query.order = self;
+      query.limit = self;
+      query.insert = () => {
+        inserted = true;
+        return query;
+      };
+      query.single = self;
+      query.then = (
+        resolve: (value: unknown) => unknown,
+        reject?: (reason: unknown) => unknown,
+      ) => {
+        const recent =
+          mode === 'recent' && selected.includes('content')
+            ? [{ id: 'old', created_at: new Date().toISOString(), content: 'earlier' }]
+            : [];
+        const value =
+          inserted && mode === 'insert-fails'
+            ? { data: null, error: { message: 'insert failed' } }
+            : { data: inserted ? { id: 'post-1' } : recent, error: null };
+        return Promise.resolve(value).then(resolve, reject);
+      };
+      return query;
+    };
+  }
+
+  async function tick(
+    model: () => Promise<Record<string, unknown> | null>,
+  ): Promise<PageTickOutcome> {
+    const posture: PagePosture = {
+      register: 'advocacy',
+      mandate: 'Speak for the union',
+      demands: ['A meeting'],
+      escalation_ladder: ['statement', 'deadline', 'notice'],
+      targets_org_keys: [],
+      stand_down_signals: ['A written reply'],
+    };
+    const cfg = {
+      org_key: 'prs_union',
+      display_name: 'Union',
+      is_primary: false,
+      role: 'pressure',
+      control_mode: 'ai',
+      posture,
+      facebook: { page_name: 'Union', page_handle: 'union' },
+      x_twitter: { page_name: 'Union', page_handle: 'union' },
+    } as OrgConfig;
+    return runPage(
+      'session-1',
+      'scenario-1',
+      20,
+      cfg,
+      [
+        {
+          org_key: 'prs_union',
+          platform: 'facebook',
+          page_name: 'Union',
+          page_handle: 'union',
+          role: 'pressure',
+          control_mode: 'ai',
+        },
+      ],
+      {},
+      30,
+      model,
+    );
+  }
+
+  test('an empty reply, a thrown call and a failed insert each count as a call and do not post', async () => {
+    const previous = logger.level;
+    logger.level = 'silent';
+    try {
+      install('empty');
+      assert.deepEqual(await tick(async () => ({ content: '   ' })), calledOnly);
+      assert.deepEqual(await tick(async () => null), calledOnly);
+      assert.deepEqual(
+        await tick(async () => {
+          throw new Error('rate limited');
+        }),
+        calledOnly,
+      );
+      install('insert-fails');
+      assert.deepEqual(
+        await tick(async () => ({ content: 'We expect a meeting today.' })),
+        calledOnly,
+      );
+      install('recent');
+      let asked = 0;
+      assert.deepEqual(
+        await tick(async () => {
+          asked += 1;
+          return { content: 'should not be asked' };
+        }),
+        skipped,
+      );
+      assert.equal(asked, 0);
+    } finally {
+      logger.level = previous;
+      supabaseAdmin.from = originalFrom;
+    }
   });
 });
 
