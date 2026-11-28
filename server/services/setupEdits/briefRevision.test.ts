@@ -6,9 +6,10 @@ import {
   TRIGGER_CLAMP_MINUTES,
   applyRevisionDecision,
   clampTriggerTime,
+  filterConditions,
   substituteText,
 } from './briefRevisionCore.js';
-import { runDeltaBuild } from './deltaBuildRun.js';
+import { runDeltaBuild, runDeltaStage } from './deltaBuildRun.js';
 import type { DeltaBuildContext, DeltaGenerators, DeltaInject, LayerRevisionResult } from './deltaBuildTypes.js';
 import { delta } from './fixtures/remapFixtures.js';
 import type { RemapPlan } from './remapPlanner.js';
@@ -193,6 +194,13 @@ describe('brief revision guards', () => {
   test('renames are whole-word and case-preserving', () => {
     assert.equal(substituteText('Harbour closed. The harbourmaster stayed.', [{ from: 'Harbour', to: 'Harbor' }]), 'Harbor closed. The harbourmaster stayed.');
     assert.equal(substituteText('HARBOUR', [{ from: 'harbour', to: 'harbor' }]), 'HARBOR');
+  });
+
+  test('a minute argument is not treated as an inject key', () => {
+    const active = new Set(['parent_a']);
+    assert.deepEqual(filterConditions(['unopened:parent_a:10'], active), ['unopened:parent_a:10']);
+    assert.deepEqual(filterConditions(['unopened:retired_key:10'], active), []);
+    assert.equal(filterConditions({ all: ['inject_published:parent_a'] }, active) != null, true);
   });
 
   test('a facts revision cannot move a trigger by more than 15 minutes', () => {
@@ -407,5 +415,121 @@ describe('brief revision pipeline', () => {
     assert.equal(result.characters.brief_diff?.added_premises[0]?.includes('centre of the crisis'), true);
     assert.equal(result.convergence.narrative_update?.briefing_kept, false);
     assert.equal(result.convergence.narrative?.title, 'Recentred');
+  });
+
+  test('a relocation without a brief change still clamps the trigger', async () => {
+    const { generators } = recording(emptyBriefDiff('facts'), () => ({
+      decisions: [
+        {
+          inject_id: 'move',
+          decision: 'revise',
+          title: 'Moved',
+          content: 'Now in Malaysia.',
+          trigger_time_minutes: 55,
+          reason: 'The office moved.',
+        },
+      ],
+      new_injects: [],
+    }));
+    const result = await runDeltaStage(
+      'storyline',
+      context({
+        delta: delta({
+          brief_changed: false,
+          relocated_orgs: [{ org_key: 'primary', from_country: 'Singapore', to_country: 'Malaysia' }],
+        }),
+        injects: [
+          inject({
+            id: 'move',
+            inject_key: 'move_note',
+            layer: 'team:team-comms',
+            trigger_time_minutes: 20,
+          }),
+        ],
+        teams: [{ team_uid: 'team-comms', team_name: 'Communications', org_key: 'primary' }],
+      }),
+      generators,
+    );
+    assert.equal(
+      result.revisions.find((row) => row.inject_id === 'move')?.new?.trigger_time_minutes,
+      35,
+    );
+  });
+
+  test('a hand-edited branch is flagged and a referenced branch is not retired', async () => {
+    const brief = emptyBriefDiff('facts');
+    brief.affected_layers = ['backbone'];
+    const { generators } = recording(brief, () => ({
+      decisions: [{ inject_id: 'a', decision: 'revise', title: 'A2', content: 'Revised', reason: 'Changed.' }],
+      new_injects: [],
+    }));
+    const parent = inject({ id: 'a', inject_key: 'parent_a', layer: 'backbone', requires_response: true });
+    const handBranch = inject({
+      id: 'hand-branch',
+      inject_key: 'hand_branch',
+      layer: 'branch:parent_a',
+      provenance: 'hand_edited',
+      generation_source: 'trainer',
+      content: 'Our wording.',
+    });
+    const ownedBranch = inject({
+      id: 'owned-branch',
+      inject_key: 'owned_branch',
+      layer: 'branch:parent_a',
+      content: 'Old follow-up.',
+    });
+    const keeper = inject({
+      id: 'keeper',
+      inject_key: 'keeper_note',
+      layer: 'team:legal',
+      provenance: 'hand_edited',
+      generation_source: 'trainer',
+      conditions_to_appear: ['inject_fired:owned_branch'],
+    });
+    const result = await runDeltaStage(
+      'storyline',
+      context({
+        delta: delta({ brief_changed: true }),
+        injects: [parent, handBranch, ownedBranch, keeper],
+      }),
+      generators,
+      { briefDiff: brief, swapPremise: null, retiredKeys: [] },
+    );
+    assert.equal(result.revisions.some((row) => row.inject_id === 'hand-branch' && row.decision === 'retire'), false);
+    assert.equal(result.flags.some((flag) => flag.inject_id === 'hand-branch'), true);
+    const owned = result.revisions.find((row) => row.inject_id === 'owned-branch');
+    assert.equal(owned?.decision, 'revise');
+    assert.notEqual(owned?.write, 'retire');
+  });
+
+  test('a rename-only brief substitutes branch text and does not call the branch generator', async () => {
+    const brief = emptyBriefDiff('facts');
+    brief.renamed_entities = [{ from: 'Harbour', to: 'Harbor' }];
+    const { calls, generators } = recording(brief);
+    const parent = inject({
+      id: 'note',
+      inject_key: 'harbour_note',
+      layer: 'team:legal',
+      title: 'Harbour closed',
+      content: 'Harbour is shut.',
+      requires_response: true,
+    });
+    const branch = inject({
+      id: 'branch',
+      inject_key: 'harbour_branch',
+      layer: 'branch:harbour_note',
+      title: 'Harbour follow-up',
+      content: 'Harbour again.',
+    });
+    const result = await runDeltaStage(
+      'storyline',
+      context({ delta: delta({ brief_changed: true }), injects: [parent, branch] }),
+      generators,
+      { briefDiff: brief, swapPremise: null, retiredKeys: [] },
+    );
+    assert.equal(calls.some((call) => call.startsWith('regenerateBranches:')), false);
+    const revised = result.revisions.find((row) => row.inject_id === 'branch');
+    assert.equal(revised?.origin, 'substitution');
+    assert.equal(revised?.new?.title, 'Harbor follow-up');
   });
 });

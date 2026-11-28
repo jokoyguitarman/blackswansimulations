@@ -13,7 +13,7 @@ import type {
   StorylineOutput,
 } from './buildTypes.js';
 
-const EMPTY_DECISION: DecisionContext = {
+export const EMPTY_DECISION: DecisionContext = {
   leakiness: 0.5,
   labour_signal: false,
   product_safety_signal: false,
@@ -32,6 +32,7 @@ export interface StorylineStageInput {
   /** Present on a setup-edit build. The characters stage already paid for the diff. */
   brief_diff?: unknown;
   swap_premise?: string | null;
+  prior_retired_keys?: string[];
 }
 
 export interface ConvergenceStageInput {
@@ -51,6 +52,7 @@ export interface ConvergenceStageInput {
   stakeholderInjects: SocialInject[];
   brief_diff?: unknown;
   swap_premise?: string | null;
+  prior_retired_keys?: string[];
 }
 
 export interface PagesStageInput {
@@ -62,6 +64,7 @@ export interface PagesStageInput {
   crisis: CrisisContext;
   brief_diff?: unknown;
   swap_premise?: string | null;
+  prior_retired_keys?: string[];
 }
 
 export type StageInput =
@@ -110,22 +113,26 @@ export function stageInput(
 ): StageInput {
   if (stage === 'characters') return { stage, request };
   const characters = requireCharacters(outputs);
-  const editCarry =
+  const characterRow = characters as CharactersOutput & {
+    brief_diff?: unknown;
+    swap_premise?: string | null;
+    revisions?: Array<{ decision?: string; inject_key?: string }>;
+  };
+  const editBase =
     request.mode === 'setup_edit'
       ? {
-          brief_diff:
-            (characters as CharactersOutput & { brief_diff?: unknown }).brief_diff ?? null,
-          swap_premise:
-            (characters as CharactersOutput & { swap_premise?: string | null }).swap_premise ?? null,
+          brief_diff: characterRow.brief_diff ?? null,
+          swap_premise: characterRow.swap_premise ?? null,
         }
-      : {};
+      : null;
+  const retiredSoFar = request.mode === 'setup_edit' ? retiredInjectKeys(characterRow) : [];
   if (stage === 'storyline') {
     return {
       stage,
       request,
       personas: characters.personas,
       fact_sheet: characters.fact_sheet,
-      ...editCarry,
+      ...(editBase ? { ...editBase, prior_retired_keys: retiredSoFar } : {}),
     };
   }
   const storyline = requireStoryline(outputs);
@@ -149,7 +156,9 @@ export function stageInput(
       factSheet: characters.fact_sheet,
       stakeholders: storyline.stakeholders ?? [],
       stakeholderInjects: storyline.stakeholder_injects ?? [],
-      ...editCarry,
+      ...(editBase
+        ? { ...editBase, prior_retired_keys: [...retiredSoFar, ...retiredInjectKeys(storyline)] }
+        : {}),
     };
   }
   return {
@@ -171,8 +180,23 @@ export function stageInput(
       duration: 60,
       org_name: request.org_name,
     }),
-    ...editCarry,
+    ...(editBase
+      ? {
+          ...editBase,
+          prior_retired_keys: [
+            ...retiredSoFar,
+            ...retiredInjectKeys(storyline),
+            ...retiredInjectKeys(outputs.convergence),
+          ],
+        }
+      : {}),
   };
+}
+
+function retiredInjectKeys(output: { revisions?: Array<{ decision?: string; inject_key?: string }> } | undefined): string[] {
+  return (output?.revisions ?? [])
+    .filter((revision) => revision.decision === 'retire' && typeof revision.inject_key === 'string')
+    .map((revision) => revision.inject_key as string);
 }
 
 function appendIntel(

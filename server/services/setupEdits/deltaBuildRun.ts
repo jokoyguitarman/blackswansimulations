@@ -1,18 +1,25 @@
 import { env } from '../../env.js';
 import { limitConcurrency } from '../../lib/limitConcurrency.js';
-import type { ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
-import { affectedLayers, mentionsBriefChange, type BriefDiff } from './affectedLayers.js';
+import type { FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
+import { EMPTY_DECISION } from '../warroomBuild/assemble.js';
+import { listDeltaCalls, stageOfCall, type DeltaCall, type DeltaStageName } from './deltaCalls.js';
+import { emptyBriefDiff, type BriefDiff } from './affectedLayers.js';
 import {
   allocateFreshKeys,
   clampTriggerTime,
   downgradeReferencedRetires,
   filterConditions,
   keepRevision,
-  mentionsCentreRole,
+  MAX_GATES,
+  MAX_LAYER_INJECTS,
+  MAX_NEW_GROUP_PERSONAS,
+  MAX_SHARED_INJECTS,
+  LAYER_PROMPT_CHARS,
   mergeFactSheet,
   retireRevision,
   reviseFromSource,
   stampEditGen,
+  SUBSTITUTION_REASON,
   substitutePair,
   substituteText,
   type RevisionSource,
@@ -34,138 +41,14 @@ import type {
 import { blankGenerated } from './deltaBuildTypes.js';
 import type { SetupCrisis } from './setupSnapshotCore.js';
 
-export type DeltaStageName = 'characters' | 'storyline' | 'convergence' | 'pages';
-
-const EMPTY_DECISION = { leakiness: 0.5, labour_signal: false, product_safety_signal: false };
+export type { DeltaCall, DeltaStageName } from './deltaCalls.js';
+export { listDeltaCalls, stageOfCall } from './deltaCalls.js';
 
 export interface DeltaCarry {
   briefDiff: BriefDiff | null;
   swapPremise: string | null;
-}
-
-/** Every AI call this edit needs once the brief diff is known. `diff` null plans only structural work. */
-export function listDeltaCalls(ctx: DeltaBuildContext, diff: BriefDiff | null): DeltaCall[] {
-  const calls: DeltaCall[] = [];
-  const { delta, plan } = ctx;
-  const swap = plan.primary_swap;
-
-  if (delta.brief_changed || swap) calls.push({ op: 'brief_diff' });
-  for (const country of delta.new_countries) calls.push({ op: 'personas', country });
-  if (diff && diff.severity !== 'cosmetic') calls.push({ op: 'fact_sheet' });
-  if (diff && (diff.new_groups?.length ?? 0) > 0) calls.push({ op: 'persona_groups' });
-
-  for (const team of delta.added_teams) {
-    calls.push({ op: 'charter', team_name: team.team_name, org_key: team.org_key });
-    calls.push({
-      op: 'team_storyline',
-      team_name: team.team_name,
-      org_key: team.org_key,
-      country: orgCountry(ctx, team.org_key),
-    });
-  }
-  for (const orgKey of delta.added_orgs) calls.push({ op: 'stakeholders', org_key: orgKey });
-  for (const orgKey of delta.added_pressure) calls.push({ op: 'spokesperson', org_key: orgKey });
-  if (delta.added_teams.length > 0) calls.push({ op: 'convergence_delta' });
-
-  const layers = new Set<string>();
-  if (diff && diff.severity !== 'cosmetic') {
-    for (const layer of affectedLayers(diff, ctx.injects)) {
-      if (!layer.startsWith('branch:')) layers.add(layer);
-    }
-  }
-  if (swap) layers.add('backbone');
-  const moved = new Map(delta.relocated_orgs.map((org) => [org.org_key, org.to_country]));
-  for (const [orgKey, country] of moved) {
-    for (const team of ctx.teams) {
-      if (team.org_key !== orgKey) continue;
-      layers.add(`team:${team.team_uid}`);
-      void country;
-    }
-  }
-  if (swap) {
-    const keys = new Set(
-      [swap.old_primary_key, swap.new_primary_previous_key].filter((key): key is string => !!key),
-    );
-    for (const team of ctx.teams) {
-      if (!team.org_key || !keys.has(team.org_key)) continue;
-      const layer = `team:${team.team_uid}`;
-      const owned = ctx.injects.filter(
-        (inject) => inject.layer === layer && inject.provenance === 'ai_owned',
-      );
-      if (owned.some((inject) => mentionsCentreRole(`${inject.title}\n${inject.content}`))) {
-        layers.add(layer);
-      }
-    }
-  }
-  for (const layer of [...layers].sort()) {
-    const teamUid = layer.startsWith('team:') ? layer.slice('team:'.length) : '';
-    const team = ctx.teams.find((item) => item.team_uid === teamUid);
-    const country = team?.org_key ? moved.get(team.org_key) : undefined;
-    calls.push({ op: 'revise_layer', layer, ...(country ? { country } : {}) });
-  }
-
-  if (diff && diff.severity !== 'cosmetic' && stakeholdersAffected(ctx, diff)) {
-    calls.push({ op: 'stakeholder_text' });
-  }
-  if (swap || diff?.severity === 'story') calls.push({ op: 'narrative' });
-
-  const history = new Set<string>();
-  for (const org of delta.relocated_orgs) history.add(org.org_key);
-  if (swap?.new_primary_previous_key) history.add(swap.new_primary_previous_key);
-  if (diff?.severity === 'story') {
-    for (const page of ctx.pages) {
-      if (mentionsBriefChange(page.historyText, diff)) history.add(page.org_key);
-    }
-  }
-  for (const orgKey of [...history].sort()) {
-    calls.push({
-      op: 'page_history',
-      org_key: orgKey,
-      ...(moved.get(orgKey) ? { country: moved.get(orgKey) } : {}),
-    });
-  }
-
-  const pageOrgs = [...delta.added_orgs, ...delta.added_rivals, ...delta.added_pressure];
-  const size = Math.max(1, ctx.page_batch_size);
-  for (let i = 0; i < pageOrgs.length; i += size) {
-    calls.push({ op: 'pages', org_keys: pageOrgs.slice(i, i + size) });
-  }
-  return calls;
-}
-
-export type DeltaCall =
-  | { op: 'brief_diff' }
-  | { op: 'fact_sheet' }
-  | { op: 'personas'; country: string }
-  | { op: 'persona_groups' }
-  | { op: 'charter'; team_name: string; org_key: string }
-  | { op: 'team_storyline'; team_name: string; org_key: string; country?: string }
-  | { op: 'stakeholders'; org_key: string }
-  | { op: 'spokesperson'; org_key: string }
-  | { op: 'revise_layer'; layer: string; country?: string }
-  | { op: 'stakeholder_text' }
-  | { op: 'convergence_delta' }
-  | { op: 'narrative' }
-  | { op: 'pages'; org_keys: string[] }
-  | { op: 'page_history'; org_key: string; country?: string };
-
-export function stageOfCall(call: DeltaCall): DeltaStageName {
-  if (call.op === 'revise_layer') {
-    if (call.layer === 'shared' || call.layer === 'gate') return 'convergence';
-    if (call.layer.startsWith('pressure:')) return 'pages';
-    return 'storyline';
-  }
-  if (call.op === 'convergence_delta' || call.op === 'narrative') return 'convergence';
-  if (call.op === 'pages' || call.op === 'page_history') return 'pages';
-  if (
-    call.op === 'brief_diff' ||
-    call.op === 'fact_sheet' ||
-    call.op === 'personas' ||
-    call.op === 'persona_groups'
-  ) {
-    return 'characters';
-  }
-  return 'storyline';
+  /** Inject keys retired by earlier stages. Later stages must not treat them as active. */
+  retiredKeys: string[];
 }
 
 export async function runDeltaStage(
@@ -174,7 +57,7 @@ export async function runDeltaStage(
   generators: DeltaGenerators,
   carry?: DeltaCarry,
 ): Promise<SetupEditStageOutput> {
-  const state = startState(ctx);
+  const state = startState(ctx, carry);
   let diff = carry?.briefDiff ?? null;
   const premise = carry?.swapPremise ?? ctx.plan.primary_swap?.story.premise ?? null;
 
@@ -186,6 +69,7 @@ export async function runDeltaStage(
           oldBrief: briefText(ctx, 'old'),
           newBrief: briefText(ctx, 'new'),
           factSheet: ctx.fact_sheet,
+          layers: [...new Set(ctx.injects.map((inject) => inject.layer))].sort(),
         }),
         premise,
       );
@@ -225,13 +109,14 @@ export async function runDeltaStage(
     await runCalls(calls, ctx, generators, diff, state);
   }
 
+  if (stage !== 'characters') await regenerateStageBranches(ctx, generators, diff, state);
   state.revisions = downgradeReferencedRetires(
     state.revisions,
-    handEditedSources(ctx),
+    handEditedSources(ctx, state),
     sourceMap(ctx),
     ctx.edit_number,
   );
-  if (stage !== 'characters') await regenerateStageBranches(ctx, generators, diff, state);
+  scrubGeneratedConditions(ctx, state);
   return finish(ctx, state, stage === 'characters' ? diff : null, stage === 'characters' ? premise : null);
 }
 
@@ -240,10 +125,23 @@ export async function runDeltaBuild(
   generators: DeltaGenerators,
 ): Promise<Record<DeltaStageName, SetupEditStageOutput>> {
   const characters = await runDeltaStage('characters', ctx, generators);
-  const carry: DeltaCarry = { briefDiff: characters.brief_diff, swapPremise: characters.swap_premise };
-  const storyline = await runDeltaStage('storyline', ctx, generators, carry);
-  const convergence = await runDeltaStage('convergence', ctx, generators, carry);
-  const pages = await runDeltaStage('pages', ctx, generators, carry);
+  const afterCharacters = retiredKeysOf(characters);
+  const storyline = await runDeltaStage('storyline', ctx, generators, {
+    briefDiff: characters.brief_diff,
+    swapPremise: characters.swap_premise,
+    retiredKeys: afterCharacters,
+  });
+  const afterStoryline = [...afterCharacters, ...retiredKeysOf(storyline)];
+  const convergence = await runDeltaStage('convergence', ctx, generators, {
+    briefDiff: characters.brief_diff,
+    swapPremise: characters.swap_premise,
+    retiredKeys: afterStoryline,
+  });
+  const pages = await runDeltaStage('pages', ctx, generators, {
+    briefDiff: characters.brief_diff,
+    swapPremise: characters.swap_premise,
+    retiredKeys: [...afterStoryline, ...retiredKeysOf(convergence)],
+  });
   return { characters, storyline, convergence, pages };
 }
 
@@ -256,8 +154,8 @@ interface RunState {
   objective_updates: ObjectiveUpdate[];
   setup_source_update: SetupCrisis | null;
   stakeholder_updates: StakeholderTextUpdate[];
-  retiredBranchKeys: Set<string>;
-  factSheet?: import('../socialCrisisGeneratorService.js').FactSheet;
+  priorRetired: Set<string>;
+  factSheet?: FactSheet;
 }
 
 async function runCalls(
@@ -281,22 +179,14 @@ async function executeCall(
 ): Promise<void> {
   const crisis = ctx.edited.crisis.crisis_type;
   if (call.op === 'personas') {
-    const personas = await generators.generatePersonas({
-      country: call.country,
-      crisis,
-      takenHandles: ctx.taken_handles,
-    });
-    state.generated.personas.push(...personas.slice(0, 200));
+    const personas = await generators.generatePersonas({ ctx, country: call.country });
+    state.generated.personas.push(...personas);
     return;
   }
   if (call.op === 'persona_groups') {
-    const groups = (diff?.new_groups ?? []).slice(0, 10);
-    const personas = await generators.generatePersonaGroups({
-      groups,
-      crisis,
-      takenHandles: [...ctx.taken_handles, ...state.generated.personas.map((persona) => persona.handle)],
-    });
-    state.generated.personas.push(...personas.slice(0, 10));
+    const groups = (diff?.new_groups ?? []).slice(0, MAX_NEW_GROUP_PERSONAS);
+    const personas = await generators.generatePersonaGroups({ ctx, groups });
+    state.generated.personas.push(...personas.slice(0, MAX_NEW_GROUP_PERSONAS));
     return;
   }
   if (call.op === 'fact_sheet') {
@@ -311,18 +201,18 @@ async function executeCall(
   }
   if (call.op === 'charter') {
     const charter = await generators.generateCharter({
+      ctx,
       teamName: call.team_name,
-      orgName: orgName(ctx, call.org_key),
-      crisis,
+      orgKey: call.org_key,
     });
     state.generated.charters.push({ ...charter, team_name: call.team_name, org_key: call.org_key });
     return;
   }
   if (call.op === 'team_storyline') {
     const injects = await generators.generateTeamStoryline({
+      ctx,
       teamName: call.team_name,
-      orgName: orgName(ctx, call.org_key),
-      crisis,
+      orgKey: call.org_key,
       country: call.country,
     });
     const layer = `team:${teamUid(ctx, call.team_name) || call.team_name}`;
@@ -330,14 +220,7 @@ async function executeCall(
     return;
   }
   if (call.op === 'stakeholders') {
-    const result = await generators.generateStakeholders({
-      orgKey: call.org_key,
-      orgName: orgName(ctx, call.org_key),
-      crisis,
-      takenIds: ctx.taken_stakeholder_ids,
-      takenEmails: ctx.taken_emails,
-      takenHandles: ctx.taken_handles,
-    });
+    const result = await generators.generateStakeholders({ ctx, orgKey: call.org_key });
     state.generated.stakeholders.push(...result.stakeholders);
     state.generated.stakeholder_injects.push(
       ...stampNew(ctx, result.injects, `stakeholder:${call.org_key}`, state),
@@ -345,13 +228,7 @@ async function executeCall(
     return;
   }
   if (call.op === 'spokesperson') {
-    const pressure = ctx.edited.pressure_organisations.find((org) => org.org_key === call.org_key);
-    const result = await generators.generateSpokesperson({
-      orgKey: call.org_key,
-      name: pressure?.display_name ?? call.org_key,
-      wants: pressure?.wants ?? '',
-      crisis,
-    });
+    const result = await generators.generateSpokesperson({ ctx, orgKey: call.org_key });
     if (result.stakeholder) state.generated.stakeholders.push(result.stakeholder);
     state.generated.spokespersons.push({
       org_key: call.org_key,
@@ -365,7 +242,7 @@ async function executeCall(
   if (call.op === 'revise_layer') {
     if (!diff && !ctx.plan.primary_swap && !call.country) return;
     const brief = storyDiff(diff, ctx, call.layer === 'backbone' && !!ctx.plan.primary_swap);
-    applyLayer(ctx, state, call.layer, call.country, brief, await generators.reviseLayer({
+    applyLayer(ctx, state, call.layer, brief, await generators.reviseLayer({
       layer: call.layer,
       owned: promptInjects(ctx, call.layer, 'ai_owned', brief),
       handEdited: promptInjects(ctx, call.layer, 'context', brief),
@@ -393,8 +270,10 @@ async function executeCall(
       existingTeams: ctx.teams.map((team) => team.team_name),
       crisis,
     });
-    state.generated.shared_injects.push(...stampNew(ctx, result.shared.slice(0, 4), 'shared', state));
-    state.generated.gates.push(...stampNew(ctx, result.gates.slice(0, 2), 'gate', state));
+    state.generated.shared_injects.push(
+      ...stampNew(ctx, result.shared.slice(0, MAX_SHARED_INJECTS), 'shared', state),
+    );
+    state.generated.gates.push(...stampNew(ctx, result.gates.slice(0, MAX_GATES), 'gate', state));
     return;
   }
   if (call.op === 'narrative') {
@@ -420,17 +299,21 @@ async function executeCall(
   }
   if (call.op === 'pages') {
     const orgs = call.org_keys.map((orgKey) => pageSubject(ctx, orgKey));
-    const pages = await generators.generatePages({ orgs, crisis });
+    const pages = await generators.generatePages({ ctx, orgs });
     state.generated.pages.push(...pages);
     return;
   }
   if (call.op === 'page_history') {
     const page = ctx.pages.find((item) => item.org_key === call.org_key);
-    const brief = diff ?? swapOnlyDiff(ctx);
+    const brief = storyDiff(
+      diff,
+      ctx,
+      call.org_key === ctx.plan.primary_swap?.new_primary_previous_key,
+    );
     const history = await generators.revisePageHistory({
       orgKey: call.org_key,
       history: page?.history ?? [],
-      diff: storyDiff(brief, ctx, call.org_key === ctx.plan.primary_swap?.new_primary_previous_key),
+      diff: brief,
       country: call.country,
     });
     state.generated.pages.push({ org_key: call.org_key, branded_history: history });
@@ -441,7 +324,6 @@ function applyLayer(
   ctx: DeltaBuildContext,
   state: RunState,
   layer: string,
-  _country: string | undefined,
   diff: BriefDiff,
   result: LayerRevisionResult,
 ): void {
@@ -490,7 +372,7 @@ function applyLayer(
     if (state.flags.some((flag) => flag.inject_id === inject.id)) continue;
     state.flags.push(flagFor(inject, diff, ctx));
   }
-  const fresh = (result.new_injects ?? []).slice(0, 3);
+  const fresh = (result.new_injects ?? []).slice(0, MAX_LAYER_INJECTS);
   state.generated.layer_injects.push(...stampNew(ctx, fresh, layer, state));
 }
 
@@ -500,41 +382,63 @@ async function regenerateStageBranches(
   diff: BriefDiff | null,
   state: RunState,
 ): Promise<void> {
-  const brief = diff ?? (ctx.plan.primary_swap ? swapOnlyDiff(ctx) : null);
-  if (!brief) return;
+  const brief = storyDiff(diff, ctx, false);
   const revised = state.revisions.filter((revision) => revision.decision === 'revise');
-  const retired = state.revisions.filter((revision) => revision.decision === 'retire');
+  const substituted = revised.filter((revision) => revision.origin === 'substitution');
+  const modelled = revised.filter((revision) => revision.origin !== 'substitution');
+  for (const parent of substituted) {
+    for (const child of childBranches(ctx, parent.inject_key)) {
+      if (state.revisions.some((revision) => revision.inject_id === child.id)) continue;
+      if (child.provenance !== 'ai_owned') {
+        state.flags.push(flagFor(child, brief, ctx));
+        continue;
+      }
+      const next = substitutePair(child.title, child.content, brief.renamed_entities);
+      if (!next.changed) continue;
+      const revision = reviseFromSource(
+        toSource({ ...child, title: next.title, content: next.content }, null),
+        SUBSTITUTION_REASON,
+        { title: next.title, content: next.content },
+        ctx.edit_number,
+      );
+      revision.origin = 'substitution';
+      state.revisions.push(revision);
+    }
+  }
   const parents = new Map<string, string>();
-  for (const revision of revised) {
+  for (const revision of modelled) {
     const source = ctx.injects.find((inject) => inject.id === revision.inject_id);
     if (!source) continue;
-    if (source.requires_response || childBranches(ctx, source.inject_key).length > 0) {
+    const children = childBranches(ctx, source.inject_key);
+    if (source.requires_response || children.some((child) => child.provenance === 'ai_owned')) {
       parents.set(source.inject_key, revision.new?.title ?? source.title);
     }
   }
-  for (const inject of state.generated.layer_injects) {
+  for (const inject of [...state.generated.layer_injects, ...Object.values(state.generated.team_storylines).flat()]) {
     if (!inject.requires_response) continue;
     const key = keyOf(inject);
     if (key) parents.set(key, inject.title);
   }
-  for (const inject of Object.values(state.generated.team_storylines).flat()) {
-    if (!inject.requires_response) continue;
-    const key = keyOf(inject);
-    if (key) parents.set(key, inject.title);
-  }
+  const retired = state.revisions.filter((revision) => revision.decision === 'retire');
   const retireParents = new Set<string>([...retired.map((revision) => revision.inject_key), ...parents.keys()]);
   for (const parent of retireParents) {
     for (const child of childBranches(ctx, parent)) {
       if (state.revisions.some((revision) => revision.inject_id === child.id)) continue;
+      if (child.provenance !== 'ai_owned') {
+        state.flags.push(flagFor(child, brief, ctx));
+        continue;
+      }
       state.revisions.push(retireRevision(toSource(child, brief), 'Branch of a revised or retired parent.'));
     }
   }
   const entries = [...parents.entries()];
+  if (entries.length === 0) return;
   const branches = await limitConcurrency(entries, env.warroomGenConcurrency, async ([parentKey, parentTitle]) =>
     generators.regenerateBranches({ parentKey, parentTitle, diff: brief }),
   );
   for (let i = 0; i < entries.length; i++) {
-    const parentKey = entries[i][0];
+    const parentKey = entries[i]?.[0];
+    if (!parentKey) continue;
     const withParent = (branches[i] ?? []).map((inject) => ({
       ...inject,
       delivery_config: { ...(inject.delivery_config ?? {}), parent_inject_key: parentKey },
@@ -593,14 +497,14 @@ function substitutionRevisions(
     if (revisedLayers.has(inject.layer)) continue;
     const next = substitutePair(inject.title, inject.content, diff.renamed_entities);
     if (!next.changed) continue;
-    out.push(
-      reviseFromSource(
-        toSource({ ...inject, title: next.title, content: next.content }, null),
-        'Renamed entity substituted.',
-        { title: next.title, content: next.content },
-        ctx.edit_number,
-      ),
+    const revision = reviseFromSource(
+      toSource({ ...inject, title: next.title, content: next.content }, null),
+      SUBSTITUTION_REASON,
+      { title: next.title, content: next.content },
+      ctx.edit_number,
     );
+    revision.origin = 'substitution';
+    out.push(revision);
   }
   return out;
 }
@@ -716,7 +620,7 @@ function promptInjects(
         id: inject.id,
         inject_key: inject.inject_key,
         title: substituted.title,
-        content: substituted.content.slice(0, 800),
+        content: substituted.content.slice(0, LAYER_PROMPT_CHARS),
         trigger_time_minutes: inject.trigger_time_minutes,
         conditions_to_appear: inject.conditions_to_appear,
         conditions_to_cancel: inject.conditions_to_cancel,
@@ -745,25 +649,19 @@ function flagFor(inject: DeltaInject, diff: BriefDiff, ctx: DeltaBuildContext): 
   };
 }
 
-function stakeholdersAffected(ctx: DeltaBuildContext, diff: BriefDiff): boolean {
-  const layers = new Set(affectedLayers(diff, ctx.injects));
-  return ctx.stakeholders.some(
-    (stakeholder) =>
-      layers.has(`stakeholder:${stakeholder.id}`) ||
-      mentionsBriefChange(`${stakeholder.grievance}\n${stakeholder.knowledge.join('\n')}`, diff),
-  );
-}
-
 function childBranches(ctx: DeltaBuildContext, parentKey: string): DeltaInject[] {
   return ctx.injects.filter((inject) => inject.layer === `branch:${parentKey}`);
 }
 
-function handEditedSources(ctx: DeltaBuildContext): Array<{
+function handEditedSources(ctx: DeltaBuildContext, state: RunState): Array<{
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   retired?: boolean;
 }> {
   const retired = new Set(ctx.plan.injects.retire.map((row) => row.inject_id));
+  for (const revision of state.revisions) {
+    if (revision.decision === 'retire') retired.add(revision.inject_id);
+  }
   return ctx.injects
     .filter((inject) => inject.provenance !== 'ai_owned')
     .map((inject) => ({
@@ -803,6 +701,7 @@ function toSource(inject: DeltaInject, diff: BriefDiff | null): RevisionSource {
 
 function activeKeys(ctx: DeltaBuildContext, state: RunState): Set<string> {
   const retired = new Set(state.revisions.filter((revision) => revision.decision === 'retire').map((revision) => revision.inject_key));
+  for (const key of state.priorRetired) retired.add(key);
   for (const row of ctx.plan.injects.retire) retired.add(row.inject_key);
   const keys = new Set(ctx.active_keys.filter((key) => !retired.has(key)));
   for (const inject of [
@@ -828,9 +727,11 @@ function enrichDiff(diff: BriefDiff, premise: string | null): BriefDiff {
 }
 
 function storyDiff(diff: BriefDiff | null, ctx: DeltaBuildContext, forceStory: boolean): BriefDiff {
-  const base = diff ?? swapOnlyDiff(ctx);
-  if (!forceStory) return base;
-  return base.severity === 'story' ? base : { ...base, severity: 'story' };
+  const base = diff ?? (ctx.plan.primary_swap ? swapOnlyDiff(ctx) : emptyBriefDiff('facts'));
+  if (forceStory && ctx.plan.primary_swap && base.severity !== 'story') {
+    return { ...base, severity: 'story' };
+  }
+  return base;
 }
 
 function swapOnlyDiff(ctx: DeltaBuildContext): BriefDiff {
@@ -857,10 +758,6 @@ function orgName(ctx: DeltaBuildContext, orgKey: string): string {
   );
 }
 
-function orgCountry(ctx: DeltaBuildContext, orgKey: string): string | undefined {
-  return ctx.edited.organisations.find((org) => org.org_key === orgKey)?.country;
-}
-
 function teamUid(ctx: DeltaBuildContext, teamName: string): string {
   return ctx.teams.find((team) => team.team_name === teamName)?.team_uid ?? '';
 }
@@ -881,7 +778,7 @@ function pageSubject(
   return { org_key: orgKey, name: org?.display_name ?? orgKey, role: 'ally' };
 }
 
-function startState(ctx: DeltaBuildContext): RunState & { factSheet?: import('../socialCrisisGeneratorService.js').FactSheet } {
+function startState(ctx: DeltaBuildContext, carry?: DeltaCarry): RunState {
   return {
     revisions: [],
     flags: [],
@@ -891,9 +788,44 @@ function startState(ctx: DeltaBuildContext): RunState & { factSheet?: import('..
     objective_updates: [],
     setup_source_update: null,
     stakeholder_updates: [],
-    retiredBranchKeys: new Set(),
+    priorRetired: new Set(carry?.retiredKeys ?? []),
     factSheet: ctx.fact_sheet,
   };
+}
+
+function retiredKeysOf(output: SetupEditStageOutput): string[] {
+  return output.revisions
+    .filter((revision) => revision.decision === 'retire')
+    .map((revision) => revision.inject_key);
+}
+
+function scrubGeneratedConditions(ctx: DeltaBuildContext, state: RunState): void {
+  const active = activeKeys(ctx, state);
+  const scrub = (inject: SocialInject): SocialInject => ({
+    ...inject,
+    conditions_to_appear: filterConditions(
+      inject.conditions_to_appear,
+      active,
+    ) as SocialInject['conditions_to_appear'],
+    conditions_to_cancel: filterConditions(
+      inject.conditions_to_cancel,
+      active,
+    ) as SocialInject['conditions_to_cancel'],
+  });
+  state.generated.layer_injects = state.generated.layer_injects.map(scrub);
+  state.generated.shared_injects = state.generated.shared_injects.map(scrub);
+  state.generated.gates = state.generated.gates.map(scrub);
+  state.generated.branches = state.generated.branches.map(scrub);
+  state.generated.stakeholder_injects = state.generated.stakeholder_injects.map(scrub);
+  state.generated.pressure_injects = state.generated.pressure_injects.map(scrub);
+  for (const [team, injects] of Object.entries(state.generated.team_storylines)) {
+    state.generated.team_storylines[team] = injects.map(scrub);
+  }
+  for (const revision of state.revisions) {
+    if (revision.decision !== 'revise' || !revision.new) continue;
+    revision.new.conditions_to_appear = filterConditions(revision.new.conditions_to_appear, active);
+    revision.new.conditions_to_cancel = filterConditions(revision.new.conditions_to_cancel, active);
+  }
 }
 
 function finish(

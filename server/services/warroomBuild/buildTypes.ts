@@ -137,6 +137,9 @@ export interface CharactersOutput {
   countries: CountryEntry[];
   per_country_counts?: Record<string, number>;
   footprint?: unknown;
+  brief_diff?: unknown;
+  swap_premise?: string | null;
+  revisions?: Array<{ decision: string; inject_key: string }>;
 }
 
 export interface StorylineOutput {
@@ -155,6 +158,7 @@ export interface StorylineOutput {
     org_key: string;
     spokesperson_stakeholder_id?: string;
   }>;
+  revisions?: Array<{ decision: string; inject_key: string }>;
 }
 
 export interface ConvergenceOutput {
@@ -167,6 +171,7 @@ export interface ConvergenceOutput {
   dimensionLabels?: Record<string, string> | null;
   dimension_labels?: Record<string, string> | null;
   intel_injects?: Record<string, SocialInject[]>;
+  revisions?: Array<{ decision: string; inject_key: string }>;
 }
 
 export interface PagesOutput {

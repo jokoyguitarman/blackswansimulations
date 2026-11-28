@@ -1112,6 +1112,13 @@ router.post(
     let compileHeartbeatAt: string | null = null;
     if (durableBuildId) {
       try {
+        const existingBuild = await compileBuilds.get(durableBuildId);
+        if (existingBuild?.request.mode === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
+          });
+        }
         const begun = await beginCompileCharge({
           store: compileBuilds,
           buildId: durableBuildId,
@@ -1155,6 +1162,12 @@ router.post(
           return res.status(503).json({
             error: 'Compile could not be claimed. Try again.',
             code: 'COMPILE_UNAVAILABLE',
+          });
+        }
+        if (begun.outcome === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
           });
         }
         creditLedgerId = begun.ledgerId;

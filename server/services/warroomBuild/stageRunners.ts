@@ -74,6 +74,9 @@ export function createStageRunners(
 
   async function runEdit(input: StageInput, ctx: StageContext): Promise<unknown> {
     const loaded = await loadDeltaContext(input.request);
+    if (loaded.edit_status && loaded.edit_status !== 'open') {
+      throw new Error('SETUP_EDIT_NOT_OPEN');
+    }
     const carry = carryFrom(input);
     return runStage(input.stage, ctx, () =>
       withConcurrencyLimit(env.warroomGenConcurrency, () =>
@@ -216,5 +219,6 @@ function carryFrom(input: StageInput): DeltaCarry | undefined {
   return {
     briefDiff: brief && typeof brief === 'object' ? (brief as BriefDiff) : null,
     swapPremise: input.swap_premise ?? null,
+    retiredKeys: input.prior_retired_keys ?? [],
   };
 }

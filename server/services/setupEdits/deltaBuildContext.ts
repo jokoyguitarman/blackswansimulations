@@ -9,16 +9,14 @@ import type { Stakeholder } from '../../lib/stakeholderContract.js';
 import type { FactSheet, NPCPersona, ObjectiveDef } from '../socialCrisisGeneratorService.js';
 import type { BuildRequest } from '../warroomBuild/buildTypes.js';
 import type { DeltaBuildContext, DeltaInject, DeltaPage } from './deltaBuildTypes.js';
-import { hashPlan } from './prepareSetupEditBuild.js';
+import { asSnapshot, hashPlan } from './prepareSetupEditBuild.js';
 import { loadRemapState } from './remapPlanLoader.js';
 import { planRemap, type PlannerInject } from './remapPlanner.js';
 import { isSetupEditSchemaMissing } from './setupEditCore.js';
 import { noteSetupEditsUnavailable } from './setupEditService.js';
 import { computeDelta, type SetupDelta } from './setupDeltaCore.js';
-import { snapshotFromDraftInput, type SetupSnapshot } from './setupSnapshotCore.js';
+import { snapshotFromDraftInput } from './setupSnapshotCore.js';
 import type { SetupEditBuildSource } from './prepareSetupEditBuild.js';
-
-const MISSING = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
 
 let objectiveWarn = false;
 
@@ -91,36 +89,16 @@ export async function loadSetupEditSource(editId: string): Promise<LoadedSetupEd
 /** Reads the scenario and the edit. The build does not write either. */
 export async function loadDeltaBuildContext(request: BuildRequest): Promise<DeltaBuildContext> {
   if (!request.setup_edit_id) throw new Error('SETUP_EDIT_ID_REQUIRED');
-  const edit = await supabaseAdmin
-    .from('scenario_setup_edits')
-    .select('id, scenario_id, status, draft_id, baseline, edit_number')
-    .eq('id', request.setup_edit_id)
-    .maybeSingle<{
-      id: string;
-      scenario_id: string;
-      status: string;
-      draft_id: string | null;
-      baseline: unknown;
-      edit_number: number | null;
-    }>();
-  if (edit.error) throw new Error(edit.error.message);
-  if (!edit.data) throw new Error('SETUP_EDIT_NOT_FOUND');
-  const baseline = asSnapshot(edit.data.baseline);
+  const loaded = await loadSetupEditSource(request.setup_edit_id);
+  if (!loaded.available) throw new Error('SETUP_EDITS_UNAVAILABLE');
+  const source = loaded.source;
+  if (!source) throw new Error('SETUP_EDIT_NOT_FOUND');
+  if (source.edit.status !== 'open') throw new Error('SETUP_EDIT_NOT_OPEN');
+  const baseline = asSnapshot(source.edit.baseline);
   if (!baseline) throw new Error('SETUP_EDIT_NOT_READY');
-
-  let draftInput: unknown = null;
-  if (edit.data.draft_id) {
-    const draft = await supabaseAdmin
-      .from('warroom_wizard_drafts')
-      .select('input')
-      .eq('id', edit.data.draft_id)
-      .maybeSingle<{ input: unknown }>();
-    if (draft.error) throw new Error(draft.error.message);
-    draftInput = draft.data?.input ?? null;
-  }
-  const edited = snapshotFromDraftInput(draftInput, baseline);
+  const edited = snapshotFromDraftInput(source.draft_input, baseline);
   const delta: SetupDelta = isDelta(request.delta) ? request.delta : computeDelta(baseline, edited);
-  const remap = await loadRemapState(edit.data.scenario_id);
+  const remap = source.remap;
   const plan = planRemap({
     delta,
     edited,
@@ -136,7 +114,7 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
   const scenario = await supabaseAdmin
     .from('scenarios')
     .select('title, description, briefing, initial_state')
-    .eq('id', edit.data.scenario_id)
+    .eq('id', source.edit.scenario_id)
     .maybeSingle<{
       title: string | null;
       description: string | null;
@@ -148,8 +126,8 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
   const factSheet = asFactSheet(state.fact_sheet);
   const briefing = scenario.data?.briefing ?? '';
   const setup = asRecord(state.setup_source);
-  const scored = await objectiveIdsWithScores(edit.data.scenario_id);
-  const objectives = await loadObjectives(edit.data.scenario_id, state, scored);
+  const scored = await objectiveIdsWithScores(source.edit.scenario_id);
+  const objectives = await loadObjectives(source.edit.scenario_id, state, scored);
   const removedTeams = new Set(
     plan.teams.retire.filter((row) => row.reason === 'removed').map((row) => row.team_uid),
   );
@@ -172,7 +150,8 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
   const loadedStakeholders = asStakeholders(state.stakeholders);
 
   return {
-    edit_number: edit.data.edit_number ?? 1,
+    edit_status: source.edit.status,
+    edit_number: source.edit.edit_number ?? 1,
     delta,
     plan,
     edited,
@@ -337,9 +316,7 @@ function warnObjectives(table: string): void {
 }
 
 function isMissing(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' && MISSING.has(code);
+  return isSetupEditSchemaMissing(err);
 }
 
 function stampedDiffers(current: string, stamped: string): boolean {
@@ -387,13 +364,6 @@ function asStakeholders(value: unknown): Array<DeltaBuildContext['stakeholders']
       },
     ];
   });
-}
-
-function asSnapshot(value: unknown): SetupSnapshot | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Partial<SetupSnapshot>;
-  if (!Array.isArray(row.organisations) || !row.crisis) return null;
-  return value as SetupSnapshot;
 }
 
 function isDelta(value: unknown): value is SetupDelta {

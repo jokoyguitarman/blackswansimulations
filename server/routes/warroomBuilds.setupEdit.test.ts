@@ -102,6 +102,8 @@ describe('setup edit build start', () => {
   let base: string;
   let current: SetupEditBuildSource = source(withAudit());
   let ownerOk = true;
+  let editsOn = true;
+  let locked = false;
   const started: BuildRequest[] = [];
 
   const service: WarroomBuildApi = {
@@ -174,15 +176,16 @@ describe('setup edit build start', () => {
         service,
         loadDraft: async () => ({ id: DRAFT, created_by: TRAINER }),
         loadSetupEdit: async () => ({ available: true, source: current }),
+        setupEditsEnabled: () => editsOn,
         assertOwner: async () =>
           ownerOk
             ? { ok: true }
             : { ok: false, status: 403, error: 'Only the scenario creator can modify this scenario' },
         canEdit: async () => ({
-          editable: true,
-          reason: 'ok',
+          editable: !locked,
+          reason: locked ? 'live_session' : 'ok',
           session_credits: 1,
-          live_session_id: null,
+          live_session_id: locked ? 'live' : null,
         }),
         organisationsOk: () => ({ ok: true }),
       }),
@@ -234,6 +237,27 @@ describe('setup edit build start', () => {
     assert.equal(res.status, 403);
     assert.equal(started.length, before);
     ownerOk = true;
+  });
+
+  test('the feature flag off hides the route', async () => {
+    editsOn = false;
+    const before = started.length;
+    const res = await post(requestBody());
+    assert.equal(res.status, 404);
+    assert.equal(res.json.code, 'SETUP_EDITS_UNAVAILABLE');
+    assert.equal(started.length, before);
+    editsOn = true;
+  });
+
+  test('a live session locks the build', async () => {
+    current = source(withAudit());
+    locked = true;
+    const before = started.length;
+    const res = await post(requestBody());
+    assert.equal(res.status, 423);
+    assert.equal(res.json.code, 'SCENARIO_LOCKED');
+    assert.equal(started.length, before);
+    locked = false;
   });
 
   test('an empty delta is rejected', async () => {

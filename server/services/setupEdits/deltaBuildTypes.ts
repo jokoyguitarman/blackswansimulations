@@ -83,6 +83,8 @@ export interface DeltaPage {
 }
 
 export interface DeltaBuildContext {
+  /** The edit must still be open when a stage starts. Absent in pure unit fixtures, which are treated as open. */
+  edit_status?: string;
   edit_number: number;
   delta: SetupDelta;
   plan: RemapPlan;
@@ -134,30 +136,30 @@ export interface LayerPromptInject {
 }
 
 export interface DeltaGenerators {
-  briefDiff(input: { oldBrief: string; newBrief: string; factSheet: FactSheet }): Promise<BriefDiff>;
+  briefDiff(input: {
+    oldBrief: string;
+    newBrief: string;
+    factSheet: FactSheet;
+    /** Layer names already on the scenario, so the model's flags can match them. */
+    layers: string[];
+  }): Promise<BriefDiff>;
   reviseFactSheet(input: { factSheet: FactSheet; diff: BriefDiff; appendOnly: boolean }): Promise<FactSheet>;
-  generatePersonas(input: { country: string; crisis: string; takenHandles: string[] }): Promise<NPCPersona[]>;
-  generatePersonaGroups(input: { groups: string[]; crisis: string; takenHandles: string[] }): Promise<NPCPersona[]>;
-  generateCharter(input: { teamName: string; orgName: string; crisis: string }): Promise<TeamCharterWire>;
+  generatePersonas(input: { ctx: DeltaBuildContext; country: string }): Promise<NPCPersona[]>;
+  generatePersonaGroups(input: { ctx: DeltaBuildContext; groups: string[] }): Promise<NPCPersona[]>;
+  generateCharter(input: { ctx: DeltaBuildContext; teamName: string; orgKey: string }): Promise<TeamCharterWire>;
   generateTeamStoryline(input: {
+    ctx: DeltaBuildContext;
     teamName: string;
-    orgName: string;
-    crisis: string;
+    orgKey: string;
     country?: string;
   }): Promise<SocialInject[]>;
   generateStakeholders(input: {
+    ctx: DeltaBuildContext;
     orgKey: string;
-    orgName: string;
-    crisis: string;
-    takenIds: string[];
-    takenEmails: string[];
-    takenHandles: string[];
   }): Promise<{ stakeholders: Stakeholder[]; injects: SocialInject[] }>;
   generateSpokesperson(input: {
+    ctx: DeltaBuildContext;
     orgKey: string;
-    name: string;
-    wants: string;
-    crisis: string;
   }): Promise<{ stakeholder: Stakeholder | null; injects: SocialInject[] }>;
   reviseLayer(input: {
     layer: string;
@@ -186,8 +188,8 @@ export interface DeltaGenerators {
   }>;
   regenerateBranches(input: { parentKey: string; parentTitle: string; diff: BriefDiff }): Promise<SocialInject[]>;
   generatePages(input: {
+    ctx: DeltaBuildContext;
     orgs: Array<{ org_key: string; name: string; role: 'ally' | 'rival' | 'pressure'; description?: string }>;
-    crisis: string;
   }): Promise<Array<Record<string, unknown>>>;
   revisePageHistory(input: {
     orgKey: string;

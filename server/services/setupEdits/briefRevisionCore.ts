@@ -1,7 +1,20 @@
 import { fingerprintInject, type GenStamp } from '../../lib/injectFingerprint.js';
 import { isValidInjectKey, slugifyInjectTitle, stampGeneratedInjectKeys } from '../../lib/injectKey.js';
+import { injectKeysInCondition } from '../conditions/conditionCatalog.js';
 import type { BriefDiff } from './affectedLayers.js';
 import type { FactSheet } from '../socialCrisisGeneratorService.js';
+
+/** A model revision may add at most this many injects to one layer. */
+export const MAX_LAYER_INJECTS = 3;
+/** Convergence delta: shared injects and gates. */
+export const MAX_SHARED_INJECTS = 4;
+export const MAX_GATES = 2;
+/** One call for premises that name new groups. */
+export const MAX_NEW_GROUP_PERSONAS = 10;
+/** Characters of one inject included in a layer-revision prompt. */
+export const LAYER_PROMPT_CHARS = 800;
+export const DELTA_PROMPT_MAX_TOKENS = 2500;
+export const SUBSTITUTION_REASON = 'Renamed entity substituted.';
 
 /** A revised trigger may move at most this far unless the diff severity is `story`. */
 export const TRIGGER_CLAMP_MINUTES = 15;
@@ -28,6 +41,8 @@ export interface SetupRevision {
   layer: string;
   decision: 'keep' | 'revise' | 'retire';
   reason: string;
+  /** `substitution` is a deterministic rename. It does not regenerate branches. */
+  origin?: 'model' | 'substitution';
   /** Decision O5. Review sets this false to keep the original row. */
   accepted: boolean;
   /** How an accepted revise or retire is written. `keep` is `none`. */
@@ -384,11 +399,9 @@ function conditionBodyMentions(value: string, injectKey: string): boolean {
   return referencedKeys(value).includes(injectKey);
 }
 
+/** Inject-key arguments only, using the catalogue. A minutes or enum argument is not a key. */
 function referencedKeys(value: string): string[] {
-  const body = value.split('|')[0] ?? value;
-  const parts = body.split(':');
-  if (parts.length < 2) return [];
-  return parts.slice(1).map((part) => part.trim()).filter((part) => isValidInjectKey(part));
+  return injectKeysInCondition(value);
 }
 
 function flattenStrings(value: unknown): string[] {

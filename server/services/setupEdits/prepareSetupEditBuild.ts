@@ -133,7 +133,7 @@ export function requestFromSnapshot(request: BuildRequest, edited: SetupSnapshot
   };
 }
 
-function asSnapshot(value: unknown): SetupSnapshot | null {
+export function asSnapshot(value: unknown): SetupSnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Partial<SetupSnapshot>;
   if (!Array.isArray(row.organisations) || row.organisations.length === 0) return null;

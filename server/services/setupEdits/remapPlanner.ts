@@ -3,7 +3,7 @@ import { countryCode, countrySlug } from '../../../shared/countries.js';
 import { formatConditionKey, slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
 import { fingerprintInject, inferLayer, isAiOwned, type LayerTeam } from '../../lib/injectFingerprint.js';
-import { parseConditionKey } from '../conditions/conditionCatalog.js';
+import { injectKeysInParsedCondition, parseConditionKey } from '../conditions/conditionCatalog.js';
 import { makeOrgKey } from '../scenarioOrgModel.js';
 import type { SetupDelta } from './setupDeltaCore.js';
 import type { SetupSnapshot, SnapshotOrg, SnapshotTeam } from './setupSnapshotCore.js';
@@ -1421,23 +1421,7 @@ function referencedInjectKeys(parsed: {
   def: { id: string; looseArgs?: boolean; params?: Array<{ type: string; name: string }> };
   args: string[];
 }): string[] {
-  const refs: string[] = [];
-  const params = parsed.def.params ?? [];
-  if (parsed.def.looseArgs) {
-    const arg = parsed.args[0] ?? '';
-    const param = params[0];
-    const injectRef =
-      param?.type === 'inject_key' ||
-      parsed.def.id === 'inject_fired' ||
-      parsed.def.id === 'inject_published' ||
-      parsed.def.id === 'inject_cancelled';
-    if (injectRef && arg) refs.push(arg);
-    return refs;
-  }
-  params.forEach((param, index) => {
-    if (param.type === 'inject_key' && parsed.args[index]) refs.push(parsed.args[index]);
-  });
-  return refs;
+  return injectKeysInParsedCondition(parsed);
 }
 
 function noteChainOrphans(

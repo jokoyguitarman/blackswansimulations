@@ -75,6 +75,8 @@ export interface WarroomBuildsRouterDeps {
   loadDraft: (draftId: string) => Promise<DraftRecord | null>;
   /** Loads the open edit. Tests stub this. The mounted router uses the database. */
   loadSetupEdit?: (editId: string) => Promise<LoadedSetupEdit>;
+  /** Defaults to SCENARIO_SETUP_EDITS. Off answers 404, the same as the setup-edit routes. */
+  setupEditsEnabled?: () => boolean;
   assertOwner?: typeof assertScenarioOwner;
   canEdit?: typeof canEditScenario;
   organisationsOk: (
@@ -182,6 +184,10 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
       replace_active: boolean;
     };
     let request = body.request;
+    if (request.mode === 'setup_edit' && !(deps.setupEditsEnabled ?? (() => env.scenarioSetupEdits))()) {
+      res.status(404).json({ error: 'Not found', code: 'SETUP_EDITS_UNAVAILABLE' });
+      return;
+    }
     if (request.mode !== 'setup_edit') {
       const orgs = deps.organisationsOk(request);
       if (!orgs.ok) {
@@ -469,7 +475,7 @@ async function prepareEditBuild(
     return {
       ok: false,
       status: 423,
-      code: editability.reason === 'live_session' ? 'EDIT_LOCKED_LIVE_SESSION' : 'EDIT_LOCKED_NO_CREDITS',
+      code: 'SCENARIO_LOCKED',
       error:
         editability.reason === 'live_session'
           ? 'A session on this scenario is currently live. Editing resumes when it ends.'
