@@ -125,7 +125,10 @@ function getAndIncrementTick(sessionId: string): number {
 
 // ─── Main Engagement Tick ────────────────────────────────────────────────────
 
-export async function runEngagementTick(sessionId: string): Promise<void> {
+export async function runEngagementTick(
+  sessionId: string,
+  options?: { ambient?: boolean },
+): Promise<void> {
   const tickNumber = getAndIncrementTick(sessionId);
   const now = Date.now();
 
@@ -382,8 +385,11 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
       });
     }
 
-    // Run ambient content generation as a sub-step
-    await generateAmbientPosts(sessionId);
+    // Ambient posts are a crisis lane. The peace hook passes ambient: false.
+    // Omitting the option keeps today's tick, which always generates them.
+    if (options?.ambient !== false) {
+      await generateAmbientPosts(sessionId);
+    }
 
     logger.debug(
       { sessionId, tickNumber, postsProcessed: activePosts.length },

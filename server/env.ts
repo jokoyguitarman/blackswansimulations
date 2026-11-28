@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import os from 'node:os';
+import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_PERIOD_MAX_SECONDS } from '../shared/peaceFeed.js';
 import { readSessionIdleSettings } from './lib/sessionIdleSettings.js';
 
 const required = (value: string | undefined, name: string): string => {
@@ -345,8 +346,10 @@ export const env = {
   // environment until a trainer turns it on after 1 December. With it off,
   // start writes start_time = now and no phase gate runs.
   enablePeacePeriod: process.env.ENABLE_PEACE_PERIOD === 'true',
-  peacePeriodDefaultSeconds: envInt('PEACE_PERIOD_DEFAULT_SECONDS', 300),
-  peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', 900),
+  peacePeriodDefaultSeconds: envInt('PEACE_PERIOD_DEFAULT_SECONDS', PEACE_PERIOD_DEFAULT_SECONDS),
+  peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', PEACE_PERIOD_MAX_SECONDS),
+  /** Images for peace posts that carry a media_description. Off until a trainer turns it on. */
+  peaceFeedMedia: process.env.PEACE_FEED_MEDIA === 'true',
   // Durable `peace` stage, its estimate lines, and the legacy compile call.
   enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
   // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.

@@ -81,7 +81,9 @@ export function createStageRunners(
     const carry = carryFrom(input);
     return runStage(input.stage, ctx, () =>
       withConcurrencyLimit(env.warroomGenConcurrency, () =>
-        runDeltaStage(input.stage, loaded, generators, carry),
+        runDeltaStage(input.stage, loaded, generators, carry, {
+          warn: (message) => ctx.log('warning', message),
+        }),
       ),
     );
   }

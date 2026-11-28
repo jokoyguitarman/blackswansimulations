@@ -584,6 +584,8 @@ interface Session {
   start_time?: string | null;
   /** Set only when ENABLE_PEACE_PERIOD is on. Equal to start_time (crisis start). */
   crisis_starts_at?: string | null;
+  /** Set only for the session owner when the scenario has a peace feed. No leak terms. */
+  peace?: { seconds: number } | null;
   current_state?: {
     [key: string]: unknown;
   };
@@ -1246,8 +1248,20 @@ export const SessionView = () => {
       'incident.updated',
       'media_post',
       'state.updated',
+      'session.crisis_started',
     ],
     onEvent: (event: WebSocketEvent) => {
+      if (event.type === 'session.crisis_started') {
+        const data = event.data as { start_time?: unknown; crisis_starts_at?: unknown };
+        const start = typeof data.start_time === 'string' ? data.start_time : null;
+        const crisis = typeof data.crisis_starts_at === 'string' ? data.crisis_starts_at : start;
+        setCurrentTime(new Date());
+        setSession((prev) => {
+          if (!prev || !start) return prev;
+          return { ...prev, start_time: start, crisis_starts_at: crisis };
+        });
+        return;
+      }
       if (event.type === 'state.updated') {
         const payload = event.data as {
           state?: Record<string, unknown>;
@@ -1339,15 +1353,14 @@ export const SessionView = () => {
     }
   };
 
-  const handleStartSession = async (override?: boolean) => {
+  const handleStartSession = async (override?: boolean, peaceSeconds?: number) => {
     if (!id) return;
     try {
-      await api.sessions.update(
-        id,
-        override
-          ? { status: 'in_progress', start_override: { acknowledge: true } }
-          : { status: 'in_progress' },
-      );
+      await api.sessions.update(id, {
+        status: 'in_progress',
+        ...(override ? { start_override: { acknowledge: true } } : {}),
+        ...(peaceSeconds != null ? { peace_seconds: peaceSeconds } : {}),
+      });
       await loadSession();
     } catch (error) {
       if (error instanceof ApiError && (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')) {
@@ -1491,6 +1504,7 @@ export const SessionView = () => {
               session={session}
               onStartSession={handleStartSession}
               onSessionUpdate={loadSession}
+              peace={session.peace}
             />
           )}
         </main>

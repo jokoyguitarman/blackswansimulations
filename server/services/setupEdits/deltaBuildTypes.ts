@@ -1,11 +1,12 @@
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
+import type { PeaceFeedClient } from '../generation/peaceFeedService.js';
 import type { NPCPersona, FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
 import type { TeamCharterWire } from '../warroomBuild/wireSchemas.js';
 import type { BriefDiff } from './affectedLayers.js';
 import type { SetupFlag, SetupRevision } from './briefRevisionCore.js';
 import type { RemapPlan } from './remapPlanner.js';
 import type { SetupDelta } from './setupDeltaCore.js';
-import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import { asRecord, textOf } from './jsonValue.js';
@@ -111,6 +112,12 @@ export interface DeltaBuildContext {
   taken_stakeholder_ids: string[];
   active_keys: string[];
   page_batch_size: number;
+  /** Stored peace feed. Absent when the scenario has none. */
+  peace_period?: unknown;
+  /** Organisation pages, so added-org posts can use the page handles. */
+  org_page?: unknown;
+  /** Model client for the peace calls. Production omits it and uses the peace feed client. */
+  peaceClient?: PeaceFeedClient;
 }
 
 export interface LayerDecision {
@@ -280,8 +287,9 @@ export interface SetupEditStageOutput {
   org_page: { orgs: Array<Record<string, unknown>> } | null;
   pressure_injects: SocialInject[];
   /**
-   * Pages stage only. `usablePeaceFeed` of `pages.peace_period`. When set, apply
-   * writes it to `initial_state.peace_period` and drops the remap `/peace_period` patch.
+   * Pages stage only. A usable peace feed: posts already in the feed stay, and
+   * leak terms or posts for added organisations are included. Apply writes this
+   * and drops the remap `/peace_period` patch. Absent when the stage has no usable feed.
    */
   peace_period?: PeaceFeed | null;
 }
