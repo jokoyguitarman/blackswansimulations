@@ -280,9 +280,7 @@ async function applyMoodLocks(
     const locks = await locksForStakeholder(sessionId, stakeholderId);
     if (!locks) return base;
     const appended = locks.grievance_append?.filter(Boolean) ?? [];
-    const persuadability =
-      (locks.persuadability as EffectiveGrievance['persuadability'] | undefined) ??
-      base.persuadability;
+    const persuadability = (locks.persuadability as EffectiveGrievance['persuadability'] | undefined) ?? base.persuadability;
     return {
       ...base,
       grievance:

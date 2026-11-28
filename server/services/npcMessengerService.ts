@@ -151,7 +151,8 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     }
 
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
-      Record<string, unknown> | undefined;
+      | Record<string, unknown>
+      | undefined;
 
     const personaList = personas
       .map(
