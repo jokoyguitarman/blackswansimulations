@@ -77,6 +77,7 @@ export function gradingLabel(
 }
 
 export function shouldSkipGrade(input: GradeActivityInput): boolean {
+  if (input.phase === 'peace') return true;
   if (!input.topicAware) return false;
   return !isCrisisActivity({
     phase: input.phase,
