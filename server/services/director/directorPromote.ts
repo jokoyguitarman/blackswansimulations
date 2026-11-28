@@ -5,6 +5,7 @@
  */
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { templateInjectsValidAt } from '../../lib/templateRows.js';
 import { assertScenarioOwner } from '../../lib/access.js';
 import { isUnappliedSchema } from '../../lib/unappliedSchema.js';
 import { logger } from '../../lib/logger.js';
@@ -41,7 +42,8 @@ export async function promoteDirectorProposal(
   }
 
   const proposal = await loadProposal(sessionId, proposalId);
-  if (proposal === 'missing') return { ok: false, status: 503, error: 'AI director is not available' };
+  if (proposal === 'missing')
+    return { ok: false, status: 503, error: 'AI director is not available' };
   if (!proposal) return { ok: false, status: 404, error: 'Proposal not found' };
   if (!PROMOTABLE.has(proposal.status)) {
     return { ok: false, status: 409, error: 'Only a published director event can be promoted' };
@@ -66,7 +68,9 @@ export async function promoteDirectorProposal(
     edited: proposal.status === 'edited' || proposal.edit_before != null,
     people,
     npcs,
-    takenKeys: new Set(templates.map((item) => item.key).filter((key): key is string => Boolean(key))),
+    takenKeys: new Set(
+      templates.map((item) => item.key).filter((key): key is string => Boolean(key)),
+    ),
   });
   const created = await insertTemplate(row);
   if (!created) return { ok: false, status: 500, error: 'The template inject was not created' };
@@ -124,12 +128,10 @@ async function loadProposal(
 async function loadTemplates(
   scenarioId: string,
 ): Promise<Array<{ id: string; key: string | null; delivery_config: unknown }>> {
-  const { data, error } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, delivery_config')
-    .eq('scenario_id', scenarioId)
-    .is('session_id', null)
-    .limit(TEMPLATE_READ_LIMIT);
+  const { data, error } = await templateInjectsValidAt(scenarioId, null, new Date(), {
+    select: 'id, delivery_config',
+    limit: TEMPLATE_READ_LIMIT,
+  });
   if (error) {
     logger.warn({ err: error, scenarioId }, 'template injects were not listed for promotion');
     return [];
