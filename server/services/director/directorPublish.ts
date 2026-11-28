@@ -3,7 +3,11 @@
  * `causeDepth` (inherited hops + 1) over the causing signals' condition keys.
  */
 
+import { fingerprintInject, type FingerprintInject } from '../../lib/injectFingerprint.js';
+import { allocateInjectKey } from '../../lib/injectKey.js';
 import { causeDepth, referencedInjectKeys, type DepthTrigger } from '../conditions/crossTeamCore.js';
+import { isKnownConditionKey } from '../conditions/conditionCatalog.js';
+import { promotionConditions } from './directorAarCore.js';
 import type { DirectorDraft, DirectorMode, ExposureEvent, ParsedProposal } from './directorCore.js';
 import type { Signal } from './directorSignals.js';
 
@@ -234,5 +238,112 @@ function senderFields(
     sender_name: name,
     author_display_name: name,
     ...(proposal.app === 'social_feed' ? { author_type: 'npc_public', platform: 'x_twitter' } : {}),
+  };
+}
+
+/**
+ * Template inject for the next session. generation_source is trainer.
+ * gen.layer is promoted. The fingerprint is AI-owned only when the proposal
+ * was not edited.
+ */
+export function buildPromotedTemplate(input: {
+  scenarioId: string;
+  proposalId: string;
+  minute: number;
+  proposal: ParsedProposal;
+  signals: readonly Signal[];
+  edited: boolean;
+  people: readonly DirectorPerson[];
+  npcs: readonly DirectorNpc[];
+  takenKeys: ReadonlySet<string>;
+}): Record<string, unknown> {
+  const proposal = input.proposal;
+  const schedule = promotionConditions(
+    input.signals,
+    proposal.cause.signal_ids,
+    input.minute,
+    isKnownConditionKey,
+  );
+  const injectKey = allocateInjectKey(null, proposal.title, new Set(input.takenKeys));
+  const sender = senderFields(proposal, input.people, input.npcs);
+  const follow = followUpChain(proposal);
+  const publicApp = PUBLIC_APPS.has(proposal.app);
+  const teams = [...proposal.target_teams];
+  const scope = teams.length > 0 && !publicApp ? 'team_specific' : 'universal';
+  const delivery: Record<string, unknown> = {
+    app: proposal.app,
+    inject_key: injectKey,
+    ...sender,
+    ...(proposal.response_rubric ? { response_rubric: proposal.response_rubric } : {}),
+    ...(follow ? { escalation: follow } : {}),
+    promoted_from: input.proposalId,
+    cause: {
+      kind: 'director',
+      signal_ids: proposal.cause.signal_ids,
+      source_teams: proposal.cause.source_teams,
+    },
+  };
+  const type = APP_TYPE[proposal.app] ?? proposal.app;
+  const stamped = fingerprintRow({
+    title: proposal.title,
+    content: proposal.content,
+    type,
+    severity: proposal.severity,
+    trigger_time_minutes: schedule.trigger_time_minutes,
+    target_teams: teams,
+    inject_scope: scope,
+    requires_response: proposal.requires_response,
+    conditions_to_appear: schedule.conditions_to_appear,
+    delivery_config: delivery,
+  });
+  const gen = input.edited
+    ? { layer: 'promoted', edit: 1 }
+    : { layer: 'promoted', edit: 0, hash: fingerprintInject(stamped) };
+  return {
+    scenario_id: input.scenarioId,
+    session_id: null,
+    type,
+    title: proposal.title,
+    content: proposal.content,
+    severity: proposal.severity,
+    inject_scope: scope,
+    target_teams: teams,
+    trigger_time_minutes: schedule.trigger_time_minutes,
+    conditions_to_appear: schedule.conditions_to_appear,
+    conditions_to_cancel: null,
+    requires_response: proposal.requires_response,
+    requires_coordination: false,
+    ai_generated: false,
+    generation_source: 'trainer',
+    delivery_config: { ...delivery, gen },
+  };
+}
+
+function fingerprintRow(row: {
+  title: string;
+  content: string;
+  type: string;
+  severity: string;
+  trigger_time_minutes: number | null;
+  target_teams: string[];
+  inject_scope: string;
+  requires_response: boolean;
+  conditions_to_appear: unknown;
+  delivery_config: Record<string, unknown>;
+}): FingerprintInject {
+  return {
+    title: row.title,
+    content: row.content,
+    type: row.type,
+    severity: row.severity,
+    trigger_time_minutes: row.trigger_time_minutes,
+    eligible_after_minutes: null,
+    target_teams: row.target_teams,
+    inject_scope: row.inject_scope,
+    requires_response: row.requires_response,
+    conditions_to_appear: row.conditions_to_appear,
+    conditions_to_cancel: null,
+    delivery_config: row.delivery_config,
+    generation_source: 'trainer',
   };
 }

@@ -14,6 +14,8 @@ import { collectConditionKeys, parseConditionKey } from './conditions/conditionC
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
 import { AAR_STORED_CAP } from '../../shared/crossTeamAar.js';
 import { originLabel, teamsDiffer } from '../../shared/crossTeamPanel.js';
+import { timelineOriginFor } from './director/directorAarCore.js';
+import { loadUnscriptedTimelineNotes } from './director/directorAarService.js';
 import { errorCode, isUnappliedSchema } from '../lib/unappliedSchema.js';
 import {
   CROSS_TEAM_READ_LIMITS,
@@ -59,6 +61,8 @@ export interface CommsTimelineRow {
   detail: string;
   /** §5.9 label, or "inferred" when this session has no trigger row for the inject. */
   origin?: string;
+  /** Director cause and decision, when this row is an unscripted event. */
+  origin_note?: string;
 }
 
 export interface AarTriggerAttribution {
@@ -199,6 +203,8 @@ export interface CommsResponsesInput {
   names?: Readonly<Record<string, string>>;
   /** Null or omitted: no trigger rows, so branch attribution is inferred. */
   triggers?: readonly AarTriggerAttribution[] | null;
+  /** inject_key → §5.9 sentence for a director delivery. */
+  unscriptedNotes?: Readonly<Record<string, string>>;
 }
 
 const EVENT_ORDER = [
@@ -478,11 +484,26 @@ export function buildCommsResponsesSection(input: CommsResponsesInput): CommsRes
     return EVENT_ORDER.indexOf(left.event) - EVENT_ORDER.indexOf(right.event);
   });
 
+  const notes = input.unscriptedNotes ?? {};
+  const labelled = rows.map((row) => labelTimelineRow(row, triggerByKey, notes));
+
   return {
     response_injects: roots.size,
-    timeline: rows.slice(0, TIMELINE_CAP),
+    timeline: labelled.slice(0, TIMELINE_CAP),
     moods: moodRows,
   };
+}
+
+function labelTimelineRow(
+  row: CommsTimelineRow,
+  triggerByKey: ReadonlyMap<string, AarTriggerAttribution>,
+  notes: Readonly<Record<string, string>>,
+): CommsTimelineRow {
+  const trigger = triggerByKey.get(row.inject) ?? null;
+  const origin = timelineOriginFor({ event: row.event, existing: row.origin, trigger });
+  const note = notes[row.inject];
+  if (origin === row.origin && !note) return row;
+  return timelineRow({ ...row, origin, ...(note ? { origin_note: note } : {}) });
 }
 
 function timelineRow(row: CommsTimelineRow): CommsTimelineRow {
@@ -495,6 +516,7 @@ function timelineRow(row: CommsTimelineRow): CommsTimelineRow {
     detail: clip(row.detail, 240),
   };
   if (row.origin) next.origin = clip(row.origin, 80);
+  if (row.origin_note) next.origin_note = clip(row.origin_note, 240);
   return next;
 }
 
@@ -640,6 +662,7 @@ export interface AarSessionParts {
   directMessages: AarDirectMessage[];
   names: Record<string, string>;
   triggers: AarTriggerAttribution[] | null;
+  unscriptedNotes?: Readonly<Record<string, string>>;
   triggerRows: TriggerHistoryRow[] | null;
   /** Claims from before the response ledger, when a delivery row does not exist. */
   publications: Array<{ inject_id: string; claimed_at: string | null }>;
@@ -676,6 +699,7 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
     directMessages: [],
     names: {},
     triggers: null,
+    unscriptedNotes: {},
     triggerRows: null,
     publications: [],
   };
@@ -719,6 +743,7 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
         target_teams: row.target_teams,
       }))
     : null;
+  parts.unscriptedNotes = await loadUnscriptedTimelineNotes(sessionId);
   return parts;
 }
 

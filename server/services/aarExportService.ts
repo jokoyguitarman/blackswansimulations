@@ -2,6 +2,11 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import {
+  UNSCRIPTED_EXPORT_COLUMNS,
+  unscriptedExportRows,
+  type UnscriptedEventRow,
+} from './director/directorAarCore.js';
 
 /**
  * AAR Export Service
@@ -28,6 +33,7 @@ const SECTION_LABELS: Record<string, string> = {
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
   cross_team: 'Cross-team cause and effect',
+  unscripted_events: 'Unscripted events',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -109,6 +115,17 @@ function readableValue(v: unknown, maxLen = 400): string {
   let s = parts.join('; ');
   if (s.length > maxLen) s = s.slice(0, maxLen - 3) + '...';
   return s;
+}
+
+function unscriptedEventsOf(data: unknown): UnscriptedEventRow[] {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+  const events = (data as { events?: unknown }).events;
+  if (!Array.isArray(events)) return [];
+  return events.filter((row): row is UnscriptedEventRow => {
+    if (!row || typeof row !== 'object') return false;
+    const item = row as UnscriptedEventRow;
+    return typeof item.minute === 'number' && typeof item.text === 'string';
+  });
 }
 
 /**
@@ -220,6 +237,15 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
           sheet.addRow(['Analysis']);
           sheet.addRow([entry.analysis]);
           sheet.addRow([]);
+        }
+        if (key === 'unscripted_events') {
+          const events = unscriptedEventsOf(entry.data);
+          sheet.addRow(['Unscripted events']);
+          sheet.addRow([...UNSCRIPTED_EXPORT_COLUMNS]);
+          for (const row of unscriptedExportRows(events)) {
+            sheet.addRow(UNSCRIPTED_EXPORT_COLUMNS.map((column) => row[column]));
+          }
+          continue;
         }
         if (entry.data != null) {
           sheet.addRow(['Data']);
@@ -611,6 +637,17 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
           if (entry.analysis) {
             doc.fontSize(10).text(entry.analysis, { align: 'justify' });
             doc.moveDown(0.5);
+          }
+          if (key === 'unscripted_events') {
+            doc.fontSize(9);
+            for (const row of unscriptedExportRows(unscriptedEventsOf(entry.data))) {
+              doc.text(
+                `T+${row.minute} ${row.target}: ${row.text} (${row.decision}, ${row.approver}, ${row.outcome})`,
+              );
+              doc.moveDown(0.2);
+            }
+            doc.moveDown(0.5);
+            continue;
           }
           if (entry.data != null) {
             doc.fontSize(9);

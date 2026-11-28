@@ -11,6 +11,7 @@ import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { rosterValidAt } from '../lib/peaceGate.js';
 import { loadSharedAarSections } from './aar/aarCrossTeamService.js';
+import { loadUnscriptedAar } from './director/directorAarService.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -29,6 +30,7 @@ export const SOCIAL_AAR_SECTION_KEYS = [
   'social_timeline',
   'comms_responses',
   'cross_team',
+  'unscripted_events',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -56,6 +58,7 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
   cross_team: 'Cross-team cause and effect',
+  unscripted_events: 'Unscripted events',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -102,6 +105,8 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
     'Review every inject that needed a reply. For each, say when it was delivered, whether anyone opened it, who responded and how late (T+ minutes and channel), and what the judgement found (tone, pass or fail, wait and mood). Name the branch that fired because of that reply or the silence, each escalation step (urgency and channel), and each missed, declined or answered call attempt. If a stakeholder mood changed, name the rung and the consequence that followed. A branch row names who caused it and its origin label; "inferred" means the session had no trigger record. Cite T+ minutes. Be specific and fair.',
   cross_team:
     "Walk the cross-team cause and effect. If provenance is inferred, say in one sentence that the session has no trigger record and the links are inferred. Otherwise, for each chain, name the upstream team, the minute the dependency broke or was met, the downstream team that received the consequence, and that team's reply and judgement. Then give each team its caused and received counts and the share of pressure that was authored, cross-team, or unscripted. Cite T+ minutes. Do not invent a chain that is not in the data.",
+  unscripted_events:
+    'Review the unscripted events the AI director published. For each, name the minute, the target team, the cause, whether it was auto-published or approved, and the outcome. Then give each team its negative load, positive load and how many unscripted events it received. State the replay status in one sentence: whether the stored log still matches the rules. If there were no unscripted events, say so in one sentence. Do not invent an event that is not in the data.',
   social_public_comms:
     'Assess every published statement and reply: quality (use the stored grade dimensions), timing, consistency across platforms, and reach versus hostile content (impression dominance). Quote the strongest and weakest artifacts with their scores. Judge whether format choices (statement, thread reply, creative) matched the moment.',
   social_team_executive:
@@ -516,6 +521,11 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     analysis: null,
   };
 
+  sections.unscripted_events = {
+    data: await loadUnscriptedAar(sessionId),
+    analysis: null,
+  };
+
   // 3. Public communications review
   const publicArtifacts: Array<Record<string, unknown>> = [];
   for (const player of ledger.players) {
@@ -621,6 +631,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       scores: {
         composite: team.composite_score,
         content_quality: team.content_quality,
+        content_breakdown: team.content_breakdown,
         task_completion: team.task_completion,
         role_fit: team.role_fit,
         collaboration: team.collaboration,

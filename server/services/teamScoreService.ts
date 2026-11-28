@@ -10,6 +10,13 @@ import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { getIntelManifest } from './intelSharingService.js';
 import { evaluateTeamTasks, type ObservedAction } from './teamTasksCore.js';
+import { isUnappliedSchema } from '../lib/unappliedSchema.js';
+
+const CONTENT_WEIGHT = 0.45;
+const TASK_WEIGHT = 0.3;
+const ROLE_WEIGHT = 0.15;
+const COLLAB_WEIGHT = 0.1;
+const DIRECTOR_GRADE_READ_LIMIT = 2000;
 
 /**
  * Live per-team scoring for the social media crisis module.
@@ -66,8 +73,73 @@ export interface TeamScore {
   intel_shared_count: number;
   composite_score: number | null;
   graded_items: number;
+  /** Informational. The composite still counts every graded item. */
+  content_breakdown: ContentBreakdown;
   most_urgent_overdue: { description: string; minutes_overdue: number } | null;
 }
+
+export interface ContentBucket {
+  items: number;
+  avg: number | null;
+}
+
+export interface ContentBreakdown {
+  authored: ContentBucket;
+  unscripted: ContentBucket;
+}
+
+export function isDirectorInjectKey(injectKey: string): boolean {
+  return injectKey.startsWith('dir_');
+}
+
+export function gradeRefKey(refTable: string, refId: string): string {
+  return `${refTable}:${refId}`;
+}
+
+export function contentBreakdown(
+  items: readonly { refId: string; overall: number }[],
+  directorRefs: ReadonlySet<string>,
+): { quality: number | null; breakdown: ContentBreakdown } {
+  const authored: number[] = [];
+  const unscripted: number[] = [];
+  for (const item of items) {
+    (directorRefs.has(item.refId) ? unscripted : authored).push(item.overall);
+  }
+  return {
+    quality: roundedAverage(items.map((item) => item.overall)),
+    breakdown: { authored: bucket(authored), unscripted: bucket(unscripted) },
+  };
+}
+
+export function compositeScore(parts: {
+  content: number | null;
+  tasks: number | null;
+  role: number | null;
+  collaboration: number | null;
+}): number | null {
+  const components: Array<{ value: number; weight: number }> = [];
+  if (parts.content != null) components.push({ value: parts.content, weight: CONTENT_WEIGHT });
+  if (parts.tasks != null) components.push({ value: parts.tasks, weight: TASK_WEIGHT });
+  if (parts.role != null) components.push({ value: parts.role, weight: ROLE_WEIGHT });
+  if (parts.collaboration != null) components.push({ value: parts.collaboration, weight: COLLAB_WEIGHT });
+  const weightSum = components.reduce((sum, component) => sum + component.weight, 0);
+  if (weightSum === 0) return null;
+  return Math.round(components.reduce((sum, component) => sum + component.value * component.weight, 0) / weightSum);
+}
+
+function bucket(values: readonly number[]): ContentBucket {
+  return { items: values.length, avg: roundedAverage(values) };
+}
+
+function roundedAverage(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+const EMPTY_BREAKDOWN: ContentBreakdown = {
+  authored: { items: 0, avg: null },
+  unscripted: { items: 0, avg: null },
+};
 
 export interface TeamScoreReport {
   teams: TeamScore[];
@@ -87,6 +159,7 @@ function createdAtOf(row: { created_at?: string | null }): string | null {
 }
 
 interface GradeRow {
+  id?: string | null;
   posted_by_user_id?: string | null;
   sent_by_player_id?: string | null;
   sop_compliance_score: unknown;
@@ -97,7 +170,7 @@ async function loadPostGrades(sessionId: string): Promise<{ data: GradeRow[] | n
   if (!env.enablePeacePeriod) {
     const { data } = await supabaseAdmin
       .from('social_posts')
-      .select('posted_by_user_id, sop_compliance_score')
+      .select('id, posted_by_user_id, sop_compliance_score')
       .eq('session_id', sessionId)
       .eq('author_type', 'player')
       .not('sop_compliance_score', 'is', null);
@@ -105,18 +178,58 @@ async function loadPostGrades(sessionId: string): Promise<{ data: GradeRow[] | n
   }
   const { data } = await supabaseAdmin
     .from('social_posts')
-    .select('posted_by_user_id, sop_compliance_score, created_at')
+    .select('id, posted_by_user_id, sop_compliance_score, created_at')
     .eq('session_id', sessionId)
     .eq('author_type', 'player')
     .not('sop_compliance_score', 'is', null);
   return { data };
 }
 
+async function loadDirectorGradeRefs(sessionId: string): Promise<Set<string>> {
+  const refs = new Set<string>();
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inject_responses')
+      .select('ref_table, ref_id, inject_key')
+      .eq('session_id', sessionId)
+      .in('ref_table', ['social_posts', 'sim_emails'])
+      .like('inject_key', 'dir_%')
+      .limit(DIRECTOR_GRADE_READ_LIMIT);
+    if (error) {
+      warnDirectorGrades(error);
+      return refs;
+    }
+    for (const row of data ?? []) {
+      const key = typeof row.inject_key === 'string' ? row.inject_key : '';
+      const refId = typeof row.ref_id === 'string' ? row.ref_id : '';
+      const refTable = typeof row.ref_table === 'string' ? row.ref_table : '';
+      if (!isDirectorInjectKey(key) || !refId || !refTable) continue;
+      refs.add(gradeRefKey(refTable, refId));
+    }
+  } catch (err) {
+    warnDirectorGrades(err);
+  }
+  return refs;
+}
+
+let directorGradesWarned = false;
+
+function warnDirectorGrades(err: unknown): void {
+  if (directorGradesWarned) return;
+  directorGradesWarned = true;
+  logger.warn(
+    { err, event: 'team_score_director_grades' },
+    isUnappliedSchema(err)
+      ? 'Director grade attribution is off until the response ledger is applied'
+      : 'Director grade attribution was not loaded',
+  );
+}
+
 async function loadEmailGrades(sessionId: string): Promise<{ data: GradeRow[] | null }> {
   if (!env.enablePeacePeriod) {
     const { data } = await supabaseAdmin
       .from('sim_emails')
-      .select('sent_by_player_id, sop_compliance_score')
+      .select('id, sent_by_player_id, sop_compliance_score')
       .eq('session_id', sessionId)
       .not('sent_by_player_id', 'is', null)
       .not('sop_compliance_score', 'is', null);
@@ -124,7 +237,7 @@ async function loadEmailGrades(sessionId: string): Promise<{ data: GradeRow[] | 
   }
   const { data } = await supabaseAdmin
     .from('sim_emails')
-    .select('sent_by_player_id, sop_compliance_score, created_at')
+    .select('id, sent_by_player_id, sop_compliance_score, created_at')
     .eq('session_id', sessionId)
     .not('sent_by_player_id', 'is', null)
     .not('sop_compliance_score', 'is', null);
@@ -147,7 +260,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
 
   if (!session?.scenario_id) return emptyReport;
 
-  const [teamsRes, membershipRes, participantsRes, actionsRes, postsRes, emailsRes] =
+  const [teamsRes, membershipRes, participantsRes, actionsRes, postsRes, emailsRes, directorRefs] =
     await Promise.all([
       teamsValidAt(String(session.scenario_id), rosterValidAt(session)),
       supabaseAdmin
@@ -166,6 +279,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
         .order('created_at', { ascending: true }),
       loadPostGrades(sessionId),
       loadEmailGrades(sessionId),
+      loadDirectorGradeRefs(sessionId),
     ]);
 
   const scenarioTeams = teamsRes.data || [];
@@ -198,7 +312,13 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     roleFitCount: number;
   }
   const gradesByPlayer = new Map<string, GradeAccum>();
-  const accumulate = (pid: string | null, score: Record<string, unknown> | null) => {
+  const scoredGrades: Array<{ playerId: string; overall: number; refKey: string }> = [];
+  const accumulate = (
+    pid: string | null,
+    score: Record<string, unknown> | null,
+    refTable: string,
+    refId: string | null,
+  ) => {
     if (!pid || !score) return;
     const overall = Number(score.overall);
     if (Number.isNaN(overall)) return;
@@ -214,12 +334,19 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       acc.roleFitSum += roleFit;
       acc.roleFitCount += 1;
     }
+    scoredGrades.push({
+      playerId: pid,
+      overall,
+      refKey: refId ? gradeRefKey(refTable, refId) : '',
+    });
   };
   for (const p of postsRes.data || []) {
     if (!countsOnCrisisClock(createdAtOf(p), session.start_time ?? null)) continue;
     accumulate(
       p.posted_by_user_id ? String(p.posted_by_user_id) : null,
       (p.sop_compliance_score as Record<string, unknown>) || null,
+      'social_posts',
+      p.id ? String(p.id) : null,
     );
   }
   for (const e of emailsRes.data || []) {
@@ -227,6 +354,8 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     accumulate(
       e.sent_by_player_id ? String(e.sent_by_player_id) : null,
       (e.sop_compliance_score as Record<string, unknown>) || null,
+      'sim_emails',
+      e.id ? String(e.id) : null,
     );
   }
 
@@ -329,14 +458,12 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       unstaffed || totalWeight === 0 ? null : Math.round((earnedWeight / totalWeight) * 100);
 
     // Content quality + role fit across member artifacts.
-    let overallSum = 0;
     let overallCount = 0;
     let roleFitSum = 0;
     let roleFitCount = 0;
     const members: TeamMemberSummary[] = memberIds.map((pid) => {
       const acc = gradesByPlayer.get(pid);
       if (acc) {
-        overallSum += acc.overallSum;
         overallCount += acc.overallCount;
         roleFitSum += acc.roleFitSum;
         roleFitCount += acc.roleFitCount;
@@ -353,7 +480,13 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       };
     });
 
-    const contentQuality = overallCount > 0 ? Math.round(overallSum / overallCount) : null;
+    const mine = scoredGrades.filter((grade) => memberIds.includes(grade.playerId));
+    const split = contentBreakdown(
+      mine.map((grade) => ({ refId: grade.refKey, overall: grade.overall })),
+      directorRefs,
+    );
+    const contentQuality = unstaffed ? null : split.quality;
+    const breakdown = unstaffed ? EMPTY_BREAKDOWN : split.breakdown;
     const roleFit = roleFitCount > 0 ? Math.round(roleFitSum / roleFitCount) : null;
 
     // Collaboration: of the intel this team held, how much was shared with the
@@ -377,20 +510,14 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       intelSharedCount = heldIntel.filter((m) => intelShareTimes.has(m.intel_key)).length;
     }
 
-    // Composite: weighted average over the available components so a team is
-    // not penalised for components that have no data yet.
-    let composite: number | null = null;
-    if (!unstaffed) {
-      const components: Array<{ value: number; weight: number }> = [];
-      if (contentQuality != null) components.push({ value: contentQuality, weight: 0.45 });
-      if (taskCompletion != null) components.push({ value: taskCompletion, weight: 0.3 });
-      if (roleFit != null) components.push({ value: roleFit, weight: 0.15 });
-      if (collaboration != null) components.push({ value: collaboration, weight: 0.1 });
-      const weightSum = components.reduce((s, c) => s + c.weight, 0);
-      if (weightSum > 0) {
-        composite = Math.round(components.reduce((s, c) => s + c.value * c.weight, 0) / weightSum);
-      }
-    }
+    const composite = unstaffed
+      ? null
+      : compositeScore({
+          content: contentQuality,
+          tasks: taskCompletion,
+          role: roleFit,
+          collaboration,
+        });
 
     // Most urgent overdue task (largest overshoot) for the trainer alert.
     let mostUrgent: { description: string; minutes_overdue: number } | null = null;
@@ -420,6 +547,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       intel_shared_count: intelSharedCount,
       composite_score: composite,
       graded_items: overallCount,
+      content_breakdown: breakdown,
       most_urgent_overdue: mostUrgent,
     };
   });
