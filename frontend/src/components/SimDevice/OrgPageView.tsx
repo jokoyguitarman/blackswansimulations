@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { usePageMode } from '../../contexts/PageModeContext';
+import { getAuthHeaders as spectatorHeaders } from '../../lib/api';
+import { CommentActions, CommentComposer, PagePostComposer } from './surfaceComposers';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string) {
@@ -8,7 +10,7 @@ function apiUrl(path: string) {
   return API_BASE ? `${API_BASE}${clean}` : clean;
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+async function playerAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../../lib/supabase')).supabase.auth.getSession();
   const token = data.session?.access_token || '';
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -95,11 +97,14 @@ export default function OrgPageView({
   platform = 'facebook',
   onBack,
   viewHandle,
+  readOnly: forceReadOnly = false,
 }: {
   platform?: 'facebook' | 'x_twitter';
   onBack?: () => void;
-  /** When set, view this page (by handle) read-only instead of the player's own. */
+  /** When set, view this page (by handle) instead of the player's own. */
   viewHandle?: string;
+  /** Staff explorer: hide composers and actions, and send the spectator headers. */
+  readOnly?: boolean;
 }) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { setIsPageMode } = usePageMode();
@@ -107,8 +112,16 @@ export default function OrgPageView({
   const [posts, setPosts] = useState<PagePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [composeText, setComposeText] = useState('');
-  // Read-only when viewing a page the player does not control (e.g. a rival brand).
-  const [readOnly, setReadOnly] = useState(false);
+  // Viewing a page the player does not control (e.g. a rival brand) hides composers.
+  const [viewOnly, setViewOnly] = useState(false);
+  const readOnly = forceReadOnly || viewOnly;
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    if (forceReadOnly && sessionId) {
+      return spectatorHeaders({ sessionId, spectator: true });
+    }
+    return playerAuthHeaders();
+  }
 
   useEffect(() => {
     setIsPageMode(true);
@@ -128,7 +141,7 @@ export default function OrgPageView({
   const loadPage = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const headers = await getAuthHeaders();
+      const headers = await authHeaders();
       const [pageRes, postsRes, allPagesRes] = await Promise.all([
         fetch(apiUrl(`/api/social/my-page/session/${sessionId}`), { headers }),
         fetch(
@@ -161,7 +174,7 @@ export default function OrgPageView({
           ro = viewHandle !== myPage?.page_handle;
         }
       }
-      setReadOnly(ro);
+      setViewOnly(ro);
       if (targetPage) setPageInfo(targetPage as unknown as OrgPage);
 
       const postsJson = await postsRes.json();
@@ -189,7 +202,7 @@ export default function OrgPageView({
   async function handlePagePost() {
     if (!composeText.trim() || !sessionId) return;
     try {
-      const headers = await getAuthHeaders();
+      const headers = await authHeaders();
       await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
         headers,
@@ -215,7 +228,7 @@ export default function OrgPageView({
     setReplyingToComment(null);
     setLikedCommentIds(new Set());
     try {
-      const headers = await getAuthHeaders();
+      const headers = await authHeaders();
       const res = await fetch(apiUrl(`/api/social/posts/${post.id}`), { headers });
       const result = await res.json();
       setComments(result.data?.replies || []);
@@ -228,7 +241,7 @@ export default function OrgPageView({
   async function handlePostComment() {
     if (!commentInput.trim() || !sessionId || !selectedPost) return;
     try {
-      const headers = await getAuthHeaders();
+      const headers = await authHeaders();
       await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
         headers,
@@ -255,7 +268,7 @@ export default function OrgPageView({
       prev.map((c) => (c.id === commentId ? { ...c, like_count: c.like_count + 1 } : c)),
     );
     try {
-      const headers = await getAuthHeaders();
+      const headers = await authHeaders();
       await fetch(apiUrl(`/api/social/posts/${commentId}/like`), {
         method: 'POST',
         headers,
@@ -459,28 +472,13 @@ export default function OrgPageView({
                       {stripThreadTag(comment.content)}
                     </p>
                     <div className="flex items-center gap-3 mt-1.5">
-                      <button
-                        onClick={() => handleLikeComment(comment.id)}
-                        className="text-[12px] font-semibold"
-                        style={{
-                          color: likedCommentIds.has(comment.id)
-                            ? isFacebook
-                              ? '#1877F2'
-                              : '#1D9BF0'
-                            : isFacebook
-                              ? '#65676B'
-                              : '#71767B',
-                        }}
-                      >
-                        Like
-                      </button>
-                      <button
-                        onClick={() => startReplyToComment(comment)}
-                        className="text-[12px] font-semibold"
-                        style={{ color: isFacebook ? '#65676B' : '#71767B' }}
-                      >
-                        Reply
-                      </button>
+                      <CommentActions
+                        readOnly={forceReadOnly}
+                        isFacebook={isFacebook}
+                        liked={likedCommentIds.has(comment.id)}
+                        onLike={() => handleLikeComment(comment.id)}
+                        onReply={() => startReplyToComment(comment)}
+                      />
                       {comment.like_count > 0 && (
                         <span
                           className="text-[11px] ml-auto"
@@ -497,66 +495,20 @@ export default function OrgPageView({
           )}
         </div>
 
-        {/* Comment compose input (hidden for read-only rival pages) */}
-        {!readOnly && (
-          <div
-            className="flex-shrink-0"
-            style={{
-              backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
-              borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
-            }}
-          >
-            {replyingToComment && (
-              <div className="flex items-center justify-between px-4 pt-2 pb-1">
-                <span className="text-[12px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
-                  Replying to {replyingToComment.author_display_name}
-                </span>
-                <button
-                  onClick={() => {
-                    setReplyingToComment(null);
-                    setCommentInput('');
-                  }}
-                  className="text-[12px] font-semibold"
-                  style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            <div className="flex items-center gap-2 px-4 py-3">
-              <input
-                ref={commentInputRef}
-                type="text"
-                value={commentInput}
-                onChange={(e) => setCommentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handlePostComment();
-                  }
-                }}
-                placeholder={
-                  replyingToComment
-                    ? `Reply as ${pageInfo.page_name}...`
-                    : `Comment as ${pageInfo.page_name}...`
-                }
-                className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
-                style={{
-                  backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
-                  color: isFacebook ? '#050505' : '#E7E9EA',
-                }}
-              />
-              <button
-                onClick={handlePostComment}
-                disabled={!commentInput.trim()}
-                className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
-                style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-              >
-                Post
-              </button>
-            </div>
-          </div>
-        )}
+        <CommentComposer
+          readOnly={readOnly}
+          isFacebook={isFacebook}
+          pageName={pageInfo.page_name}
+          value={commentInput}
+          onChange={setCommentInput}
+          onPost={handlePostComment}
+          replyingToName={replyingToComment?.author_display_name ?? null}
+          onCancelReply={() => {
+            setReplyingToComment(null);
+            setCommentInput('');
+          }}
+          inputRef={commentInputRef}
+        />
       </div>
     );
   }
@@ -638,35 +590,14 @@ export default function OrgPageView({
         )}
       </div>
 
-      {/* Compose as page (hidden for read-only rival pages) */}
-      {!readOnly && (
-        <div
-          className="mx-4 mt-3 p-3 rounded-lg"
-          style={{ backgroundColor: isFacebook ? '#FFFFFF' : '#16181C' }}
-        >
-          <textarea
-            value={composeText}
-            onChange={(e) => setComposeText(e.target.value)}
-            placeholder={`Post as ${pageInfo.page_name}...`}
-            className="w-full bg-transparent text-sm resize-none outline-none"
-            style={{
-              color: isFacebook ? '#050505' : '#E7E9EA',
-              minHeight: 60,
-            }}
-            rows={2}
-          />
-          <div className="flex justify-end mt-2">
-            <button
-              onClick={handlePagePost}
-              disabled={!composeText.trim()}
-              className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
-              style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-            >
-              Post as {pageInfo.page_name}
-            </button>
-          </div>
-        </div>
-      )}
+      <PagePostComposer
+        readOnly={readOnly}
+        isFacebook={isFacebook}
+        pageName={pageInfo.page_name}
+        value={composeText}
+        onChange={setComposeText}
+        onPost={handlePagePost}
+      />
 
       {/* Posts timeline */}
       <div className="px-4 mt-3 pb-20 space-y-3">

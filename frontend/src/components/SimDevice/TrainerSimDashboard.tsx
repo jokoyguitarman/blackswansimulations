@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
+import { StaffPageExplorer } from './StaffPageExplorer';
 import { LiveCallsPanel } from './LiveCallsPanel';
 import { LinesRolesPanel } from './LinesRolesPanel';
 import { TeammateConsole } from './TeammateConsole';
@@ -2269,6 +2270,7 @@ export default function TrainerSimDashboard() {
 
         {/* ============ ADVERSARY CONSOLE ROW: full width ============ */}
         <AdversaryConsole sessionId={sessionId || ''} />
+        {sessionId ? <StaffPageExplorer sessionId={sessionId} /> : null}
 
         {/* ============ TEAMMATE CONSOLE ROW: AI allies (docs/ai-teammate-bots-plan.md) ============ */}
         <TeammateConsole sessionId={sessionId || ''} />
