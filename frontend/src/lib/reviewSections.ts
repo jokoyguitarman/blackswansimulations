@@ -17,6 +17,7 @@ export interface ReviewPlan {
     choices?: string[];
     condition_key?: string;
     target_key?: string;
+    unresolved_reason?: string;
   }>;
   scheduled_sessions?: Array<{ unassigned_players?: unknown[]; session_id?: string }>;
   primary_swap?: { story?: { premise?: string } } | null;
@@ -194,6 +195,7 @@ export function reviewSections(plan: ReviewPlan, outputs: readonly ReviewStageOu
     id: orphan.id,
     title: text(orphan.kind).replaceAll('_', ' ') || 'Decision',
     detail: text(orphan.message) || 'Needs a decision',
+    reason: text(orphan.unresolved_reason) || undefined,
     rejectable: false,
     choices: orphan.choices ?? [],
     kind: orphan.kind,

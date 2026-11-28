@@ -1120,13 +1120,6 @@ router.post(
     let compileHeartbeatAt: string | null = null;
     if (durableBuildId) {
       try {
-        const existingBuild = await compileBuilds.get(durableBuildId);
-        if (existingBuild?.request.mode === 'setup_edit') {
-          return res.status(400).json({
-            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
-            code: 'SETUP_EDIT_BUILD',
-          });
-        }
         const begun = await beginCompileCharge({
           store: compileBuilds,
           buildId: durableBuildId,

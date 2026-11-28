@@ -1,9 +1,11 @@
-import { injectKeyOf } from '../../lib/injectKey.js';
 import { loadSetupEditSource } from './deltaBuildContext.js';
 import { recomputeSetupEdit } from './prepareSetupEditBuild.js';
-import type { OrphanResolution, RemapPlan } from './remapPlanner.js';
-import type { SetupSnapshot } from './setupSnapshotCore.js';
-import type { SetupEditBuildSource } from './prepareSetupEditBuild.js';
+import {
+  activeResolutionTargets,
+  type OrphanResolution,
+  type RemapPlan,
+  type RemapPlannerInput,
+} from './remapPlanner.js';
 
 export interface OrphanTargetLists {
   teams: string[];
@@ -11,40 +13,16 @@ export interface OrphanTargetLists {
   org_keys: string[];
 }
 
-/** Active names a Review picker may offer. Removed rows are left out. */
-export function orphanTargetLists(
-  source: SetupEditBuildSource,
-  plan: RemapPlan,
-  edited: SetupSnapshot,
-): OrphanTargetLists {
-  const removedTeams = new Set(
-    plan.teams.retire.filter((team) => team.reason === 'removed').map((team) => team.team_uid),
-  );
-  const renamed = new Map(plan.teams.successors.map((team) => [team.team_uid, team.team_name]));
-  const teams = new Set<string>();
-  for (const team of source.remap.teams) {
-    if (removedTeams.has(team.team_uid)) continue;
-    const name = renamed.get(team.team_uid) ?? team.team_name;
-    if (name) teams.add(name);
-  }
-  for (const org of edited.organisations) {
-    for (const team of org.teams) if (team.team_name) teams.add(team.team_name);
-  }
-  const retiredInjects = new Set(plan.injects.retire.map((inject) => inject.inject_id));
-  const injectKeys = new Set<string>();
-  for (const inject of source.remap.injects) {
-    if (retiredInjects.has(inject.id)) continue;
-    const key = injectKeyOf(inject);
-    if (key) injectKeys.add(key);
-  }
-  const orgKeys = new Set<string>();
-  for (const org of edited.organisations) if (org.org_key) orgKeys.add(org.org_key);
-  for (const org of edited.pressure_organisations) if (org.org_key) orgKeys.add(org.org_key);
-  for (const org of edited.competitors) if (org.org_key) orgKeys.add(org.org_key);
+/**
+ * Names the Review picker may offer. This is the planner's active-target set:
+ * surviving teams, surviving inject keys, and post-swap protagonist org keys.
+ */
+export function orphanTargetLists(input: RemapPlannerInput, plan: RemapPlan): OrphanTargetLists {
+  const active = activeResolutionTargets(input, plan);
   return {
-    teams: [...teams].sort(),
-    inject_keys: [...injectKeys].sort(),
-    org_keys: [...orgKeys].sort(),
+    teams: [...active.teams].sort(),
+    inject_keys: [...active.injectKeys].sort(),
+    org_keys: [...active.orgKeys].sort(),
   };
 }
 
@@ -103,6 +81,17 @@ export async function planOpenSetupEdit(request: PlanSetupEditRequest): Promise<
   return {
     ok: true,
     plan: recomputed.plan,
-    targets: orphanTargetLists(source, recomputed.plan, recomputed.edited),
+    targets: orphanTargetLists(
+      {
+        delta: recomputed.delta,
+        edited: recomputed.edited,
+        initial_state: source.remap.initial_state,
+        teams: source.remap.teams,
+        injects: source.remap.injects,
+        sessions: source.remap.sessions,
+        ...(request.resolutions ? { resolutions: request.resolutions } : {}),
+      },
+      recomputed.plan,
+    ),
   };
 }
