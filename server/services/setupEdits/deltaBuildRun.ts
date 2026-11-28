@@ -1,5 +1,6 @@
 import { env } from '../../env.js';
 import { limitConcurrency } from '../../lib/limitConcurrency.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
 import { EMPTY_DECISION } from '../warroomBuild/assemble.js';
 import { listDeltaCalls, stageOfCall, type DeltaCall, type DeltaStageName } from './deltaCalls.js';
@@ -39,6 +40,7 @@ import type {
   TextUpdate,
 } from './deltaBuildTypes.js';
 import { blankGenerated } from './deltaBuildTypes.js';
+import { revisePeaceForEdit } from './peaceDelta.js';
 import type { SetupCrisis } from './setupSnapshotCore.js';
 
 export type { DeltaCall, DeltaStageName } from './deltaCalls.js';
@@ -109,6 +111,11 @@ export async function runDeltaStage(
     await runCalls(calls, ctx, generators, diff, state);
   }
 
+  if (stage === 'pages') {
+    const peace = await revisePeaceForEdit(ctx, state.generated.pages);
+    if (peace) state.peace_period = peace;
+  }
+
   if (stage !== 'characters') await regenerateStageBranches(ctx, generators, diff, state);
   state.revisions = downgradeReferencedRetires(
     state.revisions,
@@ -156,6 +163,7 @@ interface RunState {
   stakeholder_updates: StakeholderTextUpdate[];
   priorRetired: Set<string>;
   factSheet?: FactSheet;
+  peace_period?: PeaceFeed;
 }
 
 async function runCalls(
@@ -906,5 +914,6 @@ function finish(
     dimensionLabels: null,
     org_page: generated.pages.length > 0 ? { orgs: generated.pages } : null,
     pressure_injects: generated.pressure_injects,
+    ...(state.peace_period ? { peace_period: state.peace_period } : {}),
   };
 }
