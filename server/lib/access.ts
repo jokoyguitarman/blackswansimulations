@@ -20,8 +20,7 @@ export interface AccessUser {
 }
 
 export type AccessResult =
-  | { ok: true; session?: SessionRow }
-  | { ok: false; status: number; error: string };
+  { ok: true; session?: SessionRow } | { ok: false; status: number; error: string };
 
 interface SessionRow {
   id: string;
@@ -253,6 +252,8 @@ export async function canTranscribe(user: AccessUser): Promise<boolean> {
     .eq('user_id', user.id);
   return (count ?? 0) > 0;
 }
+
+export { canSpectate } from './socialAccess.js';
 
 /** Ensure the select string always includes the columns the helpers rely on. */
 function ensureColumns(select: string): string {

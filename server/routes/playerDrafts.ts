@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import sanitizeHtml, { type IOptions } from 'sanitize-html';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { staffViewer } from '../middleware/viewer.js';
 import { validate } from '../lib/validation.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams } from '../lib/templateRows.js';
@@ -17,6 +18,7 @@ import { gradePlayerContent } from '../services/contentGraderService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 
 const router = Router();
+router.use(staffViewer('playerDrafts'));
 
 type DraftStatus = 'draft' | 'in_review' | 'approved' | 'changes_requested';
 
@@ -539,9 +541,7 @@ router.post(
             team_name: draft.team_name,
             function_key:
               ((teamRow as Record<string, unknown> | null)?.function_key as
-                | string
-                | null
-                | undefined) ?? null,
+                string | null | undefined) ?? null,
           }),
         );
         const mission =
