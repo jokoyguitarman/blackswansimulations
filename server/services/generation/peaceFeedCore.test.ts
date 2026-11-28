@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  PEACE_LEAK_TERM_RULE,
+  PEACE_LEAK_TERM_SOURCE_HEADER,
+  PEACE_POST_MIN,
+  buildPeaceFeedPrompt,
+  buildPeaceLeakTermsPrompt,
   checkPeaceFeed,
   dropOffendingPosts,
   matchesLeakTerms,
+  mergeAddedPeacePosts,
   normalisePeaceFeed,
+  peaceHandleRenames,
+  replacePeaceLeakTerms,
+  rewritePeacePeriod,
+  usablePeaceFeed,
   type PeaceCast,
   type PeaceFeed,
   type PeaceFeedPost,
@@ -284,5 +294,225 @@ describe('dropOffendingPosts', () => {
       dropped.posts.some((item) => /recall/i.test(item.content)),
       false,
     );
+  });
+});
+
+describe('peace feed re-edit', () => {
+  const idle = {
+    mapKey: (key: string) => key,
+    dropOrgKeys: new Set<string>(),
+    handleRenames: [],
+  };
+
+  test('a re-key and a primary swap rewrite page authors and leave every other post', () => {
+    const persona = post('P3', { kind: 'persona', handle: '@sam' }, 'Saturday market.', 60, [
+      { author_handle: '@sam', content: 'See you there', offset_seconds: 70 },
+    ]);
+    const primary = post('P1', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Breakfast.', 20);
+    const bravo = post('P2', { kind: 'page', org_key: 'org_bravo_my', platform: 'facebook' }, 'Bravo hours.', 40);
+    const feed = { ...validFeed(), posts: [primary, bravo, persona] };
+    const fresh = 'org_acme_sg';
+    const rewritten = rewritePeacePeriod(feed, {
+      mapKey: (key) => (key === 'primary' ? fresh : key === 'org_bravo_my' ? 'primary' : key),
+      dropOrgKeys: new Set(),
+      handleRenames: [],
+    }) as PeaceFeed;
+    assert.notEqual(rewritten.posts[0], primary);
+    assert.equal(rewritten.posts[0].content, primary.content);
+    assert.equal((rewritten.posts[0].author as { org_key: string }).org_key, fresh);
+    assert.equal(rewritten.posts[0].content, primary.content);
+    assert.equal((rewritten.posts[1].author as { org_key: string }).org_key, 'primary');
+    assert.equal(rewritten.posts[2], persona);
+    assert.equal(rewritten.leak_terms, feed.leak_terms);
+  });
+
+  test('a removed organisation drops only its posts', () => {
+    const kept = post('P1', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Breakfast.', 20);
+    const dropped = post('P2', { kind: 'page', org_key: 'org_bravo_my', platform: 'x_twitter' }, 'Bravo hours.', 40);
+    const persona = post('P3', { kind: 'persona', handle: '@sam' }, 'Saturday market.', 60);
+    const feed = { ...validFeed(), posts: [kept, dropped, persona] };
+    const rewritten = rewritePeacePeriod(feed, {
+      ...idle,
+      dropOrgKeys: new Set(['org_bravo_my']),
+    }) as PeaceFeed;
+    assert.deepEqual(rewritten.posts, [kept, persona]);
+    assert.equal(rewritten.posts[0], kept);
+    assert.equal(rewritten.posts[1], persona);
+  });
+
+  test('a persona handle rename rewrites post authors and comment authors', () => {
+    const comment = { author_handle: '@Sam_K', content: 'Saturday plans', offset_seconds: 70 };
+    const persona = post('P1', { kind: 'persona', handle: '@sam_k' }, 'Saturday market.', 20, [comment]);
+    const other = post('P2', { kind: 'persona', handle: '@other' }, 'Evening walk.', 40, [
+      { author_handle: '@other', content: 'Same', offset_seconds: 50 },
+    ]);
+    const page = post('P3', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Breakfast.', 60);
+    const feed = { ...validFeed(), posts: [persona, other, page] };
+    const rewritten = rewritePeacePeriod(feed, {
+      ...idle,
+      handleRenames: [{ from: '@sam_k', to: '@sam_new' }],
+    }) as PeaceFeed;
+    assert.equal(rewritten.posts[0].author.kind === 'persona' && rewritten.posts[0].author.handle, '@sam_new');
+    assert.equal(rewritten.posts[0].comments[0]?.author_handle, '@sam_new');
+    assert.equal(rewritten.posts[0].content, persona.content);
+    assert.equal(rewritten.posts[1], other);
+    assert.equal(rewritten.posts[2], page);
+  });
+
+  test('an untouched feed is the same value', () => {
+    const feed = validFeed();
+    assert.equal(rewritePeacePeriod(feed, idle), feed);
+    assert.equal(rewritePeacePeriod(undefined, idle), undefined);
+  });
+
+  test('persona handle changes are read from the persona list', () => {
+    const renames = peaceHandleRenames({
+      orgPageBefore: { orgs: [] },
+      orgPageAfter: { orgs: [] },
+      personasBefore: [{ id: 'p1', name: 'Sam', handle: '@sam_k' }],
+      personasAfter: [{ id: 'p1', name: 'Sam', handle: '@sam_new' }],
+    });
+    assert.deepEqual(renames, [{ from: '@sam_k', to: '@sam_new' }]);
+  });
+
+  const addedCast: PeaceCast = {
+    personas: [{ handle: '@sam', type: 'npc_public', normal_interests: ['markets'] }],
+    pages: [
+      {
+        org_key: 'org_new',
+        role: 'protagonist',
+        playable: true,
+        platform: 'facebook',
+        handle: '@newco',
+        name: 'Newco',
+      },
+      {
+        org_key: 'primary',
+        role: 'protagonist',
+        playable: true,
+        platform: 'facebook',
+        handle: '@acme',
+        name: 'Acme',
+      },
+    ],
+  };
+
+  test('added posts are appended and existing posts stay', () => {
+    const existing = post('P1', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Breakfast.', 20);
+    const feed = { ...validFeed(), posts: [existing], leak_terms: ['recall'] };
+    const merged = mergeAddedPeacePosts(
+      feed,
+      {
+        posts: [
+          {
+            author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+            content: 'Grand opening Friday.',
+            offset_seconds: 30,
+            comments: [{ author_handle: '@sam', content: 'I will be there', offset_seconds: 40 }],
+          },
+          {
+            author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+            content: 'This would replace breakfast.',
+            offset_seconds: 50,
+          },
+          {
+            author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+            content: 'Please recall the opening.',
+            offset_seconds: 60,
+          },
+        ],
+      },
+      addedCast,
+      new Set(['org_new']),
+    );
+    assert.equal(merged.posts[0], existing);
+    assert.equal(merged.posts.length, 2);
+    assert.equal(merged.posts[1]?.author.kind === 'page' && merged.posts[1].author.org_key, 'org_new');
+    assert.equal(merged.posts[1]?.content, 'Grand opening Friday.');
+    assert.equal(merged.leak_terms, feed.leak_terms);
+  });
+
+  test('a wrong platform and an unknown comment author are not appended', () => {
+    const existing = post('P1', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Breakfast.', 20);
+    const feed = { ...validFeed(), posts: [existing], leak_terms: ['recall'] };
+    const merged = mergeAddedPeacePosts(
+      feed,
+      {
+        posts: [
+          {
+            author: { kind: 'page', org_key: 'org_new', platform: 'x_twitter' },
+            content: 'Opening on x.',
+            offset_seconds: 30,
+            comments: [{ author_handle: '@sam', content: 'Seen', offset_seconds: 40 }],
+          },
+          {
+            author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+            content: 'Hello from the new page.',
+            offset_seconds: 50,
+            comments: [{ author_handle: '@nobody', content: 'Who?', offset_seconds: 60 }],
+          },
+        ],
+      },
+      addedCast,
+      new Set(['org_new']),
+    );
+    assert.equal(merged, feed);
+  });
+
+  test('new posts stop at 24 and a full feed is left untouched', () => {
+    const existing = Array.from({ length: 23 }, (_, index) =>
+      post(
+        `P${index + 1}`,
+        { kind: 'page', org_key: 'primary', platform: 'facebook' },
+        `Breakfast ${index + 1}.`,
+        20,
+      ),
+    );
+    const feed = { ...validFeed(), posts: existing, leak_terms: ['recall'] };
+    const reply = {
+      posts: [1, 2].map((index) => ({
+        author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+        content: `Opening note ${index}.`,
+        offset_seconds: 30 + index,
+        comments: [{ author_handle: '@sam', content: 'There', offset_seconds: 40 }],
+      })),
+    };
+    const merged = mergeAddedPeacePosts(feed, reply, addedCast, new Set(['org_new']));
+    assert.equal(merged.posts.length, 24);
+    assert.equal(merged.posts[0], existing[0]);
+    assert.equal(merged.posts[23]?.content, 'Opening note 1.');
+    const full = { ...feed, posts: [...existing, merged.posts[23]] };
+    assert.equal(mergeAddedPeacePosts(full, reply, addedCast, new Set(['org_new'])), full);
+  });
+
+  test('new leak terms drop only the posts that match them', () => {
+    const kept = post('P1', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Saturday breakfast.', 20);
+    const leaked = post('P2', { kind: 'page', org_key: 'primary', platform: 'facebook' }, 'Please recall the menu.', 40);
+    const feed = { ...validFeed(), posts: [kept, leaked], leak_terms: ['fire'] };
+    const replaced = replacePeaceLeakTerms(feed, ['recall']);
+    assert.deepEqual(replaced.leak_terms, ['recall']);
+    assert.deepEqual(replaced.posts, [kept]);
+    assert.equal(replaced.posts[0], kept);
+    assert.equal(usablePeaceFeed(replaced), replaced);
+  });
+
+  test('the leak-term prompt is the leak-term part of the feed prompt', () => {
+    const full = buildPeaceFeedPrompt({
+      cast,
+      crisisBrief: 'A battery fire forces a V15 recall.',
+      seconds: 300,
+    });
+    const leak = buildPeaceLeakTermsPrompt('A battery fire forces a V15 recall.');
+    assert.equal(full.system.includes(PEACE_LEAK_TERM_RULE), true);
+    assert.equal(leak.system.includes(PEACE_LEAK_TERM_RULE), true);
+    assert.equal(leak.user.startsWith(PEACE_LEAK_TERM_SOURCE_HEADER), true);
+    assert.equal(full.user.includes(PEACE_LEAK_TERM_SOURCE_HEADER), true);
+    assert.equal(leak.user.includes('V15 recall'), true);
+    assert.equal(leak.system.includes(`Write ${PEACE_POST_MIN}`), false);
+    assert.equal(leak.system.includes('"posts"'), false);
+    const feed = validFeed();
+    const replaced = replacePeaceLeakTerms(feed, ['ammonia', 'vent']);
+    assert.deepEqual(replaced.leak_terms, ['ammonia', 'vent']);
+    assert.equal(replaced.posts, feed.posts);
   });
 });

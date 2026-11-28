@@ -14,6 +14,7 @@ import {
   storeParticipantScores,
 } from '../services/participantScoreService.js';
 import { generateAARSummary, generateAARInsights } from '../services/aarAiService.js';
+import { withTrainerUnscripted } from '../services/director/directorAarService.js';
 import {
   buildSectionsData,
   buildRecommendationsContext,
@@ -208,9 +209,25 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         .order('evaluated_at', { ascending: true }),
     ]);
 
+    const staffView = user.role === 'admin' || session.trainer_id === user.id;
+    let aarPayload = aar || null;
+    if (
+      staffView &&
+      aarPayload &&
+      aarPayload.report_format === 'sections' &&
+      aarPayload.sections &&
+      typeof aarPayload.sections === 'object'
+    ) {
+      const sections = await withTrainerUnscripted(
+        aarPayload.sections as Record<string, { data?: unknown; analysis?: string | null }>,
+        sessionId,
+      );
+      aarPayload = { ...aarPayload, sections };
+    }
+
     res.json({
       data: {
-        aar: aar || null,
+        aar: aarPayload,
         scores: scores || [],
         metrics: metrics || [],
         events: events || [],

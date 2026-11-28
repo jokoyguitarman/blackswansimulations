@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { env } from '../../env.js';
 import { noteAiCall, withAiCallCount } from '../../lib/aiCallScope.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
+import {
+  PEACE_FEED_EMPTY_WARNING,
+  PEACE_LEAK_TERM_RULE,
+  PEACE_POST_MAX,
+  PEACE_POST_MIN,
+  usablePeaceFeed,
+} from '../generation/peaceFeedCore.js';
+import type { PeaceFeedClient } from '../generation/peaceFeedService.js';
 import { emptyBriefDiff, type BriefDiff } from './affectedLayers.js';
 import { runDeltaBuild, listDeltaCalls } from './deltaBuildRun.js';
 import type { DeltaBuildContext, DeltaGenerators, DeltaInject } from './deltaBuildTypes.js';
@@ -633,3 +643,299 @@ function deltaInject(id: string, layer: string, content: string): DeltaInject {
     app: 'email',
   };
 }
+
+function storedPeace(): PeaceFeed {
+  return {
+    version: 1,
+    seconds: 300,
+    enabled: true,
+    leak_terms: ['recall'],
+    posts: [
+      {
+        ref: 'P1',
+        author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+        platform: 'facebook',
+        post_format: 'text',
+        content: 'Saturday breakfast',
+        media_description: '',
+        offset_seconds: 20,
+        comments: [{ author_handle: '@sam', content: 'See you there', offset_seconds: 40 }],
+      },
+    ],
+  };
+}
+
+describe('peace feed on a setup-edit delta', { concurrency: false }, () => {
+  const previous = env.enablePeaceFeedBuildStage;
+
+  test('with the flag off the delta matches a scenario that has no peace feed', async () => {
+    env.enablePeaceFeedBuildStage = false;
+    const prompts: string[] = [];
+    const client: PeaceFeedClient = {
+      async complete(request) {
+        prompts.push(request.system);
+        throw new Error('peace model must not be called');
+      },
+    };
+    const change = { brief_changed: true, added_orgs: ['org_new'] };
+    const withPeace = context(change);
+    withPeace.peace_period = storedPeace();
+    withPeace.peaceClient = client;
+    withPeace.org_page = {
+      orgs: [
+        {
+          org_key: 'org_new',
+          display_name: 'Newco',
+          role: 'protagonist',
+          facebook: { page_handle: '@newco', page_name: 'Newco', page_bio: '' },
+        },
+      ],
+    };
+    try {
+      const { generators } = recording();
+      const { generators: plainGenerators } = recording();
+      const edited = await runDeltaBuild(withPeace, generators);
+      const plain = await runDeltaBuild(context(change), plainGenerators);
+      assert.equal('peace_period' in edited.pages, false);
+      assert.deepEqual(edited.pages, plain.pages);
+      assert.deepEqual(prompts, []);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('a brief change regenerates leak terms only', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const feed = storedPeace();
+    const prompts: Array<{ system: string; user: string }> = [];
+    const client: PeaceFeedClient = {
+      async complete(request) {
+        prompts.push(request);
+        return { leak_terms: ['ammonia', 'night vent'] };
+      },
+    };
+    const built = context({ brief_changed: true });
+    built.peace_period = feed;
+    built.peaceClient = client;
+    built.edited = {
+      ...built.edited,
+      crisis: { ...built.edited.crisis, crisis_type: 'Ammonia vent', context: 'Night shift' },
+    };
+    try {
+      const { calls, generators } = recording();
+      const result = await runDeltaBuild(built, generators);
+      assert.equal(prompts.length, 1);
+      assert.equal(prompts[0]?.system.includes(PEACE_LEAK_TERM_RULE), true);
+      assert.equal(prompts[0]?.system.includes(`Write ${PEACE_POST_MIN}`), false);
+      assert.equal(prompts[0]?.user.includes('Ammonia vent'), true);
+      assert.equal(prompts[0]?.user.includes('Saturday breakfast'), false);
+      assert.equal(result.pages.peace_period?.posts, feed.posts);
+      assert.deepEqual(result.pages.peace_period?.leak_terms, ['ammonia', 'night vent']);
+      assert.equal(result.pages.skipped, false);
+      assert.equal(calls.includes('generatePages'), false);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('posts for an added organisation are merged and existing posts stay', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const feed = storedPeace();
+    let calls = 0;
+    const client: PeaceFeedClient = {
+      async complete() {
+        calls += 1;
+        return {
+          posts: [
+            {
+              author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+              content: 'Grand opening Friday.',
+              offset_seconds: 30,
+              comments: [{ author_handle: '@sam', content: 'I will be there', offset_seconds: 50 }],
+            },
+            {
+              author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+              content: 'This would replace breakfast.',
+              offset_seconds: 35,
+            },
+            {
+              author: { kind: 'page', org_key: 'org_new', platform: 'facebook' },
+              content: 'Please recall the opening.',
+              offset_seconds: 45,
+            },
+          ],
+        };
+      },
+    };
+    const built = context({ added_orgs: ['org_new'] });
+    built.peace_period = feed;
+    built.personas = [
+      {
+        handle: '@sam',
+        name: 'Sam',
+        type: 'npc_public',
+        personality: '',
+        bias: '',
+        follower_count: 1,
+        backstory: '',
+        posting_pattern: '',
+        specific_claims: [],
+        normal_interests: ['breakfast'],
+      },
+    ];
+    built.peaceClient = client;
+    built.org_page = {
+      orgs: [
+        {
+          org_key: 'org_new',
+          display_name: 'Newco',
+          role: 'protagonist',
+          facebook: { page_handle: '@newco', page_name: 'Newco', page_bio: '' },
+        },
+      ],
+    };
+    try {
+      const result = await runDeltaBuild(built, recording().generators);
+      const posts = result.pages.peace_period?.posts ?? [];
+      assert.equal(calls, 1);
+      assert.equal(posts[0], feed.posts[0]);
+      assert.equal(posts.length, 2);
+      assert.equal(posts[1]?.content, 'Grand opening Friday.');
+      assert.equal(posts[1]?.author.kind === 'page' && posts[1].author.org_key, 'org_new');
+      assert.deepEqual(result.pages.peace_period?.leak_terms, ['recall']);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('a brief change keeps the posts the planner already rewrote', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const feed = storedPeace();
+    const rewrittenPost = {
+      ...feed.posts[0],
+      author: { kind: 'page' as const, org_key: 'org_acme_sg', platform: 'facebook' },
+    };
+    const rewritten = { ...feed, posts: [rewrittenPost] };
+    const built = context({ brief_changed: true });
+    built.peace_period = feed;
+    built.plan = {
+      ...built.plan,
+      initial_state: {
+        patch: [{ op: 'replace', path: '/peace_period', value: rewritten }],
+        move_to_retired: [],
+      },
+    };
+    built.peaceClient = {
+      async complete() {
+        return { leak_terms: ['ammonia'] };
+      },
+    };
+    try {
+      const result = await runDeltaBuild(built, recording().generators);
+      assert.equal(result.pages.peace_period?.posts[0], rewrittenPost);
+      assert.equal(result.pages.peace_period?.posts[0]?.content, 'Saturday breakfast');
+      assert.deepEqual(result.pages.peace_period?.leak_terms, ['ammonia']);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('a peace failure does not fail the delta or drop existing posts', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const built = context({ brief_changed: true, added_orgs: ['org_new'] });
+    built.peace_period = storedPeace();
+    built.org_page = {
+      orgs: [
+        {
+          org_key: 'org_new',
+          display_name: 'Newco',
+          role: 'protagonist',
+          facebook: { page_handle: '@newco', page_name: 'Newco', page_bio: '' },
+        },
+      ],
+    };
+    const warnings: string[] = [];
+    built.peaceClient = {
+      async complete() {
+        throw new Error('model down');
+      },
+    };
+    try {
+      const result = await runDeltaBuild(built, recording().generators, {
+        warn: (message) => warnings.push(message),
+      });
+      assert.equal('peace_period' in result.pages, false);
+      assert.deepEqual(warnings, [PEACE_FEED_EMPTY_WARNING, PEACE_FEED_EMPTY_WARNING]);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('a full feed does not ask for more posts', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const posts = Array.from({ length: PEACE_POST_MAX }, (_, index) => ({
+      ref: `P${index + 1}`,
+      author: { kind: 'page' as const, org_key: 'primary', platform: 'facebook' },
+      platform: 'facebook',
+      post_format: 'text',
+      content: `Ordinary note ${index + 1}`,
+      media_description: '',
+      offset_seconds: 20,
+      comments: [],
+    }));
+    let calls = 0;
+    const built = context({ added_orgs: ['org_new'] });
+    built.peace_period = { ...storedPeace(), posts };
+    built.org_page = {
+      orgs: [
+        {
+          org_key: 'org_new',
+          display_name: 'Newco',
+          role: 'protagonist',
+          facebook: { page_handle: '@newco', page_name: 'Newco', page_bio: '' },
+        },
+      ],
+    };
+    built.peaceClient = {
+      async complete() {
+        calls += 1;
+        return { posts: [] };
+      },
+    };
+    try {
+      const result = await runDeltaBuild(built, recording().generators);
+      assert.equal(calls, 0);
+      assert.equal('peace_period' in result.pages, false);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+
+  test('new leak terms drop the posts that match them', async () => {
+    env.enablePeaceFeedBuildStage = true;
+    const kept = storedPeace().posts[0];
+    const leaked = {
+      ...kept,
+      ref: 'P2',
+      content: 'Please recall the menu.',
+      offset_seconds: 40,
+    };
+    const built = context({ brief_changed: true });
+    built.peace_period = { ...storedPeace(), leak_terms: ['fire'], posts: [kept, leaked] };
+    built.peaceClient = {
+      async complete() {
+        return { leak_terms: ['recall'] };
+      },
+    };
+    try {
+      const result = await runDeltaBuild(built, recording().generators);
+      const peace = result.pages.peace_period;
+      assert.deepEqual(peace?.leak_terms, ['recall']);
+      assert.equal(peace?.posts[0], kept);
+      assert.equal(peace?.posts.length, 1);
+      assert.equal(usablePeaceFeed(peace), peace);
+    } finally {
+      env.enablePeaceFeedBuildStage = previous;
+    }
+  });
+});

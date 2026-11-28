@@ -16,11 +16,14 @@ import {
   PEACE_ORDINARY_LIFE_RULE,
   PEACE_PERIOD_DEFAULT_SECONDS,
   PEACE_POST_MIN,
+  buildPeaceAddedPostsPrompt,
   buildPeaceFeedPrompt,
+  buildPeaceLeakTermsPrompt,
   canonicalPlatform,
   checkPeaceFeed,
   dropOffendingPosts,
   feedContainsLeak,
+  leakTermsFromReply,
   normalisePeaceFeed,
   usablePeaceFeed,
   type PeaceCast,
@@ -47,19 +50,30 @@ export type GeneratePeaceFeedResult =
   | { ok: true; feed: PeaceFeed; attempts: number; dropped: number }
   | { ok: false; reason: 'empty'; warning: string };
 
-const defaultClient: PeaceFeedClient = {
-  async complete(request) {
-    return chatJson({
-      tier: 'standard',
-      messages: systemUser(request.system, request.user),
-      json: true,
-      maxTokens: 12000,
-      temperature: 0.7,
-      growOnTruncation: true,
-      label: 'peace.feed',
-    });
-  },
-};
+/** Same budget the full feed call already uses. */
+const PEACE_FEED_MAX_TOKENS = 12_000;
+/** A leak-term reply is a short list, not a feed. */
+const PEACE_LEAK_TERM_MAX_TOKENS = 1_000;
+/** Added organisations contribute a handful of posts, not a new feed. */
+const PEACE_ADDED_POST_MAX_TOKENS = 4_000;
+
+function modelClient(label: string, maxTokens: number): PeaceFeedClient {
+  return {
+    async complete(request) {
+      return chatJson({
+        tier: 'standard',
+        messages: systemUser(request.system, request.user),
+        json: true,
+        maxTokens,
+        temperature: 0.7,
+        growOnTruncation: true,
+        label,
+      });
+    },
+  };
+}
+
+const defaultClient: PeaceFeedClient = modelClient('peace.feed', PEACE_FEED_MAX_TOKENS);
 
 function issuesOf(feed: PeaceFeed | null, cast: PeaceCast): PeaceFeedIssue[] {
   if (!feed) return [{ code: 'shape', message: 'the reply was not a peace feed' }];
@@ -273,6 +287,35 @@ export async function generateScenarioPeaceFeed(
     return null;
   }
   return usablePeaceFeed(result.feed);
+}
+
+/**
+ * The leak-term half of the peace prompt. Returns an empty list when the reply
+ * has none, so the caller can keep the terms it already stored.
+ */
+export async function requestPeaceLeakTerms(
+  crisisBrief: string,
+  client?: PeaceFeedClient,
+): Promise<string[]> {
+  const raw = await (client ?? modelClient('peace.leak_terms', PEACE_LEAK_TERM_MAX_TOKENS)).complete(
+    buildPeaceLeakTermsPrompt(crisisBrief),
+  );
+  return leakTermsFromReply(raw);
+}
+
+/** Posts for the added organisations only. The caller merges them. */
+export async function requestAddedPeacePosts(
+  input: {
+    cast: PeaceCast;
+    seconds: number;
+    leakTerms: readonly string[];
+    room: number;
+  },
+  client?: PeaceFeedClient,
+): Promise<unknown> {
+  return (client ?? modelClient('peace.added_posts', PEACE_ADDED_POST_MAX_TOKENS)).complete(
+    buildPeaceAddedPostsPrompt(input),
+  );
 }
 
 export interface AttachPeaceOptions {

@@ -190,6 +190,8 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
     active_keys: injects.map((inject) => inject.inject_key).filter((key) => key.length > 0),
     page_batch_size: env.warroomOrgPageBatch,
     team_dependencies: dependencyEdgesOf(state.team_dependencies),
+    peace_period: state.peace_period,
+    org_page: state.org_page,
   };
 }
 

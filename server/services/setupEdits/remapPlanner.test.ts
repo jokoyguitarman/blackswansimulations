@@ -2116,4 +2116,271 @@ describe('remap planner', () => {
     assert.equal(isRemapTableMissing({ code: 'PGRST205' }), true);
     assert.equal(isRemapTableMissing({ code: '23505' }), false);
   });
+
+  test('a scenario without a peace feed, and one whose feed the edit does not touch, plan the same', () => {
+    const bare = planRemap(renameWorld());
+    assert.equal(
+      bare.initial_state.patch.some((item) => item.path === '/peace_period'),
+      false,
+    );
+    const world = renameWorld();
+    const state = world.initial_state as Record<string, unknown>;
+    state.peace_period = {
+      version: 1,
+      seconds: 300,
+      enabled: true,
+      leak_terms: ['recall'],
+      posts: [
+        {
+          ref: 'P1',
+          author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+          platform: 'facebook',
+          post_format: 'text',
+          content: 'Saturday breakfast',
+          media_description: '',
+          offset_seconds: 20,
+          comments: [{ author_handle: '@sam', content: 'See you there', offset_seconds: 40 }],
+        },
+      ],
+    };
+    assert.deepEqual(planRemap(world), bare);
+  });
+
+  test('a primary swap rewrites peace page authors and keeps the other posts', () => {
+    const persona = {
+      ref: 'P3',
+      author: { kind: 'persona', handle: '@sam' },
+      platform: 'facebook',
+      post_format: 'text',
+      content: 'Saturday market.',
+      media_description: '',
+      offset_seconds: 60,
+      comments: [{ author_handle: '@sam', content: 'See you there', offset_seconds: 70 }],
+    };
+    const plan = planRemap(
+      input({
+        delta: delta({
+          primary_swap: { from_org_uid: 'uid-a', to_org_uid: 'uid-b', to_is_new: false },
+        }),
+        edited: snapshot(swapEdited('uid-b').filter((org) => org.org_uid !== 'uid-c')),
+        initial_state: {
+          orgs: [acme(), bravo()],
+          peace_period: {
+            version: 1,
+            seconds: 300,
+            enabled: true,
+            leak_terms: ['recall'],
+            posts: [
+              {
+                ref: 'P1',
+                author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+                platform: 'facebook',
+                post_format: 'text',
+                content: 'Acme breakfast.',
+                media_description: '',
+                offset_seconds: 20,
+                comments: [],
+              },
+              {
+                ref: 'P2',
+                author: { kind: 'page', org_key: 'org_bravo_my', platform: 'facebook' },
+                platform: 'facebook',
+                post_format: 'text',
+                content: 'Bravo hours.',
+                media_description: '',
+                offset_seconds: 40,
+                comments: [],
+              },
+              persona,
+            ],
+          },
+        },
+      }),
+    );
+    const fresh = plan.primary_swap?.old_primary_new_key;
+    const peace = replaced(plan, '/peace_period') as {
+      leak_terms: string[];
+      posts: Array<{ ref: string; content: string; author: { kind: string; org_key?: string; handle?: string } }>;
+    };
+    assert.equal(peace.posts[0]?.author.org_key, fresh);
+    assert.equal(peace.posts[0]?.content, 'Acme breakfast.');
+    assert.equal(peace.posts[1]?.author.org_key, 'primary');
+    assert.equal(peace.posts[1]?.content, 'Bravo hours.');
+    assert.deepEqual(peace.posts[2], persona);
+    assert.deepEqual(peace.leak_terms, ['recall']);
+  });
+
+  test('removing an organisation drops its peace posts and keeps the rest', () => {
+    const kept = {
+      ref: 'P1',
+      author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+      platform: 'facebook',
+      post_format: 'text',
+      content: 'Acme breakfast.',
+      media_description: '',
+      offset_seconds: 20,
+      comments: [
+        { author_handle: '@sam', content: 'Nice', offset_seconds: 30 },
+        { author_handle: '@bravo', content: 'Our hours too', offset_seconds: 35 },
+      ],
+    };
+    const persona = {
+      ref: 'P3',
+      author: { kind: 'persona', handle: '@sam' },
+      platform: 'facebook',
+      post_format: 'text',
+      content: 'Saturday market.',
+      media_description: '',
+      offset_seconds: 60,
+      comments: [],
+    };
+    const plan = planRemap(
+      input({
+        delta: delta({ removed_orgs: ['org_bravo_my'] }),
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            is_primary: true,
+          }),
+        ]),
+        initial_state: {
+          orgs: [acme(), bravo({ facebook_handle: '@bravo' })],
+          org_page: {
+            orgs: [
+              {
+                org_uid: 'uid-b',
+                org_key: 'org_bravo_my',
+                side: 'protagonist',
+                facebook: { page_handle: '@bravo', page_name: 'Bravo' },
+              },
+            ],
+          },
+          peace_period: {
+            version: 1,
+            seconds: 300,
+            enabled: true,
+            leak_terms: ['recall'],
+            posts: [
+              kept,
+              {
+                ref: 'P2',
+                author: { kind: 'page', org_key: 'org_bravo_my', platform: 'x_twitter' },
+                platform: 'x_twitter',
+                post_format: 'text',
+                content: 'Bravo hours.',
+                media_description: '',
+                offset_seconds: 40,
+                comments: [],
+              },
+              persona,
+            ],
+          },
+        },
+      }),
+    );
+    const peace = replaced(plan, '/peace_period') as {
+      posts: Array<{ ref: string; comments: Array<{ author_handle: string }> }>;
+      leak_terms: string[];
+    };
+    assert.deepEqual(
+      peace.posts.map((item) => item.ref),
+      ['P1', 'P3'],
+    );
+    assert.deepEqual(
+      peace.posts[0]?.comments.map((comment) => comment.author_handle),
+      ['@sam'],
+    );
+    assert.equal(peace.posts[1], persona);
+    assert.deepEqual(peace.leak_terms, ['recall']);
+  });
+
+  test('a renamed handle rewrites peace persona authors and comment authors', () => {
+    const other = {
+      ref: 'P2',
+      author: { kind: 'persona', handle: '@other' },
+      platform: 'facebook',
+      post_format: 'text',
+      content: 'Evening walk.',
+      media_description: '',
+      offset_seconds: 40,
+      comments: [{ author_handle: '@other', content: 'Same', offset_seconds: 50 }],
+    };
+    const plan = planRemap(
+      input({
+        delta: delta({
+          changed_text: [{ key: 'primary', field: 'facebook_handle' }],
+        }),
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            is_primary: true,
+            facebook_handle: '@sam_new',
+          }),
+        ]),
+        initial_state: {
+          orgs: [acme({ facebook_handle: '@sam_k' })],
+          org_page: {
+            orgs: [
+              {
+                org_uid: 'uid-a',
+                org_key: 'primary',
+                display_name: 'Acme',
+                side: 'protagonist',
+                facebook_handle: '@sam_k',
+                facebook: { page_handle: '@sam_k', page_name: 'Acme' },
+              },
+            ],
+          },
+          personas: [{ id: 'p1', name: 'Sam', handle: '@sam_k' }],
+          peace_period: {
+            version: 1,
+            seconds: 300,
+            enabled: true,
+            leak_terms: ['recall'],
+            posts: [
+              {
+                ref: 'P1',
+                author: { kind: 'persona', handle: '@sam_k' },
+                platform: 'facebook',
+                post_format: 'text',
+                content: 'Saturday market.',
+                media_description: '',
+                offset_seconds: 20,
+                comments: [{ author_handle: '@Sam_K', content: 'Saturday plans', offset_seconds: 30 }],
+              },
+              other,
+              {
+                ref: 'P3',
+                author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+                platform: 'facebook',
+                post_format: 'text',
+                content: 'Acme breakfast.',
+                media_description: '',
+                offset_seconds: 60,
+                comments: [],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const peace = replaced(plan, '/peace_period') as {
+      posts: Array<{
+        ref: string;
+        content: string;
+        author: { kind: string; handle?: string; org_key?: string };
+        comments: Array<{ author_handle: string }>;
+      }>;
+    };
+    assert.equal(peace.posts[0]?.author.handle, '@sam_new');
+    assert.equal(peace.posts[0]?.comments[0]?.author_handle, '@sam_new');
+    assert.equal(peace.posts[0]?.content, 'Saturday market.');
+    assert.deepEqual(peace.posts[1], other);
+    assert.equal(peace.posts[2]?.author.org_key, 'primary');
+    assert.equal(peace.posts[2]?.content, 'Acme breakfast.');
+  });
 });

@@ -11,6 +11,7 @@ import {
   type LayerTeam,
 } from '../../lib/injectFingerprint.js';
 import { injectKeysInParsedCondition, parseConditionKey } from '../conditions/conditionCatalog.js';
+import { pageHandlesOf, peaceHandleRenames, rewritePeacePeriod } from '../generation/peaceFeedCore.js';
 import { makeOrgKey } from '../scenarioOrgModel.js';
 import type { SetupDelta } from './setupDeltaCore.js';
 import type { SetupSnapshot, SnapshotOrg, SnapshotTeam } from './setupSnapshotCore.js';
@@ -332,6 +333,7 @@ const PATCH_PATHS = [
   '/team_charters',
   '/team_dependencies',
   '/personas',
+  '/peace_period',
   '/countries',
   '/decision_context',
   '/sop_steps',
@@ -842,7 +844,7 @@ function reassignmentAccepted(
 ): boolean {
   const team = reassignTeam(input, teamName);
   const edge = dependencyEdge(plan, input, orphan.dependency_id ?? '');
-  if (!team || !edge) return false;
+  if (!team?.team_uid || !edge) return false;
   if (downstreamHas(edge, team.team_uid, team.team_name)) return false;
   const next = structuredClone(edge);
   const upstream = asRecord(next.upstream) ?? {};
@@ -1817,6 +1819,7 @@ function planInitialState(
   const charters = planCharters(working, state);
   const dependencies = planDependencies(working, state);
   const personas = planPersonas(working, state);
+  const peace = planPeacePeriod(working, state, orgPage.value, personas.value);
   const countries = planCountries(working, state, orgs.value, retired);
   const decision = planKeyedTree(state.decision_context, working);
   const steps = planKeyedTree(state.sop_steps, working);
@@ -1843,6 +1846,7 @@ function planInitialState(
       before: state.team_dependencies ?? null,
     },
     { path: '/personas', value: personas.value, before: state.personas ?? null },
+    { path: '/peace_period', value: peace.value, before: state.peace_period ?? null },
     { path: '/countries', value: countries.value, before: state.countries ?? null },
     { path: '/decision_context', value: decision.value, before: state.decision_context ?? null },
     { path: '/sop_steps', value: steps.value, before: state.sop_steps ?? null },
@@ -2482,6 +2486,41 @@ function refIsRemoved(value: unknown, working: Working): boolean {
     (uid !== '' && working.removedTeamUids.has(uid)) ||
     (name !== '' && working.removedTeamNames.has(name))
   );
+}
+
+function planPeacePeriod(
+  working: Working,
+  state: Record<string, unknown>,
+  orgPage: unknown,
+  personas: unknown,
+): { value: unknown } {
+  if (state.peace_period == null) return { value: state.peace_period };
+  const dropOrgKeys = new Set<string>([
+    ...working.removedOrgKeys,
+    ...working.removedRivals,
+    ...working.removedPressure,
+  ]);
+  const dropKey = (key: string) => dropOrgKeys.has(key) || dropOrgKeys.has(working.mapKey(key));
+  return {
+    value: rewritePeacePeriod(state.peace_period, {
+      mapKey: (key) => working.mapKey(key),
+      dropOrgKeys,
+      dropCommentHandles: [
+        ...pageHandlesOf(state.org_page, dropKey),
+        ...pageHandlesOf(state.orgs, dropKey),
+      ],
+      handleRenames: peaceHandleRenames({
+        orgPageBefore: state.org_page,
+        orgPageAfter: orgPage,
+        personasBefore: personaLists(state.personas, state.npc_personas),
+        personasAfter: personaLists(personas, state.npc_personas),
+      }),
+    }),
+  };
+}
+
+function personaLists(primary: unknown, extra: unknown): unknown[] {
+  return [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(extra) ? extra : [])];
 }
 
 function planPersonas(working: Working, state: Record<string, unknown>): { value: unknown } {
