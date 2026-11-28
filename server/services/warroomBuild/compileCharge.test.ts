@@ -343,4 +343,26 @@ describe('compile charge', () => {
     assert.equal(store.row.scenario_id, null);
     assert.equal(store.row.compile_status, 'running');
   });
+
+  test('a setup edit build is refused before a credit is consumed', async () => {
+    const row = succeeded();
+    row.request = { ...row.request, mode: 'setup_edit', setup_edit_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' };
+    const store = stub(row);
+    let consumed = false;
+    const begun = await beginCompileCharge({
+      store,
+      buildId: row.id,
+      userId: 'trainer-1',
+      isAdmin: false,
+      now: NOW,
+      consume: async () => {
+        consumed = true;
+        return { ok: true, ledgerId: 'ledger', invoiceId: null };
+      },
+      refund: async () => undefined,
+    });
+    assert.equal(begun.outcome, 'setup_edit');
+    assert.equal(consumed, false);
+    assert.equal(store.row.compile_status, null);
+  });
 });

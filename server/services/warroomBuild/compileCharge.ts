@@ -31,6 +31,7 @@ export type BeginCompile =
   | { outcome: 'in_progress' }
   | { outcome: 'no_credit' }
   | { outcome: 'unavailable' }
+  | { outcome: 'setup_edit' }
   | {
       outcome: 'claimed';
       ledgerId: string | null;
@@ -65,6 +66,7 @@ export async function beginCompileCharge(opts: {
 }): Promise<BeginCompile> {
   const row = await opts.store.get(opts.buildId);
   if (!row) return { outcome: 'not_found' };
+  if (row.request.mode === 'setup_edit') return { outcome: 'setup_edit' };
   const owns = opts.isAdmin || row.created_by === opts.userId;
   if (!owns || row.status !== 'succeeded') return { outcome: 'not_done' };
 
