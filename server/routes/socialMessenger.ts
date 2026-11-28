@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
@@ -16,6 +17,7 @@ import {
 } from '../lib/socialSessionGuard.js';
 
 const router = Router();
+router.use(staffViewer('socialMessenger'));
 
 // ─── List Conversation Threads ───────────────────────────────────────────────
 
