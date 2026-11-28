@@ -12,6 +12,7 @@ import {
 } from '../multiOrgPipeline.js';
 import type { OrganisationsValidation } from '../scenarioOrgModel.js';
 import type { StageInput } from './assemble.js';
+import { attachPeaceToPages, crisisBriefForLeakTerms } from '../generation/peaceFeedService.js';
 import { charactersReadyLine, formatProgress, stakeholdersReadyLine } from './buildCore.js';
 import type { BuildRequest, LogKind } from './buildTypes.js';
 
@@ -153,13 +154,29 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         ),
       );
       throwIfAborted(ctx.signal);
-      return {
+      const pagesOutput = {
         org_page: result.orgPage as unknown as Record<string, unknown>,
         orgs: result.orgs,
         countries: result.countries,
         pressure_injects: result.pressure_injects,
         persona_twins: result.persona_twins,
       };
+      return attachPeaceToPages(
+        pagesOutput,
+        {
+          personas: [...input.personas, ...(result.persona_twins ?? [])],
+          orgPage: pagesOutput.org_page,
+          crisisBrief: crisisBriefForLeakTerms({
+            crisisType: request.crisis_type,
+            context: request.context,
+            confirmedFacts: input.fact_sheet?.confirmed_facts,
+          }),
+        },
+        {
+          signal: ctx.signal,
+          warn: (message) => ctx.log('warning', message),
+        },
+      );
     },
   };
 }
