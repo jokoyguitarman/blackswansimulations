@@ -4,6 +4,7 @@ import { api } from '../../../lib/api';
 import { useRealtime } from '../../../hooks/useRealtime';
 import type { ChatListItem, ChatVariant } from './types';
 import { MemberSheet } from './MemberSheet';
+import { useSurfaceReadOnly } from '../surfaceReadOnly';
 
 interface ConversationScreenProps {
   sessionId: string;
@@ -24,6 +25,7 @@ export function ConversationScreen({
   onMembersOpen,
   onMembersClose,
 }: ConversationScreenProps) {
+  const readOnly = useSurfaceReadOnly();
   const markTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showMembers, setShowMembers] = useState(false);
 
@@ -39,12 +41,13 @@ export function ConversationScreen({
   };
 
   useEffect(() => {
+    if (readOnly) return;
     markRead();
     return () => {
       if (markTimer.current) clearTimeout(markTimer.current);
       api.channels.markRead(item.id).catch(() => undefined);
     };
-  }, [item.id]);
+  }, [item.id, readOnly]);
 
   useRealtime<{ channel_id: string; session_id: string }>({
     table: 'chat_messages',

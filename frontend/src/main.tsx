@@ -40,6 +40,7 @@ import NewsApp from './components/SimDevice/NewsApp';
 import { WordAppMobile } from './components/SimDevice/WordApp/WordApp';
 import { SheetsAppMobile } from './components/SimDevice/SheetsApp/SheetsApp';
 import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
+import { ViewerProvider } from './components/SimDevice/ViewerProvider';
 import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
 import './design/warroom.css';
@@ -189,7 +190,9 @@ const App = () => {
               path="/sim/:sessionId/device"
               element={
                 <ProtectedRoute>
-                  <DeviceShell />
+                  <ViewerProvider>
+                    <DeviceShell />
+                  </ViewerProvider>
                 </ProtectedRoute>
               }
             >
@@ -208,7 +211,9 @@ const App = () => {
               path="/sim/:sessionId/desktop"
               element={
                 <ProtectedRoute>
-                  <DesktopShell />
+                  <ViewerProvider>
+                    <DesktopShell />
+                  </ViewerProvider>
                 </ProtectedRoute>
               }
             />

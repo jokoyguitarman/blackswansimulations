@@ -6,6 +6,8 @@ import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useCountUp } from '../../hooks/useCountUp';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
+import { currentViewAsFrame, withViewAsHeaders, viewAsSubjectId } from '../../lib/viewAsFrame';
+import { WhenWritable, useSurfaceReadOnly } from './surfaceReadOnly';
 import FacebookMessengerView from './FacebookMessengerView';
 import FacebookGroupsView from './FacebookGroupsView';
 import FacebookEventsView from './FacebookEventsView';
@@ -16,7 +18,7 @@ import { LinkPreviewCard } from './LinkPreviewCard';
 import DisputeModal from './DisputeModal';
 import ReportModal from './ReportModal';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 function apiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -28,19 +30,14 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 type PostFormat =
-  | 'text'
-  | 'official_statement'
-  | 'infographic'
-  | 'humor_meme'
-  | 'video_concept'
-  | 'personal_story';
+  'text' | 'official_statement' | 'infographic' | 'humor_meme' | 'video_concept' | 'personal_story';
 
 const POST_FORMATS: Array<{ value: PostFormat; label: string; icon: string }> = [
   { value: 'text', label: 'Post', icon: '✏️' },
@@ -146,12 +143,12 @@ function getReactionEmoji(reactionType: string | undefined): string {
   return map[reactionType || ''] || '👍';
 }
 
-export default function FacebookFeedApp() {
+export default function FacebookFeedApp({ initialPosts }: { initialPosts?: SocialPost[] } = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
   const deviceNav = useDeviceNav('facebook');
   const { isTrainer } = useRoleVisibility();
-  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [posts, setPosts] = useState<SocialPost[]>(() => initialPosts ?? []);
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
@@ -162,7 +159,7 @@ export default function FacebookFeedApp() {
   const [reporting, setReporting] = useState(false);
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialPosts?.length);
   const [feedSort, setFeedSort] = useState<'top' | 'recent'>('top');
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
@@ -180,7 +177,16 @@ export default function FacebookFeedApp() {
   const currentUserIdRef = useRef<string | null>(null);
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
+  const surfaceReadOnly = useSurfaceReadOnly();
+
   useEffect(() => {
+    const subjectId = viewAsSubjectId();
+    if (subjectId) {
+      currentUserIdRef.current = subjectId;
+      const name = currentViewAsFrame()?.name;
+      if (name) setPlayerDisplayName(name);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       currentUserIdRef.current = session?.user?.id || null;
       const metaName = session?.user?.user_metadata?.full_name as string | undefined;
@@ -696,6 +702,7 @@ export default function FacebookFeedApp() {
   });
 
   async function handlePost() {
+    if (surfaceReadOnly) return;
     if (!composeText.trim() || !sessionId || sending) return;
     setSending(true);
     try {
@@ -795,6 +802,7 @@ export default function FacebookFeedApp() {
   }
 
   async function handleReaction(postId: string, reactionType: string = 'like') {
+    if (surfaceReadOnly) return;
     const rxKey = pageMode ? `page:${postId}` : postId;
     const post = posts.find((p) => p.id === postId);
     const alreadyLiked = post ? (pageMode ? post.page_liked_by_me : post.liked_by_me) : false;
@@ -859,6 +867,7 @@ export default function FacebookFeedApp() {
   }
 
   function handleShare(postId: string) {
+    if (surfaceReadOnly) return;
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
 
@@ -873,6 +882,7 @@ export default function FacebookFeedApp() {
   }
 
   async function handleComment(postId: string) {
+    if (surfaceReadOnly) return;
     const text = commentText[postId]?.trim();
     if (!text || !sessionId || sending) return;
     setSending(true);
@@ -917,6 +927,7 @@ export default function FacebookFeedApp() {
   }
 
   function openReportModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setReportPost(post);
     setReportCategory('');
     setReportReason('');
@@ -924,7 +935,7 @@ export default function FacebookFeedApp() {
   }
 
   async function submitReport() {
-    if (!reportPost || !reportCategory) return;
+    if (surfaceReadOnly || !reportPost || !reportCategory) return;
     setReporting(true);
     const postId = reportPost.id;
     try {
@@ -952,6 +963,7 @@ export default function FacebookFeedApp() {
   }
 
   function openDisputeModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setDisputePost(post);
     setDisputeNote('');
     setDisputeStatus(null);
@@ -2003,35 +2015,37 @@ export default function FacebookFeedApp() {
                 >
                   {playerDisplayName.charAt(0).toUpperCase()}
                 </div>
-                <button
-                  data-testid="fb-compose-open"
-                  onClick={() => setComposing(true)}
-                  className="flex-1 text-left px-3.5 py-2 rounded-full text-[15px]"
-                  style={{ backgroundColor: '#F0F2F5', color: '#65676B' }}
-                >
-                  What&apos;s on your mind?
-                </button>
-                <button onClick={() => setComposing(true)} className="px-2">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <rect
-                      x="3"
-                      y="3"
-                      width="18"
-                      height="18"
-                      rx="3"
-                      stroke="#45BD62"
-                      strokeWidth="2"
-                    />
-                    <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
-                    <path
-                      d="M21 15l-5-5L5 21"
-                      stroke="#45BD62"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                <WhenWritable>
+                  <button
+                    data-testid="fb-compose-open"
+                    onClick={() => setComposing(true)}
+                    className="flex-1 text-left px-3.5 py-2 rounded-full text-[15px]"
+                    style={{ backgroundColor: '#F0F2F5', color: '#65676B' }}
+                  >
+                    What&apos;s on your mind?
+                  </button>
+                  <button onClick={() => setComposing(true)} className="px-2">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                      <rect
+                        x="3"
+                        y="3"
+                        width="18"
+                        height="18"
+                        rx="3"
+                        stroke="#45BD62"
+                        strokeWidth="2"
+                      />
+                      <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+                      <path
+                        d="M21 15l-5-5L5 21"
+                        stroke="#45BD62"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </WhenWritable>
               </div>
             </div>
 
@@ -2283,6 +2297,7 @@ export default function FacebookFeedApp() {
                             </div>
                             <div className="flex items-center">
                               <button
+                                disabled={surfaceReadOnly}
                                 onClick={() => openDisputeModal(post)}
                                 className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
                                 title="Dispute with facts"
@@ -2303,6 +2318,7 @@ export default function FacebookFeedApp() {
                                 </svg>
                               </button>
                               <button
+                                disabled={surfaceReadOnly}
                                 onClick={() => openReportModal(post)}
                                 className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
                                 title="Report post"
@@ -2605,9 +2621,11 @@ export default function FacebookFeedApp() {
                                           : '#65676B';
                                 return (
                                   <button
+                                    disabled={surfaceReadOnly}
                                     data-testid={`fb-react-${post.id}`}
                                     onClick={() => handleReaction(post.id, 'like')}
                                     onMouseEnter={() => {
+                                      if (surfaceReadOnly) return;
                                       if (reactionTimeoutRef.current)
                                         clearTimeout(reactionTimeoutRef.current);
                                       setShowReactions(post.id);
@@ -2649,7 +2667,7 @@ export default function FacebookFeedApp() {
                                   </button>
                                 );
                               })()}
-                              {showReactions === post.id && (
+                              {showReactions === post.id && !surfaceReadOnly && (
                                 <div
                                   className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
                                   style={{
@@ -2671,6 +2689,7 @@ export default function FacebookFeedApp() {
                                   {REACTIONS.map((r) => (
                                     <button
                                       key={r.type}
+                                      disabled={surfaceReadOnly}
                                       data-testid={`fb-react-${post.id}-${r.type}`}
                                       onClick={() => handleReaction(post.id, r.type)}
                                       className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
@@ -2684,6 +2703,7 @@ export default function FacebookFeedApp() {
                               )}
                             </div>
                             <button
+                              disabled={surfaceReadOnly}
                               data-testid={`fb-comment-${post.id}`}
                               onClick={() => {
                                 setExpandedComments((prev) => new Set([...prev, post.id]));
@@ -2706,6 +2726,7 @@ export default function FacebookFeedApp() {
                             </button>
                             <div style={{ position: 'relative', flex: 1 }}>
                               <button
+                                disabled={surfaceReadOnly}
                                 data-testid={`fb-share-${post.id}`}
                                 onClick={() => handleShare(post.id)}
                                 className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
@@ -2723,7 +2744,7 @@ export default function FacebookFeedApp() {
                                 </svg>
                                 <span className="text-[14px] font-semibold">Share</span>
                               </button>
-                              {shareMenuPostId === post.id && (
+                              {shareMenuPostId === post.id && !surfaceReadOnly && (
                                 <ShareMenu
                                   postId={post.id}
                                   sessionId={sessionId!}
@@ -3107,104 +3128,108 @@ export default function FacebookFeedApp() {
                                         : playerDisplayName.charAt(0).toUpperCase()}
                                     </div>
                                   )}
-                                  <div
-                                    className="flex-1 flex items-center rounded-full px-3 py-1 relative"
-                                    style={{ backgroundColor: '#F0F2F5' }}
-                                  >
-                                    <input
-                                      ref={(el) => {
-                                        commentInputRefs.current[post.id] = el;
-                                      }}
-                                      data-testid={`fb-comment-input-${post.id}`}
-                                      type="text"
-                                      value={commentText[post.id] || ''}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setCommentText((prev) => ({ ...prev, [post.id]: val }));
-                                        const match = val.match(/@(\w*)$/);
-                                        if (match) {
-                                          setMentionQuery(match[1].toLowerCase());
-                                          setShowMentions(true);
-                                        } else {
-                                          setShowMentions(false);
-                                        }
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          handleComment(post.id);
-                                          setShowMentions(false);
-                                        }
-                                      }}
-                                      placeholder="Write a comment..."
-                                      className="flex-1 bg-transparent text-[13px] outline-none"
-                                      style={{ color: '#050505' }}
-                                    />
-                                    {commentText[post.id]?.trim() && (
-                                      <button
-                                        data-testid={`fb-comment-send-${post.id}`}
-                                        onClick={() => {
-                                          handleComment(post.id);
-                                          setShowMentions(false);
+                                  <WhenWritable>
+                                    <div
+                                      className="flex-1 flex items-center rounded-full px-3 py-1 relative"
+                                      style={{ backgroundColor: '#F0F2F5' }}
+                                    >
+                                      <input
+                                        ref={(el) => {
+                                          commentInputRefs.current[post.id] = el;
                                         }}
-                                        className="ml-1"
-                                      >
-                                        <svg
-                                          width="14"
-                                          height="14"
-                                          viewBox="0 0 24 24"
-                                          fill="#1877F2"
-                                        >
-                                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    {showMentions &&
-                                      document.activeElement ===
-                                        commentInputRefs.current[post.id] && (
-                                        <div
-                                          className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
-                                          style={{
-                                            backgroundColor: '#FFFFFF',
-                                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                            maxHeight: 120,
-                                            overflowY: 'auto',
+                                        data-testid={`fb-comment-input-${post.id}`}
+                                        type="text"
+                                        value={commentText[post.id] || ''}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setCommentText((prev) => ({ ...prev, [post.id]: val }));
+                                          const match = val.match(/@(\w*)$/);
+                                          if (match) {
+                                            setMentionQuery(match[1].toLowerCase());
+                                            setShowMentions(true);
+                                          } else {
+                                            setShowMentions(false);
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleComment(post.id);
+                                            setShowMentions(false);
+                                          }
+                                        }}
+                                        placeholder="Write a comment..."
+                                        className="flex-1 bg-transparent text-[13px] outline-none"
+                                        style={{ color: '#050505' }}
+                                      />
+                                      {commentText[post.id]?.trim() && (
+                                        <button
+                                          data-testid={`fb-comment-send-${post.id}`}
+                                          onClick={() => {
+                                            handleComment(post.id);
+                                            setShowMentions(false);
                                           }}
+                                          className="ml-1"
                                         >
-                                          {knownHandles
-                                            .filter((h) =>
-                                              h.handle.toLowerCase().includes(mentionQuery),
-                                            )
-                                            .slice(0, 5)
-                                            .map((h) => (
-                                              <button
-                                                key={h.handle}
-                                                onMouseDown={(e) => {
-                                                  e.preventDefault();
-                                                  setCommentText((prev) => ({
-                                                    ...prev,
-                                                    [post.id]: (prev[post.id] || '').replace(
-                                                      /@\w*$/,
-                                                      h.handle + ' ',
-                                                    ),
-                                                  }));
-                                                  setShowMentions(false);
-                                                  commentInputRefs.current[post.id]?.focus();
-                                                }}
-                                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
-                                                style={{ color: '#050505' }}
-                                              >
-                                                <span style={{ color: '#1877F2' }}>{h.handle}</span>
-                                                <span
-                                                  className="ml-1 text-[11px]"
-                                                  style={{ color: '#65676B' }}
-                                                >
-                                                  {h.display_name}
-                                                </span>
-                                              </button>
-                                            ))}
-                                        </div>
+                                          <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="#1877F2"
+                                          >
+                                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                          </svg>
+                                        </button>
                                       )}
-                                  </div>
+                                      {showMentions &&
+                                        document.activeElement ===
+                                          commentInputRefs.current[post.id] && (
+                                          <div
+                                            className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
+                                            style={{
+                                              backgroundColor: '#FFFFFF',
+                                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                              maxHeight: 120,
+                                              overflowY: 'auto',
+                                            }}
+                                          >
+                                            {knownHandles
+                                              .filter((h) =>
+                                                h.handle.toLowerCase().includes(mentionQuery),
+                                              )
+                                              .slice(0, 5)
+                                              .map((h) => (
+                                                <button
+                                                  key={h.handle}
+                                                  onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    setCommentText((prev) => ({
+                                                      ...prev,
+                                                      [post.id]: (prev[post.id] || '').replace(
+                                                        /@\w*$/,
+                                                        h.handle + ' ',
+                                                      ),
+                                                    }));
+                                                    setShowMentions(false);
+                                                    commentInputRefs.current[post.id]?.focus();
+                                                  }}
+                                                  className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
+                                                  style={{ color: '#050505' }}
+                                                >
+                                                  <span style={{ color: '#1877F2' }}>
+                                                    {h.handle}
+                                                  </span>
+                                                  <span
+                                                    className="ml-1 text-[11px]"
+                                                    style={{ color: '#65676B' }}
+                                                  >
+                                                    {h.display_name}
+                                                  </span>
+                                                </button>
+                                              ))}
+                                          </div>
+                                        )}
+                                    </div>
+                                  </WhenWritable>
                                 </div>
                               </>
                             );
@@ -3217,7 +3242,7 @@ export default function FacebookFeedApp() {
               </div>
 
               {/* ── Compose Modal ── */}
-              {composing && (
+              {composing && !surfaceReadOnly && (
                 <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
                   <div
                     className="flex-1"
@@ -3959,35 +3984,37 @@ export default function FacebookFeedApp() {
         </div>
       )}
 
-      {disputePost && (
-        <DisputeModal
-          authorName={disputePost.author_display_name}
-          authorHandle={disputePost.author_handle}
-          preview={disputePost.content}
-          note={disputeNote}
-          status={disputeStatus}
-          submitting={disputing}
-          onNoteChange={setDisputeNote}
-          onCancel={() => setDisputePost(null)}
-          onSubmit={submitPostDispute}
-        />
-      )}
+      <WhenWritable>
+        {disputePost && (
+          <DisputeModal
+            authorName={disputePost.author_display_name}
+            authorHandle={disputePost.author_handle}
+            preview={disputePost.content}
+            note={disputeNote}
+            status={disputeStatus}
+            submitting={disputing}
+            onNoteChange={setDisputeNote}
+            onCancel={() => setDisputePost(null)}
+            onSubmit={submitPostDispute}
+          />
+        )}
 
-      {reportPost && (
-        <ReportModal
-          authorName={reportPost.author_display_name}
-          authorHandle={reportPost.author_handle}
-          preview={reportPost.content}
-          category={reportCategory}
-          reason={reportReason}
-          status={reportStatus}
-          submitting={reporting}
-          onCategoryChange={setReportCategory}
-          onReasonChange={setReportReason}
-          onCancel={() => setReportPost(null)}
-          onSubmit={submitReport}
-        />
-      )}
+        {reportPost && (
+          <ReportModal
+            authorName={reportPost.author_display_name}
+            authorHandle={reportPost.author_handle}
+            preview={reportPost.content}
+            category={reportCategory}
+            reason={reportReason}
+            status={reportStatus}
+            submitting={reporting}
+            onCategoryChange={setReportCategory}
+            onReasonChange={setReportReason}
+            onCancel={() => setReportPost(null)}
+            onSubmit={submitReport}
+          />
+        )}
+      </WhenWritable>
     </div>
   );
 }

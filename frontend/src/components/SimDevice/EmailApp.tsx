@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { viewAsSubjectId, withViewAsHeaders } from '../../lib/viewAsFrame';
+import { WhenWritable, useSurfaceReadOnly } from './surfaceReadOnly';
 import { readAppIntent, isDesktopPath } from '../../lib/appIntents';
 import { useDeviceNav } from '../../lib/deviceNav';
 import {
@@ -13,7 +15,7 @@ import {
   splitAddresses,
 } from '@shared/emailRecipients';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 function apiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -25,10 +27,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface SimEmail {
@@ -131,7 +133,14 @@ export default function EmailApp() {
   );
   const canSend = outgoing.to.length > 0 && replyData.body.trim().length > 0;
 
+  const surfaceReadOnly = useSurfaceReadOnly();
+
   useEffect(() => {
+    const subjectId = viewAsSubjectId();
+    if (subjectId) {
+      setCurrentUserId(subjectId);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       setCurrentUserId(session?.user?.id || null);
     });
@@ -143,7 +152,7 @@ export default function EmailApp() {
   useEffect(() => {
     const intent = readAppIntent('email', location.search);
     const to = intent?.compose_to?.trim();
-    if (!to) return;
+    if (!to || surfaceReadOnly) return;
     setComposing(true);
     setReplying(false);
     setReplyTargetId(null);
@@ -326,6 +335,7 @@ export default function EmailApp() {
   }
 
   async function sendEmail() {
+    if (surfaceReadOnly) return;
     const { to: toAddresses, cc: ccAddresses } = normalizeRecipients(
       [...toChips, ...splitAddresses(replyData.to)],
       splitAddresses(ccText),
@@ -521,7 +531,7 @@ export default function EmailApp() {
   });
 
   // ─── Compose New Email View ─────────────────────────────────────────────────
-  if (composing && !selectedEmail) {
+  if (composing && !selectedEmail && !surfaceReadOnly) {
     return (
       <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
         <div
@@ -1023,39 +1033,18 @@ export default function EmailApp() {
         </div>
 
         {/* Reply toolbar (hidden when already replying) */}
-        {!replying && (
-          <div
-            className="flex items-center justify-center gap-6 px-4 py-3 flex-shrink-0"
-            style={{
-              borderTop: '0.5px solid rgba(60,60,67,0.29)',
-              backgroundColor: 'rgba(255,255,255,0.92)',
-            }}
-          >
-            <button
-              data-testid="mail-reply"
-              onClick={() => startReply(false)}
-              className="flex items-center gap-2 ios-btn-bounce"
-              style={{ color: '#007AFF' }}
+        <WhenWritable>
+          {!replying && (
+            <div
+              className="flex items-center justify-center gap-6 px-4 py-3 flex-shrink-0"
+              style={{
+                borderTop: '0.5px solid rgba(60,60,67,0.29)',
+                backgroundColor: 'rgba(255,255,255,0.92)',
+              }}
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="9 17 4 12 9 7" />
-                <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-              </svg>
-              <span className="text-[15px]">Reply</span>
-            </button>
-            {showReplyAll && (
               <button
-                data-testid="mail-reply-all"
-                onClick={() => startReply(true)}
+                data-testid="mail-reply"
+                onClick={() => startReply(false)}
                 className="flex items-center gap-2 ios-btn-bounce"
                 style={{ color: '#007AFF' }}
               >
@@ -1069,146 +1058,253 @@ export default function EmailApp() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <polyline points="7 17 2 12 7 7" />
-                  <polyline points="12 17 7 12 12 7" />
-                  <path d="M22 18v-2a4 4 0 0 0-4-4H7" />
+                  <polyline points="9 17 4 12 9 7" />
+                  <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
                 </svg>
-                <span className="text-[15px]">Reply All</span>
+                <span className="text-[15px]">Reply</span>
               </button>
-            )}
-            <button
-              onClick={startForward}
-              className="flex items-center gap-2 ios-btn-bounce"
-              style={{ color: '#007AFF' }}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              {showReplyAll && (
+                <button
+                  data-testid="mail-reply-all"
+                  onClick={() => startReply(true)}
+                  className="flex items-center gap-2 ios-btn-bounce"
+                  style={{ color: '#007AFF' }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="7 17 2 12 7 7" />
+                    <polyline points="12 17 7 12 12 7" />
+                    <path d="M22 18v-2a4 4 0 0 0-4-4H7" />
+                  </svg>
+                  <span className="text-[15px]">Reply All</span>
+                </button>
+              )}
+              <button
+                onClick={startForward}
+                className="flex items-center gap-2 ios-btn-bounce"
+                style={{ color: '#007AFF' }}
               >
-                <polyline points="15 17 20 12 15 7" />
-                <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
-              </svg>
-              <span className="text-[15px]">Forward</span>
-            </button>
-          </div>
-        )}
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="15 17 20 12 15 7" />
+                  <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+                </svg>
+                <span className="text-[15px]">Forward</span>
+              </button>
+            </div>
+          )}
+        </WhenWritable>
       </div>
     );
   }
 
   // ─── Inbox / Sent List View ─────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
-      {/* Nav */}
-      <div
-        className="ios-blur-nav flex-shrink-0"
-        style={{
-          backgroundColor: 'rgba(242,242,247,0.92)',
-          borderBottom: '0.5px solid rgba(60,60,67,0.29)',
-          backdropFilter: 'blur(20px)',
-        }}
-      >
-        <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
-          <button
-            onClick={() => deviceNav.goHome()}
-            className="flex items-center gap-0.5 ios-btn-bounce"
-            style={{ color: '#007AFF' }}
-          >
-            <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
-              <path
-                d="M10 2L2 10l8 8"
-                stroke="#007AFF"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="text-[17px]">Back</span>
-          </button>
-          <button
-            onClick={() => {
-              setComposing(true);
-              setReplyData({ to: '', subject: '', body: '' });
-              setToChips([]);
-              setCcText('');
-              loadContacts();
-            }}
-            className="ios-btn-bounce"
-            style={{ color: '#007AFF' }}
-          >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#007AFF"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
-          </button>
-        </div>
-        <div className="px-4 pb-2">
-          <h1 className="text-[34px] font-bold tracking-tight" style={{ color: '#000000' }}>
-            {folder === 'inbox' ? 'Inbox' : folder === 'sent' ? 'Sent' : 'Drafts'}
-          </h1>
-        </div>
-        {/* Folder Toggle */}
-        <div className="px-4 pb-3">
-          <div
-            className="flex rounded-[9px] p-[2px]"
-            style={{ backgroundColor: 'rgba(118,118,128,0.12)' }}
-          >
+    <React.Fragment>
+      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+        {/* Nav */}
+        <div
+          className="ios-blur-nav flex-shrink-0"
+          style={{
+            backgroundColor: 'rgba(242,242,247,0.92)',
+            borderBottom: '0.5px solid rgba(60,60,67,0.29)',
+            backdropFilter: 'blur(20px)',
+          }}
+        >
+          <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
             <button
-              onClick={() => setFolder('inbox')}
-              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
-              style={{
-                backgroundColor: folder === 'inbox' ? '#FFFFFF' : 'transparent',
-                color: folder === 'inbox' ? '#000000' : '#8E8E93',
-                boxShadow: folder === 'inbox' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
+              onClick={() => deviceNav.goHome()}
+              className="flex items-center gap-0.5 ios-btn-bounce"
+              style={{ color: '#007AFF' }}
             >
-              Inbox
+              <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
+                <path
+                  d="M10 2L2 10l8 8"
+                  stroke="#007AFF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="text-[17px]">Back</span>
             </button>
-            <button
-              onClick={() => setFolder('sent')}
-              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
-              style={{
-                backgroundColor: folder === 'sent' ? '#FFFFFF' : 'transparent',
-                color: folder === 'sent' ? '#000000' : '#8E8E93',
-                boxShadow: folder === 'sent' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
+            <WhenWritable>
+              <button
+                onClick={() => {
+                  setComposing(true);
+                  setReplyData({ to: '', subject: '', body: '' });
+                  setToChips([]);
+                  setCcText('');
+                  loadContacts();
+                }}
+                className="ios-btn-bounce"
+                style={{ color: '#007AFF' }}
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#007AFF"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+              </button>
+            </WhenWritable>
+          </div>
+          <div className="px-4 pb-2">
+            <h1 className="text-[34px] font-bold tracking-tight" style={{ color: '#000000' }}>
+              {folder === 'inbox' ? 'Inbox' : folder === 'sent' ? 'Sent' : 'Drafts'}
+            </h1>
+          </div>
+          {/* Folder Toggle */}
+          <div className="px-4 pb-3">
+            <div
+              className="flex rounded-[9px] p-[2px]"
+              style={{ backgroundColor: 'rgba(118,118,128,0.12)' }}
             >
-              Sent
-            </button>
-            <button
-              onClick={() => setFolder('drafts')}
-              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all relative"
-              style={{
-                backgroundColor: folder === 'drafts' ? '#FFFFFF' : 'transparent',
-                color: folder === 'drafts' ? '#000000' : '#8E8E93',
-                boxShadow: folder === 'drafts' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              Drafts{drafts.length > 0 && ` (${drafts.length})`}
-            </button>
+              <button
+                onClick={() => setFolder('inbox')}
+                className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
+                style={{
+                  backgroundColor: folder === 'inbox' ? '#FFFFFF' : 'transparent',
+                  color: folder === 'inbox' ? '#000000' : '#8E8E93',
+                  boxShadow: folder === 'inbox' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                Inbox
+              </button>
+              <button
+                onClick={() => setFolder('sent')}
+                className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
+                style={{
+                  backgroundColor: folder === 'sent' ? '#FFFFFF' : 'transparent',
+                  color: folder === 'sent' ? '#000000' : '#8E8E93',
+                  boxShadow: folder === 'sent' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                Sent
+              </button>
+              <button
+                onClick={() => setFolder('drafts')}
+                className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all relative"
+                style={{
+                  backgroundColor: folder === 'drafts' ? '#FFFFFF' : 'transparent',
+                  color: folder === 'drafts' ? '#000000' : '#8E8E93',
+                  boxShadow: folder === 'drafts' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                Drafts{drafts.length > 0 && ` (${drafts.length})`}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Email List */}
-      <div data-testid="mail-list" className="flex-1 overflow-y-auto">
-        {folder === 'drafts' ? (
-          drafts.length === 0 ? (
+        {/* Email List */}
+        <div data-testid="mail-list" className="flex-1 overflow-y-auto">
+          {folder === 'drafts' ? (
+            drafts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 gap-2">
+                <svg
+                  width="52"
+                  height="52"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#C7C7CC"
+                  strokeWidth="0.8"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+                <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
+                  No Drafts
+                </p>
+                <p className="text-[14px]" style={{ color: '#8E8E93' }}>
+                  Unsent emails will be saved here.
+                </p>
+              </div>
+            ) : (
+              <div
+                className="mt-3 mx-4 rounded-xl overflow-hidden"
+                style={{ backgroundColor: '#FFFFFF' }}
+              >
+                {drafts.map((draft, idx) => (
+                  <div
+                    key={draft.id}
+                    className="flex items-start gap-3 px-4 py-3"
+                    style={{
+                      borderBottom:
+                        idx < drafts.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
+                    }}
+                  >
+                    <button onClick={() => openDraft(draft)} className="flex-1 text-left min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className="text-[15px] font-semibold truncate"
+                          style={{ color: '#000000' }}
+                        >
+                          {draft.to || '(No recipient)'}
+                        </span>
+                        <span className="text-[13px] flex-shrink-0" style={{ color: '#8E8E93' }}>
+                          {new Date(draft.savedAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-[14px] truncate mt-0.5" style={{ color: '#1C1C1E' }}>
+                        {draft.subject || '(No subject)'}
+                      </p>
+                      <p className="text-[13px] truncate mt-0.5" style={{ color: '#8E8E93' }}>
+                        {draft.body || '(Empty)'}
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => deleteDraft(draft.id)}
+                      className="flex-shrink-0 mt-1 ios-btn-bounce"
+                      style={{ color: '#FF3B30' }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : filteredEmails.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-2">
               <svg
                 width="52"
@@ -1218,16 +1314,16 @@ export default function EmailApp() {
                 stroke="#C7C7CC"
                 strokeWidth="0.8"
               >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="M22 7l-10 7L2 7" />
               </svg>
               <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
-                No Drafts
+                {folder === 'inbox' ? 'No Mail' : 'No Sent Mail'}
               </p>
               <p className="text-[14px]" style={{ color: '#8E8E93' }}>
-                Unsent emails will be saved here.
+                {folder === 'inbox'
+                  ? 'Emails will appear as the simulation runs.'
+                  : 'Sent emails will appear here.'}
               </p>
             </div>
           ) : (
@@ -1235,216 +1331,140 @@ export default function EmailApp() {
               className="mt-3 mx-4 rounded-xl overflow-hidden"
               style={{ backgroundColor: '#FFFFFF' }}
             >
-              {drafts.map((draft, idx) => (
-                <div
-                  key={draft.id}
-                  className="flex items-start gap-3 px-4 py-3"
-                  style={{
-                    borderBottom:
-                      idx < drafts.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
-                  }}
-                >
-                  <button onClick={() => openDraft(draft)} className="flex-1 text-left min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className="text-[15px] font-semibold truncate"
-                        style={{ color: '#000000' }}
-                      >
-                        {draft.to || '(No recipient)'}
-                      </span>
-                      <span className="text-[13px] flex-shrink-0" style={{ color: '#8E8E93' }}>
-                        {new Date(draft.savedAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-[14px] truncate mt-0.5" style={{ color: '#1C1C1E' }}>
-                      {draft.subject || '(No subject)'}
-                    </p>
-                    <p className="text-[13px] truncate mt-0.5" style={{ color: '#8E8E93' }}>
-                      {draft.body || '(Empty)'}
-                    </p>
-                  </button>
+              {filteredEmails.map((email, idx) => {
+                const priorityBadge = getPriorityBadge(email.priority);
+                const categoryBadge = getCategoryBadge(email.email_category);
+                const senderName =
+                  email.direction === 'inbound'
+                    ? email.from_name
+                    : `To: ${email.to_addresses.join(', ')}`;
+                return (
                   <button
-                    onClick={() => deleteDraft(draft.id)}
-                    className="flex-shrink-0 mt-1 ios-btn-bounce"
-                    style={{ color: '#FF3B30' }}
+                    key={email.id}
+                    onClick={() => openEmail(email)}
+                    className="w-full text-left flex items-start gap-3 px-4 py-3 ios-btn-bounce active:bg-gray-50"
+                    style={{
+                      borderBottom:
+                        idx < filteredEmails.length - 1
+                          ? '0.5px solid rgba(60,60,67,0.12)'
+                          : 'none',
+                    }}
                   >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )
-        ) : filteredEmails.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-2">
-            <svg
-              width="52"
-              height="52"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#C7C7CC"
-              strokeWidth="0.8"
-            >
-              <rect x="2" y="4" width="20" height="16" rx="2" />
-              <path d="M22 7l-10 7L2 7" />
-            </svg>
-            <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
-              {folder === 'inbox' ? 'No Mail' : 'No Sent Mail'}
-            </p>
-            <p className="text-[14px]" style={{ color: '#8E8E93' }}>
-              {folder === 'inbox'
-                ? 'Emails will appear as the simulation runs.'
-                : 'Sent emails will appear here.'}
-            </p>
-          </div>
-        ) : (
-          <div
-            className="mt-3 mx-4 rounded-xl overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF' }}
-          >
-            {filteredEmails.map((email, idx) => {
-              const priorityBadge = getPriorityBadge(email.priority);
-              const categoryBadge = getCategoryBadge(email.email_category);
-              const senderName =
-                email.direction === 'inbound'
-                  ? email.from_name
-                  : `To: ${email.to_addresses.join(', ')}`;
-              return (
-                <button
-                  key={email.id}
-                  onClick={() => openEmail(email)}
-                  className="w-full text-left flex items-start gap-3 px-4 py-3 ios-btn-bounce active:bg-gray-50"
-                  style={{
-                    borderBottom:
-                      idx < filteredEmails.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
-                  }}
-                >
-                  {/* Avatar */}
-                  <div className="flex-shrink-0 relative">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-[16px]"
-                      style={{ backgroundColor: getInitialsColor(senderName) }}
-                    >
-                      {senderName.replace('To: ', '').charAt(0).toUpperCase()}
-                    </div>
-                    {!email.is_read && email.direction === 'inbound' && (
+                    {/* Avatar */}
+                    <div className="flex-shrink-0 relative">
                       <div
-                        className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full"
-                        style={{ backgroundColor: '#007AFF' }}
-                      />
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-[15px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-bold' : 'font-normal'}`}
-                        style={{ color: '#000000' }}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-[16px]"
+                        style={{ backgroundColor: getInitialsColor(senderName) }}
                       >
-                        {senderName}
-                      </span>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-[13px]" style={{ color: '#8E8E93' }}>
-                          {formatTime(email.created_at)}
-                        </span>
-                        <svg width="7" height="12" viewBox="0 0 7 12" fill="none">
-                          <path
-                            d="M1 1l5 5-5 5"
-                            stroke="#C7C7CC"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        {senderName.replace('To: ', '').charAt(0).toUpperCase()}
                       </div>
+                      {!email.is_read && email.direction === 'inbound' && (
+                        <div
+                          className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full"
+                          style={{ backgroundColor: '#007AFF' }}
+                        />
+                      )}
                     </div>
-                    {isTrainer && categoryBadge && (
-                      <span
-                        className="inline-block text-[10px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded mt-0.5"
-                        style={{
-                          backgroundColor: categoryBadge.bg,
-                          color: categoryBadge.text,
-                        }}
-                      >
-                        {categoryBadge.label}
-                      </span>
-                    )}
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {priorityBadge && (
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
                         <span
-                          className="text-[11px] font-bold w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: priorityBadge.bg, color: priorityBadge.text }}
+                          className={`text-[15px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-bold' : 'font-normal'}`}
+                          style={{ color: '#000000' }}
                         >
-                          !
+                          {senderName}
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="text-[13px]" style={{ color: '#8E8E93' }}>
+                            {formatTime(email.created_at)}
+                          </span>
+                          <svg width="7" height="12" viewBox="0 0 7 12" fill="none">
+                            <path
+                              d="M1 1l5 5-5 5"
+                              stroke="#C7C7CC"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      {isTrainer && categoryBadge && (
+                        <span
+                          className="inline-block text-[10px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded mt-0.5"
+                          style={{
+                            backgroundColor: categoryBadge.bg,
+                            color: categoryBadge.text,
+                          }}
+                        >
+                          {categoryBadge.label}
                         </span>
                       )}
-                      <p
-                        className={`text-[14px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-medium' : ''}`}
-                        style={{ color: '#1C1C1E' }}
-                      >
-                        {email.subject}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {priorityBadge && (
+                          <span
+                            className="text-[11px] font-bold w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: priorityBadge.bg, color: priorityBadge.text }}
+                          >
+                            !
+                          </span>
+                        )}
+                        <p
+                          className={`text-[14px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-medium' : ''}`}
+                          style={{ color: '#1C1C1E' }}
+                        >
+                          {email.subject}
+                        </p>
+                      </div>
+                      <p className="text-[13px] mt-0.5 truncate" style={{ color: '#8E8E93' }}>
+                        {email.body_text.substring(0, 90)}
                       </p>
                     </div>
-                    <p className="text-[13px] mt-0.5 truncate" style={{ color: '#8E8E93' }}>
-                      {email.body_text.substring(0, 90)}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-      {/* Compose FAB */}
-      <button
-        onClick={() => {
-          setComposing(true);
-          setReplyData({ to: '', subject: '', body: '' });
-          setToChips([]);
-          setCcText('');
-          loadContacts();
-        }}
-        className="absolute ios-btn-bounce flex items-center justify-center"
-        style={{
-          bottom: 24,
-          right: 20,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: '#007AFF',
-          boxShadow: '0 4px 12px rgba(0,122,255,0.35)',
-        }}
-      >
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="white"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-      </button>
-    </div>
+        {/* Compose FAB */}
+        <WhenWritable>
+          <button
+            onClick={() => {
+              setComposing(true);
+              setReplyData({ to: '', subject: '', body: '' });
+              setToChips([]);
+              setCcText('');
+              loadContacts();
+            }}
+            className="absolute ios-btn-bounce flex items-center justify-center"
+            style={{
+              bottom: 24,
+              right: 20,
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: '#007AFF',
+              boxShadow: '0 4px 12px rgba(0,122,255,0.35)',
+            }}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+          </button>
+        </WhenWritable>
+      </div>
+    </React.Fragment>
   );
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // Fires per event with object payloads; production consoles retain every one.
-const debugLog: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+const debugLog: typeof console.log = import.meta.env?.DEV ? console.log.bind(console) : () => {};
 
 /**
  * React Hook for Supabase Realtime subscriptions

@@ -15,6 +15,7 @@ import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { execDecisionsRouter } from './routes/execDecisions.js';
 import { sessionsRouter } from './routes/sessions.js';
+import { staffViewRouter } from './routes/staffView.js';
 import { sessionRolesRouter } from './routes/sessionRoles.js';
 import { escalationsRouter } from './routes/escalations.js';
 import { dependenciesRouter } from './routes/dependencies.js';
@@ -297,6 +298,7 @@ app.use('/api/sessions', sessionRolesRouter);
 app.use('/api/sessions', escalationsRouter);
 app.use('/api/sessions', dependenciesRouter);
 app.use('/api/sessions', directorRouter);
+app.use('/api/sessions', staffViewRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)
 app.use('/api/channels', channelsRouter);

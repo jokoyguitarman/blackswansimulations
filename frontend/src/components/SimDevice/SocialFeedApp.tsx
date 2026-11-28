@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useDeviceNav } from '../../lib/deviceNav';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
+import { currentViewAsFrame, withViewAsHeaders, viewAsSubjectId } from '../../lib/viewAsFrame';
+import { WhenWritable, useSurfaceReadOnly } from './surfaceReadOnly';
 import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
@@ -12,7 +14,9 @@ import { LinkPreviewCard } from './LinkPreviewCard';
 import DisputeModal from './DisputeModal';
 import ReportModal from './ReportModal';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+void React;
+
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 function apiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -24,10 +28,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 const REACTION_EMOJI: Record<string, string> = {
@@ -40,12 +44,7 @@ const REACTION_EMOJI: Record<string, string> = {
 };
 
 type PostFormat =
-  | 'text'
-  | 'official_statement'
-  | 'infographic'
-  | 'humor_meme'
-  | 'video_concept'
-  | 'personal_story';
+  'text' | 'official_statement' | 'infographic' | 'humor_meme' | 'video_concept' | 'personal_story';
 
 const POST_FORMATS: Array<{ value: PostFormat; label: string; icon: string; placeholder: string }> =
   [
@@ -133,12 +132,19 @@ export default function SocialFeedApp({
   externalFilter,
   openPostId,
   triggerCompose,
-}: { externalFilter?: string; openPostId?: string; triggerCompose?: number } = {}) {
+  initialPosts,
+}: {
+  externalFilter?: string;
+  openPostId?: string;
+  triggerCompose?: number;
+  /** Seeds the feed for a read-only render. Omitted in the player shell. */
+  initialPosts?: SocialPost[];
+} = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
   const deviceNav = useDeviceNav('social');
   const { isTrainer } = useRoleVisibility();
-  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [posts, setPosts] = useState<SocialPost[]>(() => initialPosts ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [postingAsPage, setPostingAsPage] = useState(false);
   const { setIsPageMode } = usePageMode();
@@ -162,7 +168,16 @@ export default function SocialFeedApp({
     return () => setIsPageMode(false);
   }, [overlayView, setIsPageMode]);
 
+  const surfaceReadOnly = useSurfaceReadOnly();
+
   useEffect(() => {
+    const subjectId = viewAsSubjectId();
+    if (subjectId) {
+      currentUserIdRef.current = subjectId;
+      const name = currentViewAsFrame()?.name;
+      if (name) setPlayerDisplayName(name);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       currentUserIdRef.current = session?.user?.id || null;
       const metaName = session?.user?.user_metadata?.full_name as string | undefined;
@@ -219,13 +234,17 @@ export default function SocialFeedApp({
     }
     prevExternalFilter.current = externalFilter;
   }, [externalFilter]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialPosts?.length);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [replyingTo, setReplyingTo] = useState<SocialPost | null>(null);
   const [activeTab, setActiveTab] = useState<'foryou' | 'latest'>('foryou');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
-  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(() =>
+    openPostId && initialPosts
+      ? (initialPosts.find((post) => post.id === openPostId) ?? null)
+      : null,
+  );
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
@@ -612,6 +631,7 @@ export default function SocialFeedApp({
   });
 
   async function handlePost() {
+    if (surfaceReadOnly) return;
     if (!composeText.trim() || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
@@ -728,6 +748,7 @@ export default function SocialFeedApp({
   }
 
   async function handleLike(postId: string) {
+    if (surfaceReadOnly) return;
     const post = posts.find((p) => p.id === postId) || threadReplies.find((r) => r.id === postId);
     if (!post) return;
 
@@ -823,6 +844,7 @@ export default function SocialFeedApp({
   }, [triggerCompose]);
 
   async function handleFlag(postId: string) {
+    if (surfaceReadOnly) return;
     const post = posts.find((p) => p.id === postId);
     if (post?.flagged_by_me) return;
 
@@ -846,6 +868,7 @@ export default function SocialFeedApp({
   }
 
   function openReportModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setReportPost(post);
     setReportCategory('');
     setReportReason('');
@@ -853,7 +876,7 @@ export default function SocialFeedApp({
   }
 
   async function submitReport() {
-    if (!reportPost || !reportCategory) return;
+    if (surfaceReadOnly || !reportPost || !reportCategory) return;
     setReporting(true);
     const postId = reportPost.id;
     try {
@@ -884,10 +907,12 @@ export default function SocialFeedApp({
   }
 
   function handleShareMenu(postId: string) {
+    if (surfaceReadOnly) return;
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
 
   function openDisputeModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setDisputePost(post);
     setDisputeNote('');
     setDisputeStatus(null);
@@ -923,6 +948,7 @@ export default function SocialFeedApp({
   }
 
   async function handleRepost(postId: string) {
+    if (surfaceReadOnly) return;
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/posts/${postId}/repost`), {
@@ -1126,6 +1152,7 @@ export default function SocialFeedApp({
             >
               {/* Reply */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => {
                   setReplyingTo(selectedPost);
                   setComposeText(`${selectedPost.author_handle} `);
@@ -1149,6 +1176,7 @@ export default function SocialFeedApp({
               </button>
               {/* Like */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => handleLike(selectedPost.id)}
                 className="ios-btn-bounce p-2 transition-colors"
                 style={{ color: selectedPost.liked_by_me ? '#F91880' : '#71767B' }}
@@ -1168,6 +1196,7 @@ export default function SocialFeedApp({
               </button>
               {/* Report (with reason) */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => openReportModal(selectedPost)}
                 className="ios-btn-bounce p-2 transition-colors"
                 style={{ color: selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B' }}
@@ -1189,6 +1218,7 @@ export default function SocialFeedApp({
               </button>
               {/* Dispute with facts */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => openDisputeModal(selectedPost)}
                 className="ios-btn-bounce p-2 transition-colors hover:text-[#F4212E]"
                 style={{ color: '#71767B' }}
@@ -1212,6 +1242,7 @@ export default function SocialFeedApp({
               {/* Share */}
               <div style={{ position: 'relative' }}>
                 <button
+                  disabled={surfaceReadOnly}
                   onClick={() => handleShareMenu(selectedPost.id)}
                   className="ios-btn-bounce p-2 transition-colors hover:text-[#1D9BF0]"
                   style={{ color: '#71767B' }}
@@ -1231,7 +1262,7 @@ export default function SocialFeedApp({
                     <line x1="12" y1="2" x2="12" y2="15" />
                   </svg>
                 </button>
-                {shareMenuPostId === selectedPost.id && (
+                {shareMenuPostId === selectedPost.id && !surfaceReadOnly && (
                   <ShareMenu
                     postId={selectedPost.id}
                     sessionId={sessionId!}
@@ -1317,6 +1348,7 @@ export default function SocialFeedApp({
                       )}
                       <div className="flex items-center gap-5 mt-2">
                         <button
+                          disabled={surfaceReadOnly}
                           onClick={() => {
                             setReplyingTo(reply);
                             setComposeText(`${reply.author_handle} `);
@@ -1339,6 +1371,7 @@ export default function SocialFeedApp({
                           </svg>
                         </button>
                         <button
+                          disabled={surfaceReadOnly}
                           onClick={() => handleLike(reply.id)}
                           className="ios-btn-bounce flex items-center gap-1"
                           style={{ color: reply.liked_by_me ? '#F91880' : '#71767B' }}
@@ -1367,362 +1400,367 @@ export default function SocialFeedApp({
         </div>
 
         {/* Compose Modal (thread view) */}
-        {composing && (
-          <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
-            <div
-              className="flex-1"
-              style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
-              onClick={() => {
-                setComposing(false);
-                setReplyingTo(null);
-              }}
-            />
-            <div
-              className="flex flex-col"
-              style={{
-                backgroundColor: '#000000',
-                borderTop: '1px solid #2F3336',
-                borderRadius: '16px 16px 0 0',
-                maxHeight: '70%',
-              }}
-            >
+        <WhenWritable>
+          {composing && (
+            <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
               <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: '1px solid #2F3336' }}
+                className="flex-1"
+                style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
+                onClick={() => {
+                  setComposing(false);
+                  setReplyingTo(null);
+                }}
+              />
+              <div
+                className="flex flex-col"
+                style={{
+                  backgroundColor: '#000000',
+                  borderTop: '1px solid #2F3336',
+                  borderRadius: '16px 16px 0 0',
+                  maxHeight: '70%',
+                }}
               >
-                <button
-                  onClick={() => {
-                    setComposing(false);
-                    setReplyingTo(null);
-                  }}
-                  className="text-[15px]"
-                  style={{ color: '#71767B' }}
+                <div
+                  className="flex items-center justify-between px-4 py-3"
+                  style={{ borderBottom: '1px solid #2F3336' }}
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handlePost}
-                  disabled={!composeText.trim()}
-                  className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
-                  style={{ backgroundColor: '#1D9BF0' }}
-                >
-                  Reply
-                </button>
-              </div>
-              {replyingTo && (
-                <div className="px-4 pb-2 pt-3">
-                  <span className="text-[14px]" style={{ color: '#71767B' }}>
-                    Replying to <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
-                  </span>
-                </div>
-              )}
-              <div className="flex-1 px-4 pb-2 overflow-y-auto">
-                <div className="flex gap-3 pt-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                  <button
+                    onClick={() => {
+                      setComposing(false);
+                      setReplyingTo(null);
+                    }}
+                    className="text-[15px]"
+                    style={{ color: '#71767B' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePost}
+                    disabled={!composeText.trim()}
+                    className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
                     style={{ backgroundColor: '#1D9BF0' }}
                   >
-                    Y
+                    Reply
+                  </button>
+                </div>
+                {replyingTo && (
+                  <div className="px-4 pb-2 pt-3">
+                    <span className="text-[14px]" style={{ color: '#71767B' }}>
+                      Replying to{' '}
+                      <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
+                    </span>
                   </div>
-                  <div className="flex-1 relative">
-                    <textarea
-                      value={composeText}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setComposeText(val);
-                        const match = val.match(/@(\w*)$/);
-                        if (match) {
-                          setMentionQuery(match[1].toLowerCase());
-                          setShowMentions(true);
-                        } else {
-                          setShowMentions(false);
-                        }
-                      }}
-                      placeholder="Post your reply..."
-                      className="w-full bg-transparent text-[18px] resize-none outline-none min-h-[100px] placeholder:text-[#71767B]"
-                      style={{ color: '#E7E9EA', lineHeight: '1.4' }}
-                      maxLength={500}
-                      autoFocus
-                    />
-                    {showMentions && (
-                      <div
-                        className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
-                        style={{
-                          backgroundColor: '#2F3336',
-                          maxHeight: 150,
-                          overflowY: 'auto',
-                          top: 40,
+                )}
+                <div className="flex-1 px-4 pb-2 overflow-y-auto">
+                  <div className="flex gap-3 pt-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                      style={{ backgroundColor: '#1D9BF0' }}
+                    >
+                      Y
+                    </div>
+                    <div className="flex-1 relative">
+                      <textarea
+                        value={composeText}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setComposeText(val);
+                          const match = val.match(/@(\w*)$/);
+                          if (match) {
+                            setMentionQuery(match[1].toLowerCase());
+                            setShowMentions(true);
+                          } else {
+                            setShowMentions(false);
+                          }
                         }}
-                      >
-                        {knownHandles
-                          .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
-                          .slice(0, 6)
-                          .map((h) => (
-                            <button
-                              key={h.handle}
-                              onClick={() => {
-                                setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
-                                setShowMentions(false);
-                              }}
-                              className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
-                              style={{ color: '#E7E9EA' }}
-                            >
-                              <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
-                              <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
-                                {h.display_name}
-                              </span>
-                            </button>
-                          ))}
-                      </div>
-                    )}
+                        placeholder="Post your reply..."
+                        className="w-full bg-transparent text-[18px] resize-none outline-none min-h-[100px] placeholder:text-[#71767B]"
+                        style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                        maxLength={500}
+                        autoFocus
+                      />
+                      {showMentions && (
+                        <div
+                          className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                          style={{
+                            backgroundColor: '#2F3336',
+                            maxHeight: 150,
+                            overflowY: 'auto',
+                            top: 40,
+                          }}
+                        >
+                          {knownHandles
+                            .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                            .slice(0, 6)
+                            .map((h) => (
+                              <button
+                                key={h.handle}
+                                onClick={() => {
+                                  setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
+                                  setShowMentions(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
+                                style={{ color: '#E7E9EA' }}
+                              >
+                                <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
+                                <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
+                                  {h.display_name}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Media preview */}
-              {mediaPreviewUrl && !showMediaPanel && (
-                <div
-                  className="mx-4 mb-2 rounded-xl overflow-hidden relative"
-                  style={{ border: '1px solid #2F3336' }}
-                >
-                  {mediaPreviewUrl.endsWith('.mp4') ? (
-                    <video
-                      src={mediaPreviewUrl}
-                      controls
-                      className="w-full max-h-[160px] object-contain"
+                {/* Media preview */}
+                {mediaPreviewUrl && !showMediaPanel && (
+                  <div
+                    className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                    style={{ border: '1px solid #2F3336' }}
+                  >
+                    {mediaPreviewUrl.endsWith('.mp4') ? (
+                      <video
+                        src={mediaPreviewUrl}
+                        controls
+                        className="w-full max-h-[160px] object-contain"
+                        style={{ backgroundColor: '#000' }}
+                      />
+                    ) : (
+                      <img
+                        src={mediaPreviewUrl}
+                        alt="Media preview"
+                        className="w-full max-h-[160px] object-contain"
+                        style={{ backgroundColor: '#000' }}
+                      />
+                    )}
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <button
+                        onClick={() => setShowMediaPanel(true)}
+                        className="px-2 py-1 rounded text-[11px] font-semibold"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
+                      >
+                        Change
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMediaPreviewUrl(null);
+                          setMediaPromptText('');
+                        }}
+                        className="px-2 py-1 rounded text-[11px] font-semibold"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Media panel */}
+                {showMediaPanel && (
+                  <div
+                    className="mx-4 mb-2 rounded-xl p-3"
+                    style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+                  >
+                    <div
+                      className="flex items-center gap-1 mb-2 rounded-lg overflow-hidden"
                       style={{ backgroundColor: '#000' }}
-                    />
-                  ) : (
-                    <img
-                      src={mediaPreviewUrl}
-                      alt="Media preview"
-                      className="w-full max-h-[160px] object-contain"
-                      style={{ backgroundColor: '#000' }}
-                    />
-                  )}
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <button
-                      onClick={() => setShowMediaPanel(true)}
-                      className="px-2 py-1 rounded text-[11px] font-semibold"
-                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
                     >
-                      Change
+                      <button
+                        onClick={() => setMediaType('image')}
+                        className="flex-1 py-1.5 text-[12px] font-semibold text-center"
+                        style={{
+                          backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
+                          color: mediaType === 'image' ? '#fff' : '#71767B',
+                        }}
+                      >
+                        Image
+                      </button>
+                      <button
+                        onClick={() => setMediaType('video')}
+                        className="flex-1 py-1.5 text-[12px] font-semibold text-center"
+                        style={{
+                          backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
+                          color: mediaType === 'video' ? '#fff' : '#71767B',
+                        }}
+                      >
+                        Video
+                      </button>
+                    </div>
+                    <textarea
+                      value={mediaPromptText}
+                      onChange={(e) => setMediaPromptText(e.target.value)}
+                      placeholder={
+                        mediaType === 'video' ? 'Describe your video...' : 'Describe the image...'
+                      }
+                      className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none"
+                      style={{
+                        backgroundColor: '#000',
+                        color: '#E7E9EA',
+                        border: '1px solid #2F3336',
+                        minHeight: 40,
+                      }}
+                      rows={2}
+                      maxLength={500}
+                    />
+                    {mediaGenerating && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <div
+                          className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                          style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
+                        />
+                        <span className="text-[11px]" style={{ color: '#71767B' }}>
+                          Generating...
+                        </span>
+                      </div>
+                    )}
+                    {mediaPreviewUrl && (
+                      <div
+                        className="mt-2 rounded-lg overflow-hidden"
+                        style={{ border: '1px solid #2F3336' }}
+                      >
+                        {mediaPreviewUrl.endsWith('.mp4') ? (
+                          <video
+                            src={mediaPreviewUrl}
+                            controls
+                            className="w-full max-h-[140px] object-contain"
+                            style={{ backgroundColor: '#000' }}
+                          />
+                        ) : (
+                          <img
+                            src={mediaPreviewUrl}
+                            alt="Preview"
+                            className="w-full max-h-[140px] object-contain"
+                            style={{ backgroundColor: '#000' }}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end gap-2 mt-2">
+                      <button
+                        onClick={() => setShowMediaPanel(false)}
+                        className="text-[11px] font-semibold px-3 py-1 rounded-full"
+                        style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
+                      >
+                        Done
+                      </button>
+                      {!mediaPreviewUrl && !mediaGenerating && (
+                        <button
+                          disabled={!mediaPromptText.trim()}
+                          onClick={handleGeneratePreview}
+                          className="text-[11px] font-semibold px-3 py-1 rounded-full disabled:opacity-40"
+                          style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                        >
+                          Generate
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Toolbar */}
+                <div
+                  className="flex items-center justify-between px-4 py-2"
+                  style={{ borderTop: '1px solid #2F3336' }}
+                >
+                  <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
+                    <button
+                      onClick={() => {
+                        setShowMediaPanel(!showMediaPanel);
+                        setMediaType('image');
+                      }}
+                      className="outline-none focus:outline-none hover:opacity-80"
+                      title="Attach image"
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                      </svg>
                     </button>
                     <button
                       onClick={() => {
-                        setMediaPreviewUrl(null);
-                        setMediaPromptText('');
+                        setShowMediaPanel(!showMediaPanel);
+                        setMediaType('video');
                       }}
-                      className="px-2 py-1 rounded text-[11px] font-semibold"
-                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
+                      className="outline-none focus:outline-none hover:opacity-80"
+                      title="Attach video"
                     >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Media panel */}
-              {showMediaPanel && (
-                <div
-                  className="mx-4 mb-2 rounded-xl p-3"
-                  style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
-                >
-                  <div
-                    className="flex items-center gap-1 mb-2 rounded-lg overflow-hidden"
-                    style={{ backgroundColor: '#000' }}
-                  >
-                    <button
-                      onClick={() => setMediaType('image')}
-                      className="flex-1 py-1.5 text-[12px] font-semibold text-center"
-                      style={{
-                        backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
-                        color: mediaType === 'image' ? '#fff' : '#71767B',
-                      }}
-                    >
-                      Image
-                    </button>
-                    <button
-                      onClick={() => setMediaType('video')}
-                      className="flex-1 py-1.5 text-[12px] font-semibold text-center"
-                      style={{
-                        backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
-                        color: mediaType === 'video' ? '#fff' : '#71767B',
-                      }}
-                    >
-                      Video
-                    </button>
-                  </div>
-                  <textarea
-                    value={mediaPromptText}
-                    onChange={(e) => setMediaPromptText(e.target.value)}
-                    placeholder={
-                      mediaType === 'video' ? 'Describe your video...' : 'Describe the image...'
-                    }
-                    className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none"
-                    style={{
-                      backgroundColor: '#000',
-                      color: '#E7E9EA',
-                      border: '1px solid #2F3336',
-                      minHeight: 40,
-                    }}
-                    rows={2}
-                    maxLength={500}
-                  />
-                  {mediaGenerating && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div
-                        className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-                        style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
-                      />
-                      <span className="text-[11px]" style={{ color: '#71767B' }}>
-                        Generating...
-                      </span>
-                    </div>
-                  )}
-                  {mediaPreviewUrl && (
-                    <div
-                      className="mt-2 rounded-lg overflow-hidden"
-                      style={{ border: '1px solid #2F3336' }}
-                    >
-                      {mediaPreviewUrl.endsWith('.mp4') ? (
-                        <video
-                          src={mediaPreviewUrl}
-                          controls
-                          className="w-full max-h-[140px] object-contain"
-                          style={{ backgroundColor: '#000' }}
-                        />
-                      ) : (
-                        <img
-                          src={mediaPreviewUrl}
-                          alt="Preview"
-                          className="w-full max-h-[140px] object-contain"
-                          style={{ backgroundColor: '#000' }}
-                        />
-                      )}
-                    </div>
-                  )}
-                  <div className="flex items-center justify-end gap-2 mt-2">
-                    <button
-                      onClick={() => setShowMediaPanel(false)}
-                      className="text-[11px] font-semibold px-3 py-1 rounded-full"
-                      style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
-                    >
-                      Done
-                    </button>
-                    {!mediaPreviewUrl && !mediaGenerating && (
-                      <button
-                        disabled={!mediaPromptText.trim()}
-                        onClick={handleGeneratePreview}
-                        className="text-[11px] font-semibold px-3 py-1 rounded-full disabled:opacity-40"
-                        style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       >
-                        Generate
-                      </button>
-                    )}
+                        <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+                        <polygon points="10 9 15 12 10 15" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowEmojiPicker(!showEmojiPicker);
+                        setShowMediaPanel(false);
+                      }}
+                      className="outline-none focus:outline-none hover:opacity-80"
+                      title="Add emoji"
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                        <line x1="9" y1="9" x2="9.01" y2="9" />
+                        <line x1="15" y1="9" x2="15.01" y2="9" />
+                      </svg>
+                    </button>
                   </div>
+                  <span className="text-[13px]" style={{ color: '#71767B' }}>
+                    {composeText.length}/500
+                  </span>
                 </div>
-              )}
-
-              {/* Toolbar */}
-              <div
-                className="flex items-center justify-between px-4 py-2"
-                style={{ borderTop: '1px solid #2F3336' }}
-              >
-                <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
-                  <button
-                    onClick={() => {
-                      setShowMediaPanel(!showMediaPanel);
-                      setMediaType('image');
-                    }}
-                    className="outline-none focus:outline-none hover:opacity-80"
-                    title="Attach image"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <polyline points="21 15 16 10 5 21" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMediaPanel(!showMediaPanel);
-                      setMediaType('video');
-                    }}
-                    className="outline-none focus:outline-none hover:opacity-80"
-                    title="Attach video"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
-                      <polygon points="10 9 15 12 10 15" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowEmojiPicker(!showEmojiPicker);
-                      setShowMediaPanel(false);
-                    }}
-                    className="outline-none focus:outline-none hover:opacity-80"
-                    title="Add emoji"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                      <line x1="9" y1="9" x2="9.01" y2="9" />
-                      <line x1="15" y1="9" x2="15.01" y2="9" />
-                    </svg>
-                  </button>
-                </div>
-                <span className="text-[13px]" style={{ color: '#71767B' }}>
-                  {composeText.length}/500
-                </span>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </WhenWritable>
 
-        {disputePost && (
-          <DisputeModal
-            authorName={disputePost.author_display_name}
-            authorHandle={disputePost.author_handle}
-            preview={disputePost.content}
-            note={disputeNote}
-            status={disputeStatus}
-            submitting={disputing}
-            onNoteChange={setDisputeNote}
-            onCancel={() => setDisputePost(null)}
-            onSubmit={submitPostDispute}
-          />
-        )}
+        <WhenWritable>
+          {disputePost && (
+            <DisputeModal
+              authorName={disputePost.author_display_name}
+              authorHandle={disputePost.author_handle}
+              preview={disputePost.content}
+              note={disputeNote}
+              status={disputeStatus}
+              submitting={disputing}
+              onNoteChange={setDisputeNote}
+              onCancel={() => setDisputePost(null)}
+              onSubmit={submitPostDispute}
+            />
+          )}
+        </WhenWritable>
 
-        {reportPost && (
+        {reportPost && !surfaceReadOnly && (
           <ReportModal
             authorName={reportPost.author_display_name}
             authorHandle={reportPost.author_handle}
@@ -2236,8 +2274,7 @@ export default function SocialFeedApp({
                     {/* Link preview card for shared articles */}
                     {(() => {
                       const sa = (post.content_flags as Record<string, unknown>)?.shared_article as
-                        | Record<string, unknown>
-                        | undefined;
+                        Record<string, unknown> | undefined;
                       if (!sa) return null;
                       return (
                         <LinkPreviewCard
@@ -2351,6 +2388,7 @@ export default function SocialFeedApp({
                   style={{ color: '#71767B' }}
                 >
                   <button
+                    disabled={surfaceReadOnly}
                     data-testid={`post-reply-${post.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2378,6 +2416,7 @@ export default function SocialFeedApp({
                     </span>
                   </button>
                   <button
+                    disabled={surfaceReadOnly}
                     data-testid={`post-repost-${post.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2407,6 +2446,7 @@ export default function SocialFeedApp({
                     </span>
                   </button>
                   <button
+                    disabled={surfaceReadOnly}
                     data-testid={`post-like-${post.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2452,6 +2492,7 @@ export default function SocialFeedApp({
                     </span>
                   </div>
                   <button
+                    disabled={surfaceReadOnly}
                     data-testid={`post-flag-${post.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2477,6 +2518,7 @@ export default function SocialFeedApp({
                   </button>
                   <div style={{ position: 'relative' }}>
                     <button
+                      disabled={surfaceReadOnly}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleShareMenu(post.id);
@@ -2500,7 +2542,7 @@ export default function SocialFeedApp({
                         </svg>
                       </div>
                     </button>
-                    {shareMenuPostId === post.id && (
+                    {shareMenuPostId === post.id && !surfaceReadOnly && (
                       <ShareMenu
                         postId={post.id}
                         sessionId={sessionId!}
@@ -2708,629 +2750,631 @@ export default function SocialFeedApp({
       )}
 
       {/* Compose FAB */}
-      {!composing && (
-        <button
-          data-testid="compose-open"
-          onClick={() => setComposing(true)}
-          className="absolute ios-btn-bounce flex items-center justify-center"
-          style={{
-            bottom: 24,
-            right: 20,
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: '#1D9BF0',
-            boxShadow: '0 4px 12px rgba(29,155,240,0.4)',
-          }}
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-      )}
-
-      {/* Compose Modal */}
-      {composing && (
-        <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
-          <div
-            className="flex-1"
-            style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
-            onClick={() => {
-              setComposing(false);
-              setReplyingTo(null);
-            }}
-          />
-          <div
-            className="flex flex-col"
+      <WhenWritable>
+        {!composing && (
+          <button
+            data-testid="compose-open"
+            onClick={() => setComposing(true)}
+            className="absolute ios-btn-bounce flex items-center justify-center"
             style={{
-              backgroundColor: '#000000',
-              borderTop: '1px solid #2F3336',
-              borderRadius: '16px 16px 0 0',
-              maxHeight: '70%',
-              minHeight: 280,
+              bottom: 24,
+              right: 20,
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: '#1D9BF0',
+              boxShadow: '0 4px 12px rgba(29,155,240,0.4)',
             }}
           >
-            <div
-              className="flex items-center justify-between px-4 py-3"
-              style={{ borderBottom: '1px solid #2F3336' }}
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
             >
-              <button
-                data-testid="compose-cancel"
-                onClick={() => {
-                  setComposing(false);
-                  setReplyingTo(null);
-                }}
-                className="text-[15px]"
-                style={{ color: '#E7E9EA' }}
-              >
-                Cancel
-              </button>
-              <button
-                data-testid="compose-submit"
-                onClick={handlePost}
-                disabled={!composeText.trim()}
-                className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
-                style={{ backgroundColor: '#1D9BF0' }}
-              >
-                Post
-              </button>
-            </div>
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        )}
 
-            {replyingTo && (
-              <div className="px-4 pb-2 pt-3">
-                <span className="text-[14px]" style={{ color: '#71767B' }}>
-                  Replying to <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
-                </span>
-              </div>
-            )}
-
-            {!replyingTo && (
-              <div className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap">
-                {POST_FORMATS.map((fmt) => (
-                  <button
-                    key={fmt.value}
-                    data-testid={`compose-format-${fmt.value}`}
-                    onClick={() => setSelectedFormat(fmt.value)}
-                    className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
-                    style={{
-                      backgroundColor: selectedFormat === fmt.value ? '#1D9BF0' : '#2F3336',
-                      color: selectedFormat === fmt.value ? '#FFFFFF' : '#71767B',
-                    }}
-                  >
-                    {fmt.icon} {fmt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {orgPageInfo && !replyingTo && (
+        {/* Compose Modal */}
+        {composing && (
+          <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
+            <div
+              className="flex-1"
+              style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
+              onClick={() => {
+                setComposing(false);
+                setReplyingTo(null);
+              }}
+            />
+            <div
+              className="flex flex-col"
+              style={{
+                backgroundColor: '#000000',
+                borderTop: '1px solid #2F3336',
+                borderRadius: '16px 16px 0 0',
+                maxHeight: '70%',
+                minHeight: 280,
+              }}
+            >
               <div
-                className="px-4 py-2 flex items-center gap-2"
+                className="flex items-center justify-between px-4 py-3"
                 style={{ borderBottom: '1px solid #2F3336' }}
               >
-                <span className="text-[12px]" style={{ color: '#71767B' }}>
-                  Posting as:
-                </span>
                 <button
-                  data-testid="compose-as-self"
-                  onClick={() => setPostingAsPage(false)}
-                  className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
-                  style={{
-                    backgroundColor: !postingAsPage ? '#1D9BF0' : 'transparent',
-                    color: !postingAsPage ? '#fff' : '#71767B',
-                    border: !postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
+                  data-testid="compose-cancel"
+                  onClick={() => {
+                    setComposing(false);
+                    setReplyingTo(null);
                   }}
+                  className="text-[15px]"
+                  style={{ color: '#E7E9EA' }}
                 >
-                  You
+                  Cancel
                 </button>
                 <button
-                  data-testid="compose-as-page"
-                  onClick={() => setPostingAsPage(true)}
-                  className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
-                  style={{
-                    backgroundColor: postingAsPage ? '#1D9BF0' : 'transparent',
-                    color: postingAsPage ? '#fff' : '#71767B',
-                    border: postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
-                  }}
+                  data-testid="compose-submit"
+                  onClick={handlePost}
+                  disabled={!composeText.trim()}
+                  className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
+                  style={{ backgroundColor: '#1D9BF0' }}
                 >
-                  {orgPageInfo.page_name}
+                  Post
                 </button>
               </div>
-            )}
 
-            <div className="flex-1 px-4 pb-2 overflow-y-auto">
-              <div className="flex gap-3 pt-3">
-                {postingAsPage && orgPageInfo?.page_logo_url ? (
-                  <img
-                    src={orgPageInfo.page_logo_url}
-                    alt={orgPageInfo.page_name}
-                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                    style={{ backgroundColor: '#1D9BF0' }}
-                  >
-                    {postingAsPage
-                      ? orgPageInfo?.page_name?.[0] || 'O'
-                      : playerDisplayName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex-1 relative">
-                  <textarea
-                    ref={composeRef}
-                    data-testid="compose-text"
-                    value={composeText}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setComposeText(val);
-                      const match = val.match(/@(\w*)$/);
-                      if (match) {
-                        setMentionQuery(match[1].toLowerCase());
-                        setShowMentions(true);
-                      } else {
-                        setShowMentions(false);
-                      }
-                    }}
-                    placeholder={
-                      replyingTo
-                        ? 'Post your reply...'
-                        : POST_FORMATS.find((f) => f.value === selectedFormat)?.placeholder ||
-                          "What's happening?"
-                    }
-                    className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
-                    style={{ color: '#E7E9EA', lineHeight: '1.4' }}
-                    maxLength={500}
-                    autoFocus
-                  />
-                  {showMentions && (
-                    <div
-                      className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+              {replyingTo && (
+                <div className="px-4 pb-2 pt-3">
+                  <span className="text-[14px]" style={{ color: '#71767B' }}>
+                    Replying to <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
+                  </span>
+                </div>
+              )}
+
+              {!replyingTo && (
+                <div className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap">
+                  {POST_FORMATS.map((fmt) => (
+                    <button
+                      key={fmt.value}
+                      data-testid={`compose-format-${fmt.value}`}
+                      onClick={() => setSelectedFormat(fmt.value)}
+                      className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
                       style={{
-                        backgroundColor: '#2F3336',
-                        maxHeight: 150,
-                        overflowY: 'auto',
-                        top: 40,
+                        backgroundColor: selectedFormat === fmt.value ? '#1D9BF0' : '#2F3336',
+                        color: selectedFormat === fmt.value ? '#FFFFFF' : '#71767B',
                       }}
                     >
-                      {knownHandles
-                        .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
-                        .slice(0, 6)
-                        .map((h) => (
-                          <button
-                            key={h.handle}
-                            onClick={() => {
-                              setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
-                              setShowMentions(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
-                            style={{ color: '#E7E9EA' }}
-                          >
-                            <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
-                            <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
-                              {h.display_name}
-                            </span>
-                          </button>
-                        ))}
+                      {fmt.icon} {fmt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {orgPageInfo && !replyingTo && (
+                <div
+                  className="px-4 py-2 flex items-center gap-2"
+                  style={{ borderBottom: '1px solid #2F3336' }}
+                >
+                  <span className="text-[12px]" style={{ color: '#71767B' }}>
+                    Posting as:
+                  </span>
+                  <button
+                    data-testid="compose-as-self"
+                    onClick={() => setPostingAsPage(false)}
+                    className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                    style={{
+                      backgroundColor: !postingAsPage ? '#1D9BF0' : 'transparent',
+                      color: !postingAsPage ? '#fff' : '#71767B',
+                      border: !postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
+                    }}
+                  >
+                    You
+                  </button>
+                  <button
+                    data-testid="compose-as-page"
+                    onClick={() => setPostingAsPage(true)}
+                    className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                    style={{
+                      backgroundColor: postingAsPage ? '#1D9BF0' : 'transparent',
+                      color: postingAsPage ? '#fff' : '#71767B',
+                      border: postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
+                    }}
+                  >
+                    {orgPageInfo.page_name}
+                  </button>
+                </div>
+              )}
+
+              <div className="flex-1 px-4 pb-2 overflow-y-auto">
+                <div className="flex gap-3 pt-3">
+                  {postingAsPage && orgPageInfo?.page_logo_url ? (
+                    <img
+                      src={orgPageInfo.page_logo_url}
+                      alt={orgPageInfo.page_name}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                      style={{ backgroundColor: '#1D9BF0' }}
+                    >
+                      {postingAsPage
+                        ? orgPageInfo?.page_name?.[0] || 'O'
+                        : playerDisplayName.charAt(0).toUpperCase()}
                     </div>
+                  )}
+                  <div className="flex-1 relative">
+                    <textarea
+                      ref={composeRef}
+                      data-testid="compose-text"
+                      value={composeText}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setComposeText(val);
+                        const match = val.match(/@(\w*)$/);
+                        if (match) {
+                          setMentionQuery(match[1].toLowerCase());
+                          setShowMentions(true);
+                        } else {
+                          setShowMentions(false);
+                        }
+                      }}
+                      placeholder={
+                        replyingTo
+                          ? 'Post your reply...'
+                          : POST_FORMATS.find((f) => f.value === selectedFormat)?.placeholder ||
+                            "What's happening?"
+                      }
+                      className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
+                      style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                      maxLength={500}
+                      autoFocus
+                    />
+                    {showMentions && (
+                      <div
+                        className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                        style={{
+                          backgroundColor: '#2F3336',
+                          maxHeight: 150,
+                          overflowY: 'auto',
+                          top: 40,
+                        }}
+                      >
+                        {knownHandles
+                          .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                          .slice(0, 6)
+                          .map((h) => (
+                            <button
+                              key={h.handle}
+                              onClick={() => {
+                                setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
+                                setShowMentions(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
+                              style={{ color: '#E7E9EA' }}
+                            >
+                              <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
+                              <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
+                                {h.display_name}
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Media preview (confirmed) */}
+              {mediaPreviewUrl && !showMediaPanel && (
+                <div
+                  className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                  style={{ border: '1px solid #2F3336' }}
+                >
+                  {mediaPreviewUrl.endsWith('.mp4') ? (
+                    <video
+                      src={mediaPreviewUrl}
+                      controls
+                      className="w-full max-h-[200px] object-contain"
+                      style={{ backgroundColor: '#000' }}
+                    />
+                  ) : (
+                    <img
+                      src={mediaPreviewUrl}
+                      alt="Media preview"
+                      className="w-full max-h-[200px] object-contain"
+                      style={{ backgroundColor: '#000' }}
+                    />
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button
+                      onClick={() => setShowMediaPanel(true)}
+                      className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
+                    >
+                      Change
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMediaPreviewUrl(null);
+                        setMediaPromptText('');
+                      }}
+                      className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Unified media panel */}
+              {showMediaPanel && (
+                <div
+                  className="mx-4 mb-2 rounded-xl p-3"
+                  style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+                >
+                  {/* Type toggle */}
+                  <div
+                    className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
+                    style={{ backgroundColor: '#000' }}
+                  >
+                    <button
+                      onClick={() => setMediaType('image')}
+                      className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
+                      style={{
+                        backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
+                        color: mediaType === 'image' ? '#fff' : '#71767B',
+                      }}
+                    >
+                      Image
+                    </button>
+                    <button
+                      onClick={() => setMediaType('video')}
+                      className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
+                      style={{
+                        backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
+                        color: mediaType === 'video' ? '#fff' : '#71767B',
+                      }}
+                    >
+                      Video
+                    </button>
+                  </div>
+
+                  {/* Prompt */}
+                  <textarea
+                    autoFocus
+                    value={mediaPromptText}
+                    onChange={(e) => setMediaPromptText(e.target.value)}
+                    placeholder={
+                      mediaType === 'video'
+                        ? 'Describe your video concept... e.g. A 10-second clip of community members cleaning up the mosque, showing solidarity'
+                        : 'Describe the image... e.g. An infographic showing verified facts about the incident'
+                    }
+                    className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
+                    style={{
+                      backgroundColor: '#000',
+                      color: '#E7E9EA',
+                      border: '1px solid #2F3336',
+                      minHeight: 50,
+                    }}
+                    rows={2}
+                    maxLength={500}
+                  />
+
+                  {/* Video options */}
+                  {mediaType === 'video' && (
+                    <div className="mt-2 flex gap-3">
+                      {/* Duration */}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>
+                            Duration
+                          </span>
+                          <span className="text-[11px] font-bold" style={{ color: '#1D9BF0' }}>
+                            {videoDuration}s
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={5}
+                          max={15}
+                          step={1}
+                          value={videoDuration}
+                          onChange={(e) => setVideoDuration(Number(e.target.value))}
+                          className="w-full accent-[#1D9BF0]"
+                          style={{ height: 4 }}
+                        />
+                        <div
+                          className="flex justify-between text-[10px] mt-0.5"
+                          style={{ color: '#475569' }}
+                        >
+                          <span>5s</span>
+                          <span>10s</span>
+                          <span>15s</span>
+                        </div>
+                      </div>
+                      {/* Orientation */}
+                      <div>
+                        <span className="text-[11px] block mb-1" style={{ color: '#94a3b8' }}>
+                          Orientation
+                        </span>
+                        <div className="flex gap-1">
+                          {(
+                            [
+                              ['16:9', 'Landscape'],
+                              ['9:16', 'Portrait'],
+                              ['1:1', 'Square'],
+                            ] as const
+                          ).map(([ratio, label]) => (
+                            <button
+                              key={ratio}
+                              onClick={() => setVideoOrientation(ratio)}
+                              className="px-2 py-1.5 rounded text-[10px] font-semibold outline-none focus:outline-none transition-colors"
+                              style={{
+                                backgroundColor: videoOrientation === ratio ? '#1D9BF0' : '#2F3336',
+                                color: videoOrientation === ratio ? '#fff' : '#71767B',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generate / Loading */}
+                  {mediaGenerating && (
+                    <div className="flex items-center gap-2 mt-2 px-1">
+                      <div
+                        className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                        style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
+                      />
+                      <span className="text-[12px]" style={{ color: '#71767B' }}>
+                        {mediaType === 'video'
+                          ? 'Generating video (this may take a minute)...'
+                          : 'Generating image...'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Preview inline */}
+                  {mediaPreviewUrl && !mediaGenerating && (
+                    <div
+                      className="mt-2 rounded-lg overflow-hidden"
+                      style={{ border: '1px solid #2F3336' }}
+                    >
+                      {mediaPreviewUrl.endsWith('.mp4') ? (
+                        <video
+                          src={mediaPreviewUrl}
+                          controls
+                          className="w-full max-h-[180px] object-contain"
+                          style={{ backgroundColor: '#000' }}
+                        />
+                      ) : (
+                        <img
+                          src={mediaPreviewUrl}
+                          alt="Preview"
+                          className="w-full max-h-[180px] object-contain"
+                          style={{ backgroundColor: '#000' }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px]" style={{ color: '#71767B' }}>
+                      {mediaType === 'video'
+                        ? 'AI generates a 10s video clip'
+                        : 'AI generates and grades the media concept'}
+                    </span>
+                    <div className="flex gap-2">
+                      {mediaPreviewUrl && !mediaGenerating && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setMediaPreviewUrl(null);
+                              handleGeneratePreview();
+                            }}
+                            className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
+                            style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
+                          >
+                            Regenerate
+                          </button>
+                          <button
+                            onClick={() => setShowMediaPanel(false)}
+                            className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
+                            style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                          >
+                            Use This
+                          </button>
+                        </>
+                      )}
+                      {!mediaPreviewUrl && !mediaGenerating && (
+                        <button
+                          onClick={handleGeneratePreview}
+                          disabled={!mediaPromptText.trim()}
+                          className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none disabled:opacity-40"
+                          style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                        >
+                          Generate Preview
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Emoji picker */}
+              {showEmojiPicker && (
+                <div
+                  className="mx-4 mb-2 rounded-xl p-3 grid grid-cols-8 gap-1"
+                  style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+                >
+                  {[
+                    '😀',
+                    '😂',
+                    '🥺',
+                    '😢',
+                    '😡',
+                    '🤔',
+                    '👍',
+                    '👎',
+                    '❤️',
+                    '🙏',
+                    '💪',
+                    '🔥',
+                    '⚠️',
+                    '✅',
+                    '❌',
+                    '📢',
+                    '🕊️',
+                    '🤝',
+                    '😤',
+                    '💔',
+                    '🫡',
+                    '📸',
+                    '🎥',
+                    '📊',
+                  ].map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        const ta = composeRef.current;
+                        if (ta) {
+                          const start = ta.selectionStart;
+                          const end = ta.selectionEnd;
+                          const newText =
+                            composeText.slice(0, start) + emoji + composeText.slice(end);
+                          setComposeText(newText);
+                          setTimeout(() => {
+                            ta.focus();
+                            ta.setSelectionRange(start + emoji.length, start + emoji.length);
+                          }, 0);
+                        } else {
+                          setComposeText((prev) => prev + emoji);
+                        }
+                        setShowEmojiPicker(false);
+                      }}
+                      className="text-[22px] p-1.5 rounded-lg hover:bg-white/10 transition-colors outline-none focus:outline-none"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                className="flex items-center justify-between px-4 py-2.5"
+                style={{ borderTop: '1px solid #2F3336' }}
+              >
+                <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
+                  <button
+                    onClick={() => {
+                      setShowMediaPanel(!showMediaPanel);
+                      setMediaType('image');
+                      setShowEmojiPicker(false);
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                    style={{ color: mediaPreviewUrl ? '#1D9BF0' : undefined }}
+                    title="Attach image"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaPanel(!showMediaPanel);
+                      setMediaType('video');
+                      setShowEmojiPicker(false);
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                    title="Attach video"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+                      <polygon points="10 9 15 12 10 15" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowMediaPanel(false);
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                    title="Add emoji"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px]" style={{ color: '#71767B' }}>
+                    {composeText.length}/500
+                  </span>
+                  {composeText.length > 0 && (
+                    <svg width="20" height="20" viewBox="0 0 20 20">
+                      <circle cx="10" cy="10" r="9" fill="none" stroke="#2F3336" strokeWidth="2" />
+                      <circle
+                        cx="10"
+                        cy="10"
+                        r="9"
+                        fill="none"
+                        strokeWidth="2"
+                        stroke={composeText.length > 450 ? '#F4212E' : '#1D9BF0'}
+                        strokeDasharray={`${(composeText.length / 500) * 56.5} 56.5`}
+                        strokeLinecap="round"
+                        transform="rotate(-90 10 10)"
+                      />
+                    </svg>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Media preview (confirmed) */}
-            {mediaPreviewUrl && !showMediaPanel && (
-              <div
-                className="mx-4 mb-2 rounded-xl overflow-hidden relative"
-                style={{ border: '1px solid #2F3336' }}
-              >
-                {mediaPreviewUrl.endsWith('.mp4') ? (
-                  <video
-                    src={mediaPreviewUrl}
-                    controls
-                    className="w-full max-h-[200px] object-contain"
-                    style={{ backgroundColor: '#000' }}
-                  />
-                ) : (
-                  <img
-                    src={mediaPreviewUrl}
-                    alt="Media preview"
-                    className="w-full max-h-[200px] object-contain"
-                    style={{ backgroundColor: '#000' }}
-                  />
-                )}
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <button
-                    onClick={() => setShowMediaPanel(true)}
-                    className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
-                  >
-                    Change
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMediaPreviewUrl(null);
-                      setMediaPromptText('');
-                    }}
-                    className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Unified media panel */}
-            {showMediaPanel && (
-              <div
-                className="mx-4 mb-2 rounded-xl p-3"
-                style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
-              >
-                {/* Type toggle */}
-                <div
-                  className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
-                  style={{ backgroundColor: '#000' }}
-                >
-                  <button
-                    onClick={() => setMediaType('image')}
-                    className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
-                    style={{
-                      backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
-                      color: mediaType === 'image' ? '#fff' : '#71767B',
-                    }}
-                  >
-                    Image
-                  </button>
-                  <button
-                    onClick={() => setMediaType('video')}
-                    className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
-                    style={{
-                      backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
-                      color: mediaType === 'video' ? '#fff' : '#71767B',
-                    }}
-                  >
-                    Video
-                  </button>
-                </div>
-
-                {/* Prompt */}
-                <textarea
-                  autoFocus
-                  value={mediaPromptText}
-                  onChange={(e) => setMediaPromptText(e.target.value)}
-                  placeholder={
-                    mediaType === 'video'
-                      ? 'Describe your video concept... e.g. A 10-second clip of community members cleaning up the mosque, showing solidarity'
-                      : 'Describe the image... e.g. An infographic showing verified facts about the incident'
-                  }
-                  className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
-                  style={{
-                    backgroundColor: '#000',
-                    color: '#E7E9EA',
-                    border: '1px solid #2F3336',
-                    minHeight: 50,
-                  }}
-                  rows={2}
-                  maxLength={500}
-                />
-
-                {/* Video options */}
-                {mediaType === 'video' && (
-                  <div className="mt-2 flex gap-3">
-                    {/* Duration */}
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px]" style={{ color: '#94a3b8' }}>
-                          Duration
-                        </span>
-                        <span className="text-[11px] font-bold" style={{ color: '#1D9BF0' }}>
-                          {videoDuration}s
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={5}
-                        max={15}
-                        step={1}
-                        value={videoDuration}
-                        onChange={(e) => setVideoDuration(Number(e.target.value))}
-                        className="w-full accent-[#1D9BF0]"
-                        style={{ height: 4 }}
-                      />
-                      <div
-                        className="flex justify-between text-[10px] mt-0.5"
-                        style={{ color: '#475569' }}
-                      >
-                        <span>5s</span>
-                        <span>10s</span>
-                        <span>15s</span>
-                      </div>
-                    </div>
-                    {/* Orientation */}
-                    <div>
-                      <span className="text-[11px] block mb-1" style={{ color: '#94a3b8' }}>
-                        Orientation
-                      </span>
-                      <div className="flex gap-1">
-                        {(
-                          [
-                            ['16:9', 'Landscape'],
-                            ['9:16', 'Portrait'],
-                            ['1:1', 'Square'],
-                          ] as const
-                        ).map(([ratio, label]) => (
-                          <button
-                            key={ratio}
-                            onClick={() => setVideoOrientation(ratio)}
-                            className="px-2 py-1.5 rounded text-[10px] font-semibold outline-none focus:outline-none transition-colors"
-                            style={{
-                              backgroundColor: videoOrientation === ratio ? '#1D9BF0' : '#2F3336',
-                              color: videoOrientation === ratio ? '#fff' : '#71767B',
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Generate / Loading */}
-                {mediaGenerating && (
-                  <div className="flex items-center gap-2 mt-2 px-1">
-                    <div
-                      className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-                      style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
-                    />
-                    <span className="text-[12px]" style={{ color: '#71767B' }}>
-                      {mediaType === 'video'
-                        ? 'Generating video (this may take a minute)...'
-                        : 'Generating image...'}
-                    </span>
-                  </div>
-                )}
-
-                {/* Preview inline */}
-                {mediaPreviewUrl && !mediaGenerating && (
-                  <div
-                    className="mt-2 rounded-lg overflow-hidden"
-                    style={{ border: '1px solid #2F3336' }}
-                  >
-                    {mediaPreviewUrl.endsWith('.mp4') ? (
-                      <video
-                        src={mediaPreviewUrl}
-                        controls
-                        className="w-full max-h-[180px] object-contain"
-                        style={{ backgroundColor: '#000' }}
-                      />
-                    ) : (
-                      <img
-                        src={mediaPreviewUrl}
-                        alt="Preview"
-                        className="w-full max-h-[180px] object-contain"
-                        style={{ backgroundColor: '#000' }}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-[11px]" style={{ color: '#71767B' }}>
-                    {mediaType === 'video'
-                      ? 'AI generates a 10s video clip'
-                      : 'AI generates and grades the media concept'}
-                  </span>
-                  <div className="flex gap-2">
-                    {mediaPreviewUrl && !mediaGenerating && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setMediaPreviewUrl(null);
-                            handleGeneratePreview();
-                          }}
-                          className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
-                          style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
-                        >
-                          Regenerate
-                        </button>
-                        <button
-                          onClick={() => setShowMediaPanel(false)}
-                          className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
-                          style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
-                        >
-                          Use This
-                        </button>
-                      </>
-                    )}
-                    {!mediaPreviewUrl && !mediaGenerating && (
-                      <button
-                        onClick={handleGeneratePreview}
-                        disabled={!mediaPromptText.trim()}
-                        className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none disabled:opacity-40"
-                        style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
-                      >
-                        Generate Preview
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Emoji picker */}
-            {showEmojiPicker && (
-              <div
-                className="mx-4 mb-2 rounded-xl p-3 grid grid-cols-8 gap-1"
-                style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
-              >
-                {[
-                  '😀',
-                  '😂',
-                  '🥺',
-                  '😢',
-                  '😡',
-                  '🤔',
-                  '👍',
-                  '👎',
-                  '❤️',
-                  '🙏',
-                  '💪',
-                  '🔥',
-                  '⚠️',
-                  '✅',
-                  '❌',
-                  '📢',
-                  '🕊️',
-                  '🤝',
-                  '😤',
-                  '💔',
-                  '🫡',
-                  '📸',
-                  '🎥',
-                  '📊',
-                ].map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => {
-                      const ta = composeRef.current;
-                      if (ta) {
-                        const start = ta.selectionStart;
-                        const end = ta.selectionEnd;
-                        const newText =
-                          composeText.slice(0, start) + emoji + composeText.slice(end);
-                        setComposeText(newText);
-                        setTimeout(() => {
-                          ta.focus();
-                          ta.setSelectionRange(start + emoji.length, start + emoji.length);
-                        }, 0);
-                      } else {
-                        setComposeText((prev) => prev + emoji);
-                      }
-                      setShowEmojiPicker(false);
-                    }}
-                    className="text-[22px] p-1.5 rounded-lg hover:bg-white/10 transition-colors outline-none focus:outline-none"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div
-              className="flex items-center justify-between px-4 py-2.5"
-              style={{ borderTop: '1px solid #2F3336' }}
-            >
-              <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
-                <button
-                  onClick={() => {
-                    setShowMediaPanel(!showMediaPanel);
-                    setMediaType('image');
-                    setShowEmojiPicker(false);
-                  }}
-                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
-                  style={{ color: mediaPreviewUrl ? '#1D9BF0' : undefined }}
-                  title="Attach image"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMediaPanel(!showMediaPanel);
-                    setMediaType('video');
-                    setShowEmojiPicker(false);
-                  }}
-                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
-                  title="Attach video"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
-                    <polygon points="10 9 15 12 10 15" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowEmojiPicker(!showEmojiPicker);
-                    setShowMediaPanel(false);
-                  }}
-                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
-                  title="Add emoji"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                    <line x1="9" y1="9" x2="9.01" y2="9" />
-                    <line x1="15" y1="9" x2="15.01" y2="9" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[13px]" style={{ color: '#71767B' }}>
-                  {composeText.length}/500
-                </span>
-                {composeText.length > 0 && (
-                  <svg width="20" height="20" viewBox="0 0 20 20">
-                    <circle cx="10" cy="10" r="9" fill="none" stroke="#2F3336" strokeWidth="2" />
-                    <circle
-                      cx="10"
-                      cy="10"
-                      r="9"
-                      fill="none"
-                      strokeWidth="2"
-                      stroke={composeText.length > 450 ? '#F4212E' : '#1D9BF0'}
-                      strokeDasharray={`${(composeText.length / 500) * 56.5} 56.5`}
-                      strokeLinecap="round"
-                      transform="rotate(-90 10 10)"
-                    />
-                  </svg>
-                )}
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </WhenWritable>
     </div>
   );
 }

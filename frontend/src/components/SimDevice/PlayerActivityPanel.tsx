@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { withViewAsHeaders } from '../../lib/viewAsFrame';
 import { useParams } from 'react-router-dom';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env?.VITE_API_URL || '';
 function apiUrl(path: string) {
   const clean = path.startsWith('/') ? path : `/${path}`;
   return API_BASE ? `${API_BASE}${clean}` : clean;
@@ -10,7 +11,10 @@ function apiUrl(path: string) {
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../../lib/supabase')).supabase.auth.getSession();
   const token = data.session?.access_token || '';
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  return withViewAsHeaders({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  });
 }
 
 interface ActivityPost {
