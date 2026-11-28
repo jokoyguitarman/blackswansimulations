@@ -31,6 +31,7 @@ const AAR_SECTION_KEYS = [
   'recommendations',
   // Social crisis report sections (list order = display order)
   'social_executive',
+  'before_the_crisis',
   'social_timeline',
   'comms_responses',
   'cross_team',
@@ -68,6 +69,7 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   information_analysis: 'Information-sharing analysis',
   recommendations: 'Key takeaways and recommendations',
   social_executive: 'Executive summary',
+  before_the_crisis: 'Before the crisis',
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
   cross_team: 'Cross-team cause and effect',
@@ -105,6 +107,13 @@ const SECTION_HEADING_STYLES: Array<{
   title: string;
   border: string;
 }> = [
+  {
+    pattern: /before the crisis/i,
+    icon: '🕊️',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
   {
     pattern: /executive|summary|overview/i,
     icon: '📋',
@@ -183,6 +192,78 @@ const DEFAULT_HEADING_STYLE = {
   title: 'text-brand',
   border: 'border-brand/25',
 };
+
+function BeforeTheCrisisSection({ data }: { data: Record<string, unknown> }) {
+  const items = Array.isArray(data.items) ? data.items : [];
+  const minutes =
+    typeof data.minutes_before_crisis === 'number' ? data.minutes_before_crisis : null;
+  return (
+    <div className="space-y-3" data-testid="before-the-crisis">
+      <p className="text-xs terminal-text text-muted">
+        Unscored. These posts and player actions happened before the crisis
+        {minutes != null ? ` (${minutes} min)` : ''} and do not affect grades, charter duties or SOP
+        timing.
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs terminal-text text-muted">No peace activity recorded.</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, index) => {
+            const row = item as Record<string, unknown>;
+            const minute = row.minute_from_open;
+            return (
+              <div key={index} className="text-xs text-ink border-b border-border py-1">
+                <span className="text-brand font-bold">
+                  {minute == null ? 'Open' : `+${String(minute)}m`}
+                </span>{' '}
+                <span className="text-muted">{String(row.kind || 'post')}</span>{' '}
+                <span className="font-semibold">{String(row.author || 'Unknown')}</span>
+                {row.topic_class ? (
+                  <span className="text-muted">
+                    {' '}
+                    · {String(row.topic_class).replace(/_/g, ' ')}
+                  </span>
+                ) : null}
+                <span className="ml-2 text-warning font-bold">unscored</span>
+                <div className="text-ink mt-0.5 break-words">{String(row.content || '')}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlayerTopicList({ data }: { data: Record<string, unknown> }) {
+  const topics = Array.isArray(data.player_topics) ? data.player_topics : [];
+  if (topics.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs terminal-text text-muted mb-1">
+        Player comments, messages and emails
+      </div>
+      <div className="space-y-1">
+        {topics.map((topic, index) => {
+          const row = topic as Record<string, unknown>;
+          return (
+            <div key={index} className="text-xs text-ink">
+              <span className="text-brand font-bold">
+                {row.minute == null ? 'T+?' : `T+${String(row.minute)}`}
+              </span>{' '}
+              <span className="text-muted">{String(row.kind || '')}</span>{' '}
+              <span className="font-semibold">{String(row.who || '')}</span>
+              {row.topic_class ? (
+                <span className="text-muted"> · {String(row.topic_class).replace(/_/g, ' ')}</span>
+              ) : null}
+              <span className="text-ink"> — {String(row.content || '')}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function SectionHeading({ title }: { title: string }) {
   const style = SECTION_HEADING_STYLES.find((s) => s.pattern.test(title)) ?? DEFAULT_HEADING_STYLE;
@@ -628,6 +709,7 @@ function CommsTimelineTable({ rows }: { rows: unknown[] }) {
         !!row && typeof row === 'object' && !Array.isArray(row),
     )
     .slice(0, AAR_STORED_CAP);
+  // prettier-ignore
   const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'origin_note', 'detail'] as const;
   return (
     <div className="overflow-x-auto">
@@ -681,11 +763,19 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   if (keyName === 'unscripted_events') {
     return <UnscriptedEventsSection data={data} />;
   }
+  if (keyName === 'before_the_crisis' && typeof data === 'object' && !Array.isArray(data)) {
+    return <BeforeTheCrisisSection data={data as Record<string, unknown>} />;
+  }
   if (keyName === 'comms_responses' && typeof data === 'object' && !Array.isArray(data)) {
-    const obj = data as { response_injects?: unknown; timeline?: unknown; moods?: unknown };
+    const obj = data as {
+      response_injects?: unknown;
+      timeline?: unknown;
+      moods?: unknown;
+      player_topics?: unknown;
+    };
     const timeline = Array.isArray(obj.timeline) ? obj.timeline : [];
     const moods = Array.isArray(obj.moods) ? obj.moods : [];
-    if (timeline.length === 0 && moods.length === 0) {
+    if (timeline.length === 0 && moods.length === 0 && !Array.isArray(obj.player_topics)) {
       return (
         <p className="text-xs terminal-text text-muted">
           No response-requiring injects were delivered.
@@ -709,6 +799,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
             <SectionDataDisplay keyName="comms_moods" data={moods} />
           </div>
         )}
+        <PlayerTopicList data={obj} />
       </div>
     );
   }

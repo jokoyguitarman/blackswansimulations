@@ -744,13 +744,25 @@ function contentBreakdownLine(scores: Dict): string | null {
   };
   const authored = box.authored?.items ?? 0;
   const unscripted = box.unscripted?.items ?? 0;
-  if (authored === 0 && unscripted === 0) return null;
+  const bridges = bridgeCount(scores);
+  if (authored === 0 && unscripted === 0 && bridges === 0) return null;
   const part = (label: string, bucket?: { items?: number; avg?: number | null }) => {
     const items = bucket?.items ?? 0;
     const avg = bucket?.avg;
     return `${label} ${items}${avg == null ? '' : ` (avg ${avg})`}`;
   };
-  return `Content breakdown: ${part('authored', box.authored)} · ${part('unscripted', box.unscripted)}. The composite includes both.`;
+  const breakdown =
+    authored === 0 && unscripted === 0
+      ? ''
+      : `Content breakdown: ${part('authored', box.authored)} · ${part('unscripted', box.unscripted)}. The composite includes both.`;
+  const bridge =
+    bridges > 0 ? `${bridges} bridging ${bridges === 1 ? 'comment' : 'comments'} counted.` : '';
+  return [breakdown, bridge].filter(Boolean).join(' ');
+}
+
+function bridgeCount(scores: Dict): number {
+  const value = scores.bridging_comments;
+  return typeof value === 'number' && value > 0 ? value : 0;
 }
 
 function SingleTeamBlock({ data }: { data: Dict }) {
@@ -1071,6 +1083,12 @@ function SingleTeamBlock({ data }: { data: Dict }) {
                       </span>
                       <span className="min-w-0 break-words">
                         {String(e.content || '')}
+                        {e.topic_class ? (
+                          <span className="text-muted">
+                            {' '}
+                            · {String(e.topic_class).replace(/_/g, ' ')}
+                          </span>
+                        ) : null}
                         {e.overall != null && (
                           <span className="text-muted"> · grade {String(e.overall)}</span>
                         )}
