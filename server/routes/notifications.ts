@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
@@ -11,6 +12,7 @@ import {
 } from '../services/notificationService.js';
 
 const router = Router();
+router.use(staffViewer('notifications'));
 
 const markReadSchema = z.object({
   params: z.object({
