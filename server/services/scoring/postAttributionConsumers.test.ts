@@ -16,7 +16,6 @@ import { buildPlayerLedger } from '../playerLedgerService.js';
 import {
   loadTeamSignalFacts,
   resetTeamSignalAggregatesForTests,
-  resetTeamSignalAttributionEpochForTests,
   signalGradePlayerId,
 } from '../conditions/teamSignalService.js';
 import { collectSignals } from '../director/directorSignals.js';
@@ -29,6 +28,7 @@ const SESSION = '11111111-1111-4111-8111-111111111111';
 const SCENARIO = '22222222-2222-4222-8222-222222222222';
 const U1 = '33333333-3333-4333-8333-333333333333';
 const U2 = '44444444-4444-4444-8444-444444444444';
+const TRAINER = '77777777-7777-4777-8777-777777777777';
 const LEGAL_UID = '55555555-5555-4555-8555-555555555555';
 const COMMS_UID = '66666666-6666-4666-8666-666666666666';
 const START = '2026-11-28T12:00:00.000Z';
@@ -110,6 +110,16 @@ const POSTS: Array<Record<string, unknown>> = [
     content: 'page one',
     overall: 40,
     created_at: '2026-11-28T12:20:00.000Z',
+  }),
+  socialPost({
+    id: 'post-console',
+    author_type: 'official_account',
+    user_id: TRAINER,
+    posted_by_user_id: TRAINER,
+    author_display_name: 'Adversary Console',
+    content: 'rival attack',
+    overall: 15,
+    created_at: '2026-11-28T12:22:00.000Z',
   }),
   socialPost({
     id: 'post-page-mid',
@@ -209,6 +219,7 @@ const TABLES: Record<string, Array<Record<string, unknown>>> = {
   user_profiles: [
     { id: U1, full_name: 'Ada', is_bot: false },
     { id: U2, full_name: 'Bo', is_bot: false },
+    { id: TRAINER, full_name: 'Trainer T', is_bot: false },
   ],
   sessions: [
     {
@@ -271,6 +282,18 @@ function matches(row: Record<string, unknown>, op: Op): boolean {
   }
   if (op.op === 'not' && op.operator === 'is') {
     return op.value == null ? row[op.column ?? ''] != null : row[op.column ?? ''] !== op.value;
+  }
+  if (op.op === 'gte') return String(row[op.column ?? ''] ?? '') >= String(op.value ?? '');
+  if (op.op === 'or' && typeof op.value === 'string') {
+    const checks = op.value.split(',').flatMap((clause) => {
+      const notNull = /^([A-Za-z0-9_]+)\.not\.is\.null$/.exec(clause);
+      if (notNull) return [() => row[notNull[1]] != null];
+      const gte = /^([A-Za-z0-9_]+)\.gte\.(.+)$/.exec(clause);
+      if (gte) return [() => String(row[gte[1]] ?? '') >= gte[2]];
+      return [];
+    });
+    if (checks.length === 0) return true;
+    return checks.some((check) => check());
   }
   if (op.op === 'contains' && op.value && typeof op.value === 'object') {
     const haystack = row[op.column ?? ''];
@@ -417,6 +440,8 @@ function install(): void {
       record({ op: 'contains', column, value });
     builder.order = (column: string, options?: { ascending?: boolean }) =>
       record({ op: 'order', column, ascending: options?.ascending !== false });
+    builder.gte = (column: string, value: unknown) => record({ op: 'gte', column, value });
+    builder.or = (value: string) => record({ op: 'or', value });
     builder.limit = (value: number) => record({ op: 'limit', value });
     const result = () => runQuery(table, select, ops);
     builder.maybeSingle = async () => {
@@ -520,7 +545,6 @@ beforeEach(() => {
   env.teamScorePostAttributionFix = false;
   failAggregates = false;
   resetTeamSignalAggregatesForTests();
-  resetTeamSignalAttributionEpochForTests(null);
   install();
 });
 
@@ -530,7 +554,6 @@ after(() => {
   env.enableTopicAwareReplies = saved.topic;
   env.teamScorePostAttributionFix = saved.attribution;
   resetTeamSignalAggregatesForTests();
-  resetTeamSignalAttributionEpochForTests(null);
 });
 
 describe('post attribution consumers, flag off', () => {
@@ -728,7 +751,6 @@ describe('post attribution consumers, flag off', () => {
 describe('post attribution consumers, flag on', () => {
   beforeEach(() => {
     env.teamScorePostAttributionFix = true;
-    resetTeamSignalAttributionEpochForTests(EPOCH);
   });
 
   test('each post is credited once, personal by user_id and page by posted_by_user_id', async () => {
@@ -760,6 +782,14 @@ describe('post attribution consumers, flag on', () => {
       view.some((player) => player.entries.some((entry) => entry.id === 'post-npc')),
       false,
     );
+    assert.equal(
+      view.some((player) => player.player_id === TRAINER),
+      false,
+    );
+    assert.equal(
+      view.some((player) => player.entries.some((entry) => entry.id === 'post-console')),
+      false,
+    );
 
     log.length = 0;
     const report = await buildSocialMediaAARData(SESSION);
@@ -768,7 +798,7 @@ describe('post attribution consumers, flag on', () => {
       { op: 'eq', column: 'session_id', value: SESSION },
       { op: 'order', column: 'created_at', ascending: true },
     ]);
-    // Six player-authored grades plus two page posts. The split post is one row.
+    // Six player grades plus two team-member page posts. The console post is staff.
     assert.equal(report.content_quality.posts_created, 8);
     assert.equal(report.content_quality.average_overall, 51);
     const legal = report.team_performance.find((team) => team.team_name === 'Legal');
@@ -792,6 +822,10 @@ describe('post attribution consumers, flag on', () => {
         { name: 'Bo', graded: 3 },
       ],
     );
+    assert.equal(
+      players.some((player) => player.display_name === 'Trainer T'),
+      false,
+    );
   });
 
   test('a live flag flip does not back-credit history into signals or dependencies', async () => {
@@ -801,9 +835,8 @@ describe('post attribution consumers, flag on', () => {
     const unchanged = withoutPosts(log.slice(offLog.length));
 
     env.teamScorePostAttributionFix = true;
-    resetTeamSignalAttributionEpochForTests(EPOCH);
     log.length = 0;
-    const guarded = await loadTeamSignalFacts(SESSION, START);
+    const guarded = await loadTeamSignalFacts(SESSION, START, { attributionSinceMs: EPOCH });
     assert.deepEqual(withoutPosts(log), unchanged);
     assert.deepEqual(
       postsOf(log).map((query) => ({ select: query.select, ops: query.ops })),
@@ -813,10 +846,15 @@ describe('post attribution consumers, flag on', () => {
             'user_id, author_type, posted_by_user_id, created_at, overall:sop_compliance_score->>overall',
           ops: [
             { op: 'eq', column: 'session_id', value: SESSION },
-            { op: 'eq', column: 'author_type', value: 'player' },
             { op: 'not', column: 'user_id', operator: 'is', value: null },
             { op: 'not', column: 'sop_compliance_score', operator: 'is', value: null },
+            {
+              op: 'or',
+              value: `posted_by_user_id.not.is.null,created_at.gte.${EPOCH_ISO}`,
+            },
+            { op: 'order', column: 'created_at', ascending: true },
             { op: 'limit', value: 2001 },
+            { op: 'eq', column: 'author_type', value: 'player' },
           ],
         },
         {
@@ -824,10 +862,12 @@ describe('post attribution consumers, flag on', () => {
             'user_id, author_type, posted_by_user_id, created_at, overall:sop_compliance_score->>overall',
           ops: [
             { op: 'eq', column: 'session_id', value: SESSION },
-            { op: 'eq', column: 'author_type', value: 'official_account' },
             { op: 'not', column: 'posted_by_user_id', operator: 'is', value: null },
             { op: 'not', column: 'sop_compliance_score', operator: 'is', value: null },
+            { op: 'gte', column: 'created_at', value: EPOCH_ISO },
+            { op: 'order', column: 'created_at', ascending: true },
             { op: 'limit', value: 2001 },
+            { op: 'eq', column: 'author_type', value: 'official_account' },
           ],
         },
       ],
@@ -843,8 +883,9 @@ describe('post attribution consumers, flag on', () => {
     assert.deepEqual(guarded.duties, before.duties);
     assert.deepEqual(guarded.team_activity, before.team_activity);
 
-    resetTeamSignalAttributionEpochForTests(Date.parse(START));
-    const opened = await loadTeamSignalFacts(SESSION, START);
+    const opened = await loadTeamSignalFacts(SESSION, START, {
+      attributionSinceMs: Date.parse(START),
+    });
     assert.equal(below(opened.content_grades, 'legal', 50), 1);
     assert.equal(below(opened.content_grades, 'communications', 50), 3);
     assert.deepEqual(opened.duties, before.duties);

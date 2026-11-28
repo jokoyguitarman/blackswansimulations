@@ -2,7 +2,7 @@ import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { crisisFiltersActive } from '../lib/peaceGate.js';
-import { attributedPlayerId, type GradeAuthor } from './scoring/crisisActivityCore.js';
+import { gradeAuthorOf, playerCreditId } from './scoring/crisisActivityCore.js';
 import { selectTolerant } from './scoring/crisisActivityLookup.js';
 
 /**
@@ -95,18 +95,6 @@ function topicOf(row: { topic_class?: unknown }): { topic_class?: string } {
   return { topic_class: label };
 }
 
-function ledgerAuthor(post: {
-  author_type?: unknown;
-  user_id?: unknown;
-  posted_by_user_id?: unknown;
-}): GradeAuthor {
-  return {
-    author_type: typeof post.author_type === 'string' ? post.author_type : null,
-    user_id: typeof post.user_id === 'string' ? post.user_id : null,
-    posted_by_user_id: typeof post.posted_by_user_id === 'string' ? post.posted_by_user_id : null,
-  };
-}
-
 function ledgerQuery(table: string, columns: string, sessionId: string): LedgerQuery {
   return supabaseAdmin
     .from(table)
@@ -181,18 +169,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
         .order('assigned_at', { ascending: true }),
     ]);
 
-  const posts = (postsRes.data || []) as Array<{
-    id: unknown;
-    user_id?: unknown;
-    author_type?: unknown;
-    posted_by_user_id?: unknown;
-    content?: unknown;
-    sop_compliance_score?: unknown;
-    sentiment?: unknown;
-    reply_to_post_id?: unknown;
-    created_at?: unknown;
-    topic_class?: unknown;
-  }>;
+  const posts = postsRes.data || [];
   const emails = emailsRes.data || [];
   const dms = dmsRes.data || [];
   const actions = actionsRes.data || [];
@@ -220,7 +197,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   // resolve names.
   const playerIds = new Set<string>();
   for (const p of posts) {
-    const playerId = attributedPlayerId(ledgerAuthor(p), attributionFix);
+    const playerId = playerCreditId(gradeAuthorOf(p), attributionFix, teamByPlayer);
     if (playerId) playerIds.add(playerId);
   }
   for (const e of emails) if (e.sent_by_player_id) playerIds.add(String(e.sent_by_player_id));
@@ -254,7 +231,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   };
 
   for (const p of posts) {
-    const playerId = attributedPlayerId(ledgerAuthor(p), attributionFix);
+    const playerId = playerCreditId(gradeAuthorOf(p), attributionFix, teamByPlayer);
     if (!playerId) continue;
     push(playerId, {
       id: String(p.id),

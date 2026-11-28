@@ -15,7 +15,7 @@ import { resolveTeamFunction } from '../../lib/stakeholderContract.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { dutiesByTeam, type CharterAction, type ObservedAction } from '../teamTasksCore.js';
-import { attributedPlayerId, type GradeAuthor } from '../scoring/crisisActivityCore.js';
+import { attributedPlayerId, gradeAuthorOf } from '../scoring/crisisActivityCore.js';
 import {
   decisionFacts,
   gradesByTeam,
@@ -125,10 +125,22 @@ function schemaMissing(error: QueryError | null): boolean {
   return error != null && isLedgerSchemaMissing(error);
 }
 
+/**
+ * When this process started. Back-credited grades older than this stay out of
+ * live signals. Tests pass `attributionSinceMs` instead of moving this value.
+ */
+const ATTRIBUTION_OBSERVED_AT_MS = Date.now();
+
 export async function loadTeamSignalFacts(
   sessionId: string,
   startTime: string | null,
-  clock: { openedAt?: string | null; initialState?: unknown; initialStateKnown?: boolean } = {},
+  clock: {
+    openedAt?: string | null;
+    initialState?: unknown;
+    initialStateKnown?: boolean;
+    /** Overrides the process-start epoch. Production omits it. */
+    attributionSinceMs?: number;
+  } = {},
 ): Promise<TeamSignalFacts> {
   const enabled = env.enableExecutiveDecisions;
   try {
@@ -155,7 +167,10 @@ export async function loadTeamSignalFacts(
       loadActionActivity(sessionId, teamNames),
       loadChatActivity(sessionId, [...membership.teamByPlayer.keys()]),
       env.teamScorePostAttributionFix
-        ? loadAttributedPostGrades(sessionId)
+        ? loadAttributedPostGrades(
+            sessionId,
+            clock.attributionSinceMs ?? ATTRIBUTION_OBSERVED_AT_MS,
+          )
         : loadGradeRows(sessionId, 'social_posts', 'posted_by_user_id', { author_type: 'player' }),
       loadGradeRows(sessionId, 'sim_emails', 'sent_by_player_id', {}),
       enabled
@@ -732,21 +747,8 @@ function chatHits(
   return hits;
 }
 
-/**
- * Process start, or the first tick that sees the flag after a test turns it on.
- * Back-credited grades older than this stay out of live signals.
- */
-let attributionEpochMs: number | null = env.teamScorePostAttributionFix ? Date.now() : null;
-
-export function resetTeamSignalAttributionEpochForTests(at: number | null): void {
-  attributionEpochMs = at;
-}
-
-function attributionEpoch(): number | null {
-  if (!env.teamScorePostAttributionFix) return null;
-  if (attributionEpochMs == null) attributionEpochMs = Date.now();
-  return attributionEpochMs;
-}
+const ATTRIBUTED_GRADE_SELECT =
+  'user_id, author_type, posted_by_user_id, created_at, overall:sop_compliance_score->>overall';
 
 /**
  * Who a graded post counts for in team signals when the attribution fix is on.
@@ -757,56 +759,56 @@ function attributionEpoch(): number | null {
  * in at once would flip content_failed for every team on the same tick.
  */
 export function signalGradePlayerId(
-  row: GradeAuthor & { created_at?: string | null },
+  row: ReturnType<typeof gradeAuthorOf>,
   epochMs: number,
 ): string | null {
   const playerId = attributedPlayerId(row, true);
   if (!playerId) return null;
   if (row.author_type === 'player' && row.posted_by_user_id) return playerId;
-  const created = typeof row.created_at === 'string' ? Date.parse(row.created_at) : Number.NaN;
+  const created = row.created_at ? Date.parse(row.created_at) : Number.NaN;
   if (!Number.isFinite(created) || created < epochMs) return null;
   return playerId;
 }
 
-interface AttributedGradeRow {
-  user_id?: unknown;
-  author_type?: unknown;
-  posted_by_user_id?: unknown;
-  created_at?: unknown;
-  overall?: unknown;
-}
-
-function attributedGradeAuthor(
-  row: AttributedGradeRow,
-): GradeAuthor & { created_at?: string | null } {
-  return {
-    author_type: typeof row.author_type === 'string' ? row.author_type : null,
-    user_id: typeof row.user_id === 'string' ? row.user_id : null,
-    posted_by_user_id: typeof row.posted_by_user_id === 'string' ? row.posted_by_user_id : null,
-    created_at: typeof row.created_at === 'string' ? row.created_at : null,
-  };
-}
-
 /**
  * Personal posts (user_id) and page posts (posted_by_user_id), one scan each.
- * Aggregates cannot apply the two attribution columns and the epoch together.
+ * The epoch is in the query so the row cap applies after it. A player post
+ * that already had posted_by_user_id is kept whatever its time.
  */
-async function loadAttributedPostGrades(sessionId: string): Promise<{
+async function loadAttributedPostGrades(
+  sessionId: string,
+  epochMs: number,
+): Promise<{
   rows: Array<Record<string, unknown>>;
   known: boolean;
   truncated: boolean;
 }> {
-  const epoch = attributionEpoch();
-  if (epoch == null) return { rows: [], known: false, truncated: false };
+  const epochIso = new Date(epochMs).toISOString();
   const [players, pages] = await Promise.all([
-    scanAttributedGrades(sessionId, 'player', 'user_id'),
-    scanAttributedGrades(sessionId, 'official_account', 'posted_by_user_id'),
+    scanGradeRows(
+      sessionId,
+      'social_posts',
+      'user_id',
+      { author_type: 'player' },
+      {
+        select: ATTRIBUTED_GRADE_SELECT,
+        or: `posted_by_user_id.not.is.null,created_at.gte.${epochIso}`,
+        orderCreatedAt: true,
+      },
+    ),
+    scanGradeRows(
+      sessionId,
+      'social_posts',
+      'posted_by_user_id',
+      { author_type: 'official_account' },
+      { select: ATTRIBUTED_GRADE_SELECT, since: epochIso, orderCreatedAt: true },
+    ),
   ]);
   if (!players.known || !pages.known) return { rows: [], known: false, truncated: false };
   const rows: Array<Record<string, unknown>> = [];
   let truncated = players.truncated || pages.truncated;
   for (const row of [...players.rows, ...pages.rows]) {
-    const playerId = signalGradePlayerId(attributedGradeAuthor(row), epoch);
+    const playerId = signalGradePlayerId(gradeAuthorOf(row), epochMs);
     if (!playerId || row.overall == null || row.overall === '') continue;
     if (rows.length >= GRADE_CAP) {
       truncated = true;
@@ -825,43 +827,6 @@ async function loadAttributedPostGrades(sessionId: string): Promise<{
     );
   }
   return { rows, known: true, truncated };
-}
-
-async function scanAttributedGrades(
-  sessionId: string,
-  authorType: 'player' | 'official_account',
-  userColumn: 'user_id' | 'posted_by_user_id',
-): Promise<{ rows: AttributedGradeRow[]; known: boolean; truncated: boolean }> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('social_posts')
-      .select(
-        'user_id, author_type, posted_by_user_id, created_at, overall:sop_compliance_score->>overall',
-      )
-      .eq('session_id', sessionId)
-      .eq('author_type', authorType)
-      .not(userColumn, 'is', null)
-      .not('sop_compliance_score', 'is', null)
-      .limit(GRADE_CAP + 1);
-    if (error) {
-      warnOnce(
-        'team_signal_grades_unavailable',
-        error,
-        'Content-grade conditions are off for this process',
-      );
-      return { rows: [], known: false, truncated: false };
-    }
-    const raw = (data ?? []) as AttributedGradeRow[];
-    const truncated = raw.length > GRADE_CAP;
-    return { rows: truncated ? raw.slice(0, GRADE_CAP) : raw, known: true, truncated };
-  } catch (err) {
-    warnOnce(
-      'team_signal_grades_unavailable',
-      err,
-      'Content-grade conditions are off for this process',
-    );
-    return { rows: [], known: false, truncated: false };
-  }
 }
 
 async function loadGradeRows(
@@ -953,17 +918,21 @@ function gradeCount(value: unknown): number {
 async function scanGradeRows(
   sessionId: string,
   table: 'social_posts' | 'sim_emails',
-  userColumn: 'posted_by_user_id' | 'sent_by_player_id',
+  userColumn: 'posted_by_user_id' | 'sent_by_player_id' | 'user_id',
   extra: { author_type?: string },
+  options?: { select?: string; since?: string; or?: string; orderCreatedAt?: boolean },
 ): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean }> {
   try {
     let query = supabaseAdmin
       .from(table)
-      .select(`${userColumn}, overall:sop_compliance_score->>overall`)
+      .select(options?.select ?? `${userColumn}, overall:sop_compliance_score->>overall`)
       .eq('session_id', sessionId)
       .not(userColumn, 'is', null)
-      .not('sop_compliance_score', 'is', null)
-      .limit(GRADE_CAP + 1);
+      .not('sop_compliance_score', 'is', null);
+    if (options?.since) query = query.gte('created_at', options.since);
+    if (options?.or) query = query.or(options.or);
+    if (options?.orderCreatedAt) query = query.order('created_at', { ascending: true });
+    query = query.limit(GRADE_CAP + 1);
     if (extra.author_type) query = query.eq('author_type', extra.author_type);
     const { data, error } = await query;
     if (error) {
@@ -974,7 +943,7 @@ async function scanGradeRows(
       );
       return { rows: [], known: false, truncated: false };
     }
-    const raw = ((data ?? []) as Array<Record<string, unknown>>).map((row) =>
+    const raw = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) =>
       row.sop_compliance_score != null
         ? row
         : { ...row, sop_compliance_score: { overall: row.overall } },
