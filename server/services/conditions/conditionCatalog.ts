@@ -1286,6 +1286,37 @@ export function parseConditionKey(
   return parseCatalogCondition(key, CONDITION_CATALOG, options);
 }
 
+/** Inject keys named by one condition. Minutes and other arguments are not keys. */
+export function injectKeysInCondition(conditionKey: string): string[] {
+  const body = conditionKey.split('|')[0]?.trim() ?? '';
+  if (!body) return [];
+  const parsed = parseConditionKey(body);
+  if ('error' in parsed) return [];
+  return injectKeysInParsedCondition(parsed);
+}
+
+export function injectKeysInParsedCondition(parsed: {
+  def: { id: string; looseArgs?: boolean; params?: Array<{ type: string; name: string }> };
+  args: string[];
+}): string[] {
+  const params = parsed.def.params ?? [];
+  if (parsed.def.looseArgs) {
+    const arg = parsed.args[0] ?? '';
+    const param = params[0];
+    const injectRef =
+      param?.type === 'inject_key' ||
+      parsed.def.id === 'inject_fired' ||
+      parsed.def.id === 'inject_published' ||
+      parsed.def.id === 'inject_cancelled';
+    return injectRef && arg ? [arg] : [];
+  }
+  const refs: string[] = [];
+  params.forEach((param, index) => {
+    if (param.type === 'inject_key' && parsed.args[index]) refs.push(parsed.args[index]);
+  });
+  return refs;
+}
+
 /** Fill a catalogue label from the parsed arguments. A team or role scope is appended. */
 export function formatConditionLabel(parsed: {
   def: ConditionDef;

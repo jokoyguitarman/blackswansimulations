@@ -20,6 +20,10 @@ function envOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOptions 
     pageBatch: over?.pageBatch ?? env.warroomOrgPageBatch,
     personaCap: over?.personaCap ?? PERSONA_PER_COUNTRY_CAP,
     personaFloor: over?.personaFloor ?? PERSONA_PER_COUNTRY_FLOOR,
+    dependencyMapBatchTeams: over?.dependencyMapBatchTeams ?? env.warroomDependencyMapBatchTeams,
+    dependencyUpstreamPerTeam: over?.dependencyUpstreamPerTeam ?? env.warroomDependencyUpstreamPerTeam,
+    dependencyConsequenceBatch:
+      over?.dependencyConsequenceBatch ?? env.warroomDependencyConsequenceBatch,
   };
 }
 

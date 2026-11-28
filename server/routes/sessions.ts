@@ -1621,7 +1621,10 @@ router.patch(
         if (coverageBlocksStart(callCoverage) && acknowledge) {
           const record = buildStartOverride(user.id, new Date().toISOString(), callCoverage);
           const event = startWithUnfilledPayload(callCoverage);
-          const saved = await supabaseAdmin.from('sessions').update({ start_override: record }).eq('id', id);
+          const saved = await supabaseAdmin
+            .from('sessions')
+            .update({ start_override: record })
+            .eq('id', id);
           if (saved.error) {
             logger.warn(
               { code: saved.error.code, event: 'start_override_unrecorded', sessionId: id },
@@ -1633,7 +1636,10 @@ router.patch(
             event_type: event.event_type,
             metadata: { ...event.metadata, by: user.id, at: record.at },
           });
-          logger.info({ sessionId: id, warnings: record.warnings, event: 'start_with_unfilled' }, 'Session started with unfilled roles or lines');
+          logger.info(
+            { sessionId: id, warnings: record.warnings, event: 'start_with_unfilled' },
+            'Session started with unfilled roles or lines',
+          );
         }
       }
 
@@ -1704,7 +1710,9 @@ router.patch(
         void endRoles(id).catch((err) => logger.warn({ err, sessionId: id }, 'end roles failed'));
         void import('../services/escalation/escalationService.js')
           .then(({ cancelSessionChains }) => cancelSessionChains(id))
-          .catch((err) => logger.warn({ err, sessionId: id }, 'escalation cancel on session end failed'));
+          .catch((err) =>
+            logger.warn({ err, sessionId: id }, 'escalation cancel on session end failed'),
+          );
       }
       if (
         previousStatus === 'in_progress' &&
@@ -1716,6 +1724,16 @@ router.patch(
       }
 
       if (claimingStart && data) {
+        const seedScenarioId =
+          (data as { scenario_id?: string }).scenario_id ??
+          (session as { scenario_id?: string }).scenario_id;
+        if (seedScenarioId) {
+          void import('../services/director/directorService.js')
+            .then(({ ensureDirectorSeed }) => ensureDirectorSeed(id, seedScenarioId))
+            .catch((err) =>
+              logger.warn({ err, sessionId: id }, 'director seed was not set at start'),
+            );
+        }
         void ensureCallLines(id).catch((err) => {
           logger.warn({ err, sessionId: id }, 'call lines were not ensured at start');
         });

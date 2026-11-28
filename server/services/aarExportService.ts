@@ -27,6 +27,7 @@ const SECTION_LABELS: Record<string, string> = {
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
+  cross_team: 'Cross-team cause and effect',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
@@ -100,6 +101,7 @@ async function buildChannelOverview(
 }
 
 const router = Router();
+router.use(staffViewer('channels'));
 
 const createChannelSchema = z.object({
   body: z.object({

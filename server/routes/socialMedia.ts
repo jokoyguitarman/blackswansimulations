@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
@@ -58,6 +59,7 @@ import {
 } from '../lib/socialSessionGuard.js';
 
 const router = Router();
+router.use(staffViewer('socialMedia'));
 
 /**
  * Country scope for public content (contract §4.1). Players: their organisation's country (null

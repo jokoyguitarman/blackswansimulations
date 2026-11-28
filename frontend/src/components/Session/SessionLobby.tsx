@@ -21,6 +21,7 @@ import { initialsOf } from '../UI/Collapsible';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { websocketClient } from '../../lib/websocketClient';
+import { DirectorModeSelect } from './DirectorModeSelect';
 
 interface SessionLobbyProps {
   sessionId: string;
@@ -407,6 +408,8 @@ export const SessionLobby = ({
           </div>
         </div>
       )}
+
+      {isTrainer && isSocialSim ? <DirectorModeSelect sessionId={sessionId} /> : null}
 
       <div className="wr-map">
         {/* Readiness */}

@@ -1,7 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { applyMountedViewer, type ViewerContext } from './viewer.js';
 
 export interface AuthenticatedRequest extends Request {
+  /** Set when a spectator flag is on. Absent when both flags are off. */
+  viewer?: ViewerContext;
   user?: {
     id: string;
     email?: string;
@@ -44,8 +47,7 @@ export const requireAuth = async (
     // Get role from app_metadata first, then fallback to user_profiles table
     let userRole = (data.user.app_metadata as Record<string, unknown>)?.role as string | undefined;
     let userAgency = (data.user.app_metadata as Record<string, unknown>)?.agency as
-      | string
-      | undefined;
+      string | undefined;
 
     // The profile row is the source of truth for the in-game display name (and for role/agency
     // when app_metadata lacks them). One primary-key lookup per request.
@@ -74,6 +76,10 @@ export const requireAuth = async (
       displayName,
       metadata,
     };
+
+    // Flags off: this returns false without reading headers or querying.
+    const gate = applyMountedViewer(req, res);
+    if (gate !== false && (await gate)) return;
 
     next();
   } catch (err) {
