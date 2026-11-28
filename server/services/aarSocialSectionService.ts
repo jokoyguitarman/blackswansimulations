@@ -10,6 +10,7 @@ import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { rosterValidAt } from '../lib/peaceGate.js';
+import { loadCrossTeamSection } from './aar/aarCrossTeamService.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -27,6 +28,7 @@ export const SOCIAL_AAR_SECTION_KEYS = [
   'social_executive',
   'social_timeline',
   'comms_responses',
+  'cross_team',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -53,6 +55,7 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
+  cross_team: 'Cross-team cause and effect',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -96,7 +99,9 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
   comms_responses:
-    'Review every inject that needed a reply. For each, say when it was delivered, whether anyone opened it, who responded and how late (T+ minutes and channel), and what the judgement found (tone, pass or fail, wait and mood). Name the branch that fired because of that reply or the silence, each escalation step (urgency and channel), and each missed, declined or answered call attempt. If a stakeholder mood changed, name the rung and the consequence that followed. Cite T+ minutes. Be specific and fair.',
+    'Review every inject that needed a reply. For each, say when it was delivered, whether anyone opened it, who responded and how late (T+ minutes and channel), and what the judgement found (tone, pass or fail, wait and mood). Name the branch that fired because of that reply or the silence, each escalation step (urgency and channel), and each missed, declined or answered call attempt. If a stakeholder mood changed, name the rung and the consequence that followed. A branch row names who caused it and its origin label; "inferred" means the session had no trigger record. Cite T+ minutes. Be specific and fair.',
+  cross_team:
+    "Walk the cross-team cause and effect. If provenance is inferred, say in one sentence that the session has no trigger record and the links are inferred. Otherwise, for each chain, name the upstream team, the minute the dependency broke or was met, the downstream team that received the consequence, and that team's reply and judgement. Then give each team its caused and received counts and the share of pressure that was authored, cross-team, or unscripted. Cite T+ minutes. Do not invent a chain that is not in the data.",
   social_public_comms:
     'Assess every published statement and reply: quality (use the stored grade dimensions), timing, consistency across platforms, and reach versus hostile content (impression dominance). Quote the strongest and weakest artifacts with their scores. Judge whether format choices (statement, thread reply, creative) matched the moment.',
   social_team_executive:
@@ -501,6 +506,11 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
 
   sections.comms_responses = {
     data: social.comms_responses,
+    analysis: null,
+  };
+
+  sections.cross_team = {
+    data: await loadCrossTeamSection(sessionId),
     analysis: null,
   };
 
