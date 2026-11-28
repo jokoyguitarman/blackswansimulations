@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { chatJson } from './ai/chatClient.js';
+import { chatJson, type ChatOptions } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import {
   notifyPostReply,
@@ -9,6 +9,50 @@ import {
   notifyMention,
   extractMentions,
 } from './socialNotificationService.js';
+import { buildLegacyReactionMessages } from './topic/legacyReactionPrompt.js';
+import { formatPersonaReactionLine, isCompetitorPersona } from './topic/reactionPromptShared.js';
+import {
+  assignBridgeStances,
+  buildTopicAwareReactionPrompt,
+  checkTopicReplies,
+  type BridgeStance,
+  type PostKind,
+  type TopicLabel,
+  type TopicPhase,
+} from './topic/topicPromptCore.js';
+import {
+  isTopicSchemaMissing,
+  noteTopicSchemaMissing,
+  topicSchemaMissing,
+} from './topic/topicColumns.js';
+
+export interface ReactionChatResult {
+  reactions?: Array<Record<string, unknown>>;
+  classification?: unknown;
+}
+
+export interface ReactionChatClient {
+  chatJson(
+    options: Pick<
+      ChatOptions,
+      'tier' | 'json' | 'temperature' | 'maxTokens' | 'label' | 'messages'
+    >,
+  ): Promise<ReactionChatResult | null>;
+}
+
+export interface NpcReactionOptions {
+  /** WP3 passes `peace`. Until then every caller leaves this unset, which is crisis. */
+  phase?: TopicPhase;
+  client?: ReactionChatClient;
+}
+
+/** What the reaction call decided. Null when topic replies are off, or the call threw. */
+export interface TopicReactionResult {
+  label: TopicLabel;
+  confidence: number | null;
+  bridgeTopic: string;
+  postKind: PostKind;
+}
 
 interface NPCPersona {
   handle: string;
@@ -18,22 +62,79 @@ interface NPCPersona {
   bias: string;
   follower_count: number;
   specific_claims: string[];
+  tier?: string;
+}
+
+const PARENT_COLUMNS = 'content, author_handle, author_display_name, author_type' as const;
+const PARENT_WITH_KIND =
+  'content, author_handle, author_display_name, author_type, topic_kind' as const;
+
+interface ParentPostRow {
+  content: string;
+  author_handle: string;
+  author_display_name?: string | null;
+  author_type?: string | null;
+  topic_kind?: string | null;
+}
+
+/** Flag off uses the same column list as before. topic_kind is only requested when the feature is on. */
+async function loadParentPost(id: string, withTopicKind: boolean): Promise<ParentPostRow | null> {
+  if (!withTopicKind) {
+    const { data } = await supabaseAdmin
+      .from('social_posts')
+      .select(PARENT_COLUMNS)
+      .eq('id', id)
+      .single();
+    return data;
+  }
+  const wide = await supabaseAdmin
+    .from('social_posts')
+    .select(PARENT_WITH_KIND)
+    .eq('id', id)
+    .single();
+  if (wide.error && isTopicSchemaMissing(wide.error)) {
+    noteTopicSchemaMissing();
+    const fallback = await supabaseAdmin
+      .from('social_posts')
+      .select(PARENT_COLUMNS)
+      .eq('id', id)
+      .single();
+    return fallback.data;
+  }
+  if (wide.error || !wide.data) return null;
+  return wide.data as ParentPostRow;
+}
+
+function unclassifiedTopic(postKind: PostKind): TopicReactionResult {
+  return { label: 'unclassified', confidence: null, bridgeTopic: '', postKind };
 }
 
 export async function triggerNPCReactions(
   sessionId: string,
   playerPost: Record<string, unknown>,
-): Promise<void> {
-  if (!env.aiEnabled) return;
+  options?: NpcReactionOptions,
+): Promise<TopicReactionResult | null> {
+  const client = options?.client;
+  if (!env.aiEnabled && !client) return null;
+
+  const topicAware = env.enableTopicAwareReplies;
+  const phase: TopicPhase = options?.phase ?? 'crisis';
 
   try {
+    let topicPostKind: PostKind = 'crisis';
+    let parentForPrompt: ParentPostRow | null = null;
+    let threadReplyRows: Array<{ authorHandle: string; content: string }> = [];
+    let addressedComment: { handle: string; content: string } | null = null;
+    const bail = (postKind: PostKind = topicPostKind): TopicReactionResult | null =>
+      topicAware ? unclassifiedTopic(postKind) : null;
+
     const { data: session } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id')
       .eq('id', sessionId)
       .single();
 
-    if (!session?.scenario_id) return;
+    if (!session?.scenario_id) return bail();
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
@@ -41,13 +142,13 @@ export async function triggerNPCReactions(
       .eq('id', session.scenario_id)
       .single();
 
-    if (!scenario) return;
+    if (!scenario) return bail();
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const allPersonas = (initialState.npc_personas || []) as Array<
       NPCPersona & { country?: string | null }
     >;
-    if (allPersonas.length === 0) return;
+    if (allPersonas.length === 0) return bail();
     // Contract §5.3: reactions come from personas in the post's country (the player's org
     // country for top-level posts; the row's own country when already stamped).
     const postCountry =
@@ -69,13 +170,16 @@ export async function triggerNPCReactions(
     // Fetch thread context if this is a reply
     let threadContext = '';
     if (isReply) {
-      const { data: parentPost } = await supabaseAdmin
-        .from('social_posts')
-        .select('content, author_handle, author_display_name, author_type')
-        .eq('id', String(playerPost.reply_to_post_id))
-        .single();
+      const parentPost = await loadParentPost(
+        String(playerPost.reply_to_post_id),
+        topicAware && !topicSchemaMissing(),
+      );
 
       if (parentPost) {
+        parentForPrompt = parentPost;
+        if (parentPost.topic_kind === 'normal' || parentPost.topic_kind === 'crisis') {
+          topicPostKind = parentPost.topic_kind;
+        }
         const { data: threadReplies } = await supabaseAdmin
           .from('social_posts')
           .select('content, author_handle')
@@ -84,6 +188,10 @@ export async function triggerNPCReactions(
           .limit(10);
 
         threadContext = `\n\nTHREAD CONTEXT:\nOriginal post by ${parentPost.author_handle}: "${String(parentPost.content).substring(0, 200)}"`;
+        threadReplyRows = (threadReplies || []).map((r) => ({
+          authorHandle: String(r.author_handle),
+          content: String(r.content).substring(0, 100),
+        }));
         if (threadReplies && threadReplies.length > 0) {
           threadContext +=
             '\nPrevious replies:\n' +
@@ -101,7 +209,9 @@ export async function triggerNPCReactions(
             .reverse()
             .find((r) => r.author_handle === targetHandle);
           if (targetReply) {
-            threadContext += `\n\nThe player is SPECIFICALLY responding to ${targetHandle}'s comment: "${String(targetReply.content).substring(0, 200)}"`;
+            const addressed = String(targetReply.content).substring(0, 200);
+            addressedComment = { handle: targetHandle, content: addressed };
+            threadContext += `\n\nThe player is SPECIFICALLY responding to ${targetHandle}'s comment: "${addressed}"`;
             threadContext += `\nNPCs should respond in context of THIS specific exchange, not the general thread.`;
           }
         }
@@ -112,9 +222,6 @@ export async function triggerNPCReactions(
 
     const probabilityBoost = isReply ? 2.0 : 1.0;
     const isOfficialPagePost = String(playerPost.author_type) === 'official_account';
-    const isCompetitor = (p: NPCPersona) =>
-      /competitor|rival|competing|alternative/i.test(p.personality) || /competitive/i.test(p.bias);
-
     const reactingNPCs: Array<{ persona: NPCPersona; reactionType: string }> = [];
 
     for (const persona of personas) {
@@ -132,7 +239,7 @@ export async function triggerNPCReactions(
         }
       }
 
-      if (isCompetitor(persona)) {
+      if (isCompetitorPersona(persona)) {
         const threshold = isOfficialPagePost ? 0.9 : 0.5;
         if (roll < Math.min(threshold * probabilityBoost, 0.95)) {
           reactingNPCs.push({ persona, reactionType: 'position' });
@@ -189,14 +296,7 @@ export async function triggerNPCReactions(
 
     const maxReactions = isOfficialPagePost ? 8 : isReply ? 5 : 6;
     const selected = reactingNPCs.slice(0, Math.min(maxReactions, reactingNPCs.length));
-    if (selected.length === 0) return;
-
-    const npcContext = selected
-      .map(
-        (s) =>
-          `${s.persona.handle} (${s.persona.name}): ${s.persona.personality}, bias: ${s.persona.bias}, type: ${s.persona.type}. React with: ${s.reactionType}`,
-      )
-      .join('\n');
+    if (selected.length === 0) return bail();
 
     // Official crisis communication (a holding statement or any post published
     // as the org page) draws substantive scrutiny, not sarcasm: NPCs must
@@ -229,59 +329,121 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
 `;
     }
 
-    const parsed = await chatJson<{ reactions?: Array<Record<string, unknown>> }>({
-      tier: 'standard',
-      json: true,
+    const playerHandleForPrompt = String(playerPost.author_handle || '@player');
+    const crisisDescription = String(scenario.description || '').substring(0, 300);
+    const playerContent = String(playerPost.content || '');
+    const imagePrompt = playerPost.image_prompt ? String(playerPost.image_prompt) : undefined;
+    const stances = topicAware
+      ? assignBridgeStances(selected, String(playerPost.id || ''), {
+          authorIsPage: isOfficialPagePost,
+          stayShare: env.topicBridgeStayShare,
+        })
+      : [];
+    const stanceByHandle = new Map<string, BridgeStance>(
+      stances.map((row) => [row.handle, row.stance]),
+    );
+    const prompted = topicAware
+      ? buildTopicAwareReactionPrompt({
+          phase,
+          postFormat,
+          playerHandle: playerHandleForPrompt,
+          playerContent,
+          imagePrompt,
+          authorIsPage: isOfficialPagePost,
+          orgName,
+          topicKind: topicPostKind,
+          parent: parentForPrompt
+            ? {
+                content: String(parentForPrompt.content).substring(0, 200),
+                authorHandle: String(parentForPrompt.author_handle),
+                authorDisplayName: String(parentForPrompt.author_display_name || ''),
+                authorType: String(parentForPrompt.author_type || ''),
+                topicKind: topicPostKind,
+              }
+            : null,
+          threadReplies: threadReplyRows,
+          addressedComment,
+          personas: selected.map((entry) => ({
+            handle: entry.persona.handle,
+            name: entry.persona.name,
+            personality: entry.persona.personality,
+            bias: entry.persona.bias,
+            type: entry.persona.type,
+            reactionType: entry.reactionType,
+            stance: stanceByHandle.get(entry.persona.handle) || 'stay',
+          })),
+          crisisDescription,
+          officialScrutinyBlock,
+          isOfficialComms,
+          isReply,
+        })
+      : buildLegacyReactionMessages({
+          postFormat,
+          playerHandle: playerHandleForPrompt,
+          npcContext: selected
+            .map((entry) => formatPersonaReactionLine(entry.persona, entry.reactionType))
+            .join('\n'),
+          isOfficialComms,
+          officialScrutinyBlock,
+          crisisDescription,
+          orgName,
+          threadContext,
+          isReply,
+          playerContent,
+          imagePrompt,
+          userHandle: String(playerPost.author_handle),
+        });
+
+    const request = {
+      tier: 'standard' as const,
+      json: true as const,
       temperature: 0.95,
       maxTokens: 1500,
       label: 'npcReaction.generate',
       messages: [
-        {
-          role: 'system',
-          content: `You are generating NPC reactions to a player's social media post during a crisis simulation.
-
-The player posted a ${postFormat} format post. Their handle is ${String(playerPost.author_handle || '@player')}. Generate realistic reactions from these NPCs:
-
-${npcContext}
-
-Reaction types:
-- "attack": ${
-            isOfficialComms
-              ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
-              : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias'
-          }
-- "cover": media-style coverage -- ${
-            isOfficialComms
-              ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
-              : "neutral to positive news angle about the response team's communication"
-          }
-- "support": endorsing reply or repost with supportive commentary, OR just "like" the post
-- "neutral": ambiguous reaction that could go either way
-- "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
-
-IMPORTANT RULES:
-- When replying, START the reply by tagging the player: "${String(playerPost.author_handle || '@player')} ..." so they get notified
-- Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
-- Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
-${officialScrutinyBlock}
-Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
-${threadContext}
-
-Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}
-If the player attached media (photo/video), the description is shown as [Attached media: ...]. React to the visual content as if you can see it -- reference what it shows, comment on its impact, or use it to fuel your argument.
-
-Return ONLY valid JSON:
-{ "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
-        },
-        {
-          role: 'user',
-          content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
-        },
+        { role: 'system' as const, content: prompted.system },
+        { role: 'user' as const, content: prompted.user },
       ],
-    });
+    };
+    const parsed = client
+      ? await client.chatJson(request)
+      : await chatJson<ReactionChatResult>(request);
 
-    if (!parsed) return;
-    const reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
+    if (!parsed) return bail();
+    let reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
+    let topic: TopicReactionResult | null = null;
+
+    if (topicAware) {
+      const peacePeriod = (initialState.peace_period || {}) as { leak_terms?: unknown };
+      const leakTerms = Array.isArray(peacePeriod.leak_terms)
+        ? peacePeriod.leak_terms.map((term) => String(term))
+        : [];
+      const checked = checkTopicReplies({
+        classification: parsed.classification,
+        reactions,
+        stances: stanceByHandle,
+        leakTerms,
+        postKind: topicPostKind,
+        isReply,
+        minConfidence: env.topicBridgeMinConfidence,
+      });
+      reactions = checked.reactions;
+      topic = {
+        label: checked.label,
+        confidence: checked.confidence,
+        bridgeTopic: checked.bridgeTopic,
+        postKind: topicPostKind,
+      };
+      const logged = new Set<string>();
+      for (const drop of checked.dropped) {
+        if (logged.has(drop.handle)) continue;
+        logged.add(drop.handle);
+        logger.info(
+          { sessionId, playerPostId: playerPost.id, handle: drop.handle },
+          'Dropped topic reply that matched leak terms',
+        );
+      }
+    }
 
     const postPlatform = String(playerPost.platform || 'x_twitter');
     const playerHandle = String(playerPost.author_handle || '@player');
@@ -444,7 +606,9 @@ Return ONLY valid JSON:
       { sessionId, playerPostId: playerPost.id, reactionCount: reactions.length },
       'NPC reactions scheduled',
     );
+    return topic;
   } catch (err) {
     logger.error({ err, sessionId }, 'NPC reaction trigger failed');
+    return null;
   }
 }

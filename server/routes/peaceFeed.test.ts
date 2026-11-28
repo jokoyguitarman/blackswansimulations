@@ -78,7 +78,11 @@ describe('peace feed route', { concurrency: false }, () => {
           const row = rows.get(scenarioId);
           if (!row) return { ok: false, status: 404, error: 'Scenario not found' };
           if (user.role === 'admin' || row.ownerId === user.id) return { ok: true };
-          return { ok: false, status: 403, error: 'Only the scenario creator can modify this scenario' };
+          return {
+            ok: false,
+            status: 403,
+            error: 'Only the scenario creator can modify this scenario',
+          };
         },
         canEdit: async (scenarioId) => {
           const row = rows.get(scenarioId);
@@ -114,7 +118,9 @@ describe('peace feed route', { concurrency: false }, () => {
   });
 
   after(async () => {
-    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
   });
 
   test('the flag off answers 404 and does not generate', async () => {
@@ -146,7 +152,10 @@ describe('peace feed route', { concurrency: false }, () => {
     assert.equal(saved.peace_period.enabled, false);
     const listed = await call('GET', SOCIAL);
     assert.equal(listed.status, 200);
-    assert.equal((listed.json.data as { peace_period: { enabled: boolean } }).peace_period.enabled, false);
+    assert.equal(
+      (listed.json.data as { peace_period: { enabled: boolean } }).peace_period.enabled,
+      false,
+    );
   });
 
   test('someone else cannot generate, and a field scenario has no route', async () => {
