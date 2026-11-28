@@ -473,6 +473,8 @@ function installDb(handlers: {
   thread?: Array<Record<string, unknown>>;
   emailThread?: Array<Record<string, unknown>>;
   updateError?: unknown;
+  /** Future session start, so loadSessionTopicPhase returns peace. */
+  peaceStart?: string;
 }): DbCapture {
   const inserts: DbCapture['inserts'] = [];
   const updates: DbCapture['updates'] = [];
@@ -530,6 +532,12 @@ function installDb(handlers: {
         return { data: null, error: null };
       },
       async maybeSingle() {
+        if (table === 'sessions' && handlers.peaceStart) {
+          return {
+            data: { start_time: handlers.peaceStart, opened_at: '2026-01-01T00:00:00.000Z' },
+            error: null,
+          };
+        }
         return { data: null, error: null };
       },
       then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
@@ -1500,4 +1508,48 @@ test('during peace a player DM, a stakeholder DM, and an email send no crisis te
     env.enablePeacePeriod = peace;
     resetPeaceColumnsForTests();
   }
+});
+
+test('peace with topic replies off drops a persona DM and email that name a leak term', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  const peace = env.enablePeacePeriod;
+  env.enablePeacePeriod = true;
+  resetPeaceColumnsForTests();
+  const db = installDb({
+    scenario: personaScenario({ ...sam, tier: 'key' }),
+    peaceStart: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+  const calls: string[] = [];
+  try {
+    await withFlags({ topic: false, stakeholder: false, ai: true }, async () => {
+      await triggerNPCDMReply('sess-1', 'thread-peace-leak', '@sam', 'Nice breakfast deal', 'user-1', {
+        client: {
+          async chatJson() {
+            calls.push('dm');
+            return { reply: 'The recall starts Monday' };
+          },
+        },
+      });
+      await triggerNPCEmailReply(
+        'sess-1',
+        { ...playerEmail, id: 'email-peace-leak', to_addresses: ['sam.lee@contacts.sim'] },
+        {
+          client: {
+            async chatJson() {
+              calls.push('email');
+              return { should_reply: true, body: 'The recall starts Monday', delay_seconds: 30 };
+            },
+          },
+        },
+      );
+    });
+    mock.timers.tick(120_000);
+  } finally {
+    db.restore();
+    env.enablePeacePeriod = peace;
+    resetPeaceColumnsForTests();
+    mock.timers.reset();
+  }
+  assert.deepEqual(calls, ['dm', 'email']);
+  assert.equal(db.inserts.length, 0);
 });

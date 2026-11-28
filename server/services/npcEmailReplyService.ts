@@ -725,7 +725,7 @@ ${respondentPersonality ? `Personality: ${respondentPersonality}` : ''}`;
     }
 
     let personaScreen: ChannelScreenResult | null = null;
-    if (topicAware) {
+    if (topicAware || phase === 'peace') {
       personaScreen = screenChannelReply({
         phase,
         classification: parsed.classification,

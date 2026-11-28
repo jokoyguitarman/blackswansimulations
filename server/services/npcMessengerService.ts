@@ -568,7 +568,7 @@ export async function triggerNPCDMReply(
     if (!parsed) return finish();
     let replyText = String(parsed.reply || '');
     let personaScreen: ChannelScreenResult | null = null;
-    if (topicAware) {
+    if (topicAware || phase === 'peace') {
       personaScreen = screenChannelReply({
         phase,
         classification: parsed.classification,
