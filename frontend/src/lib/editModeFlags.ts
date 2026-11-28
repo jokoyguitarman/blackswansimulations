@@ -63,3 +63,56 @@ export function canMakePrimary(input: { operation?: string; isCurrentPrimary: bo
   if (input.isCurrentPrimary) return false;
   return input.operation !== 'ai';
 }
+
+/** An organisation that was already on the scenario when the edit opened. */
+export function isExistingOrg(orgKey: string | undefined, baselineKeys: ReadonlySet<string>): boolean {
+  return typeof orgKey === 'string' && orgKey.length > 0 && baselineKeys.has(orgKey);
+}
+
+/** A team that was already on the scenario when the edit opened. */
+export function isExistingTeam(teamUid: string | undefined, baselineUids: ReadonlySet<string>): boolean {
+  return typeof teamUid === 'string' && teamUid.length > 0 && baselineUids.has(teamUid);
+}
+
+/** Baseline teams present in `before` and absent from `after`. New teams are ignored. */
+export function removedExistingTeams<T extends { team_uid?: string }>(
+  before: readonly T[],
+  after: readonly T[],
+  baselineUids: ReadonlySet<string>,
+): T[] {
+  const kept = new Set(after.map((team) => team.team_uid).filter((uid): uid is string => !!uid));
+  return before.filter((team) => isExistingTeam(team.team_uid, baselineUids) && !kept.has(team.team_uid as string));
+}
+
+function keysOf(value: unknown, field: string): string[] {
+  if (!Array.isArray(value)) return [];
+  const keys: string[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const key = (item as Record<string, unknown>)[field];
+    if (typeof key === 'string' && key.trim()) keys.push(key);
+  }
+  return keys;
+}
+
+/** Org keys and team uids frozen on the draft the edit opened with. */
+export function baselineIdentity(input: Record<string, unknown>): {
+  orgKeys: string[];
+  teamUids: string[];
+} {
+  const orgKeys = [
+    ...(typeof input.primary_org_key === 'string' && input.primary_org_key ? [input.primary_org_key] : []),
+    ...keysOf(input.extra_organisations, 'org_key'),
+    ...keysOf(input.pressure_organisations, 'org_key'),
+    ...keysOf(input.competitor_entries, 'org_key'),
+  ];
+  const teamUids = [
+    ...keysOf(input.team_roster, 'team_uid'),
+    ...(Array.isArray(input.extra_organisations)
+      ? input.extra_organisations.flatMap((org) =>
+          org && typeof org === 'object' ? keysOf((org as { team_roster?: unknown }).team_roster, 'team_uid') : [],
+        )
+      : []),
+  ];
+  return { orgKeys, teamUids };
+}

@@ -76,9 +76,18 @@ import {
   SetupEditReview,
 } from '../components/Scenario/SetupEditPanels';
 import { BRIEF_EDIT_NOTE, editBannerText, editNumberFromAllowance, makePrimaryNote, recompileTooltips } from '../lib/editModeBanner';
-import { editModeFlags, readSetupEditLink, type SetupEditLink } from '../lib/editModeFlags';
-import { swapMakePrimary, type SwappableOrg, type SwappablePrimary } from '../lib/makePrimary';
-import { unresolvedOrphanIds, type OrphanChoiceInput } from '../lib/orphanGating';
+import {
+  baselineIdentity,
+  editModeFlags,
+  isExistingOrg,
+  isExistingTeam,
+  readSetupEditLink,
+  removedExistingTeams,
+  type SetupEditLink,
+} from '../lib/editModeFlags';
+import { swapMakePrimary, type SwappablePrimary } from '../lib/makePrimary';
+import { type OrphanChoiceInput } from '../lib/orphanGating';
+import { setupEditButtonState } from '../lib/setupEditButton';
 import {
   removalConfirmText,
   reviewSections,
@@ -445,6 +454,13 @@ export const SocialCrisisWizard = () => {
   const [editCrisisType, setEditCrisisType] = useState('');
   const [makePrimaryKey, setMakePrimaryKey] = useState<string | null>(null);
   const [baselinePrimaryKey, setBaselinePrimaryKey] = useState('primary');
+  const [baselineOrgKeys, setBaselineOrgKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [baselineTeamUids, setBaselineTeamUids] = useState<ReadonlySet<string>>(() => new Set());
+  const [editTargets, setEditTargets] = useState<{ teams: string[]; injectKeys: string[]; orgKeys: string[] }>({
+    teams: [],
+    injectKeys: [],
+    orgKeys: [],
+  });
   const [renameTeamsOn, setRenameTeamsOn] = useState<Record<string, boolean>>({});
   const [editOutputs, setEditOutputs] = useState<ReviewStageOutput[]>([]);
   const [editPlan, setEditPlan] = useState<ReviewPlan | null>(null);
@@ -1251,6 +1267,9 @@ export const SocialCrisisWizard = () => {
         if (typeof input.primary_x_handle === 'string') setPrimaryX(input.primary_x_handle);
         if (typeof input.crisis_description === 'string') setEditCrisisType(input.crisis_description);
         if (typeof input.make_primary === 'string') setMakePrimaryKey(input.make_primary);
+        const identity = baselineIdentity(input);
+        setBaselineOrgKeys(new Set(identity.orgKeys));
+        setBaselineTeamUids(new Set(identity.teamUids));
       }
     }
     const reviewStages = (input as { setup_edit_review?: { stages?: ReviewStageOutput[] } }).setup_edit_review?.stages;
@@ -3335,7 +3354,26 @@ export const SocialCrisisWizard = () => {
       x_handle: primaryX,
       team_roster: teamRoster,
     };
-    const swapped = swapMakePrimary(primary, extraOrganisations as SwappableOrg[], extraId, baselinePrimaryKey);
+    const swapped = swapMakePrimary(
+      primary,
+      extraOrganisations,
+      extraId,
+      baselinePrimaryKey,
+      (slot) => ({
+        id: slot.org_uid || slot.org_key || 'previous-primary',
+        display_name: slot.display_name,
+        short_name: slot.short_name,
+        country: slot.country,
+        city: slot.city,
+        kind: primaryKind,
+        facebook_handle: slot.facebook_handle,
+        x_handle: slot.x_handle,
+        team_roster: slot.team_roster,
+        operation: 'players' as const,
+        org_key: slot.org_key,
+        org_uid: slot.org_uid,
+      }),
+    );
     if (!swapped) return;
     setOrgName(swapped.primary.display_name);
     setPrimaryShortName(swapped.primary.short_name);
@@ -3347,7 +3385,7 @@ export const SocialCrisisWizard = () => {
     setPrimaryOrgKey(swapped.primary.org_key);
     setPrimaryOrgUid(swapped.primary.org_uid);
     setTeamRoster(swapped.primary.team_roster);
-    setExtraOrganisations(swapped.extras as OrganisationDraft[]);
+    setExtraOrganisations(swapped.extras);
     setMakePrimaryKey(swapped.makePrimaryKey);
   };
 
@@ -3401,7 +3439,13 @@ export const SocialCrisisWizard = () => {
     void api.scenarios
       .planSetupEdit(setupEdit.scenario_id, setupEdit.edit_id, { resolutions: orphanDecisions })
       .then((res) => {
-        if (!cancelled) setEditPlan(res.plan);
+        if (cancelled) return;
+        setEditPlan(res.plan);
+        setEditTargets({
+          teams: res.targets?.teams ?? [],
+          injectKeys: res.targets?.inject_keys ?? [],
+          orgKeys: res.targets?.org_keys ?? [],
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -3466,7 +3510,11 @@ export const SocialCrisisWizard = () => {
               <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
                 <div className="kicker">
                   <WrIcon name="building" size={12} /> Headquarters · players
-                  {setupEdit ? ' · Existing · Primary' : ''}
+                  {setupEdit
+                    ? isExistingOrg(primaryOrgKey, baselineOrgKeys)
+                      ? ' · Existing · Primary'
+                      : ' · Primary'
+                    : ''}
                 </div>
                 {setupEdit && (
                   <div className="flex items-center gap-2 mb-2">
@@ -3600,9 +3648,7 @@ export const SocialCrisisWizard = () => {
                   <RosterBuilder
                     roster={teamRoster}
                     onChange={(next) => {
-                      const removed = teamRoster.filter(
-                        (team) => team.team_uid && !next.some((item) => item.team_uid === team.team_uid),
-                      );
+                      const removed = removedExistingTeams(teamRoster, next, baselineTeamUids);
                       const apply = () => setTeamRoster(next);
                       if (!setupEdit || removed.length === 0) {
                         apply();
@@ -3614,6 +3660,7 @@ export const SocialCrisisWizard = () => {
                     presetCatalog={presetCatalog}
                     orgId={PRIMARY_ORG_ID}
                     showExisting={Boolean(setupEdit)}
+                    existingTeam={(uid) => isExistingTeam(uid, baselineTeamUids)}
                     expanded={
                       teamRoster.length <= ROSTER_COLLAPSE_AT || !!rosterExpanded[PRIMARY_ORG_ID]
                     }
@@ -3643,7 +3690,7 @@ export const SocialCrisisWizard = () => {
                     <div className="kicker">
                       <WrIcon name={org.operation === 'ai' ? 'sparkle' : 'office'} size={12} />{' '}
                       {org.operation === 'ai' ? 'Office · AI-operated' : 'Office · players'}
-                      {setupEdit && org.org_key ? ' · Existing' : ''}
+                      {isExistingOrg(org.org_key, baselineOrgKeys) ? ' · Existing' : ''}
                       {setupEdit && org.org_key && org.org_key === baselinePrimaryKey && makePrimaryKey
                         ? ' · Previous primary'
                         : ''}
@@ -3658,7 +3705,8 @@ export const SocialCrisisWizard = () => {
                       onRosterExpandedChange={(open) =>
                         setRosterExpanded((prev) => ({ ...prev, [org.id]: open }))
                       }
-                      showExistingTeams={Boolean(setupEdit && org.org_key)}
+                      showExistingTeams={isExistingOrg(org.org_key, baselineOrgKeys)}
+                      existingTeam={(uid) => isExistingTeam(uid, baselineTeamUids)}
                       headerExtra={
                         setupEdit && org.org_key === baselinePrimaryKey && makePrimaryKey ? (
                           <button type="button" className="wr-btn sm" onClick={() => applyMakePrimary(org.id)}>
@@ -3671,7 +3719,7 @@ export const SocialCrisisWizard = () => {
                         ) : null
                       }
                       belowShort={
-                        setupEdit && org.org_key ? (
+                        isExistingOrg(org.org_key, baselineOrgKeys) ? (
                           <label className="flex items-center gap-2 mt-1 text-[11px] text-muted">
                             <input
                               type="checkbox"
@@ -3696,11 +3744,23 @@ export const SocialCrisisWizard = () => {
                           </label>
                         ) : null
                       }
-                      onChange={(next) =>
-                        setExtraOrganisations((prev) =>
-                          prev.map((o) => (o.id === org.id ? renameExtra(org, next) : o)),
-                        )
-                      }
+                      onChange={(next) => {
+                        const renamed = renameExtra(org, next);
+                        const removed = removedExistingTeams(org.team_roster, next.team_roster, baselineTeamUids);
+                        const apply = () =>
+                          setExtraOrganisations((prev) => prev.map((item) => (item.id === org.id ? renamed : item)));
+                        if (removed.length === 0) {
+                          apply();
+                          return;
+                        }
+                        const input = {
+                          ...buildDraftInput(),
+                          extra_organisations: extraOrganisations.map((item) =>
+                            item.id === org.id ? renamed : item,
+                          ),
+                        };
+                        void previewRemoval(input, apply);
+                      }}
                       onRemove={() => {
                         const apply = () => {
                           setDismissedProposals((prev) => recordDismissal(prev, 'office', org));
@@ -3710,7 +3770,7 @@ export const SocialCrisisWizard = () => {
                           ...buildDraftInput(),
                           extra_organisations: extraOrganisations.filter((item) => item.id !== org.id),
                         };
-                        removeExisting(input, apply, Boolean(org.org_key));
+                        removeExisting(input, apply, isExistingOrg(org.org_key, baselineOrgKeys));
                       }}
                     />
                   </div>
@@ -3814,7 +3874,7 @@ export const SocialCrisisWizard = () => {
                   </div>
                   <PressureOrgCard
                     org={p}
-                    badge={setupEdit && p.org_key ? 'Existing' : undefined}
+                    badge={isExistingOrg(p.org_key, baselineOrgKeys) ? 'Existing' : undefined}
                     onChange={(next) =>
                       setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
                     }
@@ -3829,7 +3889,7 @@ export const SocialCrisisWizard = () => {
                           pressure_organisations: pressureOrgs.filter((item) => item.id !== p.id),
                         },
                         apply,
-                        Boolean(p.org_key),
+                        isExistingOrg(p.org_key, baselineOrgKeys),
                       );
                     }}
                   />
@@ -3913,7 +3973,7 @@ export const SocialCrisisWizard = () => {
                   </div>
                   <RivalOrgCard
                     rival={e}
-                    badge={setupEdit && e.org_key ? 'Existing' : undefined}
+                    badge={isExistingOrg(e.org_key, baselineOrgKeys) ? 'Existing' : undefined}
                     onChange={(next) =>
                       setCompetitorEntries((prev) => prev.map((x) => (x.id === e.id ? next : x)))
                     }
@@ -3926,7 +3986,7 @@ export const SocialCrisisWizard = () => {
                           competitor_entries: competitorEntries.filter((item) => item.id !== e.id),
                         },
                         apply,
-                        Boolean(e.org_key),
+                        isExistingOrg(e.org_key, baselineOrgKeys),
                       );
                     }}
                   />
@@ -4551,13 +4611,13 @@ export const SocialCrisisWizard = () => {
         );
       }
       const sections = reviewSections(editPlan ?? {}, editOutputs);
-      const unresolved = unresolvedOrphanIds(editPlan?.orphans ?? [], orphanDecisions);
       return (
         <SetupEditReview
           sections={sections}
           rejected={new Set(rejectedRevisions)}
           decisions={orphanDecisions}
-          unresolved={unresolved}
+          plan={editPlan}
+          catalogs={editTargets}
           planning={planningEdit}
           applying={applyingEdit}
           remaining={setupEdit.remaining}
@@ -4578,15 +4638,15 @@ export const SocialCrisisWizard = () => {
             })
           }
           onDecide={(id, decision) => {
-            if (!decision.choice) {
-              setOrphanDecisions((prev) => {
+            setOrphanDecisions((prev) => {
+              if (!decision) {
+                if (!(id in prev)) return prev;
                 const next = { ...prev };
                 delete next[id];
                 return next;
-              });
-              return;
-            }
-            setOrphanDecisions((prev) => ({ ...prev, [id]: decision }));
+              }
+              return { ...prev, [id]: decision };
+            });
           }}
           onApply={() => void applyEdit()}
         />
@@ -5456,22 +5516,43 @@ export const SocialCrisisWizard = () => {
                   >
                     <WrIcon name="edit" /> Modify &amp; recompile
                   </button>
-                  {compileAllowance?.enabled && scenarioId && (
+                  {scenarioId &&
+                    setupEditButtonState({
+                      enabled: Boolean(compileAllowance?.enabled),
+                      remaining: compileAllowance?.remaining ?? null,
+                      limit: compileAllowance?.limit ?? 0,
+                      locked: false,
+                    }).visible && (
                     <button
                       type="button"
                       className="wr-btn onDark lg"
-                      title={
-                        recompileTooltips({
+                      disabled={
+                        setupEditButtonState({
                           enabled: true,
-                          remaining: compileAllowance.remaining,
-                          limit: compileAllowance.limit,
-                        }).edit ?? ''
+                          remaining: compileAllowance?.remaining ?? null,
+                          limit: compileAllowance?.limit ?? 0,
+                          locked: false,
+                        }).disabled
+                      }
+                      title={
+                        setupEditButtonState({
+                          enabled: true,
+                          remaining: compileAllowance?.remaining ?? null,
+                          limit: compileAllowance?.limit ?? 0,
+                          locked: false,
+                        }).title
                       }
                       onClick={() => {
-                        void api.scenarios.openSetupEdit(scenarioId).then((opened) => {
-                          if (opened.draft_id) navigate(`/warroom/social-crisis?draft=${opened.draft_id}`);
-                          else setEditNotice('This edit has no draft. Abandon it and start again from the library.');
-                        });
+                        const id = scenarioId;
+                        void api.scenarios
+                          .openSetupEdit(id)
+                          .then((opened) => {
+                            if (opened.draft_id) navigate(`/warroom/social-crisis?draft=${opened.draft_id}`);
+                            else setEditNotice('This edit has no draft. Abandon it and start again from the library.');
+                          })
+                          .catch((err: unknown) => {
+                            setEditNotice(err instanceof Error ? err.message : 'Could not open the setup edit.');
+                          });
                       }}
                     >
                       <WrIcon name="edit" /> Edit setup
@@ -5480,6 +5561,7 @@ export const SocialCrisisWizard = () => {
                   </>
                 )}
               </div>
+              {editNotice && <p className="text-sm text-center mt-3 text-white">{editNotice}</p>}
             </div>
             <div className="mt-4">
               <WrFold

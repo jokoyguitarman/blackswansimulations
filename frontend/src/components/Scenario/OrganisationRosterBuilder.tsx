@@ -456,6 +456,7 @@ export function RosterBuilder({
   expanded = true,
   onExpandedChange,
   showExisting = false,
+  existingTeam,
 }: {
   roster: RosterEntry[];
   onChange: (next: RosterEntry[]) => void;
@@ -468,6 +469,7 @@ export function RosterBuilder({
   onExpandedChange?: (expanded: boolean) => void;
   /** Existing teams show a badge and a display-name field. */
   showExisting?: boolean;
+  existingTeam?: (teamUid: string | undefined) => boolean;
 }) {
   const issueAt = useIssueLookup();
   const collapsible = roster.length > ROSTER_COLLAPSE_AT;
@@ -550,7 +552,7 @@ export function RosterBuilder({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs terminal-text text-ink font-bold">
                   {selected ? '☑' : '☐'} {preset.team_name}
-                  {showExisting && entry?.team_uid ? ' · Existing' : ''}
+                  {showExisting && existingTeam?.(entry?.team_uid) ? ' · Existing' : ''}
                   {preset.is_executive && (
                     <span className="ml-1 text-[9px] terminal-text text-warning border border-warning/40 rounded px-1">
                       leadership
@@ -573,14 +575,14 @@ export function RosterBuilder({
                   </label>
                 )}
               </div>
-              {showExisting && entry?.team_uid && (
+              {showExisting && existingTeam?.(entry?.team_uid) && (
                 <input
-                  value={entry.display_name ?? ''}
+                  value={entry?.display_name ?? ''}
                   onClick={(event) => event.stopPropagation()}
                   onChange={(event) =>
                     onChange(
                       roster.map((team) =>
-                        team.team_uid === entry.team_uid ? { ...team, display_name: event.target.value } : team,
+                        team.team_uid === entry?.team_uid ? { ...team, display_name: event.target.value } : team,
                       ),
                     )
                   }
@@ -608,7 +610,7 @@ export function RosterBuilder({
             return (
               <div key={idx} className="border border-border rounded p-2.5">
                 <div className="flex items-center gap-2 mb-1.5">
-                  {showExisting && t.team_uid && (
+                  {showExisting && existingTeam?.(t.team_uid) && (
                     <span className="text-[9px] terminal-text uppercase tracking-wider text-muted">Existing</span>
                   )}
                   <div className="flex-1 min-w-0" data-field={teamField(orgId, idx, 'name')}>
@@ -716,6 +718,7 @@ export function OrganisationCard({
   belowShort,
   headerExtra,
   showExistingTeams = false,
+  existingTeam,
 }: {
   org: OrganisationDraft;
   index: number;
@@ -729,6 +732,7 @@ export function OrganisationCard({
   belowShort?: ReactNode;
   headerExtra?: ReactNode;
   showExistingTeams?: boolean;
+  existingTeam?: (teamUid: string | undefined) => boolean;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -878,6 +882,7 @@ export function OrganisationCard({
         expanded={rosterExpanded}
         onExpandedChange={onRosterExpandedChange}
         showExisting={showExistingTeams}
+        existingTeam={existingTeam}
       />
     </div>
   );

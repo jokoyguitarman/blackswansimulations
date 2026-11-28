@@ -36,42 +36,23 @@ export interface SwappablePrimary {
   team_roster: SwappableTeam[];
 }
 
-export interface MakePrimaryResult {
-  primary: SwappablePrimary;
-  extras: SwappableOrg[];
-  /** Null when the baseline primary is back in the primary slot. */
-  makePrimaryKey: string | null;
-}
-
 /**
  * Move a players-operated organisation into the primary slot and park the
- * previous primary as an extra. Identities travel with the cards.
+ * previous primary as an extra. `previousFrom` builds that extra in the
+ * caller's card type, so the result needs no cast.
  */
-export function swapMakePrimary(
+export function swapMakePrimary<T extends SwappableOrg>(
   primary: SwappablePrimary,
-  extras: readonly SwappableOrg[],
+  extras: readonly T[],
   extraId: string,
   baselinePrimaryKey: string,
-): MakePrimaryResult | null {
+  previousFrom: (slot: SwappablePrimary) => T,
+): { primary: SwappablePrimary; extras: T[]; makePrimaryKey: string | null } | null {
   const index = extras.findIndex((org) => org.id === extraId);
   if (index < 0) return null;
   const extra = extras[index];
   if (extra.operation === 'ai') return null;
   if (!extra.org_key) return null;
-  const previous: SwappableOrg = {
-    id: primary.org_uid || primary.org_key || 'previous-primary',
-    display_name: primary.display_name,
-    short_name: primary.short_name,
-    country: primary.country,
-    city: primary.city,
-    kind: primary.kind,
-    facebook_handle: primary.facebook_handle,
-    x_handle: primary.x_handle,
-    team_roster: primary.team_roster.map((team) => ({ ...team })),
-    operation: 'players',
-    org_key: primary.org_key,
-    org_uid: primary.org_uid,
-  };
   const nextPrimary: SwappablePrimary = {
     org_key: extra.org_key,
     org_uid: extra.org_uid || '',
@@ -85,7 +66,7 @@ export function swapMakePrimary(
     team_roster: extra.team_roster.map((team) => ({ ...team })),
   };
   const nextExtras = extras.map((org) => ({ ...org, team_roster: org.team_roster.map((team) => ({ ...team })) }));
-  nextExtras.splice(index, 1, previous);
+  nextExtras.splice(index, 1, previousFrom(primary));
   return {
     primary: nextPrimary,
     extras: nextExtras,

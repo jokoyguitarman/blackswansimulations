@@ -8,7 +8,7 @@ import { SupabaseBuildStore } from '../warroomBuild/buildStore.js';
 import { rejectSetupRevisions } from './briefRevisionCore.js';
 import { stageOutputsFromRows } from './deltaBuildTypes.js';
 import { loadSetupEditSource } from './deltaBuildContext.js';
-import { asSnapshot, recomputeSetupEdit } from './prepareSetupEditBuild.js';
+import { recomputeSetupEdit } from './prepareSetupEditBuild.js';
 import { asRecord, numberOrNull, textOf, textOrNull } from './jsonValue.js';
 import { type OrphanResolution, type PlannerInject, type PlannerTeam } from './remapPlanner.js';
 import { applyingIsStale, isSetupEditSchemaMissing, remainingEdits } from './setupEditCore.js';
@@ -355,15 +355,6 @@ async function prepareApply(
       error: 'Only an open setup edit can be applied.',
     };
   }
-  const baseline = asSnapshot(source.edit.baseline);
-  if (!baseline) {
-    return {
-      ok: false,
-      status: 409,
-      code: 'SETUP_EDIT_NOT_READY',
-      error: 'This edit has no baseline yet.',
-    };
-  }
   const build = await loadBuild(request.buildId);
   if (!build) return { ok: false, status: 404, code: 'NOT_FOUND', error: 'Build not found' };
   if (build.unavailable) {
@@ -400,7 +391,7 @@ async function prepareApply(
     initial_state: applyState.initial_state,
   });
   if (!recomputed.ok) return recomputed;
-  const { baseline: editedBaseline, edited, plan } = recomputed;
+  const { baseline, edited, plan } = recomputed;
   const objectives = await readObjectives(request.scenarioId);
   const outputs = rejectSetupRevisions(
     await loadStageOutputs(request.buildId),
@@ -426,7 +417,7 @@ async function prepareApply(
     },
     plan,
     buildOutputs: outputs,
-    edit: mergeEditForApply(request.editId, editedBaseline, edited),
+    edit: mergeEditForApply(request.editId, baseline, edited),
     resolutions: request.orphanDecisions,
   };
   return {

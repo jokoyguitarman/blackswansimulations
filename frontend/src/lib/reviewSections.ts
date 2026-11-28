@@ -7,9 +7,17 @@ export interface ReviewPlanTeam {
 }
 
 export interface ReviewPlan {
+  applicable?: boolean;
   teams?: { retire?: ReviewPlanTeam[]; successors?: ReviewPlanTeam[] };
   injects?: { retire?: Array<{ inject_id?: string; inject_key?: string; reason?: string }> };
-  orphans?: Array<{ id: string; kind?: string; message?: string; choices?: string[] }>;
+  orphans?: Array<{
+    id: string;
+    kind?: string;
+    message?: string;
+    choices?: string[];
+    condition_key?: string;
+    target_key?: string;
+  }>;
   scheduled_sessions?: Array<{ unassigned_players?: unknown[]; session_id?: string }>;
   primary_swap?: { story?: { premise?: string } } | null;
 }
@@ -58,6 +66,9 @@ export interface ReviewRow {
   rejectable: boolean;
   injectId?: string;
   choices?: string[];
+  kind?: string;
+  conditionKey?: string;
+  targetKey?: string;
 }
 
 export interface ReviewSection {
@@ -141,7 +152,7 @@ export function reviewSections(plan: ReviewPlan, outputs: readonly ReviewStageOu
     revised.unshift({
       id: 'swap-premise',
       title: 'Primary organisation',
-      detail: 'The story is re-centred',
+      detail: 'Not rejectable. The story is re-centred.',
       reason: plan.primary_swap.story.premise,
       rejectable: false,
     });
@@ -185,6 +196,9 @@ export function reviewSections(plan: ReviewPlan, outputs: readonly ReviewStageOu
     detail: text(orphan.message) || 'Needs a decision',
     rejectable: false,
     choices: orphan.choices ?? [],
+    kind: orphan.kind,
+    conditionKey: orphan.condition_key,
+    targetKey: orphan.target_key,
   }));
   if (orphans.length > 0) {
     sections.push({ id: 'orphans', title: 'Needs your decision', rows: orphans, keepAllOriginals: false });

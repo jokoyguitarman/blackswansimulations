@@ -95,7 +95,11 @@ describe('setup edit plan route', { concurrency: false }, () => {
               error: 'This edit has no draft. Abandon it and start again.',
             };
           }
-          return { ok: true, plan };
+          return {
+            ok: true,
+            plan,
+            targets: { teams: ['Legal'], inject_keys: ['plant_update'], org_keys: ['primary'] },
+          };
         },
       }),
     );

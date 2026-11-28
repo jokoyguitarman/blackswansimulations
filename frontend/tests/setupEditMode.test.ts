@@ -1,12 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { editBannerText, editNumberFromAllowance, recompileTooltips, remainingBesideApply } from '../src/lib/editModeBanner.ts';
-import { canMakePrimary, editModeFlags, readSetupEditLink } from '../src/lib/editModeFlags.ts';
+import {
+  canMakePrimary,
+  editModeFlags,
+  isExistingOrg,
+  readSetupEditLink,
+  removedExistingTeams,
+} from '../src/lib/editModeFlags.ts';
 import { swapMakePrimary } from '../src/lib/makePrimary.ts';
-import { applyBlocked, orphanChoiceLabel, unresolvedOrphanIds } from '../src/lib/orphanGating.ts';
+import {
+  applyBlockedByPlan,
+  completeOrphanDecision,
+  orphanChoiceLabel,
+  orphanTargetField,
+} from '../src/lib/orphanGating.ts';
 import { removalConfirmText, reviewSections } from '../src/lib/reviewSections.ts';
 import { editHistoryLine, editHistoryWho, lobbySetupNotice, visibleEditHistory } from '../src/lib/setupEditHistory.ts';
-import { composeEditedTeamName, withRenamedTeams, withoutRenamedTeams } from '../src/lib/teamRename.ts';
+import { withRenamedTeams, withoutRenamedTeams } from '../src/lib/teamRename.ts';
+import { composeTeamName } from '../../shared/teamNames.ts';
 
 const link = {
   edit_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -95,22 +107,37 @@ describe('make primary', () => {
     team_roster: [{ team_name: 'Legal', description: '', is_custom: false, is_public_voice: true, team_uid: 't2' }],
   };
 
+  const previousFrom = (slot: typeof primary) => ({
+    id: slot.org_uid || slot.org_key,
+    display_name: slot.display_name,
+    short_name: slot.short_name,
+    country: slot.country,
+    city: slot.city,
+    kind: slot.kind,
+    facebook_handle: slot.facebook_handle,
+    x_handle: slot.x_handle,
+    team_roster: slot.team_roster,
+    operation: 'players' as const,
+    org_key: slot.org_key,
+    org_uid: slot.org_uid,
+  });
+
   test('swaps the primary slot and undo restores it', () => {
-    const swapped = swapMakePrimary(primary, [bravo], 'bravo', 'primary');
+    const swapped = swapMakePrimary(primary, [bravo], 'bravo', 'primary', previousFrom);
     assert.ok(swapped);
     assert.equal(swapped.primary.org_key, 'org_bravo_sg');
     assert.equal(swapped.primary.country, 'Malaysia');
     assert.equal(swapped.makePrimaryKey, 'org_bravo_sg');
     assert.equal(swapped.extras[0]?.org_key, 'primary');
     assert.equal(swapped.extras[0]?.display_name, 'Acme');
-    const undone = swapMakePrimary(swapped.primary, swapped.extras, swapped.extras[0].id, 'primary');
+    const undone = swapMakePrimary(swapped.primary, swapped.extras, swapped.extras[0].id, 'primary', previousFrom);
     assert.equal(undone?.primary.org_key, 'primary');
     assert.equal(undone?.makePrimaryKey, null);
     assert.equal(undone?.extras[0]?.org_key, 'org_bravo_sg');
   });
 
   test('an AI-operated organisation cannot become primary', () => {
-    assert.equal(swapMakePrimary(primary, [{ ...bravo, operation: 'ai' }], 'bravo', 'primary'), null);
+    assert.equal(swapMakePrimary(primary, [{ ...bravo, operation: 'ai' }], 'bravo', 'primary', previousFrom), null);
   });
 });
 
@@ -172,15 +199,46 @@ describe('review sections and orphan gating', () => {
     assert.equal(removed?.rows.some((row) => row.title === 'Old desk'), true);
   });
 
-  test('apply stays disabled until every orphan has a choice', () => {
-    const orphans = plan.orphans;
-    assert.deepEqual(unresolvedOrphanIds(orphans, {}), ['role:cs']);
-    assert.equal(applyBlocked({ unresolved: ['role:cs'], planning: false }), true);
-    const decided = unresolvedOrphanIds(orphans, { 'role:cs': { choice: 'reassign', team_name: 'Legal' } });
-    assert.deepEqual(decided, []);
-    assert.equal(applyBlocked({ unresolved: decided, planning: false }), false);
-    assert.equal(applyBlocked({ unresolved: [], planning: true }), true);
+  test('apply waits for a plan with no orphans left', () => {
+    assert.equal(applyBlockedByPlan({ plan: null, planning: false }), true);
+    assert.equal(applyBlockedByPlan({ plan: { applicable: false, orphans: [{ id: 'role:cs' }] }, planning: false }), true);
+    assert.equal(applyBlockedByPlan({ plan: { applicable: true, orphans: [] }, planning: true }), true);
+    assert.equal(applyBlockedByPlan({ plan: { applicable: true, orphans: [] }, planning: false }), false);
     assert.equal(orphanChoiceLabel('move_to_retired'), 'move to retired');
+  });
+
+  test('each orphan kind gets the picker its resolution needs', () => {
+    const catalogs = { teams: ['Legal', 'Press'], injectKeys: ['dawn_note'], orgKeys: ['primary', 'org_bravo'] };
+    assert.equal(orphanTargetField({ id: 'r', kind: 'player_role' }, 'reassign'), 'team_name');
+    assert.equal(orphanTargetField({ id: 's', kind: 'stakeholder' }, 'reassign'), 'team_name');
+    assert.equal(orphanTargetField({ id: 'p', kind: 'pressure_targets' }, 'retarget'), 'org_keys');
+    assert.equal(orphanTargetField({ id: 'm', kind: 'mood_consequence' }, 'retarget'), 'inject_key');
+    assert.equal(orphanTargetField({ id: 'c', kind: 'condition', target_key: 'old' }, 'retarget'), 'inject_key');
+    assert.equal(orphanTargetField({ id: 'c2', kind: 'condition' }, 'retarget'), 'team_name');
+    assert.equal(orphanTargetField({ id: 'ch', kind: 'chain_target' }, 'retarget'), 'team_name');
+    assert.equal(
+      orphanTargetField({ id: 'd', kind: 'team_dependency', condition_key: 'fired|team=old' }, 'retarget'),
+      'team_name',
+    );
+    assert.equal(orphanTargetField({ id: 'd2', kind: 'team_dependency', target_key: 'old' }, 'retarget'), 'inject_key');
+    assert.equal(orphanTargetField({ id: 'd3', kind: 'team_dependency' }, 'reassign'), 'team_name');
+    assert.equal(orphanTargetField({ id: 'r', kind: 'player_role' }, 'move_to_retired'), null);
+    assert.equal(
+      completeOrphanDecision({ id: 'r', kind: 'player_role' }, 'reassign', { team_name: 'P' }, catalogs),
+      null,
+    );
+    assert.deepEqual(
+      completeOrphanDecision({ id: 'r', kind: 'player_role' }, 'reassign', { team_name: 'Legal' }, catalogs),
+      { choice: 'reassign', team_name: 'Legal' },
+    );
+    assert.deepEqual(
+      completeOrphanDecision({ id: 'p', kind: 'pressure_targets' }, 'retarget', { org_keys: ['primary'] }, catalogs),
+      { choice: 'retarget', org_keys: ['primary'] },
+    );
+    assert.deepEqual(
+      completeOrphanDecision({ id: 'c', kind: 'condition' }, 'retire_inject', {}, catalogs),
+      { choice: 'retire' },
+    );
   });
 
   test('removal confirmation uses the dry-run counts', () => {
@@ -215,14 +273,29 @@ describe('edit history and the lobby notice', () => {
   });
 
   test('the lobby names what changed and how many players were unassigned', () => {
-    const notice = lobbySetupNotice([
-      { summary: { teams_added: 1, teams_succeeded: 1, teams_retired: 2, unassigned_players: 3, new_teams: ['Logistics'] } },
-    ]);
+    const notice = lobbySetupNotice(
+      [
+        {
+          summary: {
+            teams_added: 1,
+            teams_succeeded: 1,
+            teams_retired: 2,
+            unassigned_players: 9,
+            new_teams: ['Logistics'],
+            unassigned_by_session: [
+              { session_id: 'sess-a', count: 3 },
+              { session_id: 'sess-b', count: 6 },
+            ],
+          },
+        },
+      ],
+      'sess-a',
+    );
     assert.equal(
       notice,
       'Setup changed since this session was created: new teams Logistics, renamed 1, removed 1 (3 players unassigned)',
     );
-    assert.equal(lobbySetupNotice([]), null);
+    assert.equal(lobbySetupNotice([], 'sess-a'), null);
   });
 });
 
@@ -233,9 +306,27 @@ describe('team rename', () => {
       { team_name: 'Night desk', description: '', is_custom: true, is_public_voice: false },
     ];
     const renamed = withRenamedTeams(roster, 'BRAVO', true);
-    assert.equal(renamed[0]?.display_name, composeEditedTeamName('Communications', 'BRAVO', true));
+    assert.equal(renamed[0]?.display_name, composeTeamName('Communications', { short_name: 'BRAVO' }, true));
     assert.equal(renamed[1]?.display_name, undefined);
     assert.equal(withoutRenamedTeams(renamed)[0]?.display_name, undefined);
-    assert.equal(composeEditedTeamName('Communications', 'BRAVO', false), 'Communications');
+    assert.equal(composeTeamName('Communications', { short_name: 'BRAVO' }, false), 'Communications');
+  });
+
+  test('a new org key is not existing, and only baseline teams need a removal preview', () => {
+    const baseline = new Set(['primary', 'org_bravo_sg']);
+    assert.equal(isExistingOrg('org_bravo_sg', baseline), true);
+    assert.equal(isExistingOrg('org_fresh', baseline), false);
+    assert.equal(isExistingOrg(undefined, baseline), false);
+    const before = [
+      { team_uid: 'uid-legal', team_name: 'Legal' },
+      { team_uid: 'uid-new', team_name: 'Night desk' },
+      { team_name: 'Draft' },
+    ];
+    const after = [{ team_uid: 'uid-new', team_name: 'Night desk' }];
+    assert.deepEqual(
+      removedExistingTeams(before, after, new Set(['uid-legal'])).map((team) => team.team_uid),
+      ['uid-legal'],
+    );
+    assert.deepEqual(removedExistingTeams(before, after, new Set(['uid-other'])), []);
   });
 });

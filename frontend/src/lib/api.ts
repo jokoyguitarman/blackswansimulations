@@ -942,7 +942,10 @@ export const api = {
       body: { resolutions?: Record<string, unknown>; draft_input?: unknown } = {},
     ) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ plan: import('./reviewSections').ReviewPlan }>(
+      return handleResponse<{
+        plan: import('./reviewSections').ReviewPlan;
+        targets?: { teams: string[]; inject_keys: string[]; org_keys: string[] };
+      }>(
         await fetch(apiUrl(`/api/scenarios/${id}/setup-edits/${editId}/plan`), {
           method: 'POST',
           headers,

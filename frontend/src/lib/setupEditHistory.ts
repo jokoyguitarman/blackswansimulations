@@ -67,11 +67,25 @@ function namesOrCount(names: unknown, fallback: number): string {
   return String(fallback);
 }
 
+/** Players unassigned in this session. The scenario-wide total is not used. */
+export function unassignedInSession(summary: unknown, sessionId: string): number {
+  const row = summaryRecord(summary);
+  const listed = row?.unassigned_by_session;
+  if (!Array.isArray(listed)) return 0;
+  return listed.reduce((sum, item) => {
+    if (!item || typeof item !== 'object') return sum;
+    const entry = item as { session_id?: unknown; count?: unknown };
+    if (entry.session_id !== sessionId || typeof entry.count !== 'number') return sum;
+    return sum + entry.count;
+  }, 0);
+}
+
 /**
  * Lobby sentence for edits applied after the session was created.
  * Name lists win when the summary has them; otherwise the apply counts are used.
+ * Unassigned players are counted only for `sessionId`.
  */
-export function lobbySetupNotice(changes: readonly LobbyNoticeInput[]): string | null {
+export function lobbySetupNotice(changes: readonly LobbyNoticeInput[], sessionId: string): string | null {
   if (changes.length === 0) return null;
   let added = 0;
   let renamed = 0;
@@ -86,7 +100,7 @@ export function lobbySetupNotice(changes: readonly LobbyNoticeInput[]): string |
     added += count(row, 'teams_added');
     renamed += count(row, 'teams_succeeded');
     removed += Math.max(0, count(row, 'teams_retired') - count(row, 'teams_succeeded'));
-    players += count(row, 'unassigned_players');
+    players += unassignedInSession(change.summary, sessionId);
     if (Array.isArray(row.new_teams)) addedNames.push(...row.new_teams.filter((item) => typeof item === 'string'));
     if (Array.isArray(row.renamed)) renamedNames.push(...row.renamed.filter((item) => typeof item === 'string'));
     if (Array.isArray(row.removed)) removedNames.push(...row.removed.filter((item) => typeof item === 'string'));

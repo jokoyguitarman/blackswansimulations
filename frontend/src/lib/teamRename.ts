@@ -1,6 +1,4 @@
-/** Same separator and cap as `composeTeamName` in the organisation model. */
-const TEAM_NAME_MAX = 100;
-const TEAM_NAME_SEPARATOR = ' \u2014 ';
+import { TEAM_NAME_SEPARATOR, composeTeamName } from '@shared/teamNames';
 
 export interface RenamableTeam {
   team_name: string;
@@ -10,13 +8,6 @@ export interface RenamableTeam {
   team_uid?: string;
   function_key?: string;
   display_name?: string;
-}
-
-export function composeEditedTeamName(functionKey: string, shortName: string, multiOrg: boolean): string {
-  if (!multiOrg) return functionKey;
-  const budget = TEAM_NAME_MAX - functionKey.length - TEAM_NAME_SEPARATOR.length;
-  const short = budget > 0 ? shortName.slice(0, budget) : '';
-  return short ? `${functionKey}${TEAM_NAME_SEPARATOR}${short}` : functionKey.slice(0, TEAM_NAME_MAX);
 }
 
 function functionKeyOf(team: RenamableTeam): string {
@@ -35,7 +26,7 @@ export function withRenamedTeams(
     if (!team.team_uid) return { ...team };
     return {
       ...team,
-      display_name: composeEditedTeamName(functionKeyOf(team), shortName.trim(), multiOrg),
+      display_name: composeTeamName(functionKeyOf(team), { short_name: shortName.trim() }, multiOrg),
     };
   });
 }

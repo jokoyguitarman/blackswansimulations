@@ -3,6 +3,7 @@ import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import type { CrisisContext } from '../multiOrgGenerationService.js';
 import { crisisContextFrom, type DecisionContext } from '../multiOrgPipeline.js';
 import type { NPCPersona, SocialInject } from '../socialCrisisGeneratorService.js';
+import { stageOutputFromUnknown } from '../setupEdits/deltaBuildTypes.js';
 import type {
   BuildRequest,
   BuildStage,
@@ -291,15 +292,13 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
 
 function setupEditReview(outputs: StageOutputs): NonNullable<ReviewPayload['setup_edit_review']> {
   const stages = (['characters', 'storyline', 'convergence', 'pages'] as const).map((stage) => {
-    const raw = outputs[stage] as
-      | (Record<string, unknown> & { skipped?: boolean; revisions?: unknown; flags?: unknown; generated?: unknown })
-      | undefined;
+    const parsed = stageOutputFromUnknown(outputs[stage], stage);
     return {
       stage,
-      skipped: raw?.skipped === true,
-      revisions: Array.isArray(raw?.revisions) ? raw.revisions : [],
-      flags: Array.isArray(raw?.flags) ? raw.flags : [],
-      generated: raw?.generated ?? null,
+      skipped: parsed.skipped,
+      revisions: parsed.revisions,
+      flags: parsed.flags,
+      generated: parsed.generated,
     };
   });
   return { stages };

@@ -22,6 +22,7 @@ import {
   type AttachDraftResult,
 } from '../services/setupEdits/setupEditService.js';
 import {
+  historyForViewer,
   openEditOf,
   remainingEdits,
   type AbandonSetupEditResult,
@@ -139,13 +140,14 @@ function allowanceBody(
       history: [],
     };
   }
+  const admin = isAdmin(user);
   return {
     enabled: true,
     limit,
     used: snapshot.used,
-    remaining: remainingEdits(snapshot.used, limit, isAdmin(user)),
+    remaining: remainingEdits(snapshot.used, limit, admin),
     open_edit: openEditOf(snapshot.edits),
-    history: snapshot.edits,
+    history: historyForViewer(snapshot.edits, admin),
   };
 }
 
@@ -419,7 +421,7 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
         res.status(result.status).json({ error: result.error, code: result.code });
         return;
       }
-      res.json({ plan: result.plan });
+      res.json({ plan: result.plan, targets: result.targets });
     } catch (err) {
       logger.error({ err }, 'Setup edit plan failed');
       res.status(500).json({ error: 'Internal Server Error' });

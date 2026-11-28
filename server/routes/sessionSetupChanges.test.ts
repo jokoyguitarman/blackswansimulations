@@ -13,7 +13,8 @@ describe('session setup changes route', { concurrency: false }, () => {
   let server: Server;
   let base: string;
   let enabled = true;
-  let access: 'ok' | 'missing' | 'forbidden' = 'ok';
+  let access: 'ok' | 'missing' = 'ok';
+  let owner: 'ok' | 'forbidden' = 'ok';
   let available = true;
   const createdAt = '2026-06-01T00:00:00.000Z';
   let asked: { scenarioId: string; createdAt: string } | null = null;
@@ -42,19 +43,14 @@ describe('session setup changes route', { concurrency: false }, () => {
           (req as AuthenticatedRequest).user = { id: 'trainer-1', role: 'trainer' };
           next();
         },
-        assertAccess: async () => {
-          if (access === 'missing') return { ok: false, status: 404, error: 'Session not found' };
-          if (access === 'forbidden') return { ok: false, status: 403, error: 'Access denied' };
-          return {
-            ok: true,
-            session: {
-              id: SESSION,
-              trainer_id: 'trainer-1',
-              scenario_id: 'scenario-1',
-              created_at: createdAt,
-            },
-          };
+        loadSession: async () => {
+          if (access === 'missing') return null;
+          return { scenario_id: 'scenario-1', created_at: createdAt };
         },
+        assertOwner: async () =>
+          owner === 'forbidden'
+            ? { ok: false, status: 403, error: 'Only the scenario creator can modify this scenario' }
+            : { ok: true },
         listChanges: async (scenarioId, at) => {
           asked = { scenarioId, createdAt: at };
           return { available, changes: available ? changes : [] };
@@ -107,12 +103,13 @@ describe('session setup changes route', { concurrency: false }, () => {
     enabled = true;
   });
 
-  test('a missing session and a signed-out caller are refused', async () => {
+  test('a missing session, a non-owner and a signed-out caller are refused', async () => {
     access = 'missing';
     assert.equal((await get()).status, 404);
-    access = 'forbidden';
-    assert.equal((await get()).status, 403);
     access = 'ok';
+    owner = 'forbidden';
+    assert.equal((await get()).status, 403);
+    owner = 'ok';
     const anon = await fetch(`${base}/api/sessions/${SESSION}/setup-changes`, { headers: { 'x-role': 'anon' } });
     assert.equal(anon.status, 401);
   });

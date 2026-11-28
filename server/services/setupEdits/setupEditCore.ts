@@ -77,6 +77,14 @@ export function openEditOf<T extends { status: string }>(edits: readonly T[]): T
   return edits.find((edit) => IN_FLIGHT.has(edit.status)) ?? null;
 }
 
+const TRAINER_HIDDEN = new Set(['abandoned', 'failed']);
+
+/** Abandoned and failed edits are returned to admins only. Open edits stay, for resume. */
+export function historyForViewer<T extends { status: string }>(edits: readonly T[], isAdmin: boolean): T[] {
+  if (isAdmin) return [...edits];
+  return edits.filter((edit) => !TRAINER_HIDDEN.has(edit.status));
+}
+
 export type OpenSetupEditOutcome = 'opened' | 'existing' | 'busy' | 'limit_reached' | 'not_found';
 
 export type SetupEditSnapshot =

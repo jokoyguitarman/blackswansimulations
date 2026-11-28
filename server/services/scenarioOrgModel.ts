@@ -11,6 +11,9 @@ import {
   type CountryEntry,
   type OrgRegistryEntry,
 } from '../lib/stakeholderContract.js';
+import { TEAM_NAME_MAX, composeTeamName } from '../../shared/teamNames.js';
+
+export { composeTeamName };
 
 // ─── Generator-side extensions of the shared contract (§5.1 kind) ────────────
 
@@ -282,8 +285,6 @@ export function functionKeyForTeamRow(
 // ─── Naming helpers ──────────────────────────────────────────────────────────
 
 const SHORT_NAME_STOPWORDS = new Set(['of', 'the', 'and', 'for', 'de', 'la', 'del']);
-const TEAM_NAME_MAX = 100;
-const TEAM_NAME_SEPARATOR = ' \u2014 '; // " — "
 
 /** Title-cased stable slug for a custom department ("anti kidnapping liaison" -> "Anti Kidnapping Liaison"). */
 export function functionKeyFor(entry: RosterEntryInput): string {
@@ -350,24 +351,6 @@ export function makeAntagonistOrgKey(name: string, index: number, taken: Set<str
   while (taken.has(candidate)) candidate = `org_antagonist_${slug}_${index}_${n++}`.slice(0, 64);
   taken.add(candidate);
   return candidate;
-}
-
-/**
- * The ONE place team names are composed (§2.3). Single-org scenarios keep the
- * bare function so today's behaviour is unchanged; multi-org appends the org's
- * short name. Truncates the short name to respect VARCHAR(100).
- */
-export function composeTeamName(
-  functionKey: string,
-  org: { short_name: string },
-  multiOrg: boolean,
-): string {
-  if (!multiOrg) return functionKey;
-  const budget = TEAM_NAME_MAX - functionKey.length - TEAM_NAME_SEPARATOR.length;
-  const short = budget > 0 ? org.short_name.slice(0, budget) : '';
-  return short
-    ? `${functionKey}${TEAM_NAME_SEPARATOR}${short}`
-    : functionKey.slice(0, TEAM_NAME_MAX);
 }
 
 // ─── Validation + normalisation (route + compile; wizard mirrors the rules) ──

@@ -2,7 +2,15 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { remainingBesideApply } from '../../lib/editModeBanner';
-import { orphanChoiceLabel, type OrphanChoiceInput } from '../../lib/orphanGating';
+import {
+  applyBlockedByPlan,
+  canonicalOrphanChoice,
+  completeOrphanDecision,
+  orphanChoiceLabel,
+  orphanTargetField,
+  type OrphanCatalogs,
+  type OrphanChoiceInput,
+} from '../../lib/orphanGating';
 import type { ReviewRow, ReviewSection } from '../../lib/reviewSections';
 import {
   editHistoryLine,
@@ -87,11 +95,88 @@ function RowBody({ row }: { row: ReviewRow }) {
   );
 }
 
+function OrphanDecision({
+  row,
+  decision,
+  catalogs,
+  onDecide,
+}: {
+  row: ReviewRow;
+  decision: OrphanChoiceInput | undefined;
+  catalogs: OrphanCatalogs;
+  onDecide: (id: string, decision: OrphanChoiceInput | null) => void;
+}) {
+  const orphan = { id: row.id, kind: row.kind ?? '', condition_key: row.conditionKey, target_key: row.targetKey };
+  const [draftChoice, setDraftChoice] = useState(decision?.choice ?? '');
+  const choice = decision?.choice || draftChoice;
+  const field = orphanTargetField(orphan, choice);
+  const commit = (nextChoice: string, target: { team_name?: string; inject_key?: string; org_keys?: string[] }) => {
+    onDecide(row.id, completeOrphanDecision(orphan, nextChoice, target, catalogs));
+  };
+  const options =
+    field === 'team_name' ? catalogs.teams : field === 'inject_key' ? catalogs.injectKeys : [];
+  const selected = field === 'team_name' ? decision?.team_name ?? '' : decision?.inject_key ?? '';
+  return (
+    <div className="shrink-0 flex flex-col gap-1">
+      <select
+        className="wr-field"
+        aria-label={`Decision for ${row.title}`}
+        value={choice}
+        onChange={(event) => {
+          const next = canonicalOrphanChoice(event.target.value);
+          setDraftChoice(next);
+          commit(next, {});
+        }}
+      >
+        <option value="">Choose…</option>
+        {(row.choices ?? []).map((item) => (
+          <option key={item} value={canonicalOrphanChoice(item)}>
+            {orphanChoiceLabel(item)}
+          </option>
+        ))}
+      </select>
+      {field === 'org_keys' &&
+        catalogs.orgKeys.map((key) => (
+          <label key={key} className="text-[11px] text-muted flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={decision?.org_keys?.includes(key) ?? false}
+              onChange={(event) => {
+                const current = decision?.org_keys ?? [];
+                const org_keys = event.target.checked ? [...current, key] : current.filter((item) => item !== key);
+                commit(choice, { org_keys });
+              }}
+            />
+            {key}
+          </label>
+        ))}
+      {field && field !== 'org_keys' && (
+        <select
+          className="wr-field"
+          aria-label={`Target for ${row.title}`}
+          value={options.includes(selected) ? selected : ''}
+          onChange={(event) =>
+            commit(choice, field === 'team_name' ? { team_name: event.target.value } : { inject_key: event.target.value })
+          }
+        >
+          <option value="">Select…</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 export function SetupEditReview({
   sections,
   rejected,
   decisions,
-  unresolved,
+  plan,
+  catalogs,
   planning,
   applying,
   remaining,
@@ -104,17 +189,19 @@ export function SetupEditReview({
   sections: ReviewSection[];
   rejected: ReadonlySet<string>;
   decisions: Readonly<Record<string, OrphanChoiceInput | undefined>>;
-  unresolved: readonly string[];
+  plan: { applicable?: boolean; orphans?: readonly unknown[] } | null;
+  catalogs: OrphanCatalogs;
   planning: boolean;
   applying: boolean;
   remaining: number | null;
   error: string | null;
   onToggleRow: (injectId: string) => void;
   onKeepSection: (injectIds: string[], keep: boolean) => void;
-  onDecide: (id: string, decision: OrphanChoiceInput) => void;
+  onDecide: (id: string, decision: OrphanChoiceInput | null) => void;
   onApply: () => void;
 }) {
-  const blocked = planning || unresolved.length > 0 || applying;
+  const blocked = applying || applyBlockedByPlan({ plan, planning });
+  const unresolved = plan?.orphans?.length ?? 0;
   return (
     <div className="space-y-4">
       {sections.length === 0 && (
@@ -155,38 +242,7 @@ export function SetupEditReview({
                       </button>
                     )}
                     {section.id === 'orphans' && (
-                      <div className="shrink-0 flex flex-col gap-1">
-                        <select
-                          className="wr-field"
-                          aria-label={`Decision for ${row.title}`}
-                          value={decision?.choice ?? ''}
-                          onChange={(event) =>
-                            onDecide(row.id, { choice: event.target.value, team_name: decision?.team_name, inject_key: decision?.inject_key })
-                          }
-                        >
-                          <option value="">Choose…</option>
-                          {(row.choices ?? []).map((choice) => (
-                            <option key={choice} value={choice}>
-                              {orphanChoiceLabel(choice)}
-                            </option>
-                          ))}
-                        </select>
-                        {(decision?.choice === 'retarget' || decision?.choice === 'reassign') && (
-                          <input
-                            className="wr-field"
-                            placeholder={decision.choice === 'reassign' ? 'Team name' : 'Inject key or team'}
-                            value={decision.team_name || decision.inject_key || ''}
-                            onChange={(event) =>
-                              onDecide(row.id, {
-                                choice: decision.choice,
-                                ...(decision.choice === 'reassign'
-                                  ? { team_name: event.target.value }
-                                  : { inject_key: event.target.value }),
-                              })
-                            }
-                          />
-                        )}
-                      </div>
+                      <OrphanDecision row={row} decision={decision} catalogs={catalogs} onDecide={onDecide} />
                     )}
                   </div>
                 );
@@ -198,8 +254,8 @@ export function SetupEditReview({
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="wr-ctabar" style={{ marginTop: 4 }}>
         <span className="hint">
-          {unresolved.length > 0
-            ? `${unresolved.length} ${unresolved.length === 1 ? 'decision' : 'decisions'} still needed`
+          {unresolved > 0
+            ? `${unresolved} ${unresolved === 1 ? 'decision' : 'decisions'} still needed`
             : 'Brief and swap revisions apply unless you keep the original.'}
         </span>
         <span className="grow" />
@@ -290,7 +346,7 @@ export function LobbySetupNotice({ sessionId }: { sessionId: string }) {
     void api.sessions
       .getSetupChanges(sessionId)
       .then((res) => {
-        if (!cancelled) setText(lobbySetupNotice(res.changes));
+        if (!cancelled) setText(lobbySetupNotice(res.changes, sessionId));
       })
       .catch(() => {
         if (!cancelled) setText(null);
