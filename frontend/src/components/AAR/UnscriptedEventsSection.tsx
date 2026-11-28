@@ -16,6 +16,7 @@ function asSection(data: unknown): UnscriptedSectionData | null {
             available: replay.available === true,
             ok: replay.ok === true,
             mismatches: typeof replay.mismatches === 'number' ? replay.mismatches : 0,
+            ...(replay.empty === true ? { empty: true } : {}),
           }
         : { available: false, ok: false, mismatches: 0 },
   };
@@ -72,6 +73,7 @@ export function UnscriptedEventsSection({ data }: { data: unknown }) {
 }
 
 function replayLine(replay: UnscriptedSectionData['replay']): string {
+  if (replay.empty) return 'No director log.';
   if (!replay.available) return 'Replay status is unavailable.';
   if (replay.ok) return 'Replay matches the stored director log.';
   const count = replay.mismatches;

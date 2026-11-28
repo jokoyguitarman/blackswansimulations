@@ -27,6 +27,13 @@ export interface ReplayStatus {
   available: boolean;
   ok: boolean;
   mismatches: number;
+  /** The session stored no director proposals, so there is nothing to replay. */
+  empty?: boolean;
+}
+
+/** A director delivery key (`dir_<n>`). Other inject keys are authored. */
+export function isDirectorInjectKey(injectKey: string): boolean {
+  return injectKey.startsWith('dir_');
 }
 
 export interface UnscriptedAarSection {

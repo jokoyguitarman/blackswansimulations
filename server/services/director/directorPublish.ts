@@ -278,7 +278,6 @@ export function buildPromotedTemplate(input: {
     ...(proposal.response_rubric ? { response_rubric: proposal.response_rubric } : {}),
     ...(follow ? { escalation: follow } : {}),
     promoted_from: input.proposalId,
-    cause: { kind: 'authored' },
   };
   const type = APP_TYPE[proposal.app] ?? proposal.app;
   const stamped = applyInjectGenStamp(
@@ -300,11 +299,9 @@ export function buildPromotedTemplate(input: {
     },
     { teamUidByName: new Map(), persistTeamUid: false },
   );
-  if (input.edited) {
-    const gen = stamped.delivery_config.gen as Record<string, unknown>;
-    gen.edit = 1;
-    delete gen.hash;
-  }
+  const stampedGen = { ...(stamped.delivery_config.gen as Record<string, unknown>) };
+  const { hash: _hash, ...withoutHash } = stampedGen;
+  const gen = input.edited ? { ...withoutHash, edit: 1 } : stampedGen;
   return {
     scenario_id: input.scenarioId,
     session_id: null,
@@ -321,6 +318,6 @@ export function buildPromotedTemplate(input: {
     requires_coordination: false,
     ai_generated: false,
     generation_source: 'trainer',
-    delivery_config: stamped.delivery_config,
+    delivery_config: { ...stamped.delivery_config, gen },
   };
 }

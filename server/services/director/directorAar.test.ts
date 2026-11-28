@@ -5,7 +5,8 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import { buildCommsResponsesSection } from '../aarCommsResponses.js';
 import { isKnownConditionKey } from '../conditions/conditionCatalog.js';
-import { compositeScore, contentBreakdown, directorRefsFromResponses, isDirectorInjectKey } from '../teamScoreService.js';
+import { isDirectorInjectKey } from '../../../shared/directorAar.js';
+import { compositeScore, contentBreakdown, directorRefsFromResponses } from '../teamScoreService.js';
 import { isAiOwned } from '../../lib/injectFingerprint.js';
 import { createDirectorRouter } from '../../routes/director.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -160,7 +161,7 @@ test('a promoted template is trainer-owned, stamped promoted, and AI-owned only 
   assert.equal(config.gen.edit, 0);
   assert.equal(config.promoted_from, shared.proposalId);
   assert.equal((config.gen as { stakeholder_id?: string }).stakeholder_id, 'stk_maria');
-  assert.equal((fresh.delivery_config as { cause?: { kind?: string } }).cause?.kind, 'authored');
+  assert.equal((fresh.delivery_config as { cause?: unknown }).cause, undefined);
   assert.equal(isAiOwned(fresh), true);
 
   const changed = buildPromotedTemplate({

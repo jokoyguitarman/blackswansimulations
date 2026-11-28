@@ -5,14 +5,14 @@
  */
 
 import { AAR_STORED_CAP } from '../../../shared/crossTeamAar.js';
-import type {
-  FairnessSummaryRow,
-  ReplayStatus,
-  UnscriptedAarSection,
-  UnscriptedEventRow,
+import {
+  isDirectorInjectKey,
+  type FairnessSummaryRow,
+  type ReplayStatus,
+  type UnscriptedAarSection,
+  type UnscriptedEventRow,
 } from '../../../shared/directorAar.js';
 import { referencedInjectKeys } from '../conditions/crossTeamCore.js';
-import { isDirectorInjectKey } from '../teamScoreService.js';
 import { fairnessState, type DirectorTeam, type ExposureEvent, type FairnessState } from './directorCore.js';
 import { sameTeamName } from './directorSignals.js';
 

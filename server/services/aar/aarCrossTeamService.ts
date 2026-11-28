@@ -88,7 +88,12 @@ async function directorFrom(
   parts: AarSessionParts | null,
 ): Promise<DirectorAarLoad> {
   try {
-    return await loadDirectorAar(sessionId, parts?.startTime ?? null, parts?.scenarioId ?? null);
+    return await loadDirectorAar(
+      sessionId,
+      parts?.startTime ?? null,
+      parts?.scenarioId ?? null,
+      parts?.validAt ?? null,
+    );
   } catch {
     return { notes: {}, section: emptyUnscriptedAar(), withheld: [] };
   }

@@ -9,6 +9,7 @@ import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { getIntelManifest } from './intelSharingService.js';
+import { isDirectorInjectKey } from '../../shared/directorAar.js';
 import { evaluateTeamTasks, type ObservedAction } from './teamTasksCore.js';
 import { isUnappliedSchema } from '../lib/unappliedSchema.js';
 
@@ -86,10 +87,6 @@ export interface ContentBucket {
 export interface ContentBreakdown {
   authored: ContentBucket;
   unscripted: ContentBucket;
-}
-
-export function isDirectorInjectKey(injectKey: string): boolean {
-  return injectKey.startsWith('dir_');
 }
 
 export function gradeRefKey(refTable: string, refId: string): string {

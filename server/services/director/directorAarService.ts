@@ -65,6 +65,7 @@ export async function loadDirectorAar(
   sessionId: string,
   startTime: string | null,
   scenarioId: string | null,
+  validAt: string | null,
 ): Promise<DirectorAarLoad> {
   const empty = { notes: {}, section: emptyUnscriptedAar(), withheld: [] as UnscriptedEventRow[] };
   try {
@@ -85,9 +86,11 @@ export async function loadDirectorAar(
     );
     const replay =
       rows.length === 0
-        ? { ok: true as const, mismatches: [] as const }
-        : await replayStoredSession(sessionId).catch(() => ({ unavailable: true as const }));
-    const context = await loadFairnessContext({ sessionId, scenarioId, startTime, rows });
+        ? { available: true, ok: true, mismatches: 0, empty: true }
+        : replayStatusOf(
+            await replayStoredSession(sessionId).catch(() => ({ unavailable: true as const })),
+          );
+    const context = await loadFairnessContext({ sessionId, scenarioId, startTime, validAt, rows });
     return {
       notes,
       withheld: table.withheld,
@@ -101,7 +104,7 @@ export async function loadDirectorAar(
               duration: context.duration,
             })
           : [],
-        replay: replayStatusOf(replay),
+        replay,
       },
     };
   } catch (err) {
@@ -114,19 +117,24 @@ export async function withTrainerUnscripted(
   sections: Record<string, { data?: unknown; analysis?: string | null }>,
   sessionId: string,
 ): Promise<Record<string, { data?: unknown; analysis?: string | null }>> {
-  const rows = await readProposals(sessionId);
-  const names = rows == null ? new Map<string, string>() : await loadNames(rows);
-  const withheld = rows == null ? [] : buildUnscriptedTable(rows.map((row) => toInput(row, names))).withheld;
-  const current = sections.unscripted_events;
-  if (!current && withheld.length === 0) return sections;
-  const data =
-    current?.data && typeof current.data === 'object' && !Array.isArray(current.data)
-      ? { ...(current.data as Record<string, unknown>), withheld }
-      : { ...emptyUnscriptedAar(), withheld };
-  return {
-    ...sections,
-    unscripted_events: { analysis: current?.analysis ?? null, data },
-  };
+  try {
+    const rows = await readProposals(sessionId);
+    const names = rows == null ? new Map<string, string>() : await loadNames(rows);
+    const withheld = rows == null ? [] : buildUnscriptedTable(rows.map((row) => toInput(row, names))).withheld;
+    const current = sections.unscripted_events;
+    if (!current && withheld.length === 0) return sections;
+    const data =
+      current?.data && typeof current.data === 'object' && !Array.isArray(current.data)
+        ? { ...(current.data as Record<string, unknown>), withheld }
+        : { ...emptyUnscriptedAar(), withheld };
+    return {
+      ...sections,
+      unscripted_events: { analysis: current?.analysis ?? null, data },
+    };
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Withheld director proposals were not shown');
+    return sections;
+  }
 }
 
 async function readProposals(sessionId: string): Promise<ProposalRecord[] | null> {
@@ -169,10 +177,12 @@ async function loadFairnessContext(input: {
   sessionId: string;
   scenarioId: string | null;
   startTime: string | null;
+  validAt: string | null;
   rows: readonly ProposalRecord[];
 }): Promise<{ teams: DirectorTeam[]; minute: number; duration: number } | null> {
   let scenarioId = input.scenarioId;
   let startTime = input.startTime;
+  let validAt: string | Date | null = input.validAt;
   if (!scenarioId) {
     const sessionResult = await selectSession<SessionRow>(
       'scenario_id, start_time',
@@ -182,11 +192,9 @@ async function loadFairnessContext(input: {
     if (!session?.scenario_id) return null;
     scenarioId = session.scenario_id;
     startTime = startTime ?? (typeof session.start_time === 'string' ? session.start_time : null);
+    validAt = validAt ?? rosterValidAt({ start_time: startTime, opened_at: openedAtOf(session) });
   }
-  const at = rosterValidAt({
-    start_time: startTime,
-    opened_at: openedAtOf({ opened_at: null }),
-  });
+  const at = validAt ?? rosterValidAt({ start_time: startTime, opened_at: null });
   const [teamsRes, membersRes, scenarioRes] = await Promise.all([
     teamsValidAt(scenarioId, at),
     supabaseAdmin
