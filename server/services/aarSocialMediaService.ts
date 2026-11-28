@@ -1,5 +1,5 @@
-import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { countsOnCrisisClock, crisisFiltersActive } from '../lib/peaceGate.js';
 import { logger } from '../lib/logger.js';
 import { loadCommsResponsesSection, type CommsResponsesSection } from './aarCommsResponses.js';
 import { computeTeamScores } from './teamScoreService.js';
@@ -8,7 +8,7 @@ import {
   contentKey,
   rowCountsAsCrisisActivity,
 } from './scoring/crisisActivityCore.js';
-import { loadContentIndex, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
+import { loadContentIndex } from './scoring/crisisActivityLookup.js';
 import { orgsForSession } from '../lib/templateRows.js';
 
 export interface SocialMediaAARData {
@@ -236,7 +236,7 @@ export async function buildSocialMediaAARData(
       supabaseAdmin
         .from('sessions')
         .select(
-          scoringFiltersActive()
+          crisisFiltersActive()
             ? 'current_state, scenario_id, created_at, start_time'
             : 'current_state, scenario_id, created_at',
         )
@@ -247,28 +247,29 @@ export async function buildSocialMediaAARData(
   let posts = postsResult.data || [];
   let emails = emailsResult.data || [];
   let actions = actionsResult.data || [];
-  if (scoringFiltersActive()) {
+  const filtersActive = crisisFiltersActive();
+  const sharedIndex = filtersActive ? await loadContentIndex(sessionId) : null;
+  if (filtersActive && sharedIndex) {
     const startTime =
       ((sessionResult.data as { start_time?: string | null } | null)?.start_time as
         string | null | undefined) ?? null;
-    const index = await loadContentIndex(sessionId);
     posts = posts.filter((post: Record<string, unknown>) => {
-      const ref = index.byKey.get(contentKey('post', String(post.id ?? '')));
+      const ref = sharedIndex.byKey.get(contentKey('post', String(post.id ?? '')));
       return rowCountsAsCrisisActivity({
         filtersActive: true,
         createdAt: typeof post.created_at === 'string' ? post.created_at : null,
         startTime,
-        label: ref?.label ?? post.topic_class,
-        postKind: ref?.postKind ?? post.topic_kind,
+        label: ref?.label,
+        postKind: ref?.postKind,
       });
     });
     emails = emails.filter((email: Record<string, unknown>) => {
-      const ref = index.byKey.get(contentKey('email', String(email.id ?? '')));
+      const ref = sharedIndex.byKey.get(contentKey('email', String(email.id ?? '')));
       return rowCountsAsCrisisActivity({
         filtersActive: true,
         createdAt: typeof email.created_at === 'string' ? email.created_at : null,
         startTime,
-        label: ref?.label ?? email.topic_class,
+        label: ref?.label,
         postKind: 'crisis',
       });
     });
@@ -280,7 +281,7 @@ export async function buildSocialMediaAARData(
           target_id: action.target_id ? String(action.target_id) : null,
           created_at: String(action.created_at ?? ''),
         },
-        index,
+        sharedIndex,
         startTime,
         true,
       ),
@@ -508,7 +509,7 @@ export async function buildSocialMediaAARData(
   // each team's best/worst graded artifact for the trainer's talking points.
   let teamPerformance: SocialMediaAARData['team_performance'] = [];
   try {
-    const teamReport = await computeTeamScores(sessionId);
+    const teamReport = await computeTeamScores(sessionId, sharedIndex);
     teamPerformance = teamReport.teams.map((team) => {
       const memberIds = new Set(team.members.map((m) => m.user_id));
 
@@ -762,7 +763,11 @@ async function buildExecutiveDecisions(
             planned_minute: d.detail.detected_at_minute + n.delay_minutes,
             fired_minute: n.fired_at_minute ?? null,
             outcome: outcomeFor(n.inject_id, n.fired_at_minute != null) as
-              'fired' | 'withdrawn' | 'softened' | 'held' | 'pending',
+              | 'fired'
+              | 'withdrawn'
+              | 'softened'
+              | 'held'
+              | 'pending',
           })),
         public_effect: {
           posts: publicNodes.filter((n) => n.channel !== 'news').length,
@@ -791,14 +796,12 @@ async function buildStakeholderPreemption(
       supabaseAdmin.from('sessions').select('start_time').eq('id', sessionId).maybeSingle(),
     ]);
     const startMs = session?.start_time ? new Date(session.start_time as string).getTime() : null;
-    const peaceClock = env.enablePeacePeriod;
     const out: SocialMediaAARData['stakeholder_preemption'] = [];
     for (const e of events ?? []) {
       const meta = (e.metadata as Record<string, unknown>) ?? {};
       if (meta.source !== 'stakeholder') continue;
-      if (peaceClock && startMs != null) {
-        const at = new Date(e.created_at as string).getTime();
-        if (Number.isFinite(at) && at < startMs) continue;
+      if (!countsOnCrisisClock(e.created_at as string, session?.start_time as string | null)) {
+        continue;
       }
       if (e.event_type === 'inject_cancelled' && meta.reason === 'modified') continue; // twin of inject_modified
       const verdict =

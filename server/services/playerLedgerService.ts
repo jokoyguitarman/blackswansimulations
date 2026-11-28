@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { selectTolerant, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
+import { crisisFiltersActive } from '../lib/peaceGate.js';
+import { selectTolerant } from './scoring/crisisActivityLookup.js';
 
 /**
  * Per-player "AI judgement ledger" for a social-media crisis session.
@@ -80,10 +81,10 @@ const LEDGER_POSTS =
 const LEDGER_EMAILS = 'id, sent_by_player_id, subject, body_text, sop_compliance_score, created_at';
 const LEDGER_DMS = 'id, sender_handle, sender_display_name, content, created_at';
 
-type TopicQuery = Promise<{
-  data: unknown;
-  error: { code?: string; message?: string; details?: string; hint?: string } | null;
-}>;
+interface LedgerQuery extends PromiseLike<{ data: unknown; error: unknown }> {
+  eq(column: string, value: string): LedgerQuery;
+  not(column: string, operator: string, value: null): LedgerQuery;
+}
 
 function topicOf(row: { topic_class?: unknown }): { topic_class?: string } {
   const label = typeof row.topic_class === 'string' ? row.topic_class : '';
@@ -91,55 +92,47 @@ function topicOf(row: { topic_class?: unknown }): { topic_class?: string } {
   return { topic_class: label };
 }
 
+function ledgerQuery(table: string, columns: string, sessionId: string): LedgerQuery {
+  return supabaseAdmin
+    .from(table)
+    .select(columns)
+    .eq('session_id', sessionId) as unknown as LedgerQuery;
+}
+
+async function loadLedgerRows(
+  table: string,
+  base: string,
+  sessionId: string,
+  withTopic: boolean,
+  restrict: (query: LedgerQuery) => LedgerQuery,
+): Promise<Record<string, unknown>[]> {
+  if (!withTopic) {
+    const result = await restrict(ledgerQuery(table, base, sessionId));
+    return Array.isArray(result.data) ? (result.data as Record<string, unknown>[]) : [];
+  }
+  return selectTolerant(
+    (columns) =>
+      restrict(ledgerQuery(table, columns, sessionId)) as PromiseLike<{
+        data: unknown;
+        error: { code?: string; message?: string; details?: string; hint?: string } | null;
+      }>,
+    `${base}, topic_class`,
+  );
+}
+
 export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger> {
-  const filtersActive = scoringFiltersActive();
+  const filtersActive = crisisFiltersActive();
   const [postsRes, emailsRes, dmsRes, actionsRes, disputesRes, snapsRes, consRes, teamsRes] =
     await Promise.all([
-      filtersActive
-        ? selectTolerant(
-            (columns) =>
-              supabaseAdmin
-                .from('social_posts')
-                .select(columns)
-                .eq('session_id', sessionId)
-                .eq('author_type', 'player') as unknown as TopicQuery,
-            `${LEDGER_POSTS}, topic_class`,
-          ).then((data) => ({ data }))
-        : supabaseAdmin
-            .from('social_posts')
-            .select(LEDGER_POSTS)
-            .eq('session_id', sessionId)
-            .eq('author_type', 'player'),
-      filtersActive
-        ? selectTolerant(
-            (columns) =>
-              supabaseAdmin
-                .from('sim_emails')
-                .select(columns)
-                .eq('session_id', sessionId)
-                .not('sent_by_player_id', 'is', null) as unknown as TopicQuery,
-            `${LEDGER_EMAILS}, topic_class`,
-          ).then((data) => ({ data }))
-        : supabaseAdmin
-            .from('sim_emails')
-            .select(LEDGER_EMAILS)
-            .eq('session_id', sessionId)
-            .not('sent_by_player_id', 'is', null),
-      filtersActive
-        ? selectTolerant(
-            (columns) =>
-              supabaseAdmin
-                .from('sim_direct_messages')
-                .select(columns)
-                .eq('session_id', sessionId)
-                .eq('sender_type', 'player') as unknown as TopicQuery,
-            `${LEDGER_DMS}, topic_class`,
-          ).then((data) => ({ data }))
-        : supabaseAdmin
-            .from('sim_direct_messages')
-            .select(LEDGER_DMS)
-            .eq('session_id', sessionId)
-            .eq('sender_type', 'player'),
+      loadLedgerRows('social_posts', LEDGER_POSTS, sessionId, filtersActive, (query) =>
+        query.eq('author_type', 'player'),
+      ).then((data) => ({ data })),
+      loadLedgerRows('sim_emails', LEDGER_EMAILS, sessionId, filtersActive, (query) =>
+        query.not('sent_by_player_id', 'is', null),
+      ).then((data) => ({ data })),
+      loadLedgerRows('sim_direct_messages', LEDGER_DMS, sessionId, filtersActive, (query) =>
+        query.eq('sender_type', 'player'),
+      ).then((data) => ({ data })),
       supabaseAdmin
         .from('player_actions')
         .select(

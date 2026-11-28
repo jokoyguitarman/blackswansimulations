@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisFiltersActive } from '../lib/peaceGate.js';
 import { rowCountsAsCrisisActivity } from './scoring/crisisActivityCore.js';
-import { scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 import { calculateCommunicationMetrics, calculateCoordinationScore } from './analyticsService.js';
 
 /**
@@ -64,7 +64,7 @@ export async function calculateParticipantScores(
     }
 
     // Get decision steps to calculate leadership score (decisions approved)
-    const filtersActive = scoringFiltersActive();
+    const filtersActive = crisisFiltersActive();
     let crisisStart: string | null = null;
     if (filtersActive) {
       const clock = await supabaseAdmin

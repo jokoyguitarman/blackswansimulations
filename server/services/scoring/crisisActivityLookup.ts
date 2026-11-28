@@ -5,14 +5,21 @@
 
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
-import { isPeaceSchemaMissing, markPeaceColumnsMissing } from '../../lib/peaceSchema.js';
+import {
+  isPeaceSchemaMissing,
+  markPeaceColumnsMissing,
+  peaceColumnsMissing,
+} from '../../lib/peaceSchema.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
-import { isTopicSchemaMissing, noteTopicSchemaMissing } from '../topic/topicColumns.js';
+import {
+  isNamedTopicColumnMissing,
+  noteTopicSchemaMissing,
+  topicSchemaMissing,
+} from '../topic/topicColumns.js';
 import {
   buildContentIndex,
   contentRefsFromChannels,
   contentRefsFromPosts,
-  crisisFiltersActive,
   inPeaceWindow,
   type ContentIndex,
   type PeaceSourceRow,
@@ -20,16 +27,17 @@ import {
   type ScoringFlags,
 } from './crisisActivityCore.js';
 
+/** One page of a flag-on read. PostgREST's default cap is 1000. */
+export const CRISIS_READ_PAGE = 1000;
+/** Five pages, then stop. Unbounded session reads fail open past the default cap. */
+export const CRISIS_READ_MAX_ROWS = 5000;
+
 export function scoringFlagsFromEnv(): ScoringFlags {
   return {
     peace: env.enablePeacePeriod,
     topic: env.enableTopicAwareReplies,
     attribution: env.teamScorePostAttributionFix,
   };
-}
-
-export function scoringFiltersActive(): boolean {
-  return crisisFiltersActive(scoringFlagsFromEnv());
 }
 
 interface QueryError {
@@ -68,7 +76,7 @@ export function dropUnavailableColumns(columns: string, error: unknown): string 
       (column) => column !== 'peace_ref' && column !== 'opened_at' && column !== 'peace_seconds',
     );
     markPeaceColumnsMissing();
-  } else if (isTopicSchemaMissing(error)) {
+  } else if (isNamedTopicColumnMissing(error)) {
     next = next.filter((column) => !column.startsWith('topic_'));
     noteTopicSchemaMissing();
   } else {
@@ -79,7 +87,7 @@ export function dropUnavailableColumns(columns: string, error: unknown): string 
 }
 
 export async function selectTolerant(
-  run: (columns: string) => Promise<QueryResult>,
+  run: (columns: string) => PromiseLike<QueryResult>,
   columns: string,
 ): Promise<Record<string, unknown>[]> {
   let current = columns;
@@ -99,29 +107,77 @@ export async function selectTolerant(
   return [];
 }
 
-async function sessionRows(
+interface SessionQuery extends PromiseLike<QueryResult> {
+  eq(column: string, value: string): SessionQuery;
+  in(column: string, values: readonly string[]): SessionQuery;
+  not(column: string, operator: string, value: null): SessionQuery;
+  gte(column: string, value: string): SessionQuery;
+  lt(column: string, value: string): SessionQuery;
+  order(column: string, options: { ascending: boolean }): SessionQuery;
+  range(from: number, to: number): SessionQuery;
+}
+
+function sessionQuery(table: string, columns: string, sessionId: string): SessionQuery {
+  return supabaseAdmin
+    .from(table)
+    .select(columns)
+    .eq('session_id', sessionId) as unknown as SessionQuery;
+}
+
+function withoutKnownMissing(columns: string): string {
+  let list = columns
+    .split(',')
+    .map((column) => column.trim())
+    .filter(Boolean);
+  if (peaceColumnsMissing()) {
+    list = list.filter(
+      (column) => column !== 'peace_ref' && column !== 'opened_at' && column !== 'peace_seconds',
+    );
+  }
+  if (topicSchemaMissing()) list = list.filter((column) => !column.startsWith('topic_'));
+  return list.join(', ');
+}
+
+/** Ordered pages. `bound` is a created_at window, applied before the page. */
+async function readSessionPages(
   table: string,
   columns: string,
   sessionId: string,
-): Promise<QueryResult> {
-  const result = await supabaseAdmin.from(table).select(columns).eq('session_id', sessionId);
-  return result as QueryResult;
+  bound?: { gte?: string | null; lt?: string | null },
+  restrict?: (query: SessionQuery) => SessionQuery,
+): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  let cols = withoutKnownMissing(columns);
+  for (let from = 0; from < CRISIS_READ_MAX_ROWS; from += CRISIS_READ_PAGE) {
+    const page = await selectTolerant((active) => {
+      let query = sessionQuery(table, active, sessionId);
+      if (restrict) query = restrict(query);
+      if (bound?.gte) query = query.gte('created_at', bound.gte);
+      if (bound?.lt) query = query.lt('created_at', bound.lt);
+      return query
+        .order('created_at', { ascending: true })
+        .range(from, from + CRISIS_READ_PAGE - 1);
+    }, cols);
+    rows.push(...page);
+    cols = withoutKnownMissing(cols);
+    if (page.length < CRISIS_READ_PAGE) break;
+  }
+  return rows;
 }
 
 export async function loadContentIndex(sessionId: string): Promise<ContentIndex> {
   const [posts, emails, messages] = await Promise.all([
-    selectTolerant(
-      (columns) => sessionRows('social_posts', columns, sessionId),
+    readSessionPages(
+      'social_posts',
       'id, user_id, reply_to_post_id, created_at, topic_class, topic_kind',
+      sessionId,
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_emails', columns, sessionId),
+    readSessionPages(
+      'sim_emails',
       'id, sent_by_player_id, created_at, topic_class',
+      sessionId,
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_direct_messages', columns, sessionId),
-      'id, created_at, topic_class',
-    ),
+    readSessionPages('sim_direct_messages', 'id, created_at, topic_class', sessionId),
   ]);
   return buildContentIndex([
     ...contentRefsFromPosts(
@@ -166,22 +222,37 @@ export async function loadPeaceActivityRows(
   sessionId: string,
   clock: { openedAt: string | null; crisisStart: string | null },
 ): Promise<PeaceSourceRow[]> {
+  const window =
+    clock.openedAt && clock.crisisStart
+      ? { gte: clock.openedAt, lt: clock.crisisStart }
+      : null;
+  if (!window) return [];
   const [posts, emails, messages, actions] = await Promise.all([
-    selectTolerant(
-      (columns) => sessionRows('social_posts', columns, sessionId),
+    readSessionPages(
+      'social_posts',
       'id, user_id, author_display_name, author_type, content, reply_to_post_id, created_at, peace_ref, topic_class',
+      sessionId,
+      window,
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_emails', columns, sessionId),
+    readSessionPages(
+      'sim_emails',
       'id, sent_by_player_id, from_name, subject, body_text, created_at, topic_class',
+      sessionId,
+      window,
+      (query) => query.not('sent_by_player_id', 'is', null),
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_direct_messages', columns, sessionId),
+    readSessionPages(
+      'sim_direct_messages',
       'id, sender_type, sender_display_name, content, created_at, topic_class',
+      sessionId,
+      window,
+      (query) => query.eq('sender_type', 'player'),
     ),
-    selectTolerant(
-      (columns) => sessionRows('player_actions', columns, sessionId),
+    readSessionPages(
+      'player_actions',
       'id, player_id, action_type, content, created_at',
+      sessionId,
+      window,
     ),
   ]);
 
@@ -260,17 +331,26 @@ export async function loadPeaceActivityRows(
 
 export async function loadPlayerTopicSources(sessionId: string): Promise<PlayerTopicSource[]> {
   const [posts, emails, messages] = await Promise.all([
-    selectTolerant(
-      (columns) => sessionRows('social_posts', columns, sessionId),
+    readSessionPages(
+      'social_posts',
       'id, author_display_name, content, reply_to_post_id, created_at, topic_class, author_type',
+      sessionId,
+      undefined,
+      (query) => query.in('author_type', ['player', 'official_account']),
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_emails', columns, sessionId),
+    readSessionPages(
+      'sim_emails',
       'id, sent_by_player_id, from_name, subject, body_text, created_at, topic_class',
+      sessionId,
+      undefined,
+      (query) => query.not('sent_by_player_id', 'is', null),
     ),
-    selectTolerant(
-      (columns) => sessionRows('sim_direct_messages', columns, sessionId),
+    readSessionPages(
+      'sim_direct_messages',
       'id, sender_type, sender_display_name, content, created_at, topic_class',
+      sessionId,
+      undefined,
+      (query) => query.eq('sender_type', 'player'),
     ),
   ]);
   const sources: PlayerTopicSource[] = [];

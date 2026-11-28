@@ -14,6 +14,19 @@ export function isTopicSchemaMissing(err: unknown): boolean {
   return code != null && SCHEMA_CODES.has(code);
 }
 
+const TOPIC_COLUMN = /topic_class|topic_kind|topic_confidence|topic_bridge/;
+
+/**
+ * A missing-column error that names a migration 282 column. A bare 42703 for
+ * some other column must not turn topic writes off for the process.
+ */
+export function isNamedTopicColumnMissing(err: unknown): boolean {
+  if (!isTopicSchemaMissing(err)) return false;
+  const record = err as { message?: unknown; details?: unknown; hint?: unknown };
+  const message = `${record.message ?? ''} ${record.details ?? ''} ${record.hint ?? ''}`;
+  return TOPIC_COLUMN.test(message);
+}
+
 let warned = false;
 
 /** One warning per process. Further missing-column errors stay quiet. */

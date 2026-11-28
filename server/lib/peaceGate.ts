@@ -50,3 +50,32 @@ export function activityMinute(startTime: string | null, atIso: string): number 
   if (!env.enablePeacePeriod) return sessionMinuteAt(startTime, atIso);
   return silenceActivityMinute(startTime, atIso);
 }
+
+/** Scoring and the AAR apply the crisis-activity filter when either feature is on. */
+export function crisisFiltersActive(): boolean {
+  return env.enablePeacePeriod || env.enableTopicAwareReplies;
+}
+
+/**
+ * After-action minute from crisis start.
+ * Flag off, `round`: master's `tPlus` (including a NaN for an unparseable instant).
+ * Flag off, `floor`: master's comms `minuteAt`.
+ * Flag on: null before crisis start, otherwise the same clamp.
+ */
+export function crisisMinute(
+  iso: string | null | undefined,
+  startMs: number | null,
+  round: 'floor' | 'round' = 'floor',
+): number | null {
+  if (round === 'round') {
+    if (!startMs || !iso) return null;
+    const deltaMs = new Date(iso).getTime() - startMs;
+    if (env.enablePeacePeriod && deltaMs < 0) return null;
+    return Math.max(0, Math.round(deltaMs / 60000));
+  }
+  if (typeof iso !== 'string' || startMs == null) return null;
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return null;
+  if (env.enablePeacePeriod && at < startMs) return null;
+  return Math.max(0, Math.floor((at - startMs) / 60000));
+}

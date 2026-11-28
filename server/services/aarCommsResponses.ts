@@ -4,7 +4,6 @@
  * part empty and warns once. The section itself always comes back.
  */
 
-import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
@@ -13,13 +12,14 @@ import {
   selectSession as selectSessionClock,
   type SessionClockFields,
 } from '../lib/peaceSchema.js';
+import { playerTopicLabels, type PlayerTopicLabel } from './scoring/crisisActivityCore.js';
+import { loadPlayerTopicSources } from './scoring/crisisActivityLookup.js';
 import {
-  crisisEventMinute,
-  playerTopicLabels,
-  type PlayerTopicLabel,
-} from './scoring/crisisActivityCore.js';
-import { loadPlayerTopicSources, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
-import { rosterValidAt } from '../lib/peaceGate.js';
+  countsOnCrisisClock,
+  crisisFiltersActive,
+  crisisMinute,
+  rosterValidAt,
+} from '../lib/peaceGate.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
@@ -656,8 +656,7 @@ function num(value: unknown): number | null {
 }
 
 function minuteAt(iso: unknown, startMs: number | null): number | null {
-  if (typeof iso !== 'string') return null;
-  return crisisEventMinute(iso, startMs, { peace: env.enablePeacePeriod, round: 'floor' });
+  return crisisMinute(typeof iso === 'string' ? iso : null, startMs, 'floor');
 }
 
 export interface AarSessionParts {
@@ -747,11 +746,13 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
   parts.publications = await loadPublications(sessionId);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
-  if (scoringFiltersActive()) {
+  if (crisisFiltersActive()) {
+    const startIso = typeof session?.start_time === 'string' ? session.start_time : null;
     const topics = playerTopicLabels(
-      await loadPlayerTopicSources(sessionId),
+      (await loadPlayerTopicSources(sessionId)).filter((row) =>
+        countsOnCrisisClock(row.at, startIso),
+      ),
       started,
-      env.enablePeacePeriod,
     );
     if (topics.length > 0) parts.playerTopics = topics;
   }
@@ -769,13 +770,10 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
   return parts;
 }
 
-async function loadPublications(sessionId: string): Promise<AarSessionParts['publications']> {
-  const result = await selectSession(
-    'inject_publications',
-    'inject_id, claimed_at',
-    sessionId,
-    2000,
-  );
+async function loadPublications(
+  sessionId: string,
+): Promise<AarSessionParts['publications']> {
+  const result = await selectSession('inject_publications', 'inject_id, claimed_at', sessionId, 2000);
   if (result.error) {
     if (!isUnappliedSchema(result.error)) warnRead('inject_publications', result.error);
     return [];
