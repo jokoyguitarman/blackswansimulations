@@ -29,6 +29,9 @@ export interface StorylineStageInput {
   request: BuildRequest;
   personas: NPCPersona[];
   fact_sheet: CharactersOutput['fact_sheet'];
+  /** Present on a setup-edit build. The characters stage already paid for the diff. */
+  brief_diff?: unknown;
+  swap_premise?: string | null;
 }
 
 export interface ConvergenceStageInput {
@@ -46,6 +49,8 @@ export interface ConvergenceStageInput {
   factSheet: CharactersOutput['fact_sheet'];
   stakeholders: StorylineOutput['stakeholders'];
   stakeholderInjects: SocialInject[];
+  brief_diff?: unknown;
+  swap_premise?: string | null;
 }
 
 export interface PagesStageInput {
@@ -55,6 +60,8 @@ export interface PagesStageInput {
   stakeholders: StorylineOutput['stakeholders'];
   fact_sheet: CharactersOutput['fact_sheet'];
   crisis: CrisisContext;
+  brief_diff?: unknown;
+  swap_premise?: string | null;
 }
 
 export type StageInput =
@@ -103,12 +110,22 @@ export function stageInput(
 ): StageInput {
   if (stage === 'characters') return { stage, request };
   const characters = requireCharacters(outputs);
+  const editCarry =
+    request.mode === 'setup_edit'
+      ? {
+          brief_diff:
+            (characters as CharactersOutput & { brief_diff?: unknown }).brief_diff ?? null,
+          swap_premise:
+            (characters as CharactersOutput & { swap_premise?: string | null }).swap_premise ?? null,
+        }
+      : {};
   if (stage === 'storyline') {
     return {
       stage,
       request,
       personas: characters.personas,
       fact_sheet: characters.fact_sheet,
+      ...editCarry,
     };
   }
   const storyline = requireStoryline(outputs);
@@ -132,6 +149,7 @@ export function stageInput(
       factSheet: characters.fact_sheet,
       stakeholders: storyline.stakeholders ?? [],
       stakeholderInjects: storyline.stakeholder_injects ?? [],
+      ...editCarry,
     };
   }
   return {
@@ -153,6 +171,7 @@ export function stageInput(
       duration: 60,
       org_name: request.org_name,
     }),
+    ...editCarry,
   };
 }
 

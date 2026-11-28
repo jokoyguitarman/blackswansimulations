@@ -1417,6 +1417,8 @@ router.post(
           org_name: body.org_name,
           duration: body.duration,
           auto_antagonist: body.auto_antagonist,
+          fact_sheet: initialState.fact_sheet,
+          briefing: typeof payload.scenario.briefing === 'string' ? payload.scenario.briefing : null,
         });
 
         // Charter-derived benchmarks keyed to the four fixed teams (consumed

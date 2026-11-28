@@ -28,8 +28,15 @@ export const buildRequestSchema = z.object({
   pressure_organisations: pressureOrganisationsSchema.default([]), // = pressureOrganisationsPayload
   auto_antagonist: z.boolean().default(true),
   duration: z.number().default(60),
+  /** Absent on a create build. A setup edit stores the server-computed delta beside this. */
+  mode: z.enum(['create', 'setup_edit']).optional(),
+  setup_edit_id: z.string().uuid().optional(),
 });
-export type BuildRequest = z.infer<typeof buildRequestSchema>;
+export type BuildRequest = z.infer<typeof buildRequestSchema> & {
+  /** Server-computed. A client value is discarded before the build is stored. */
+  delta?: unknown;
+  plan_hash?: string;
+};
 
 export const STAGES = ['characters', 'storyline', 'convergence', 'pages'] as const;
 export type BuildStage = (typeof STAGES)[number];

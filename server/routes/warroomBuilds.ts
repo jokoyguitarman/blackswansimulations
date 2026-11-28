@@ -1,10 +1,14 @@
 import { Router, type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
 import type { Response } from 'express';
+import { assertScenarioOwner } from '../lib/access.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { hasCredit, isAdmin } from '../services/creditService.js';
+import { canEditScenario } from '../services/scenarioEditService.js';
+import { loadSetupEditSource, type LoadedSetupEdit } from '../services/setupEdits/deltaBuildContext.js';
+import { prepareSetupEditRequest } from '../services/setupEdits/prepareSetupEditBuild.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { resolveOrganisations } from '../services/multiOrgPipeline.js';
 import { toView } from '../services/warroomBuild/buildCore.js';
@@ -69,6 +73,10 @@ export interface WarroomBuildsRouterDeps {
   credit: (req: AuthenticatedRequest, res: Response) => Promise<boolean>;
   service: WarroomBuildApi;
   loadDraft: (draftId: string) => Promise<DraftRecord | null>;
+  /** Loads the open edit. Tests stub this. The mounted router uses the database. */
+  loadSetupEdit?: (editId: string) => Promise<LoadedSetupEdit>;
+  assertOwner?: typeof assertScenarioOwner;
+  canEdit?: typeof canEditScenario;
   organisationsOk: (
     request: BuildRequest,
   ) => { ok: true } | { ok: false; message: string; code: string; details: unknown };
@@ -139,6 +147,9 @@ const listSchema = z.object({
  */
 export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router {
   const router = Router();
+  const loadSetupEdit = deps.loadSetupEdit ?? loadSetupEditSource;
+  const assertOwner = deps.assertOwner ?? assertScenarioOwner;
+  const canEdit = deps.canEdit ?? canEditScenario;
 
   router.use((req, res, next) => {
     if (!deps.enabled(req)) {
@@ -170,10 +181,35 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
       request: BuildRequest;
       replace_active: boolean;
     };
-    const orgs = deps.organisationsOk(body.request);
-    if (!orgs.ok) {
-      res.status(400).json({ error: orgs.message, code: orgs.code, details: orgs.details });
-      return;
+    let request = body.request;
+    if (request.mode !== 'setup_edit') {
+      const orgs = deps.organisationsOk(request);
+      if (!orgs.ok) {
+        res.status(400).json({ error: orgs.message, code: orgs.code, details: orgs.details });
+        return;
+      }
+    } else {
+      try {
+        const prepared = await prepareEditBuild(body.draft_id, request, user, {
+          loadSetupEdit,
+          assertOwner,
+          canEdit,
+        });
+        if (!prepared.ok) {
+          res.status(prepared.status).json({ error: prepared.error, code: prepared.code });
+          return;
+        }
+        const orgs = deps.organisationsOk(prepared.request);
+        if (!orgs.ok) {
+          res.status(400).json({ error: orgs.message, code: orgs.code, details: orgs.details });
+          return;
+        }
+        request = prepared.request;
+      } catch (err) {
+        logger.error({ err }, 'warroom_setup_edit_build_prepare_failed');
+        res.status(500).json({ error: 'Internal Server Error' });
+        return;
+      }
     }
     try {
       const draft = await deps.loadDraft(body.draft_id);
@@ -190,7 +226,7 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
       const started = await deps.service.start({
         draftId: body.draft_id,
         userId: user.id,
-        request: body.request,
+        request,
         idempotencyKey: body.idempotency_key,
         replaceActive: body.replace_active,
       });
@@ -378,6 +414,69 @@ export function organisationsGate(
   if (!result.ok)
     return { ok: false, message: result.message, code: result.code, details: result.details };
   return { ok: true };
+}
+
+async function prepareEditBuild(
+  draftId: string,
+  request: BuildRequest,
+  user: { id: string; role?: string },
+  deps: {
+    loadSetupEdit: (editId: string) => Promise<LoadedSetupEdit>;
+    assertOwner: typeof assertScenarioOwner;
+    canEdit: typeof canEditScenario;
+  },
+): Promise<
+  { ok: true; request: BuildRequest } | { ok: false; status: number; code: string; error: string }
+> {
+  if (!request.setup_edit_id) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'SETUP_EDIT_ID_REQUIRED',
+      error: 'A setup edit build needs setup_edit_id.',
+    };
+  }
+  const loaded = await deps.loadSetupEdit(request.setup_edit_id);
+  if (!loaded.available) {
+    return {
+      ok: false,
+      status: 501,
+      code: 'SETUP_EDITS_UNAVAILABLE',
+      error: 'Setup edits are not available until the migration is applied.',
+    };
+  }
+  const source = loaded.source;
+  if (!source) {
+    return { ok: false, status: 404, code: 'SETUP_EDIT_NOT_FOUND', error: 'Setup edit not found' };
+  }
+  if (source.edit.status !== 'open') {
+    return { ok: false, status: 409, code: 'SETUP_EDIT_NOT_OPEN', error: 'This setup edit is not open.' };
+  }
+  if (!source.edit.draft_id || source.edit.draft_id !== draftId) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'SETUP_EDIT_DRAFT',
+      error: "The build must use this edit's draft.",
+    };
+  }
+  const owner = await deps.assertOwner(source.edit.scenario_id, user);
+  if (!owner.ok) {
+    return { ok: false, status: owner.status, code: 'SETUP_EDIT_FORBIDDEN', error: owner.error };
+  }
+  const editability = await deps.canEdit(source.edit.scenario_id, user);
+  if (!editability.editable) {
+    return {
+      ok: false,
+      status: 423,
+      code: editability.reason === 'live_session' ? 'EDIT_LOCKED_LIVE_SESSION' : 'EDIT_LOCKED_NO_CREDITS',
+      error:
+        editability.reason === 'live_session'
+          ? 'A session on this scenario is currently live. Editing resumes when it ends.'
+          : 'No session launch credits remaining. Editing is locked until credits are topped up.',
+    };
+  }
+  return prepareSetupEditRequest(source, request);
 }
 
 /** Mounted router. Tests use the factory with stubs instead of this wiring. */

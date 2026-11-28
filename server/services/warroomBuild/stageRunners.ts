@@ -1,5 +1,6 @@
 import { env } from '../../env.js';
 import { withAiCallCount } from '../../lib/aiCallScope.js';
+import { withConcurrencyLimit } from '../../lib/limitConcurrency.js';
 import { logger } from '../../lib/logger.js';
 import { coerceBlueprint } from '../blueprint/blueprintTypes.js';
 import {
@@ -14,6 +15,11 @@ import type { OrganisationsValidation } from '../scenarioOrgModel.js';
 import type { StageInput } from './assemble.js';
 import { charactersReadyLine, formatProgress, stakeholdersReadyLine } from './buildCore.js';
 import type { BuildRequest, LogKind } from './buildTypes.js';
+import { loadDeltaBuildContext } from '../setupEdits/deltaBuildContext.js';
+import { runDeltaStage, type DeltaCarry } from '../setupEdits/deltaBuildRun.js';
+import type { BriefDiff } from '../setupEdits/affectedLayers.js';
+import type { DeltaBuildContext, DeltaGenerators } from '../setupEdits/deltaBuildTypes.js';
+import { createDeltaGenerators } from '../setupEdits/deltaGenerators.js';
 
 export interface StageContext {
   log(kind: LogKind, message: string): void;
@@ -21,6 +27,11 @@ export interface StageContext {
 }
 
 export type StageRunner = (input: StageInput, ctx: StageContext) => Promise<unknown>;
+
+export interface StageRunnerDeps {
+  loadDeltaContext?: (request: BuildRequest) => Promise<DeltaBuildContext>;
+  deltaGenerators?: DeltaGenerators;
+}
 
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
@@ -55,11 +66,31 @@ async function runStage<T>(stage: string, ctx: StageContext, fn: () => Promise<T
 }
 
 /** One runner per stage. Each wraps the existing pipeline and stops if the caller aborted. */
-export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
+export function createStageRunners(
+  deps: StageRunnerDeps = {},
+): Record<StageInput['stage'], StageRunner> {
+  const loadDeltaContext = deps.loadDeltaContext ?? loadDeltaBuildContext;
+  const generators = deps.deltaGenerators ?? createDeltaGenerators();
+
+  async function runEdit(input: StageInput, ctx: StageContext): Promise<unknown> {
+    const loaded = await loadDeltaContext(input.request);
+    const carry = carryFrom(input);
+    return runStage(input.stage, ctx, () =>
+      withConcurrencyLimit(env.warroomGenConcurrency, () =>
+        runDeltaStage(input.stage, loaded, generators, carry),
+      ),
+    );
+  }
+
   return {
     characters: async (input, ctx) => {
       if (input.stage !== 'characters')
         throw new Error('characters runner expected characters input');
+      if (input.request.mode === 'setup_edit') {
+        const result = await runEdit(input, ctx);
+        throwIfAborted(ctx.signal);
+        return result;
+      }
       const request = input.request;
       const orgs = assertOrgs(request);
       const crisis = crisisContextFrom({
@@ -82,6 +113,11 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
     },
     storyline: async (input, ctx) => {
       if (input.stage !== 'storyline') throw new Error('storyline runner expected storyline input');
+      if (input.request.mode === 'setup_edit') {
+        const result = await runEdit(input, ctx);
+        throwIfAborted(ctx.signal);
+        return result;
+      }
       const request = input.request;
       const orgs = assertOrgs(request);
       const crisis = crisisContextFrom({
@@ -115,6 +151,11 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
     convergence: async (input, ctx) => {
       if (input.stage !== 'convergence')
         throw new Error('convergence runner expected convergence input');
+      if (input.request.mode === 'setup_edit') {
+        const result = await runEdit(input, ctx);
+        throwIfAborted(ctx.signal);
+        return result;
+      }
       const orgs = assertOrgs(input.request);
       const result = await runStage('convergence', ctx, () =>
         runConvergencePipeline(
@@ -136,6 +177,11 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
     },
     pages: async (input, ctx) => {
       if (input.stage !== 'pages') throw new Error('pages runner expected pages input');
+      if (input.request.mode === 'setup_edit') {
+        const result = await runEdit(input, ctx);
+        throwIfAborted(ctx.signal);
+        return result;
+      }
       const request = input.request;
       const orgs = assertOrgs(request, input.pressure_organisations);
       const result = await runStage('pages', ctx, () =>
@@ -161,5 +207,14 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         persona_twins: result.persona_twins,
       };
     },
+  };
+}
+
+function carryFrom(input: StageInput): DeltaCarry | undefined {
+  if (input.stage === 'characters' || !('brief_diff' in input)) return undefined;
+  const brief = input.brief_diff;
+  return {
+    briefDiff: brief && typeof brief === 'object' ? (brief as BriefDiff) : null,
+    swapPremise: input.swap_premise ?? null,
   };
 }
