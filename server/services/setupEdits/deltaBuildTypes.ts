@@ -5,6 +5,7 @@ import type { BriefDiff } from './affectedLayers.js';
 import type { SetupFlag, SetupRevision } from './briefRevisionCore.js';
 import type { RemapPlan } from './remapPlanner.js';
 import type { SetupDelta } from './setupDeltaCore.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { SetupCrisis, SetupSnapshot } from './setupSnapshotCore.js';
 
 /**
@@ -273,6 +274,11 @@ export interface SetupEditStageOutput {
   dimensionLabels: null;
   org_page: { orgs: Array<Record<string, unknown>> } | null;
   pressure_injects: SocialInject[];
+  /**
+   * Pages stage only. `usablePeaceFeed` of `pages.peace_period`. When set, apply
+   * writes it to `initial_state.peace_period` and drops the remap `/peace_period` patch.
+   */
+  peace_period?: PeaceFeed | null;
 }
 
 export function blankGenerated(): GeneratedRows {

@@ -5,6 +5,7 @@ import { rowsValidAt, orgsForSession } from '../../lib/templateRows.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
 import { MultiOrgValidationError } from '../scenarioValidationService.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import { computeDelta } from './setupDeltaCore.js';
 import { planRemap, EDIT_TOKEN, type RemapPlannerInput } from './remapPlanner.js';
 import {
@@ -349,6 +350,46 @@ describe('setup merge', () => {
   });
 });
 
+describe('peace period on apply', () => {
+  test('a pages-stage feed is written and the remap peace_period patch is dropped', () => {
+    const stage = peaceFeed('Hawker centre lunch', 'warehouse fire');
+    const planned = peaceFeed('Planner draft only', 'old leak');
+    const outputs = emptyOutputs();
+    outputs[3].peace_period = stage;
+    const bundle = bundleOf({
+      outputs,
+      plan: emptyPlan({
+        initial_state: {
+          patch: [
+            { op: 'replace', path: '/peace_period', value: planned },
+            { op: 'replace', path: '/org_name', value: 'Kept org' },
+          ],
+          move_to_retired: [],
+        },
+      }),
+    });
+    const state = bundle.scenario.initial_state as { peace_period: PeaceFeed; org_name: string };
+    assert.equal(state.peace_period.posts[0].content, 'Hawker centre lunch');
+    assert.deepEqual(state.peace_period.leak_terms, ['warehouse fire']);
+    assert.equal(state.org_name, 'Kept org');
+  });
+
+  test('without a pages-stage feed the remap peace_period patch is applied', () => {
+    const planned = peaceFeed('Planner draft only', 'old leak');
+    const bundle = bundleOf({
+      plan: emptyPlan({
+        initial_state: {
+          patch: [{ op: 'replace', path: '/peace_period', value: planned }],
+          move_to_retired: [],
+        },
+      }),
+    });
+    const state = bundle.scenario.initial_state as { peace_period: PeaceFeed };
+    assert.equal(state.peace_period.posts[0].content, 'Planner draft only');
+    assert.deepEqual(state.peace_period.leak_terms, ['old leak']);
+  });
+});
+
 describe('apply migration guards', () => {
   const sql = readFileSync(new URL('../../../migrations/277_apply_scenario_setup_edit.sql', import.meta.url), 'utf8');
 
@@ -372,6 +413,27 @@ describe('apply migration guards', () => {
     assert.doesNotMatch(sql, /public\.stakeholder_moods/);
   });
 });
+
+function peaceFeed(content: string, leak: string): PeaceFeed {
+  return {
+    version: 1,
+    seconds: 300,
+    enabled: true,
+    leak_terms: [leak],
+    posts: [
+      {
+        ref: 'p1',
+        author: { kind: 'persona', handle: '@mina' },
+        platform: 'facebook',
+        post_format: 'text',
+        content,
+        media_description: '',
+        offset_seconds: 120,
+        comments: [],
+      },
+    ],
+  };
+}
 
 function freshInject(title: string, key: string): SocialInject {
   return {

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { injectKeyOf, stampGeneratedInjectKeys } from '../../lib/injectKey.js';
+import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import { sanitizeTeamTargeting } from '../socialCrisisPersistenceService.js';
 import {
   MultiOrgValidationError,
@@ -694,10 +695,12 @@ function materialiseInject(item: WorkingInject, activeNames: Set<string>): Omit<
 
 function composeState(input: MergeSetupEditInput, textKept: string[]): unknown {
   const state = asRecord(structuredClone(input.current.scenario.initial_state)) ?? {};
+  const peace = pagesPeaceFeed(input.buildOutputs);
   for (const patch of input.plan.initial_state.patch) {
     if (patch.op !== 'replace' || !patch.path.startsWith('/')) continue;
     const key = patch.path.slice(1);
     if (!key || key.includes('/')) continue;
+    if (key === 'peace_period' && peace) continue;
     state[key] = structuredClone(patch.value);
   }
   const retired = asRecord(state.retired) ?? {};
@@ -719,7 +722,17 @@ function composeState(input: MergeSetupEditInput, textKept: string[]): unknown {
   if (factSheet) state.fact_sheet = factSheet;
   overlayPages(state, input);
   ensureEditedProtagonists(state, input);
+  if (peace) state.peace_period = peace;
   return state;
+}
+
+/**
+ * The pages stage builds its feed on top of the planner rewrite. Writing the
+ * `/peace_period` patch as well, or instead, drops the new posts and leak terms.
+ */
+function pagesPeaceFeed(outputs: readonly SetupEditStageOutput[]): ReturnType<typeof usablePeaceFeed> {
+  const pages = outputs.length >= 4 ? outputs[3] : undefined;
+  return usablePeaceFeed(pages?.peace_period);
 }
 
 /** Added organisations are not a remap. The edited setup is what puts them in the registry. */

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTeams, activeTemplateInjects } from '../../lib/templateRows.js';
 import { seedOrgPages } from '../ambientContentService.js';
 import { consumeCredit, isAdmin, refundCredit, type ConsumeResult } from '../creditService.js';
+import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import { blankGenerated, type SetupEditStageOutput } from './deltaBuildTypes.js';
 import { loadSetupEditSource } from './deltaBuildContext.js';
 import { asSnapshot } from './prepareSetupEditBuild.js';
@@ -313,11 +314,11 @@ export function stageOutputsFromRows(
 ): SetupEditStageOutput[] {
   const byStage = new Map(rows.map((row) => [row.stage, row.output]));
   return ['characters', 'storyline', 'convergence', 'pages'].map((stage) =>
-    normaliseStage(byStage.get(stage)),
+    normaliseStage(byStage.get(stage), stage),
   );
 }
 
-function normaliseStage(raw: unknown): SetupEditStageOutput {
+function normaliseStage(raw: unknown, stage: string): SetupEditStageOutput {
   const row = asRecord(raw) ?? {};
   const generated = asRecord(row.generated);
   const narrative = asRecord(row.narrative_update);
@@ -374,6 +375,7 @@ function normaliseStage(raw: unknown): SetupEditStageOutput {
     dimensionLabels: null,
     org_page: null,
     pressure_injects: [],
+    ...(stage === 'pages' ? { peace_period: usablePeaceFeed(row.peace_period) } : {}),
   };
 }
 
