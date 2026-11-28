@@ -5,6 +5,7 @@ import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
 import { StaffPageExplorer } from './StaffPageExplorer';
+import { ViewAsMenu } from './ViewAsMenu';
 import { LiveCallsPanel } from './LiveCallsPanel';
 import { LinesRolesPanel } from './LinesRolesPanel';
 import { TeammateConsole } from './TeammateConsole';
@@ -1564,6 +1565,7 @@ export default function TrainerSimDashboard() {
         style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
       >
         <div className="flex items-center gap-4">
+          {sessionId ? <ViewAsMenu sessionId={sessionId} showViewedBy /> : null}
           <button
             onClick={() => navigate(`/sim/${sessionId}/device`)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
@@ -1597,7 +1599,11 @@ export default function TrainerSimDashboard() {
         </div>
         <div className="flex items-center gap-3">
           {!isReview && sessionId ? (
-            <PeaceCountdownChip sessionId={sessionId} source={sessionInfo} onStarted={() => void loadSessionInfo()} />
+            <PeaceCountdownChip
+              sessionId={sessionId}
+              source={sessionInfo}
+              onStarted={() => void loadSessionInfo()}
+            />
           ) : null}
           <button
             onClick={() => setShowExplainer(true)}

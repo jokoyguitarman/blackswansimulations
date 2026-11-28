@@ -13,6 +13,7 @@ import type { PageCoverage } from '@shared/sessionPageCoverage';
 import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
 import type { PeaceFeed } from '@shared/peaceFeed';
 import { spectatorRequestHeaders } from './simSpectator';
+import { currentViewAsFrame, viewAsRequestHeaders } from './viewAsFrame';
 
 export type SessionPageCoverageDTO = PageCoverage & { applies: boolean };
 
@@ -41,7 +42,7 @@ export class ApiError extends Error {
  */
 
 // Get API base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 // ─── Stakeholder contacts (docs/stakeholder-contacts-contract.md) ───────────
 export interface ContactRow {
@@ -121,6 +122,10 @@ export async function getAuthHeaders(frame?: SpectatorFrame) {
     'Content-Type': 'application/json',
   };
   if (frame?.spectator) Object.assign(headers, spectatorRequestHeaders(frame.sessionId));
+  else {
+    const viewAs = currentViewAsFrame();
+    if (viewAs) Object.assign(headers, viewAsRequestHeaders(viewAs));
+  }
   return headers;
 }
 

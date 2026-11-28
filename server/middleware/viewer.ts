@@ -28,6 +28,11 @@ import {
   staffViewAsEnabled,
   type ViewerMode,
 } from '../lib/viewerDecision.js';
+import {
+  mergeViewerSubject,
+  type ViewerAccount,
+  type ViewerProfile,
+} from '../lib/viewerSubject.js';
 
 export type { ViewerMode };
 export { getSideEffectAllowed, staffPlayerActionGuardEnabled, staffViewAsEnabled };
@@ -184,7 +189,7 @@ async function spectate(
       });
       return true;
     }
-    subject = await loadSubject(headers.subjectId);
+    subject = await loadViewerSubject(headers.subjectId);
     req.user = subject;
   }
 
@@ -226,7 +231,8 @@ function denyStaffPlayerAction(res: Response): boolean {
     participant: false,
   });
   res.status(block?.status ?? 403).json({
-    error: block?.error ?? 'Staff cannot take player actions in a live session they are not playing',
+    error:
+      block?.error ?? 'Staff cannot take player actions in a live session they are not playing',
     code: block?.code ?? STAFF_PLAYER_ACTION_BLOCKED,
   });
   return true;
@@ -299,26 +305,53 @@ function field(row: unknown, key: string): unknown {
   return Reflect.get(row, key);
 }
 
-async function loadSubject(id: string): Promise<RequestUser> {
+/**
+ * The participant `requireAuth` would build. Profile name first; an empty name
+ * falls through to auth metadata and email so messenger handles stay the player's.
+ */
+export async function loadViewerSubject(id: string): Promise<RequestUser> {
+  const [account, profile] = await Promise.all([readAccount(id), readProfile(id)]);
+  return mergeViewerSubject(id, account, profile);
+}
+
+async function readAccount(id: string): Promise<ViewerAccount | null> {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(id);
+    if (error || !data?.user) return null;
+    return {
+      email: data.user.email ?? null,
+      app_metadata: recordOf(data.user.app_metadata),
+      user_metadata: recordOf(data.user.user_metadata),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readProfile(id: string): Promise<ViewerProfile | null> {
   try {
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
       .select('role, agency_name, full_name')
       .eq('id', id)
       .maybeSingle();
-    if (error || !data) return { id };
-    const role = field(data, 'role');
-    const agency = field(data, 'agency_name');
-    const name = field(data, 'full_name');
-    const fullName = typeof name === 'string' ? name.trim() : '';
+    if (error || !data) return null;
     return {
-      id,
-      role: typeof role === 'string' ? role : undefined,
-      agency: typeof agency === 'string' ? agency : undefined,
-      displayName: fullName || undefined,
-      metadata: {},
+      role: stringField(data, 'role'),
+      agency_name: stringField(data, 'agency_name'),
+      full_name: stringField(data, 'full_name'),
     };
   } catch {
-    return { id };
+    return null;
   }
+}
+
+function stringField(row: unknown, key: string): string | null {
+  const value = field(row, key);
+  return typeof value === 'string' ? value : null;
+}
+
+function recordOf(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return Object.fromEntries(Object.entries(value));
 }

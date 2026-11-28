@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase.js';
 import type { SessionUser } from '@shared/types';
@@ -99,7 +99,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     refreshUser,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return React.createElement(AuthContext.Provider, { value }, children);
 };
 
 // Base identity from the Supabase user. The role is deliberately NOT taken from
@@ -120,7 +120,7 @@ function mapSupabaseUser(user: User): SessionUser {
   };
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
 
 // Resolve the authoritative SessionUser by reading the server-side profile.
 // The role/agency returned here come from user_profiles (which users cannot edit
