@@ -259,10 +259,7 @@ describe('dependency editor model', () => {
     assert.equal(readDependencyCause({ cause: { kind: 'dependency', dep_id: edge.id } }), edge.id);
     const taken = new Set([edge.id]);
     assert.equal(uniqueDependencyId('Bay 3 headcount', taken), 'dep_bay_3_headcount');
-    assert.equal(
-      dependencyIdInKey('dependency_broken_for:dep_bay_3_headcount:5'),
-      'dep_bay_3_headcount',
-    );
+    assert.equal(dependencyIdInKey('dependency_broken_for:dep_bay_3_headcount:5'), 'dep_bay_3_headcount');
     assert.equal(dependencyIdInKey('dependency_waived:dep_bay_3_headcount'), 'dep_bay_3_headcount');
     assert.equal(dependencyIdInKey('unresponded:bay3_headcount_request:10|team=@upstream'), null);
     const draft = consequenceInjectDraft({
@@ -299,10 +296,9 @@ describe('dependency editor model', () => {
     assert.equal(
       uniqueDependencyId(
         'Bay 3 headcount',
-        takenDependencyIds(
-          [],
-          [{ conditions_to_appear: { any: ['dependency_broken_for:dep_bay_3_headcount:5'] } }],
-        ),
+        takenDependencyIds([], [
+          { conditions_to_appear: { any: ['dependency_broken_for:dep_bay_3_headcount:5'] } },
+        ]),
       ),
       'dep_bay_3_headcount_2',
     );

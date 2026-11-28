@@ -968,7 +968,8 @@ async function processExecutedDecisionInBackground(
           .filter(Boolean);
 
         const existingReasoning = (decision as Record<string, unknown>).evaluation_reasoning as
-          Record<string, unknown> | undefined;
+          | Record<string, unknown>
+          | undefined;
         const prevRevisionCount =
           typeof (existingReasoning as Record<string, unknown> | undefined)
             ?.editorial_revision_count === 'number'
@@ -999,7 +1000,8 @@ async function processExecutedDecisionInBackground(
               status: 'rejected',
               evaluation_reasoning: {
                 ...((decision as Record<string, unknown>).evaluation_reasoning as
-                  Record<string, unknown> | undefined),
+                  | Record<string, unknown>
+                  | undefined),
                 editorial_review: review,
                 editorial_revision_count: prevRevisionCount + 1,
               },
@@ -1080,7 +1082,8 @@ async function processExecutedDecisionInBackground(
           .update({
             evaluation_reasoning: {
               ...((decision as Record<string, unknown>).evaluation_reasoning as
-                Record<string, unknown> | undefined),
+                | Record<string, unknown>
+                | undefined),
               editorial_review: review,
               editorial_revision_count: prevRevisionCount,
             },
@@ -1165,7 +1168,12 @@ async function processExecutedDecisionInBackground(
 
     // Quality failure inject logic
     type FailureType =
-      'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected' | 'infrastructure_gap';
+      | 'vague'
+      | 'contradiction'
+      | 'below_standard'
+      | 'prereq'
+      | 'rejected'
+      | 'infrastructure_gap';
     let failureType: FailureType | null = null;
     let failureContent = '';
 

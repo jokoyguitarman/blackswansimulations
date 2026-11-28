@@ -249,7 +249,8 @@ export async function processExitFlow(sessionId: string): Promise<void> {
       // Check if the original crowd had a final_destination stored by the decision system
       const crowdConds = (crowd.conditions ?? {}) as Record<string, unknown>;
       const finalDest = crowdConds.final_destination as
-        { lat: number; lng: number; label: string } | undefined;
+        | { lat: number; lng: number; label: string }
+        | undefined;
 
       // Place evacuees outside all zones (near the exit)
       const exitRef = { lat: exitCoords.lat, lng: exitCoords.lng };

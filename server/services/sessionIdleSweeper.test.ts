@@ -472,11 +472,9 @@ describe('session idle sweeper', () => {
         async listIdleMarkers(sessionId) {
           const row = rows.find((item) => item.id === sessionId);
           const created_at = new Date(nowMs - 60_000).toISOString();
-          return (row?.warnedFor ?? []).map((reason): IdleMarker => ({
-            kind: 'idle_warning',
-            reason,
-            created_at,
-          }));
+          return (row?.warnedFor ?? []).map(
+            (reason): IdleMarker => ({ kind: 'idle_warning', reason, created_at }),
+          );
         },
         async completeIfRunning(sessionId) {
           order.push(`complete:${sessionId}`);

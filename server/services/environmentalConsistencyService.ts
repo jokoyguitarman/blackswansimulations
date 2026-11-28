@@ -54,7 +54,11 @@ export function resolveTeamDoctrines(
 
 export type EnvironmentalConsistencySeverity = 'low' | 'medium' | 'high';
 export type EnvironmentalConsistencyErrorType =
-  'capacity' | 'location' | 'flow' | 'space_contention' | 'other';
+  | 'capacity'
+  | 'location'
+  | 'flow'
+  | 'space_contention'
+  | 'other';
 
 /** When consistent is false: "contradiction" = wrong vs standards; "below_standard" = short of sector standard; "infrastructure_gap" = acting without required facilities. */
 export type EnvironmentalMismatchKind = 'contradiction' | 'below_standard' | 'infrastructure_gap';
@@ -257,14 +261,17 @@ export async function buildCasualtyContext(sessionId: string): Promise<string> {
       | Array<{ type: string; severity: string; body_part: string; visible_signs?: string }>
       | undefined;
     const treatmentReqs = conds.treatment_requirements as
-      Array<{ intervention: string; priority: string; reason: string }> | undefined;
+      | Array<{ intervention: string; priority: string; reason: string }>
+      | undefined;
     const transportPrereqs = conds.transport_prerequisites as string[] | undefined;
     const contraindications = conds.contraindications as string[] | undefined;
     const idealSequence = conds.ideal_response_sequence as
-      Array<{ step: number; action: string; detail: string }> | undefined;
+      | Array<{ step: number; action: string; detail: string }>
+      | undefined;
     const requiredPpe = conds.required_ppe as string[] | undefined;
     const requiredEquipment = conds.required_equipment as
-      Array<{ item: string; quantity: number; purpose: string }> | undefined;
+      | Array<{ item: string; quantity: number; purpose: string }>
+      | undefined;
     const expectedTime = conds.expected_time_to_treat_minutes as number | undefined;
 
     const injuryList = injuries?.map((i) => `${i.severity} ${i.type} (${i.body_part})`).join('; ');
@@ -320,7 +327,8 @@ export async function buildCasualtyContext(sessionId: string): Promise<string> {
     }
 
     const detTimeline = conds.deterioration_timeline as
-      Array<{ at_minutes: number; description: string }> | undefined;
+      | Array<{ at_minutes: number; description: string }>
+      | undefined;
     if (detTimeline && detTimeline.length > 0) {
       patientLines.push(
         `  Deterioration if untreated: ${detTimeline.map((d) => `+${d.at_minutes}min: ${d.description}`).join('; ')}`,
@@ -527,7 +535,8 @@ export async function buildHazardSafetyContext(sessionId: string): Promise<strin
       if (isPersonnel) {
         const props = a.properties as Record<string, unknown> | null;
         const studZone = props?.stud_zone as
-          { operationalZone?: string; distFromIncidentM?: number } | undefined;
+          | { operationalZone?: string; distFromIncidentM?: number }
+          | undefined;
         let groundTruthZone: string;
         if (studZone?.operationalZone) {
           groundTruthZone = studZone.operationalZone;
@@ -605,7 +614,8 @@ export async function buildHazardSafetyContext(sessionId: string): Promise<strin
       | Array<{ step: number; action: string; detail: string; responsible_team?: string }>
       | undefined;
     const hazardReqPpe = resReqs.required_ppe as
-      Array<{ item: string; for_role?: string; mandatory?: boolean }> | undefined;
+      | Array<{ item: string; for_role?: string; mandatory?: boolean }>
+      | undefined;
     const estResolution = resReqs.estimated_resolution_minutes as number | undefined;
 
     if (hazardIdealSeq && hazardIdealSeq.length > 0) {
@@ -739,7 +749,8 @@ export async function evaluateDecisionAgainstEnvironment(
     let sectorStandards: string | undefined;
     if (teamName) {
       const teamDoctrines = insiderKnowledge.team_doctrines as
-        Record<string, unknown[]> | undefined;
+        | Record<string, unknown[]>
+        | undefined;
       if (teamDoctrines) {
         const { standardsToPromptBlock } = await import('./warroomResearchService.js');
         const findings = resolveTeamDoctrines(teamDoctrines, teamName);

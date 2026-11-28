@@ -29,11 +29,7 @@ import {
   type DependencyInjectRef,
   type TeamDependencyEdge,
 } from './dependencyCore.js';
-import {
-  catalogDependencies,
-  dependencyEdgeSchema,
-  teamDependenciesSchema,
-} from './dependencySchema.js';
+import { catalogDependencies, dependencyEdgeSchema, teamDependenciesSchema } from './dependencySchema.js';
 import { readDependencyEdge } from '../../../shared/teamDependencies.js';
 import {
   dependencyTriggerCause,
@@ -169,12 +165,7 @@ describe('validateDependencies', () => {
   });
 
   test('MO-DEP-001 schema', () => {
-    const result = validateDependencies(
-      [edge({ id: 'not-a-dep', lag_minutes: 90 })],
-      TEAMS,
-      INJECTS,
-      60,
-    );
+    const result = validateDependencies([edge({ id: 'not-a-dep', lag_minutes: 90 })], TEAMS, INJECTS, 60);
     assert.ok(codes(result.issues).includes('MO-DEP-001'));
     assert.equal(result.edges.length, 0);
     const wrapper = prepareTeamDependencies({ v: 2, edges: [] }, TEAMS, INJECTS, 60);
@@ -199,10 +190,7 @@ describe('validateDependencies', () => {
     );
     assert.ok(codes(removed.issues).includes('MO-DEP-003'));
     assert.equal(removed.edges[0]?.upstream.team_uid, GONE);
-    assert.match(
-      removed.issues.find((item) => item.code === 'MO-DEP-003')?.message ?? '',
-      /not an active team/,
-    );
+    assert.match(removed.issues.find((item) => item.code === 'MO-DEP-003')?.message ?? '', /not an active team/);
 
     const unplayable = validateDependencies(
       [edge({ upstream: ref(AI, 'Simulated Desk') })],
@@ -233,10 +221,7 @@ describe('validateDependencies', () => {
       60,
     );
     assert.ok(codes(tooMany.issues).includes('MO-DEP-004'));
-    assert.match(
-      tooMany.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '',
-      /maximum is 3/,
-    );
+    assert.match(tooMany.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '', /maximum is 3/);
 
     const same = validateDependencies(
       [edge({ downstream: [ref(OPS, 'Operations')] })],
@@ -244,10 +229,7 @@ describe('validateDependencies', () => {
       INJECTS,
       60,
     );
-    assert.match(
-      same.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '',
-      /same as the upstream/,
-    );
+    assert.match(same.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '', /same as the upstream/);
 
     const missing = validateDependencies(
       [edge({ downstream: [ref(GONE, 'Logistics')] })],
@@ -255,10 +237,7 @@ describe('validateDependencies', () => {
       INJECTS,
       60,
     );
-    assert.match(
-      missing.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '',
-      /not an active team/,
-    );
+    assert.match(missing.issues.find((item) => item.code === 'MO-DEP-004')?.message ?? '', /not an active team/);
 
     const unplayable = validateDependencies(
       [edge({ downstream: [ref(AI, 'Simulated Desk')] })],
@@ -310,7 +289,12 @@ describe('validateDependencies', () => {
   });
 
   test('MO-DEP-007 window does not fit the duration', () => {
-    const byMinute = validateDependencies([edge({ due: { by_minute: 90 } })], TEAMS, INJECTS, 60);
+    const byMinute = validateDependencies(
+      [edge({ due: { by_minute: 90 } })],
+      TEAMS,
+      INJECTS,
+      60,
+    );
     assert.ok(codes(byMinute.issues).includes('MO-DEP-007'));
 
     const overrun = validateDependencies(
@@ -321,16 +305,22 @@ describe('validateDependencies', () => {
     );
     assert.ok(codes(overrun.issues).includes('MO-DEP-007'));
     assert.equal(
-      validateDependencies([edge()], TEAMS, INJECTS, null).issues.some(
-        (item) => item.code === 'MO-DEP-007',
-      ),
+      validateDependencies([edge()], TEAMS, INJECTS, null).issues.some((item) => item.code === 'MO-DEP-007'),
       false,
     );
   });
 
   test('MO-DEP-008 consequence missing or not conditional', () => {
-    const missing = validateDependencies([edge({ consequence_keys: [] })], TEAMS, INJECTS, 60);
-    assert.equal(missing.issues.find((item) => item.code === 'MO-DEP-008')?.severity, 'warning');
+    const missing = validateDependencies(
+      [edge({ consequence_keys: [] })],
+      TEAMS,
+      INJECTS,
+      60,
+    );
+    assert.equal(
+      missing.issues.find((item) => item.code === 'MO-DEP-008')?.severity,
+      'warning',
+    );
 
     const timed = validateDependencies(
       [edge({ consequence_keys: ['bay3_headcount_request'] })],
@@ -349,10 +339,7 @@ describe('validateDependencies', () => {
       INJECTS,
       60,
     );
-    assert.match(
-      absent.issues.find((item) => item.code === 'MO-DEP-008')?.message ?? '',
-      /not in the scenario/,
-    );
+    assert.match(absent.issues.find((item) => item.code === 'MO-DEP-008')?.message ?? '', /not in the scenario/);
   });
 
   test('MO-DEP-009 no consequence references the edge', () => {
@@ -388,12 +375,7 @@ describe('validateDependencies', () => {
     );
     assert.equal(teams[0]?.playable, true);
     assert.equal(teams[1]?.playable, false);
-    const result = validateDependencies(
-      [edge({ upstream: ref(AI, 'Simulated Desk') })],
-      teams,
-      INJECTS,
-      60,
-    );
+    const result = validateDependencies([edge({ upstream: ref(AI, 'Simulated Desk') })], teams, INJECTS, 60);
     assert.ok(codes(result.issues).includes('MO-DEP-003'));
   });
 
@@ -406,9 +388,7 @@ describe('validateDependencies', () => {
     );
     assert.equal(warned.ok, true);
     if (warned.ok) {
-      assert.ok(
-        warned.issues.some((item) => item.code === 'MO-DEP-008' && item.severity === 'warning'),
-      );
+      assert.ok(warned.issues.some((item) => item.code === 'MO-DEP-008' && item.severity === 'warning'));
       assert.equal(warned.team_dependencies.v, 1);
     }
     const referenced = prepareTeamDependencies({ v: 1, edges: [edge()] }, TEAMS, INJECTS, 60);
@@ -435,11 +415,7 @@ describe('condition any sugar', () => {
 
   test('{ any } is threshold 1 in the evaluator, the trigger shape and key collection', () => {
     assert.equal(
-      evaluateInjectConditions(
-        { any: ['sentiment_below_30', 'sentiment_above_60'] },
-        null,
-        context(20),
-      ).status,
+      evaluateInjectConditions({ any: ['sentiment_below_30', 'sentiment_above_60'] }, null, context(20)).status,
       'appear_met',
     );
     assert.equal(
@@ -455,11 +431,7 @@ describe('condition any sugar', () => {
       'not_eligible',
     );
     assert.equal(
-      evaluateInjectConditions(
-        { threshold: 1, conditions: ['sentiment_above_60'] },
-        null,
-        context(80),
-      ).status,
+      evaluateInjectConditions({ threshold: 1, conditions: ['sentiment_above_60'] }, null, context(80)).status,
       'appear_met',
     );
     assert.deepEqual(collectConditionKeys({ any: ['unresponded:k:10|team=@upstream'] }, null), [
@@ -653,21 +625,9 @@ describe('dependency runtime', () => {
     );
 
     const held = { ...broken, hold_until_minute: 26 };
-    assert.equal(
-      evaluateConditionKey(BROKEN_FOR, runtimeContext(23, silent, { [HEAD]: held })),
-      false,
-    );
-    assert.equal(
-      evaluateConditionKey(
-        `dependency_broken:${HEAD}`,
-        runtimeContext(23, silent, { [HEAD]: held }),
-      ),
-      true,
-    );
-    assert.equal(
-      evaluateConditionKey(BROKEN_FOR, runtimeContext(26, silent, { [HEAD]: held })),
-      true,
-    );
+    assert.equal(evaluateConditionKey(BROKEN_FOR, runtimeContext(23, silent, { [HEAD]: held })), false);
+    assert.equal(evaluateConditionKey(`dependency_broken:${HEAD}`, runtimeContext(23, silent, { [HEAD]: held })), true);
+    assert.equal(evaluateConditionKey(BROKEN_FOR, runtimeContext(26, silent, { [HEAD]: held })), true);
     assert.equal(nextHoldMinute(null, 18), 23);
     assert.equal(nextHoldMinute(30, 20), 30);
   });
@@ -707,7 +667,11 @@ describe('dependency runtime', () => {
     const evaluation = evaluateDependency(opsEdge, runtimeContext(18, silent), gone);
     assert.equal(evaluation.inert, true);
     assert.equal(evaluation.broken, false);
-    const stayed = nextState(pending, { broken: true, met: false, evidence: [], inert: true }, 18);
+    const stayed = nextState(
+      pending,
+      { broken: true, met: false, evidence: [], inert: true },
+      18,
+    );
     assert.equal(stayed.status, 'pending');
     assert.equal(stayed.broken_minute, null);
   });
@@ -788,27 +752,21 @@ describe('dependency runtime', () => {
     const early = step(pending, 15, replyAt(15)).state;
     assert.equal(early.status, 'met');
     assert.equal(
-      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(15), { [HEAD]: early }))
-        .status,
+      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(15), { [HEAD]: early })).status,
       'cancel_met',
     );
 
     const late = step(ignored, 20, replyAt(20)).state;
     assert.equal(late.status, 'recovered');
     assert.equal(
-      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(20), { [HEAD]: late }))
-        .status,
+      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(20), { [HEAD]: late })).status,
       'cancel_met',
     );
   });
 
   test('a dependency key names the upstream team, and a dependency cause records origin fields', () => {
     const insert = planDependencyWrite(null, step(pending, 18, silent).state, [
-      {
-        key: 'unresponded:bay3_headcount_request:10|team=operations',
-        detail: 'No reply',
-        minute: 18,
-      },
+      { key: 'unresponded:bay3_headcount_request:10|team=operations', detail: 'No reply', minute: 18 },
     ]);
     assert.equal(insert?.op, 'insert');
     assert.equal(insert?.whereStatus, null);
@@ -821,10 +779,10 @@ describe('dependency runtime', () => {
     assert.equal(Object.prototype.hasOwnProperty.call(update?.row ?? {}, 'upstream_team'), false);
     assert.equal(planDependencyWrite('broken', step(pending, 18, silent).state, []), null);
 
-    assert.deepEqual(dependencyTriggerCause({ cause: { kind: 'dependency', dep_id: HEAD } }), {
-      cause_kind: 'dependency',
-      dep_id: HEAD,
-    });
+    assert.deepEqual(
+      dependencyTriggerCause({ cause: { kind: 'dependency', dep_id: HEAD } }),
+      { cause_kind: 'dependency', dep_id: HEAD },
+    );
     assert.equal(dependencyTriggerCause({ cause: { kind: 'mood', dep_id: HEAD } }).dep_id, null);
     assert.equal(
       isCrossTeamHop({
@@ -838,11 +796,10 @@ describe('dependency runtime', () => {
 
     rememberDependencySources('sess-dep', new Map([[HEAD, ['Operations']]]));
     const profile = withDependencySession('sess-dep', () =>
-      crossTeamProfile(
-        { target_teams: ['Communications'] },
-        [BROKEN_FOR],
-        [{ name: 'Operations' }, { name: 'Communications' }],
-      ),
+      crossTeamProfile({ target_teams: ['Communications'] }, [BROKEN_FOR], [
+        { name: 'Operations' },
+        { name: 'Communications' },
+      ]),
     );
     assert.deepEqual(profile.source_teams, ['Operations']);
     assert.equal(profile.is_cross_team, true);
@@ -913,14 +870,9 @@ describe('dependency keys feed the loop guard and the cascade cap', () => {
     const session = 'example-c';
     rememberDependencyReferences(
       session,
-      new Map([
-        [
-          'dep_legal_statement_comms',
-          guardKeysForDependency(brokenWhen, [
-            { key: 'unresponded:cons_comms_legal:5|team=legal' },
-          ]),
-        ],
-      ]),
+      new Map([['dep_legal_statement_comms', guardKeysForDependency(brokenWhen, [
+        { key: 'unresponded:cons_comms_legal:5|team=legal' },
+      ])]]),
     );
     const held = withDependencySession(session, () =>
       applyCrossTeamGuards([candidate(30)], recent, [], guardEnv),
@@ -935,25 +887,23 @@ describe('dependency keys feed the loop guard and the cascade cap', () => {
 
     rememberDependencyReferences(
       session,
-      new Map([
-        [
-          'dep_legal_statement_comms',
-          guardKeysForDependency(brokenWhen, [
-            { key: 'unresponded:cons_comms_legal:5|team=legal' },
-            { key: duty },
-          ]),
-        ],
-      ]),
+      new Map([[
+        'dep_legal_statement_comms',
+        guardKeysForDependency(brokenWhen, [
+          { key: 'unresponded:cons_comms_legal:5|team=legal' },
+          { key: duty },
+        ]),
+      ]]),
     );
     const independent = withDependencySession(session, () =>
       applyCrossTeamGuards([candidate(30)], recent, [], guardEnv),
     );
     assert.equal(independent.hold.length, 0);
     assert.equal(independent.publish[0]?.id, 'cons_legal_comms');
-    assert.deepEqual(
-      withDependencySession(session, () => referencedInjectKeys(depKey)),
-      ['cons_comms_legal', duty],
-    );
+    assert.deepEqual(withDependencySession(session, () => referencedInjectKeys(depKey)), [
+      'cons_comms_legal',
+      duty,
+    ]);
   });
 
   test('the fourth dependency hop is cancelled by the cascade cap', () => {
@@ -964,23 +914,17 @@ describe('dependency keys feed the loop guard and the cascade cap', () => {
       ['dep_3', 'c2'],
       ['dep_4', 'c3'],
     ] as const;
-    rememberDependencyReferences(session, new Map(parents.map(([dep, inject]) => [dep, [inject]])));
+    rememberDependencyReferences(
+      session,
+      new Map(parents.map(([dep, inject]) => [dep, [inject]])),
+    );
     const hops = [
       { dep: 'dep_1', inject: 'c1', source: 'A', target: 'B' },
       { dep: 'dep_2', inject: 'c2', source: 'B', target: 'C' },
       { dep: 'dep_3', inject: 'c3', source: 'C', target: 'D' },
       { dep: 'dep_4', inject: 'c4', source: 'D', target: 'A' },
     ];
-    const triggers: Record<
-      string,
-      {
-        cause_depth: number;
-        source_teams: string[];
-        target_teams: string[];
-        origin: string;
-        is_cross_team: boolean;
-      }
-    > = {
+    const triggers: Record<string, { cause_depth: number; source_teams: string[]; target_teams: string[]; origin: string; is_cross_team: boolean }> = {
       root: {
         cause_depth: 0,
         source_teams: ['A'],
@@ -1041,12 +985,8 @@ describe('shared reader and zod schema', () => {
     assert.equal(shared.edge.lag_minutes, parsed.data.lag_minutes);
     assert.equal(shared.edge.upstream.team_uid, parsed.data.upstream.team_uid);
     assert.deepEqual(
-      'conditions' in shared.edge.broken_when
-        ? shared.edge.broken_when.conditions
-        : shared.edge.broken_when.all,
-      'conditions' in parsed.data.broken_when
-        ? parsed.data.broken_when.conditions
-        : parsed.data.broken_when.all,
+      'conditions' in shared.edge.broken_when ? shared.edge.broken_when.conditions : shared.edge.broken_when.all,
+      'conditions' in parsed.data.broken_when ? parsed.data.broken_when.conditions : parsed.data.broken_when.all,
     );
 
     const badUid = edge({ upstream: { team_uid: 'not-a-uuid', team_name: 'Operations' } });

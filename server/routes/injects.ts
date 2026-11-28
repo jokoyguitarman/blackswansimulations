@@ -1040,7 +1040,9 @@ router.post(
       // bypasses the once-per-session claim (re-publishing an inject is a legitimate trainer move).
       try {
         await publishInjectToSession(id, session_id, user.id, io, { force: true });
-        const minute = crisisElapsedMinutes(session.start_time ? String(session.start_time) : null);
+        const minute = crisisElapsedMinutes(
+          session.start_time ? String(session.start_time) : null,
+        );
         void recordInjectTrigger({
           sessionId: session_id,
           injectId: id,

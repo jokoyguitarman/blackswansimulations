@@ -1350,10 +1350,7 @@ export const SessionView = () => {
       );
       await loadSession();
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')
-      ) {
+      if (error instanceof ApiError && (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')) {
         throw error;
       }
       console.error('Failed to start session:', error);

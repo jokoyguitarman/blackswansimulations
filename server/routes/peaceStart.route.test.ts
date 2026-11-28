@@ -63,25 +63,8 @@ describe('session start route', () => {
       const builder: Record<string, unknown> = {};
       const self = () => builder;
       for (const method of [
-        'select',
-        'eq',
-        'neq',
-        'in',
-        'is',
-        'not',
-        'or',
-        'order',
-        'limit',
-        'gte',
-        'lte',
-        'gt',
-        'lt',
-        'filter',
-        'match',
-        'contains',
-        'insert',
-        'upsert',
-        'delete',
+        'select', 'eq', 'neq', 'in', 'is', 'not', 'or', 'order', 'limit', 'gte', 'lte', 'gt', 'lt',
+        'filter', 'match', 'contains', 'insert', 'upsert', 'delete',
       ]) {
         builder[method] = self;
       }
@@ -140,9 +123,7 @@ describe('session start route', () => {
     supabaseAdmin.from = originalFrom;
     (supabaseAdmin as { auth: typeof originalAuth }).auth = originalAuth;
     env.enablePeacePeriod = originalPeace;
-    await new Promise<void>((resolve, reject) =>
-      server.close((err) => (err ? reject(err) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   });
 
   async function start(body: Record<string, unknown> = { status: 'in_progress' }) {

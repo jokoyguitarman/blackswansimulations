@@ -343,7 +343,8 @@ function readConditionGroup(value: unknown): NormalizedConditions | null | { err
   return { error: 'a condition group must use all, any, or threshold' };
 }
 
-const TEAM_UID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const TEAM_UID =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 function readTeamRef(value: unknown, label: string): TeamRef | { error: string } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

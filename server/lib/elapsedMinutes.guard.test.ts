@@ -16,8 +16,7 @@ const SERVER_ROOT = fileURLToPath(new URL('..', import.meta.url));
  * - analyticsService / intelSharingService / teamScoreService: a row's created_at minus start.
  * - aarSocialSectionService: session end minus start, for the report duration.
  */
-const INLINE_ELAPSED =
-  /(?:Date\.now\(\)|new Date\(\)\.getTime\(\))\s*-\s*(?:new Date\([^)\n]{0,160}?(?:start_time|startTime)|startTime\b|startMs\b|sessionStartMs\b)/g;
+const INLINE_ELAPSED = /(?:Date\.now\(\)|new Date\(\)\.getTime\(\))\s*-\s*(?:new Date\([^)\n]{0,160}?(?:start_time|startTime)|startTime\b|startMs\b|sessionStartMs\b)/g;
 
 function walk(dir: string): string[] {
   const files: string[] = [];

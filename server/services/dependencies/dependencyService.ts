@@ -180,9 +180,7 @@ export function sessionMinute(startTime: string | null | undefined, now = Date.n
   return crisisElapsedMinutes(startTime, now);
 }
 
-export async function loadScenarioDependencyEdges(
-  scenarioId: string,
-): Promise<TeamDependencyEdge[]> {
+export async function loadScenarioDependencyEdges(scenarioId: string): Promise<TeamDependencyEdge[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('scenarios')
@@ -471,9 +469,7 @@ export async function listSessionDependencies(
   const edges = await loadScenarioDependencyEdges(session.scenario_id);
   const teams = await loadTeams(session.scenario_id);
   const stored =
-    env.crossTeamDependencies && !tableMissing
-      ? await loadRows(session.id)
-      : { missing: true, rows: [] };
+    env.crossTeamDependencies && !tableMissing ? await loadRows(session.id) : { missing: true, rows: [] };
   const rows = stored.missing ? [] : stored.rows;
   const map = projectDependencyStates(edges, rows, teams);
   const evidenceById = new Map(rows.map((row) => [row.dep_id, row.evidence]));
@@ -510,11 +506,7 @@ export async function waiveDependency(
   if (current.status === 'waived') return { ok: true, state: current };
   const upcoming: DependencyRuntimeState = { ...current, status: 'waived' };
   const evidence: DependencyEvidence[] = [
-    {
-      key: `dependency_waived:${depId}`,
-      detail: 'The trainer waived this dependency',
-      minute: elapsed,
-    },
+    { key: `dependency_waived:${depId}`, detail: 'The trainer waived this dependency', minute: elapsed },
   ];
   const plan = planDependencyWrite(
     stored.rows.find((row) => row.dep_id === depId)?.status ?? null,

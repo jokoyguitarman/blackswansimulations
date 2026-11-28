@@ -98,9 +98,7 @@ function injectKeyArgs(def: ConditionDef, args: readonly string[]): string[] {
   return refs;
 }
 
-function schemaMessage(error: {
-  issues: readonly { path: PropertyKey[]; message: string }[];
-}): string {
+function schemaMessage(error: { issues: readonly { path: PropertyKey[]; message: string }[] }): string {
   return error.issues
     .map((item) => {
       const path = item.path.length ? item.path.map(String).join('.') : 'edge';
@@ -220,27 +218,15 @@ export function validateDependencies(
         );
       } else if (team.playable === false) {
         issues.push(
-          issue(
-            'MO-DEP-004',
-            downPath,
-            `Downstream team "${team.team_name}" is not a playable team`,
-          ),
+          issue('MO-DEP-004', downPath, `Downstream team "${team.team_name}" is not a playable team`),
         );
       }
       const identity = teamIdentity(ref, team, downIndex);
       if (identity === upstreamIdentity) {
-        issues.push(
-          issue('MO-DEP-004', downPath, 'Downstream team is the same as the upstream team'),
-        );
+        issues.push(issue('MO-DEP-004', downPath, 'Downstream team is the same as the upstream team'));
       }
       if (seenDown.has(identity)) {
-        issues.push(
-          issue(
-            'MO-DEP-004',
-            downPath,
-            `Downstream team "${ref.team_name}" is listed more than once`,
-          ),
-        );
+        issues.push(issue('MO-DEP-004', downPath, `Downstream team "${ref.team_name}" is listed more than once`));
       }
       seenDown.add(identity);
     });
@@ -285,11 +271,7 @@ function reportConditions(
     for (const ref of injectKeyArgs(parsed.def, parsed.args)) {
       if (!byKey.has(ref)) {
         issues.push(
-          issue(
-            'MO-DEP-006',
-            path,
-            `Condition ${key} references inject_key "${ref}", which is not in the scenario`,
-          ),
+          issue('MO-DEP-006', path, `Condition ${key} references inject_key "${ref}", which is not in the scenario`),
         );
       }
     }
@@ -385,7 +367,12 @@ function reportConsequences(
   );
   if (!referenced) {
     issues.push(
-      issue('MO-DEP-009', path, `No inject conditions on dependency ${edge.id}`, 'warning'),
+      issue(
+        'MO-DEP-009',
+        path,
+        `No inject conditions on dependency ${edge.id}`,
+        'warning',
+      ),
     );
   }
 }

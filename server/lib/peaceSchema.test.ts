@@ -26,10 +26,7 @@ describe('peace column select', () => {
   test('a missing 281 column is remembered, and a different missing column is not', async () => {
     env.enablePeacePeriod = true;
     assert.equal(withOpenedAt('id, start_time'), 'id, start_time, opened_at');
-    assert.equal(
-      isPeaceSchemaMissing({ code: '42703', message: 'column "team_uid" does not exist' }),
-      false,
-    );
+    assert.equal(isPeaceSchemaMissing({ code: '42703', message: 'column "team_uid" does not exist' }), false);
     assert.equal(
       isPeaceSchemaMissing({ code: 'PGRST204', message: "Could not find the 'opened_at' column" }),
       true,
@@ -39,10 +36,7 @@ describe('peace column select', () => {
     const first = await selectWithOpenedAt('id, start_time', async (columns) => {
       seen.push(columns);
       if (columns.includes('opened_at')) {
-        return {
-          data: null,
-          error: { code: 'PGRST204', message: "Could not find the 'opened_at' column" },
-        };
+        return { data: null, error: { code: 'PGRST204', message: "Could not find the 'opened_at' column" } };
       }
       return { data: { id: 's' }, error: null };
     });

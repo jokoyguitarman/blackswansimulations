@@ -104,25 +104,8 @@ function chain(result: { data: unknown; error: { code?: string; message?: string
   const builder: Record<string, unknown> = {};
   const self = () => builder;
   for (const method of [
-    'select',
-    'eq',
-    'neq',
-    'in',
-    'is',
-    'not',
-    'or',
-    'order',
-    'limit',
-    'gte',
-    'lte',
-    'gt',
-    'lt',
-    'filter',
-    'match',
-    'contains',
-    'insert',
-    'upsert',
-    'delete',
+    'select', 'eq', 'neq', 'in', 'is', 'not', 'or', 'order', 'limit', 'gte', 'lte', 'gt', 'lt',
+    'filter', 'match', 'contains', 'insert', 'upsert', 'delete',
   ]) {
     builder[method] = self;
   }
@@ -247,7 +230,9 @@ describe('engineTicker peace gate', () => {
   test('flag off still ticks a session whose start_time is in the past', async () => {
     calls.length = 0;
     env.enablePeacePeriod = false;
-    const rows = [{ id: 'live-session', start_time: new Date(Date.now() - 60_000).toISOString() }];
+    const rows = [
+      { id: 'live-session', start_time: new Date(Date.now() - 60_000).toISOString() },
+    ];
     (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
       calls.push(table);
       return chain({ data: table === 'sessions' ? rows : [], error: null });

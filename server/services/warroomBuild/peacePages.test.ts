@@ -16,8 +16,18 @@ const orgPage = {
       is_primary: true,
       role: 'protagonist',
       control_mode: 'player',
-      facebook: { page_name: 'Acme', page_handle: '@acme', page_bio: 'Breakfast', follower_count: 10 },
-      x_twitter: { page_name: 'Acme', page_handle: '@acme_x', page_bio: 'Breakfast', follower_count: 10 },
+      facebook: {
+        page_name: 'Acme',
+        page_handle: '@acme',
+        page_bio: 'Breakfast',
+        follower_count: 10,
+      },
+      x_twitter: {
+        page_name: 'Acme',
+        page_handle: '@acme_x',
+        page_bio: 'Breakfast',
+        follower_count: 10,
+      },
     },
     {
       org_key: 'rival',
@@ -25,7 +35,12 @@ const orgPage = {
       is_primary: false,
       role: 'antagonist',
       control_mode: 'ai',
-      facebook: { page_name: 'Rival', page_handle: '@rival', page_bio: 'Lunch', follower_count: 10 },
+      facebook: {
+        page_name: 'Rival',
+        page_handle: '@rival',
+        page_bio: 'Lunch',
+        follower_count: 10,
+      },
       x_twitter: { page_name: 'Rival', page_handle: '@rival_x', page_bio: '', follower_count: 1 },
     },
     {
@@ -34,7 +49,12 @@ const orgPage = {
       is_primary: false,
       role: 'pressure',
       control_mode: 'ai',
-      facebook: { page_name: 'Watch', page_handle: '@watch', page_bio: 'Union', follower_count: 10 },
+      facebook: {
+        page_name: 'Watch',
+        page_handle: '@watch',
+        page_bio: 'Union',
+        follower_count: 10,
+      },
       x_twitter: { page_name: 'Watch', page_handle: '@watch_x', page_bio: '', follower_count: 1 },
     },
   ],
@@ -116,7 +136,11 @@ describe('pages runner peace sub-step', { concurrency: false }, () => {
       const pages = pagesOutput();
       const output = await attachPeaceToPages(pages, source(), {
         warn: () => undefined,
-        client: { async complete() { return validPeaceFeed(); } },
+        client: {
+          async complete() {
+            return validPeaceFeed();
+          },
+        },
       });
       assert.equal(output.org_page, orgPage);
       assert.equal(output.orgs.length, 1);

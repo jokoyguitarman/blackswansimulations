@@ -546,7 +546,12 @@ export class DemoActionDispatcher {
     const aiEnvC = aiEnvResult as typeof envC;
 
     type FailureType =
-      'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected' | 'infrastructure_gap';
+      | 'vague'
+      | 'contradiction'
+      | 'below_standard'
+      | 'prereq'
+      | 'rejected'
+      | 'infrastructure_gap';
     let failureType: FailureType | null = null;
     let failureContent = '';
 

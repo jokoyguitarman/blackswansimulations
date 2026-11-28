@@ -134,7 +134,8 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     }
 
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
-      Record<string, unknown> | undefined;
+      | Record<string, unknown>
+      | undefined;
 
     const personaList = personas
       .map(
@@ -369,7 +370,8 @@ export async function triggerNPCDMReply(
         const userId =
           playerUserId ||
           ((threadMessages || []).find((m) => m.recipient_user_id)?.recipient_user_id as
-            string | undefined) ||
+            | string
+            | undefined) ||
           (await resolveRecipientUserId(sessionId, playerHandle));
         if (!userId) return;
 

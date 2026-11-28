@@ -100,7 +100,9 @@ export function emptyDependencyState(
   };
 }
 
-export function dependencyStateMap(value: unknown): Record<string, DependencyRuntimeState> | null {
+export function dependencyStateMap(
+  value: unknown,
+): Record<string, DependencyRuntimeState> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, DependencyRuntimeState>;
 }
@@ -252,8 +254,7 @@ function richLabel(
   if (id === 'dependency_broken_for') {
     return `${failed} (${ageMinutes(entry, elapsed, lag)} min ago)`;
   }
-  if (id === 'dependency_met')
-    return `${upstream} delivered ${deliverable} to ${downstream} on time`;
+  if (id === 'dependency_met') return `${upstream} delivered ${deliverable} to ${downstream} on time`;
   if (id === 'dependency_recovered') {
     return `${upstream} delivered ${deliverable} to ${downstream} late`;
   }
@@ -265,12 +266,7 @@ function heldBack(entry: DependencyRuntimeState, elapsed: number): boolean {
   return entry.hold_until_minute != null && elapsed < entry.hold_until_minute;
 }
 
-function keyMet(
-  id: string,
-  entry: DependencyRuntimeState | null,
-  elapsed: number,
-  lag: number,
-): boolean {
+function keyMet(id: string, entry: DependencyRuntimeState | null, elapsed: number, lag: number): boolean {
   if (!entry) return false;
   const status = entry.status;
   if (id === 'dependency_broken') return status === 'broken' || status === 'recovered';
@@ -300,8 +296,7 @@ function keyDetail(
     if (entry.status === 'pending') return 'Still pending';
     return `Status is ${entry.status}`;
   }
-  if (entry.status === 'broken' && entry.broken_minute != null)
-    return `Broken at T+${entry.broken_minute}`;
+  if (entry.status === 'broken' && entry.broken_minute != null) return `Broken at T+${entry.broken_minute}`;
   if (entry.status === 'met' && entry.met_minute != null) return `Met at T+${entry.met_minute}`;
   if (entry.status === 'recovered' && entry.recovered_minute != null) {
     return `Recovered at T+${entry.recovered_minute}`;
@@ -342,8 +337,7 @@ export function conditionKeysOf(group: unknown): string[] {
   const normalized = applyAnySugar(group);
   if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return [];
   const record = normalized as { all?: unknown; conditions?: unknown };
-  if (Array.isArray(record.all))
-    return record.all.filter((item): item is string => typeof item === 'string');
+  if (Array.isArray(record.all)) return record.all.filter((item): item is string => typeof item === 'string');
   if (Array.isArray(record.conditions)) {
     return record.conditions.filter((item): item is string => typeof item === 'string');
   }

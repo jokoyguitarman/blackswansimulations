@@ -57,7 +57,8 @@ export async function applyInjectPublishEffects(
   inject: Record<string, unknown>,
 ): Promise<void> {
   const objectivePenalty = inject.objective_penalty as
-    { objective_id?: string; reason?: string; points?: number } | undefined;
+    | { objective_id?: string; reason?: string; points?: number }
+    | undefined;
   if (
     objectivePenalty?.objective_id &&
     objectivePenalty?.reason != null &&
@@ -773,10 +774,7 @@ async function penalizeContainmentFailure(sessionId: string): Promise<void> {
     if (!session) return;
 
     const { data: teams } = await activeTeams(
-      supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name')
-        .eq('scenario_id', session.scenario_id),
+      supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', session.scenario_id),
     );
 
     const policeTeam = (teams ?? []).find((t) => {
@@ -950,7 +948,8 @@ async function spawnSecondaryDevice(
     const target = pool[Math.floor(Math.random() * pool.length)];
 
     const geom = (target as Record<string, unknown>).geometry as
-      Record<string, unknown> | undefined;
+      | Record<string, unknown>
+      | undefined;
     let baseLat = 0;
     let baseLng = 0;
     if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {

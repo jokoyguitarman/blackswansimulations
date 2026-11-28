@@ -169,7 +169,8 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
       const sinceLastDet = minutesSinceLastDeterioration(conds, sessionStartMs, appearsAt);
 
       const detTimeline = conds.deterioration_timeline as
-        Array<{ at_minutes: number; description: string }> | undefined;
+        | Array<{ at_minutes: number; description: string }>
+        | undefined;
 
       // --- Untreated patients: patient-specific timeline OR generic ladder ---
       if (UNTREATED_STATUSES.includes(cas.status)) {

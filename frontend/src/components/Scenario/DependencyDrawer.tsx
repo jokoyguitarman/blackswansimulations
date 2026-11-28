@@ -254,15 +254,10 @@ export function DependencyDrawer({
       downstream,
       brokenKeys,
       brokenQuantifier:
-        broken?.quantifier === 'at_least'
-          ? 'at_least'
-          : broken?.quantifier === 'all'
-            ? 'all'
-            : 'any',
+        broken?.quantifier === 'at_least' ? 'at_least' : broken?.quantifier === 'all' ? 'all' : 'any',
       brokenThreshold: broken?.threshold ?? 1,
       metKeys,
-      metQuantifier:
-        met?.quantifier === 'at_least' ? 'at_least' : met?.quantifier === 'all' ? 'all' : 'any',
+      metQuantifier: met?.quantifier === 'at_least' ? 'at_least' : met?.quantifier === 'all' ? 'all' : 'any',
       metThreshold: met?.threshold ?? 1,
       brokenError:
         brokenCompiled == null
@@ -270,8 +265,7 @@ export function DependencyDrawer({
           : brokenCompiled.errors.length > 0
             ? (brokenCompiled.errors[0] ?? 'Breaks when is incomplete.')
             : null,
-      metError:
-        metCompiled && metCompiled.errors.length > 0 ? (metCompiled.errors[0] ?? null) : null,
+      metError: metCompiled && metCompiled.errors.length > 0 ? (metCompiled.errors[0] ?? null) : null,
       durationMinutes,
       takenIds: takenDependencyIds,
       source: edge?.source ?? 'trainer',

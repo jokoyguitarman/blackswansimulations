@@ -498,7 +498,11 @@ function actionHits(
   return hits;
 }
 
-function hitMinute(startTime: string | null, at: string, slug: string): ActivityHit | null {
+function hitMinute(
+  startTime: string | null,
+  at: string,
+  slug: string,
+): ActivityHit | null {
   if (!slug || !at) return null;
   const minute = activityMinute(startTime, at);
   if (minute == null) return null;

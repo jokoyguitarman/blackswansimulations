@@ -19,9 +19,15 @@ describe('session phase', () => {
   test('null start is not started, a future start is peace, a past start is crisis', () => {
     assert.equal(sessionPhase({ start_time: null }, T0), 'not_started');
     assert.equal(sessionPhase({ start_time: 'not-a-date' }, T0), 'not_started');
-    assert.equal(sessionPhase({ start_time: new Date(T0 + 60_000).toISOString() }, T0), 'peace');
+    assert.equal(
+      sessionPhase({ start_time: new Date(T0 + 60_000).toISOString() }, T0),
+      'peace',
+    );
     assert.equal(sessionPhase({ start_time: new Date(T0).toISOString() }, T0), 'crisis');
-    assert.equal(sessionPhase({ start_time: new Date(T0 - 1).toISOString() }, T0), 'crisis');
+    assert.equal(
+      sessionPhase({ start_time: new Date(T0 - 1).toISOString() }, T0),
+      'crisis',
+    );
     assert.equal(isCrisisPhase({ start_time: null }, T0), false);
     assert.equal(isCrisisPhase({ start_time: new Date(T0 + 1).toISOString() }, T0), false);
     assert.equal(isCrisisPhase({ start_time: new Date(T0).toISOString() }, T0), true);
@@ -30,10 +36,7 @@ describe('session phase', () => {
   test('sessionValidAt prefers opened_at, then start_time, then now', () => {
     const now = new Date('2026-06-01T12:00:00.000Z');
     assert.equal(
-      sessionValidAt(
-        { start_time: '2026-06-01T12:05:00.000Z', opened_at: '2026-06-01T12:00:00.000Z' },
-        now,
-      ),
+      sessionValidAt({ start_time: '2026-06-01T12:05:00.000Z', opened_at: '2026-06-01T12:00:00.000Z' }, now),
       '2026-06-01T12:00:00.000Z',
     );
     assert.equal(
@@ -47,21 +50,8 @@ describe('session phase', () => {
 
 describe('crisis elapsed helpers match the old formulas for every non-negative elapsed', () => {
   const elapsedMs = [
-    0,
-    1,
-    999,
-    59_999,
-    60_000,
-    60_001,
-    89_999,
-    90_000,
-    90_001,
-    119_999,
-    120_000,
-    5 * 60_000,
-    15 * 60_000 + 30_000,
-    59 * 60_000 + 30_000,
-    24 * 60 * 60_000,
+    0, 1, 999, 59_999, 60_000, 60_001, 89_999, 90_000, 90_001, 119_999, 120_000,
+    5 * 60_000, 15 * 60_000 + 30_000, 59 * 60_000 + 30_000, 24 * 60 * 60_000,
   ];
 
   test('floor helper equals Math.floor for non-negative values and the old clamp for negatives', () => {
@@ -89,10 +79,7 @@ describe('crisis elapsed helpers match the old formulas for every non-negative e
       const now = start + ms;
       const rounded = Math.round((now - start) / 60000);
       assert.equal(crisisElapsedRoundedMinutes(new Date(start).toISOString(), now), rounded);
-      assert.equal(
-        crisisElapsedRoundedMinutes(new Date(start).toISOString(), now),
-        Math.max(0, rounded),
-      );
+      assert.equal(crisisElapsedRoundedMinutes(new Date(start).toISOString(), now), Math.max(0, rounded));
     }
     assert.equal(crisisElapsedRoundedMinutes(new Date(start).toISOString(), start + 90_000), 2);
     assert.equal(crisisElapsedMinutes(new Date(start).toISOString(), start + 90_000), 1);

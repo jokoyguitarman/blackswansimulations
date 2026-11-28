@@ -156,10 +156,7 @@ export async function buildConditionEvaluationContext(
       const dependencyState = await loadContextDependencyState(session.id, session.scenario_id);
       if (dependencyState) currentState.dependency_state = dependencyState;
     } catch (err) {
-      logger.warn(
-        { err, sessionId: session.id },
-        'dependency state was not added to the evaluation context',
-      );
+      logger.warn({ err, sessionId: session.id }, 'dependency state was not added to the evaluation context');
     }
   }
 
