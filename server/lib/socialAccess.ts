@@ -44,6 +44,19 @@ export interface ConcludedWriteBlock {
 }
 
 /**
+ * WP9 exemption. A sandbox session is never `completed` or `cancelled`, so the
+ * freeze already ignores it. The named check is what WP9 asserts.
+ */
+export function sandboxExemptFromConcludedFreeze(session: SocialSessionRef): boolean {
+  return session.status === 'sandbox';
+}
+
+/** Admin, or the trainer who ran the session. Same rule as `isSessionStaff`. */
+export function canSpectate(user: SocialActor, session: SocialSessionRef): boolean {
+  return isSessionStaff(user, session);
+}
+
+/**
  * Player writes on a completed or cancelled session.
  * The session's trainer and admins are not blocked (their reads are unaffected either way).
  */
@@ -52,6 +65,7 @@ export function playerWriteBlock(
   session: SocialSessionRef,
   env: NodeJS.ProcessEnv = process.env,
 ): ConcludedWriteBlock | null {
+  if (sandboxExemptFromConcludedFreeze(session)) return null;
   if (!concludedWriteFreezeEnabled(env)) return null;
   if (!isConcludedStatus(session.status)) return null;
   if (isSessionStaff(user, session)) return null;
