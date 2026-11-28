@@ -84,35 +84,45 @@ export function removedExistingTeams<T extends { team_uid?: string }>(
   return before.filter((team) => isExistingTeam(team.team_uid, baselineUids) && !kept.has(team.team_uid as string));
 }
 
-function keysOf(value: unknown, field: string): string[] {
-  if (!Array.isArray(value)) return [];
-  const keys: string[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== 'object') continue;
-    const key = (item as Record<string, unknown>)[field];
-    if (typeof key === 'string' && key.trim()) keys.push(key);
-  }
-  return keys;
+/** Identity returned with the open edit. It comes from the frozen baseline, not the draft. */
+export interface FrozenBaselineIdentity {
+  primary_org_key: string;
+  org_keys: readonly string[];
+  team_uids: readonly string[];
 }
 
-/** Org keys and team uids frozen on the draft the edit opened with. */
-export function baselineIdentity(input: Record<string, unknown>): {
+/**
+ * Badges and `make_primary` for a draft the wizard is resuming.
+ * Org and team membership come only from the frozen identity. The draft supplies
+ * the organisation currently in the primary slot, which may already have been swapped.
+ */
+export function resumeEditBaseline(
+  frozen: FrozenBaselineIdentity,
+  savedDraft: Record<string, unknown>,
+): {
+  baselinePrimaryKey: string;
   orgKeys: string[];
   teamUids: string[];
+  makePrimaryKey: string | null;
+  existingOrg: (orgKey: string | undefined) => boolean;
+  previousPrimary: (orgKey: string | undefined) => boolean;
 } {
-  const orgKeys = [
-    ...(typeof input.primary_org_key === 'string' && input.primary_org_key ? [input.primary_org_key] : []),
-    ...keysOf(input.extra_organisations, 'org_key'),
-    ...keysOf(input.pressure_organisations, 'org_key'),
-    ...keysOf(input.competitor_entries, 'org_key'),
-  ];
-  const teamUids = [
-    ...keysOf(input.team_roster, 'team_uid'),
-    ...(Array.isArray(input.extra_organisations)
-      ? input.extra_organisations.flatMap((org) =>
-          org && typeof org === 'object' ? keysOf((org as { team_roster?: unknown }).team_roster, 'team_uid') : [],
-        )
-      : []),
-  ];
-  return { orgKeys, teamUids };
+  const orgKeys = [...frozen.org_keys];
+  const teamUids = [...frozen.team_uids];
+  const baselinePrimaryKey = frozen.primary_org_key;
+  const current =
+    typeof savedDraft.primary_org_key === 'string' && savedDraft.primary_org_key.trim()
+      ? savedDraft.primary_org_key
+      : baselinePrimaryKey;
+  const makePrimaryKey = current !== baselinePrimaryKey ? current : null;
+  const orgSet = new Set(orgKeys);
+  return {
+    baselinePrimaryKey,
+    orgKeys,
+    teamUids,
+    makePrimaryKey,
+    existingOrg: (orgKey) => isExistingOrg(orgKey, orgSet),
+    previousPrimary: (orgKey) =>
+      makePrimaryKey != null && typeof orgKey === 'string' && orgKey === baselinePrimaryKey,
+  };
 }

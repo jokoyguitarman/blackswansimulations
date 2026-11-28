@@ -284,11 +284,14 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
           });
           return;
         }
+        const listed = await deps.service.get(req.params.id);
+        const open = listed.available && listed.found ? openEditOf(listed.edits) : null;
         res.status(201).json({
           edit_id: opened.editId,
           outcome: 'opened',
           draft_id: attached.draftId,
           baseline_hash: attached.baselineHash,
+          baseline_identity: open?.baseline_identity ?? null,
         });
         return;
       }
@@ -300,6 +303,7 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
           edit_id: opened.editId,
           outcome: 'existing',
           draft_id: open?.draft_id ?? null,
+          baseline_identity: open?.baseline_identity ?? null,
         });
         return;
       }

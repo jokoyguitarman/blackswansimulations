@@ -77,12 +77,12 @@ import {
 } from '../components/Scenario/SetupEditPanels';
 import { BRIEF_EDIT_NOTE, editBannerText, editNumberFromAllowance, makePrimaryNote, recompileTooltips } from '../lib/editModeBanner';
 import {
-  baselineIdentity,
   editModeFlags,
   isExistingOrg,
   isExistingTeam,
   readSetupEditLink,
   removedExistingTeams,
+  resumeEditBaseline,
   type SetupEditLink,
 } from '../lib/editModeFlags';
 import { swapMakePrimary, type SwappablePrimary } from '../lib/makePrimary';
@@ -485,6 +485,10 @@ export const SocialCrisisWizard = () => {
   const [abandoningEdit, setAbandoningEdit] = useState(false);
   const [draftMissing, setDraftMissing] = useState(false);
   const baselineCaptured = useRef(false);
+  /** Primary key on the draft when this edit was loaded. Not the frozen baseline. */
+  const loadedPrimaryRef = useRef('');
+  /** Edit id whose frozen baseline has already been applied. Later draft saves must not reset it. */
+  const frozenAppliedFor = useRef<string | null>(null);
   /** Set when a build finishes; the effect below saves once the finished content has rendered. */
   const pendingBuildSave = useRef(false);
 
@@ -1260,16 +1264,12 @@ export const SocialCrisisWizard = () => {
       if (!baselineCaptured.current) {
         baselineCaptured.current = true;
         const key = typeof input.primary_org_key === 'string' ? input.primary_org_key : 'primary';
-        setBaselinePrimaryKey(key);
+        loadedPrimaryRef.current = key;
         setPrimaryOrgKey(key);
         if (typeof input.primary_org_uid === 'string') setPrimaryOrgUid(input.primary_org_uid);
         if (typeof input.primary_facebook_handle === 'string') setPrimaryFacebook(input.primary_facebook_handle);
         if (typeof input.primary_x_handle === 'string') setPrimaryX(input.primary_x_handle);
         if (typeof input.crisis_description === 'string') setEditCrisisType(input.crisis_description);
-        if (typeof input.make_primary === 'string') setMakePrimaryKey(input.make_primary);
-        const identity = baselineIdentity(input);
-        setBaselineOrgKeys(new Set(identity.orgKeys));
-        setBaselineTeamUids(new Set(identity.teamUids));
       }
     }
     const reviewStages = (input as { setup_edit_review?: { stages?: ReviewStageOutput[] } }).setup_edit_review?.stages;
@@ -3471,6 +3471,26 @@ export const SocialCrisisWizard = () => {
     };
   }, [scenarioId]);
 
+  useEffect(() => {
+    if (!setupEdit || frozenAppliedFor.current === setupEdit.edit_id) return;
+    let cancelled = false;
+    void getSetupEditAllowance(setupEdit.scenario_id).then((allowance) => {
+      if (cancelled || frozenAppliedFor.current === setupEdit.edit_id) return;
+      const open = allowance?.open_edit;
+      const frozen = open?.baseline_identity;
+      if (!frozen || open.id !== setupEdit.edit_id) return;
+      frozenAppliedFor.current = setupEdit.edit_id;
+      const resumed = resumeEditBaseline(frozen, { primary_org_key: loadedPrimaryRef.current });
+      setBaselinePrimaryKey(resumed.baselinePrimaryKey);
+      setBaselineOrgKeys(new Set(resumed.orgKeys));
+      setBaselineTeamUids(new Set(resumed.teamUids));
+      setMakePrimaryKey(resumed.makePrimaryKey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setupEdit]);
+
   /* ── Step 1: Scenario Setup — the map (three lanes) ─────────────────── */
 
   const renderStep1 = () => (
@@ -4600,6 +4620,17 @@ export const SocialCrisisWizard = () => {
   /* ── Step 7: Review & Compile ──────────────────────────────────────── */
 
   const renderStep7 = () => {
+    const compileEdit = setupEditButtonState({
+      enabled: Boolean(compileAllowance?.enabled),
+      remaining: compileAllowance?.remaining ?? null,
+      limit: compileAllowance?.limit ?? 0,
+      locked: false,
+    });
+    const compileTips = recompileTooltips({
+      enabled: Boolean(compileAllowance?.enabled),
+      remaining: compileAllowance?.remaining ?? null,
+      limit: compileAllowance?.limit ?? 0,
+    });
     if (setupEdit) {
       if (applyResult) {
         return (
@@ -5512,36 +5543,16 @@ export const SocialCrisisWizard = () => {
                       setStep(1);
                     }}
                     className="wr-btn onDark lg"
-                    title={recompileTooltips({ enabled: false, remaining: null, limit: 3 }).modify}
+                    title={compileTips.modify}
                   >
                     <WrIcon name="edit" /> Modify &amp; recompile
                   </button>
-                  {scenarioId &&
-                    setupEditButtonState({
-                      enabled: Boolean(compileAllowance?.enabled),
-                      remaining: compileAllowance?.remaining ?? null,
-                      limit: compileAllowance?.limit ?? 0,
-                      locked: false,
-                    }).visible && (
+                  {scenarioId && compileEdit.visible && (
                     <button
                       type="button"
                       className="wr-btn onDark lg"
-                      disabled={
-                        setupEditButtonState({
-                          enabled: true,
-                          remaining: compileAllowance?.remaining ?? null,
-                          limit: compileAllowance?.limit ?? 0,
-                          locked: false,
-                        }).disabled
-                      }
-                      title={
-                        setupEditButtonState({
-                          enabled: true,
-                          remaining: compileAllowance?.remaining ?? null,
-                          limit: compileAllowance?.limit ?? 0,
-                          locked: false,
-                        }).title
-                      }
+                      disabled={compileEdit.disabled}
+                      title={compileEdit.disabled ? compileEdit.title : (compileTips.edit ?? compileEdit.title)}
                       onClick={() => {
                         const id = scenarioId;
                         void api.scenarios

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
+import type { BaselineIdentity } from './setupSnapshotCore.js';
 
 /** PostgREST / Postgres codes that mean migration 274 is not in this database. */
 const SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
@@ -70,6 +71,11 @@ export interface SetupEditSummary {
   draft_id?: string | null;
   applied_summary?: unknown;
   opened_by_name?: string | null;
+  /**
+   * Frozen identity of this edit's baseline snapshot. Present on rows whose
+   * baseline was loaded. The wizard uses this instead of the draft.
+   */
+  baseline_identity?: BaselineIdentity | null;
 }
 
 /** The in-flight row, if the list contains one. The list order is preserved. */

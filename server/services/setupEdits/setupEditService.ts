@@ -17,6 +17,7 @@ import {
 } from './setupEditCore.js';
 import {
   baselineHash,
+  baselineIdentity,
   draftInputFromSnapshot,
   materializeLegacyPrimary,
   snapshotFromScenario,
@@ -34,7 +35,7 @@ import {
  */
 
 const EDIT_COLUMNS =
-  'id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary';
+  'id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary, baseline';
 
 const OPEN_OUTCOMES = new Set<OpenSetupEditOutcome>([
   'opened',
@@ -153,6 +154,7 @@ function toSummary(row: Record<string, unknown>): SetupEditSummary {
     applied_at: typeof row.applied_at === 'string' ? row.applied_at : null,
     draft_id: typeof row.draft_id === 'string' ? row.draft_id : null,
     applied_summary: row.applied_summary ?? null,
+    baseline_identity: baselineIdentity(row.baseline),
   };
 }
 

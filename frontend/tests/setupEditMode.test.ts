@@ -5,8 +5,10 @@ import {
   canMakePrimary,
   editModeFlags,
   isExistingOrg,
+  isExistingTeam,
   readSetupEditLink,
   removedExistingTeams,
+  resumeEditBaseline,
 } from '../src/lib/editModeFlags.ts';
 import { swapMakePrimary } from '../src/lib/makePrimary.ts';
 import {
@@ -328,5 +330,36 @@ describe('team rename', () => {
       ['uid-legal'],
     );
     assert.deepEqual(removedExistingTeams(before, after, new Set(['uid-other'])), []);
+  });
+
+  test('resuming a saved draft with an added org and a swap keeps the frozen baseline', () => {
+    const frozen = {
+      primary_org_key: 'primary',
+      org_keys: ['org_bravo', 'primary'],
+      team_uids: ['uid-comms', 'uid-legal'],
+    };
+    const saved = {
+      primary_org_key: 'org_bravo',
+      make_primary: 'org_fresh',
+      extra_organisations: [
+        { org_key: 'primary', display_name: 'Acme', team_roster: [{ team_uid: 'uid-comms' }] },
+        { org_key: 'org_fresh', display_name: 'Fresh desk', team_roster: [{ team_uid: 'uid-new' }] },
+      ],
+      team_roster: [{ team_uid: 'uid-legal' }, { team_uid: 'uid-added' }],
+    };
+    const resumed = resumeEditBaseline(frozen, saved);
+    assert.equal(resumed.existingOrg('org_fresh'), false);
+    assert.equal(resumed.existingOrg('org_bravo'), true);
+    assert.equal(resumed.existingOrg('primary'), true);
+    assert.equal(resumed.previousPrimary('primary'), true);
+    assert.equal(resumed.previousPrimary('org_bravo'), false);
+    assert.equal(resumed.previousPrimary('org_fresh'), false);
+    assert.equal(resumed.makePrimaryKey, 'org_bravo');
+    assert.equal(isExistingTeam('uid-comms', new Set(resumed.teamUids)), true);
+    assert.equal(isExistingTeam('uid-new', new Set(resumed.teamUids)), false);
+    assert.equal(isExistingTeam('uid-added', new Set(resumed.teamUids)), false);
+    const unswapped = resumeEditBaseline(frozen, { ...saved, primary_org_key: 'primary' });
+    assert.equal(unswapped.makePrimaryKey, null);
+    assert.equal(unswapped.previousPrimary('primary'), false);
   });
 });

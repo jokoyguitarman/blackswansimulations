@@ -2,6 +2,7 @@
  * Scenario library data — kept out of lib/api.ts on purpose (another agent has that file in
  * flight). Same auth + base-URL conventions as api.ts.
  */
+import type { FrozenBaselineIdentity } from './editModeFlags';
 import { supabase } from './supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -147,6 +148,7 @@ export interface SetupEditHistoryEntry {
   applied_at: string | null;
   draft_id: string | null;
   applied_summary: unknown;
+  baseline_identity: FrozenBaselineIdentity | null;
 }
 
 export interface SetupEditAllowance {
@@ -163,6 +165,20 @@ export interface SetupEditAllowance {
  * (migration 274 absent) means the library shows no button. Failures are
  * swallowed so a missing migration does not surface an error.
  */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function parseBaselineIdentity(value: unknown): FrozenBaselineIdentity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const primary = typeof row.primary_org_key === 'string' ? row.primary_org_key.trim() : '';
+  const orgKeys = stringList(row.org_keys);
+  if (!primary || orgKeys.length === 0) return null;
+  return { primary_org_key: primary, org_keys: orgKeys, team_uids: stringList(row.team_uids) };
+}
+
 function parseEditEntry(value: unknown): SetupEditHistoryEntry | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -180,6 +196,7 @@ function parseEditEntry(value: unknown): SetupEditHistoryEntry | null {
     applied_at: typeof row.applied_at === 'string' ? row.applied_at : null,
     draft_id: typeof row.draft_id === 'string' ? row.draft_id : null,
     applied_summary: row.applied_summary ?? null,
+    baseline_identity: parseBaselineIdentity(row.baseline_identity),
   };
 }
 

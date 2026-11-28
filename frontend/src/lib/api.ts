@@ -923,6 +923,11 @@ export const api = {
         outcome: 'opened' | 'existing';
         draft_id?: string | null;
         baseline_hash?: string;
+        baseline_identity?: {
+          primary_org_key: string;
+          org_keys: string[];
+          team_uids: string[];
+        } | null;
       }>(
         await fetch(apiUrl(`/api/scenarios/${id}/setup-edits`), {
           method: 'POST',
