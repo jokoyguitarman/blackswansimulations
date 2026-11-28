@@ -365,9 +365,7 @@ export function composeTeamName(
 
 // ─── Validation + normalisation (route + compile; wizard mirrors the rules) ──
 
-const MAX_ORGS = 6;
 const MIN_TEAMS = 2;
-const MAX_TEAMS = 6;
 
 export function validateOrganisations(
   input: OrganisationInput[],
@@ -378,8 +376,8 @@ export function validateOrganisations(
   const fail = (code: string, path: string, message: string) =>
     details.push({ code, path, message });
 
-  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_ORGS) {
-    fail('MO-ORG-001', 'organisations', `Choose between 1 and ${MAX_ORGS} organisations`);
+  if (!Array.isArray(input) || input.length < 1) {
+    fail('MO-ORG-001', 'organisations', 'Choose at least 1 organisation');
     return { ok: false, code: 'MO-ORG-001', message: details[0].message, details };
   }
 
@@ -427,11 +425,11 @@ export function validateOrganisations(
 
     // Roster
     const roster = Array.isArray(raw.team_roster) ? raw.team_roster : [];
-    if (roster.length < MIN_TEAMS || roster.length > MAX_TEAMS) {
+    if (roster.length < MIN_TEAMS) {
       fail(
         'MO-TEAM-001',
         `${path}.team_roster`,
-        `${displayName || 'Each organisation'}: choose between ${MIN_TEAMS} and ${MAX_TEAMS} teams`,
+        `${displayName || 'Each organisation'}: choose at least ${MIN_TEAMS} teams`,
       );
     }
     const teams: NormalisedTeam[] = [];
@@ -573,7 +571,6 @@ export function validateOrganisations(
   return { ok: true, orgs, competitors, pressureOrgs, multiOrg };
 }
 
-const MAX_PRESSURE_ORGS = 6;
 const PRESSURE_KIND_SET: readonly string[] = [
   'union',
   'regulator',
@@ -607,14 +604,6 @@ function normalisePressureOrgs(
   fail: (code: string, path: string, message: string) => void,
 ): NormalisedPressureOrg[] {
   const out: NormalisedPressureOrg[] = [];
-  if (input.length > MAX_PRESSURE_ORGS) {
-    fail(
-      'MO-PRS-001',
-      'pressure_organisations',
-      `At most ${MAX_PRESSURE_ORGS} pressure organisations`,
-    );
-    return out;
-  }
   const takenShort = new Set<string>();
   input.forEach((raw, i) => {
     const name = String(raw.display_name || '').trim();
