@@ -128,7 +128,11 @@ export async function generatePeaceFeed(
   };
 }
 
-function voicePosts(org: OrgConfig, flat: BrandedHistoryPost[], primary: BrandedHistoryPost[] | undefined): string[] {
+function voicePosts(
+  org: OrgConfig,
+  flat: BrandedHistoryPost[],
+  primary: BrandedHistoryPost[] | undefined,
+): string[] {
   let history: BrandedHistoryPost[] = [];
   if (org.branded_history && org.branded_history.length > 0) history = org.branded_history;
   else if (org.is_primary && flat.length > 0) history = flat;
@@ -212,7 +216,9 @@ export function crisisBriefForLeakTerms(source: {
   confirmedFacts?: unknown;
 }): string {
   const facts = Array.isArray(source.confirmedFacts)
-    ? source.confirmedFacts.filter((fact): fact is string => typeof fact === 'string' && fact.trim().length > 0)
+    ? source.confirmedFacts.filter(
+        (fact): fact is string => typeof fact === 'string' && fact.trim().length > 0,
+      )
     : [];
   return [source.crisisType, source.context, source.narrative, source.briefing, ...facts]
     .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
@@ -227,7 +233,12 @@ export interface PeaceFeedSource {
   enabled?: boolean;
 }
 
-const INTERRUPT_NAMES = new Set(['AbortError', 'AbortedByCaller', 'CancelledError', 'ShutdownError']);
+const INTERRUPT_NAMES = new Set([
+  'AbortError',
+  'AbortedByCaller',
+  'CancelledError',
+  'ShutdownError',
+]);
 
 export function isPeaceInterrupt(err: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;

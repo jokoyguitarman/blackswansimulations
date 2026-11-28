@@ -123,7 +123,10 @@ export function matchesLeakTerms(text: string, terms: readonly string[]): boolea
   for (const term of terms) {
     const trimmed = term.normalize('NFKC').trim();
     if (!trimmed) continue;
-    const body = trimmed.split(/\s+/).map(escapeRegExp).join(String.raw`\s+`);
+    const body = trimmed
+      .split(/\s+/)
+      .map(escapeRegExp)
+      .join(String.raw`\s+`);
     const re = new RegExp(`(?:^|${WORD_EDGE})${body}(?=$|${WORD_EDGE})`, 'iu');
     if (re.test(hay)) return true;
   }
@@ -137,7 +140,10 @@ export function canonicalHandle(handle: string): string {
 }
 
 export function canonicalPlatform(platform: string): string {
-  const value = platform.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const value = platform
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
   if (value === 'fb' || value === 'facebook') return 'facebook';
   if (value === 'x' || value === 'twitter' || value === 'x_twitter' || value === 'xtwitter') {
     return 'x_twitter';
@@ -157,7 +163,8 @@ function pageByKey(cast: PeaceCast, orgKey: string, platform: string): PeacePage
   const key = orgKey.trim().toLowerCase();
   const plat = canonicalPlatform(platform);
   return cast.pages.find(
-    (page) => page.org_key.trim().toLowerCase() === key && canonicalPlatform(page.platform) === plat,
+    (page) =>
+      page.org_key.trim().toLowerCase() === key && canonicalPlatform(page.platform) === plat,
   );
 }
 
@@ -220,7 +227,8 @@ function resolveAuthor(raw: unknown, cast: PeaceCast): PeaceFeedAuthor | null {
     const persona = personaByHandle(cast, handle);
     if (persona) return { kind: 'persona', handle: persona.handle };
     const page = pageByHandle(cast, handle);
-    if (page) return { kind: 'page', org_key: page.org_key, platform: canonicalPlatform(page.platform) };
+    if (page)
+      return { kind: 'page', org_key: page.org_key, platform: canonicalPlatform(page.platform) };
   }
   return null;
 }
@@ -257,10 +265,7 @@ export function normalisePeaceFeed(
 ): PeaceFeed | null {
   const record = unwrapFeed(raw);
   if (!record || !Array.isArray(record.posts)) return null;
-  const seconds = clampSeconds(
-    options.seconds ?? record.seconds,
-    PEACE_PERIOD_DEFAULT_SECONDS,
-  );
+  const seconds = clampSeconds(options.seconds ?? record.seconds, PEACE_PERIOD_DEFAULT_SECONDS);
   const enabled =
     typeof options.enabled === 'boolean'
       ? options.enabled
@@ -286,8 +291,7 @@ export function normalisePeaceFeed(
         const comment = asRecord(item);
         if (!comment || typeof comment.content !== 'string' || !comment.content.trim()) continue;
         const commentOffset = integerOffset(comment.offset_seconds);
-        const handle =
-          typeof comment.author_handle === 'string' ? comment.author_handle : '';
+        const handle = typeof comment.author_handle === 'string' ? comment.author_handle : '';
         const resolved = resolveCommentAuthor(handle, cast);
         comments.push({
           author_handle: resolved ?? canonicalHandle(handle || '@unknown'),
@@ -308,9 +312,10 @@ export function normalisePeaceFeed(
         ),
       },
       platform: canonicalPlatform(platformRaw || 'facebook'),
-      post_format: typeof post.post_format === 'string' && post.post_format.trim()
-        ? post.post_format.trim()
-        : 'text',
+      post_format:
+        typeof post.post_format === 'string' && post.post_format.trim()
+          ? post.post_format.trim()
+          : 'text',
       content: post.content.trim(),
       media_description:
         typeof post.media_description === 'string' ? post.media_description.trim() : '',
@@ -390,10 +395,20 @@ function checkFeedDocument(feed: PeaceFeed, issues: PeaceFeedIssue[]): void {
   }
 }
 
-function checkOnePost(feed: PeaceFeed, cast: PeaceCast, post: PeaceFeedPost, issues: PeaceFeedIssue[], seenRefs: Set<string>): void {
+function checkOnePost(
+  feed: PeaceFeed,
+  cast: PeaceCast,
+  post: PeaceFeedPost,
+  issues: PeaceFeedIssue[],
+  seenRefs: Set<string>,
+): void {
   const window = offsetWindow(feed.seconds);
   if (!post.ref || seenRefs.has(post.ref)) {
-    issues.push({ code: 'shape', ref: post.ref, message: `post ${post.ref || '(missing)'} needs a unique ref` });
+    issues.push({
+      code: 'shape',
+      ref: post.ref,
+      message: `post ${post.ref || '(missing)'} needs a unique ref`,
+    });
   }
   seenRefs.add(post.ref);
   if (!authorResolves(post.author, cast)) {
@@ -450,7 +465,9 @@ function checkOnePost(feed: PeaceFeed, cast: PeaceCast, post: PeaceFeedPost, iss
   }
   if (post.author.kind === 'persona') {
     const persona = personaByHandle(cast, post.author.handle);
-    const interests = (persona?.normal_interests ?? []).map((interest) => interest.trim()).filter(Boolean);
+    const interests = (persona?.normal_interests ?? [])
+      .map((interest) => interest.trim())
+      .filter(Boolean);
     if (!persona || interests.length === 0 || !matchesLeakTerms(post.content, interests)) {
       issues.push({
         code: 'interests',
@@ -503,13 +520,17 @@ function checkCoverage(feed: PeaceFeed, cast: PeaceCast, issues: PeaceFeedIssue[
       });
     }
   }
-  if (cast.pages.some((page) => page.role === 'antagonist') && !hasPageRole(feed, cast, 'antagonist')) {
+  if (
+    cast.pages.some((page) => page.role === 'antagonist') &&
+    !hasPageRole(feed, cast, 'antagonist')
+  ) {
     issues.push({ code: 'rival', message: 'a rival page must post at least once' });
   }
   if (cast.pages.some((page) => page.role === 'pressure') && !hasPageRole(feed, cast, 'pressure')) {
     issues.push({ code: 'pressure', message: 'a pressure page must post at least once' });
   }
-  const needed = cast.personas.length >= PEACE_PERSONA_MIN ? PEACE_PERSONA_MIN : cast.personas.length;
+  const needed =
+    cast.personas.length >= PEACE_PERSONA_MIN ? PEACE_PERSONA_MIN : cast.personas.length;
   const found = representedPersonas(feed, cast);
   if (found < needed) {
     issues.push({
@@ -531,11 +552,12 @@ export function checkPeaceFeed(feed: PeaceFeed, cast: PeaceCast): PeaceFeedIssue
   return issues;
 }
 
-
 /** Posts named by a per-post failure, plus any post that still matches a leak term. */
 export function dropOffendingPosts(feed: PeaceFeed, issues: PeaceFeedIssue[]): PeaceFeed {
   const refs = new Set(
-    issues.filter((issue) => issue.ref && POST_DROP_CODES.has(issue.code)).map((issue) => issue.ref),
+    issues
+      .filter((issue) => issue.ref && POST_DROP_CODES.has(issue.code))
+      .map((issue) => issue.ref),
   );
   const posts = feed.posts.filter((post) => {
     if (refs.has(post.ref)) return false;
@@ -544,7 +566,10 @@ export function dropOffendingPosts(feed: PeaceFeed, issues: PeaceFeedIssue[]): P
   return { ...feed, posts };
 }
 
-export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): { system: string; user: string } {
+export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): {
+  system: string;
+  user: string;
+} {
   const maxOffset = Math.max(0, input.seconds - PEACE_OFFSET_TAIL_SECONDS);
   const system = [
     'You write the pre-crisis social feed for a crisis-simulation scenario.',
@@ -553,7 +578,7 @@ export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): { system: str
     `Return JSON: { "leak_terms": string[], "posts": [ { "ref": "P1", "author": { "kind": "page", "org_key": "...", "platform": "facebook"|"x_twitter" } | { "kind": "persona", "handle": "@..." }, "platform": "facebook"|"x_twitter", "post_format": "text", "content": "...", "media_description": "", "offset_seconds": number, "comments": [ { "author_handle": "@...", "content": "...", "offset_seconds": number } ] } ] }`,
     `Write ${PEACE_POST_MIN} to ${PEACE_POST_MAX} posts. Every offset is an integer from 0 to ${maxOffset}. At most ${PEACE_COMMENT_MAX} comments on a post.`,
     'Every playable protagonist page listed below needs at least 2 posts on that platform. Rival pages and pressure pages must each appear at least once. At least 6 distinct personas appear as authors or commenters, or every persona when the cast is smaller.',
-    'A persona post must be about that persona\'s normal_interests. Page posts sound like that page\'s branded history.',
+    "A persona post must be about that persona's normal_interests. Page posts sound like that page's branded history.",
     'leak_terms are the short words and phrases a reader would recognise as the crisis (product, incident, injury, recall). They are matched whole-word, so prefer the specific phrase.',
   ].join('\n');
 
@@ -565,7 +590,10 @@ export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): { system: str
     .join('\n');
   const pages = input.cast.pages
     .map((page) => {
-      const voice = (page.recent_posts ?? []).slice(0, 3).map((post) => `"${post}"`).join(' | ');
+      const voice = (page.recent_posts ?? [])
+        .slice(0, 3)
+        .map((post) => `"${post}"`)
+        .join(' | ');
       const quota = page.playable ? 'playable protagonist, at least 2 posts' : page.role;
       return `- ${page.org_key} ${canonicalPlatform(page.platform)} ${page.handle} (${page.name || page.org_key}, ${quota})${page.bio ? ` bio: ${page.bio}` : ''}${voice ? ` recent: ${voice}` : ''}`;
     })

@@ -77,7 +77,10 @@ import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
 import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
-import { applyCompiledPeaceFeed, crisisBriefForLeakTerms } from '../services/generation/peaceFeedService.js';
+import {
+  applyCompiledPeaceFeed,
+  crisisBriefForLeakTerms,
+} from '../services/generation/peaceFeedService.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1449,7 +1452,10 @@ router.post(
             try {
               storedFeed = (await compileBuilds.getOutputs(durableBuildId)).pages?.peace_period;
             } catch (peaceErr) {
-              logger.warn({ err: peaceErr, buildId: durableBuildId }, 'peace feed output unreadable');
+              logger.warn(
+                { err: peaceErr, buildId: durableBuildId },
+                'peace feed output unreadable',
+              );
             }
           }
           const personas = multiArtifacts ? multiArtifacts.personas : body.personas;
