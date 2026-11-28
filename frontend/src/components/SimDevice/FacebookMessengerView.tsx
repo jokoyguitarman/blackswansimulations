@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { getAuthHeaders as spectatorHeaders } from '../../lib/api';
+import {
+  MessengerComposePanel,
+  MessengerNewMessageButton,
+  MessengerReplyBar,
+} from './surfaceComposers';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -59,6 +65,13 @@ interface Message {
 
 interface FacebookMessengerViewProps {
   sessionId: string;
+  /** Staff explorer: hide every composer and send the spectator headers. */
+  readOnly?: boolean;
+  /** When set, this is that page's inbox rather than the player's. */
+  pageHandle?: string;
+  /** Org key for the page-inbox routes. Required with pageHandle. */
+  orgKey?: string;
+  platform?: 'facebook' | 'x_twitter';
 }
 
 const AVATAR_COLORS = [
@@ -94,7 +107,13 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 7)}w`;
 }
 
-function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
+function FacebookMessengerView({
+  sessionId,
+  readOnly = false,
+  pageHandle,
+  orgKey,
+  platform = 'facebook',
+}: FacebookMessengerViewProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -112,8 +131,33 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  async function requestHeaders(): Promise<Record<string, string>> {
+    if (readOnly && pageHandle) return spectatorHeaders({ sessionId, spectator: true });
+    return getAuthHeaders();
+  }
+
+  function threadsUrl(): string {
+    if (!pageHandle) return apiUrl(`/api/social/messenger/threads/${sessionId}?platform=facebook`);
+    const key = encodeURIComponent(orgKey ?? '');
+    return apiUrl(
+      `/api/social/messenger/page-inbox/${sessionId}?org_key=${key}&platform=${encodeURIComponent(platform)}`,
+    );
+  }
+
+  function messagesUrl(threadId: string): string {
+    if (!pageHandle) return apiUrl(`/api/social/messenger/thread/${threadId}`);
+    return apiUrl(
+      `/api/social/messenger/page-thread/${threadId}?org_key=${encodeURIComponent(orgKey ?? '')}`,
+    );
+  }
+
   useEffect(() => {
+    if (pageHandle) {
+      setSelectedThread(null);
+      setMessages([]);
+    }
     fetchThreads();
+    if (pageHandle) return;
     (async () => {
       try {
         const headers = await getAuthHeaders();
@@ -166,7 +210,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         /* ignore */
       }
     })();
-  }, [sessionId]);
+  }, [sessionId, pageHandle, orgKey, platform]);
 
   useEffect(() => {
     if (selectedThread) {
@@ -184,11 +228,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   async function fetchThreads() {
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        apiUrl(`/api/social/messenger/threads/${sessionId}?platform=facebook`),
-        { headers },
-      );
+      const headers = await requestHeaders();
+      const res = await fetch(threadsUrl(), { headers });
       if (res.ok) {
         const json = await res.json();
         const raw = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
@@ -227,8 +268,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   async function fetchMessages(threadId: string) {
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl(`/api/social/messenger/thread/${threadId}`), { headers });
+      const headers = await requestHeaders();
+      const res = await fetch(messagesUrl(threadId), { headers });
       if (res.ok) {
         const json = await res.json();
         const data: Message[] = Array.isArray(json)
@@ -237,7 +278,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
             ? json.data
             : [];
         setMessages(data);
-        markUnreadAsRead(data);
+        if (!readOnly) markUnreadAsRead(data);
       }
     } catch {
       // silently fail
@@ -247,7 +288,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   }
 
   async function markUnreadAsRead(msgs: Message[]) {
-    const headers = await getAuthHeaders();
+    if (readOnly) return;
+    const headers = await requestHeaders();
     const viewingAs = inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
     const unread = msgs.filter((m) => !m.is_read && (!viewingAs || m.sender_handle !== viewingAs));
     await Promise.all(
@@ -279,7 +321,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
 
     setNewMessage('');
     try {
-      const headers = await getAuthHeaders();
+      const headers = await requestHeaders();
       const res = await fetch(apiUrl('/api/social/messenger/send'), {
         method: 'POST',
         headers,
@@ -303,7 +345,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   async function handleComposeSend() {
     if (!composeRecipient || !composeText.trim()) return;
     try {
-      const headers = await getAuthHeaders();
+      const headers = await requestHeaders();
       const res = await fetch(apiUrl('/api/social/messenger/send'), {
         method: 'POST',
         headers,
@@ -365,33 +407,39 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     },
   });
 
-  const viewingAsHandle = inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
+  const viewingAsHandle = pageHandle
+    ? pageHandle
+    : inboxTab === 'page' && orgPageHandle
+      ? orgPageHandle
+      : playerHandle;
 
-  const filteredThreads = threads
-    .filter((t) => {
-      if (inboxTab === 'page') return t.is_org_page_thread;
-      if (!t.is_org_page_thread) return true;
-      return t.other_handle === playerHandle;
-    })
-    .map((t) => {
-      let thread = t;
-      if (
-        inboxTab === 'personal' &&
-        t.is_org_page_thread &&
-        t.other_handle === playerHandle &&
-        orgPageHandle
-      ) {
-        thread = {
-          ...t,
-          other_handle: orgPageHandle,
-          other_display_name: orgPageName || orgPageHandle,
-        };
-      }
-      if (viewingAsHandle && thread.last_sender_handle === viewingAsHandle) {
-        thread = { ...thread, unread_count: 0 };
-      }
-      return thread;
-    });
+  const filteredThreads = (
+    pageHandle
+      ? threads
+      : threads.filter((t) => {
+          if (inboxTab === 'page') return t.is_org_page_thread;
+          if (!t.is_org_page_thread) return true;
+          return t.other_handle === playerHandle;
+        })
+  ).map((t) => {
+    let thread = t;
+    if (
+      inboxTab === 'personal' &&
+      t.is_org_page_thread &&
+      t.other_handle === playerHandle &&
+      orgPageHandle
+    ) {
+      thread = {
+        ...t,
+        other_handle: orgPageHandle,
+        other_display_name: orgPageName || orgPageHandle,
+      };
+    }
+    if (viewingAsHandle && thread.last_sender_handle === viewingAsHandle) {
+      thread = { ...thread, unread_count: 0 };
+    }
+    return thread;
+  });
 
   const activeThread =
     filteredThreads.find((t) => t.thread_id === selectedThread) ||
@@ -431,8 +479,6 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         <div ref={messagesContainerRef} style={styles.messagesContainer}>
           {loading && messages.length === 0 && <div style={styles.loadingText}>Loading...</div>}
           {messages.map((msg) => {
-            const viewingAsHandle =
-              inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
             const isMine = viewingAsHandle
               ? msg.sender_handle === viewingAsHandle
               : msg.sender_type === 'player';
@@ -517,31 +563,14 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar */}
-        <div style={styles.inputBar}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Aa"
-            style={styles.textInput}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!newMessage.trim()}
-            style={{
-              ...styles.sendButton,
-              opacity: newMessage.trim() ? 1 : 0.4,
-            }}
-            aria-label="Send"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
-          </button>
-        </div>
+        <MessengerReplyBar
+          readOnly={readOnly}
+          value={newMessage}
+          onChange={setNewMessage}
+          onKeyDown={handleKeyDown}
+          onSend={handleSend}
+          inputRef={inputRef}
+        />
       </div>
     );
   }
@@ -551,146 +580,50 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <span style={styles.headerTitle}>Messenger</span>
-        <button
-          style={styles.composeButton}
-          aria-label="New message"
-          onClick={() => setShowCompose(true)}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#1877F2"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
-        </button>
+        <span style={styles.headerTitle}>{pageHandle ? pageHandle : 'Messenger'}</span>
+        <MessengerNewMessageButton readOnly={readOnly} onClick={() => setShowCompose(true)} />
       </div>
 
-      {/* Compose New Message Panel */}
-      {showCompose && (
-        <div style={{ padding: 16, borderBottom: '1px solid #E4E6EB', backgroundColor: '#FFFFFF' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 8,
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 14, color: '#050505' }}>New Message</span>
+      <MessengerComposePanel
+        readOnly={readOnly}
+        open={showCompose}
+        recipient={composeRecipient}
+        text={composeText}
+        handles={knownHandles}
+        onRecipient={setComposeRecipient}
+        onText={setComposeText}
+        onSend={handleComposeSend}
+        onClose={() => {
+          setShowCompose(false);
+          setComposeRecipient('');
+          setComposeText('');
+        }}
+      />
+
+      {/* Inbox Tabs. A single page inbox has no personal tab. */}
+      {!pageHandle && (
+        <div style={{ display: 'flex', borderBottom: '1px solid #E4E6EB' }}>
+          {(['personal', 'page'] as const).map((tab) => (
             <button
-              onClick={() => {
-                setShowCompose(false);
-                setComposeRecipient('');
-                setComposeText('');
-              }}
+              key={tab}
+              onClick={() => setInboxTab(tab)}
               style={{
+                flex: 1,
+                padding: '10px 0',
+                fontSize: 13,
+                fontWeight: 600,
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 18,
-                color: '#65676B',
+                color: inboxTab === tab ? '#1877F2' : '#65676B',
+                borderBottom: inboxTab === tab ? '2px solid #1877F2' : '2px solid transparent',
               }}
             >
-              &#10005;
+              {tab === 'personal' ? 'Personal' : 'Page Inbox'}
             </button>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label style={{ fontSize: 12, color: '#65676B', display: 'block', marginBottom: 4 }}>
-              To:
-            </label>
-            <select
-              value={composeRecipient}
-              onChange={(e) => setComposeRecipient(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: 8,
-                border: '1px solid #CED0D4',
-                fontSize: 14,
-                color: '#050505',
-                backgroundColor: '#F0F2F5',
-              }}
-            >
-              <option value="">Select a person...</option>
-              {knownHandles
-                .filter((h) => h && !h.startsWith('@player'))
-                .map((handle) => (
-                  <option key={handle} value={handle}>
-                    {handle}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="text"
-              value={composeText}
-              onChange={(e) => setComposeText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleComposeSend();
-              }}
-              placeholder="Type a message..."
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 20,
-                border: '1px solid #CED0D4',
-                fontSize: 14,
-                color: '#050505',
-                backgroundColor: '#F0F2F5',
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={handleComposeSend}
-              disabled={!composeRecipient || !composeText.trim()}
-              style={{
-                padding: '8px 16px',
-                borderRadius: 20,
-                border: 'none',
-                backgroundColor: composeRecipient && composeText.trim() ? '#1877F2' : '#E4E6EB',
-                color: composeRecipient && composeText.trim() ? '#FFFFFF' : '#BCC0C4',
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: composeRecipient && composeText.trim() ? 'pointer' : 'default',
-              }}
-            >
-              Send
-            </button>
-          </div>
+          ))}
         </div>
       )}
-
-      {/* Inbox Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #E4E6EB' }}>
-        {(['personal', 'page'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setInboxTab(tab)}
-            style={{
-              flex: 1,
-              padding: '10px 0',
-              fontSize: 13,
-              fontWeight: 600,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: inboxTab === tab ? '#1877F2' : '#65676B',
-              borderBottom: inboxTab === tab ? '2px solid #1877F2' : '2px solid transparent',
-            }}
-          >
-            {tab === 'personal' ? 'Personal' : 'Page Inbox'}
-          </button>
-        ))}
-      </div>
 
       {/* Thread List */}
       <div style={styles.threadList}>
@@ -699,7 +632,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         )}
         {!loading && filteredThreads.length === 0 && (
           <div style={styles.emptyText}>
-            {inboxTab === 'page' ? 'No page messages yet' : 'No conversations yet'}
+            {pageHandle || inboxTab === 'page' ? 'No page messages yet' : 'No conversations yet'}
           </div>
         )}
         {filteredThreads.map((thread) => (
@@ -778,16 +711,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 20,
     fontWeight: 700,
     color: '#050505',
-  },
-  composeButton: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: 6,
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // Thread List
@@ -908,34 +831,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     marginTop: 2,
     textAlign: 'right' as const,
-  },
-
-  // Input Bar
-  inputBar: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '8px 12px',
-    borderTop: '1px solid #E4E6EB',
-    gap: 8,
-  },
-  textInput: {
-    flex: 1,
-    border: 'none',
-    backgroundColor: '#F0F2F5',
-    borderRadius: 20,
-    padding: '8px 14px',
-    fontSize: 14,
-    outline: 'none',
-    color: '#050505',
-  },
-  sendButton: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: 4,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // Misc
