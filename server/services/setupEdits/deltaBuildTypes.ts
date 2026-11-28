@@ -1,4 +1,6 @@
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
+import type { PeaceFeedClient } from '../generation/peaceFeedService.js';
 import type { NPCPersona, FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
 import type { TeamCharterWire } from '../warroomBuild/wireSchemas.js';
 import type { BriefDiff } from './affectedLayers.js';
@@ -107,6 +109,12 @@ export interface DeltaBuildContext {
   taken_stakeholder_ids: string[];
   active_keys: string[];
   page_batch_size: number;
+  /** Stored peace feed. Absent when the scenario has none. */
+  peace_period?: unknown;
+  /** Organisation pages, so added-org posts can use the page handles. */
+  org_page?: unknown;
+  /** Model client for the peace calls. Production omits it and uses the peace feed client. */
+  peaceClient?: PeaceFeedClient;
 }
 
 export interface LayerDecision {
@@ -273,6 +281,12 @@ export interface SetupEditStageOutput {
   dimensionLabels: null;
   org_page: { orgs: Array<Record<string, unknown>> } | null;
   pressure_injects: SocialInject[];
+  /**
+   * Present when this edit refreshed leak terms or appended posts for added
+   * organisations. The posts that were already in the feed are still here.
+   * WP10 writes this and does not also apply the planner's `/peace_period` patch.
+   */
+  peace_period?: PeaceFeed;
 }
 
 export function blankGenerated(): GeneratedRows {
