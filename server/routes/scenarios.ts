@@ -2,7 +2,8 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
-import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../lib/templateRows.js';
+import { activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
+import { cloneScenarioSchema, handleCloneScenario } from './scenarioClone.js';
 import { logger } from '../lib/logger.js';
 import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
 import { env } from '../env.js';
@@ -2112,160 +2113,12 @@ router.post(
   },
 );
 
-// Clone scenario (duplicate with all injects)
-const cloneScenarioSchema = z.object({
-  params: z.object({
-    id: z.string().uuid(),
-  }),
-  body: z.object({
-    title: z.string().min(1).max(200).optional(),
-  }),
-});
-
 router.post(
   '/:id/clone',
   requireAuth,
   validate(cloneScenarioSchema),
-  async (req: AuthenticatedRequest, res) => {
-    try {
-      const { id } = req.params;
-      const user = req.user!;
-      const { title: customTitle } = req.body;
-
-      // Get the original scenario
-      // eslint-disable-next-line no-restricted-syntax -- full row: every column is copied
-      const { data: originalScenario, error: fetchError } = await supabaseAdmin
-        .from('scenarios')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (fetchError || !originalScenario) {
-        return res.status(404).json({ error: 'Scenario not found' });
-      }
-
-      // Check if user has permission (can clone any scenario, but only trainers/admins)
-      if (user.role !== 'trainer' && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Only trainers can clone scenarios' });
-      }
-
-      // Get template injects only (exclude session-scoped runtime injects)
-      const { data: originalInjects, error: injectsError } = await activeTemplateInjects(
-        supabaseAdmin
-          .from('scenario_injects')
-          .select('*')
-          .eq('scenario_id', id)
-          .is('session_id', null),
-      );
-
-      if (injectsError) {
-        logger.error(
-          { error: injectsError, scenarioId: id },
-          'Failed to fetch injects for cloning',
-        );
-        // Continue anyway - clone scenario without injects
-      }
-
-      // Create new scenario with copied data
-      const newTitle = customTitle || `${originalScenario.title} (Copy)`;
-      const { data: newScenario, error: createError } = await supabaseAdmin
-        .from('scenarios')
-        .insert({
-          title: newTitle,
-          description: originalScenario.description,
-          category: originalScenario.category,
-          difficulty: originalScenario.difficulty,
-          duration_minutes: originalScenario.duration_minutes,
-          objectives: originalScenario.objectives,
-          initial_state: stampOrgIdentity(originalScenario.initial_state),
-          briefing: originalScenario.briefing,
-          role_specific_briefs: originalScenario.role_specific_briefs,
-          center_lat: originalScenario.center_lat ?? null,
-          center_lng: originalScenario.center_lng ?? null,
-          vicinity_radius_meters: originalScenario.vicinity_radius_meters ?? null,
-          vicinity_map_url: originalScenario.vicinity_map_url ?? null,
-          layout_image_url: originalScenario.layout_image_url ?? null,
-          insider_knowledge: originalScenario.insider_knowledge ?? null,
-          created_by: user.id,
-          is_active: false, // Cloned scenarios start as inactive
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        logger.error({ error: createError, originalScenarioId: id }, 'Failed to clone scenario');
-        return res.status(500).json({ error: 'Failed to clone scenario' });
-      }
-
-      // Clone all injects if they exist
-      if (originalInjects && originalInjects.length > 0) {
-        type InjectRow = {
-          trigger_time_minutes: number;
-          trigger_condition: string | null;
-          type: string;
-          title: string;
-          content: string;
-          affected_roles: string[] | null;
-          severity: string | null;
-          requires_response: boolean;
-          inject_scope?: string;
-          target_teams: string[] | null;
-          requires_coordination?: boolean;
-          ai_generated?: boolean;
-        };
-        const injectsToInsert = originalInjects.map((inject: InjectRow) => ({
-          scenario_id: newScenario.id,
-          trigger_time_minutes: inject.trigger_time_minutes,
-          trigger_condition: inject.trigger_condition,
-          type: inject.type,
-          title: inject.title,
-          content: inject.content,
-          affected_roles: inject.affected_roles,
-          severity: inject.severity,
-          requires_response: inject.requires_response,
-          inject_scope: inject.inject_scope || 'universal',
-          target_teams: inject.target_teams || null,
-          requires_coordination: inject.requires_coordination ?? false,
-          ai_generated: inject.ai_generated,
-        }));
-
-        const { error: injectsCreateError } = await supabaseAdmin
-          .from('scenario_injects')
-          .insert(injectsToInsert);
-
-        if (injectsCreateError) {
-          logger.error(
-            { error: injectsCreateError, scenarioId: newScenario.id },
-            'Failed to clone injects, but scenario was created',
-          );
-          // Don't fail - scenario is already created, just log the error
-        } else {
-          logger.info(
-            { scenarioId: newScenario.id, injectCount: injectsToInsert.length },
-            'Injects cloned successfully',
-          );
-        }
-      }
-
-      const { data: completeScenario } = await supabaseAdmin
-        .from('scenarios')
-        .select(LIST_COLUMNS)
-        .eq('id', newScenario.id)
-        .single();
-
-      logger.info(
-        { originalScenarioId: id, newScenarioId: newScenario.id, userId: user.id },
-        'Scenario cloned successfully',
-      );
-
-      res.status(201).json({
-        data: completeScenario,
-        message: 'Scenario cloned successfully',
-      });
-    } catch (err) {
-      logger.error({ error: err }, 'Error in POST /scenarios/:id/clone');
-      res.status(500).json({ error: 'Internal server error' });
-    }
+  (req: AuthenticatedRequest, res) => {
+    void handleCloneScenario(req, res);
   },
 );
 
