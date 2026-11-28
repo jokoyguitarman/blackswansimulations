@@ -69,9 +69,13 @@ import {
 import { readStoredBlast, writeStoredBlast } from '../lib/rts/blast/blastSiteRecord';
 import {
   FX,
-  noteDowngradeFrom,
+  FX_QUALITY_CHOICE_KEY,
+  readStoredFxQualityChoice,
   shouldAutoDowngrade,
+  startingFxQuality,
+  stepFxQuality,
   type FxQuality,
+  type FxQualityChoice,
 } from '../lib/rts/fx/fxConstants';
 import {
   advanceGameFrame,
@@ -269,14 +273,23 @@ function showcaseInjuryRings(
   };
 }
 
-function readFxQuality(): FxQuality {
+function readFxChoice(): FxQualityChoice {
   try {
-    const value = localStorage.getItem('rtsFxQuality');
-    if (value === 'high' || value === 'low' || value === 'classic') return value;
+    return readStoredFxQualityChoice((key) => localStorage.getItem(key));
   } catch {
     /* private mode */
   }
-  return 'high';
+  return 'auto';
+}
+
+function storeFxChoice(choice: FxQualityChoice): void {
+  try {
+    localStorage.setItem(FX_QUALITY_CHOICE_KEY, choice);
+    // The governor used to write this. Drop it so a reload cannot treat it as a choice.
+    localStorage.removeItem('rtsFxQuality');
+  } catch {
+    /* ignore */
+  }
 }
 
 function aboveGroundHeightM(floors: string[] | undefined): number {
@@ -1004,10 +1017,16 @@ export function DebugRTSSim() {
   );
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
-  const [fxQuality, setFxQuality] = useState<FxQuality>(readFxQuality);
+  const [fxChoice, setFxChoice] = useState<FxQualityChoice>(readFxChoice);
+  const fxChoiceRef = useRef(fxChoice);
+  fxChoiceRef.current = fxChoice;
+  const [fxQuality, setFxQuality] = useState<FxQuality>(() => startingFxQuality(readFxChoice()));
   const fxQualityRef = useRef(fxQuality);
   fxQualityRef.current = fxQuality;
   const [fxDowngraded, setFxDowngraded] = useState(false);
+  /** Fixed tier, and frames are slow enough that Auto would step down. */
+  const [fxSlowHint, setFxSlowHint] = useState(false);
+  const fxSlowHintRef = useRef(false);
   /** Quality before the current automatic run. A second step does not replace it. */
   const fxDowngradeFromRef = useRef<FxQuality | null>(null);
   const fxSuppressRef = useRef(false);
@@ -3164,7 +3183,7 @@ export function DebugRTSSim() {
               active[pos] = hazardFxRef.current.last.covering ? 1 : 0;
               fxTimePosRef.current = (pos + 1) % ring.length;
               if (fxTimeCountRef.current < ring.length) fxTimeCountRef.current++;
-              if (fxTimeCountRef.current === ring.length && !fxSuppressRef.current) {
+              if (fxTimeCountRef.current === ring.length) {
                 let drawSum = 0;
                 let frameSum = 0;
                 let activeFrames = 0;
@@ -3174,27 +3193,33 @@ export function DebugRTSSim() {
                   activeFrames += active[i];
                 }
                 const effectsActive = activeFrames * 2 >= ring.length;
-                if (
-                  shouldAutoDowngrade(drawSum / ring.length, frameSum / ring.length, effectsActive)
-                ) {
-                  const current = fxQualityRef.current;
-                  const next = current === 'high' ? 'low' : current === 'low' ? 'classic' : null;
-                  if (next) {
-                    fxDowngradeFromRef.current = noteDowngradeFrom(
-                      fxDowngradeFromRef.current,
-                      current,
-                    );
-                    fxQualityRef.current = next;
-                    setFxQuality(next);
-                    setFxDowngraded(true);
-                    fxTimeCountRef.current = 0;
-                    fxWarmupRef.current = 30;
-                    try {
-                      localStorage.setItem('rtsFxQuality', next);
-                    } catch {
-                      /* ignore */
-                    }
-                  }
+                // Auto may step down. A fixed tier never does, and a slow fixed
+                // tier only raises a hint. Neither path writes localStorage.
+                const step = stepFxQuality({
+                  choice: fxChoiceRef.current,
+                  quality: fxQualityRef.current,
+                  slow: shouldAutoDowngrade(
+                    drawSum / ring.length,
+                    frameSum / ring.length,
+                    effectsActive,
+                  ),
+                  suppressed: fxSuppressRef.current,
+                  remembered: fxDowngradeFromRef.current,
+                });
+                if (step.downgraded) {
+                  fxDowngradeFromRef.current = step.remembered;
+                  fxQualityRef.current = step.quality;
+                  setFxQuality(step.quality);
+                  setFxDowngraded(true);
+                  fxTimeCountRef.current = 0;
+                  fxWarmupRef.current = 30;
+                } else if (step.quality !== fxQualityRef.current) {
+                  fxQualityRef.current = step.quality;
+                  setFxQuality(step.quality);
+                }
+                if (fxSlowHintRef.current !== step.hint) {
+                  fxSlowHintRef.current = step.hint;
+                  setFxSlowHint(step.hint);
                 }
               }
             }
@@ -6820,10 +6845,10 @@ export function DebugRTSSim() {
                 />
               </label>
               <div className="text-xs text-gray-500">
-                Airport speed, open country, at 10 m. The site is suburban, so the local wind
-                at 10 m is {windTerrainFactor(10).toFixed(2)} of this, and a lower opening sees
-                less. 0 is still air. A face the wind blows straight onto takes Cp 0.6, then the
-                angle and the plan's side ratio.
+                Airport speed, open country, at 10 m. The site is suburban, so the local wind at 10
+                m is {windTerrainFactor(10).toFixed(2)} of this, and a lower opening sees less. 0 is
+                still air. A face the wind blows straight onto takes Cp 0.6, then the angle and the
+                plan's side ratio.
               </div>
             </div>
 
@@ -7117,22 +7142,25 @@ export function DebugRTSSim() {
                   <label className="block text-green-500">
                     Effects
                     <select
-                      value={fxQuality}
+                      value={fxChoice}
                       onChange={(e) => {
-                        const next = e.target.value as FxQuality;
-                        setFxQuality(next);
+                        const next = e.target.value as FxQualityChoice;
+                        const quality = startingFxQuality(next);
+                        setFxChoice(next);
+                        fxQualityRef.current = quality;
+                        setFxQuality(quality);
                         setFxDowngraded(false);
+                        fxSlowHintRef.current = false;
+                        setFxSlowHint(false);
                         fxDowngradeFromRef.current = null;
+                        fxSuppressRef.current = false;
                         fxTimeCountRef.current = 0;
                         fxWarmupRef.current = 30;
-                        try {
-                          localStorage.setItem('rtsFxQuality', next);
-                        } catch {
-                          /* ignore */
-                        }
+                        storeFxChoice(next);
                       }}
                       className="mt-1 w-full bg-black border border-green-800 text-green-300 px-2 py-1 rounded"
                     >
+                      <option value="auto">Auto</option>
                       <option value="high">High</option>
                       <option value="low">Low</option>
                       <option value="classic">Classic</option>
@@ -7148,18 +7176,19 @@ export function DebugRTSSim() {
                           const prev = fxDowngradeFromRef.current ?? fxQualityRef.current;
                           fxDowngradeFromRef.current = null;
                           fxSuppressRef.current = true;
+                          fxQualityRef.current = prev;
                           setFxQuality(prev);
                           setFxDowngraded(false);
                           fxTimeCountRef.current = 0;
-                          try {
-                            localStorage.setItem('rtsFxQuality', prev);
-                          } catch {
-                            /* ignore */
-                          }
                         }}
                       >
                         Undo
                       </button>
+                    </div>
+                  )}
+                  {fxSlowHint && !fxDowngraded && (
+                    <div className="text-amber-400">
+                      This tier stays fixed. In Auto, effects are lowered to keep the sim smooth.
                     </div>
                   )}
                   <div className="space-y-1">

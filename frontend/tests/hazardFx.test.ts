@@ -9,7 +9,16 @@ import type { ExitDef, Vec2 } from '../src/lib/evacuation/types';
 import { RTSEngine } from '../src/lib/rts/engine';
 import { DEFAULT_FIRE_PARAMS } from '../src/lib/rts/fireSimulation';
 import { EmberPool } from '../src/lib/rts/fx/embers';
-import { FX, noteDowngradeFrom, shouldAutoDowngrade } from '../src/lib/rts/fx/fxConstants';
+import {
+  FX,
+  FX_QUALITY_CHOICE_KEY,
+  noteDowngradeFrom,
+  readFxQualityChoice,
+  readStoredFxQualityChoice,
+  shouldAutoDowngrade,
+  startingFxQuality,
+  stepFxQuality,
+} from '../src/lib/rts/fx/fxConstants';
 import { SpatialEffectsEngine, type SmokeLayerView } from '../src/lib/rts/spatialEffects';
 import { createLayerShade, shadeLayers } from '../src/lib/rts/fx/smokeLayers';
 import type { HazardZone } from '../src/lib/rts/types';
@@ -568,6 +577,88 @@ describe('hazard fx', () => {
     remembered = noteDowngradeFrom(remembered, 'high');
     remembered = noteDowngradeFrom(remembered, 'low');
     assert.equal(remembered, 'high');
+  });
+
+  test('a chosen tier stays fixed, and Auto still steps down', () => {
+    assert.equal(readFxQualityChoice(null), 'auto');
+    assert.equal(readFxQualityChoice(''), 'auto');
+    assert.equal(readFxQualityChoice('High'), 'auto');
+    assert.equal(readFxQualityChoice('auto'), 'auto');
+    assert.equal(readFxQualityChoice('low'), 'low');
+    assert.equal(startingFxQuality('auto'), 'high');
+    assert.equal(startingFxQuality('classic'), 'classic');
+
+    // The old rtsFxQuality value is visible to the reader and still ignored.
+    const legacy = (key: string) => (key === 'rtsFxQuality' ? 'classic' : null);
+    assert.equal(readStoredFxQualityChoice(legacy), 'auto');
+    const chosen = (key: string) => (key === FX_QUALITY_CHOICE_KEY ? 'high' : 'low');
+    assert.equal(readStoredFxQualityChoice(chosen), 'high');
+
+    const base = { suppressed: false, remembered: null as 'high' | 'low' | 'classic' | null };
+    const dropped = stepFxQuality({ ...base, choice: 'auto', quality: 'high', slow: true });
+    assert.equal(dropped.quality, 'low');
+    assert.equal(dropped.downgraded, true);
+    assert.equal(dropped.hint, false);
+    assert.equal(dropped.remembered, 'high');
+
+    const again = stepFxQuality({
+      choice: 'auto',
+      quality: 'low',
+      slow: true,
+      suppressed: false,
+      remembered: dropped.remembered,
+    });
+    assert.equal(again.quality, 'classic');
+    assert.equal(again.downgraded, true);
+    assert.equal(again.remembered, 'high');
+
+    const floor = stepFxQuality({
+      choice: 'auto',
+      quality: 'classic',
+      slow: true,
+      suppressed: false,
+      remembered: 'high',
+    });
+    assert.equal(floor.quality, 'classic');
+    assert.equal(floor.downgraded, false);
+
+    const undone = stepFxQuality({
+      ...base,
+      choice: 'auto',
+      quality: 'high',
+      slow: true,
+      suppressed: true,
+    });
+    assert.equal(undone.quality, 'high');
+    assert.equal(undone.downgraded, false);
+    assert.equal(undone.hint, false);
+
+    const calm = stepFxQuality({
+      choice: 'auto',
+      quality: 'low',
+      slow: false,
+      suppressed: false,
+      remembered: 'high',
+    });
+    assert.equal(calm.quality, 'low');
+    assert.equal(calm.downgraded, false);
+    assert.equal(calm.remembered, 'high');
+
+    for (const choice of ['high', 'low'] as const) {
+      const fixed = stepFxQuality({ ...base, choice, quality: 'high', slow: true });
+      assert.equal(fixed.quality, choice);
+      assert.equal(fixed.downgraded, false);
+      assert.equal(fixed.hint, true);
+      assert.equal(fixed.remembered, null);
+      const fine = stepFxQuality({ ...base, choice, quality: choice, slow: false });
+      assert.equal(fine.hint, false);
+      assert.equal(fine.quality, choice);
+    }
+
+    const classic = stepFxQuality({ ...base, choice: 'classic', quality: 'low', slow: true });
+    assert.equal(classic.quality, 'classic');
+    assert.equal(classic.downgraded, false);
+    assert.equal(classic.hint, false);
   });
 
   test('two frame sizes stop at exactly 180s of evacuation steps', () => {

@@ -34,6 +34,20 @@ function envNonNegativeInt(name: string, fallback: number): number {
   return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
+/** Non-negative finite number, or the fallback when unset or invalid. */
+function envUnitFloat(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 2 ? value : fallback;
+}
+
+function envSeverity(name: string, fallback: 'low' | 'medium' | 'high'): 'low' | 'medium' | 'high' {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === 'low' || raw === 'medium' || raw === 'high') return raw;
+  return fallback;
+}
+
 const runBackgroundEngines =
   process.env.RUN_BACKGROUND_ENGINES === 'true' ||
   (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false');
@@ -195,6 +209,21 @@ export const env = {
   teamPressureMaxDeliveries10Min: envInt('TEAM_PRESSURE_MAX_DELIVERIES_10MIN', 6),
   crossTeamLoopWindowMinutes: envInt('CROSS_TEAM_LOOP_WINDOW_MINUTES', 20),
   crossTeamMaxCascadeDepth: envInt('CROSS_TEAM_MAX_CASCADE_DEPTH', 3),
+  // AI director (consequence director). Dormant until migration 279 is applied and AI is enabled.
+  // Mode ceiling and the default-mode env vars belong to the publishing work.
+  directorEnabled: process.env.DIRECTOR_ENABLED !== 'false',
+  directorTemperature: envUnitFloat('DIRECTOR_TEMPERATURE', 0.4),
+  directorSeedSalt: process.env.DIRECTOR_SEED_SALT ?? '',
+  directorFairnessTolerance: envNonNegativeInt('DIRECTOR_FAIRNESS_TOLERANCE', 2),
+  directorStartMinute: envNonNegativeInt('DIRECTOR_START_MINUTE', 5),
+  directorTickMinutes: envInt('DIRECTOR_TICK_MINUTES', 10),
+  directorMinGapMinutes: envInt('DIRECTOR_MIN_GAP_MINUTES', 4),
+  directorMaxProposalsPerWake: envInt('DIRECTOR_MAX_PROPOSALS_PER_WAKE', 1),
+  directorMaxPer15Min: envInt('DIRECTOR_MAX_PER_15MIN', 2),
+  directorMaxPerTeam30Min: envInt('DIRECTOR_MAX_PER_TEAM_30MIN', 1),
+  directorMaxSeverity: envSeverity('DIRECTOR_MAX_SEVERITY', 'high'),
+  directorAiBudgetPerSessionHour: envInt('DIRECTOR_AI_BUDGET_PER_SESSION_HOUR', 20),
+  directorConsistencyCheck: process.env.DIRECTOR_CONSISTENCY_CHECK !== 'false',
   // AI follow-ups one chain may write in a session-hour. A denied budget uses the template.
   escalationAiBudgetPerSessionHour: envInt('ESCALATION_AI_BUDGET_PER_SESSION_HOUR', 120),
   // Chat-completion calls that may judge inject replies in one session-hour.

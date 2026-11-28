@@ -8,6 +8,12 @@ import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { attributeMessengerReply } from '../services/ledger/injectLedgerService.js';
 import { getControlledOrgPage } from '../services/orgPageService.js';
 import { randomUUID } from 'crypto';
+import { directThreadVisible, isSessionStaff, messengerHandleFilter } from '../lib/socialAccess.js';
+import {
+  loadInboxPageHandles,
+  requirePlayerWrite,
+  requireSocialRead,
+} from '../lib/socialSessionGuard.js';
 
 const router = Router();
 
@@ -18,23 +24,20 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     const { sessionId } = req.params;
     const user = req.user!;
     const platformFilter = req.query.platform as string | undefined;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
 
     // Identity model §10: display name from user_profiles (attached by requireAuth); handleFor()
     // also strips the characters that are structural in a PostgREST .or() filter.
     const playerName = displayNameOf(user);
     const playerHandle = handleFor(playerName);
-
-    const { data: orgPages } = await supabaseAdmin
-      .from('sim_org_pages')
-      .select('page_handle')
-      .eq('session_id', sessionId)
-      .eq('platform', platformFilter || 'facebook');
-
-    const orgPageHandle = (orgPages?.[0]?.page_handle || '').replace(/["\\]/g, '');
-
-    const handleFilter = orgPageHandle
-      ? `sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}",recipient_handle.eq."${orgPageHandle}",sender_handle.eq."${orgPageHandle}"`
-      : `sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}"`;
+    const platform = platformFilter || 'facebook';
+    // Players see their own threads plus pages they control. The first org page in the
+    // table is not an inbox everyone shares. Session staff see every page on this platform.
+    const pageHandles = await loadInboxPageHandles(sessionId, user, session, platform);
+    const pageHandleSet = new Set(pageHandles);
+    const handleFilter = messengerHandleFilter(playerHandle, pageHandles);
+    if (!handleFilter) return res.json({ data: [] });
 
     let query = supabaseAdmin
       .from('sim_direct_messages')
@@ -69,10 +72,9 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     for (const msg of messages || []) {
       const existing = threadMap.get(msg.thread_id);
       const isOrgThread =
-        orgPageHandle &&
-        (msg.sender_handle === orgPageHandle || msg.recipient_handle === orgPageHandle);
+        pageHandleSet.has(msg.sender_handle) || pageHandleSet.has(msg.recipient_handle);
       const isIncoming = isOrgThread
-        ? msg.recipient_handle === orgPageHandle
+        ? pageHandleSet.has(msg.recipient_handle)
         : msg.recipient_handle === playerHandle;
       const otherHandle = isIncoming ? msg.sender_handle : msg.recipient_handle;
       const otherDisplayName = isIncoming ? msg.sender_display_name : otherHandle;
@@ -121,6 +123,7 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 router.get('/thread/:threadId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { threadId } = req.params;
+    const user = req.user!;
 
     const { data, error } = await supabaseAdmin
       .from('sim_direct_messages')
@@ -133,7 +136,27 @@ router.get('/thread/:threadId', requireAuth, async (req: AuthenticatedRequest, r
       return res.status(500).json({ error: 'Failed to fetch thread messages' });
     }
 
-    res.json({ data: data || [] });
+    const rows = data || [];
+    if (rows.length === 0) return res.json({ data: [] });
+    const sessionId = rows[0].session_id as string;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    const platform = (rows[0].platform as string) || 'facebook';
+    const pageHandles = await loadInboxPageHandles(sessionId, user, session, platform);
+    const staff = isSessionStaff(user, session);
+    const playerHandle = handleFor(displayNameOf(user));
+    const visible = rows.every((msg) =>
+      directThreadVisible({
+        staff,
+        playerHandle,
+        pageHandles,
+        senderHandle: msg.sender_handle,
+        recipientHandle: msg.recipient_handle,
+      }),
+    );
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    res.json({ data: rows });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /messenger/thread/:threadId');
     res.status(500).json({ error: 'Internal server error' });
@@ -153,6 +176,8 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
         .status(400)
         .json({ error: 'session_id, recipient_handle, and content are required' });
     }
+
+    if (!(await requirePlayerWrite(res, session_id, user))) return;
 
     // recipient_handle is interpolated into a PostgREST .or() filter where the value is
     // double-quoted. Reject the only characters that can break out of that quoting,
@@ -318,11 +343,30 @@ router.post('/:messageId/read', requireAuth, async (req: AuthenticatedRequest, r
 
     const { data: msg } = await supabaseAdmin
       .from('sim_direct_messages')
-      .select('id, session_id, is_read')
+      .select('id, session_id, is_read, sender_handle, recipient_handle, platform')
       .eq('id', messageId)
       .single();
 
     if (!msg) return res.status(404).json({ error: 'Message not found' });
+    const session = await requirePlayerWrite(res, msg.session_id as string, user);
+    if (!session) return;
+    const pageHandles = await loadInboxPageHandles(
+      msg.session_id as string,
+      user,
+      session,
+      (msg.platform as string) || 'facebook',
+    );
+    if (
+      !directThreadVisible({
+        staff: isSessionStaff(user, session),
+        playerHandle: handleFor(displayNameOf(user)),
+        pageHandles,
+        senderHandle: msg.sender_handle as string,
+        recipientHandle: msg.recipient_handle as string,
+      })
+    ) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const alreadyRead = msg.is_read === true;
 
@@ -356,15 +400,24 @@ router.get('/unread-count/:sessionId', requireAuth, async (req: AuthenticatedReq
     const { sessionId } = req.params;
     const user = req.user!;
     const platformFilter = req.query.platform as string | undefined;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
 
     const playerName = displayNameOf(user);
     const playerHandle = handleFor(playerName);
+    const pageHandles = await loadInboxPageHandles(
+      sessionId,
+      user,
+      session,
+      platformFilter || 'facebook',
+    );
+    const recipients = [playerHandle, ...pageHandles.filter((handle) => handle !== playerHandle)];
 
     let query = supabaseAdmin
       .from('sim_direct_messages')
       .select('id', { count: 'exact', head: true })
       .eq('session_id', sessionId)
-      .eq('recipient_handle', playerHandle)
+      .in('recipient_handle', recipients)
       .eq('is_read', false);
 
     if (platformFilter) {
