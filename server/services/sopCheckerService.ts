@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { env } from '../env.js';
-import { crisisElapsedFractionalMinutes, isOnOrAfterCrisis } from '../lib/sessionPhase.js';
+import { countsOnCrisisClock } from '../lib/peaceGate.js';
+import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
 import { getPlayerTeamName } from './teamCharterService.js';
 
 export interface SOPComplianceResult {
@@ -82,8 +82,7 @@ export async function evaluateSOPCompliance(
       const matchingActions = (actions || []).filter(
         (a) =>
           a.sop_step_matched === step.step_id &&
-          (!env.enablePeacePeriod ||
-            isOnOrAfterCrisis(a.created_at, String(session.start_time))),
+          countsOnCrisisClock(a.created_at, String(session.start_time)),
       );
 
       let status: SOPComplianceResult['status'] = 'pending';

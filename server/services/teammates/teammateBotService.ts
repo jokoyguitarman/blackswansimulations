@@ -2,7 +2,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTeams } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
-import { isCrisisPhase } from '../../lib/sessionPhase.js';
+import { skipForPeace } from '../../lib/peaceGate.js';
 import { getWebSocketService, type WebSocketEvent } from '../websocketService.js';
 import { ensurePool, getAccount, type BotAccount } from './accounts.js';
 import { PlayerBot } from './bot.js';
@@ -115,19 +115,20 @@ class TeammateBotService {
   async onBotsChanged(sessionId: string): Promise<void> {
     if (!env.enableTeammateBots) return;
     try {
-      const { data } = await supabaseAdmin
-        .from('sessions')
-        .select(
-          (env.enablePeacePeriod
-            ? 'id, status, sim_mode, start_time'
-            : 'id, status, sim_mode') as 'id, status, sim_mode',
-        )
-        .eq('id', sessionId)
-        .maybeSingle();
+      const { data } = env.enablePeacePeriod
+        ? await supabaseAdmin
+            .from('sessions')
+            .select('id, status, sim_mode, start_time')
+            .eq('id', sessionId)
+            .maybeSingle()
+        : await supabaseAdmin
+            .from('sessions')
+            .select('id, status, sim_mode')
+            .eq('id', sessionId)
+            .maybeSingle();
       if (!data) return this.stopRuntime(sessionId);
-      const row = data as { status: string; sim_mode: string | null; start_time?: string | null };
-      if (row.status === 'in_progress' && row.sim_mode === 'social_media') {
-        if (env.enablePeacePeriod && !isCrisisPhase({ start_time: row.start_time ?? null })) {
+      if (data.status === 'in_progress' && data.sim_mode === 'social_media') {
+        if (skipForPeace(data)) {
           this.stopRuntime(sessionId);
           return;
         }
@@ -150,20 +151,25 @@ class TeammateBotService {
     if (this.reconciling) return;
     this.reconciling = true;
     try {
-      const { data: sessions, error } = await supabaseAdmin
-        .from('sessions')
-        .select((env.enablePeacePeriod ? 'id, start_time' : 'id') as 'id')
-        .eq('status', 'in_progress')
-        .eq('sim_mode', 'social_media');
-      if (error) {
-        logger.warn({ error }, 'teammates: reconcile session query failed');
+      const listed = env.enablePeacePeriod
+        ? await supabaseAdmin
+            .from('sessions')
+            .select('id, start_time')
+            .eq('status', 'in_progress')
+            .eq('sim_mode', 'social_media')
+        : await supabaseAdmin
+            .from('sessions')
+            .select('id')
+            .eq('status', 'in_progress')
+            .eq('sim_mode', 'social_media');
+      if (listed.error) {
+        logger.warn({ error: listed.error }, 'teammates: reconcile session query failed');
         return;
       }
       const live = new Set<string>();
-      for (const raw of sessions ?? []) {
-        const row = raw as { id: string; start_time?: string | null };
+      for (const row of listed.data ?? []) {
         const id = String(row.id);
-        if (env.enablePeacePeriod && !isCrisisPhase({ start_time: row.start_time ?? null })) {
+        if (skipForPeace(row)) {
           this.stopRuntime(id);
           continue;
         }

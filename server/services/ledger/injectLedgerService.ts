@@ -9,8 +9,7 @@
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { env } from '../../env.js';
-import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../../lib/peaceSchema.js';
-import { sessionValidAt } from '../../lib/sessionPhase.js';
+import { openedAtOf, selectSession, type SessionClockFields } from '../../lib/peaceSchema.js';
 import { getWebSocketService } from '../websocketService.js';
 import { getPlayerTeamName } from '../teamCharterService.js';
 import { logger } from '../../lib/logger.js';
@@ -647,10 +646,6 @@ async function attachCommsFacts(
     const loaded = needClock ? await loadSessionClock(sessionId) : null;
     const clockStart = startTime ?? loaded?.startTime ?? null;
     const opened = openedAt !== undefined ? openedAt : (loaded?.openedAt ?? null);
-    const rosterAt =
-      env.enablePeacePeriod
-        ? sessionValidAt({ start_time: clockStart, opened_at: opened })
-        : null;
     const [contacts, verdicts, actions, stakeholders, callsAvailable, signals] = await Promise.all([
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
@@ -658,7 +653,7 @@ async function attachCommsFacts(
       loadScenarioStakeholders(sessionId),
       simCallsAvailable(),
       teamSignals
-        ? loadTeamSignalFacts(sessionId, clockStart, rosterAt)
+        ? loadTeamSignalFacts(sessionId, clockStart, { openedAt: opened })
         : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
@@ -1475,30 +1470,22 @@ async function profileIsBot(userId: string): Promise<boolean> {
   }
 }
 
+interface LedgerSessionClock extends SessionClockFields {
+  start_time: string | null;
+  trainer_id: string | null;
+}
+
 async function loadSessionClock(sessionId: string): Promise<SessionClock> {
   try {
-    const columns = 'start_time, trainer_id';
-    let result = await supabaseAdmin
-      .from('sessions')
-      .select(
-        (env.enablePeacePeriod ? `${columns}, opened_at` : columns) as 'start_time, trainer_id',
-      )
-      .eq('id', sessionId)
-      .maybeSingle();
-    if (env.enablePeacePeriod && result.error && isPeaceSchemaMissing(result.error)) {
-      warnPeaceSchemaMissing(result.error);
-      result = await supabaseAdmin
-        .from('sessions')
-        .select(columns)
-        .eq('id', sessionId)
-        .maybeSingle();
-    }
+    const result = await selectSession<LedgerSessionClock>('start_time, trainer_id', (query) =>
+      query.eq('id', sessionId).maybeSingle(),
+    );
     const { data, error } = result;
     if (error || !data) return { startTime: null, trainerId: null };
     return {
-      startTime: (data.start_time as string | null) ?? null,
-      trainerId: (data.trainer_id as string | null) ?? null,
-      openedAt: (data as { opened_at?: string | null }).opened_at ?? null,
+      startTime: data.start_time ?? null,
+      trainerId: data.trainer_id ?? null,
+      openedAt: openedAtOf(data),
     };
   } catch {
     return { startTime: null, trainerId: null };

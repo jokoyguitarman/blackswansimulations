@@ -141,8 +141,7 @@ router.post(
           | undefined;
 
         const startTime = (session as Record<string, unknown>).start_time as string | undefined;
-        const elapsedMinutes = startTime ? crisisElapsedMinutes(startTime)
-          : undefined;
+        const elapsedMinutes = startTime ? crisisElapsedMinutes(startTime) : undefined;
 
         const scenarioFull = await supabaseAdmin
           .from('scenarios')
@@ -152,16 +151,13 @@ router.post(
 
         const ctx: InsiderContext = {
           scenarioTitle: (scenarioFull.data as Record<string, unknown> | null)?.title as
-            | string
-            | undefined,
+            string | undefined,
           scenarioDescription: (scenarioFull.data as Record<string, unknown> | null)
             ?.description as string | undefined,
           scenarioBriefing: (scenarioFull.data as Record<string, unknown> | null)?.briefing as
-            | string
-            | undefined,
+            string | undefined,
           scenarioType: (scenarioFull.data as Record<string, unknown> | null)?.category as
-            | string
-            | undefined,
+            string | undefined,
           durationMinutes: (scenarioFull.data as Record<string, unknown> | null)
             ?.duration_minutes as number | undefined,
           knowledge,

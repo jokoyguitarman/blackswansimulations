@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
+import { playerClockHidden } from '../lib/crisisClock';
 import { PAGES_UNASSIGNED } from '@shared/sessionPageCoverage';
 import { ChatInterface } from '../components/Chat/ChatInterface';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
@@ -1167,10 +1168,7 @@ export const SessionView = () => {
     if (!session?.start_time || session.status !== 'in_progress') {
       return null;
     }
-    if (typeof session.crisis_starts_at === 'string') {
-      const crisisAt = Date.parse(session.crisis_starts_at);
-      if (Number.isFinite(crisisAt) && currentTime.getTime() < crisisAt) return null;
-    }
+    if (playerClockHidden(session, currentTime.getTime())) return null;
 
     const start = new Date(session.start_time);
     const elapsed = currentTime.getTime() - start.getTime();

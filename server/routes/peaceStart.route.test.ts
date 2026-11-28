@@ -5,6 +5,7 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { initializeWebSocketService } from '../services/websocketService.js';
 
 mock.module('../index.js', {
   namedExports: { io: {}, app: {}, server: {} },
@@ -22,6 +23,7 @@ const originalPeace = env.enablePeacePeriod;
 
 describe('session start route', () => {
   const updates: Array<Record<string, unknown>> = [];
+  const startedPayloads: Array<Record<string, unknown>> = [];
   let server: ReturnType<typeof createServer>;
   let base = '';
   let failPeaceColumns = false;
@@ -101,6 +103,13 @@ describe('session start route', () => {
 
   before(async () => {
     install();
+    initializeWebSocketService({
+      to: () => ({
+        emit: (_name: string, event: { type?: string; data?: Record<string, unknown> }) => {
+          if (event?.type === 'session.started' && event.data) startedPayloads.push(event.data);
+        },
+      }),
+    } as never);
     const app = express();
     app.use(express.json());
     app.use('/api/sessions', sessionsRouter);
@@ -119,6 +128,7 @@ describe('session start route', () => {
 
   async function start(body: Record<string, unknown> = { status: 'in_progress' }) {
     updates.length = 0;
+    startedPayloads.length = 0;
     sessionRow.start_time = null;
     sessionRow.status = 'scheduled';
     delete sessionRow.opened_at;
@@ -148,6 +158,12 @@ describe('session start route', () => {
     const started = Date.parse(String(claim.start_time));
     assert.ok(Math.abs(started - Date.now()) < 5_000);
     assert.equal(json.data?.crisis_starts_at, undefined);
+    assert.equal(startedPayloads.length, 1);
+    assert.deepEqual(startedPayloads[0], {
+      session_id: SESSION,
+      status: 'in_progress',
+      start_time: claim.start_time,
+    });
   });
 
   test('flag on with a peace feed shifts start_time by the default 300s', async () => {

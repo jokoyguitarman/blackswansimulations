@@ -1,7 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { runPressureEngine, flipUnstaffedOrgsToAi } from './pressureEngineService.js';
 import {
   runDecisionTick,
@@ -54,10 +55,7 @@ export async function tickGeneratorEngines(): Promise<void> {
     for (const s of sessions || []) {
       const id = String(s.id);
       // Flag off: same loop as before, no extra read. start_time is already on the row.
-      if (
-        env.enablePeacePeriod &&
-        !isCrisisPhase({ start_time: s.start_time == null ? null : String(s.start_time) })
-      ) {
+      if (skipForPeace({ start_time: s.start_time == null ? null : String(s.start_time) })) {
         continue;
       }
       if (inFlight.has(id)) continue;

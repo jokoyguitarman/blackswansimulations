@@ -7,10 +7,9 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { teamsValidAt } from '../../lib/templateRows.js';
 import { env } from '../../env.js';
-import { silenceActivityMinute } from '../../lib/sessionPhase.js';
+import { activityMinute, rosterValidAt } from '../../lib/peaceGate.js';
 import { logger } from '../../lib/logger.js';
 import { isLedgerSchemaMissing } from '../ledger/ledgerSchema.js';
-import { sessionMinuteAt } from '../ledger/injectLedgerCore.js';
 import { getCatalogCharter, type TeamExpectedAction } from '../teamCharterService.js';
 import { resolveTeamFunction } from '../../lib/stakeholderContract.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
@@ -90,7 +89,7 @@ function schemaMissing(error: QueryError | null): boolean {
 export async function loadTeamSignalFacts(
   sessionId: string,
   startTime: string | null,
-  validAt: string | null = null,
+  clock: { openedAt?: string | null } = {},
 ): Promise<TeamSignalFacts> {
   const enabled = env.enableExecutiveDecisions;
   try {
@@ -109,7 +108,7 @@ export async function loadTeamSignalFacts(
     ] = await Promise.all([
       loadRoster(
         scenario,
-        env.enablePeacePeriod && validAt ? validAt : (startTime ?? new Date()),
+        rosterValidAt({ start_time: startTime, opened_at: clock.openedAt ?? null }),
       ),
       loadMembership(sessionId),
       loadTrainerIds(sessionId),
@@ -492,15 +491,22 @@ function actionHits(
     const playerId = row.player_id ? String(row.player_id) : '';
     const teamName = stamped || (playerId ? (teamByPlayer.get(playerId) ?? '') : '');
     const slug = slugifyTeamName(teamName);
-    const at = instantOf(row.last_at) || instantOf(row.created_at);
-    if (!slug || !at) continue;
-    const minute = env.enablePeacePeriod
-      ? silenceActivityMinute(startTime, at)
-      : sessionMinuteAt(startTime, at);
-    if (minute == null) continue;
-    hits.push({ team_slug: slug, minute });
+    const minute = hitMinute(startTime, instantOf(row.last_at) || instantOf(row.created_at), slug);
+    if (!minute) continue;
+    hits.push(minute);
   }
   return hits;
+}
+
+function hitMinute(
+  startTime: string | null,
+  at: string,
+  slug: string,
+): ActivityHit | null {
+  if (!slug || !at) return null;
+  const minute = activityMinute(startTime, at);
+  if (minute == null) return null;
+  return { team_slug: slug, minute };
 }
 
 function chatHits(
@@ -515,13 +521,9 @@ function chatHits(
     if (!senderId || trainers.has(senderId)) continue;
     const teamName = teamByPlayer.get(senderId) ?? '';
     const slug = slugifyTeamName(teamName);
-    const at = instantOf(row.last_at) || instantOf(row.created_at);
-    if (!slug || !at) continue;
-    const minute = env.enablePeacePeriod
-      ? silenceActivityMinute(startTime, at)
-      : sessionMinuteAt(startTime, at);
-    if (minute == null) continue;
-    hits.push({ team_slug: slug, minute });
+    const minute = hitMinute(startTime, instantOf(row.last_at) || instantOf(row.created_at), slug);
+    if (!minute) continue;
+    hits.push(minute);
   }
   return hits;
 }

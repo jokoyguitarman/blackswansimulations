@@ -8,7 +8,8 @@ import { runGateEvaluationForSession } from './gateEvaluationService.js';
 import { mergeStateWithInjectEffects } from './injectPublishEffectsService.js';
 import { runPursuitResponseCheck } from './pursuitResponseTracker.js';
 import { env } from '../env.js';
-import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { runPeaceLane } from './peace/peaceLane.js';
 import { getWebSocketService } from './websocketService.js';
 import { evaluatePinResolution } from './pinResolutionService.js';
@@ -443,7 +444,8 @@ export class InjectSchedulerService {
   /**
    * Process a single session to check for injects that should be published (time-based and condition-based).
    */
-  private async processSession(session: {
+  /** @internal Scheduler tick for one session. Tests call this directly. */
+  async processSession(session: {
     id: string;
     scenario_id: string;
     start_time: string;
@@ -456,7 +458,7 @@ export class InjectSchedulerService {
   }): Promise<void> {
     // Peace is a future start_time. The flag check is first so a tick with the
     // flag off does not parse the clock or query anything extra. WP3 fills the lane.
-    if (env.enablePeacePeriod && !isCrisisPhase(session)) {
+    if (skipForPeace(session)) {
       await runPeaceLane(session);
       return;
     }
@@ -2458,7 +2460,7 @@ export async function processSessionForTests(session: {
   join_token?: string | null;
 }): Promise<void> {
   const scheduler = new InjectSchedulerService();
-  await scheduler['processSession'](session);
+  await scheduler.processSession(session);
 }
 
 // Singleton instance

@@ -10,7 +10,7 @@ import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
-import { playerClockHidden } from '../../lib/crisisClock';
+import { playerClockHidden, trainerClockStart } from '../../lib/crisisClock';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1241,10 +1241,8 @@ export default function TrainerSimDashboard() {
       const json = await res.json();
       if (json.data) {
         setSessionInfo(json.data);
-        const start = (json.data.crisis_starts_at ??
-          json.data.started_at ??
-          json.data.start_time) as string | undefined;
-        setBeforeCrisis(playerClockHidden(json.data as { crisis_starts_at?: string | null }));
+        const start = trainerClockStart(json.data);
+        setBeforeCrisis(playerClockHidden(json.data));
         const end = (json.data.ended_at ?? json.data.end_time) as string | undefined;
         if (typeof start === 'string') {
           if (json.data.status === 'completed' && typeof end === 'string') {
@@ -1367,8 +1365,8 @@ export default function TrainerSimDashboard() {
     if (isReview) return;
     const id = setInterval(() => {
       const info = sessionInfo as Record<string, unknown> | null;
-      const start = info?.crisis_starts_at ?? info?.started_at ?? info?.start_time;
-      setBeforeCrisis(playerClockHidden(info as { crisis_starts_at?: string | null }));
+      const start = trainerClockStart(info);
+      setBeforeCrisis(playerClockHidden(info));
       if (typeof start === 'string') {
         setElapsedMinutes(minutesAgo(start));
       }

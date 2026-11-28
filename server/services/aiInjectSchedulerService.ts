@@ -12,7 +12,8 @@ import {
 import { publishInjectToSession } from '../routes/injects.js';
 import { recordInjectTrigger } from './conditions/injectTriggerService.js';
 import { env } from '../env.js';
-import { crisisElapsedMinutes, isCrisisPhase } from '../lib/sessionPhase.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { getWebSocketService } from './websocketService.js';
 import { applyMediaChallengePressure } from './heatMeterService.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -336,7 +337,7 @@ export class AIInjectSchedulerService {
 
       // Process each session
       for (const session of c2eSessions) {
-        if (env.enablePeacePeriod && !isCrisisPhase({ start_time: session.start_time })) continue;
+        if (skipForPeace(session)) continue;
         try {
           await this.processSessionForAIInjects(session);
         } catch (sessionErr) {

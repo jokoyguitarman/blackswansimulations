@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { isCrisisPhase } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
@@ -64,18 +64,19 @@ async function resolveRecipientUserId(
   return null;
 }
 
-async function sessionIsCrisis(sessionId: string): Promise<boolean> {
+async function npcMessagesSkipPeace(sessionId: string): Promise<boolean> {
+  if (!env.enablePeacePeriod) return false;
   const { data } = await supabaseAdmin
     .from('sessions')
     .select('start_time')
     .eq('id', sessionId)
     .maybeSingle();
-  return isCrisisPhase({ start_time: (data?.start_time as string | null) ?? null });
+  return skipForPeace({ start_time: data?.start_time ?? null });
 }
 
 export async function triggerNPCMessages(sessionId: string): Promise<void> {
   if (!env.aiEnabled) return;
-  if (env.enablePeacePeriod && !(await sessionIsCrisis(sessionId))) return;
+  if (await npcMessagesSkipPeace(sessionId)) return;
 
   try {
     const { data: session } = await supabaseAdmin

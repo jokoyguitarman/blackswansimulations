@@ -100,12 +100,10 @@ export function resolvePeaceSeconds(input: PeaceSecondsInput): number {
   const peace = asRecord(asRecord(input.initialState)?.peace_period);
   const posts = peace?.posts;
   if (!Array.isArray(posts) || posts.length === 0) return 0;
-  const fallback = Number.isFinite(input.defaultSeconds) ? input.defaultSeconds : 300;
   const raw = input.requested != null && input.requested !== '' ? input.requested : peace?.seconds;
-  const parsed = raw == null || raw === '' ? fallback : Number(raw);
-  const seconds = Number.isFinite(parsed) ? parsed : fallback;
-  const configuredMax = Number.isFinite(input.maxSeconds) ? input.maxSeconds : 900;
-  const cap = Math.min(PEACE_SECONDS_COLUMN_MAX, Math.max(0, Math.floor(configuredMax)));
+  const parsed = raw == null || raw === '' ? input.defaultSeconds : Number(raw);
+  const seconds = Number.isFinite(parsed) ? parsed : input.defaultSeconds;
+  const cap = Math.min(PEACE_SECONDS_COLUMN_MAX, Math.max(0, Math.floor(input.maxSeconds)));
   return Math.min(cap, Math.max(0, Math.floor(seconds)));
 }
 

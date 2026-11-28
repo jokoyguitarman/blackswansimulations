@@ -27,6 +27,79 @@ const TRAINER = '33333333-3333-4333-8333-333333333333';
 const originalFrom = supabaseAdmin.from.bind(supabaseAdmin);
 const originalPeace = env.enablePeacePeriod;
 
+/**
+ * Tables `processSession` reads with the flag off and an empty database, in order.
+ * This is the master tick: the peace gate does not add or remove a query.
+ */
+const FLAGS_OFF_TABLES = [
+  'sim_calls',
+  'sessions',
+  'sim_calls',
+  'sim_calls',
+  'inject_responses',
+  'scenario_casualties',
+  'scenario_hazards',
+  'session_events',
+  'placed_assets',
+  'sessions',
+  'sessions',
+  'scenario_teams',
+  'session_pursuit_responses',
+  'scenario_gates',
+  'session_gate_progress',
+  'session_events',
+  'session_events',
+  'scenario_injects',
+  'decisions',
+  'placed_assets',
+  'session_teams',
+  'social_posts',
+  'player_actions',
+  'social_posts',
+  'sessions',
+  'sim_org_pages',
+  'sessions',
+  'scenario_injects',
+  'inject_deliveries',
+  'inject_responses',
+  'sessions',
+  'sessions',
+  'stakeholder_conversations',
+  'inject_verdicts',
+  'player_actions',
+  'sessions',
+  'sim_calls',
+  'player_actions',
+  'escalation_chains',
+  'stakeholder_moods',
+  'session_call_lines',
+  'sessions',
+  'session_call_lines',
+  'session_call_takers',
+  'session_teams',
+  'session_role_assignments',
+  'sim_calls',
+  'scenarios',
+  'escalation_chains',
+  'stakeholder_moods',
+  'stakeholder_moods',
+  'sessions',
+  'sessions',
+  'scenario_hazards',
+  'scenario_casualties',
+  'sessions',
+  'sessions',
+  'sessions',
+  'sessions',
+  'sessions',
+  'scenario_casualties',
+  'scenario_casualties',
+  'placed_assets',
+  'scenario_hazards',
+  'sessions',
+  'social_posts',
+];
+
 function chain(result: { data: unknown; error: { code?: string; message?: string } | null }) {
   const builder: Record<string, unknown> = {};
   const self = () => builder;
@@ -112,7 +185,7 @@ describe('processSession peace gate', () => {
     assert.deepEqual(calls, []);
   });
 
-  test('flag off does not enter the peace hook, even if start_time is ahead', async () => {
+  test('flag off does not enter the peace hook and runs the same first queries as master', async () => {
     calls.length = 0;
     const seen: string[] = [];
     env.enablePeacePeriod = false;
@@ -128,7 +201,7 @@ describe('processSession peace gate', () => {
       sim_mode: 'social_media',
     });
     assert.deepEqual(seen, []);
-    assert.ok(calls.length > 0);
+    assert.deepEqual(calls, FLAGS_OFF_TABLES);
   });
 });
 

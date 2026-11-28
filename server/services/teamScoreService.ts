@@ -1,12 +1,9 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { teamsValidAt } from '../lib/templateRows.js';
 import { env } from '../env.js';
-import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
-import {
-  crisisElapsedFractionalMinutes,
-  isOnOrAfterCrisis,
-  sessionValidAt,
-} from '../lib/sessionPhase.js';
+import { selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
+import { countsOnCrisisClock, rosterValidAt } from '../lib/peaceGate.js';
+import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
@@ -79,25 +76,66 @@ export interface TeamScoreReport {
   computed_at: string;
 }
 
-export async function computeTeamScores(sessionId: string): Promise<TeamScoreReport> {
-  const sessionColumns = 'scenario_id, start_time, trainer_id';
-  let sessionResult = await supabaseAdmin
-    .from('sessions')
-    .select(
-      (env.enablePeacePeriod
-        ? `${sessionColumns}, opened_at`
-        : sessionColumns) as 'scenario_id, start_time, trainer_id',
-    )
-    .eq('id', sessionId)
-    .single();
-  if (env.enablePeacePeriod && sessionResult.error && isPeaceSchemaMissing(sessionResult.error)) {
-    warnPeaceSchemaMissing(sessionResult.error);
-    sessionResult = await supabaseAdmin
-      .from('sessions')
-      .select(sessionColumns)
-      .eq('id', sessionId)
-      .single();
+interface TeamScoreSession extends SessionClockFields {
+  scenario_id: string | null;
+  start_time: string | null;
+  trainer_id: string | null;
+}
+
+function createdAtOf(row: { created_at?: string | null }): string | null {
+  return typeof row.created_at === 'string' ? row.created_at : null;
+}
+
+interface GradeRow {
+  posted_by_user_id?: string | null;
+  sent_by_player_id?: string | null;
+  sop_compliance_score: unknown;
+  created_at?: string | null;
+}
+
+async function loadPostGrades(sessionId: string): Promise<{ data: GradeRow[] | null }> {
+  if (!env.enablePeacePeriod) {
+    const { data } = await supabaseAdmin
+      .from('social_posts')
+      .select('posted_by_user_id, sop_compliance_score')
+      .eq('session_id', sessionId)
+      .eq('author_type', 'player')
+      .not('sop_compliance_score', 'is', null);
+    return { data };
   }
+  const { data } = await supabaseAdmin
+    .from('social_posts')
+    .select('posted_by_user_id, sop_compliance_score, created_at')
+    .eq('session_id', sessionId)
+    .eq('author_type', 'player')
+    .not('sop_compliance_score', 'is', null);
+  return { data };
+}
+
+async function loadEmailGrades(sessionId: string): Promise<{ data: GradeRow[] | null }> {
+  if (!env.enablePeacePeriod) {
+    const { data } = await supabaseAdmin
+      .from('sim_emails')
+      .select('sent_by_player_id, sop_compliance_score')
+      .eq('session_id', sessionId)
+      .not('sent_by_player_id', 'is', null)
+      .not('sop_compliance_score', 'is', null);
+    return { data };
+  }
+  const { data } = await supabaseAdmin
+    .from('sim_emails')
+    .select('sent_by_player_id, sop_compliance_score, created_at')
+    .eq('session_id', sessionId)
+    .not('sent_by_player_id', 'is', null)
+    .not('sop_compliance_score', 'is', null);
+  return { data };
+}
+
+export async function computeTeamScores(sessionId: string): Promise<TeamScoreReport> {
+  const sessionResult = await selectSession<TeamScoreSession>(
+    'scenario_id, start_time, trainer_id',
+    (query) => query.eq('id', sessionId).single(),
+  );
   const session = sessionResult.data;
 
   const emptyReport: TeamScoreReport = {
@@ -111,15 +149,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
 
   const [teamsRes, membershipRes, participantsRes, actionsRes, postsRes, emailsRes] =
     await Promise.all([
-      teamsValidAt(
-        String(session.scenario_id),
-        env.enablePeacePeriod
-          ? sessionValidAt({
-              start_time: (session.start_time as string | null) ?? null,
-              opened_at: (session as { opened_at?: string | null }).opened_at ?? null,
-            })
-          : ((session.start_time as string | null) ?? new Date()),
-      ),
+      teamsValidAt(String(session.scenario_id), rosterValidAt(session)),
       supabaseAdmin
         .from('session_teams')
         .select('user_id, team_name, assigned_at')
@@ -134,26 +164,8 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
         .select('player_id, action_type, team_at_action, metadata, created_at')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true }),
-      supabaseAdmin
-        .from('social_posts')
-        .select(
-          (env.enablePeacePeriod
-            ? 'posted_by_user_id, sop_compliance_score, created_at'
-            : 'posted_by_user_id, sop_compliance_score') as 'posted_by_user_id, sop_compliance_score',
-        )
-        .eq('session_id', sessionId)
-        .eq('author_type', 'player')
-        .not('sop_compliance_score', 'is', null),
-      supabaseAdmin
-        .from('sim_emails')
-        .select(
-          (env.enablePeacePeriod
-            ? 'sent_by_player_id, sop_compliance_score, created_at'
-            : 'sent_by_player_id, sop_compliance_score') as 'sent_by_player_id, sop_compliance_score',
-        )
-        .eq('session_id', sessionId)
-        .not('sent_by_player_id', 'is', null)
-        .not('sop_compliance_score', 'is', null),
+      loadPostGrades(sessionId),
+      loadEmailGrades(sessionId),
     ]);
 
   const scenarioTeams = teamsRes.data || [];
@@ -204,30 +216,14 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     }
   };
   for (const p of postsRes.data || []) {
-    if (
-      env.enablePeacePeriod &&
-      !isOnOrAfterCrisis(
-        (p as { created_at?: string }).created_at,
-        (session.start_time as string | null) ?? null,
-      )
-    ) {
-      continue;
-    }
+    if (!countsOnCrisisClock(createdAtOf(p), session.start_time ?? null)) continue;
     accumulate(
       p.posted_by_user_id ? String(p.posted_by_user_id) : null,
       (p.sop_compliance_score as Record<string, unknown>) || null,
     );
   }
   for (const e of emailsRes.data || []) {
-    if (
-      env.enablePeacePeriod &&
-      !isOnOrAfterCrisis(
-        (e as { created_at?: string }).created_at,
-        (session.start_time as string | null) ?? null,
-      )
-    ) {
-      continue;
-    }
+    if (!countsOnCrisisClock(createdAtOf(e), session.start_time ?? null)) continue;
     accumulate(
       e.sent_by_player_id ? String(e.sent_by_player_id) : null,
       (e.sop_compliance_score as Record<string, unknown>) || null,
@@ -251,10 +247,8 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     }
   }
 
-  const actions = (actionsRes.data || []).filter(
-    (row) =>
-      !env.enablePeacePeriod ||
-      isOnOrAfterCrisis(String(row.created_at), (session.start_time as string | null) ?? null),
+  const actions = (actionsRes.data || []).filter((row) =>
+    countsOnCrisisClock(String(row.created_at), session.start_time ?? null),
   );
   const observedActions: ObservedAction[] = actions.map((row) => ({
     player_id: String(row.player_id),

@@ -1,5 +1,5 @@
 import { env } from '../env.js';
-import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
+import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { snapshotFinalStateOnCompletion } from './scenarioStateService.js';
@@ -173,8 +173,14 @@ export async function latestHumanActivityFromReads(
   return latest;
 }
 
+export interface IdleSession {
+  id: string;
+  /** When the room opened: opened_at during peace, otherwise start_time. */
+  baseline: string;
+}
+
 export interface IdleSweepStore {
-  listRunningSessions(): Promise<Array<{ id: string; start_time: string }>>;
+  listRunningSessions(): Promise<IdleSession[]>;
   listBotUserIds(): Promise<string[]>;
   latestHumanActivity(
     sessionId: string,
@@ -230,38 +236,28 @@ function toIdleMarker(metadata: unknown, createdAt: unknown): IdleMarker | null 
   return { kind, reason, created_at: createdAt };
 }
 
+interface IdleClockRow extends SessionClockFields {
+  id?: string;
+  start_time?: string | null;
+}
+
 export function createSupabaseIdleSweepStore(): IdleSweepStore {
   return {
     async listRunningSessions() {
-      const columns = 'id, start_time';
-      let result = await supabaseAdmin
-        .from('sessions')
-        .select(
-          (env.enablePeacePeriod ? `${columns}, opened_at` : columns) as 'id, start_time',
-        )
-        .eq('status', 'in_progress')
-        .not('start_time', 'is', null);
-      if (env.enablePeacePeriod && result.error && isPeaceSchemaMissing(result.error)) {
-        warnPeaceSchemaMissing(result.error);
-        result = await supabaseAdmin
-          .from('sessions')
-          .select(columns)
-          .eq('status', 'in_progress')
-          .not('start_time', 'is', null);
-      }
-      const { data, error } = result;
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      const sessions: Array<{ id: string; start_time: string }> = [];
+      const result = await selectSession<IdleClockRow, IdleClockRow[] | null>(
+        'id, start_time',
+        (query) => Promise.resolve(query.eq('status', 'in_progress').not('start_time', 'is', null)),
+      );
+      if (result.error) throw result.error;
+      const rows = Array.isArray(result.data) ? result.data : [];
+      const sessions: IdleSession[] = [];
       for (const row of rows) {
-        const record = row as { id?: unknown; start_time?: unknown; opened_at?: unknown };
-        if (typeof record.id === 'string' && typeof record.start_time === 'string') {
-          const baseline =
-            env.enablePeacePeriod && typeof record.opened_at === 'string'
-              ? record.opened_at
-              : record.start_time;
-          sessions.push({ id: record.id, start_time: baseline });
-        }
+        if (typeof row.id !== 'string' || typeof row.start_time !== 'string') continue;
+        const opened = openedAtOf(row);
+        sessions.push({
+          id: row.id,
+          baseline: env.enablePeacePeriod && opened ? opened : row.start_time,
+        });
       }
       return sessions;
     },
@@ -427,15 +423,15 @@ export async function runIdleSweep(deps: {
       const nowMs = now();
       const lastHumanAt = await deps.store.latestHumanActivity(
         session.id,
-        session.start_time,
+        session.baseline,
         botIds,
       );
-      const lastActiveIso = laterIso(session.start_time, lastHumanAt);
-      const markers = await deps.store.listIdleMarkers(session.id, session.start_time);
+      const lastActiveIso = laterIso(session.baseline, lastHumanAt);
+      const markers = await deps.store.listIdleMarkers(session.id, session.baseline);
       const { warnedFor, clearIdleWarning } = readIdleMarkers(markers, lastActiveIso);
       const action = decideIdleAction({
         now: nowMs,
-        startTime: session.start_time,
+        startTime: session.baseline,
         lastHumanAt,
         warnedFor,
         settings: deps.settings,

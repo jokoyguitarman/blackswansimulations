@@ -48,7 +48,12 @@ import { getSessionCallCoverage } from '../services/callCoverageService.js';
 import { endLines, ensureCallLines } from '../services/calls/lineService.js';
 import { endRoles } from '../services/roles/roleService.js';
 import { insertSessionEvent } from '../lib/sessionEvents.js';
-import { isPeaceSchemaMissing, warnPeaceSchemaMissing } from '../lib/peaceSchema.js';
+import {
+  isPeaceSchemaMissing,
+  markPeaceColumnsMissing,
+  peaceColumnsMissing,
+  startClaimWithoutPeaceColumns,
+} from '../lib/peaceSchema.js';
 import { resolvePeaceSeconds, startClaimFields } from '../lib/sessionPhase.js';
 
 const router = Router();
@@ -1581,6 +1586,9 @@ router.patch(
             )
           : 0;
         claim = startClaimFields({ now, peaceSeconds });
+        if (claim.opened_at && peaceColumnsMissing()) {
+          claim = { start_time: claim.opened_at };
+        }
         Object.assign(updates, claim);
       }
       if (status === 'completed' || status === 'cancelled') {
@@ -1600,11 +1608,8 @@ router.patch(
         updated.error &&
         isPeaceSchemaMissing(updated.error)
       ) {
-        warnPeaceSchemaMissing(updated.error);
-        const fallback: Record<string, unknown> = { ...updates };
-        delete fallback.opened_at;
-        delete fallback.peace_seconds;
-        fallback.start_time = claim.opened_at;
+        markPeaceColumnsMissing();
+        const fallback = startClaimWithoutPeaceColumns(updates, claim.opened_at);
         updated = await supabaseAdmin
           .from('sessions')
           .update(fallback)

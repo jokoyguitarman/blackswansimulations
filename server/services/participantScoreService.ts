@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { isOnOrAfterCrisis } from '../lib/sessionPhase.js';
+import { countsOnCrisisClock } from '../lib/peaceGate.js';
 import { calculateCommunicationMetrics, calculateCoordinationScore } from './analyticsService.js';
 
 /**
@@ -46,7 +46,7 @@ export async function calculateParticipantScores(
     }
 
     // Get communication metrics (includes messages per participant)
-    const commMetrics = await calculateCommunicationMetrics(sessionId);
+    await calculateCommunicationMetrics(sessionId);
     const coordinationMetrics = await calculateCoordinationScore(sessionId);
 
     // Get all decisions proposed by each participant
@@ -73,10 +73,10 @@ export async function calculateParticipantScores(
         .maybeSingle();
       crisisStart = (clock.data?.start_time as string | null) ?? null;
     }
-    const decisionRows = (decisions || []).filter(
-      (row) => !env.enablePeacePeriod || isOnOrAfterCrisis(row.created_at, crisisStart),
+    const decisionRows = (decisions || []).filter((row) =>
+      countsOnCrisisClock(row.created_at, crisisStart),
     );
-    const decisionIds = (env.enablePeacePeriod ? decisionRows : decisions || []).map((d) => d.id);
+    const decisionIds = decisionRows.map((d) => d.id);
     const { data: steps, error: stepsError } =
       decisionIds.length > 0
         ? await supabaseAdmin
@@ -109,8 +109,8 @@ export async function calculateParticipantScores(
       throw messagesError;
     }
 
-    const messageRows = (messages || []).filter(
-      (row) => !env.enablePeacePeriod || isOnOrAfterCrisis(row.created_at, crisisStart),
+    const messageRows = (messages || []).filter((row) =>
+      countsOnCrisisClock(row.created_at, crisisStart),
     );
 
     // Build participant role map
@@ -130,9 +130,7 @@ export async function calculateParticipantScores(
       const decisionsProposed = decisionRows.filter((d) => d.proposed_by === userId).length;
 
       // Count communications sent
-      const communicationsSent = env.enablePeacePeriod
-        ? messageRows.filter((m) => m.sender_id === userId).length
-        : commMetrics.messages_per_participant[userId] || 0;
+      const communicationsSent = messageRows.filter((m) => m.sender_id === userId).length;
 
       // Calculate average response time for this participant
       const participantMessages = messageRows.filter((m) => m.sender_id === userId);
