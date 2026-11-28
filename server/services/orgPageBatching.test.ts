@@ -118,4 +118,43 @@ describe('org page batching', () => {
       env.warroomOrgPageBatch = savedBatch;
     }
   });
+
+  test("a trainer description becomes the rival page's stance", async () => {
+    const description = 'Undercuts on price.\nClaims a cleaner safety record.';
+    const pages = await generateSecondaryOrgPages(
+      'A product recall.',
+      'Singapore',
+      'Primary',
+      {
+        allies: [],
+        competitors: [
+          {
+            name: 'Apex Systems',
+            country: 'Singapore',
+            org_key: 'org_antagonist_apex',
+            description: `  ${description}  `,
+          },
+        ],
+        auto_antagonist: false,
+      },
+      undefined,
+      async () => ({
+        orgs: [
+          {
+            ref: 'C1',
+            org_role: 'antagonist',
+            display_name: 'Apex Systems',
+            stance: 'AI wrote a different stance',
+            facebook: { page_name: 'Apex', page_handle: '@apex', page_bio: '', follower_count: 1 },
+            x_twitter: { page_name: 'Apex', page_handle: '@apex', page_bio: '', follower_count: 1 },
+            branded_history: [],
+          },
+        ],
+      }),
+    );
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0].org_key, 'org_antagonist_apex');
+    assert.equal(pages[0].role, 'antagonist');
+    assert.equal(pages[0].stance, description);
+  });
 });

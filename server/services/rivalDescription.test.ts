@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateOrganisations, type OrganisationInput } from './scenarioOrgModel.js';
+import { competitorsSchema } from './warroomBuild/wireSchemas.js';
 import {
   RIVAL_DESCRIPTION_MAX,
   TRAINER_STANCE_INSTRUCTION,
@@ -8,14 +8,6 @@ import {
   competitorPromptSection,
   stanceFromTrainer,
 } from './rivalDescription.js';
-
-const roster = [
-  { team_name: 'Communications', is_public_voice: true },
-  { team_name: 'Legal' },
-];
-const orgs: OrganisationInput[] = [
-  { display_name: 'Sigma Logistics', country: 'Singapore', is_primary: true, team_roster: roster },
-];
 
 describe('rival prompt lines', () => {
   test('a description is quoted and the prompt is told to follow it', () => {
@@ -60,29 +52,26 @@ describe('stance merge', () => {
     assert.equal(stanceFromTrainer('   ', undefined), undefined);
     assert.equal(stanceFromTrainer(null, undefined), undefined);
   });
+});
 
-  test('the description is what initial_state.org_page.orgs[].stance stores', () => {
-    const description = 'Positions itself as the safer, more transparent alternative';
-    assert.ok(description.length <= RIVAL_DESCRIPTION_MAX);
-    const validated = validateOrganisations(orgs, [
-      { name: 'Apex Systems', country: 'Singapore', description: `  ${description}  ` },
+describe('rival description length', () => {
+  test('600 characters is checked after trimming', () => {
+    const body = 'd'.repeat(RIVAL_DESCRIPTION_MAX);
+    const accepted = competitorsSchema.safeParse([
+      { name: 'Apex', country: 'Singapore', description: `  ${body}\n` },
     ]);
-    assert.ok(validated.ok);
-    if (!validated.ok) return;
-    const stance = stanceFromTrainer('AI wrote this', validated.competitors[0].description);
-    const initial_state = {
-      org_page: {
-        orgs: [
-          {
-            org_key: validated.competitors[0].org_key,
-            role: 'antagonist' as const,
-            display_name: validated.competitors[0].name,
-            stance,
-          },
-        ],
+    assert.equal(accepted.success, true);
+    if (!accepted.success) return;
+    assert.equal(accepted.data[0].description, body);
+    assert.ok(`  ${body}\n`.length > RIVAL_DESCRIPTION_MAX);
+
+    const rejected = competitorsSchema.safeParse([
+      {
+        name: 'Apex',
+        country: 'Singapore',
+        description: ` ${'d'.repeat(RIVAL_DESCRIPTION_MAX + 1)} `,
       },
-    };
-    assert.equal(initial_state.org_page.orgs[0].stance, description);
-    assert.match(validated.competitors[0].org_key, /^org_antagonist_/);
+    ]);
+    assert.equal(rejected.success, false);
   });
 });
