@@ -774,6 +774,7 @@ export async function runOrgPagePipeline(
     x_handle: c.x_handle,
     country: c.country,
     org_key: c.org_key,
+    description: c.description,
   }));
 
   const orgPage = await generateOrgPageConfig(

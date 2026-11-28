@@ -14,6 +14,7 @@ import {
 } from './teamCharterService.js';
 import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
 import { matchGeneratedOrgsToRoster } from './orgNameMatch.js';
+import { competitorPromptSection, stanceFromTrainer } from './rivalDescription.js';
 import { catalogPromptBlock } from './conditions/conditionCatalog.js';
 import type { ResponseRubric } from './judging/judgeCore.js';
 
@@ -1969,6 +1970,8 @@ export interface OrgRosterEntry {
   /** Registry key to use for this page (keeps org_page.orgs[].org_key === initial_state.orgs[].org_key). */
   org_key?: string;
   kind?: string;
+  /** Trainer text for a rival. A non-empty value becomes the page stance. */
+  description?: string;
 }
 
 export interface OrgRosterInput {
@@ -2135,9 +2138,7 @@ async function generateSecondaryOrgPages(
   const allyLines = allies
     .map((a, i) => `  ALLY ${i + 1} [ref A${i + 1}]: ${a.name}${locLine(a)}`)
     .join('\n');
-  const compLines = competitors
-    .map((c, i) => `  COMPETITOR ${i + 1} [ref C${i + 1}]: ${c.name}${locLine(c)}`)
-    .join('\n');
+  const compLines = competitorPromptSection(competitors);
 
   const result = await callAI(
     `You are creating social media presences for the SUPPORTING CAST of organizations around a crisis.
@@ -2161,7 +2162,7 @@ For each org provide:
 - display_name
 - facebook: { page_name, page_handle, page_bio, follower_count }
 - x_twitter: { page_name, page_handle, page_bio, follower_count }
-- stance: (antagonists only) 1 sentence on how this rival positions itself against "${primaryName}" (e.g. "positions itself as the safer, more transparent alternative")
+- stance: (antagonists only) how this rival positions itself against "${primaryName}". If a trainer's description is given, the stance is that description. Otherwise 1 sentence (e.g. "positions itself as the safer, more transparent alternative")
 - auto_generated: true ONLY for an invented antagonist
 - branded_history: 4-8 pre-crisis posts: { content, platform ("facebook"|"x_twitter"), post_format ("text"|"infographic"|"video_concept"), days_ago (1-30), media_description }
 
@@ -2222,7 +2223,12 @@ Return ONLY valid JSON:
       is_primary: false,
       role,
       control_mode: role === 'antagonist' ? 'ai' : 'player',
-      stance: o.stance ? String(o.stance) : undefined,
+      stance:
+        role === 'antagonist'
+          ? stanceFromTrainer(o.stance, requested?.description)
+          : o.stance
+            ? String(o.stance)
+            : undefined,
       // Only a page that stands for no requested organisation is an invented rival.
       auto_generated: !requested,
       ...(requested?.kind ? { kind: requested.kind } : {}),

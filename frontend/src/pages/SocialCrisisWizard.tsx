@@ -12,7 +12,10 @@ import {
   ORG_KIND_LABELS,
   PRESET_TEAM_NAMES,
   PressureOrgCard,
+  RivalOrgCard,
   newPressureOrgDraft,
+  newRivalDraft,
+  resumeRivalDraft,
   type RosterEntry,
   type PresetTeamCard,
   type OrganisationDraft,
@@ -27,7 +30,6 @@ import {
   BRIEF_MIN,
   PRIMARY_ORG_ID,
   collectSetupIssues,
-  competitorField,
   indexIssues,
   isSendablePressureOrg,
   issuesFromServer,
@@ -532,6 +534,7 @@ export const SocialCrisisWizard = () => {
         country: c.country,
         facebook_handle: c.facebook_handle || undefined,
         x_handle: c.x_handle || undefined,
+        description: c.description.trim() || undefined,
       })),
     [competitorEntries],
   );
@@ -802,31 +805,6 @@ export const SocialCrisisWizard = () => {
   const [orgPage, setOrgPage] = useState<Record<string, unknown> | null>(null);
   const [step4Loading, setStep4Loading] = useState(false);
   const [step4Error, setStep4Error] = useState<string | null>(null);
-  const [newPageName, setNewPageName] = useState('');
-  const [newPageFbHandle, setNewPageFbHandle] = useState('');
-  const [newPageXHandle, setNewPageXHandle] = useState('');
-  const [newPageCountry, setNewPageCountry] = useState('');
-
-  const addCompetitor = useCallback(() => {
-    const name = newPageName.trim();
-    if (!name) return;
-    setCompetitorEntries((prev) => [
-      ...prev,
-      {
-        name,
-        country: newPageCountry || country,
-        facebook_handle: newPageFbHandle.trim() || undefined,
-        x_handle: newPageXHandle.trim() || undefined,
-      },
-    ]);
-    setNewPageName('');
-    setNewPageFbHandle('');
-    setNewPageXHandle('');
-  }, [newPageName, newPageFbHandle, newPageXHandle, newPageCountry, country]);
-
-  const removeCompetitor = useCallback((idx: number) => {
-    setCompetitorEntries((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
 
   /* Step 2 — Building (combined generation) progress */
   const [buildStage, setBuildStage] = useState<
@@ -1078,14 +1056,12 @@ export const SocialCrisisWizard = () => {
     }
     if (Array.isArray(input.competitor_entries))
       setCompetitorEntries(
-        (
-          input.competitor_entries as Array<{
-            name: string;
-            country?: string;
-            facebook_handle?: string;
-            x_handle?: string;
-          }>
-        ).map((c) => ({ ...c, country: c.country || savedCountry })),
+        input.competitor_entries.map((entry) =>
+          resumeRivalDraft(
+            entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {},
+            savedCountry,
+          ),
+        ),
       );
     if (typeof input.auto_antagonist === 'boolean') setAutoAntagonist(input.auto_antagonist);
     if (input.primary_city) setPrimaryCity(String(input.primary_city));
@@ -1972,6 +1948,7 @@ export const SocialCrisisWizard = () => {
               name: c.name,
               facebook_handle: c.facebook_handle,
               x_handle: c.x_handle,
+              description: c.description.trim() || undefined,
             })),
             organisations: organisationsPayload,
             competitors_with_country: competitorsPayload,
@@ -3229,40 +3206,24 @@ export const SocialCrisisWizard = () => {
         </div>
         <div>
           <div className="wr-cards">
-            {competitorEntries.map((e, i) => (
+            {competitorEntries.map((e) => (
               <div
-                key={`comp-${i}`}
-                className={`wr-node ${issueClass(issueAt(competitorField(i)))}`}
+                key={e.id}
+                className="wr-node"
                 style={{ '--g': 'var(--f-rival)' } as CSSProperties}
-                data-field={competitorField(i)}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="kicker">
-                    <WrIcon name="swords" size={12} /> Competitor
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeCompetitor(i)}
-                    className="wr-btn sm remove shrink-0"
-                    aria-label={`Remove ${e.name}`}
-                  >
-                    Remove
-                  </button>
+                <div className="kicker">
+                  <WrIcon name="swords" size={12} /> Competitor
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <div className="wr-mono rv" style={{ width: 40, height: 40, fontSize: 13 }}>
-                    {initialsOf(e.name)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-extrabold text-ink truncate">{e.name}</div>
-                    <div className="text-xs text-muted flex items-center gap-1.5 flex-wrap">
-                      <span className="wr-cc light">{countryCode(e.country)}</span> {e.country}
-                      {e.facebook_handle && <span>· {e.facebook_handle}</span>}
-                      {e.x_handle && <span>· {e.x_handle}</span>}
-                    </div>
-                  </div>
-                </div>
-                <FieldNote issue={issueAt(competitorField(i))} />
+                <RivalOrgCard
+                  rival={e}
+                  onChange={(next) =>
+                    setCompetitorEntries((prev) => prev.map((x) => (x.id === e.id ? next : x)))
+                  }
+                  onRemove={() =>
+                    setCompetitorEntries((prev) => prev.filter((x) => x.id !== e.id))
+                  }
+                />
               </div>
             ))}
             {competitorEntries.length === 0 && autoAntagonist && (
@@ -3279,53 +3240,18 @@ export const SocialCrisisWizard = () => {
                 </div>
               </div>
             )}
-            {/* Add competitor form */}
-            <div
-              className="wr-node"
-              style={
-                {
-                  '--g': 'var(--f-rival)',
-                  borderStyle: 'dashed',
-                  background: 'rgba(255,255,255,.75)',
-                } as CSSProperties
-              }
+            <button
+              type="button"
+              className="wr-add"
+              style={{ '--g': 'var(--f-rival)' } as CSSProperties}
+              onClick={() => setCompetitorEntries((prev) => [...prev, newRivalDraft(country)])}
             >
-              <div className="kicker">
-                <WrIcon name="plus" size={12} /> Rival page
+              <div>
+                <WrIcon name="plus" size={24} />
+                <div className="mt-2">Rival page</div>
+                <small>Name a competitor the AI will drive against you</small>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={newPageName}
-                  onChange={(e) => setNewPageName(e.target.value)}
-                  placeholder="Competitor name"
-                  className="wr-field col-span-2"
-                />
-                <CountrySelect
-                  value={newPageCountry || country}
-                  onChange={setNewPageCountry}
-                  className="wr-field col-span-2"
-                />
-                <input
-                  value={newPageFbHandle}
-                  onChange={(e) => setNewPageFbHandle(e.target.value)}
-                  placeholder="@FakebookHandle"
-                  className="wr-field"
-                />
-                <input
-                  value={newPageXHandle}
-                  onChange={(e) => setNewPageXHandle(e.target.value)}
-                  placeholder="@ZHandle"
-                  className="wr-field"
-                />
-              </div>
-              <button
-                onClick={addCompetitor}
-                disabled={!newPageName.trim()}
-                className="wr-btn danger mt-2.5 w-full"
-              >
-                <WrIcon name="plus" /> Add competitor
-              </button>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -4622,6 +4548,12 @@ export const SocialCrisisWizard = () => {
                             </div>
                             {!!fb.page_bio && (
                               <div className="text-xs text-muted mt-1.5">{String(fb.page_bio)}</div>
+                            )}
+                            {role === 'antagonist' && String(org.stance || '').trim() !== '' && (
+                              <div className="text-xs mt-1.5">
+                                <span className="text-muted">Stance · </span>
+                                <span className="text-ink">{String(org.stance)}</span>
+                              </div>
                             )}
                           </div>
                         );

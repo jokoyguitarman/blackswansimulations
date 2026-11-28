@@ -55,6 +55,10 @@ export interface CompetitorInput {
   country: string;
   facebook_handle?: string;
   x_handle?: string;
+  /** Kept when it is already an antagonist key; otherwise a key is derived. */
+  org_key?: string;
+  /** Trainer text. Maps onto the runtime stance; there is no second field. */
+  description?: string;
 }
 
 /** Pressure organisation as entered / accepted in the wizard (pressure plan §5.1). */
@@ -140,6 +144,7 @@ export interface NormalisedCompetitor {
   country: string;
   facebook_handle?: string;
   x_handle?: string;
+  description?: string;
 }
 
 /** Generator-side charter = runtime TeamCharter + organisation identity. */
@@ -543,12 +548,20 @@ export function validateOrganisations(
       fail('MO-CRY-001', `competitors.${i}`, 'Competitor needs a name and a country');
       return;
     }
+    const providedKey = c.org_key?.trim();
+    const description = String(c.description || '').trim();
     competitors.push({
-      org_key: makeAntagonistOrgKey(name, i, takenKeys),
+      org_key:
+        providedKey &&
+        /^org_antagonist_[a-z0-9_]+$/.test(providedKey) &&
+        !takenKeys.has(providedKey)
+          ? (takenKeys.add(providedKey), providedKey)
+          : makeAntagonistOrgKey(name, i, takenKeys),
       name,
       country,
       facebook_handle: c.facebook_handle?.trim() || undefined,
       x_handle: c.x_handle?.trim() || undefined,
+      description: description || undefined,
     });
   });
 

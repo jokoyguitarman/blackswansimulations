@@ -2,17 +2,18 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectSetupIssues,
-  competitorField,
   isSendablePressureOrg,
   issuesFromServer,
   orgField,
   pickIssue,
   pressureField,
+  rivalField,
   teamField,
   type SetupIssue,
   type SetupSnapshot,
 } from '../src/components/Scenario/setupValidation';
-import type { RosterEntry } from '../src/components/Scenario/OrganisationRosterBuilder';
+import type { CompetitorDraft, RosterEntry } from '../src/components/Scenario/OrganisationRosterBuilder';
+import { newRivalDraft, resumeRivalDraft } from '../src/components/Scenario/rivalDraft';
 import { validateOrganisations } from '../../server/services/scenarioOrgModel.js';
 import {
   competitorsSchema,
@@ -30,6 +31,14 @@ const custom = (
   team_name: string,
   description = 'Handles franchisee contracts and dealer complaints',
 ): RosterEntry => ({ team_name, description, is_custom: true, is_public_voice: false });
+function rival(
+  name: string,
+  country = 'Singapore',
+  extra: Partial<CompetitorDraft> = {},
+): CompetitorDraft {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'x';
+  return { id: `riv_${slug}`, name, country, description: '', ...extra };
+}
 
 function base(): SetupSnapshot {
   return {
@@ -68,7 +77,7 @@ function base(): SetupSnapshot {
         x_handle: '',
       },
     ],
-    competitors: [{ name: 'Apex Systems', country: 'Singapore' }],
+    competitors: [rival('Apex Systems')],
   };
 }
 
@@ -115,6 +124,7 @@ function payloadOf(s: SetupSnapshot) {
       country: c.country,
       facebook_handle: c.facebook_handle || undefined,
       x_handle: c.x_handle || undefined,
+      description: c.description.trim() || undefined,
     })),
     pressure_organisations: s.pressure.filter(isSendablePressureOrg).map((p) => ({
       display_name: p.display_name.trim(),
@@ -165,7 +175,7 @@ describe('collectSetupIssues', () => {
     s.brief = 'Fire at plant';
     s.primary.roster = [...s.primary.roster, custom('')];
     s.pressure[0].display_name = '';
-    s.competitors = [{ name: 'X', country: 'Singapore' }];
+    s.competitors = [rival('X')];
     const found = errors(s);
     assert.deepEqual(
       found.map((i) => i.scope),
@@ -263,14 +273,37 @@ describe('collectSetupIssues', () => {
   test('rivals: too short is an error, repeats and cross-side names are warnings', () => {
     const s = base();
     s.competitors = [
-      { name: 'Apex Systems', country: 'Singapore' },
-      { name: 'apex systems', country: 'Singapore' },
-      { name: 'Meridian Malaysia', country: 'Malaysia' },
-      { name: 'Q', country: 'Singapore' },
+      rival('Apex Systems', 'Singapore', { id: 'riv_1' }),
+      rival('apex systems', 'Singapore', { id: 'riv_2' }),
+      rival('Meridian Malaysia', 'Malaysia', { id: 'riv_3' }),
+      rival('Q', 'Singapore', { id: 'riv_4' }),
     ];
-    assert.match(on(warnings(s), competitorField(1))[0].message, /listed twice/);
-    assert.match(on(warnings(s), competitorField(2))[0].message, /one of your organisations/);
-    assert.match(on(errors(s), competitorField(3))[0].message, /at least 2 characters/);
+    assert.match(on(warnings(s), rivalField('riv_2', 'name'))[0].message, /listed twice/);
+    assert.match(on(warnings(s), rivalField('riv_3', 'name'))[0].message, /one of your organisations/);
+    assert.match(on(errors(s), rivalField('riv_4', 'name'))[0].message, /at least 2 characters/);
+  });
+
+  test('a 601-character description fails, and the issue follows the card', () => {
+    const s = base();
+    const ok = rival('Apex Systems', 'Singapore', { id: 'riv_ok' });
+    const long = rival('Northwind', 'Malaysia', {
+      id: 'riv_long',
+      description: 'd'.repeat(601),
+    });
+    s.competitors = [ok, long];
+    const before = on(errors(s), rivalField('riv_long', 'description'));
+    assert.equal(before.length, 1);
+    assert.match(before[0].message, /600/);
+    assert.match(before[0].message, /601/);
+    s.competitors = [long, ok];
+    assert.equal(on(errors(s), rivalField('riv_long', 'description')).length, 1);
+    assert.equal(on(errors(s), rivalField('riv_ok', 'description')).length, 0);
+    const pinned = issuesFromServer(serverRefusal(s), s);
+    assert.equal(pinned[0].field, rivalField('riv_long', 'description'));
+    assert.match(pinned[0].message, /600/);
+    s.competitors = [rival('Apex Systems', 'Singapore', { description: 'd'.repeat(600) })];
+    assert.equal(errors(s).length, 0);
+    assert.equal(serverRefusal(s), null);
   });
 
   test('errors stay hidden until revealed; warnings always show', () => {
@@ -348,10 +381,13 @@ describe('client checks agree with the server', () => {
       s.pressure[0].wants = 'w'.repeat(301);
     },
     'one-letter rival': (s) => {
-      s.competitors.push({ name: 'Q', country: 'Singapore' });
+      s.competitors.push(rival('Q'));
     },
     'rival with an unknown country': (s) => {
-      s.competitors.push({ name: 'Orbit Ltd', country: 'Atlantis' });
+      s.competitors.push(rival('Orbit Ltd', 'Atlantis'));
+    },
+    'rival description over 600 characters': (s) => {
+      s.competitors[0].description = 'd'.repeat(601);
     },
   };
 
@@ -428,13 +464,40 @@ describe('issuesFromServer pins real server refusals to fields', () => {
 
   test('rivals, unmapped paths and bodies without details', () => {
     const s = base();
-    s.competitors.push({ name: 'Q', country: 'Singapore' });
+    s.competitors.push(rival('Q', 'Singapore', { id: 'riv_q' }));
     const issues = issuesFromServer(serverRefusal(s), s);
-    assert.equal(issues[0].field, competitorField(1));
+    assert.equal(issues[0].field, rivalField('riv_q', 'name'));
     assert.equal(
       issuesFromServer({ details: [{ path: 'teams.Legal — X', message: 'm' }] }, s)[0].field,
       null,
     );
     assert.deepEqual(issuesFromServer({ error: 'Describe the crisis first' }, s), []);
+  });
+});
+
+describe('rival drafts', () => {
+  test('old drafts resume with an id and a description', () => {
+    const resumed = resumeRivalDraft(
+      { name: 'Apex Systems', country: 'Malaysia', facebook_handle: '@apex' },
+      'Singapore',
+    );
+    assert.match(resumed.id, /^riv_/);
+    assert.equal(resumed.description, '');
+    assert.equal(resumed.name, 'Apex Systems');
+    assert.equal(resumed.country, 'Malaysia');
+    assert.equal(resumed.facebook_handle, '@apex');
+    const kept = resumeRivalDraft(
+      { id: 'riv_kept', name: 'Apex', description: 'Already written' },
+      'Singapore',
+    );
+    assert.equal(kept.id, 'riv_kept');
+    assert.equal(kept.description, 'Already written');
+    assert.equal(kept.country, 'Singapore');
+    const blank = newRivalDraft('Japan');
+    assert.match(blank.id, /^riv_/);
+    assert.equal(blank.name, '');
+    assert.equal(blank.country, 'Japan');
+    assert.equal(blank.description, '');
+    assert.notEqual(resumed.id, blank.id);
   });
 });

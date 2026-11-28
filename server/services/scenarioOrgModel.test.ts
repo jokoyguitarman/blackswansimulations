@@ -148,3 +148,24 @@ describe('registry (contract §5.1 + v3.2)', () => {
     assert.equal(registry.filter((e) => e.side === 'antagonist').length, 1);
   });
 });
+
+describe('rival descriptions', () => {
+  test('keeps a trimmed description and reuses a well-formed antagonist key', () => {
+    const r = validateOrganisations(orgs, [
+      {
+        name: 'Apex Systems',
+        country: 'Singapore',
+        description: '  Positions itself as the safer alternative  ',
+        org_key: 'org_antagonist_apex_custom',
+      },
+      { name: 'Northwind', country: 'Malaysia', org_key: 'not-a-key' },
+    ]);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.equal(r.competitors[0].description, 'Positions itself as the safer alternative');
+    assert.equal(r.competitors[0].org_key, 'org_antagonist_apex_custom');
+    assert.equal(r.competitors[1].description, undefined);
+    assert.match(r.competitors[1].org_key, /^org_antagonist_/);
+    assert.notEqual(r.competitors[1].org_key, 'not-a-key');
+  });
+});
