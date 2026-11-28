@@ -2,8 +2,10 @@
  * Page profiles and page inboxes (peace spec §7.6). No Supabase.
  *
  * Display fields are what a player already sees on a page: name, handle, bio,
- * logo, followers. Role, control mode, pressure-engine columns and controller
- * ids stay with staff, and with the participant who controls that page.
+ * logo, followers, and the page role. Teammate bots classify rival pages from
+ * `role`, and `GET /social/org-page/session/:id` already returns it to
+ * participants. Control mode, pressure-engine columns and controller ids stay
+ * with staff, and with the participant who controls that page.
  * Platforms are the `sim_org_pages.platform` check from migration 177.
  */
 
@@ -25,8 +27,15 @@ export const ORG_PAGE_DISPLAY_FIELDS = [
   'verified',
 ] as const;
 
-const GROUP_DISPLAY_FIELDS = ['org_key', 'display_name', 'is_primary'] as const;
-const NESTED_PLATFORMS = ['facebook', 'x_twitter'] as const;
+/** A page a participant does not control. `role` stays so bots can tell a rival page. */
+export interface ParticipantPageView {
+  org_key: string;
+  display_name: unknown;
+  is_primary: unknown;
+  role: unknown;
+  facebook: Record<string, unknown> | null;
+  x_twitter: Record<string, unknown> | null;
+}
 
 export type PageInboxDecision = 'allow' | 'deny';
 
@@ -86,29 +95,37 @@ function displayRow(row: object): Record<string, unknown> {
   return out;
 }
 
+function nestedPage(
+  record: Record<string, unknown>,
+  platform: PagePlatform,
+): Record<string, unknown> | null {
+  const row = record[platform];
+  if (row && typeof row === 'object') return displayRow(row);
+  return null;
+}
+
 /**
  * Staff receive the grouped pages unchanged. A participant keeps the full
- * record of the org they control and only display fields for every other org.
+ * record of the org they control and only display fields, including `role`,
+ * for every other org.
  */
 export function projectSessionPages<T extends object>(
   pages: T[],
   viewer: { staff: boolean; controlledOrgKey: string | null },
-): T[] | object[] {
+): T[] | Array<T | ParticipantPageView> {
   if (viewer.staff) return pages;
-  return pages.map((page) => {
+  return pages.map((page): T | ParticipantPageView => {
     const record = ownFields(page);
     if (typeof record.org_key === 'string' && record.org_key === viewer.controlledOrgKey) {
       return page;
     }
-    const next: Record<string, unknown> = {};
-    for (const key of GROUP_DISPLAY_FIELDS) {
-      if (key in record) next[key] = record[key];
-    }
-    for (const platform of NESTED_PLATFORMS) {
-      const row = record[platform];
-      if (row && typeof row === 'object') next[platform] = displayRow(row);
-      else next[platform] = row ?? null;
-    }
-    return next;
+    return {
+      org_key: typeof record.org_key === 'string' ? record.org_key : '',
+      display_name: record.display_name,
+      is_primary: record.is_primary,
+      role: record.role,
+      facebook: nestedPage(record, 'facebook'),
+      x_twitter: nestedPage(record, 'x_twitter'),
+    };
   });
 }

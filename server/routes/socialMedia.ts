@@ -50,7 +50,7 @@ import {
 } from '../services/playerDirectoryService.js';
 import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSharingService.js';
 import { normalizeRecipients } from '../../shared/emailRecipients.js';
-import { isSessionStaff } from '../lib/socialAccess.js';
+import { canSpectate, isSessionStaff } from '../lib/socialAccess.js';
 import {
   requirePlayerWrite,
   requireSocialRead,
@@ -2995,10 +2995,11 @@ router.get('/pages/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     }));
 
     // Flag off: the same objects as before. On: participants lose internal fields
-    // on pages they do not control. Staff still receive every page in full.
+    // on pages they do not control, except role. Staff still receive every page
+    // in full. GET /org-page/session is not projected.
     let data: unknown = withControllers;
     if (env.enableStaffPageExplorer) {
-      const staff = isSessionStaff(user, session);
+      const staff = canSpectate(user, session);
       data = projectSessionPages(withControllers, {
         staff,
         controlledOrgKey: staff ? null : await getControlledOrgKey(sessionId, user.id),

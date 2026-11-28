@@ -110,9 +110,10 @@ describe('page list projection', () => {
       'facebook',
       'is_primary',
       'org_key',
+      'role',
       'x_twitter',
     ]);
-    assert.equal(rival.role, undefined);
+    assert.equal(rival.role, 'antagonist');
     assert.equal(rival.controllers, undefined);
     const facebook = rival.facebook as Record<string, unknown>;
     assert.equal(facebook.page_handle, '@rival');

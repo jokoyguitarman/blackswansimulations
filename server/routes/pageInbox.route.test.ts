@@ -6,6 +6,7 @@ import express, { type Express } from 'express';
 import { env } from '../env.js';
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { protagonistHandlesOf } from '../services/teammates/perception.js';
 import { socialMediaRouter } from './socialMedia.js';
 import { socialMessengerRouter } from './socialMessenger.js';
 
@@ -236,6 +237,22 @@ function get(
   });
 }
 
+function pageHandle(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const handle = Object.fromEntries(Object.entries(value)).page_handle;
+  return typeof handle === 'string' ? handle : undefined;
+}
+
+function pageForBot(page: Record<string, unknown>) {
+  return {
+    org_key: typeof page.org_key === 'string' ? page.org_key : '',
+    display_name: typeof page.display_name === 'string' ? page.display_name : '',
+    role: typeof page.role === 'string' ? page.role : undefined,
+    facebook: { page_handle: pageHandle(page.facebook) },
+    x_twitter: { page_handle: pageHandle(page.x_twitter) },
+  };
+}
+
 function threadIds(body: { data?: unknown }): string[] {
   const rows = Array.isArray(body.data) ? body.data : [];
   return rows.map((row) => String((row as { thread_id?: string }).thread_id));
@@ -403,7 +420,7 @@ describe('page inboxes', () => {
         const rival = rows.find((page) => page.org_key === 'rival');
         assert.equal(acme?.role, 'protagonist');
         assert.deepEqual(acme?.controllers, [CONTROLLER]);
-        assert.equal(rival?.role, undefined);
+        assert.equal(rival?.role, 'antagonist');
         assert.equal(rival?.control_mode, undefined);
         assert.equal(rival?.kind, undefined);
         assert.equal(rival?.controllers, undefined);
@@ -419,6 +436,12 @@ describe('page inboxes', () => {
         assert.equal(staffRival?.role, 'antagonist');
         assert.equal(staffRival?.control_mode, 'ai');
         assert.equal((staffRival?.facebook as Record<string, unknown>).operation, 'ai');
+
+        const bot = await get(base, `/api/social/pages/session/${SESSION}`, 'other-player');
+        const botRows = bot.json.data as Array<Record<string, unknown>>;
+        const handles = protagonistHandlesOf(botRows.map(pageForBot));
+        assert.equal(handles.has('@acme'), true);
+        assert.equal(handles.has('@rival'), false);
       });
     } finally {
       db.restore();
