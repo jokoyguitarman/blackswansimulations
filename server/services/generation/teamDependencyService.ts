@@ -10,8 +10,15 @@ import { stampGeneratedInjectKeys } from '../../lib/injectKey.js';
 import { chatJson, systemUser } from '../ai/chatClient.js';
 import { CONVERGENCE_SUMMARY_MAX_CHARS } from '../convergenceSummary.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
-import type { TeamDependencies, TeamDependencyEdge } from '../../../shared/teamDependencies.js';
-import { matchTeamRef } from '../../../shared/teamDependencies.js';
+import {
+  matchTeamRef,
+  sameTeam,
+  askDependencyId,
+  takenDependencyIds,
+  type DependencyIdSource,
+  type TeamDependencies,
+  type TeamDependencyEdge,
+} from '../../../shared/teamDependencies.js';
 import { readDependencyEdges, validateDependencies } from '../dependencies/dependencyCore.js';
 import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import {
@@ -205,9 +212,50 @@ function intelDeadline(key: string, gates: readonly SocialInject[]): number | nu
   return null;
 }
 
+export interface GenerateDependencyDeltaInput extends GenerateTeamDependenciesInput {
+  /** Teams this edit adds. Only edges that touch one of them are kept. */
+  addedTeams: readonly GenerationTeam[];
+  /** Edges already on the scenario. Their ids are reserved and they count toward the cap. */
+  existingEdges?: readonly TeamDependencyEdge[];
+  /** Injects whose conditions or cause.dep_id already reserve a dependency id. */
+  idSources?: readonly DependencyIdSource[];
+}
+
+/**
+ * Map and consequence calls for a setup edit, limited to edges that touch an
+ * added team. Existing edges are not sent to the consequence call.
+ */
+export async function generateDependencyDelta(
+  input: GenerateDependencyDeltaInput,
+  options: GenerateTeamDependenciesOptions = {},
+): Promise<GenerateTeamDependenciesResult> {
+  const added = input.addedTeams.filter((team) => team.playable !== false && team.team_name.trim());
+  if (added.length === 0) return emptyDependencyResult();
+  const teams = mergeRoster(input.teams, added);
+  return runTeamDependencyGeneration({ ...input, teams }, options, {
+    addedTeams: added,
+    existingEdges: input.existingEdges ?? [],
+    idSources: input.idSources ?? [],
+  });
+}
+
+interface DependencyFocus {
+  addedTeams: readonly GenerationTeam[];
+  existingEdges: readonly TeamDependencyEdge[];
+  idSources: readonly DependencyIdSource[];
+}
+
 export async function generateTeamDependencies(
   input: GenerateTeamDependenciesInput,
   options: GenerateTeamDependenciesOptions = {},
+): Promise<GenerateTeamDependenciesResult> {
+  return runTeamDependencyGeneration(input, options);
+}
+
+async function runTeamDependencyGeneration(
+  input: GenerateTeamDependenciesInput,
+  options: GenerateTeamDependenciesOptions = {},
+  focus?: DependencyFocus,
 ): Promise<GenerateTeamDependenciesResult> {
   const client = options.client ?? defaultClient;
   const concurrency = options.concurrency ?? env.warroomGenConcurrency;
@@ -220,12 +268,15 @@ export async function generateTeamDependencies(
   const summaryBudget = options.summaryBudget ?? CONVERGENCE_SUMMARY_MAX_CHARS;
   const duration = input.crisis.duration > 0 ? input.crisis.duration : 60;
   const known = stampStorylineKeys(input.storylines);
-  const plans = planDependencyMapCalls(input.teams, batchTeams);
+  const addedNames = new Set((focus?.addedTeams ?? []).map((team) => team.team_name));
+  const plans = planDependencyMapCalls(input.teams, batchTeams).filter(
+    (plan) => !focus || plan.teams.some((team) => addedNames.has(team.team_name)),
+  );
   const cap = upstreamPerTeam;
   const mapRaw = await limitConcurrency(plans, concurrency, async (plan) => {
     const request: DependencyChatRequest = {
       system: mapSystemPrompt(cap),
-      user: mapUserPrompt(plan, input, known, summaryBudget),
+      user: mapUserPrompt(plan, input, known, summaryBudget, focus),
       label: 'generator.dependencyMap',
       tier: 'standard',
       json: true,
@@ -248,7 +299,15 @@ export async function generateTeamDependencies(
     input.teams,
     known,
     duration,
-    { upstreamPerTeam: cap },
+    {
+      upstreamPerTeam: cap,
+      ...(focus
+        ? {
+            takenIds: takenDependencyIds(focus.existingEdges, focus.idSources),
+            existingEdges: focus.existingEdges,
+          }
+        : {}),
+    },
     input.stakeholders,
   );
   if (processed.dropped.length > 0) {
@@ -258,7 +317,14 @@ export async function generateTeamDependencies(
     );
   }
 
-  const batches = chunk(processed.edges, consequenceBatch);
+  const edgesForConsequences = focus
+    ? processed.edges.filter((edge) => edgeTouchesAdded(edge, focus.addedTeams))
+    : processed.edges;
+  const keptEdgeIds = new Set(edgesForConsequences.map((edge) => edge.id));
+  const asks = focus
+    ? processed.asks.filter((ask) => keptEdgeIds.has(askDependencyId(ask)))
+    : processed.asks;
+  const batches = chunk(edgesForConsequences, consequenceBatch);
   const teamNames = input.teams.map((team) => team.team_name);
   const taken = new Set<string>([
     ...known.map((inject) => inject.inject_key).filter((key): key is string => !!key),
@@ -303,20 +369,22 @@ export async function generateTeamDependencies(
     return { consequences, positives };
   });
 
-  const intel = registerIntelEdges(
-    input.intelItems ?? [],
-    new Set(processed.edges.map((edge) => edge.id)),
-    input.teams,
-    duration,
-  );
-  const edges = [...processed.edges, ...intel];
+  const intel = focus
+    ? []
+    : registerIntelEdges(
+        input.intelItems ?? [],
+        new Set(edgesForConsequences.map((edge) => edge.id)),
+        input.teams,
+        duration,
+      );
+  const edges = [...edgesForConsequences, ...intel];
   const consequences = built.flatMap((batch) => batch.consequences);
   const positives = built.flatMap((batch) => batch.positives);
   return {
     team_dependencies: { v: 1, edges },
     consequences,
     positives,
-    asks: processed.asks,
+    asks,
     summary: dependencyEdgeSummary(edges),
     mapCalls: plans.length,
     consequenceCalls: batches.length,
@@ -415,6 +483,7 @@ function mapUserPrompt(
   input: GenerateTeamDependenciesInput,
   known: readonly KnownInject[],
   summaryBudget: number,
+  focus?: DependencyFocus,
 ): string {
   const lines = plan.teams.map(teamLine);
   const storyline = storylineBlock(input.storylines, plan, known);
@@ -435,6 +504,7 @@ function mapUserPrompt(
     dutyBlock(plan.teams),
     'Storyline injects already written:',
     storyline || '(none)',
+    focusNote(focus),
   ]
     .filter(Boolean)
     .join('\n');
@@ -669,6 +739,47 @@ function storylineBlock(
     }
   }
   return lines.join('\n');
+}
+
+function focusNote(focus: DependencyFocus | undefined): string {
+  if (!focus || focus.addedTeams.length === 0) return '';
+  const names = focus.addedTeams.map((team) => team.team_name).join(', ');
+  const existing =
+    focus.existingEdges.length > 0
+      ? `\nExisting dependencies, do not repeat them:\n${dependencyEdgeSummary(focus.existingEdges)}`
+      : '';
+  return `Only return dependencies that include at least one of these added teams: ${names}. Do not return a dependency that only connects the other teams.${existing}`;
+}
+
+function edgeTouchesAdded(edge: TeamDependencyEdge, added: readonly GenerationTeam[]): boolean {
+  const refs = [edge.upstream, ...edge.downstream];
+  return refs.some((ref) =>
+    added.some(
+      (team) =>
+        (!!ref.team_uid && !!team.team_uid && ref.team_uid === team.team_uid) ||
+        sameTeam(ref.team_name, team.team_name),
+    ),
+  );
+}
+
+function mergeRoster(
+  teams: readonly GenerationTeam[],
+  added: readonly GenerationTeam[],
+): GenerationTeam[] {
+  const seen = new Set(teams.map((team) => team.team_name));
+  return [...teams, ...added.filter((team) => !seen.has(team.team_name))];
+}
+
+function emptyDependencyResult(): GenerateTeamDependenciesResult {
+  return {
+    team_dependencies: { v: 1, edges: [] },
+    consequences: [],
+    positives: [],
+    asks: [],
+    summary: '',
+    mapCalls: 0,
+    consequenceCalls: 0,
+  };
 }
 
 function chunk<T>(items: readonly T[], size: number): T[][] {

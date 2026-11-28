@@ -1,6 +1,8 @@
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { countryCode, countrySlug } from '../../../shared/countries.js';
 import { formatConditionKey, slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
+import { matchTeamRef, type ActiveTeam } from '../../../shared/teamDependencies.js';
+import { validateDependencies } from '../dependencies/dependencyCore.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
 import {
   fingerprintInject,
@@ -208,8 +210,8 @@ export type OrphanChoice =
 /**
  * One trainer decision for an orphan id.
  * `keep` leaves the reference. `retire` retires the dependent inject, stakeholder, or pressure group.
- * `retarget` uses `inject_key`, `team_name`, or `org_keys`. `reassign` moves a role or stakeholder onto `team_name`.
- * `move_to_retired` parks a role or stakeholder. `clear` drops a chain, mood, or dependency reference. `remove` drops a dependency edge or pressure group.
+ * `retarget` uses `inject_key`, `team_name`, or `org_keys`. `reassign` moves a role, a stakeholder, or a dependency's upstream team onto `team_name`.
+ * `move_to_retired` parks a role or stakeholder. `clear` drops a chain, mood, or dependency reference. `remove` retires a dependency edge and its consequences, or drops a pressure group.
  */
 export interface OrphanResolution {
   choice: OrphanChoice;
@@ -308,6 +310,16 @@ interface Working {
   warnings: Warning[];
   orphans: Orphan[];
   retiredInjectKeys?: Set<string>;
+  /** Consequence injects retired because a downstream team, or the whole edge, left. */
+  dependencyRetireInjectIds: Set<string>;
+  /** `team_dependencies` after rename caches, downstream drops and edge retirement. */
+  preparedDependencies: DependencyDocument | null;
+}
+
+/** The dependency document the planner rewrites. Edges stay raw records. */
+interface DependencyDocument {
+  v?: number;
+  edges: unknown[];
 }
 
 const PATCH_PATHS = [
@@ -331,6 +343,7 @@ const PATCH_PATHS = [
 export function planRemap(input: RemapPlannerInput): RemapPlan {
   const state = asRecord(input.initial_state) ?? {};
   const working = buildWorking(input, state);
+  prepareDependencies(working, state);
   const teamPlan = planTeams(working);
   const injectPlan = planInjects(working);
   const statePlan = planInitialState(working, state);
@@ -358,16 +371,30 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   if (!resolutions || plan.orphans.length === 0) return plan;
   const state = asRecord(input.initial_state) ?? {};
   const kept: Orphan[] = [];
+  const removedEdges = new Set<string>();
   for (const orphan of plan.orphans) {
     const resolution = resolutions[orphan.id];
-    if (!resolution || !resolutionApplies(orphan, resolution)) {
+    if (
+      resolution?.choice === 'remove' &&
+      orphan.kind === 'team_dependency' &&
+      orphan.dependency_id &&
+      !orphan.condition_key &&
+      !orphan.target_key &&
+      resolutionApplies(orphan, resolution, input, plan)
+    ) {
+      removedEdges.add(orphan.dependency_id);
+    }
+    if (!resolution || !resolutionApplies(orphan, resolution, input, plan)) {
       kept.push(orphan);
       continue;
     }
     if (resolution.choice !== 'keep') applyOneResolution(plan, input, state, orphan, resolution);
   }
-  plan.orphans = kept;
-  plan.applicable = kept.length === 0;
+  plan.orphans = kept.filter(
+    (orphan) =>
+      !(orphan.condition_key && orphan.dependency_id && removedEdges.has(orphan.dependency_id)),
+  );
+  plan.applicable = plan.orphans.length === 0;
   plan.initial_state.move_to_retired.sort(
     (a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key),
   );
@@ -375,7 +402,12 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   return plan;
 }
 
-function resolutionApplies(orphan: Orphan, resolution: OrphanResolution): boolean {
+function resolutionApplies(
+  orphan: Orphan,
+  resolution: OrphanResolution,
+  input: RemapPlannerInput,
+  plan: RemapPlan,
+): boolean {
   const choice = resolution.choice;
   if (choice === 'keep') return true;
   if (orphan.kind === 'player_role') {
@@ -407,10 +439,19 @@ function resolutionApplies(orphan: Orphan, resolution: OrphanResolution): boolea
     return choice === 'clear' || (choice === 'retarget' && !!resolution.inject_key);
   }
   if (orphan.kind === 'team_dependency') {
+    if (orphan.condition_key) {
+      return (
+        choice === 'clear' ||
+        (choice === 'retarget' && !!reassignTeam(input, resolution.team_name ?? ''))
+      );
+    }
+    if (orphan.target_key) {
+      return choice === 'clear' || (choice === 'retarget' && !!resolution.inject_key);
+    }
     return (
       choice === 'remove' ||
-      choice === 'clear' ||
-      (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key))
+      (choice === 'reassign' &&
+        reassignmentAccepted(plan, input, orphan, resolution.team_name ?? ''))
     );
   }
   return false;
@@ -433,7 +474,7 @@ function applyOneResolution(
   else if (orphan.kind === 'mood_consequence')
     applyMoodResolution(plan, input, state, orphan, resolution);
   else if (orphan.kind === 'team_dependency')
-    applyDependencyResolution(plan, state, orphan, resolution);
+    applyDependencyResolution(plan, input, state, orphan, resolution);
 }
 
 function applyRoleResolution(
@@ -671,6 +712,7 @@ function rewriteMoodLadder(ladder: unknown, target: string, resolution: OrphanRe
 
 function applyDependencyResolution(
   plan: RemapPlan,
+  input: RemapPlannerInput,
   state: Record<string, unknown>,
   orphan: Orphan,
   resolution: OrphanResolution,
@@ -682,25 +724,39 @@ function applyDependencyResolution(
   doc.edges = doc.edges.flatMap((raw) => {
     const edge = asRecord(raw);
     if (!edge || textOf(edge.id) !== orphan.dependency_id) return [raw];
-    if (resolution.choice === 'remove') return [];
+    if (resolution.choice === 'remove' && !orphan.target_key && !orphan.condition_key) {
+      retireDependencyConsequencesOf(plan, input, edge);
+      return [];
+    }
+    if (resolution.choice === 'clear' && orphan.condition_key) {
+      edge.broken_when = dropConditionKey(edge.broken_when, orphan.condition_key);
+      edge.met_when = dropConditionKey(edge.met_when, orphan.condition_key);
+    }
+    if (resolution.choice === 'retarget' && orphan.condition_key && resolution.team_name) {
+      const next = retargetScopeKey(orphan.condition_key, resolution.team_name);
+      edge.broken_when = replaceConditionKey(edge.broken_when, orphan.condition_key, next);
+      edge.met_when = replaceConditionKey(edge.met_when, orphan.condition_key, next);
+    }
     if (resolution.choice === 'clear' && orphan.target_key) {
       edge.consequence_keys = stringList(edge.consequence_keys).filter(
         (key) => key !== orphan.target_key,
       );
     }
-    if (resolution.choice === 'retarget') {
-      if (resolution.team_name) {
-        edge.upstream = retargetRemovedRef(edge.upstream, resolution.team_name);
-        if (Array.isArray(edge.downstream)) {
-          edge.downstream = edge.downstream.map((ref) =>
-            retargetRemovedRef(ref, resolution.team_name ?? ''),
-          );
-        }
-      }
-      if (resolution.inject_key && orphan.target_key) {
-        edge.consequence_keys = stringList(edge.consequence_keys).map((key) =>
-          key === orphan.target_key ? (resolution.inject_key ?? key) : key,
-        );
+    if (resolution.choice === 'retarget' && resolution.inject_key && orphan.target_key) {
+      edge.consequence_keys = stringList(edge.consequence_keys).map((key) =>
+        key === orphan.target_key ? (resolution.inject_key ?? key) : key,
+      );
+    }
+    if (
+      resolution.choice === 'reassign' &&
+      resolution.team_name &&
+      !orphan.target_key &&
+      !orphan.condition_key
+    ) {
+      const team = reassignTeam(input, resolution.team_name);
+      if (team && reassignmentAccepted(plan, input, orphan, resolution.team_name)) {
+        const upstream = asRecord(edge.upstream) ?? {};
+        edge.upstream = { ...upstream, team_uid: team.team_uid, team_name: team.team_name };
       }
     }
     return [edge];
@@ -708,10 +764,168 @@ function applyDependencyResolution(
   upsertPatch(plan, '/team_dependencies', doc);
 }
 
-function retargetRemovedRef(value: unknown, teamName: string): unknown {
-  const ref = asRecord(value);
-  if (!ref || !teamName) return value;
-  return { ...ref, team_name: teamName };
+/** Active teams after this edit: the edited roster, then any current team it does not already list. */
+function activeRoster(input: RemapPlannerInput): ActiveTeam[] {
+  const removedNames = new Set(input.delta.removed_teams.map((team) => team.team_name));
+  const removedUids = new Set(input.delta.removed_teams.map((team) => team.team_uid));
+  const removedOrgs = new Set(input.delta.removed_orgs);
+  const teams: ActiveTeam[] = [];
+  const seen = new Set<string>();
+  const push = (team: ActiveTeam) => {
+    const id = team.team_uid || team.team_name;
+    if (!id || seen.has(id)) return;
+    if (team.team_uid && removedUids.has(team.team_uid)) return;
+    if (removedNames.has(team.team_name)) return;
+    seen.add(id);
+    teams.push(team);
+  };
+  for (const org of input.edited.organisations) {
+    if (removedOrgs.has(org.org_key)) continue;
+    for (const team of org.teams) {
+      if (!team.team_uid || !team.team_name) continue;
+      push({
+        team_uid: team.team_uid,
+        team_name: team.team_name,
+        playable: org.operation !== 'ai',
+      });
+    }
+  }
+  for (const team of input.teams) {
+    if (team.org_key && removedOrgs.has(team.org_key)) continue;
+    push({ team_uid: team.team_uid, team_name: team.team_name, playable: true });
+  }
+  return teams;
+}
+
+/** An active team the trainer can move an upstream dependency onto. */
+function reassignTeam(input: RemapPlannerInput, teamName: string): ActiveTeam | null {
+  const name = teamName.trim();
+  if (!name) return null;
+  return activeRoster(input).find((team) => team.team_name === name) ?? null;
+}
+
+function retireDependencyConsequencesOf(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  edge: Record<string, unknown>,
+): void {
+  const depId = textOf(edge.id);
+  if (!depId) return;
+  const keys = new Set(stringList(edge.consequence_keys));
+  for (const inject of input.injects) {
+    if (!isDependencyConsequence(inject, depId, keys)) continue;
+    retireDependentInject(plan, inject);
+  }
+}
+
+/** Layer `dependency:<id>`, `cause.dep_id`, or a key listed on the edge. */
+function isDependencyConsequence(
+  inject: PlannerInject,
+  depId: string,
+  consequenceKeys: ReadonlySet<string>,
+): boolean {
+  const key = injectKeyOf(inject);
+  if (key && consequenceKeys.has(key)) return true;
+  const cause = asRecord(asRecord(inject.delivery_config)?.cause);
+  if (cause?.kind === 'dependency' && textOf(cause.dep_id) === depId) return true;
+  return genLayer(asRecord(inject.delivery_config)) === `dependency:${depId}`;
+}
+
+function genLayer(config: Record<string, unknown> | null): string {
+  const layer = asRecord(config?.gen)?.layer;
+  return typeof layer === 'string' ? layer : '';
+}
+
+function reassignmentAccepted(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  orphan: Orphan,
+  teamName: string,
+): boolean {
+  const team = reassignTeam(input, teamName);
+  const edge = dependencyEdge(plan, input, orphan.dependency_id ?? '');
+  if (!team?.team_uid || !edge) return false;
+  if (downstreamHas(edge, team.team_uid, team.team_name)) return false;
+  const next = structuredClone(edge);
+  const upstream = asRecord(next.upstream) ?? {};
+  next.upstream = { ...upstream, team_uid: team.team_uid, team_name: team.team_name };
+  const checked = validateDependencies(
+    [next],
+    activeRoster(input),
+    survivingInjectKeys(plan, input),
+    null,
+  );
+  return !checked.issues.some((issue) => issue.severity === 'error' && issue.code !== 'MO-DEP-001');
+}
+
+function survivingInjectKeys(plan: RemapPlan, input: RemapPlannerInput): string[] {
+  const retired = new Set(plan.injects.retire.map((row) => row.inject_id));
+  const keys: string[] = [];
+  for (const inject of input.injects) {
+    if (retired.has(inject.id)) continue;
+    const key = injectKeyOf(inject);
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+function dependencyEdge(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  depId: string,
+): Record<string, unknown> | null {
+  if (!depId) return null;
+  const patched = plan.initial_state.patch.find((item) => item.path === '/team_dependencies');
+  const doc = asRecord(patched ? patched.value : asRecord(input.initial_state)?.team_dependencies);
+  if (!doc || !Array.isArray(doc.edges)) return null;
+  for (const raw of doc.edges) {
+    const edge = asRecord(raw);
+    if (edge && textOf(edge.id) === depId) return edge;
+  }
+  return null;
+}
+
+function downstreamHas(edge: Record<string, unknown>, teamUid: string, teamName: string): boolean {
+  if (!Array.isArray(edge.downstream)) return false;
+  return edge.downstream.some((raw) => {
+    const ref = asRecord(raw);
+    if (!ref) return false;
+    if (teamUid && textOf(ref.team_uid) === teamUid) return true;
+    return textOf(ref.team_name) === teamName;
+  });
+}
+
+function dropConditionKey(value: unknown, key: string): unknown {
+  return replaceConditionKey(value, key, null);
+}
+
+function replaceConditionKey(value: unknown, key: string, next: string | null): unknown {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (typeof item !== 'string') return [item];
+      if (item !== key) return [item];
+      return next ? [next] : [];
+    });
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+  const copy = { ...record };
+  for (const field of ['all', 'any', 'conditions'] as const) {
+    if (!Array.isArray(record[field])) continue;
+    copy[field] = replaceConditionKey(record[field], key, next);
+  }
+  return copy;
+}
+
+function retargetScopeKey(key: string, teamName: string): string {
+  const parsed = parseConditionKey(key, { allowPlaceholders: true });
+  if ('error' in parsed || !parsed.scope?.team || parsed.scope.team_placeholder) return key;
+  const formatted = formatConditionKey(parsed.def, parsed.args, {
+    ...parsed.scope,
+    team: slugifyTeamName(teamName),
+  });
+  if ('error' in formatted) return key;
+  return formatted.key;
 }
 
 function retireDependentInject(plan: RemapPlan, inject: PlannerInject): void {
@@ -847,6 +1061,8 @@ function buildWorking(input: RemapPlannerInput, state: Record<string, unknown>):
     singleProtagonist: protagonistCount(state) === 1,
     warnings: [],
     orphans: [],
+    dependencyRetireInjectIds: new Set<string>(),
+    preparedDependencies: null,
   };
 }
 
@@ -1091,8 +1307,15 @@ function layerTeams(working: Working): LayerTeam[] {
 
 function draftInject(working: Working, inject: PlannerInject, layers: LayerTeam[]): InjectDraft {
   const key = injectKeyOf(inject);
+  if (working.dependencyRetireInjectIds.has(inject.id)) {
+    return emptyDraft({
+      inject_id: inject.id,
+      inject_key: key,
+      reason: 'dependent',
+    });
+  }
   const config = asRecord(inject.delivery_config);
-  const stamped = textOf(asRecord(config?.gen)?.layer);
+  const stamped = genLayer(config);
   const removedUid = removedLayerUid(stamped, working);
   if (removedUid) {
     return emptyDraft({
@@ -1257,8 +1480,8 @@ function mapConditionContainer(value: unknown, mapKey: (key: string) => string):
 }
 
 function rewriteConditionKey(key: string, working: Working): string {
-  const parsed = parseConditionKey(key);
-  if ('error' in parsed || !parsed.scope?.team) return key;
+  const parsed = parseConditionKey(key, { allowPlaceholders: true });
+  if ('error' in parsed || !parsed.scope?.team || parsed.scope.team_placeholder) return key;
   const next = working.slugMap.get(parsed.scope.team);
   if (!next) return key;
   const formatted = formatConditionKey(parsed.def, parsed.args, { ...parsed.scope, team: next });
@@ -1448,7 +1671,7 @@ function noteInjectOrphans(
 ): void {
   const injectKey = injectKeyOf(inject);
   for (const key of conditions) {
-    const parsed = parseConditionKey(key);
+    const parsed = parseConditionKey(key, { allowPlaceholders: true });
     if (!('error' in parsed) && parsed.scope?.team && working.removedSlugs.has(parsed.scope.team)) {
       working.orphans.push({
         id: `condition:${inject.id}:${key}`,
@@ -2072,67 +2295,181 @@ function planCharters(working: Working, state: Record<string, unknown>): { value
   return { value: next };
 }
 
-function planDependencies(working: Working, state: Record<string, unknown>): { value: unknown } {
-  const doc = asRecord(state.team_dependencies);
-  if (!doc || !Array.isArray(doc.edges)) return { value: state.team_dependencies };
-  const copy = structuredClone(doc);
-  copy.edges = (copy.edges as unknown[]).map((raw) => rewriteEdge(raw, working));
-  return { value: copy };
+function dependencyDocument(value: unknown): DependencyDocument | null {
+  const doc = asRecord(value);
+  if (!doc || !Array.isArray(doc.edges)) return null;
+  return { ...doc, edges: doc.edges };
 }
 
-function rewriteEdge(raw: unknown, working: Working): unknown {
+function prepareDependencies(working: Working, state: Record<string, unknown>): void {
+  const doc = dependencyDocument(state.team_dependencies);
+  if (!doc) {
+    working.preparedDependencies = null;
+    return;
+  }
+  const edges: unknown[] = [];
+  for (const raw of doc.edges) {
+    const next = rewriteDependencyEdge(raw, working);
+    if (next) edges.push(next);
+  }
+  working.preparedDependencies = { ...doc, edges };
+}
+
+function planDependencies(working: Working, state: Record<string, unknown>): { value: unknown } {
+  const doc = working.preparedDependencies;
+  if (!doc) return { value: state.team_dependencies };
+  noteRetiredDependencyKeys(working, doc);
+  return { value: doc };
+}
+
+/**
+ * Refresh team-name caches and stamp a missing team_uid from the current roster.
+ * Explicit `|team=<slug>` scopes are rewritten on rename. Placeholder scopes stay.
+ * A removed downstream team is dropped. The edge is retired when none remain.
+ * A removed upstream team is an orphan: retire the edge, or reassign upstream.
+ */
+function rewriteDependencyEdge(raw: unknown, working: Working): unknown | null {
   const edge = asRecord(raw);
   if (!edge) return raw;
   const copy = structuredClone(edge);
   copy.upstream = rewriteTeamRef(copy.upstream, working);
-  if (Array.isArray(copy.downstream)) {
-    copy.downstream = copy.downstream.map((ref) => rewriteTeamRef(ref, working));
+  const dropped = new Set<string>();
+  const kept: unknown[] = [];
+  for (const ref of Array.isArray(copy.downstream) ? copy.downstream : []) {
+    const next = rewriteTeamRef(ref, working);
+    if (refIsRemoved(next, working)) {
+      const name = textOf(asRecord(next)?.team_name);
+      if (name) dropped.add(name);
+      continue;
+    }
+    kept.push(next);
   }
+  copy.downstream = kept;
   if (working.slugMap.size > 0) {
-    if (copy.broken_when)
+    if (copy.broken_when) {
       copy.broken_when = mapConditionContainer(copy.broken_when, (key) =>
         rewriteConditionKey(key, working),
       );
-    if (copy.met_when)
+    }
+    if (copy.met_when) {
       copy.met_when = mapConditionContainer(copy.met_when, (key) =>
         rewriteConditionKey(key, working),
       );
+    }
   }
   const id = textOf(copy.id) || 'edge';
-  if (edgeReferencesRemoved(copy, working)) {
+  const dropEdge = kept.length === 0 && dropped.size > 0;
+  const retiredKeys = retireDependencyConsequences(working, copy, dropped, dropEdge);
+  if (retiredKeys.size > 0) {
+    copy.consequence_keys = stringList(copy.consequence_keys).filter(
+      (key) => !retiredKeys.has(key),
+    );
+  }
+  if (dropEdge) return null;
+  noteRemovedDependencyScopes(working, copy, id);
+  if (refIsRemoved(copy.upstream, working)) {
+    const name = textOf(asRecord(copy.upstream)?.team_name) || 'the upstream team';
     working.orphans.push({
       id: `dependency:${id}`,
       kind: 'team_dependency',
-      message: `Team dependency ${id} references a team that is being removed.`,
-      choices: ['remove', 'retarget'],
+      message: `Upstream team ${name} is being removed from ${id}. Retire the edge and its consequences, or reassign the upstream team.`,
+      choices: ['remove', 'reassign'],
       dependency_id: id,
-    });
-  }
-  const retired = retiredInjectKeys(working);
-  const keys = [
-    ...stringList(copy.consequence_keys),
-    ...(asRecord(copy.due)?.after_inject_key ? [textOf(asRecord(copy.due)?.after_inject_key)] : []),
-  ];
-  for (const key of keys) {
-    if (!key || !retired.has(key)) continue;
-    working.orphans.push({
-      id: `dependency:${id}:inject:${key}`,
-      kind: 'team_dependency',
-      message: `Team dependency ${id} references retired inject ${key}.`,
-      choices: ['keep', 'clear', 'retarget'],
-      dependency_id: id,
-      target_key: key,
+      team_name: name,
     });
   }
   return copy;
+}
+
+function retireDependencyConsequences(
+  working: Working,
+  edge: Record<string, unknown>,
+  dropped: ReadonlySet<string>,
+  dropEdge: boolean,
+): Set<string> {
+  const keys = new Set<string>();
+  if (!dropEdge && dropped.size === 0) return keys;
+  const depId = textOf(edge.id);
+  const listed = new Set(stringList(edge.consequence_keys));
+  for (const inject of working.input.injects) {
+    if (!isDependencyConsequence(inject, depId, listed)) continue;
+    const targets = stringList(inject.target_teams);
+    const hitsDropped = targets.some((name) => dropped.has(name));
+    const retire =
+      dropEdge || (hitsDropped && targets.every((name) => working.removedTeamNames.has(name)));
+    if (!retire) continue;
+    working.dependencyRetireInjectIds.add(inject.id);
+    const key = injectKeyOf(inject);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+function noteRemovedDependencyScopes(
+  working: Working,
+  edge: Record<string, unknown>,
+  depId: string,
+): void {
+  if (working.removedSlugs.size === 0) return;
+  for (const key of conditionKeysOf(edge.broken_when, edge.met_when)) {
+    const parsed = parseConditionKey(key, { allowPlaceholders: true });
+    if ('error' in parsed || !parsed.scope?.team || parsed.scope.team_placeholder) continue;
+    if (!working.removedSlugs.has(parsed.scope.team)) continue;
+    working.orphans.push({
+      id: `dependency:${depId}:scope:${key}`,
+      kind: 'team_dependency',
+      message: `Dependency ${depId} condition ${key} scopes a team that is being removed.`,
+      choices: ['keep', 'clear', 'retarget'],
+      dependency_id: depId,
+      condition_key: key,
+      team_name: [...working.removedTeamNames].find(
+        (name) => slugifyTeamName(name) === parsed.scope?.team,
+      ),
+    });
+  }
+}
+
+function noteRetiredDependencyKeys(working: Working, document: DependencyDocument): void {
+  const doc = asRecord(document);
+  if (!doc || !Array.isArray(doc.edges)) return;
+  const retired = retiredInjectKeys(working);
+  if (retired.size === 0) return;
+  for (const raw of doc.edges) {
+    const edge = asRecord(raw);
+    if (!edge) continue;
+    const id = textOf(edge.id) || 'edge';
+    const due = asRecord(edge.due);
+    const keys = [
+      ...stringList(edge.consequence_keys),
+      ...(due?.after_inject_key ? [textOf(due.after_inject_key)] : []),
+    ];
+    for (const key of keys) {
+      if (!key || !retired.has(key)) continue;
+      working.orphans.push({
+        id: `dependency:${id}:inject:${key}`,
+        kind: 'team_dependency',
+        message: `Team dependency ${id} references retired inject ${key}.`,
+        choices: ['keep', 'clear', 'retarget'],
+        dependency_id: id,
+        target_key: key,
+      });
+    }
+  }
 }
 
 function rewriteTeamRef(value: unknown, working: Working): unknown {
   const ref = asRecord(value);
   if (!ref) return value;
   const copy = { ...ref };
-  const uid = textOf(copy.team_uid);
   const name = textOf(copy.team_name);
+  let uid = textOf(copy.team_uid);
+  if (!uid && name) {
+    const matched = matchTeamRef({ team_uid: null, team_name: name }, working.input.teams);
+    if (matched?.team_uid) {
+      uid = matched.team_uid;
+      copy.team_uid = matched.team_uid;
+    }
+  }
   if (uid && working.uidName.has(uid)) copy.team_name = working.uidName.get(uid);
   else if (name && working.nameMap.has(name) && !working.removedTeamNames.has(name)) {
     copy.team_name = working.nameMap.get(name);
@@ -2140,18 +2477,15 @@ function rewriteTeamRef(value: unknown, working: Working): unknown {
   return copy;
 }
 
-function edgeReferencesRemoved(edge: Record<string, unknown>, working: Working): boolean {
-  const refs = [edge.upstream, ...(Array.isArray(edge.downstream) ? edge.downstream : [])];
-  return refs.some((raw) => {
-    const ref = asRecord(raw);
-    if (!ref) return false;
-    const uid = textOf(ref.team_uid);
-    const name = textOf(ref.team_name);
-    return (
-      (uid !== '' && working.removedTeamUids.has(uid)) ||
-      (name !== '' && working.removedTeamNames.has(name))
-    );
-  });
+function refIsRemoved(value: unknown, working: Working): boolean {
+  const ref = asRecord(value);
+  if (!ref) return false;
+  const uid = textOf(ref.team_uid);
+  const name = textOf(ref.team_name);
+  return (
+    (uid !== '' && working.removedTeamUids.has(uid)) ||
+    (name !== '' && working.removedTeamNames.has(name))
+  );
 }
 
 function planPeacePeriod(

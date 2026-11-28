@@ -1,3 +1,4 @@
+import { askDependencyId } from '../../../shared/teamDependencies.js';
 import { env } from '../../env.js';
 import { limitConcurrency } from '../../lib/limitConcurrency.js';
 import type { PeaceFeed } from '../../../shared/peaceFeed.js';
@@ -70,7 +71,9 @@ export async function runDeltaStage(
   const premise = carry?.swapPremise ?? ctx.plan.primary_swap?.story.premise ?? null;
 
   if (stage === 'characters') {
-    const structural = listDeltaCalls(ctx, null).filter((call) => stageOfCall(call) === 'characters');
+    const structural = listDeltaCalls(ctx, null).filter(
+      (call) => stageOfCall(call) === 'characters',
+    );
     if (structural.some((call) => call.op === 'brief_diff')) {
       diff = enrichDiff(
         await generators.briefDiff({
@@ -90,7 +93,9 @@ export async function runDeltaStage(
       state,
     );
     const after = listDeltaCalls(ctx, diff).filter(
-      (call) => stageOfCall(call) === 'characters' && (call.op === 'fact_sheet' || call.op === 'persona_groups'),
+      (call) =>
+        stageOfCall(call) === 'characters' &&
+        (call.op === 'fact_sheet' || call.op === 'persona_groups'),
     );
     await runCalls(after, ctx, generators, diff, state);
     if (ctx.delta.brief_changed) state.setup_source_update = ctx.edited.crisis;
@@ -130,7 +135,12 @@ export async function runDeltaStage(
     ctx.edit_number,
   );
   scrubGeneratedConditions(ctx, state);
-  return finish(ctx, state, stage === 'characters' ? diff : null, stage === 'characters' ? premise : null);
+  return finish(
+    ctx,
+    state,
+    stage === 'characters' ? diff : null,
+    stage === 'characters' ? premise : null,
+  );
 }
 
 export async function runDeltaBuild(
@@ -257,13 +267,19 @@ async function executeCall(
   if (call.op === 'revise_layer') {
     if (!diff && !ctx.plan.primary_swap && !call.country) return;
     const brief = storyDiff(diff, ctx, call.layer === 'backbone' && !!ctx.plan.primary_swap);
-    applyLayer(ctx, state, call.layer, brief, await generators.reviseLayer({
-      layer: call.layer,
-      owned: promptInjects(ctx, call.layer, 'ai_owned', brief),
-      handEdited: promptInjects(ctx, call.layer, 'context', brief),
-      diff: brief,
-      country: call.country,
-    }));
+    applyLayer(
+      ctx,
+      state,
+      call.layer,
+      brief,
+      await generators.reviseLayer({
+        layer: call.layer,
+        owned: promptInjects(ctx, call.layer, 'ai_owned', brief),
+        handEdited: promptInjects(ctx, call.layer, 'context', brief),
+        diff: brief,
+        country: call.country,
+      }),
+    );
     return;
   }
   if (call.op === 'stakeholder_text') {
@@ -277,6 +293,52 @@ async function executeCall(
       diff,
     });
     state.stakeholder_updates.push(...updated);
+    return;
+  }
+  if (call.op === 'dependency_delta') {
+    const result = await generators.dependencyDelta({
+      ctx,
+      addedTeams: ctx.delta.added_teams,
+      existingEdges: ctx.team_dependencies,
+    });
+    const consequences = stampDependencyInjects(ctx, result.consequences, state);
+    const positives = stampDependencyInjects(ctx, result.positives, state);
+    state.generated.dependency_injects.push(...consequences, ...positives);
+    const askRenames: Array<{ depId: string; from: string; to: string }> = [];
+    const takenAskKeys = new Set(ctx.active_keys);
+    for (const existing of Object.values(state.generated.team_storylines).flat()) {
+      const key = keyOf(existing);
+      if (key) takenAskKeys.add(key);
+    }
+    for (const ask of result.asks) {
+      const team = ask.target_teams[0] ?? '';
+      if (!team) continue;
+      const before = keyOf(ask);
+      const depId = askDependencyId(ask);
+      const colliding = !!before && takenAskKeys.has(before);
+      const prepared = colliding
+        ? { ...ask, delivery_config: { ...ask.delivery_config, inject_key: undefined } }
+        : ask;
+      const layer = `team:${teamUid(ctx, team) || team}`;
+      const stamped = stampNew(ctx, [prepared], layer, state);
+      const after = keyOf(stamped[0] ?? ask);
+      if (after) takenAskKeys.add(after);
+      if (depId && before && after && before !== after) {
+        askRenames.push({ depId, from: before, to: after });
+      }
+      state.generated.team_storylines[team] = [
+        ...(state.generated.team_storylines[team] ?? []),
+        ...stamped,
+      ];
+    }
+    const rebound = askRenames.reduce(
+      (edges, rename) =>
+        edges.map((edge) =>
+          edge.id === rename.depId ? rewriteEdgeInjectKey(edge, rename.from, rename.to) : edge,
+        ),
+      result.edges,
+    );
+    state.generated.dependency_edges.push(...syncConsequenceKeys(rebound, consequences));
     return;
   }
   if (call.op === 'convergence_delta') {
@@ -342,7 +404,9 @@ function applyLayer(
   diff: BriefDiff,
   result: LayerRevisionResult,
 ): void {
-  const byId = new Map(ctx.injects.filter((inject) => inject.layer === layer).map((inject) => [inject.id, inject]));
+  const byId = new Map(
+    ctx.injects.filter((inject) => inject.layer === layer).map((inject) => [inject.id, inject]),
+  );
   for (const decision of result.decisions) {
     const inject = byId.get(decision.inject_id);
     if (!inject) continue;
@@ -356,10 +420,16 @@ function applyLayer(
       continue;
     }
     if (decision.decision === 'retire') {
-      state.revisions.push(retireRevision(source, decision.reason || 'Retired by the brief revision.'));
+      state.revisions.push(
+        retireRevision(source, decision.reason || 'Retired by the brief revision.'),
+      );
       continue;
     }
-    const time = clampTriggerTime(inject.trigger_time_minutes, decision.trigger_time_minutes, diff.severity);
+    const time = clampTriggerTime(
+      inject.trigger_time_minutes,
+      decision.trigger_time_minutes,
+      diff.severity,
+    );
     const active = activeKeys(ctx, state);
     state.revisions.push(
       reviseFromSource(
@@ -429,13 +499,19 @@ async function regenerateStageBranches(
       parents.set(source.inject_key, revision.new?.title ?? source.title);
     }
   }
-  for (const inject of [...state.generated.layer_injects, ...Object.values(state.generated.team_storylines).flat()]) {
+  for (const inject of [
+    ...state.generated.layer_injects,
+    ...Object.values(state.generated.team_storylines).flat(),
+  ]) {
     if (!inject.requires_response) continue;
     const key = keyOf(inject);
     if (key) parents.set(key, inject.title);
   }
   const retired = state.revisions.filter((revision) => revision.decision === 'retire');
-  const retireParents = new Set<string>([...retired.map((revision) => revision.inject_key), ...parents.keys()]);
+  const retireParents = new Set<string>([
+    ...retired.map((revision) => revision.inject_key),
+    ...parents.keys(),
+  ]);
   for (const parent of retireParents) {
     for (const child of childBranches(ctx, parent)) {
       if (state.revisions.some((revision) => revision.inject_id === child.id)) continue;
@@ -443,13 +519,18 @@ async function regenerateStageBranches(
         state.flags.push(flagFor(child, brief, ctx));
         continue;
       }
-      state.revisions.push(retireRevision(toSource(child, brief), 'Branch of a revised or retired parent.'));
+      state.revisions.push(
+        retireRevision(toSource(child, brief), 'Branch of a revised or retired parent.'),
+      );
     }
   }
   const entries = [...parents.entries()];
   if (entries.length === 0) return;
-  const branches = await limitConcurrency(entries, env.warroomGenConcurrency, async ([parentKey, parentTitle]) =>
-    generators.regenerateBranches({ parentKey, parentTitle, diff: brief }),
+  const branches = await limitConcurrency(
+    entries,
+    env.warroomGenConcurrency,
+    async ([parentKey, parentTitle]) =>
+      generators.regenerateBranches({ parentKey, parentTitle, diff: brief }),
   );
   for (let i = 0; i < entries.length; i++) {
     const parentKey = entries[i]?.[0];
@@ -476,6 +557,7 @@ function stampNew(
     ...state.generated.branches.map(keyOf),
     ...state.generated.stakeholder_injects.map(keyOf),
     ...state.generated.pressure_injects.map(keyOf),
+    ...state.generated.dependency_injects.map(keyOf),
     ...Object.values(state.generated.team_storylines).flat().map(keyOf),
   ].filter((key): key is string => !!key);
   const stamped = allocateFreshKeys(injects, taken);
@@ -497,7 +579,11 @@ function stampNew(
       layer,
       ctx.edit_number,
     );
-    return { ...inject, gen_layer: layer, delivery_config: row.delivery_config as SocialInject['delivery_config'] };
+    return {
+      ...inject,
+      gen_layer: layer,
+      delivery_config: row.delivery_config as SocialInject['delivery_config'],
+    };
   });
 }
 
@@ -585,7 +671,9 @@ function textUpdates(ctx: DeltaBuildContext): TextUpdate[] {
       }
     }
     if (change.field === 'wants') {
-      const pressure = ctx.edited.pressure_organisations.find((item) => item.org_key === change.key);
+      const pressure = ctx.edited.pressure_organisations.find(
+        (item) => item.org_key === change.key,
+      );
       if (typeof pressure?.wants === 'string') {
         out.push({ org_key: change.key, field: 'mandate', value: pressure.wants });
       }
@@ -625,7 +713,9 @@ function promptInjects(
 }> {
   return ctx.injects
     .filter((inject) => inject.layer === layer)
-    .filter((inject) => (mode === 'ai_owned' ? inject.provenance === 'ai_owned' : inject.provenance !== 'ai_owned'))
+    .filter((inject) =>
+      mode === 'ai_owned' ? inject.provenance === 'ai_owned' : inject.provenance !== 'ai_owned',
+    )
     .map((inject) => {
       const substituted =
         mode === 'ai_owned' && diff.severity !== 'cosmetic'
@@ -646,11 +736,12 @@ function promptInjects(
 function flagFor(inject: DeltaInject, diff: BriefDiff, ctx: DeltaBuildContext): SetupFlag {
   const provenance = inject.provenance === 'unverified' ? 'unverified' : 'hand_edited';
   const swap = ctx.plan.primary_swap;
-  const reason = inject.provenance === 'unverified'
-    ? 'Unverified War Room row. The revision stays on the original.'
-    : swap
-      ? `${swap.story.premise} This hand-edited inject was left unchanged.`
-      : 'Hand-edited content was left unchanged and may contradict the new brief.';
+  const reason =
+    inject.provenance === 'unverified'
+      ? 'Unverified War Room row. The revision stays on the original.'
+      : swap
+        ? `${swap.story.premise} This hand-edited inject was left unchanged.`
+        : 'Hand-edited content was left unchanged and may contradict the new brief.';
   const suggestion =
     diff.severity !== 'cosmetic'
       ? substitutePair(inject.title, inject.content, diff.renamed_entities)
@@ -660,15 +751,95 @@ function flagFor(inject: DeltaInject, diff: BriefDiff, ctx: DeltaBuildContext): 
     inject_key: inject.inject_key,
     provenance,
     reason,
-    ...(suggestion.changed ? { suggestion: { title: suggestion.title, content: suggestion.content } } : {}),
+    ...(suggestion.changed
+      ? { suggestion: { title: suggestion.title, content: suggestion.content } }
+      : {}),
   };
+}
+
+function dependencyLayerOf(inject: SocialInject): string | null {
+  const config = inject.delivery_config as { gen?: { layer?: unknown } };
+  if (typeof config.gen?.layer === 'string' && config.gen.layer) return config.gen.layer;
+  return inject.gen_layer || null;
+}
+
+function stampDependencyInjects(
+  ctx: DeltaBuildContext,
+  injects: SocialInject[],
+  state: RunState,
+): SocialInject[] {
+  return injects.flatMap((inject) => {
+    const layer = dependencyLayerOf(inject);
+    if (!layer) return [];
+    return stampNew(ctx, [inject], layer, state);
+  });
+}
+
+function rewriteEdgeInjectKey(
+  edge: DeltaBuildContext['team_dependencies'][number],
+  from: string,
+  to: string,
+): DeltaBuildContext['team_dependencies'][number] {
+  if (!from || from === to) return edge;
+  const due =
+    'after_inject_key' in edge.due && edge.due.after_inject_key === from
+      ? { ...edge.due, after_inject_key: to }
+      : edge.due;
+  return {
+    ...edge,
+    due,
+    broken_when: rewriteConditionKeys(edge.broken_when, from, to) as typeof edge.broken_when,
+    met_when: edge.met_when
+      ? (rewriteConditionKeys(edge.met_when, from, to) as typeof edge.met_when)
+      : edge.met_when,
+  };
+}
+
+function rewriteConditionKeys(value: unknown, from: string, to: string): unknown {
+  if (typeof value === 'string') return replaceInjectKeyToken(value, from, to);
+  if (Array.isArray(value)) return value.map((item) => rewriteConditionKeys(item, from, to));
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  const copy: Record<string, unknown> = { ...record };
+  for (const field of ['all', 'any', 'conditions'] as const) {
+    if (Array.isArray(record[field])) copy[field] = rewriteConditionKeys(record[field], from, to);
+  }
+  return copy;
+}
+
+function replaceInjectKeyToken(key: string, from: string, to: string): string {
+  if (key === from) return to;
+  return key
+    .split(':')
+    .map((part) => {
+      const [head, ...rest] = part.split('|');
+      if (head !== from) return part;
+      return [to, ...rest].join('|');
+    })
+    .join(':');
+}
+
+function syncConsequenceKeys(
+  edges: DeltaBuildContext['team_dependencies'],
+  consequences: readonly SocialInject[],
+): DeltaBuildContext['team_dependencies'] {
+  return edges.map((edge) => {
+    const keys = consequences.flatMap((inject) => {
+      const key = keyOf(inject);
+      return dependencyLayerOf(inject) === `dependency:${edge.id}` && key ? [key] : [];
+    });
+    return keys.length > 0 ? { ...edge, consequence_keys: keys } : edge;
+  });
 }
 
 function childBranches(ctx: DeltaBuildContext, parentKey: string): DeltaInject[] {
   return ctx.injects.filter((inject) => inject.layer === `branch:${parentKey}`);
 }
 
-function handEditedSources(ctx: DeltaBuildContext, state: RunState): Array<{
+function handEditedSources(
+  ctx: DeltaBuildContext,
+  state: RunState,
+): Array<{
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   retired?: boolean;
@@ -715,7 +886,11 @@ function toSource(inject: DeltaInject, diff: BriefDiff | null): RevisionSource {
 }
 
 function activeKeys(ctx: DeltaBuildContext, state: RunState): Set<string> {
-  const retired = new Set(state.revisions.filter((revision) => revision.decision === 'retire').map((revision) => revision.inject_key));
+  const retired = new Set(
+    state.revisions
+      .filter((revision) => revision.decision === 'retire')
+      .map((revision) => revision.inject_key),
+  );
   for (const key of state.priorRetired) retired.add(key);
   for (const row of ctx.plan.injects.retire) retired.add(row.inject_key);
   const keys = new Set(ctx.active_keys.filter((key) => !retired.has(key)));
@@ -783,11 +958,21 @@ function pageSubject(
 ): { org_key: string; name: string; role: 'ally' | 'rival' | 'pressure'; description?: string } {
   if (ctx.delta.added_pressure.includes(orgKey)) {
     const org = ctx.edited.pressure_organisations.find((item) => item.org_key === orgKey);
-    return { org_key: orgKey, name: org?.display_name ?? orgKey, role: 'pressure', description: org?.wants };
+    return {
+      org_key: orgKey,
+      name: org?.display_name ?? orgKey,
+      role: 'pressure',
+      description: org?.wants,
+    };
   }
   if (ctx.delta.added_rivals.includes(orgKey)) {
     const org = ctx.edited.competitors.find((item) => item.org_key === orgKey);
-    return { org_key: orgKey, name: org?.name ?? orgKey, role: 'rival', description: org?.description };
+    return {
+      org_key: orgKey,
+      name: org?.name ?? orgKey,
+      role: 'rival',
+      description: org?.description,
+    };
   }
   const org = ctx.edited.organisations.find((item) => item.org_key === orgKey);
   return { org_key: orgKey, name: org?.display_name ?? orgKey, role: 'ally' };
@@ -833,6 +1018,7 @@ function scrubGeneratedConditions(ctx: DeltaBuildContext, state: RunState): void
   state.generated.branches = state.generated.branches.map(scrub);
   state.generated.stakeholder_injects = state.generated.stakeholder_injects.map(scrub);
   state.generated.pressure_injects = state.generated.pressure_injects.map(scrub);
+  state.generated.dependency_injects = state.generated.dependency_injects.map(scrub);
   for (const [team, injects] of Object.entries(state.generated.team_storylines)) {
     state.generated.team_storylines[team] = injects.map(scrub);
   }
@@ -855,6 +1041,7 @@ function finish(
     ...Object.values(generated.team_storylines).flat(),
     ...generated.layer_injects,
     ...generated.stakeholder_injects,
+    ...generated.dependency_injects,
   ];
   const hasWork =
     state.revisions.length > 0 ||
@@ -872,6 +1059,8 @@ function finish(
     generated.pages.length > 0 ||
     generated.branches.length > 0 ||
     generated.pressure_injects.length > 0 ||
+    generated.dependency_edges.length > 0 ||
+    generated.dependency_injects.length > 0 ||
     state.peace_period != null ||
     diff != null;
   return {

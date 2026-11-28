@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { stampOrgIdentity } from '../../lib/templateRows.js';
+import { backfillDependencyTeamUids } from '../../../shared/teamDependencies.js';
 
 /**
  * Column lists for POST /api/scenarios/:id/clone.
@@ -274,13 +275,22 @@ function versionResets(nowIso: string): Record<string, unknown> {
 
 export function cloneScenarioInsert(
   source: Record<string, unknown>,
-  input: { title: string; createdBy: string },
+  input: {
+    title: string;
+    createdBy: string;
+    teams?: readonly { team_uid?: string | null; team_name?: string | null }[];
+  },
 ): Record<string, unknown> {
   const row = pick(source, SCENARIO_COPIED_COLUMNS);
   row.title = input.title;
   row.created_by = input.createdBy;
   row.is_active = false;
-  if ('initial_state' in row) row.initial_state = stampOrgIdentity(row.initial_state);
+  if ('initial_state' in row) {
+    row.initial_state = backfillDependencyTeamUids(
+      stampOrgIdentity(row.initial_state),
+      input.teams ?? [],
+    );
+  }
   return row;
 }
 
