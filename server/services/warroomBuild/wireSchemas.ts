@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RIVAL_DESCRIPTION_MAX } from '../rivalDescription.js';
 
 /**
  * Wire schemas for the multi-org War Room. One copy, imported by the routes
@@ -55,6 +56,8 @@ export const competitorsSchema = z.array(
     country: z.string().min(1).max(80),
     facebook_handle: z.string().max(60).optional(),
     x_handle: z.string().max(60).optional(),
+    org_key: z.string().optional(),
+    description: z.string().max(RIVAL_DESCRIPTION_MAX).optional(),
   }),
 );
 

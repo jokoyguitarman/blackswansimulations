@@ -1355,7 +1355,7 @@ const OrgPagesSection = ({
               </div>
               {org.role === 'antagonist' && (
                 <>
-                  <label className={`${labelCls} mt-2`}>Antagonist stance (steers its AI)</label>
+                  <label className={`${labelCls} mt-2`}>Description / stance (steers its AI)</label>
                   <textarea
                     value={String(org.stance || '')}
                     disabled={locked}

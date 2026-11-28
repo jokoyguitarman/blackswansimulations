@@ -6,8 +6,13 @@ import {
   PRIMARY_ORG_ID,
   orgField,
   pressureField,
+  rivalField,
   teamField,
 } from './setupValidation';
+import { type CompetitorDraft } from './rivalDraft';
+
+export { newRivalDraft, resumeRivalDraft } from './rivalDraft';
+export type { CompetitorDraft } from './rivalDraft';
 
 export { EXECUTIVE_TEAM, PRESET_TEAM_NAMES };
 
@@ -50,12 +55,6 @@ export interface OrganisationDraft {
   proposed_from?: string;
 }
 
-export interface CompetitorDraft {
-  name: string;
-  country: string;
-  facebook_handle?: string;
-  x_handle?: string;
-}
 
 /* ─── Pressure organisations (pressure plan §5.1 / §11) ──────────────────── */
 
@@ -232,6 +231,105 @@ export function PressureOrgCard({
           Suggested from your description: {org.proposed_reason}
         </div>
       )}
+    </div>
+  );
+}
+
+export function RivalOrgCard({
+  rival,
+  onChange,
+  onRemove,
+}: {
+  rival: CompetitorDraft;
+  onChange: (next: CompetitorDraft) => void;
+  onRemove: () => void;
+}) {
+  const field =
+    'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
+  const issueAt = useIssueLookup();
+  const nameIssue = issueAt(rivalField(rival.id, 'name'));
+  const countryIssue = issueAt(rivalField(rival.id, 'country'));
+  const facebookIssue = issueAt(rivalField(rival.id, 'facebook'));
+  const xIssue = issueAt(rivalField(rival.id, 'x'));
+  const descriptionIssue = issueAt(rivalField(rival.id, 'description'));
+  return (
+    <div className="border border-danger/30 rounded p-3 bg-surface">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] terminal-text text-danger uppercase tracking-wider">
+          Rival page
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="wr-btn sm remove shrink-0"
+          aria-label={`Remove ${rival.name || 'rival'}`}
+        >
+          Remove
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <div className="sm:col-span-2" data-field={rivalField(rival.id, 'name')}>
+          <input
+            value={rival.name}
+            onChange={(e) => onChange({ ...rival, name: e.target.value })}
+            placeholder="Competitor name"
+            className={`${field} ${issueClass(nameIssue)}`}
+            aria-invalid={nameIssue?.severity === 'error' || undefined}
+          />
+          <FieldNote issue={nameIssue} />
+        </div>
+        <div className="sm:col-span-2" data-field={rivalField(rival.id, 'country')}>
+          <select
+            value={rival.country}
+            onChange={(e) => onChange({ ...rival, country: e.target.value })}
+            className={`${field} ${issueClass(countryIssue)}`}
+            aria-invalid={countryIssue?.severity === 'error' || undefined}
+          >
+            {!isKnownCountry(rival.country) && (
+              <option value={rival.country}>
+                {rival.country ? `${rival.country} (not in list)` : 'Select a country…'}
+              </option>
+            )}
+            {COUNTRIES.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <FieldNote issue={countryIssue} />
+        </div>
+        <div data-field={rivalField(rival.id, 'facebook')}>
+          <input
+            value={rival.facebook_handle ?? ''}
+            onChange={(e) => onChange({ ...rival, facebook_handle: e.target.value })}
+            placeholder="@FakebookHandle"
+            className={`${field} ${issueClass(facebookIssue)}`}
+            aria-invalid={facebookIssue?.severity === 'error' || undefined}
+          />
+          <FieldNote issue={facebookIssue} />
+        </div>
+        <div data-field={rivalField(rival.id, 'x')}>
+          <input
+            value={rival.x_handle ?? ''}
+            onChange={(e) => onChange({ ...rival, x_handle: e.target.value })}
+            placeholder="@ZHandle"
+            className={`${field} ${issueClass(xIssue)}`}
+            aria-invalid={xIssue?.severity === 'error' || undefined}
+          />
+          <FieldNote issue={xIssue} />
+        </div>
+      </div>
+      <div data-field={rivalField(rival.id, 'description')}>
+        <textarea
+          value={rival.description}
+          rows={3}
+          onChange={(e) => onChange({ ...rival, description: e.target.value })}
+          placeholder="How this rival positions itself (optional — the War Room writes a stance if you leave this blank)"
+          className={`${field} resize-y ${issueClass(descriptionIssue)}`}
+          aria-invalid={descriptionIssue?.severity === 'error' || undefined}
+        />
+        <FieldNote issue={descriptionIssue} />
+      </div>
     </div>
   );
 }

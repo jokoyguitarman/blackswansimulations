@@ -39,6 +39,8 @@ const DESCRIPTION_MAX = 2000;
 const CITY_MAX = 80;
 const HANDLE_MAX = 60;
 const WANTS_MAX = 300;
+/** Matches competitorsSchema description (server/services/warroomBuild/wireSchemas.ts). */
+export const RIVAL_DESCRIPTION_MAX = 600;
 
 export type IssueSeverity = 'error' | 'warning';
 export type IssueScope = 'brief' | 'org' | 'pressure' | 'rival';
@@ -72,13 +74,27 @@ export interface SetupSnapshot {
 type OrgPart = 'name' | 'short_name' | 'country' | 'city' | 'kind' | 'facebook' | 'x' | 'roster';
 type TeamPart = 'name' | 'description';
 type PressurePart = 'name' | 'country' | 'city' | 'wants';
+type RivalPart = 'name' | 'country' | 'facebook' | 'x' | 'description';
 
 export const BRIEF_FIELD = 'brief';
 export const orgField = (orgId: string, part: OrgPart) => `org:${orgId}:${part}`;
 export const teamField = (orgId: string, index: number, part: TeamPart) =>
   `team:${orgId}:${index}:${part}`;
 export const pressureField = (id: string, part: PressurePart) => `pressure:${id}:${part}`;
-export const competitorField = (index: number) => `competitor:${index}`;
+export const rivalField = (id: string, part: RivalPart) => `rival:${id}:${part}`;
+
+const RIVAL_PART_BY_PROP: Record<string, RivalPart> = {
+  name: 'name',
+  display_name: 'name',
+  country: 'country',
+  facebook_handle: 'facebook',
+  x_handle: 'x',
+  description: 'description',
+};
+
+function rivalPart(prop: string | undefined): RivalPart {
+  return (prop && RIVAL_PART_BY_PROP[prop]) || 'name';
+}
 
 /** Pressure organisations the wizard sends; unnamed drafts stay behind. */
 export function isSendablePressureOrg(p: PressureOrgDraft): boolean {
@@ -453,43 +469,61 @@ export function collectSetupIssues(s: SetupSnapshot): SetupIssue[] {
     }
   });
 
-  /* Rival pages (added through the form, so a bad one is removed and re-added) */
+  /* Rival pages. Issues are pinned to the card id, so they follow a reorder. */
   const rivals = new Set<string>();
   s.competitors.forEach((c, i) => {
     const name = c.name.trim();
     const label = name || `Rival ${i + 1}`;
-    const field = competitorField(i);
+    const nameField = rivalField(c.id, 'name');
     if (name.length < 2) {
       error(
-        field,
+        nameField,
         label,
-        'Rival names need at least 2 characters — remove this one and add it again.',
+        'Name this rival (at least 2 characters), or remove the card.',
         'rival',
       );
     } else if (name.length > NAME_MAX) {
       error(
-        field,
+        nameField,
         label,
-        `Rival names can be ${NAME_MAX} characters at most — remove this one and add it again with a shorter name.`,
+        `Rival names can be ${NAME_MAX} characters at most — this is ${name.length}.`,
         'rival',
       );
     }
     if (!isKnownCountry(c.country)) {
       error(
-        field,
+        rivalField(c.id, 'country'),
         label,
-        'Its country isn\u2019t in the list — remove this rival and add it again with a country from the list.',
+        c.country.trim()
+          ? `"${c.country}" isn't in the country list — pick the closest match.`
+          : 'Pick a country from the list.',
         'rival',
       );
     }
-    if (
-      (c.facebook_handle ?? '').trim().length > HANDLE_MAX ||
-      (c.x_handle ?? '').trim().length > HANDLE_MAX
-    ) {
+    const facebook = (c.facebook_handle ?? '').trim();
+    const xHandle = (c.x_handle ?? '').trim();
+    if (facebook.length > HANDLE_MAX) {
       error(
-        field,
+        rivalField(c.id, 'facebook'),
         label,
-        `Handles can be ${HANDLE_MAX} characters at most — remove this rival and add it again.`,
+        `Handles can be ${HANDLE_MAX} characters at most — this is ${facebook.length}.`,
+        'rival',
+      );
+    }
+    if (xHandle.length > HANDLE_MAX) {
+      error(
+        rivalField(c.id, 'x'),
+        label,
+        `Handles can be ${HANDLE_MAX} characters at most — this is ${xHandle.length}.`,
+        'rival',
+      );
+    }
+    const description = (c.description ?? '').trim();
+    if (description.length > RIVAL_DESCRIPTION_MAX) {
+      error(
+        rivalField(c.id, 'description'),
+        label,
+        `Rival descriptions can be ${RIVAL_DESCRIPTION_MAX} characters at most — this is ${description.length}.`,
         'rival',
       );
     }
@@ -497,10 +531,10 @@ export function collectSetupIssues(s: SetupSnapshot): SetupIssue[] {
       const lower = name.toLowerCase();
       const owner = taken.get(lower);
       if (rivals.has(lower)) {
-        warn(field, label, 'This rival is listed twice — remove one.', 'rival');
+        warn(nameField, label, 'This rival is listed twice — remove one.', 'rival');
       } else if (owner) {
         warn(
-          field,
+          nameField,
           label,
           `"${name}" is also listed as ${owner.side === 'organisation' ? 'one of your organisations' : 'a pressure group'} — remove it from whichever side is wrong.`,
           'rival',
@@ -634,9 +668,10 @@ export function issuesFromServer(body: unknown, s: SetupSnapshot): SetupIssue[] 
       return issue(pressureField(p.id, part), p.display_name.trim(), message, 'pressure');
     }
     if (head === 'competitors' && s.competitors[i]) {
+      const rival = s.competitors[i];
       return issue(
-        competitorField(i),
-        s.competitors[i].name.trim() || `Rival ${i + 1}`,
+        rivalField(rival.id, rivalPart(prop)),
+        rival.name.trim() || `Rival ${i + 1}`,
         message,
         'rival',
       );
@@ -688,12 +723,13 @@ export function issuesFromServer(body: unknown, s: SetupSnapshot): SetupIssue[] 
         );
       }
     }
-    const rival = /^competitors\.(\d+)$/.exec(path);
+    const rival = /^competitors\.(\d+)(?:\.([^.]+))?$/.exec(path);
     if (rival && s.competitors[Number(rival[1])]) {
       const i = Number(rival[1]);
+      const card = s.competitors[i];
       return issue(
-        competitorField(i),
-        s.competitors[i].name.trim() || `Rival ${i + 1}`,
+        rivalField(card.id, rivalPart(rival[2])),
+        card.name.trim() || `Rival ${i + 1}`,
         message,
         'rival',
       );
