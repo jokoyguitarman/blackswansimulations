@@ -4,14 +4,18 @@
  */
 
 import { env } from '../../env.js';
-import { PRESSURE_STRIP_MINUTES } from '../../../shared/crossTeamPanel.js';
+import { applyFiredMinutes, PRESSURE_STRIP_MINUTES } from '../../../shared/crossTeamPanel.js';
 import {
   loadSessionDependencyViews,
   sessionMinute,
   type DependencySession,
   type SessionDependencyView,
 } from '../dependencies/dependencyService.js';
-import { readGuardEvents, readRecentTriggerPressure } from './crossTeamReads.js';
+import {
+  readGuardEvents,
+  readRecentTriggerPressure,
+  readTriggerMinutes,
+} from './crossTeamReads.js';
 
 export interface TrainerPanelPayload {
   available: boolean;
@@ -45,29 +49,29 @@ export async function loadTrainerPanel(session: DependencySession): Promise<Trai
     readGuardEvents(session.id),
   ]);
   if (views.missing) return empty;
-  const anchors: Record<string, number> = {};
-  const events: TrainerPanelPayload['events'] = [];
-  const published = new Set<string>();
-  for (const row of triggers.rows) {
-    if (row.inject_key) {
-      published.add(row.inject_key);
-      if (anchors[row.inject_key] == null) anchors[row.inject_key] = row.minute;
-    }
-    events.push({
-      minute: row.minute,
-      origin: row.origin,
-      source_teams: row.source_teams,
-      target_teams: row.target_teams,
-    });
+  const heldItems = guards
+    .filter((row) => row.reason !== '' && row.inject_key !== '')
+    .map((row) => ({ inject_key: row.inject_key, reason: row.reason, minute: row.minute }));
+  const keys = new Set<string>(heldItems.map((item) => item.inject_key));
+  for (const edge of views.edges) {
+    if ('after_inject_key' in edge.due) keys.add(edge.due.after_inject_key);
   }
+  const fires = await readTriggerMinutes(session.id, [...keys]);
+  const activity = applyFiredMinutes({
+    fired: fires.missing ? [] : fires.rows,
+    held: heldItems,
+  });
   return {
     available: true,
     elapsed_minute: elapsed,
     edges: views.edges,
-    anchors,
-    events,
-    held: guards
-      .filter((row) => row.reason !== '' && !published.has(row.inject_key))
-      .map((row) => ({ inject_key: row.inject_key, reason: row.reason, minute: row.minute })),
+    anchors: activity.anchors,
+    events: triggers.rows.map((row) => ({
+      minute: row.minute,
+      origin: row.origin,
+      source_teams: row.source_teams,
+      target_teams: row.target_teams,
+    })),
+    held: activity.held,
   };
 }

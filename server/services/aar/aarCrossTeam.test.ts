@@ -7,6 +7,7 @@ import {
   type CrossTeamTriggerInput,
 } from '../../../shared/crossTeamAar.js';
 import {
+  applyFiredMinutes,
   AT_RISK_WITHIN_MINUTES,
   buildPanelView,
   canHold,
@@ -14,6 +15,7 @@ import {
   lagCountdown,
   originLabel,
   panelChip,
+  PRESSURE_STRIP_MINUTES,
   type PanelEdgeInput,
 } from '../../../shared/crossTeamPanel.js';
 import { buildCommsResponsesSection } from '../aarCommsResponses.js';
@@ -280,6 +282,8 @@ describe('cross-team cause chains', () => {
         conditions_to_appear: {
           all: ['unresponded:bay3_headcount_request:10|team=operations'],
         },
+        conditions_to_cancel: { all: ['reply_failed:bay3_headcount_request|team=legal'] },
+        published_minute: 23,
       },
     ];
     const inferred = inferCrossTeamTriggers(published, [edges[0]!]);
@@ -288,6 +292,7 @@ describe('cross-team cause chains', () => {
       ['comms_reporter_presses'],
     );
     assert.deepEqual(inferred[0]?.source_teams, ['Operations']);
+    assert.equal(inferred[0]?.minute, 23);
     assert.equal(inferred[0]?.dep_id, 'dep_ops_headcount_comms');
     assert.deepEqual(inferred[0]?.parent_inject_keys, ['bay3_headcount_request']);
     const section = buildCrossTeamSection({
@@ -605,6 +610,65 @@ describe('dependency panel state', () => {
     assert.equal(view.held.length, 2);
     assert.match(view.held[0]?.reason_label ?? '', /answering this consequence/);
     assert.match(view.held[1]?.reason_label ?? '', /cross-team limit/);
+  });
+
+  test('a fire older than 15 minutes still anchors the due minute and clears a held item', () => {
+    const elapsed = 40;
+    const activity = applyFiredMinutes({
+      fired: [
+        { inject_key: 'bay3_headcount_request', minute: 8 },
+        { inject_key: 'comms_ceo_asks', minute: 18 },
+      ],
+      held: [
+        { inject_key: 'comms_ceo_asks', reason: 'throttle', minute: 16 },
+        { inject_key: 'legal_loop', reason: 'cross_team_loop_held', minute: 12 },
+      ],
+    });
+    assert.equal(activity.anchors.bay3_headcount_request, 8);
+    assert.deepEqual(
+      activity.held.map((item) => item.inject_key),
+      ['legal_loop'],
+    );
+    const view = buildPanelView({
+      edges: [
+        {
+          id: 'dep_ops_headcount_comms',
+          upstream_name: 'Operations',
+          downstream_names: ['Communications'],
+          deliverable: 'Confirmed headcount for Bay 3',
+          why: 'Communications cannot publish figures without it',
+          due: { after_inject_key: 'bay3_headcount_request', within_minutes: 10 },
+          lag_minutes: 5,
+          status: 'pending',
+          broken_minute: null,
+          met_minute: null,
+          recovered_minute: null,
+          hold_until_minute: null,
+        },
+      ],
+      elapsed,
+      anchors: activity.anchors,
+      events: [
+        {
+          minute: elapsed - PRESSURE_STRIP_MINUTES + 1,
+          origin: 'timed',
+          source_teams: [],
+          target_teams: ['Communications'],
+        },
+      ],
+      held: activity.held,
+    });
+    const edge = view.groups[0]?.edges[0];
+    assert.equal(edge?.due_minute, 18);
+    assert.equal(edge?.chip, 'at_risk');
+    assert.deepEqual(
+      view.pressure.map((row) => row.team),
+      ['Communications'],
+    );
+    assert.deepEqual(
+      view.held.map((item) => item.inject_key),
+      ['legal_loop'],
+    );
   });
 });
 

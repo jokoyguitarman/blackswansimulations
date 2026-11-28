@@ -241,6 +241,30 @@ export function pressureStrip(
   return countPressure(events.filter((event) => event.minute >= start && event.minute <= elapsed));
 }
 
+/**
+ * Due-minute anchors and "this held inject later published" use every fire,
+ * including ones older than the pressure window. The pressure strip does not.
+ */
+export function applyFiredMinutes(input: {
+  fired: readonly { inject_key: string; minute: number }[];
+  held: readonly HeldItem[];
+}): { anchors: Record<string, number>; held: HeldItem[] } {
+  const anchors: Record<string, number> = {};
+  const published = new Set<string>();
+  const ordered = [...input.fired].sort(
+    (left, right) => left.minute - right.minute || left.inject_key.localeCompare(right.inject_key),
+  );
+  for (const row of ordered) {
+    if (!row.inject_key) continue;
+    published.add(row.inject_key);
+    if (anchors[row.inject_key] == null) anchors[row.inject_key] = row.minute;
+  }
+  return {
+    anchors,
+    held: input.held.filter((item) => !published.has(item.inject_key)),
+  };
+}
+
 export function buildPanelView(input: {
   edges: readonly PanelEdgeInput[];
   elapsed: number;

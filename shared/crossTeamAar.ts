@@ -119,6 +119,8 @@ export interface PublishedInjectInput {
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   trigger_time_minutes: number | null;
+  /** Session minute the inject was published. Conditionals have no authored time. */
+  published_minute?: number | null;
 }
 
 export interface CrossTeamSectionInput {
@@ -599,24 +601,32 @@ export function inferCrossTeamTriggers(
   const triggers: CrossTeamTriggerInput[] = [];
   for (const inject of injects) {
     if (!isInjectKey(inject.inject_key)) continue;
-    const conditions = [inject.conditions_to_appear, inject.conditions_to_cancel];
-    const edge = byConsequence.get(inject.inject_key) ?? edgeFromConditions(conditions, edges);
-    const source = sourceTeams(conditions, edges, edge);
+    const appear = [inject.conditions_to_appear];
+    const edge = byConsequence.get(inject.inject_key) ?? edgeFromConditions(appear, edges);
+    const source = sourceTeams(appear, edges, edge);
     const cross = teamsDiffer(source, inject.target_teams);
     if (!edge && !cross) continue;
     triggers.push({
       inject_key: inject.inject_key,
       title: inject.title || inject.inject_key,
-      minute: inject.trigger_time_minutes,
+      minute: inferredMinute(inject),
       origin: edge ? 'dependency' : 'conditional',
       source_teams: source,
       target_teams: inject.target_teams,
       dep_id: edge?.id ?? null,
       cause_depth: 1,
-      parent_inject_keys: referencedParents(conditions, known),
+      parent_inject_keys: referencedParents(
+        [inject.conditions_to_appear, inject.conditions_to_cancel],
+        known,
+      ),
     });
   }
   return triggers;
+}
+
+function inferredMinute(inject: PublishedInjectInput): number | null {
+  if (inject.trigger_time_minutes == null) return inject.published_minute ?? null;
+  return inject.trigger_time_minutes;
 }
 
 function sourceTeams(
