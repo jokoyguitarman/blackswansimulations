@@ -316,6 +316,21 @@ describe('collectSetupIssues', () => {
     assert.equal(serverRefusal(s), null);
   });
 
+  test('the 600-character rival limit counts the trimmed description', () => {
+    const s = base();
+    const id = 'riv_pad';
+    s.competitors = [
+      rival('Apex Systems', 'Singapore', { id, description: ` \n${'d'.repeat(600)}\n ` }),
+    ];
+    assert.equal(on(errors(s), rivalField(id, 'description')).length, 0);
+    s.competitors = [
+      rival('Apex Systems', 'Singapore', { id, description: ` ${'d'.repeat(601)} ` }),
+    ];
+    const found = on(errors(s), rivalField(id, 'description'));
+    assert.equal(found.length, 1);
+    assert.match(found[0].message, /601/);
+  });
+
   test('errors stay hidden until revealed; warnings always show', () => {
     const err: SetupIssue = {
       field: 'f',
