@@ -14,6 +14,13 @@ import { normalizeOrgPages } from './socialCrisisGeneratorService.js';
 import { hiveRosterFor } from './extremistDoctrine.js';
 import { selectPersonaPool } from './orgRegistryService.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
+import { buildPlayerBubbleSystemPrompt, isNormalLifeFlag } from './topic/bubblePrompt.js';
+import {
+  insertSocialPost,
+  topicKindColumns,
+  topicSchemaMissing,
+  type TopicKind,
+} from './topic/topicColumns.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -403,29 +410,29 @@ async function seedBrandedHistory(
     const backdatedTime = new Date(startTime - daysAgo * 24 * 60 * 60 * 1000);
     const baseLikes = 50 + Math.floor(Math.random() * 200);
 
-    const { data: inserted } = await supabaseAdmin
-      .from('social_posts')
-      .insert({
-        session_id: sessionId,
-        platform,
-        author_handle: String(pageConfig.page_handle || '@Org'),
-        author_display_name: String(pageConfig.page_name || 'Organization'),
-        author_type: 'official_account',
-        content: String(post.content || ''),
-        post_format: String(post.post_format || 'text'),
-        sentiment: 'positive',
-        virality_score: 20 + Math.floor(Math.random() * 30),
-        content_flags: {},
-        like_count: baseLikes,
-        repost_count: Math.floor(baseLikes * 0.15),
-        reply_count: Math.floor(baseLikes * 0.05),
-        view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
-        reaction_summary: getReactionSummary('positive', baseLikes),
-        is_branded_history: true,
-        created_at: backdatedTime.toISOString(),
-      })
-      .select('id')
-      .single();
+    const historyRow = {
+      session_id: sessionId,
+      platform,
+      author_handle: String(pageConfig.page_handle || '@Org'),
+      author_display_name: String(pageConfig.page_name || 'Organization'),
+      author_type: 'official_account',
+      content: String(post.content || ''),
+      post_format: String(post.post_format || 'text'),
+      sentiment: 'positive',
+      virality_score: 20 + Math.floor(Math.random() * 30),
+      content_flags: {},
+      like_count: baseLikes,
+      repost_count: Math.floor(baseLikes * 0.15),
+      reply_count: Math.floor(baseLikes * 0.05),
+      view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
+      reaction_summary: getReactionSummary('positive', baseLikes),
+      is_branded_history: true,
+      created_at: backdatedTime.toISOString(),
+      ...topicKindColumns(env.enableTopicAwareReplies, 'normal', topicSchemaMissing()),
+    };
+    const { data: inserted } = await insertSocialPost(historyRow, (payload) =>
+      supabaseAdmin.from('social_posts').insert(payload).select('id').single(),
+    );
 
     const mediaDesc = String(post.media_description || '');
     if (mediaDesc && inserted?.id) {
@@ -529,7 +536,7 @@ Return ONLY valid JSON:
       const backdateOffset = Math.floor(Math.random() * 3600000 * 6);
       const commentTime = new Date(new Date(parentPost.created_at).getTime() + backdateOffset);
 
-      await supabaseAdmin.from('social_posts').insert({
+      const commentRow = {
         session_id: sessionId,
         platform: parentPost.platform,
         author_handle: String(comment.author_handle || '@user'),
@@ -543,7 +550,11 @@ Return ONLY valid JSON:
         like_count: Math.floor(Math.random() * 5),
         reaction_summary: Math.random() < 0.5 ? ['like'] : [],
         created_at: commentTime.toISOString(),
-      });
+        ...topicKindColumns(env.enableTopicAwareReplies, 'normal', topicSchemaMissing()),
+      };
+      await insertSocialPost(commentRow, (payload) =>
+        supabaseAdmin.from('social_posts').insert(payload),
+      );
 
       commentCounts[postId] = (commentCounts[postId] || 0) + 1;
     }
@@ -582,6 +593,7 @@ async function insertPost(
   platform: string = 'x_twitter',
   scenarioContext?: string,
   targetPlayerIds?: string[],
+  topicKind?: TopicKind,
 ): Promise<Record<string, unknown> | null> {
   const handle = String(post.author_handle || '@anon');
   const displayName = String(post.author_display_name || 'User');
@@ -603,32 +615,32 @@ async function insertPost(
       personaCountry(sessionId, handle))
     : null;
 
-  const { data: inserted, error } = await supabaseAdmin
-    .from('social_posts')
-    .insert({
-      session_id: sessionId,
-      platform: String(post.platform || platform),
-      author_handle: handle,
-      author_display_name: displayName,
-      author_type: String(post.author_type || 'npc_public'),
-      content,
-      hashtags: content.match(/#\w+/g) || [],
-      reply_to_post_id: replyToId || null,
-      sentiment: String(post.sentiment || 'neutral'),
-      virality_score: Number(post.virality_score) || 0,
-      content_flags: (post.content_flags as Record<string, unknown>) || {},
-      media_urls: existingMedia.length > 0 ? existingMedia : [],
-      like_count: 0,
-      repost_count: 0,
-      reply_count: 0,
-      view_count: 0,
-      ...(country ? { country } : {}),
-      ...(targetPlayerIds && targetPlayerIds.length > 0
-        ? { target_player_ids: targetPlayerIds }
-        : {}),
-    })
-    .select()
-    .single();
+  const row = {
+    session_id: sessionId,
+    platform: String(post.platform || platform),
+    author_handle: handle,
+    author_display_name: displayName,
+    author_type: String(post.author_type || 'npc_public'),
+    content,
+    hashtags: content.match(/#\w+/g) || [],
+    reply_to_post_id: replyToId || null,
+    sentiment: String(post.sentiment || 'neutral'),
+    virality_score: Number(post.virality_score) || 0,
+    content_flags: (post.content_flags as Record<string, unknown>) || {},
+    media_urls: existingMedia.length > 0 ? existingMedia : [],
+    like_count: 0,
+    repost_count: 0,
+    reply_count: 0,
+    view_count: 0,
+    ...(country ? { country } : {}),
+    ...(targetPlayerIds && targetPlayerIds.length > 0
+      ? { target_player_ids: targetPlayerIds }
+      : {}),
+    ...topicKindColumns(env.enableTopicAwareReplies, topicKind, topicSchemaMissing()),
+  };
+  const { data: inserted, error } = await insertSocialPost(row, (payload) =>
+    supabaseAdmin.from('social_posts').insert(payload).select().single(),
+  );
 
   if (error) {
     logger.warn({ error, sessionId }, 'Failed to insert ambient post');
@@ -1089,24 +1101,14 @@ async function generatePlayerBubblePosts(
       .slice(0, 10);
 
     const result = await callAI(
-      `You generate social media posts for a specific player's personalized feed in a crisis simulation. These posts should feel like what this person would naturally see in their social media bubble.
-
-THE CRISIS: ${crisisDescription.substring(0, 300)}
-Elapsed: ${elapsedMinutes}min. Sentiment: ${socialState?.sentiment_score ?? sentiment.overall}/100.
-
-NPCs IN THIS PLAYER'S BUBBLE:
-${npcListStr}
-
-CONTENT MIX — generate exactly 3 posts:
-- 2 posts should be crisis-related: reactions, opinions, news sharing, demands, or commentary about the crisis. Each from a different NPC.
-- 1 post should be NORMAL LIFE: an NPC posting about their regular interests (${normalTopics.join(', ')}) as if the crisis isn't the only thing happening. This makes the feed feel like real social media.
-
-For crisis posts, set content_flags as appropriate:
-- is_harmful_narrative, is_misinformation, is_inflammatory, incites_violence, is_organized_pressure
-Leave content_flags as {} for neutral, supportive, or normal life posts.
-
-Return ONLY valid JSON:
-{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {}, "image_prompt": "" }] }`,
+      buildPlayerBubbleSystemPrompt({
+        crisisDescription,
+        elapsedMinutes,
+        sentimentScore: (socialState?.sentiment_score ?? sentiment.overall) as number | string,
+        npcList: npcListStr,
+        normalTopics: normalTopics.join(', '),
+        topicAware: env.enableTopicAwareReplies,
+      }),
       `Generate bubble posts for player feed.`,
       1500,
       0.9,
@@ -1120,9 +1122,13 @@ Return ONLY valid JSON:
 
     for (const p of posts.slice(0, 3)) {
       await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
-      await insertPost(sessionId, p as Record<string, unknown>, undefined, platform, mediaCtx, [
-        playerId,
-      ]);
+      const bubble = p as Record<string, unknown>;
+      const topicKind = env.enableTopicAwareReplies
+        ? isNormalLifeFlag(bubble.is_normal_life)
+          ? 'normal'
+          : 'crisis'
+        : undefined;
+      await insertPost(sessionId, bubble, undefined, platform, mediaCtx, [playerId], topicKind);
     }
   }
 

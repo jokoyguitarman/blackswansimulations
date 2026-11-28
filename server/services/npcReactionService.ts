@@ -9,6 +9,49 @@ import {
   notifyMention,
   extractMentions,
 } from './socialNotificationService.js';
+import { gradeIfCrisisActivity, type GradeActivityInput } from './topic/gradeIfCrisisActivity.js';
+import { buildLegacyReactionMessages } from './topic/legacyReactionPrompt.js';
+import {
+  assignBridgeStances,
+  buildTopicAwareReactionPrompt,
+  checkTopicReplies,
+  type BridgeStance,
+  type PostKind,
+  type TopicLabel,
+  type TopicPhase,
+} from './topic/topicPromptCore.js';
+import {
+  isTopicSchemaMissing,
+  noteTopicSchemaMissing,
+  topicSchemaMissing,
+} from './topic/topicColumns.js';
+
+export interface ReactionChatResult {
+  reactions?: Array<Record<string, unknown>>;
+  classification?: unknown;
+}
+
+export interface ReactionChatClient {
+  chatJson(options: {
+    tier: 'standard';
+    json: true;
+    temperature: number;
+    maxTokens: number;
+    label: string;
+    messages: Array<{ role: 'system' | 'user'; content: string }>;
+  }): Promise<ReactionChatResult | null>;
+}
+
+export interface NpcReactionOptions {
+  /** WP3 passes `peace`. Until then every caller leaves this unset, which is crisis. */
+  phase?: TopicPhase;
+  client?: ReactionChatClient;
+  /** Test override. Callers omit it and the env flag decides. */
+  topicAware?: boolean;
+  grade?: (input: GradeActivityInput) => Promise<void>;
+  /** Test override for persona selection. Callers omit it and Math.random is used. */
+  random?: () => number;
+}
 
 interface NPCPersona {
   handle: string;
@@ -18,13 +61,89 @@ interface NPCPersona {
   bias: string;
   follower_count: number;
   specific_claims: string[];
+  tier?: string;
+}
+
+const PARENT_COLUMNS = 'content, author_handle, author_display_name, author_type' as const;
+
+interface ParentPostRow {
+  content: string;
+  author_handle: string;
+  author_display_name?: string | null;
+  author_type?: string | null;
+  topic_kind?: string | null;
+}
+
+/** Flag off uses the same column list as before. topic_kind is only requested when the feature is on. */
+async function loadParentPost(id: string, withTopicKind: boolean): Promise<ParentPostRow | null> {
+  if (!withTopicKind) {
+    const { data } = await supabaseAdmin
+      .from('social_posts')
+      .select(PARENT_COLUMNS)
+      .eq('id', id)
+      .single();
+    return data;
+  }
+  const wide = await supabaseAdmin
+    .from('social_posts')
+    .select(`${PARENT_COLUMNS}, topic_kind` as typeof PARENT_COLUMNS)
+    .eq('id', id)
+    .single();
+  if (wide.error && isTopicSchemaMissing(wide.error)) {
+    noteTopicSchemaMissing();
+    const fallback = await supabaseAdmin
+      .from('social_posts')
+      .select(PARENT_COLUMNS)
+      .eq('id', id)
+      .single();
+    return fallback.data;
+  }
+  if (wide.error || !wide.data) return null;
+  return wide.data as ParentPostRow;
+}
+
+async function writePlayerTopic(
+  postId: string,
+  checked: { label: TopicLabel; confidence: number | null; bridgeTopic: string },
+): Promise<{ columnsAvailable: boolean }> {
+  if (!postId || topicSchemaMissing()) return { columnsAvailable: false };
+  const { error } = await supabaseAdmin
+    .from('social_posts')
+    .update({
+      topic_class: checked.label,
+      topic_confidence: checked.confidence,
+      topic_bridge: checked.bridgeTopic || null,
+    })
+    .eq('id', postId);
+  if (error && isTopicSchemaMissing(error)) {
+    noteTopicSchemaMissing();
+    return { columnsAvailable: false };
+  }
+  if (error) {
+    logger.warn({ error, postId }, 'Failed to store topic class');
+    return { columnsAvailable: true };
+  }
+  return { columnsAvailable: true };
 }
 
 export async function triggerNPCReactions(
   sessionId: string,
   playerPost: Record<string, unknown>,
+  options?: NpcReactionOptions,
 ): Promise<void> {
-  if (!env.aiEnabled) return;
+  const client = options?.client;
+  const random = options?.random ?? Math.random;
+  if (!env.aiEnabled && !client) return;
+
+  const topicAware = options?.topicAware ?? env.enableTopicAwareReplies;
+  const phase: TopicPhase = options?.phase ?? 'crisis';
+  let topicLabel: TopicLabel = 'unclassified';
+  let topicClassified = false;
+  let topicColumnsAvailable = true;
+  let topicPostKind: PostKind = 'crisis';
+  let parentForPrompt: ParentPostRow | null = null;
+  let threadReplyRows: Array<{ authorHandle: string; content: string }> = [];
+  let addressedComment: { handle: string; content: string } | null = null;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -69,13 +188,16 @@ export async function triggerNPCReactions(
     // Fetch thread context if this is a reply
     let threadContext = '';
     if (isReply) {
-      const { data: parentPost } = await supabaseAdmin
-        .from('social_posts')
-        .select('content, author_handle, author_display_name, author_type')
-        .eq('id', String(playerPost.reply_to_post_id))
-        .single();
+      const parentPost = await loadParentPost(
+        String(playerPost.reply_to_post_id),
+        topicAware && !topicSchemaMissing(),
+      );
 
       if (parentPost) {
+        parentForPrompt = parentPost;
+        if (parentPost.topic_kind === 'normal' || parentPost.topic_kind === 'crisis') {
+          topicPostKind = parentPost.topic_kind;
+        }
         const { data: threadReplies } = await supabaseAdmin
           .from('social_posts')
           .select('content, author_handle')
@@ -84,6 +206,10 @@ export async function triggerNPCReactions(
           .limit(10);
 
         threadContext = `\n\nTHREAD CONTEXT:\nOriginal post by ${parentPost.author_handle}: "${String(parentPost.content).substring(0, 200)}"`;
+        threadReplyRows = (threadReplies || []).map((r) => ({
+          authorHandle: String(r.author_handle),
+          content: String(r.content).substring(0, 100),
+        }));
         if (threadReplies && threadReplies.length > 0) {
           threadContext +=
             '\nPrevious replies:\n' +
@@ -101,7 +227,9 @@ export async function triggerNPCReactions(
             .reverse()
             .find((r) => r.author_handle === targetHandle);
           if (targetReply) {
-            threadContext += `\n\nThe player is SPECIFICALLY responding to ${targetHandle}'s comment: "${String(targetReply.content).substring(0, 200)}"`;
+            const addressed = String(targetReply.content).substring(0, 200);
+            addressedComment = { handle: targetHandle, content: addressed };
+            threadContext += `\n\nThe player is SPECIFICALLY responding to ${targetHandle}'s comment: "${addressed}"`;
             threadContext += `\nNPCs should respond in context of THIS specific exchange, not the general thread.`;
           }
         }
@@ -118,7 +246,7 @@ export async function triggerNPCReactions(
     const reactingNPCs: Array<{ persona: NPCPersona; reactionType: string }> = [];
 
     for (const persona of personas) {
-      const roll = Math.random();
+      const roll = random();
 
       if (!isOfficialPagePost && !isReply) {
         // Personal profile post: only public NPCs and biased NPCs react
@@ -180,7 +308,7 @@ export async function triggerNPCReactions(
     }
 
     if (isReply && reactingNPCs.length === 0 && personas.length > 0) {
-      const randomPersona = personas[Math.floor(Math.random() * personas.length)];
+      const randomPersona = personas[Math.floor(random() * personas.length)];
       reactingNPCs.push({
         persona: randomPersona,
         reactionType: randomPersona.bias && randomPersona.bias !== 'none' ? 'attack' : 'neutral',
@@ -229,59 +357,112 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
 `;
     }
 
-    const parsed = await chatJson<{ reactions?: Array<Record<string, unknown>> }>({
-      tier: 'standard',
-      json: true,
+    const playerHandleForPrompt = String(playerPost.author_handle || '@player');
+    const crisisDescription = String(scenario.description || '').substring(0, 300);
+    const legacy = buildLegacyReactionMessages({
+      postFormat,
+      playerHandle: playerHandleForPrompt,
+      npcContext,
+      isOfficialComms,
+      officialScrutinyBlock,
+      crisisDescription,
+      orgName,
+      threadContext,
+      isReply,
+      playerContent: String(playerPost.content || ''),
+      imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
+      userHandle: String(playerPost.author_handle),
+    });
+    const stances = topicAware
+      ? assignBridgeStances(selected, String(playerPost.id || ''), {
+          authorIsPage: isOfficialPagePost,
+          stayShare: env.topicBridgeStayShare,
+        })
+      : [];
+    const stanceByHandle = new Map<string, BridgeStance>(
+      stances.map((row) => [row.handle, row.stance]),
+    );
+    const prompted = topicAware
+      ? buildTopicAwareReactionPrompt({
+          phase,
+          postFormat,
+          playerHandle: playerHandleForPrompt,
+          playerContent: String(playerPost.content || ''),
+          imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
+          authorIsPage: isOfficialPagePost,
+          orgName,
+          topicKind: topicPostKind,
+          parent: parentForPrompt
+            ? {
+                content: String(parentForPrompt.content).substring(0, 200),
+                authorHandle: String(parentForPrompt.author_handle),
+                authorDisplayName: String(parentForPrompt.author_display_name || ''),
+                authorType: String(parentForPrompt.author_type || ''),
+                topicKind: topicPostKind,
+              }
+            : null,
+          threadReplies: threadReplyRows,
+          addressedComment,
+          personas: selected.map((entry) => ({
+            handle: entry.persona.handle,
+            name: entry.persona.name,
+            personality: entry.persona.personality,
+            bias: entry.persona.bias,
+            type: entry.persona.type,
+            reactionType: entry.reactionType,
+            stance: stanceByHandle.get(entry.persona.handle) || 'stay',
+          })),
+          crisisDescription,
+          officialScrutinyBlock,
+          isReply,
+        })
+      : legacy;
+
+    const request = {
+      tier: 'standard' as const,
+      json: true as const,
       temperature: 0.95,
       maxTokens: 1500,
       label: 'npcReaction.generate',
       messages: [
-        {
-          role: 'system',
-          content: `You are generating NPC reactions to a player's social media post during a crisis simulation.
-
-The player posted a ${postFormat} format post. Their handle is ${String(playerPost.author_handle || '@player')}. Generate realistic reactions from these NPCs:
-
-${npcContext}
-
-Reaction types:
-- "attack": ${
-            isOfficialComms
-              ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
-              : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias'
-          }
-- "cover": media-style coverage -- ${
-            isOfficialComms
-              ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
-              : "neutral to positive news angle about the response team's communication"
-          }
-- "support": endorsing reply or repost with supportive commentary, OR just "like" the post
-- "neutral": ambiguous reaction that could go either way
-- "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
-
-IMPORTANT RULES:
-- When replying, START the reply by tagging the player: "${String(playerPost.author_handle || '@player')} ..." so they get notified
-- Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
-- Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
-${officialScrutinyBlock}
-Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
-${threadContext}
-
-Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}
-If the player attached media (photo/video), the description is shown as [Attached media: ...]. React to the visual content as if you can see it -- reference what it shows, comment on its impact, or use it to fuel your argument.
-
-Return ONLY valid JSON:
-{ "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
-        },
-        {
-          role: 'user',
-          content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
-        },
+        { role: 'system' as const, content: prompted.system },
+        { role: 'user' as const, content: prompted.user },
       ],
-    });
+    };
+    const parsed = client ? await client.chatJson(request) : await chatJson<ReactionChatResult>(request);
 
     if (!parsed) return;
-    const reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
+    let reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
+
+    if (topicAware) {
+      const peacePeriod = (initialState.peace_period || {}) as { leak_terms?: unknown };
+      const leakTerms = Array.isArray(peacePeriod.leak_terms)
+        ? peacePeriod.leak_terms.map((term) => String(term))
+        : [];
+      const checked = checkTopicReplies({
+        classification: parsed.classification,
+        reactions,
+        stances: stanceByHandle,
+        leakTerms,
+        postKind: topicPostKind,
+        isReply,
+        minConfidence: env.topicBridgeMinConfidence,
+      });
+      reactions = checked.reactions;
+      const wrote = await writePlayerTopic(String(playerPost.id || ''), checked);
+      topicColumnsAvailable = wrote.columnsAvailable && !topicSchemaMissing();
+      topicLabel = topicColumnsAvailable ? checked.label : 'unclassified';
+      topicClassified = true;
+      const logged = new Set<string>();
+      for (const drop of checked.dropped) {
+        if (logged.has(drop.handle)) continue;
+        logged.add(drop.handle);
+        logger.info(
+          { sessionId, playerPostId: playerPost.id, handle: drop.handle },
+          'Dropped topic reply that matched leak terms',
+        );
+      }
+    }
 
     const postPlatform = String(playerPost.platform || 'x_twitter');
     const playerHandle = String(playerPost.author_handle || '@player');
@@ -446,5 +627,31 @@ Return ONLY valid JSON:
     );
   } catch (err) {
     logger.error({ err, sessionId }, 'NPC reaction trigger failed');
+    if (!topicClassified) topicLabel = 'unclassified';
+  } finally {
+    if (topicAware) {
+      const columnsAvailable = topicColumnsAvailable && !topicSchemaMissing();
+      const label = columnsAvailable ? topicLabel : 'unclassified';
+      const grader = options?.grade ?? gradeIfCrisisActivity;
+      try {
+        await grader({
+          sessionId,
+          postId: String(playerPost.id || ''),
+          userId: String(playerPost.user_id || ''),
+          content: String(playerPost.content || ''),
+          postFormat: typeof playerPost.post_format === 'string' ? playerPost.post_format : undefined,
+          imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
+          replyToPostId: playerPost.reply_to_post_id ? String(playerPost.reply_to_post_id) : undefined,
+          postAsPage: String(playerPost.author_type) === 'official_account',
+          topicAware: true,
+          label,
+          phase,
+          postKind: topicPostKind,
+          columnsAvailable,
+        });
+      } catch (gradeErr) {
+        logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
+      }
+    }
   }
 }

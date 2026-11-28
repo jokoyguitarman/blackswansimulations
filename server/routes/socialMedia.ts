@@ -13,6 +13,11 @@ import { markPostResponded } from '../services/responseTrackerService.js';
 import { evaluateSOPCompliance } from '../services/sopCheckerService.js';
 import { computeSessionSentiment } from '../services/sentimentSimService.js';
 import { triggerNPCReactions } from '../services/npcReactionService.js';
+import {
+  gradeIfCrisisActivity,
+  routeGradesPlayerPost,
+} from '../services/topic/gradeIfCrisisActivity.js';
+import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
 import {
@@ -570,107 +575,26 @@ router.post(
         );
       }
 
-      // Auto-grade ALL player posts (replies and top-level)
-      void (async () => {
-        try {
-          const { data: sessionData } = await supabaseAdmin
-            .from('sessions')
-            .select('scenario_id, start_time')
-            .eq('id', session_id)
-            .single();
-          if (!sessionData) return;
-
-          const { data: scenario } = await supabaseAdmin
-            .from('scenarios')
-            .select('description, initial_state')
-            .eq('id', sessionData.scenario_id)
-            .single();
-          if (!scenario) return;
-
-          const is = (scenario.initial_state || {}) as Record<string, unknown>;
-          const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
-          const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
-          const researchGuidelines = ((is.research_guidelines as Record<string, unknown>)
-            ?.per_team || []) as Array<{
-            guidelines: Array<{ best_practice: string; source_basis: string }>;
-          }>;
-          const flatGuidelines = researchGuidelines.flatMap((t) => t.guidelines || []);
-
-          let parentContent: string | undefined;
-          if (reply_to_post_id) {
-            const { data: parentPost } = await supabaseAdmin
-              .from('social_posts')
-              .select('content')
-              .eq('id', reply_to_post_id)
-              .single();
-            parentContent = parentPost ? String(parentPost.content || '') : undefined;
-          }
-
-          const elapsedMinutes = sessionData.start_time
-            ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
-            : undefined;
-
-          const { gradePlayerContent } = await import('../services/contentGraderService.js');
-          const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
-          const teamCtx = await getPlayerTeamContext(session_id, user.id);
-          const grade = await gradePlayerContent(content, {
-            crisis_description: scenario.description || '',
-            confirmed_facts: confirmedFacts,
-            hateful_post_being_addressed: parentContent,
-            research_guidelines: flatGuidelines.slice(0, 5),
-            post_format: post_format || 'text',
-            is_official_page_post: post_as_page || false,
-            elapsed_minutes: elapsedMinutes,
-            image_prompt: image_prompt || undefined,
-            team_charter: teamCtx?.charter
-              ? {
-                  team_name: teamCtx.team_name,
-                  mission: teamCtx.charter.mission,
-                  scoring_rubric: teamCtx.charter.scoring_rubric,
-                  out_of_lane: teamCtx.charter.out_of_lane,
-                }
-              : undefined,
-          });
-
-          await supabaseAdmin
-            .from('social_posts')
-            .update({ sop_compliance_score: grade })
-            .eq('id', post.id);
-
-          // Refresh team scores now that a new grade landed (throttled inside).
-          const { snapshotTeamScores } = await import('../services/teamScoreService.js');
-          void snapshotTeamScores(session_id);
-
-          if (grade.overall >= 70) {
-            const { generateConsequenceInject } =
-              await import('../services/ambientContentService.js');
-            void generateConsequenceInject(
-              session_id,
-              'player_good_response',
-              `A player posted a high-quality ${post_format || 'text'} response (scored ${grade.overall}/100). Generate a supportive reaction amplifying the good response.`,
-              'supportive',
-              true,
-            );
-          } else if (grade.overall < 40) {
-            const { generateConsequenceInject } =
-              await import('../services/ambientContentService.js');
-            void generateConsequenceInject(
-              session_id,
-              'player_poor_response',
-              `A player posted a poor ${post_format || 'text'} response (scored ${grade.overall}/100). Generate a skeptical reaction questioning the response quality.`,
-              'negative',
-              false,
-            );
-          }
-
-          logger.info(
-            { postId: post.id, overall: grade.overall, format: post_format },
-            'Auto-graded player post',
-          );
-        } catch (gradeErr) {
-          logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
-        }
-      })();
+      // Auto-grade player posts. With topic replies off (the default) this is the
+      // same fire-and-forget grade as before, started before the response. With
+      // the flag on and AI on, triggerNPCReactions grades after classification.
+      if (routeGradesPlayerPost(env.enableTopicAwareReplies, env.aiEnabled)) {
+        void gradeIfCrisisActivity({
+          sessionId: session_id,
+          postId: String(post.id),
+          userId: user.id,
+          content,
+          postFormat: post_format,
+          imagePrompt: image_prompt || undefined,
+          replyToPostId: reply_to_post_id || undefined,
+          postAsPage: post_as_page || false,
+          topicAware: env.enableTopicAwareReplies,
+          label: 'unclassified',
+          phase: 'crisis',
+          postKind: 'crisis',
+          columnsAvailable: true,
+        });
+      }
 
       getWebSocketService().broadcastToSession(session_id, {
         type: 'social_post.created',

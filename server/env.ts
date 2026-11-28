@@ -26,6 +26,14 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Fraction in [0, 1], or the fallback when unset or invalid. */
+function envUnit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+}
+
 /** Non-negative integer from the environment, or the fallback when unset or invalid. */
 function envNonNegativeInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -311,4 +319,9 @@ export const env = {
   // open one. Admins are unlimited and are not counted.
   scenarioSetupEdits: process.env.SCENARIO_SETUP_EDITS === 'true',
   scenarioSetupEditLimit: envNonNegativeInt('SCENARIO_SETUP_EDIT_LIMIT', 3),
+  // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
+  // When off, reaction prompts, grading and post inserts match today.
+  enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',
+  topicBridgeStayShare: envUnit('TOPIC_BRIDGE_STAY_SHARE', 0.4),
+  topicBridgeMinConfidence: envUnit('TOPIC_BRIDGE_MIN_CONFIDENCE', 0.6),
 };
