@@ -137,10 +137,13 @@ export function applyAnySugar(value: unknown): unknown {
  * a removed team's uid must not attach to whoever reused the display name.
  * A null uid matches the exact name, then a unique slug.
  */
-export function matchTeamRef(ref: TeamRef, teams: readonly ActiveTeam[]): ActiveTeam | null {
+export function matchTeamRef<T extends { team_uid?: string | null; team_name: string }>(
+  ref: { team_uid?: string | null; team_name?: string | null },
+  teams: readonly T[],
+): T | null {
   const uid = typeof ref.team_uid === 'string' && ref.team_uid.trim() ? ref.team_uid.trim() : null;
   if (uid) return teams.find((team) => team.team_uid === uid) ?? null;
-  const name = ref.team_name.trim();
+  const name = typeof ref.team_name === 'string' ? ref.team_name.trim() : '';
   const exact = teams.find((team) => team.team_name === name);
   if (exact) return exact;
   const slug = slugifyTeamName(name);

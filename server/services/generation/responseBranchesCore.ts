@@ -5,7 +5,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { isValidInjectKey, slugifyInjectTitle } from '../../lib/injectKey.js';
+import { allocateInjectKey, isValidInjectKey } from '../../lib/injectKey.js';
 import {
   deriveGenericRubric,
   readAuthoredRubric,
@@ -76,6 +76,17 @@ export interface CoverageReport {
   redialing_calls: number;
   stakeholders_with_ladder: number;
   gave_up_consequences: number;
+  dependency_edges: number;
+  cross_team_consequences: number;
+  teams_without_dependency: string[];
+}
+
+export interface DependencyCoverage {
+  edges: readonly {
+    upstream: { team_name: string };
+    downstream: readonly { team_name: string }[];
+  }[];
+  teams: readonly string[];
 }
 
 export function isDeliveryApp(value: unknown): value is DeliveryApp {
@@ -125,6 +136,7 @@ export function postProcessResponseBranches(
   parents: readonly BranchParent[],
   durationMinutes: number,
   taken: ReadonlySet<string> = new Set(parents.map((parent) => parent.inject_key)),
+  roster: readonly string[] = [],
 ): ProcessedBranches {
   const byKey = new Map(parents.map((parent) => [parent.inject_key, parent]));
   const rubrics = rubricsForParents(model.rubrics, parents);
@@ -158,7 +170,7 @@ export function postProcessResponseBranches(
         type: typeForApp(app),
         severity: text(row.severity) || 'high',
         inject_scope: scopeOf(row.inject_scope, parent),
-        target_teams: teamsOf(row.target_teams, parent),
+        target_teams: teamsOf(row.target_teams, parent, roster),
         requires_response: false,
         conditions_to_appear: { all: appear },
         conditions_to_cancel: cancel ?? undefined,
@@ -200,12 +212,14 @@ export function postProcessResponseBranches(
 export function coverageReport(
   injects: readonly BranchInject[],
   stakeholders: readonly { mood_ladder?: unknown }[] = [],
+  dependencies?: DependencyCoverage | null,
 ): CoverageReport {
   const used = new Set<string>();
   const conditional = new Map<string, number>();
   let chained_roots = 0;
   let redialing_calls = 0;
   let gave_up_consequences = 0;
+  let cross_team_consequences = 0;
   for (const inject of injects) {
     const config = inject.delivery_config;
     const app = text(config?.app);
@@ -233,11 +247,24 @@ export function coverageReport(
     if (appear.some((key) => (key.split('|')[0] ?? '').startsWith('stakeholder_gave_up:'))) {
       gave_up_consequences += 1;
     }
+    if (appear.some((key) => isDependencyBreakKey(key))) {
+      cross_team_consequences += 1;
+    }
   }
   const by_platform: Record<string, number> = {};
   for (const app of used) by_platform[app] = conditional.get(app) ?? 0;
   const gaps = [...used].filter((app) => by_platform[app] === 0);
   const stakeholders_with_ladder = stakeholders.filter((stakeholder) => stakeholder.mood_ladder != null).length;
+  const dependency = dependencyCoverage(dependencies, cross_team_consequences);
+  if (dependency.teams_without_dependency.length > 0) {
+    logger.warn(
+      {
+        event: 'dependency_team_without_edge',
+        teams: dependency.teams_without_dependency,
+      },
+      'A playable team is not in any dependency',
+    );
+  }
   return {
     by_platform,
     gaps,
@@ -245,6 +272,37 @@ export function coverageReport(
     redialing_calls,
     stakeholders_with_ladder,
     gave_up_consequences,
+    ...dependency,
+  };
+}
+
+function isDependencyBreakKey(key: string): boolean {
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed) return false;
+  return parsed.def.id === 'dependency_broken' || parsed.def.id === 'dependency_broken_for';
+}
+
+function dependencyCoverage(
+  input: DependencyCoverage | null | undefined,
+  cross_team_consequences: number,
+): {
+  dependency_edges: number;
+  cross_team_consequences: number;
+  teams_without_dependency: string[];
+} {
+  if (!input) {
+    return { dependency_edges: 0, cross_team_consequences, teams_without_dependency: [] };
+  }
+  const covered = new Set<string>();
+  for (const edge of input.edges) {
+    covered.add(edge.upstream.team_name);
+    for (const team of edge.downstream) covered.add(team.team_name);
+  }
+  const teams = [...new Set(input.teams.filter((team) => team && team !== 'Shared'))];
+  return {
+    dependency_edges: input.edges.length,
+    cross_team_consequences,
+    teams_without_dependency: teams.length >= 2 ? teams.filter((team) => !covered.has(team)) : [],
   };
 }
 
@@ -514,26 +572,7 @@ function clampCallScript(config: Record<string, unknown>): void {
 }
 
 function allocateKey(requested: string | null, title: string, taken: Set<string>): string {
-  if (requested && isValidInjectKey(requested) && !taken.has(requested)) {
-    taken.add(requested);
-    return requested;
-  }
-  const base = slugifyInjectTitle(title);
-  if (!taken.has(base)) {
-    taken.add(base);
-    return base;
-  }
-  for (let n = 2; n < 1000; n++) {
-    const suffix = `_${n}`;
-    const candidate = `${base.slice(0, 60 - suffix.length)}${suffix}`;
-    if (isValidInjectKey(candidate) && !taken.has(candidate)) {
-      taken.add(candidate);
-      return candidate;
-    }
-  }
-  const fallback = `branch_${taken.size}`;
-  taken.add(fallback);
-  return fallback;
+  return allocateInjectKey(requested, title, taken);
 }
 
 function findParent(
@@ -593,7 +632,7 @@ function swapKey(key: string, from: string, to: string): string {
   return rebuildConditionKey(parsed, args);
 }
 
-function typeForApp(app: DeliveryApp): string {
+export function typeForApp(app: DeliveryApp): string {
   if (app === 'email') return 'email_inbound';
   if (app === 'phone_call') return 'phone_call';
   if (app === 'group_chat') return 'chat_message';
@@ -607,9 +646,25 @@ function scopeOf(raw: unknown, parent: BranchParent): string {
   return parent.target_teams.length > 0 ? 'team_specific' : 'universal';
 }
 
-function teamsOf(raw: unknown, parent: BranchParent): string[] {
-  if (Array.isArray(raw)) return raw.filter((team): team is string => typeof team === 'string');
-  return [...parent.target_teams];
+function teamsOf(raw: unknown, parent: BranchParent, roster: readonly string[] = []): string[] {
+  const listed = Array.isArray(raw)
+    ? raw.filter((team): team is string => typeof team === 'string' && team.trim() !== '')
+    : null;
+  if (!listed) return [...parent.target_teams];
+  if (roster.length === 0) return listed;
+  const known: string[] = [];
+  const unknown: string[] = [];
+  for (const name of listed) {
+    const canonical = roster.find((team) => team === name) ?? roster.find((team) => team.toLowerCase() === name.toLowerCase());
+    if (canonical && !known.includes(canonical)) known.push(canonical);
+    else if (!canonical) unknown.push(name);
+  }
+  if (unknown.length === 0) return known;
+  logger.warn(
+    { event: 'branch_target_team_unknown', parent: parent.inject_key, targets: unknown },
+    'Response branch target is not on the roster',
+  );
+  return known.length > 0 ? known : [...parent.target_teams];
 }
 
 function stakeholderOf(config: Record<string, unknown>, parent: BranchParent): string | undefined {

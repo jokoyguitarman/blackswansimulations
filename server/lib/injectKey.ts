@@ -30,7 +30,12 @@ export function slugifyInjectTitle(title: string): string {
   return isValidInjectKey(slug) ? slug : 'inject';
 }
 
-function allocateInjectKey(title: string, taken: Set<string>): string {
+/** Keep `preferred` when it is a free inject key, otherwise slugify `title`. */
+export function allocateInjectKey(preferred: string | null, title: string, taken: Set<string>): string {
+  if (preferred && isValidInjectKey(preferred) && !taken.has(preferred)) {
+    taken.add(preferred);
+    return preferred;
+  }
   const base = slugifyInjectTitle(title);
   if (!taken.has(base)) {
     taken.add(base);
@@ -71,7 +76,7 @@ export function stampGeneratedInjectKeys<
     config.inject_key =
       existing && isValidInjectKey(existing)
         ? existing
-        : allocateInjectKey(inject.title ?? '', taken);
+        : allocateInjectKey(null, inject.title ?? '', taken);
     return { ...inject, delivery_config: config };
   });
 }
