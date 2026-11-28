@@ -31,7 +31,45 @@ import type { DutySnapshot } from '../teamTasksCore.js';
 const DUTY_ACTION_CAP = 8000;
 const GRADE_CAP = 2000;
 const DECISION_CAP = 500;
-const ACTIVITY_SCAN_CAP = 8000;
+/**
+ * Newest chat rows (and unstamped actions) kept when aggregates are off.
+ * One row past the cap means the scan is incomplete, so team_silent stays false.
+ */
+export const ACTIVITY_SCAN_CAP = 8000;
+
+/** PostgREST rejects aggregates with these codes. Other errors are transient. */
+const AGGREGATE_DISABLED = new Set(['PGRST123', 'PGRST100']);
+
+/**
+ * Supabase leaves PostgREST aggregates off (`PGRST123`). Remember that so later
+ * ticks skip the grouped reads. A network error does not latch the flag.
+ */
+let aggregatesUnavailable = false;
+
+export function resetTeamSignalAggregatesForTests(): void {
+  aggregatesUnavailable = false;
+}
+
+export function postgrestAggregatesUnavailable(): boolean {
+  return aggregatesUnavailable;
+}
+
+function aggregateDisabledCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && AGGREGATE_DISABLED.has(code) ? code : null;
+}
+
+/** Latch aggregates off only for PGRST123 / PGRST100. Other errors retry next tick. */
+export function notePostgrestAggregateFailure(err: unknown): void {
+  if (!aggregateDisabledCode(err) || aggregatesUnavailable) return;
+  aggregatesUnavailable = true;
+  warnOnce(
+    'postgrest_aggregates_unavailable',
+    err,
+    'PostgREST aggregates are off; team-signal reads use narrow scans',
+  );
+}
 
 export interface TeamSignalFacts {
   duties: Record<string, DutySnapshot[]>;
@@ -89,14 +127,19 @@ function schemaMissing(error: QueryError | null): boolean {
 export async function loadTeamSignalFacts(
   sessionId: string,
   startTime: string | null,
-  clock: { openedAt?: string | null } = {},
+  clock: { openedAt?: string | null; initialState?: unknown; initialStateKnown?: boolean } = {},
 ): Promise<TeamSignalFacts> {
   const enabled = env.enableExecutiveDecisions;
   try {
     const scenario = await loadScenarioId(sessionId);
+    const roster = await loadRoster(
+      scenario,
+      rosterValidAt({ start_time: startTime, opened_at: clock.openedAt ?? null }),
+    );
+    const membership = await loadMembership(sessionId);
+    const actionTypes = charterDetectionTypes(roster.teams);
+    const teamNames = [...roster.teams.map((team) => team.team_name), ...membership.byTeam.keys()];
     const [
-      roster,
-      membership,
       participants,
       dutyActions,
       actionActivity,
@@ -106,21 +149,16 @@ export async function loadTeamSignalFacts(
       decisionRows,
       roles,
     ] = await Promise.all([
-      loadRoster(
-        scenario,
-        rosterValidAt({ start_time: startTime, opened_at: clock.openedAt ?? null }),
-      ),
-      loadMembership(sessionId),
       loadTrainerIds(sessionId),
-      loadDutyActions(sessionId),
-      loadActionActivity(sessionId),
-      loadChatActivity(sessionId),
+      loadDutyActions(sessionId, actionTypes, roster.known),
+      loadActionActivity(sessionId, teamNames),
+      loadChatActivity(sessionId, [...membership.teamByPlayer.keys()]),
       loadGradeRows(sessionId, 'social_posts', 'posted_by_user_id', { author_type: 'player' }),
       loadGradeRows(sessionId, 'sim_emails', 'sent_by_player_id', {}),
       enabled
         ? loadDecisionRows(sessionId)
         : Promise.resolve({ rows: [], known: true, truncated: false }),
-      loadRoleTeams(scenario),
+      loadRoleTeams(scenario, clock),
     ]);
 
     const facts = emptyFacts(enabled);
@@ -307,7 +345,109 @@ async function loadTrainerIds(sessionId: string): Promise<Set<string>> {
   }
 }
 
-async function loadDutyActions(sessionId: string): Promise<{
+function charterDetectionTypes(
+  teams: readonly { expected: readonly { detection_action_type: string }[] }[],
+): string[] {
+  const types = new Set<string>();
+  for (const team of teams) {
+    for (const action of team.expected) {
+      if (action.detection_action_type) types.add(action.detection_action_type);
+    }
+  }
+  return [...types];
+}
+
+async function loadDutyActions(
+  sessionId: string,
+  actionTypes: readonly string[],
+  rosterKnown: boolean,
+): Promise<{
+  rows: ObservedAction[];
+  known: boolean;
+  truncated: boolean;
+}> {
+  if (!rosterKnown) return { rows: [], known: false, truncated: false };
+  if (actionTypes.length === 0) return { rows: [], known: true, truncated: false };
+  const grouped = await loadDutyCompletions(sessionId, actionTypes);
+  if (grouped) return grouped;
+  return scanDutyActions(sessionId, actionTypes);
+}
+
+/**
+ * Earliest completion of each charter action. One row per
+ * (team, player, action type, metadata) with `min(created_at)`.
+ * A failed aggregate falls back to the row scan.
+ */
+async function loadDutyCompletions(
+  sessionId: string,
+  actionTypes: readonly string[],
+): Promise<{
+  rows: ObservedAction[];
+  known: boolean;
+  truncated: boolean;
+} | null> {
+  if (aggregatesUnavailable) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('team_at_action, player_id, action_type, metadata, first_at:created_at.min()')
+      .eq('session_id', sessionId)
+      .in('action_type', [...actionTypes])
+      .limit(DUTY_ACTION_CAP + 1);
+    if (error) {
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_signal_duties_unavailable',
+          error,
+          'Charter duties are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      notePostgrestAggregateFailure(error);
+      return null;
+    }
+    const raw = (data ?? []) as Array<Record<string, unknown>>;
+    const truncated = raw.length > DUTY_ACTION_CAP;
+    if (truncated) {
+      warnOnce(
+        'team_signal_duties_truncated',
+        null,
+        'Duty history exceeded the condition-key cap; missed-duty keys stay false',
+      );
+    }
+    const kept = truncated ? raw.slice(0, DUTY_ACTION_CAP) : raw;
+    return { rows: actionsFromEarliest(kept), known: true, truncated };
+  } catch (err) {
+    notePostgrestAggregateFailure(err);
+    return null;
+  }
+}
+
+function actionsFromEarliest(rows: readonly Record<string, unknown>[]): ObservedAction[] {
+  const actions: ObservedAction[] = [];
+  for (const row of rows) {
+    const created = instantOf(row.first_at);
+    if (!created) continue;
+    const metadata = row.metadata;
+    actions.push({
+      player_id: row.player_id ? String(row.player_id) : '',
+      action_type: typeof row.action_type === 'string' ? row.action_type : '',
+      team_at_action: typeof row.team_at_action === 'string' ? row.team_at_action : null,
+      metadata:
+        metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : null,
+      created_at: created,
+    });
+  }
+  actions.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  return actions;
+}
+
+async function scanDutyActions(
+  sessionId: string,
+  actionTypes: readonly string[],
+): Promise<{
   rows: ObservedAction[];
   known: boolean;
   truncated: boolean;
@@ -317,6 +457,7 @@ async function loadDutyActions(sessionId: string): Promise<{
       .from('player_actions')
       .select('player_id, action_type, team_at_action, metadata, created_at')
       .eq('session_id', sessionId)
+      .in('action_type', [...actionTypes])
       .order('created_at', { ascending: true })
       .limit(DUTY_ACTION_CAP + 1);
     if (error) {
@@ -371,86 +512,141 @@ function instantOf(value: unknown): string {
   return '';
 }
 
-async function loadActionActivity(sessionId: string): Promise<{
+async function loadActionActivity(
+  sessionId: string,
+  teamNames: readonly string[],
+): Promise<{
   rows: ActivityRow[];
   known: boolean;
   truncated: boolean;
 }> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('player_actions')
-      .select('team_at_action, player_id, last_at:created_at.max()')
-      .eq('session_id', sessionId);
-    if (!error) return { rows: (data ?? []) as ActivityRow[], known: true, truncated: false };
-    if (schemaMissing(error)) {
-      warnOnce(
-        'team_activity_unavailable',
-        error,
-        'Team activity conditions are off for this process',
-      );
-      return { rows: [], known: false, truncated: false };
+  if (!aggregatesUnavailable) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('player_actions')
+        .select('team_at_action, player_id, last_at:created_at.max()')
+        .eq('session_id', sessionId);
+      if (!error) return { rows: (data ?? []) as ActivityRow[], known: true, truncated: false };
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_activity_unavailable',
+          error,
+          'Team activity conditions are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      notePostgrestAggregateFailure(error);
+    } catch (err) {
+      notePostgrestAggregateFailure(err);
     }
-    warnOnce(
-      'team_activity_aggregate_failed',
-      error,
-      'Grouped team activity failed; scanning player_actions instead',
-    );
-  } catch (err) {
-    warnOnce(
-      'team_activity_aggregate_failed',
-      err,
-      'Grouped team activity failed; scanning player_actions instead',
-    );
   }
-  return scanActivity(sessionId, 'player_actions', 'player_id, team_at_action, created_at');
+  return latestActionPerTeam(sessionId, teamNames);
 }
 
-async function loadChatActivity(sessionId: string): Promise<{
+async function latestActionPerTeam(
+  sessionId: string,
+  teamNames: readonly string[],
+): Promise<{ rows: ActivityRow[]; known: boolean; truncated: boolean }> {
+  const names = [...new Set(teamNames.map((name) => name.trim()).filter(Boolean))];
+  try {
+    const queries = names.map((name) =>
+      supabaseAdmin
+        .from('player_actions')
+        .select('player_id, team_at_action, created_at')
+        .eq('session_id', sessionId)
+        .eq('team_at_action', name)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    );
+    queries.push(
+      supabaseAdmin
+        .from('player_actions')
+        .select('player_id, team_at_action, created_at')
+        .eq('session_id', sessionId)
+        .is('team_at_action', null)
+        .order('created_at', { ascending: false })
+        .limit(ACTIVITY_SCAN_CAP + 1),
+    );
+    const results = await Promise.all(queries);
+    const rows: ActivityRow[] = [];
+    let truncated = false;
+    for (const [index, result] of results.entries()) {
+      if (result.error) {
+        warnOnce(
+          'team_activity_unavailable',
+          result.error,
+          'Team activity conditions are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      const batch = (result.data ?? []) as ActivityRow[];
+      const unstamped = index === results.length - 1;
+      if (unstamped && batch.length > ACTIVITY_SCAN_CAP) {
+        truncated = true;
+        warnOnce(
+          'team_activity_truncated',
+          null,
+          'Unstamped actions exceeded the activity cap; silence keys stay false',
+        );
+        rows.push(...batch.slice(0, ACTIVITY_SCAN_CAP));
+      } else {
+        rows.push(...batch);
+      }
+    }
+    return { rows, known: true, truncated };
+  } catch (err) {
+    warnOnce('team_activity_unavailable', err, 'Team activity conditions are off for this process');
+    return { rows: [], known: false, truncated: false };
+  }
+}
+
+async function loadChatActivity(
+  sessionId: string,
+  playerIds: readonly string[],
+): Promise<{
   rows: ActivityRow[];
   known: boolean;
   truncated: boolean;
 }> {
+  if (!aggregatesUnavailable) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('chat_messages')
+        .select('sender_id, last_at:created_at.max()')
+        .eq('session_id', sessionId)
+        .not('sender_id', 'is', null)
+        .neq('type', 'system');
+      if (!error) return { rows: (data ?? []) as ActivityRow[], known: true, truncated: false };
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_chat_activity_unavailable',
+          error,
+          'Team activity conditions are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      notePostgrestAggregateFailure(error);
+    } catch (err) {
+      notePostgrestAggregateFailure(err);
+    }
+  }
+  return latestChat(sessionId, playerIds);
+}
+
+/** One ordered read. chat_messages is indexed on session_id, not on sender. */
+async function latestChat(
+  sessionId: string,
+  playerIds: readonly string[],
+): Promise<{ rows: ActivityRow[]; known: boolean; truncated: boolean }> {
+  const ids = [...new Set(playerIds.filter(Boolean))];
+  if (ids.length === 0) return { rows: [], known: true, truncated: false };
   try {
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
-      .select('sender_id, last_at:created_at.max()')
+      .select('sender_id, created_at')
       .eq('session_id', sessionId)
-      .not('sender_id', 'is', null)
-      .neq('type', 'system');
-    if (!error) return { rows: (data ?? []) as ActivityRow[], known: true, truncated: false };
-    if (schemaMissing(error)) {
-      warnOnce(
-        'team_chat_activity_unavailable',
-        error,
-        'Team activity conditions are off for this process',
-      );
-      return { rows: [], known: false, truncated: false };
-    }
-    warnOnce(
-      'team_chat_aggregate_failed',
-      error,
-      'Grouped chat activity failed; scanning chat_messages instead',
-    );
-  } catch (err) {
-    warnOnce(
-      'team_chat_aggregate_failed',
-      err,
-      'Grouped chat activity failed; scanning chat_messages instead',
-    );
-  }
-  return scanActivity(sessionId, 'chat_messages', 'sender_id, created_at, type');
-}
-
-async function scanActivity(
-  sessionId: string,
-  table: 'player_actions' | 'chat_messages',
-  columns: string,
-): Promise<{ rows: ActivityRow[]; known: boolean; truncated: boolean }> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from(table)
-      .select(columns)
-      .eq('session_id', sessionId)
+      .in('sender_id', ids)
+      .neq('type', 'system')
       .order('created_at', { ascending: false })
       .limit(ACTIVITY_SCAN_CAP + 1);
     if (error) {
@@ -467,13 +663,14 @@ async function scanActivity(
       warnOnce(
         'team_activity_truncated',
         null,
-        'Team activity exceeded the condition-key cap; silence keys stay false',
+        'Chat activity exceeded the condition-key cap; silence keys stay false',
       );
     }
-    const kept = (truncated ? raw.slice(0, ACTIVITY_SCAN_CAP) : raw).filter(
-      (row) => row.type !== 'system',
-    );
-    return { rows: kept, known: true, truncated };
+    return {
+      rows: truncated ? raw.slice(0, ACTIVITY_SCAN_CAP) : raw,
+      known: true,
+      truncated,
+    };
   } catch (err) {
     warnOnce('team_activity_unavailable', err, 'Team activity conditions are off for this process');
     return { rows: [], known: false, truncated: false };
@@ -498,11 +695,7 @@ function actionHits(
   return hits;
 }
 
-function hitMinute(
-  startTime: string | null,
-  at: string,
-  slug: string,
-): ActivityHit | null {
+function hitMinute(startTime: string | null, at: string, slug: string): ActivityHit | null {
   if (!slug || !at) return null;
   const minute = activityMinute(startTime, at);
   if (minute == null) return null;
@@ -517,6 +710,7 @@ function chatHits(
 ): ActivityHit[] {
   const hits: ActivityHit[] = [];
   for (const row of rows) {
+    if (row.type === 'system') continue;
     const senderId = row.sender_id ? String(row.sender_id) : '';
     if (!senderId || trainers.has(senderId)) continue;
     const teamName = teamByPlayer.get(senderId) ?? '';
@@ -534,10 +728,96 @@ async function loadGradeRows(
   userColumn: 'posted_by_user_id' | 'sent_by_player_id',
   extra: { author_type?: string },
 ): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean }> {
+  const counted = await loadGradeCounts(sessionId, table, userColumn, extra);
+  if (counted) return counted;
+  return scanGradeRows(sessionId, table, userColumn, extra);
+}
+
+/**
+ * Count of each overall score per player. Expanded back into the same grade
+ * rows the scan produces, so `content_failed` counts every threshold the same way.
+ */
+async function loadGradeCounts(
+  sessionId: string,
+  table: 'social_posts' | 'sim_emails',
+  userColumn: 'posted_by_user_id' | 'sent_by_player_id',
+  extra: { author_type?: string },
+): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean } | null> {
+  if (aggregatesUnavailable) return null;
   try {
     let query = supabaseAdmin
       .from(table)
-      .select(`${userColumn}, sop_compliance_score`)
+      .select(`${userColumn}, overall:sop_compliance_score->>overall, n:id.count()`)
+      .eq('session_id', sessionId)
+      .not(userColumn, 'is', null)
+      .not('sop_compliance_score', 'is', null)
+      .limit(GRADE_CAP + 1);
+    if (extra.author_type) query = query.eq('author_type', extra.author_type);
+    const { data, error } = await query;
+    if (error) {
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_signal_grades_unavailable',
+          error,
+          'Content-grade conditions are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      notePostgrestAggregateFailure(error);
+      return null;
+    }
+    return rowsFromGradeCounts(userColumn, (data ?? []) as Array<Record<string, unknown>>);
+  } catch (err) {
+    notePostgrestAggregateFailure(err);
+    return null;
+  }
+}
+
+function rowsFromGradeCounts(
+  userColumn: string,
+  data: readonly Record<string, unknown>[],
+): { rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean } {
+  const rows: Array<Record<string, unknown>> = [];
+  let truncated = false;
+  for (const row of data) {
+    const score = row.overall;
+    const copies = gradeCount(row.n);
+    if (copies === 0 || score == null || score === '') continue;
+    for (let i = 0; i < copies; i += 1) {
+      if (rows.length >= GRADE_CAP) {
+        truncated = true;
+        break;
+      }
+      rows.push({ [userColumn]: row[userColumn], sop_compliance_score: { overall: score } });
+    }
+    if (truncated) break;
+  }
+  if (truncated) {
+    warnOnce(
+      'team_signal_grades_truncated',
+      null,
+      'Graded content exceeded the condition-key cap; only the loaded grades count',
+    );
+  }
+  return { rows, known: true, truncated };
+}
+
+function gradeCount(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+async function scanGradeRows(
+  sessionId: string,
+  table: 'social_posts' | 'sim_emails',
+  userColumn: 'posted_by_user_id' | 'sent_by_player_id',
+  extra: { author_type?: string },
+): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean }> {
+  try {
+    let query = supabaseAdmin
+      .from(table)
+      .select(`${userColumn}, overall:sop_compliance_score->>overall`)
       .eq('session_id', sessionId)
       .not(userColumn, 'is', null)
       .not('sop_compliance_score', 'is', null)
@@ -552,7 +832,11 @@ async function loadGradeRows(
       );
       return { rows: [], known: false, truncated: false };
     }
-    const raw = (data ?? []) as Array<Record<string, unknown>>;
+    const raw = ((data ?? []) as Array<Record<string, unknown>>).map((row) =>
+      row.sop_compliance_score != null
+        ? row
+        : { ...row, sop_compliance_score: { overall: row.overall } },
+    );
     const truncated = raw.length > GRADE_CAP;
     if (truncated) {
       warnOnce(
@@ -654,10 +938,14 @@ async function loadDecisionRows(sessionId: string): Promise<{
   }
 }
 
-async function loadRoleTeams(scenario: {
-  id: string | null;
-  known: boolean;
-}): Promise<Record<string, string>> {
+async function loadRoleTeams(
+  scenario: { id: string | null; known: boolean },
+  clock: { initialState?: unknown; initialStateKnown?: boolean },
+): Promise<Record<string, string>> {
+  if (clock.initialStateKnown) {
+    const initial = clock.initialState as { player_roles?: unknown } | null;
+    return roleTeamSlugs(parsePlayerRoles(initial?.player_roles));
+  }
   if (!scenario.known || !scenario.id) return {};
   try {
     const { data, error } = await supabaseAdmin

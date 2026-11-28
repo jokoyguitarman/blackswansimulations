@@ -5,6 +5,7 @@ import { validate } from '../lib/validation.js';
 import { assertSessionOwner } from '../lib/access.js';
 import { logger } from '../lib/logger.js';
 import { directorCommands, replayStoredSession } from '../services/director/directorService.js';
+import { promoteDirectorProposal } from '../services/director/directorPromote.js';
 import {
   type ApproveEdits,
   type CommandResult,
@@ -87,6 +88,7 @@ export interface DirectorRouterDeps {
   ) => Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   commands: DirectorCommands;
   replay: typeof replayStoredSession;
+  promote?: typeof promoteDirectorProposal;
 }
 
 function isStaff(role: string | undefined): boolean {
@@ -215,6 +217,22 @@ export function createDirectorRouter(deps: DirectorRouterDeps): Router {
     }
   });
 
+  router.post(
+    '/:id/director/proposals/:pid/promote',
+    deps.auth,
+    validate(proposalParams),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+        if (!deps.promote) return res.status(500).json({ error: 'Internal server error' });
+        send(res, await deps.promote(req.params.id, req.params.pid, req.user));
+      } catch (err) {
+        logger.error({ err }, 'POST /sessions/:id/director/proposals/:pid/promote failed');
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    },
+  );
+
   router.post('/:id/director/snooze', deps.auth, validate(snoozeBody), async (req: AuthenticatedRequest, res) => {
     try {
       if (!isStaff(req.user?.role)) return res.status(403).json({ error: 'Access denied' });
@@ -240,6 +258,7 @@ function defaultDeps(): DirectorRouterDeps {
     },
     commands: directorCommands,
     replay: replayStoredSession,
+    promote: promoteDirectorProposal,
   };
 }
 

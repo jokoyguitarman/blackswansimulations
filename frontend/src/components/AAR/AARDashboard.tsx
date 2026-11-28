@@ -12,6 +12,7 @@ import {
 } from './SocialAARCharts';
 import { AAR_STORED_CAP } from '@shared/crossTeamAar';
 import { CrossTeamSection } from './CrossTeamSection';
+import { UnscriptedEventsSection } from './UnscriptedEventsSection';
 
 const AAR_SECTION_KEYS = [
   'executive',
@@ -33,6 +34,7 @@ const AAR_SECTION_KEYS = [
   'social_timeline',
   'comms_responses',
   'cross_team',
+  'unscripted_events',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -69,6 +71,7 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
   cross_team: 'Cross-team cause and effect',
+  unscripted_events: 'Unscripted events',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -625,7 +628,7 @@ function CommsTimelineTable({ rows }: { rows: unknown[] }) {
         !!row && typeof row === 'object' && !Array.isArray(row),
     )
     .slice(0, AAR_STORED_CAP);
-  const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'detail'] as const;
+  const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'origin_note', 'detail'] as const;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs terminal-text">
@@ -674,6 +677,9 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   }
   if (keyName === 'cross_team') {
     return <CrossTeamSection data={data} />;
+  }
+  if (keyName === 'unscripted_events') {
+    return <UnscriptedEventsSection data={data} />;
   }
   if (keyName === 'comms_responses' && typeof data === 'object' && !Array.isArray(data)) {
     const obj = data as { response_injects?: unknown; timeline?: unknown; moods?: unknown };

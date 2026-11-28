@@ -109,6 +109,11 @@ const proposalSchema = z
   .strict();
 
 export type ParsedProposal = z.infer<typeof proposalSchema>;
+
+export function parseStoredProposal(raw: unknown): ParsedProposal | null {
+  const parsed = proposalSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
 export type DirectorMode = 'off' | 'suggest' | 'auto';
 export type ProposalStatus =
   | 'proposed'

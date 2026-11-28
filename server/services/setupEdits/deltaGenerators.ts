@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { chatJson, systemUser } from '../ai/chatClient.js';
 import { generatePersonasForCountry, type TakenIdentifiers } from '../multiOrgGenerationService.js';
-import {
-  generatePressureOrgPages,
-  ensureSpokespersons,
-} from '../pressureOrgGenerationService.js';
+import { generatePressureOrgPages, ensureSpokespersons } from '../pressureOrgGenerationService.js';
 import {
   defaultRegisterFor,
   getCatalogCharterByFunction,
@@ -25,6 +22,8 @@ import {
 } from '../socialCrisisGeneratorService.js';
 import { generateStakeholdersForOrg } from '../stakeholderGenerationService.js';
 import type { TeamCharterWire } from '../warroomBuild/wireSchemas.js';
+import { generateDependencyDelta } from '../generation/teamDependencyService.js';
+import type { GenerationTeam } from '../generation/teamDependenciesCore.js';
 import { emptyBriefDiff, type BriefDiff } from './affectedLayers.js';
 import {
   DELTA_PROMPT_MAX_TOKENS,
@@ -162,7 +161,7 @@ export function createDeltaGenerators(): DeltaGenerators {
     async reviseFactSheet(input) {
       const raw = await ask(
         input.appendOnly
-          ? 'Append facts the brief adds. Do not delete or reword the trainer\'s facts. Return JSON {confirmed_facts, unconfirmed_claims, crisis_cluster}.'
+          ? "Append facts the brief adds. Do not delete or reword the trainer's facts. Return JSON {confirmed_facts, unconfirmed_claims, crisis_cluster}."
           : 'Revise the fact sheet. Keep every fact the diff does not add, change, or remove. Return JSON {confirmed_facts, unconfirmed_claims, crisis_cluster}.',
         `${clip(JSON.stringify(input.diff), 2000)}\n\n${clip(JSON.stringify(input.factSheet), 3000)}`,
         'setupEdit.factSheet',
@@ -274,7 +273,9 @@ export function createDeltaGenerators(): DeltaGenerators {
       return { stakeholders: result.stakeholders, injects: result.injects };
     },
     async generateSpokesperson(input) {
-      const pressure = input.ctx.edited.pressure_organisations.find((item) => item.org_key === input.orgKey);
+      const pressure = input.ctx.edited.pressure_organisations.find(
+        (item) => item.org_key === input.orgKey,
+      );
       if (!pressure) return { stakeholder: null, injects: [] };
       const protagonists = input.ctx.edited.organisations.map(normalisedOrg);
       const charters = input.ctx.edited.organisations.flatMap((org) => chartersFor(org));
@@ -349,6 +350,34 @@ export function createDeltaGenerators(): DeltaGenerators {
         objectives,
       };
     },
+    async dependencyDelta(input) {
+      const teams = generationTeams(input.ctx);
+      const wanted = new Set(input.addedTeams.map((team) => team.team_name));
+      const added = teams.filter((team) => wanted.has(team.team_name));
+      const result = await generateDependencyDelta({
+        teams,
+        addedTeams: added,
+        existingEdges: input.existingEdges,
+        idSources: input.ctx.injects.map((inject) => ({
+          conditions_to_appear: inject.conditions_to_appear,
+          conditions_to_cancel: inject.conditions_to_cancel,
+          delivery_config: inject.delivery_config,
+        })),
+        crisis: crisisOf(input.ctx),
+        facts: input.ctx.fact_sheet.confirmed_facts,
+        storylines: storylinesFrom(input.ctx),
+        stakeholders: input.ctx.stakeholders.map((stakeholder) => ({
+          id: stakeholder.id,
+          name: stakeholder.name,
+        })),
+      });
+      return {
+        edges: result.team_dependencies.edges,
+        consequences: result.consequences,
+        positives: result.positives,
+        asks: result.asks,
+      };
+    },
     async regenerateBranches(input) {
       const raw = await ask(
         'Regenerate response branches for this one parent. Return JSON {branches: [{title, content, delivery_config: {app}}]}.',
@@ -374,10 +403,14 @@ export function createDeltaGenerators(): DeltaGenerators {
         .map((org) => rosterEntry(input.ctx, org.org_key, org.name, org.description));
       const pressure = input.orgs
         .filter((org) => org.role === 'pressure')
-        .map((org) => input.ctx.edited.pressure_organisations.find((item) => item.org_key === org.org_key))
+        .map((org) =>
+          input.ctx.edited.pressure_organisations.find((item) => item.org_key === org.org_key),
+        )
         .filter((org): org is NonNullable<typeof org> => !!org)
         .map(normalisedPressure);
-      const primary = input.ctx.edited.organisations.find((org) => org.is_primary) ?? input.ctx.edited.organisations[0];
+      const primary =
+        input.ctx.edited.organisations.find((org) => org.is_primary) ??
+        input.ctx.edited.organisations[0];
       const pages: Array<Record<string, unknown>> = [];
       if (allies.length > 0 || rivals.length > 0) {
         const secondary = await generateSecondaryOrgPages(
@@ -401,7 +434,7 @@ export function createDeltaGenerators(): DeltaGenerators {
     },
     async revisePageHistory(input) {
       const raw = await ask(
-        'Revise this one page\'s branded history for the new premise. Return JSON {branded_history: []}.',
+        "Revise this one page's branded history for the new premise. Return JSON {branded_history: []}.",
         `Org: ${input.orgKey}\nCountry: ${input.country ?? ''}\nDiff: ${clip(JSON.stringify(input.diff), 1200)}\nHistory: ${clip(JSON.stringify(input.history), 2500)}`,
         'setupEdit.pageHistory',
       );
@@ -424,7 +457,8 @@ function parseBrief(raw: Record<string, unknown>): BriefDiff {
   if (parsed.data.affected_layers && parsed.data.affected_layers.length > 0) {
     diff.affected_layers = parsed.data.affected_layers;
   }
-  if (parsed.data.new_groups && parsed.data.new_groups.length > 0) diff.new_groups = parsed.data.new_groups;
+  if (parsed.data.new_groups && parsed.data.new_groups.length > 0)
+    diff.new_groups = parsed.data.new_groups;
   return diff;
 }
 
@@ -459,6 +493,63 @@ async function ask(system: string, user: string, label: string): Promise<Record<
   });
   if (!result || typeof result !== 'object') throw new Error(`${label} returned no JSON`);
   return result;
+}
+
+function generationTeams(ctx: DeltaBuildContext): GenerationTeam[] {
+  const removedUids = new Set(ctx.delta.removed_teams.map((team) => team.team_uid));
+  const removedOrgs = new Set(ctx.delta.removed_orgs);
+  const teams: GenerationTeam[] = [];
+  for (const org of ctx.edited.organisations) {
+    if (removedOrgs.has(org.org_key)) continue;
+    for (const team of org.teams) {
+      if (removedUids.has(team.team_uid)) continue;
+      teams.push({
+        team_name: team.team_name,
+        team_uid: team.team_uid,
+        org_key: org.org_key,
+        org_name: org.display_name,
+        function_name: team.function_key,
+        mission: team.description,
+        playable: org.operation !== 'ai',
+      });
+    }
+  }
+  return teams;
+}
+
+function storylinesFrom(ctx: DeltaBuildContext): Record<string, SocialInject[]> {
+  const storylines: Record<string, SocialInject[]> = {};
+  for (const inject of ctx.injects) {
+    const team = inject.target_teams[0] || 'Shared';
+    const row: SocialInject = {
+      title: inject.title,
+      content: inject.content,
+      type: inject.type,
+      severity: inject.severity,
+      inject_scope: inject.inject_scope,
+      target_teams: inject.target_teams,
+      requires_response: inject.requires_response,
+      trigger_time_minutes: inject.trigger_time_minutes ?? undefined,
+      delivery_config: {
+        app: isStorylineApp(inject.app) ? inject.app : 'email',
+        inject_key: inject.inject_key,
+      },
+    };
+    storylines[team] = [...(storylines[team] ?? []), row];
+  }
+  return storylines;
+}
+
+function isStorylineApp(app: string): app is SocialInject['delivery_config']['app'] {
+  return (
+    app === 'social_feed' ||
+    app === 'email' ||
+    app === 'news' ||
+    app === 'group_chat' ||
+    app === 'phone_call' ||
+    app === 'messenger_dm' ||
+    app === 'npc_dm'
+  );
 }
 
 function crisisOf(ctx: DeltaBuildContext) {
@@ -505,7 +596,9 @@ function normalisedOrg(org: SnapshotOrg): NormalisedOrg {
   };
 }
 
-function normalisedPressure(org: SetupSnapshot['pressure_organisations'][number]): NormalisedPressureOrg {
+function normalisedPressure(
+  org: SetupSnapshot['pressure_organisations'][number],
+): NormalisedPressureOrg {
   const kind = pressureKind(org.kind);
   return {
     org_key: org.org_key,
@@ -592,14 +685,26 @@ function rosterEntry(ctx: DeltaBuildContext, orgKey: string, name: string, descr
 }
 
 function orgKind(kind: string): OrgKind {
-  if (kind === 'office' || kind === 'agency' || kind === 'ngo' || kind === 'other' || kind === 'company') {
+  if (
+    kind === 'office' ||
+    kind === 'agency' ||
+    kind === 'ngo' ||
+    kind === 'other' ||
+    kind === 'company'
+  ) {
     return kind;
   }
   return 'other';
 }
 
 function pressureKind(kind: string | undefined): PressureKind {
-  if (kind === 'union' || kind === 'regulator' || kind === 'ngo' || kind === 'community_group' || kind === 'political') {
+  if (
+    kind === 'union' ||
+    kind === 'regulator' ||
+    kind === 'ngo' ||
+    kind === 'community_group' ||
+    kind === 'political'
+  ) {
     return kind;
   }
   return 'ngo';
@@ -608,7 +713,12 @@ function pressureKind(kind: string | undefined): PressureKind {
 function pressureRegister(
   register: string | undefined,
 ): 'statutory' | 'advocacy' | 'grassroots' | 'political' | undefined {
-  if (register === 'statutory' || register === 'advocacy' || register === 'grassroots' || register === 'political') {
+  if (
+    register === 'statutory' ||
+    register === 'advocacy' ||
+    register === 'grassroots' ||
+    register === 'political'
+  ) {
     return register;
   }
   return undefined;

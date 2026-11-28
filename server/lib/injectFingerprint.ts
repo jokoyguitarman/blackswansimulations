@@ -78,9 +78,25 @@ function genRecord(row: FingerprintInject): Record<string, unknown> | null {
  * Review marks those rows unverified (see injectProvenance).
  */
 export function isAiOwned(row: FingerprintInject): boolean {
-  if (row.generation_source !== 'war_room') return false;
-  const hash = genRecord(row)?.hash;
-  if (typeof hash !== 'string' || hash.length === 0) return true;
+  if (row.generation_source === 'war_room') {
+    const hash = genRecord(row)?.hash;
+    if (typeof hash !== 'string' || hash.length === 0) return true;
+    return hash === fingerprintInject(row);
+  }
+  return promotedAiOwned(row);
+}
+
+/**
+ * A promoted director event is AI-owned only while its text still matches the
+ * stamp. An edit before promotion (gen.edit 1, or no hash) is hand-owned.
+ */
+function promotedAiOwned(row: FingerprintInject): boolean {
+  if (row.generation_source !== 'trainer') return false;
+  const gen = genRecord(row);
+  if (!gen || gen.layer !== 'promoted') return false;
+  if (gen.edit === 1) return false;
+  const hash = gen.hash;
+  if (typeof hash !== 'string' || hash.length === 0) return false;
   return hash === fingerprintInject(row);
 }
 
@@ -88,10 +104,12 @@ export type InjectProvenance = 'ai_owned' | 'hand_edited' | 'unverified';
 
 /** Legacy War Room rows are AI-owned for revision, and unverified for Review. */
 export function injectProvenance(row: FingerprintInject): InjectProvenance {
-  if (row.generation_source !== 'war_room') return 'hand_edited';
-  const hash = genRecord(row)?.hash;
-  if (typeof hash !== 'string' || hash.length === 0) return 'unverified';
-  return hash === fingerprintInject(row) ? 'ai_owned' : 'hand_edited';
+  if (row.generation_source === 'war_room') {
+    const hash = genRecord(row)?.hash;
+    if (typeof hash !== 'string' || hash.length === 0) return 'unverified';
+    return hash === fingerprintInject(row) ? 'ai_owned' : 'hand_edited';
+  }
+  return promotedAiOwned(row) ? 'ai_owned' : 'hand_edited';
 }
 
 function textField(config: Record<string, unknown>, key: string): string | undefined {
@@ -106,6 +124,7 @@ function textField(config: Record<string, unknown>, key: string): string | undef
  */
 export function inferLayer(row: FingerprintInject, teams: readonly LayerTeam[] = []): string {
   const config = deliveryConfigWithoutGen(row.delivery_config);
+  if (textField(config, 'promoted_from')) return 'promoted';
   const parent = textField(config, 'parent_inject_key') ?? textField(config, 'parent_key');
   if (parent) return `branch:${parent}`;
 

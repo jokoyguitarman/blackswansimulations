@@ -102,6 +102,10 @@ export interface SocialMediaAARData {
     member_count: number;
     composite_score: number | null;
     content_quality: number | null;
+    content_breakdown: {
+      authored: { items: number; avg: number | null };
+      unscripted: { items: number; avg: number | null };
+    };
     task_completion: number | null;
     role_fit: number | null;
     collaboration: number | null;
@@ -485,6 +489,7 @@ export async function buildSocialMediaAARData(
         member_count: team.member_count,
         composite_score: team.composite_score,
         content_quality: team.content_quality,
+        content_breakdown: team.content_breakdown,
         task_completion: team.task_completion,
         role_fit: team.role_fit,
         collaboration: team.collaboration,

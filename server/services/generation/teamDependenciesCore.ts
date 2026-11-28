@@ -93,6 +93,10 @@ export interface DependencyBudget {
   upstreamPerTeam: number;
   /** Max edges kept. Defaults to ceil(1.5 × playable teams). */
   maxEdges?: number;
+  /** Ids already used. A colliding model id is renamed, not dropped. */
+  takenIds?: ReadonlySet<string>;
+  /** Edges already on the scenario. They count toward the per-team upstream cap. */
+  existingEdges?: readonly TeamDependencyEdge[];
 }
 
 export interface PostProcessDependenciesResult {
@@ -227,7 +231,7 @@ export function postProcessDependencies(
     const key = text(inject.inject_key);
     if (key && isValidInjectKey(key) && !known.has(key)) known.set(key, inject);
   }
-  const takenIds = new Set<string>();
+  const takenIds = new Set<string>(budget.takenIds ?? []);
   const takenInjectKeys = new Set<string>(known.keys());
   const dropped: PostProcessDependenciesResult['dropped'] = [];
   const record = asRecord(model);
@@ -239,7 +243,14 @@ export function postProcessDependencies(
     if (built) drafted.push(built);
   }
 
-  const selected = selectEdges(drafted, playable, upstreamCap, maxEdges, dropped);
+  const selected = selectEdges(
+    drafted,
+    playable,
+    upstreamCap,
+    maxEdges,
+    dropped,
+    budget.existingEdges ?? [],
+  );
   const asks = selected.flatMap((item) => (item.ask ? [item.ask] : []));
   const consequences: SocialInject[] = [];
   const positives: SocialInject[] = [];
@@ -530,10 +541,19 @@ function selectEdges(
   upstreamCap: number,
   maxEdges: number,
   dropped: PostProcessDependenciesResult['dropped'],
+  existing: readonly TeamDependencyEdge[],
 ): Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }> {
   const kept: Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }> = [];
   const downCount = new Map<string, number>();
   const covered = new Set<string>();
+  for (const edge of existing) {
+    for (const team of edge.downstream) {
+      const id = teamIdentity(team);
+      downCount.set(id, (downCount.get(id) ?? 0) + 1);
+    }
+    covered.add(teamIdentity(edge.upstream));
+    for (const team of edge.downstream) covered.add(teamIdentity(team));
+  }
   const canTake = (edge: TeamDependencyEdge): boolean => {
     if (kept.length >= maxEdges) return false;
     return edge.downstream.every((team) => (downCount.get(teamIdentity(team)) ?? 0) < upstreamCap);

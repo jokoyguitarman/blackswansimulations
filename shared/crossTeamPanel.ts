@@ -82,6 +82,34 @@ export function teamsDiffer(source: readonly string[], target: readonly string[]
   return target.some((item) => !source.some((from) => sameTeamName(from, item)));
 }
 
+export interface TimelineTrigger {
+  origin: string;
+  source_teams: readonly string[];
+  target_teams: readonly string[];
+}
+
+/**
+ * Origin label for one response-timeline row. Branch rows keep the label
+ * already stored on the row. Chain and mood rows name themselves when no
+ * trigger was recorded.
+ */
+export function timelineOriginFor(input: {
+  event: string;
+  existing?: string;
+  trigger?: TimelineTrigger | null;
+}): string {
+  if (input.existing) return input.existing;
+  if (input.trigger) {
+    return originLabel(
+      input.trigger.origin,
+      teamsDiffer(input.trigger.source_teams, input.trigger.target_teams),
+    );
+  }
+  if (input.event === 'chain' || input.event === 'chain_step') return originLabel('chain');
+  if (input.event === 'mood' || input.event === 'consequence') return originLabel('mood');
+  return 'inferred';
+}
+
 /**
  * Origin label for a timeline row (§5.9). `director` is included so a later
  * package only adds its own tables. An unknown origin stays "inferred".
