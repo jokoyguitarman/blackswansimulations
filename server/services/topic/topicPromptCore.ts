@@ -1,4 +1,4 @@
-import { matchesLeakTerms } from './leakTerms.js';
+import { matchesLeakTerms } from '../generation/peaceFeedCore.js';
 import {
   formatPersonaStanceLine,
   isCompetitorPersona,

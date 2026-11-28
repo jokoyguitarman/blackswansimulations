@@ -7,7 +7,7 @@ import { env } from '../../env.js';
 import { buildPlayerBubbleSystemPrompt } from './bubblePrompt.js';
 import { ATTACK_HOSTILE, ATTACK_OFFICIAL, MEDIA_REACT_LINE } from './reactionPromptShared.js';
 import { buildLegacyReactionMessages } from './legacyReactionPrompt.js';
-import { matchesLeakTerms } from './leakTerms.js';
+import { matchesLeakTerms } from '../generation/peaceFeedCore.js';
 import {
   insertSocialPost,
   noteTopicSchemaMissing,
