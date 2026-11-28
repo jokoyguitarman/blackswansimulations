@@ -19,6 +19,10 @@ export interface SetupCrisis {
   auto_antagonist: boolean;
   /** True when the brief was guessed from description and briefing. */
   reconstructed?: boolean;
+  /** SHA-256 of the fact sheet at compile. Absent on scenarios compiled before it was stamped. */
+  fact_sheet_hash?: string | null;
+  /** SHA-256 of the briefing text at compile. */
+  briefing_hash?: string | null;
 }
 
 export interface SnapshotTeam {
@@ -126,6 +130,9 @@ export interface CompileSetupSourceInput {
   org_name?: string;
   duration?: number | null;
   auto_antagonist?: boolean;
+  /** Canonical fact sheet. Hashed into setup_source so a later edit can see trainer changes. */
+  fact_sheet?: unknown;
+  briefing?: string | null;
 }
 
 /**
@@ -199,7 +206,7 @@ export function hashUploadedDocument(textBody: string | null | undefined): strin
 
 /** What compile writes to initial_state.setup_source. The document text stays on the wizard draft. */
 export function setupSourceFromCompile(input: CompileSetupSourceInput): SetupCrisis {
-  return {
+  const source: SetupCrisis = {
     crisis_type: text(input.crisis_type),
     context: text(input.context),
     uploaded_doc_name: text(input.uploaded_doc_name) || null,
@@ -209,6 +216,12 @@ export function setupSourceFromCompile(input: CompileSetupSourceInput): SetupCri
     duration: typeof input.duration === 'number' && Number.isFinite(input.duration) ? input.duration : null,
     auto_antagonist: input.auto_antagonist !== false,
   };
+  if (input.fact_sheet !== undefined) {
+    source.fact_sheet_hash = createHash('sha256').update(canonicalJson(input.fact_sheet)).digest('hex');
+  }
+  const briefing = text(input.briefing);
+  if (briefing) source.briefing_hash = createHash('sha256').update(briefing).digest('hex');
+  return source;
 }
 
 /** SHA-256 of the canonical snapshot, ignoring inject keys so a later inject edit does not look like a setup change. */
@@ -289,6 +302,7 @@ export function draftInputFromSnapshot(
 function teamDraft(team: SnapshotTeam): Record<string, unknown> {
   return {
     team_name: team.function_key || team.team_name,
+    display_name: team.team_name,
     description: team.description,
     is_custom: team.is_custom,
     is_public_voice: team.is_public_voice,
@@ -344,6 +358,202 @@ function rivalDraft(org: SnapshotCompetitor): Record<string, unknown> {
   };
 }
 
+/**
+ * The edited setup stored on the wizard draft, pinned to baseline identities.
+ * An untouched draft (the one `draftInputFromSnapshot` wrote) produces an empty delta.
+ * Auto-generated rivals are not on the draft; they stay on the baseline.
+ */
+export function snapshotFromDraftInput(input: unknown, baseline: SetupSnapshot): SetupSnapshot {
+  const draft = asRecord(input) ?? {};
+  const primaryBase = baseline.organisations.find((org) => org.is_primary) ?? baseline.organisations[0];
+  const primaryKey = text(draft.primary_org_key) || primaryBase?.org_key || 'primary';
+  const primaryUid = text(draft.primary_org_uid) || primaryBase?.org_uid || '';
+  const primaryBaseMatch =
+    baseline.organisations.find((org) => org.org_uid === primaryUid) ??
+    baseline.organisations.find((org) => org.org_key === primaryKey);
+  const primary = orgFromDraft({
+    base: primaryBaseMatch,
+    org_key: primaryKey,
+    org_uid: primaryUid,
+    display_name: text(draft.org_name) || primaryBaseMatch?.display_name || 'Organisation',
+    short_name: text(draft.primary_short_name),
+    country: text(draft.country) || primaryBaseMatch?.country || baseline.crisis.country,
+    city: text(draft.primary_city),
+    kind: text(draft.primary_kind) || primaryBaseMatch?.kind || 'company',
+    operation: primaryBaseMatch?.operation ?? 'players',
+    is_primary: true,
+    facebook_handle: text(draft.primary_facebook_handle),
+    x_handle: text(draft.primary_x_handle),
+    roster: Array.isArray(draft.team_roster) ? draft.team_roster : primaryBaseMatch?.teams ?? [],
+  });
+
+  const extraRows = Array.isArray(draft.extra_organisations) ? draft.extra_organisations : [];
+  const extras = extraRows
+    .map((raw, index) => {
+      const row = asRecord(raw) ?? {};
+      const orgUid = text(row.org_uid) || text(row.id);
+      const orgKey = text(row.org_key) || `org_added_${index + 1}`;
+      const base =
+        baseline.organisations.find((org) => orgUid && org.org_uid === orgUid) ??
+        baseline.organisations.find((org) => org.org_key === orgKey);
+      return orgFromDraft({
+        base,
+        org_key: orgKey,
+        org_uid: orgUid || base?.org_uid || '',
+        display_name: text(row.display_name) || base?.display_name || `Organisation ${index + 1}`,
+        short_name: text(row.short_name),
+        country: text(row.country) || base?.country || baseline.crisis.country,
+        city: text(row.city),
+        kind: text(row.kind) || base?.kind || 'company',
+        operation: row.operation === 'ai' ? 'ai' : row.operation === 'players' ? 'players' : base?.operation ?? 'players',
+        is_primary: false,
+        facebook_handle: text(row.facebook_handle),
+        x_handle: text(row.x_handle),
+        roster: Array.isArray(row.team_roster) ? row.team_roster : base?.teams ?? [],
+      });
+    })
+    .filter((org) => org.org_uid !== primary.org_uid && org.org_key !== primary.org_key);
+
+  const organisations = [primary, ...extras];
+  const docName = text(draft.uploaded_doc_name) || null;
+  const crisis: SetupCrisis = {
+    crisis_type: text(draft.crisis_description) || baseline.crisis.crisis_type,
+    context: typeof draft.context === 'string' ? draft.context : baseline.crisis.context,
+    uploaded_doc_name: docName,
+    uploaded_doc_text_hash:
+      typeof draft.uploaded_doc_text === 'string'
+        ? hashUploadedDocument(draft.uploaded_doc_text)
+        : docName === baseline.crisis.uploaded_doc_name
+          ? baseline.crisis.uploaded_doc_text_hash
+          : null,
+    country: primary.country,
+    org_name: primary.display_name,
+    duration:
+      typeof draft.duration === 'number' && Number.isFinite(draft.duration)
+        ? draft.duration
+        : baseline.crisis.duration,
+    auto_antagonist:
+      typeof draft.auto_antagonist === 'boolean' ? draft.auto_antagonist : baseline.crisis.auto_antagonist,
+    ...(baseline.crisis.fact_sheet_hash ? { fact_sheet_hash: baseline.crisis.fact_sheet_hash } : {}),
+    ...(baseline.crisis.briefing_hash ? { briefing_hash: baseline.crisis.briefing_hash } : {}),
+  };
+
+  return {
+    crisis,
+    organisations,
+    pressure_organisations: pressureFromDraft(draft.pressure_organisations, baseline),
+    competitors: rivalsFromDraft(draft.competitor_entries, baseline),
+    inject_keys: baseline.inject_keys,
+    multi_org: organisations.length > 1,
+  };
+}
+
+function orgFromDraft(input: {
+  base?: SnapshotOrg;
+  org_key: string;
+  org_uid: string;
+  display_name: string;
+  short_name: string;
+  country: string;
+  city: string;
+  kind: string;
+  operation: 'players' | 'ai';
+  is_primary: boolean;
+  facebook_handle: string;
+  x_handle: string;
+  roster: unknown[];
+}): SnapshotOrg {
+  const base = input.base;
+  return {
+    org_uid: input.org_uid || base?.org_uid || '',
+    org_key: input.org_key,
+    display_name: input.display_name,
+    short_name: input.short_name,
+    country: input.country,
+    ...(input.city ? { city: input.city } : {}),
+    kind: input.kind,
+    operation: input.operation,
+    is_primary: input.is_primary,
+    ...(input.facebook_handle ? { facebook_handle: input.facebook_handle } : {}),
+    ...(input.x_handle ? { x_handle: input.x_handle } : {}),
+    teams: teamsFromRoster(input.roster, base?.teams ?? []),
+  };
+}
+
+function teamsFromRoster(roster: unknown[], baseTeams: SnapshotTeam[]): SnapshotTeam[] {
+  return roster.map((raw, index) => {
+    const row = asRecord(raw) ?? {};
+    const uid = text(row.team_uid);
+    const base = baseTeams.find((team) => uid && team.team_uid === uid);
+    const drafted = text(row.team_name);
+    const explicit = text(row.display_name);
+    let teamName = explicit || base?.team_name || drafted || `Team ${index + 1}`;
+    if (!explicit && base && drafted && drafted !== base.team_name && drafted !== base.function_key) {
+      teamName = drafted;
+    }
+    const functionKey =
+      text(row.function_key) ||
+      (base && (drafted === base.function_key || drafted === base.team_name) ? base.function_key : drafted) ||
+      teamName;
+    return {
+      team_uid: uid || base?.team_uid || '',
+      team_name: teamName,
+      function_key: functionKey,
+      description: typeof row.description === 'string' ? row.description : base?.description ?? '',
+      is_custom: typeof row.is_custom === 'boolean' ? row.is_custom : base?.is_custom ?? false,
+      is_public_voice:
+        typeof row.is_public_voice === 'boolean' ? row.is_public_voice : base?.is_public_voice ?? false,
+    };
+  });
+}
+
+function pressureFromDraft(raw: unknown, baseline: SetupSnapshot): SnapshotPressure[] {
+  if (!Array.isArray(raw)) return baseline.pressure_organisations;
+  return raw.map((item, index) => {
+    const row = asRecord(item) ?? {};
+    const orgKey = text(row.org_key) || `prs_added_${index + 1}`;
+    const base = baseline.pressure_organisations.find((org) => org.org_key === orgKey);
+    const targets = Array.isArray(row.targets_org_keys)
+      ? row.targets_org_keys.filter((key): key is string => typeof key === 'string')
+      : base?.targets_org_keys ?? [];
+    return {
+      org_uid: text(row.org_uid) || text(row.id) || base?.org_uid || orgKey,
+      org_key: orgKey,
+      display_name: text(row.display_name) || base?.display_name || orgKey,
+      country: text(row.country) || base?.country || '',
+      ...(text(row.city) ? { city: text(row.city) } : {}),
+      ...(text(row.kind) ? { kind: text(row.kind) } : {}),
+      ...(typeof row.wants === 'string' ? { wants: row.wants } : {}),
+      ...(text(row.register) ? { register: text(row.register) } : {}),
+      targets_org_keys: targets,
+      ...(text(row.facebook_handle) ? { facebook_handle: text(row.facebook_handle) } : {}),
+      ...(text(row.x_handle) ? { x_handle: text(row.x_handle) } : {}),
+    };
+  });
+}
+
+function rivalsFromDraft(raw: unknown, baseline: SetupSnapshot): SnapshotCompetitor[] {
+  const drafted = Array.isArray(raw) ? raw : [];
+  const named = drafted.map((item, index) => {
+    const row = asRecord(item) ?? {};
+    const orgKey = text(row.org_key) || `riv_added_${index + 1}`;
+    const base = baseline.competitors.find((org) => org.org_key === orgKey);
+    return {
+      org_uid: text(row.org_uid) || base?.org_uid || orgKey,
+      org_key: orgKey,
+      name: text(row.name) || base?.name || orgKey,
+      country: text(row.country) || base?.country || '',
+      ...(typeof row.description === 'string' ? { description: row.description } : {}),
+      auto_generated: false,
+      ...(text(row.facebook_handle) ? { facebook_handle: text(row.facebook_handle) } : {}),
+      ...(text(row.x_handle) ? { x_handle: text(row.x_handle) } : {}),
+    };
+  });
+  const keys = new Set(named.map((org) => org.org_key));
+  const auto = baseline.competitors.filter((org) => org.auto_generated && !keys.has(org.org_key));
+  return [...named, ...auto];
+}
+
 function crisisFrom(source: ScenarioSnapshotSource, state: Record<string, unknown> | null): SetupCrisis {
   const stored = asRecord(state?.setup_source);
   if (stored && Object.keys(stored).length > 0) return crisisFromRecord(stored, false);
@@ -387,6 +597,10 @@ function crisisFromRecord(raw: Record<string, unknown>, forceReconstructed: bool
     auto_antagonist: raw.auto_antagonist !== false,
   };
   if (forceReconstructed || raw.reconstructed === true) crisis.reconstructed = true;
+  const factHash = text(raw.fact_sheet_hash);
+  const briefingHash = text(raw.briefing_hash);
+  if (factHash) crisis.fact_sheet_hash = factHash;
+  if (briefingHash) crisis.briefing_hash = briefingHash;
   return crisis;
 }
 

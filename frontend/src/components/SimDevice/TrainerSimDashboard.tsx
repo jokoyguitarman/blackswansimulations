@@ -12,6 +12,8 @@ import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
 import { playerClockHidden, trainerClockStart } from '../../lib/crisisClock';
+import { AiDirectorPanel } from './AiDirectorPanel';
+import DependenciesPanel from './DependenciesPanel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1670,6 +1672,22 @@ export default function TrainerSimDashboard() {
         className="p-4 grid gap-4"
         style={{ gridTemplateRows: 'auto auto auto', minHeight: 'calc(100vh - 56px)' }}
       >
+        {sessionId ? (
+          <AiDirectorPanel
+            sessionId={sessionId}
+            preview={
+              import.meta.env.DEV &&
+              new URLSearchParams(window.location.search).get('directorPreview') === '1'
+            }
+          />
+        ) : null}
+        {sessionId ? (
+          <DependenciesPanel
+            sessionId={sessionId}
+            elapsedMinutes={elapsedMinutes}
+            readOnly={isReview}
+          />
+        ) : null}
         {/* ============ TOP ROW: 3 columns ============ */}
         <div className="grid grid-cols-3 gap-4" style={{ minHeight: 260 }}>
           {/* Panel 1 — Sentiment Gauges */}

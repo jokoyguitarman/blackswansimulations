@@ -27,7 +27,7 @@ const FIXTURE: BuildEstimateInput = {
 };
 
 /** Hand-counted from the pipeline's call sites for FIXTURE at the default budgets. */
-const FIXTURE_CALLS = 38;
+const FIXTURE_CALLS = 40;
 
 async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   let calls = 0;
@@ -53,6 +53,12 @@ async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   await ai();
   await ai();
   if (input.teams >= 2) await ai();
+  if (input.teams >= 2) {
+    const map = input.teams <= 16 || input.orgs <= 1 ? 1 : input.orgs + 1;
+    for (let n = 0; n < map; n++) await ai();
+    const edges = Math.min(Math.ceil(input.teams * 1.5), 3 * input.teams);
+    for (let n = 0; n < Math.ceil(edges / 8); n++) await ai();
+  }
   if (input.injectsEstimate > 0) {
     for (let n = 0; n < Math.ceil(input.injectsEstimate / 10); n++) await ai();
   }

@@ -960,6 +960,21 @@ export const api = {
         await fetch(apiUrl(`/api/sessions/${id}`), { headers }),
       );
     },
+    dependencyPanel: async <T>(sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: T }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/dependencies/panel`), { headers }),
+      );
+    },
+    dependencyCommand: async <T>(sessionId: string, depId: string, action: 'hold' | 'waive') => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: T }>(
+        await fetch(
+          apiUrl(`/api/sessions/${sessionId}/dependencies/${encodeURIComponent(depId)}/${action}`),
+          { method: 'POST', headers },
+        ),
+      );
+    },
     getSceneConfig: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: Record<string, unknown> | null }>(

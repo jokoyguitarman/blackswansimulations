@@ -194,7 +194,10 @@ const TIER3_ACTIONS = [
   'call_answered',
 ];
 
-export async function buildSocialMediaAARData(sessionId: string): Promise<SocialMediaAARData> {
+export async function buildSocialMediaAARData(
+  sessionId: string,
+  commsResponses?: CommsResponsesSection,
+): Promise<SocialMediaAARData> {
   const [postsResult, emailsResult, actionsResult, sentimentResult, messagesResult, sessionResult] =
     await Promise.all([
       supabaseAdmin
@@ -585,7 +588,7 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     team_performance: teamPerformance,
     stakeholder_preemption: await buildStakeholderPreemption(sessionId),
     executive_decisions: await buildExecutiveDecisions(sessionId),
-    comms_responses: await loadCommsResponsesSection(sessionId),
+    comms_responses: commsResponses ?? (await loadCommsResponsesSection(sessionId)),
   };
 }
 

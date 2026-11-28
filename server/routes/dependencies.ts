@@ -13,6 +13,7 @@ import {
   type DependencyCommandResult,
   type DependencySession,
 } from '../services/dependencies/dependencyService.js';
+import { loadTrainerPanel } from '../services/crossTeam/trainerPanelService.js';
 
 const router = Router();
 
@@ -31,13 +32,14 @@ function isStaff(role: string | undefined): boolean {
 async function openSession(
   id: string,
   user: { id: string; role?: string },
-): Promise<{ ok: true; session: DependencySession } | { ok: false; status: number; error: string }> {
+): Promise<
+  { ok: true; session: DependencySession } | { ok: false; status: number; error: string }
+> {
   if (!isStaff(user.role)) return { ok: false, status: 403, error: 'Access denied' };
   const access = await assertSessionOwner(id, user, 'id, trainer_id, scenario_id, start_time');
   if (!access.ok) return access;
   const row = access.session as
-    | { scenario_id?: unknown; start_time?: unknown; trainer_id?: unknown }
-    | undefined;
+    { scenario_id?: unknown; start_time?: unknown; trainer_id?: unknown } | undefined;
   if (!row || typeof row.scenario_id !== 'string') {
     return { ok: false, status: 404, error: 'Session not found' };
   }
@@ -57,9 +59,26 @@ function commandError(result: Extract<DependencyCommandResult, { ok: false }>): 
   error: string;
 } {
   if (result.reason === 'missing') return { status: 404, error: 'Dependency not found' };
-  if (result.reason === 'disabled') return { status: 409, error: 'Cross-team dependencies are off' };
+  if (result.reason === 'disabled')
+    return { status: 409, error: 'Cross-team dependencies are off' };
   return { status: 503, error: 'Dependency states are not available' };
 }
+
+router.get(
+  '/:id/dependencies/panel',
+  requireAuth,
+  validate(listParams),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const opened = await openSession(req.params.id, req.user!);
+      if (!opened.ok) return res.status(opened.status).json({ error: opened.error });
+      res.json({ data: await loadTrainerPanel(opened.session) });
+    } catch (err) {
+      logger.error({ err }, 'GET /sessions/:id/dependencies/panel failed');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 router.get(
   '/:id/dependencies',

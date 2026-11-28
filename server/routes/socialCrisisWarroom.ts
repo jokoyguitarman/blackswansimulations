@@ -48,6 +48,8 @@ import {
   logCompileSummary,
   attachResponseBranches,
 } from '../services/multiOrgPipeline.js';
+import { resolveCompileDependencies } from '../services/generation/teamDependencyService.js';
+import type { TeamDependencies } from '../../shared/teamDependencies.js';
 import {
   organisationsSchema,
   competitorsSchema,
@@ -906,6 +908,7 @@ router.post(
           {
             stakeholders: req.body.stakeholders as Stakeholder[] | undefined,
             stakeholderInjects: req.body.stakeholder_injects as SocialInject[] | undefined,
+            teamCharters: req.body.team_charters as TeamCharterWire[] | undefined,
           },
         );
         aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
@@ -1056,6 +1059,7 @@ router.post(
         // Cast-generated notification SOP steps + planner hints (organic-decisions plan §4.1).
         sop_steps: z.array(z.unknown()).optional(),
         decision_context: z.record(z.string(), z.unknown()).optional(),
+        team_dependencies: z.unknown().optional(),
         // Durable builds: one scenario credit per build. Omitted on the legacy path.
         build_id: z.string().uuid().optional(),
       }),
@@ -1116,6 +1120,13 @@ router.post(
     let compileHeartbeatAt: string | null = null;
     if (durableBuildId) {
       try {
+        const existingBuild = await compileBuilds.get(durableBuildId);
+        if (existingBuild?.request.mode === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
+          });
+        }
         const begun = await beginCompileCharge({
           store: compileBuilds,
           buildId: durableBuildId,
@@ -1159,6 +1170,12 @@ router.post(
           return res.status(503).json({
             error: 'Compile could not be claimed. Try again.',
             code: 'COMPILE_UNAVAILABLE',
+          });
+        }
+        if (begun.outcome === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
           });
         }
         creditLedgerId = begun.ledgerId;
@@ -1330,6 +1347,38 @@ router.post(
 
         const convergenceGates = (body.convergence_gates as SocialInject[]) ?? [];
         body.convergence_gates = convergenceGates;
+        const dependencyStorylines = (body.team_storylines || {}) as Record<string, SocialInject[]>;
+        let dependencyDocument: TeamDependencies | null = null;
+        try {
+          const resolved = await resolveCompileDependencies({
+            existing: body.team_dependencies,
+            orgs: compileOrgs && compileOrgs.ok ? compileOrgs.orgs : undefined,
+            storylines: dependencyStorylines,
+            charters: teamCharters,
+            crisis: {
+              crisisType: body.crisis_type || '',
+              duration: body.duration,
+              context: body.context,
+              country: body.country,
+              orgName: body.org_name,
+            },
+            facts: ((body.fact_sheet as FactSheet | undefined)?.confirmed_facts ?? []) as string[],
+            stakeholders: (
+              multiArtifacts?.stakeholders ??
+              (body.stakeholders as Stakeholder[] | undefined) ??
+              []
+            ).map((stakeholder) => ({ id: stakeholder.id, name: stakeholder.name })),
+            gates: convergenceGates,
+          });
+          if (resolved) {
+            dependencyDocument = resolved.document;
+            body.team_dependencies = resolved.document;
+            body.team_storylines = resolved.storylines;
+            convergenceGates.push(...resolved.added);
+          }
+        } catch (dependencyErr) {
+          logger.warn({ dependencyErr }, 'Team dependency generation failed (non-critical)');
+        }
         const strategyInjects: SocialInject[] = [];
         for (const window of strategyWindows ?? []) {
           if (window.success_injects) strategyInjects.push(...window.success_injects);
@@ -1360,6 +1409,13 @@ router.post(
             ],
             branchSink: convergenceGates,
             stripCarry: true,
+            roster: teamCharters.map((charter) => charter.team_name),
+            dependencies: dependencyDocument
+              ? {
+                  edges: dependencyDocument.edges,
+                  teams: teamCharters.map((charter) => charter.team_name),
+                }
+              : null,
           });
         } catch (branchErr) {
           logger.warn({ branchErr }, 'Response branch generation failed (non-critical)');
@@ -1409,6 +1465,7 @@ router.post(
         );
 
         const initialState = payload.scenario.initial_state as Record<string, unknown>;
+        if (body.team_dependencies) initialState.team_dependencies = body.team_dependencies;
         if (body.country && !multiArtifacts) {
           initialState.country = body.country;
         }
@@ -1421,6 +1478,8 @@ router.post(
           org_name: body.org_name,
           duration: body.duration,
           auto_antagonist: body.auto_antagonist,
+          fact_sheet: initialState.fact_sheet,
+          briefing: typeof payload.scenario.briefing === 'string' ? payload.scenario.briefing : null,
         });
 
         // Charter-derived benchmarks keyed to the four fixed teams (consumed
