@@ -13,9 +13,7 @@ import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
 import { AAR_STORED_CAP } from '../../shared/crossTeamAar.js';
-import { originLabel, teamsDiffer } from '../../shared/crossTeamPanel.js';
-import { timelineOriginFor } from './director/directorAarCore.js';
-import { loadUnscriptedTimelineNotes } from './director/directorAarService.js';
+import { originLabel, teamsDiffer, timelineOriginFor } from '../../shared/crossTeamPanel.js';
 import { errorCode, isUnappliedSchema } from '../lib/unappliedSchema.js';
 import {
   CROSS_TEAM_READ_LIMITS,
@@ -743,7 +741,6 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
         target_teams: row.target_teams,
       }))
     : null;
-  parts.unscriptedNotes = await loadUnscriptedTimelineNotes(sessionId);
   return parts;
 }
 

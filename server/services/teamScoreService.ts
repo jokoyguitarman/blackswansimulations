@@ -96,6 +96,21 @@ export function gradeRefKey(refTable: string, refId: string): string {
   return `${refTable}:${refId}`;
 }
 
+/** Director deliveries named by inject_responses rows. Other inject keys stay authored. */
+export function directorRefsFromResponses(
+  rows: ReadonlyArray<{ ref_table?: unknown; ref_id?: unknown; inject_key?: unknown }>,
+): Set<string> {
+  const refs = new Set<string>();
+  for (const row of rows) {
+    const key = typeof row.inject_key === 'string' ? row.inject_key : '';
+    const refId = typeof row.ref_id === 'string' ? row.ref_id : '';
+    const refTable = typeof row.ref_table === 'string' ? row.ref_table : '';
+    if (!isDirectorInjectKey(key) || !refId || !refTable) continue;
+    refs.add(gradeRefKey(refTable, refId));
+  }
+  return refs;
+}
+
 export function contentBreakdown(
   items: readonly { refId: string; overall: number }[],
   directorRefs: ReadonlySet<string>,
@@ -199,13 +214,7 @@ async function loadDirectorGradeRefs(sessionId: string): Promise<Set<string>> {
       warnDirectorGrades(error);
       return refs;
     }
-    for (const row of data ?? []) {
-      const key = typeof row.inject_key === 'string' ? row.inject_key : '';
-      const refId = typeof row.ref_id === 'string' ? row.ref_id : '';
-      const refTable = typeof row.ref_table === 'string' ? row.ref_table : '';
-      if (!isDirectorInjectKey(key) || !refId || !refTable) continue;
-      refs.add(gradeRefKey(refTable, refId));
-    }
+    for (const ref of directorRefsFromResponses(data ?? [])) refs.add(ref);
   } catch (err) {
     warnDirectorGrades(err);
   }

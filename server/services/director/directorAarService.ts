@@ -12,13 +12,15 @@ import { rosterValidAt } from '../../lib/peaceGate.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../../lib/peaceSchema.js';
 import { replayStoredSession } from './directorService.js';
 import { publishedCapEvents } from './directorPublish.js';
-import type { DirectorTeam, FairnessState } from './directorCore.js';
+import type { DirectorTeam } from './directorCore.js';
 import {
   buildUnscriptedTable,
+  decisionMinuteOf,
   emptyUnscriptedAar,
   fairnessSummary,
+  parseStoredFairness,
   replayStatusOf,
-  unscriptedSentence,
+  unscriptedNotesFrom,
   type UnscriptedAarSection,
   type UnscriptedEventRow,
   type UnscriptedProposalInput,
@@ -29,9 +31,7 @@ const NAME_READ_LIMIT = 50;
 const TEAM_READ_LIMIT = 500;
 
 const PROPOSAL_COLUMNS =
-  'seq, minute, status, proposal, signals, guardrails, fairness, decided_by, edit_before, edit_after, veto_reason, inject_id, raw_output, observation';
-
-const EVENT_NOTE = new Set(['approved', 'edited', 'auto_published']);
+  'seq, minute, status, proposal, signals, guardrails, fairness, decided_by, decided_at, edit_before, edit_after, veto_reason, inject_id, reason:observation->>decision_reason, model_reason:raw_output->>reason';
 
 interface ProposalRecord {
   seq: number;
@@ -42,6 +42,7 @@ interface ProposalRecord {
   guardrails: unknown;
   fairness: unknown;
   decided_by: string | null;
+  decided_at: string | null;
   edit_before: unknown;
   edit_after: unknown;
   veto_reason: string | null;
@@ -49,70 +50,63 @@ interface ProposalRecord {
   reason: string | null;
 }
 
-export async function loadUnscriptedAar(sessionId: string): Promise<UnscriptedAarSection> {
+export interface DirectorAarLoad {
+  notes: Record<string, string>;
+  section: UnscriptedAarSection;
+  withheld: UnscriptedEventRow[];
+}
+
+/**
+ * One light proposal read for a report. Timeline notes, the public section
+ * and the trainer-only rows are filters of these rows. Replay reads
+ * `observation` on its own, and only when there is a row to check.
+ */
+export async function loadDirectorAar(
+  sessionId: string,
+  startTime: string | null,
+  scenarioId: string | null,
+): Promise<DirectorAarLoad> {
+  const empty = { notes: {}, section: emptyUnscriptedAar(), withheld: [] as UnscriptedEventRow[] };
   try {
     const rows = await readProposals(sessionId);
-    if (rows == null) return emptyUnscriptedAar();
-    const [replay, context, names] = await Promise.all([
-      replayStoredSession(sessionId).catch(() => ({ unavailable: true as const })),
-      loadFairnessContext(sessionId, rows),
-      loadNames(rows),
-    ]);
+    if (rows == null) return empty;
+    const names = await loadNames(rows);
     const inputs = rows.map((row) => toInput(row, names));
     const table = buildUnscriptedTable(inputs);
-    const fairness = context
-      ? fairnessSummary(context.teams, publishedCapEvents(capRows(rows)), {
-          tolerance: env.directorFairnessTolerance,
-          minute: context.minute,
-          duration: context.duration,
-        })
-      : [];
+    const notes = unscriptedNotesFrom(
+      rows.map((row) => ({
+        seq: row.seq,
+        status: row.status,
+        reason: row.reason,
+        approver: approverName(row, names),
+        edited: row.status === 'edited',
+        decisionMinute: decisionMinuteOf(row.decided_at, startTime, row.minute),
+      })),
+    );
+    const replay =
+      rows.length === 0
+        ? { ok: true as const, mismatches: [] as const }
+        : await replayStoredSession(sessionId).catch(() => ({ unavailable: true as const }));
+    const context = await loadFairnessContext({ sessionId, scenarioId, startTime, rows });
     return {
-      events: table.events,
-      withheld: [],
-      fairness,
-      replay: replayStatusOf(replay),
+      notes,
+      withheld: table.withheld,
+      section: {
+        events: table.events,
+        withheld: [],
+        fairness: context
+          ? fairnessSummary(context.teams, publishedCapEvents(capRows(rows)), {
+              tolerance: env.directorFairnessTolerance,
+              minute: context.minute,
+              duration: context.duration,
+            })
+          : [],
+        replay: replayStatusOf(replay),
+      },
     };
   } catch (err) {
     logger.warn({ err, sessionId, event: 'director_aar_failed' }, 'Unscripted events omitted');
-    return emptyUnscriptedAar();
-  }
-}
-
-export async function loadWithheldUnscripted(sessionId: string): Promise<UnscriptedEventRow[]> {
-  try {
-    const rows = await readProposals(sessionId);
-    if (!rows) return [];
-    const names = await loadNames(rows);
-    return buildUnscriptedTable(rows.map((row) => toInput(row, names))).withheld;
-  } catch (err) {
-    logger.warn({ err, sessionId }, 'Withheld director proposals were not loaded');
-    return [];
-  }
-}
-
-export async function loadUnscriptedTimelineNotes(
-  sessionId: string,
-): Promise<Record<string, string>> {
-  try {
-    const rows = await readProposals(sessionId);
-    if (!rows) return {};
-    const names = await loadNames(rows);
-    const notes: Record<string, string> = {};
-    for (const row of rows) {
-      if (!EVENT_NOTE.has(row.status)) continue;
-      const input = toInput(row, names);
-      notes[`dir_${row.seq}`] = unscriptedSentence({
-        reason: input.reason ?? '',
-        minute: row.minute,
-        approver: input.status === 'auto_published' ? 'auto' : input.approverName || 'trainer',
-        edited: row.status === 'edited',
-      });
-    }
-    return notes;
-  } catch (err) {
-    logger.warn({ err, sessionId }, 'Unscripted timeline notes were not loaded');
-    return {};
+    return empty;
   }
 }
 
@@ -120,7 +114,9 @@ export async function withTrainerUnscripted(
   sections: Record<string, { data?: unknown; analysis?: string | null }>,
   sessionId: string,
 ): Promise<Record<string, { data?: unknown; analysis?: string | null }>> {
-  const withheld = await loadWithheldUnscripted(sessionId);
+  const rows = await readProposals(sessionId);
+  const names = rows == null ? new Map<string, string>() : await loadNames(rows);
+  const withheld = rows == null ? [] : buildUnscriptedTable(rows.map((row) => toInput(row, names))).withheld;
   const current = sections.unscripted_events;
   if (!current && withheld.length === 0) return sections;
   const data =
@@ -169,31 +165,39 @@ interface SessionRow extends SessionClockFields {
   start_time: string | null;
 }
 
-async function loadFairnessContext(
-  sessionId: string,
-  rows: readonly ProposalRecord[],
-): Promise<{ teams: DirectorTeam[]; minute: number; duration: number } | null> {
-  const sessionResult = await selectSession<SessionRow>(
-    'scenario_id, start_time',
-    (query) => query.eq('id', sessionId).maybeSingle(),
-  );
-  const session = sessionResult.data;
-  if (!session?.scenario_id) return null;
+async function loadFairnessContext(input: {
+  sessionId: string;
+  scenarioId: string | null;
+  startTime: string | null;
+  rows: readonly ProposalRecord[];
+}): Promise<{ teams: DirectorTeam[]; minute: number; duration: number } | null> {
+  let scenarioId = input.scenarioId;
+  let startTime = input.startTime;
+  if (!scenarioId) {
+    const sessionResult = await selectSession<SessionRow>(
+      'scenario_id, start_time',
+      (query) => query.eq('id', input.sessionId).maybeSingle(),
+    );
+    const session = sessionResult.data;
+    if (!session?.scenario_id) return null;
+    scenarioId = session.scenario_id;
+    startTime = startTime ?? (typeof session.start_time === 'string' ? session.start_time : null);
+  }
   const at = rosterValidAt({
-    start_time: session.start_time,
-    opened_at: openedAtOf(session),
+    start_time: startTime,
+    opened_at: openedAtOf({ opened_at: null }),
   });
   const [teamsRes, membersRes, scenarioRes] = await Promise.all([
-    teamsValidAt(session.scenario_id, at),
+    teamsValidAt(scenarioId, at),
     supabaseAdmin
       .from('session_teams')
       .select('team_name')
-      .eq('session_id', sessionId)
+      .eq('session_id', input.sessionId)
       .limit(TEAM_READ_LIMIT),
     supabaseAdmin
       .from('scenarios')
       .select('duration_minutes')
-      .eq('id', session.scenario_id)
+      .eq('id', scenarioId)
       .maybeSingle(),
   ]);
   const counts = new Map<string, number>();
@@ -207,7 +211,7 @@ async function loadFairnessContext(
     return { name, size, staffed: size > 0, playable: true, active: true };
   });
   const duration = Number(scenarioRes.data?.duration_minutes ?? 0);
-  const lastMinute = rows.reduce((max, row) => Math.max(max, row.minute), 0);
+  const lastMinute = input.rows.reduce((max, row) => Math.max(max, row.minute), 0);
   const minute = duration > 0 ? duration : lastMinute;
   return { teams, minute, duration: duration > 0 ? duration : minute };
 }
@@ -234,15 +238,14 @@ function capProposal(value: unknown): {
   };
 }
 
+function approverName(row: ProposalRecord, names: ReadonlyMap<string, string>): string {
+  if (row.status === 'auto_published') return 'auto';
+  if (row.decided_by) return names.get(row.decided_by) ?? 'trainer';
+  return 'trainer';
+}
+
 function recordOf(row: Record<string, unknown>): ProposalRecord {
-  const observation = (row.observation ?? null) as { decision_reason?: unknown } | null;
-  const raw = (row.raw_output ?? null) as { reason?: unknown } | null;
-  const reason =
-    typeof observation?.decision_reason === 'string'
-      ? observation.decision_reason
-      : typeof raw?.reason === 'string'
-        ? raw.reason
-        : null;
+  const reason = textOf(row.reason) ?? textOf(row.model_reason) ?? null;
   return {
     seq: Number(row.seq),
     minute: Number(row.minute),
@@ -252,6 +255,7 @@ function recordOf(row: Record<string, unknown>): ProposalRecord {
     guardrails: row.guardrails,
     fairness: row.fairness,
     decided_by: typeof row.decided_by === 'string' ? row.decided_by : null,
+    decided_at: textOf(row.decided_at) ?? null,
     edit_before: row.edit_before,
     edit_after: row.edit_after,
     veto_reason: typeof row.veto_reason === 'string' ? row.veto_reason : null,
@@ -277,7 +281,7 @@ function toInput(row: ProposalRecord, names: ReadonlyMap<string, string>): Unscr
       : null,
     signals: signalsOf(row.signals),
     guardrails: guardrailsOf(row.guardrails),
-    fairness: fairnessOf(row.fairness),
+    fairness: parseStoredFairness(row.fairness),
     approverName: row.decided_by ? names.get(row.decided_by) ?? null : null,
     editBefore: editOf(row.edit_before),
     editAfter: editOf(row.edit_after),
@@ -334,12 +338,6 @@ function guardrailsOf(value: unknown): Array<{ id: string; ok: boolean; detail?:
     });
   }
   return rows;
-}
-
-function fairnessOf(value: unknown): FairnessState | null {
-  const row = objectOf(value);
-  if (!row || !Array.isArray(row.teams)) return null;
-  return row as unknown as FairnessState;
 }
 
 function editOf(value: unknown): { title?: string; content?: string } | null {

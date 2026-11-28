@@ -3,7 +3,7 @@
  * `causeDepth` (inherited hops + 1) over the causing signals' condition keys.
  */
 
-import { fingerprintInject, type FingerprintInject } from '../../lib/injectFingerprint.js';
+import { applyInjectGenStamp } from '../../lib/injectFingerprint.js';
 import { allocateInjectKey } from '../../lib/injectKey.js';
 import { causeDepth, referencedInjectKeys, type DepthTrigger } from '../conditions/crossTeamCore.js';
 import { isKnownConditionKey } from '../conditions/conditionCatalog.js';
@@ -263,6 +263,7 @@ export function buildPromotedTemplate(input: {
     proposal.cause.signal_ids,
     input.minute,
     isKnownConditionKey,
+    input.takenKeys,
   );
   const injectKey = allocateInjectKey(null, proposal.title, new Set(input.takenKeys));
   const sender = senderFields(proposal, input.people, input.npcs);
@@ -277,28 +278,33 @@ export function buildPromotedTemplate(input: {
     ...(proposal.response_rubric ? { response_rubric: proposal.response_rubric } : {}),
     ...(follow ? { escalation: follow } : {}),
     promoted_from: input.proposalId,
-    cause: {
-      kind: 'director',
-      signal_ids: proposal.cause.signal_ids,
-      source_teams: proposal.cause.source_teams,
-    },
+    cause: { kind: 'authored' },
   };
   const type = APP_TYPE[proposal.app] ?? proposal.app;
-  const stamped = fingerprintRow({
-    title: proposal.title,
-    content: proposal.content,
-    type,
-    severity: proposal.severity,
-    trigger_time_minutes: schedule.trigger_time_minutes,
-    target_teams: teams,
-    inject_scope: scope,
-    requires_response: proposal.requires_response,
-    conditions_to_appear: schedule.conditions_to_appear,
-    delivery_config: delivery,
-  });
-  const gen = input.edited
-    ? { layer: 'promoted', edit: 1 }
-    : { layer: 'promoted', edit: 0, hash: fingerprintInject(stamped) };
+  const stamped = applyInjectGenStamp(
+    {
+      title: proposal.title,
+      content: proposal.content,
+      type,
+      severity: proposal.severity,
+      trigger_time_minutes: schedule.trigger_time_minutes,
+      eligible_after_minutes: null,
+      target_teams: teams,
+      inject_scope: scope,
+      requires_response: proposal.requires_response,
+      conditions_to_appear: schedule.conditions_to_appear,
+      conditions_to_cancel: null,
+      delivery_config: delivery,
+      generation_source: 'trainer' as const,
+      gen_layer: 'promoted',
+    },
+    { teamUidByName: new Map(), persistTeamUid: false },
+  );
+  if (input.edited) {
+    const gen = stamped.delivery_config.gen as Record<string, unknown>;
+    gen.edit = 1;
+    delete gen.hash;
+  }
   return {
     scenario_id: input.scenarioId,
     session_id: null,
@@ -315,35 +321,6 @@ export function buildPromotedTemplate(input: {
     requires_coordination: false,
     ai_generated: false,
     generation_source: 'trainer',
-    delivery_config: { ...delivery, gen },
-  };
-}
-
-function fingerprintRow(row: {
-  title: string;
-  content: string;
-  type: string;
-  severity: string;
-  trigger_time_minutes: number | null;
-  target_teams: string[];
-  inject_scope: string;
-  requires_response: boolean;
-  conditions_to_appear: unknown;
-  delivery_config: Record<string, unknown>;
-}): FingerprintInject {
-  return {
-    title: row.title,
-    content: row.content,
-    type: row.type,
-    severity: row.severity,
-    trigger_time_minutes: row.trigger_time_minutes,
-    eligible_after_minutes: null,
-    target_teams: row.target_teams,
-    inject_scope: row.inject_scope,
-    requires_response: row.requires_response,
-    conditions_to_appear: row.conditions_to_appear,
-    conditions_to_cancel: null,
-    delivery_config: row.delivery_config,
-    generation_source: 'trainer',
+    delivery_config: stamped.delivery_config,
   };
 }

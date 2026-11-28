@@ -1,29 +1,6 @@
-export interface UnscriptedEventRow {
-  minute: number;
-  target: string;
-  cause: string;
-  text: string;
-  guardrails: string;
-  fairness: string;
-  decision: string;
-  approver: string;
-  edits: string;
-  outcome: string;
-}
+import type { UnscriptedAarSection, UnscriptedEventRow } from '@shared/directorAar';
 
-export interface FairnessSummaryRow {
-  team: string;
-  negative_load: number;
-  positive_load: number;
-  unscripted_events: number;
-}
-
-export interface UnscriptedSectionData {
-  events: UnscriptedEventRow[];
-  withheld: UnscriptedEventRow[];
-  fairness: FairnessSummaryRow[];
-  replay: { available: boolean; ok: boolean; mismatches: number };
-}
+type UnscriptedSectionData = UnscriptedAarSection;
 
 function asSection(data: unknown): UnscriptedSectionData | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;

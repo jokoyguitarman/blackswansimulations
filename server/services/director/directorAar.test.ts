@@ -5,17 +5,20 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import { buildCommsResponsesSection } from '../aarCommsResponses.js';
 import { isKnownConditionKey } from '../conditions/conditionCatalog.js';
-import { compositeScore, contentBreakdown, isDirectorInjectKey } from '../teamScoreService.js';
+import { compositeScore, contentBreakdown, directorRefsFromResponses, isDirectorInjectKey } from '../teamScoreService.js';
 import { isAiOwned } from '../../lib/injectFingerprint.js';
 import { createDirectorRouter } from '../../routes/director.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { RequestHandler } from 'express';
+import { timelineOriginFor } from '../../../shared/crossTeamPanel.js';
 import {
   buildUnscriptedTable,
+  decisionMinuteOf,
   fairnessSummary,
+  parseStoredFairness,
   promotionConditions,
   replayStatusOf,
-  timelineOriginFor,
+  unscriptedNotesFrom,
   unscriptedSentence,
   type UnscriptedProposalInput,
 } from './directorAarCore.js';
@@ -73,11 +76,18 @@ function proposal(overrides: Partial<ParsedProposal> = {}): ParsedProposal {
 }
 
 test('promotion keeps catalogue signal keys and times the rest', () => {
-  const mapped = promotionConditions([silence, mood], [silence.id, mood.id], 27, isKnownConditionKey);
+  const templates = new Set(['bay3_mail']);
+  const mapped = promotionConditions(
+    [silence, mood],
+    [silence.id, mood.id],
+    27,
+    isKnownConditionKey,
+    templates,
+  );
   assert.deepEqual(mapped.conditions_to_appear, { all: ['team_silent:10|team=legal'] });
   assert.equal(mapped.trigger_time_minutes, null);
 
-  const timed = promotionConditions([mood], [mood.id], 27, isKnownConditionKey);
+  const timed = promotionConditions([mood], [mood.id], 27, isKnownConditionKey, templates);
   assert.equal(timed.conditions_to_appear, null);
   assert.equal(timed.trigger_time_minutes, 27);
 
@@ -86,8 +96,39 @@ test('promotion keeps catalogue signal keys and times the rest', () => {
     ['custom'],
     18,
     isKnownConditionKey,
+    templates,
   );
   assert.equal(unknown.trigger_time_minutes, 18);
+
+  const reply = promotionConditions(
+    [
+      {
+        id: 'reply',
+        keys: [
+          'reply_failed:dir_3|team=communications',
+          'reply_failed:no_such_inject|team=communications',
+          'reply_failed:bay3_mail|team=communications',
+        ],
+      },
+    ],
+    ['reply'],
+    27,
+    isKnownConditionKey,
+    new Set(['bay3_mail', 'dir_3']),
+  );
+  assert.deepEqual(reply.conditions_to_appear, {
+    all: ['reply_failed:bay3_mail|team=communications'],
+  });
+
+  const onlyDirector = promotionConditions(
+    [{ id: 'reply', keys: ['reply_failed:dir_3|team=communications'] }],
+    ['reply'],
+    27,
+    isKnownConditionKey,
+    new Set(['dir_3']),
+  );
+  assert.equal(onlyDirector.conditions_to_appear, null);
+  assert.equal(onlyDirector.trigger_time_minutes, 27);
 });
 
 test('a promoted template is trainer-owned, stamped promoted, and AI-owned only when unedited', () => {
@@ -118,6 +159,8 @@ test('a promoted template is trainer-owned, stamped promoted, and AI-owned only 
   assert.equal(config.gen.layer, 'promoted');
   assert.equal(config.gen.edit, 0);
   assert.equal(config.promoted_from, shared.proposalId);
+  assert.equal((config.gen as { stakeholder_id?: string }).stakeholder_id, 'stk_maria');
+  assert.equal((fresh.delivery_config as { cause?: { kind?: string } }).cause?.kind, 'authored');
   assert.equal(isAiOwned(fresh), true);
 
   const changed = buildPromotedTemplate({
@@ -150,25 +193,65 @@ test('a promoted template is trainer-owned, stamped promoted, and AI-owned only 
 });
 
 test('the composite is identical with and without the content breakdown', () => {
-  const items = [
-    { refId: 'social_posts:authored', overall: 80 },
-    { refId: 'sim_emails:director', overall: 40 },
-  ];
-  const directorRefs = new Set(['sim_emails:director']);
+  const refs = directorRefsFromResponses([
+    { ref_table: 'sim_emails', ref_id: 'email-1', inject_key: 'dir_3' },
+    { ref_table: 'social_posts', ref_id: 'post-1', inject_key: 'bay3_mail' },
+    { ref_table: 'sim_emails', ref_id: 'email-2', inject_key: 'dirX3' },
+  ]);
+  assert.deepEqual([...refs], ['sim_emails:email-1']);
   assert.equal(isDirectorInjectKey('dir_4'), true);
-  assert.equal(isDirectorInjectKey('supplier_4471'), false);
-  const split = contentBreakdown(items, directorRefs);
-  const combined = contentBreakdown(items, new Set());
-  assert.equal(split.quality, 60);
-  assert.equal(combined.quality, split.quality);
-  assert.deepEqual(split.breakdown.authored, { items: 1, avg: 80 });
-  assert.deepEqual(split.breakdown.unscripted, { items: 1, avg: 40 });
-  assert.deepEqual(combined.breakdown.unscripted, { items: 0, avg: null });
+  const authored = 80;
+  const unscripted = 40;
+  const legacyQuality = Math.round((authored + unscripted) / 2);
   const parts = { tasks: 70, role: 60, collaboration: 50 };
-  assert.equal(
-    compositeScore({ content: split.quality, ...parts }),
-    compositeScore({ content: combined.quality, ...parts }),
+  const legacy = compositeScore({ content: legacyQuality, ...parts });
+  const split = contentBreakdown(
+    [
+      { refId: 'social_posts:post-1', overall: authored },
+      { refId: 'sim_emails:email-1', overall: unscripted },
+    ],
+    refs,
   );
+  const withBreakdown = compositeScore({ content: split.quality, ...parts });
+  assert.equal(withBreakdown, legacy);
+  assert.equal(split.quality, legacyQuality);
+  assert.deepEqual(split.breakdown.authored, { items: 1, avg: authored });
+  assert.deepEqual(split.breakdown.unscripted, { items: 1, avg: unscripted });
+});
+
+test('the director sentence uses the decision minute', () => {
+  const start = '2026-11-28T12:00:00.000Z';
+  const decided = '2026-11-28T12:20:00.000Z';
+  assert.equal(decisionMinuteOf(decided, start, 12), 20);
+  const notes = unscriptedNotesFrom([
+    {
+      seq: 2,
+      status: 'approved',
+      reason: 'Legal has been silent for 12 min',
+      approver: 'Aisha',
+      edited: true,
+      decisionMinute: decisionMinuteOf(decided, start, 12),
+    },
+    {
+      seq: 3,
+      status: 'auto_published',
+      reason: 'a lull',
+      approver: 'auto',
+      edited: false,
+      decisionMinute: 27,
+    },
+  ]);
+  assert.equal(
+    notes.dir_2,
+    'proposed by the AI director because Legal has been silent for 12 min; approved by Aisha at T+20 (edited)',
+  );
+  assert.equal(notes.dir_3, 'proposed by the AI director because a lull; auto-published');
+  assert.equal(
+    unscriptedSentence({ reason: 'silence', minute: 20, approver: 'Aisha', edited: false }),
+    'proposed by the AI director because silence; approved by Aisha at T+20',
+  );
+  assert.equal(parseStoredFairness({ teams: [{ team: 'Legal' }] }), null);
+  assert.equal(parseStoredFairness({ teams: [{ team: 'Legal', negative_load: 2, positive_load: 1 }] })?.teams[0]?.negative_load, 2);
 });
 
 test('timeline rows carry origin labels, including director notes on non-branch rows', () => {

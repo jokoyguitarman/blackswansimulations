@@ -11,7 +11,6 @@ import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { rosterValidAt } from '../lib/peaceGate.js';
 import { loadSharedAarSections } from './aar/aarCrossTeamService.js';
-import { loadUnscriptedAar } from './director/directorAarService.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -522,7 +521,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   };
 
   sections.unscripted_events = {
-    data: await loadUnscriptedAar(sessionId),
+    data: shared.unscripted,
     analysis: null,
   };
 

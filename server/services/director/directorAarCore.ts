@@ -5,21 +5,24 @@
  */
 
 import { AAR_STORED_CAP } from '../../../shared/crossTeamAar.js';
-import { originLabel, teamsDiffer } from '../../../shared/crossTeamPanel.js';
+import type {
+  FairnessSummaryRow,
+  ReplayStatus,
+  UnscriptedAarSection,
+  UnscriptedEventRow,
+} from '../../../shared/directorAar.js';
+import { referencedInjectKeys } from '../conditions/crossTeamCore.js';
+import { isDirectorInjectKey } from '../teamScoreService.js';
 import { fairnessState, type DirectorTeam, type ExposureEvent, type FairnessState } from './directorCore.js';
 import { sameTeamName } from './directorSignals.js';
+
+export type { FairnessSummaryRow, ReplayStatus, UnscriptedAarSection, UnscriptedEventRow };
 
 export const EVENT_STATUSES = ['approved', 'edited', 'auto_published'] as const;
 export const WITHHELD_STATUSES = ['vetoed', 'expired', 'rejected_guardrail'] as const;
 
 const EVENT = new Set<string>(EVENT_STATUSES);
 const WITHHELD = new Set<string>(WITHHELD_STATUSES);
-
-export interface TimelineTrigger {
-  origin: string;
-  source_teams: readonly string[];
-  target_teams: readonly string[];
-}
 
 export interface PromotionSchedule {
   conditions_to_appear: { all: string[] } | null;
@@ -45,39 +48,6 @@ export interface UnscriptedProposalInput {
   editAfter: { title?: string; content?: string } | null;
   vetoReason: string | null;
   injectId: string | null;
-}
-
-export interface UnscriptedEventRow {
-  minute: number;
-  target: string;
-  cause: string;
-  text: string;
-  guardrails: string;
-  fairness: string;
-  decision: string;
-  approver: string;
-  edits: string;
-  outcome: string;
-}
-
-export interface FairnessSummaryRow {
-  team: string;
-  negative_load: number;
-  positive_load: number;
-  unscripted_events: number;
-}
-
-export interface ReplayStatus {
-  available: boolean;
-  ok: boolean;
-  mismatches: number;
-}
-
-export interface UnscriptedAarSection {
-  events: UnscriptedEventRow[];
-  withheld: UnscriptedEventRow[];
-  fairness: FairnessSummaryRow[];
-  replay: ReplayStatus;
 }
 
 export const UNSCRIPTED_EXPORT_COLUMNS = [
@@ -112,14 +82,17 @@ export function emptyUnscriptedAar(): UnscriptedAarSection {
 }
 
 /**
- * Catalogue keys from the causing signals. Anything that does not parse is
- * dropped. When none remain, the promoted inject is timed at the same minute.
+ * Catalogue keys from the causing signals. A key is kept only when it parses
+ * and every inject it names is a template inject. Director `dir_*` keys are
+ * dropped: they do not exist in the next session. When nothing remains, the
+ * promoted inject is timed at the same minute.
  */
 export function promotionConditions(
   signals: ReadonlyArray<{ id: string; keys?: readonly string[] }>,
   signalIds: readonly string[],
   minute: number,
   known: (key: string) => boolean,
+  templateKeys: ReadonlySet<string>,
 ): PromotionSchedule {
   const byId = new Map(signals.map((signal) => [signal.id, signal]));
   const keys: string[] = [];
@@ -127,6 +100,7 @@ export function promotionConditions(
   const add = (key: string) => {
     const trimmed = key.trim();
     if (!trimmed || seen.has(trimmed) || !known(trimmed)) return;
+    if (!promotableKey(trimmed, templateKeys)) return;
     seen.add(trimmed);
     keys.push(trimmed);
   };
@@ -145,22 +119,55 @@ export function promotionConditions(
   return { conditions_to_appear: { all: keys }, trigger_time_minutes: null };
 }
 
-/** §5.9 label. Branch rows keep the label WP7 already set. */
-export function timelineOriginFor(input: {
-  event: string;
-  existing?: string;
-  trigger?: TimelineTrigger | null;
-}): string {
-  if (input.existing) return input.existing;
-  if (input.trigger) {
-    return originLabel(
-      input.trigger.origin,
-      teamsDiffer(input.trigger.source_teams, input.trigger.target_teams),
-    );
+function promotableKey(key: string, templateKeys: ReadonlySet<string>): boolean {
+  const refs = referencedInjectKeys(key);
+  return refs.every((ref) => !isDirectorInjectKey(ref) && templateKeys.has(ref));
+}
+
+/** Stored fairness JSON. A row that is not the fairness shape is ignored. */
+export function parseStoredFairness(value: unknown): FairnessState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.teams)) return null;
+  const teams: FairnessState['teams'] = [];
+  for (const item of row.teams) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const team = item as Record<string, unknown>;
+    if (typeof team.team !== 'string') return null;
+    if (typeof team.negative_load !== 'number' || typeof team.positive_load !== 'number') return null;
+    teams.push({
+      team: team.team,
+      size: typeof team.size === 'number' ? team.size : 1,
+      staffed: team.staffed !== false,
+      negative_load: team.negative_load,
+      positive_load: team.positive_load,
+      fair_share: typeof team.fair_share === 'number' ? team.fair_share : 0,
+      size_scale: typeof team.size_scale === 'number' ? team.size_scale : 1,
+      relief_owed: team.relief_owed === true,
+      over_cap: team.over_cap === true,
+    });
   }
-  if (input.event === 'chain' || input.event === 'chain_step') return originLabel('chain');
-  if (input.event === 'mood' || input.event === 'consequence') return originLabel('mood');
-  return 'inferred';
+  return {
+    teams,
+    tolerance: typeof row.tolerance === 'number' ? row.tolerance : 0,
+    last_third: row.last_third === true,
+    mean_negative: typeof row.mean_negative === 'number' ? row.mean_negative : 0,
+    minute: typeof row.minute === 'number' ? row.minute : 0,
+    duration: typeof row.duration === 'number' ? row.duration : 0,
+  };
+}
+
+/** Session minute of the trainer decision, or the proposal minute when it was not stored. */
+export function decisionMinuteOf(
+  decidedAt: string | null,
+  startIso: string | null,
+  proposalMinute: number,
+): number {
+  if (!decidedAt || !startIso) return proposalMinute;
+  const at = Date.parse(decidedAt);
+  const start = Date.parse(startIso);
+  if (!Number.isFinite(at) || !Number.isFinite(start)) return proposalMinute;
+  return Math.max(0, Math.floor((at - start) / 60000));
 }
 
 export function unscriptedSentence(input: {
@@ -176,6 +183,29 @@ export function unscriptedSentence(input: {
       : `approved by ${input.approver} at T+${input.minute}`;
   const edited = input.edited ? ' (edited)' : '';
   return `proposed by the AI director because ${because}; ${decision}${edited}`;
+}
+
+export function unscriptedNotesFrom(
+  rows: ReadonlyArray<{
+    seq: number;
+    status: string;
+    reason: string | null;
+    approver: string;
+    edited: boolean;
+    decisionMinute: number;
+  }>,
+): Record<string, string> {
+  const notes: Record<string, string> = {};
+  for (const row of rows) {
+    if (!EVENT.has(row.status)) continue;
+    notes[`dir_${row.seq}`] = unscriptedSentence({
+      reason: row.reason ?? '',
+      minute: row.decisionMinute,
+      approver: row.status === 'auto_published' ? 'auto' : row.approver || 'trainer',
+      edited: row.edited,
+    });
+  }
+  return notes;
 }
 
 export function buildUnscriptedTable(rows: readonly UnscriptedProposalInput[]): {

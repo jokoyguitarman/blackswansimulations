@@ -27,6 +27,8 @@ import {
   type AarResponse,
   type AarSessionParts,
 } from '../aarCommsResponses.js';
+import { loadDirectorAar, type DirectorAarLoad } from '../director/directorAarService.js';
+import { emptyUnscriptedAar, type UnscriptedAarSection } from '../director/directorAarCore.js';
 import type { TriggerHistoryRow } from '../crossTeam/crossTeamReads.js';
 import { inferCrossTeamTriggers } from './aarCrossTeamInfer.js';
 
@@ -59,22 +61,37 @@ export async function loadCrossTeamSectionFromParts(
   }
 }
 
-/** Comms timeline and the cross-team section share one load of the session. */
+/** Comms timeline, cross-team section and director rows share one load of the session. */
 export async function loadSharedAarSections(sessionId: string): Promise<{
   comms: ReturnType<typeof buildCommsResponsesSection>;
   crossTeam: CrossTeamSection;
+  unscripted: UnscriptedAarSection;
 }> {
   const parts = await loadAarSessionParts(sessionId);
+  const director = await directorFrom(sessionId, parts);
   if (!parts) {
     return {
-      comms: buildCommsResponsesSection({}),
+      comms: buildCommsResponsesSection({ unscriptedNotes: director.notes }),
       crossTeam: emptyCrossTeamSection(),
+      unscripted: director.section,
     };
   }
   return {
-    comms: buildCommsResponsesSection(parts),
+    comms: buildCommsResponsesSection({ ...parts, unscriptedNotes: director.notes }),
     crossTeam: await loadCrossTeamSectionFromParts(parts),
+    unscripted: director.section,
   };
+}
+
+async function directorFrom(
+  sessionId: string,
+  parts: AarSessionParts | null,
+): Promise<DirectorAarLoad> {
+  try {
+    return await loadDirectorAar(sessionId, parts?.startTime ?? null, parts?.scenarioId ?? null);
+  } catch {
+    return { notes: {}, section: emptyUnscriptedAar(), withheld: [] };
+  }
 }
 
 function sectionFrom(
