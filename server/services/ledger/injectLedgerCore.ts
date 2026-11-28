@@ -3,6 +3,8 @@
  * WP3 reads `comms_state`; this module does not add condition keys.
  */
 
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
+
 export interface JudgementCriterion {
   id?: string;
   met?: boolean;
@@ -260,11 +262,7 @@ export function responseTeamKey(
 }
 
 export function sessionMinuteAt(startTime: string | null | undefined, atIso: string): number {
-  if (!startTime) return 0;
-  const start = Date.parse(startTime);
-  const at = Date.parse(atIso);
-  if (!Number.isFinite(start) || !Number.isFinite(at)) return 0;
-  return Math.max(0, Math.floor((at - start) / 60000));
+  return crisisElapsedMinutes(startTime, Date.parse(atIso));
 }
 
 export function emptyCommsState(elapsedMinutes: number): CommsState {

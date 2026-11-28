@@ -14,6 +14,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { placeOutsideZoneType } from './zonePlacementService.js';
@@ -109,7 +110,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
     : CRITICAL_TRANSPORT_WARNING_BEFORE_MIN;
 
   const sessionStartMs = new Date(session.start_time).getTime();
-  const elapsedMinutes = Math.floor((Date.now() - sessionStartMs) / 60000);
+  const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
   const { data: casualties } = await supabaseAdmin
     .from('scenario_casualties')

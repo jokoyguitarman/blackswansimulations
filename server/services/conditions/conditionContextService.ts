@@ -8,6 +8,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
 import { loadContextDependencyState } from '../dependencies/dependencyService.js';
 
@@ -73,10 +74,7 @@ export function sessionElapsedMinutes(
   startTime: string | null | undefined,
   now = Date.now(),
 ): number {
-  if (!startTime) return 0;
-  const start = new Date(startTime).getTime();
-  if (Number.isNaN(start)) return 0;
-  return Math.floor((now - start) / 60000);
+  return crisisElapsedMinutes(startTime, now);
 }
 
 export function usesInjectKeyConditions(

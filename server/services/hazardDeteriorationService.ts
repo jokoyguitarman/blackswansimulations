@@ -10,6 +10,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { placeInsideZoneType } from './zonePlacementService.js';
@@ -26,7 +27,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
   if (!session?.start_time) return;
 
   const isDemo = (session as { trainer_id?: string }).trainer_id === DEMO_TRAINER_ID;
-  const elapsedMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
+  const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
   const { data: hazards } = await supabaseAdmin
     .from('scenario_hazards')

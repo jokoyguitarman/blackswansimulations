@@ -12,6 +12,8 @@ import {
 import { publishInjectToSession } from '../routes/injects.js';
 import { recordInjectTrigger } from './conditions/injectTriggerService.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { getWebSocketService } from './websocketService.js';
 import { applyMediaChallengePressure } from './heatMeterService.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -335,6 +337,7 @@ export class AIInjectSchedulerService {
 
       // Process each session
       for (const session of c2eSessions) {
+        if (skipForPeace(session)) continue;
         try {
           await this.processSessionForAIInjects(session);
         } catch (sessionErr) {
@@ -429,11 +432,7 @@ export class AIInjectSchedulerService {
     }
 
     // Calculate session duration
-    const sessionStart = new Date(session.start_time);
-    const now = new Date();
-    const sessionDurationMinutes = Math.floor(
-      (now.getTime() - sessionStart.getTime()) / (1000 * 60),
-    );
+    const sessionDurationMinutes = crisisElapsedMinutes(session.start_time);
 
     // Get scenario info
     const { data: scenario } = await supabaseAdmin

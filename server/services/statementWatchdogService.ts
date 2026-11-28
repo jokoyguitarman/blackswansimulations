@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { createHash } from 'crypto';
@@ -225,16 +226,24 @@ class StatementWatchdogService {
 
   private async scanActiveSessions(): Promise<void> {
     try {
-      const { data: sessions, error } = await supabaseAdmin
-        .from('sessions')
-        .select('id, scenario_id, sim_mode')
-        .eq('status', 'in_progress')
-        .eq('sim_mode', 'social_media')
-        .not('start_time', 'is', null);
+      const sessions = env.enablePeacePeriod
+        ? await supabaseAdmin
+            .from('sessions')
+            .select('id, scenario_id, sim_mode, start_time')
+            .eq('status', 'in_progress')
+            .eq('sim_mode', 'social_media')
+            .not('start_time', 'is', null)
+        : await supabaseAdmin
+            .from('sessions')
+            .select('id, scenario_id, sim_mode')
+            .eq('status', 'in_progress')
+            .eq('sim_mode', 'social_media')
+            .not('start_time', 'is', null);
 
-      if (error || !sessions || sessions.length === 0) return;
+      if (sessions.error || !sessions.data || sessions.data.length === 0) return;
 
-      for (const session of sessions) {
+      for (const session of sessions.data) {
+        if (skipForPeace(session)) continue;
         try {
           await this.scanSession(session.id, session.scenario_id);
         } catch (err) {
