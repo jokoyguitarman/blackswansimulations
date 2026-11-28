@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { loadCommsResponsesSection, type CommsResponsesSection } from './aarCommsResponses.js';
 import { computeTeamScores } from './teamScoreService.js';
 
 export interface SocialMediaAARData {
@@ -171,6 +172,8 @@ export interface SocialMediaAARData {
     }>;
     public_effect: { posts: number; articles: number };
   }>;
+  /** Delivered → opened → replied → judgement → branch, plus chains, calls and mood. */
+  comms_responses: CommsResponsesSection;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -580,6 +583,7 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     team_performance: teamPerformance,
     stakeholder_preemption: await buildStakeholderPreemption(sessionId),
     executive_decisions: await buildExecutiveDecisions(sessionId),
+    comms_responses: await loadCommsResponsesSection(sessionId),
   };
 }
 

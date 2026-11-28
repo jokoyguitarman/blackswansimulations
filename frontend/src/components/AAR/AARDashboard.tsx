@@ -29,6 +29,7 @@ const AAR_SECTION_KEYS = [
   // Social crisis report sections (list order = display order)
   'social_executive',
   'social_timeline',
+  'comms_responses',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -63,6 +64,7 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   recommendations: 'Key takeaways and recommendations',
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
+  comms_responses: 'Response timeline',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -141,6 +143,13 @@ const SECTION_HEADING_STYLES: Array<{
   {
     pattern: /information flow|communications review/i,
     icon: '🔁',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /response timeline|comms/i,
+    icon: '💬',
     tile: 'bg-accent',
     title: 'text-accent',
     border: 'border-accent/25',
@@ -615,6 +624,37 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   }
   if (keyName === 'social_recommendations') {
     return null; // the analysis text is the whole section; no raw data panel
+  }
+  if (keyName === 'comms_responses' && typeof data === 'object' && !Array.isArray(data)) {
+    const obj = data as { response_injects?: unknown; timeline?: unknown; moods?: unknown };
+    const timeline = Array.isArray(obj.timeline) ? obj.timeline : [];
+    const moods = Array.isArray(obj.moods) ? obj.moods : [];
+    if (timeline.length === 0 && moods.length === 0) {
+      return (
+        <p className="text-xs terminal-text text-muted">
+          No response-requiring injects were delivered.
+        </p>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        <p className="text-xs terminal-text text-muted">
+          {String(obj.response_injects ?? 0)} response-requiring injects
+        </p>
+        {timeline.length > 0 && (
+          <div>
+            <div className="text-xs terminal-text text-muted mb-1">Timeline</div>
+            <SectionDataDisplay keyName="comms_timeline" data={timeline} />
+          </div>
+        )}
+        {moods.length > 0 && (
+          <div>
+            <div className="text-xs terminal-text text-muted mb-1">Stakeholder mood</div>
+            <SectionDataDisplay keyName="comms_moods" data={moods} />
+          </div>
+        )}
+      </div>
+    );
   }
   // Injects published: columns at, title, content, inject_scope; all rows, full text, See more for long content
   if (keyName === 'injects_published' && Array.isArray(data)) {

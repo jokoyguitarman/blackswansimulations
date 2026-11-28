@@ -23,6 +23,7 @@ import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 export const SOCIAL_AAR_SECTION_KEYS = [
   'social_executive',
   'social_timeline',
+  'comms_responses',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -48,6 +49,7 @@ export type SocialSectionsMap = Partial<Record<SocialAARSectionKey, SectionEntry
 export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
+  comms_responses: 'Response timeline',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -90,6 +92,8 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
     'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If executive_decisions is non-empty, name each leadership decision (T+), who was told and who found out on their own, and whether the organisation communicated it in the right order before it leaked — this is usually the decisive lesson. If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
+  comms_responses:
+    'Review every inject that needed a reply. For each, say when it was delivered, whether anyone opened it, who responded and how late (T+ minutes and channel), and what the judgement found (tone, pass or fail, wait and mood). Name the branch that fired because of that reply or the silence, each escalation step (urgency and channel), and each missed, declined or answered call attempt. If a stakeholder mood changed, name the rung and the consequence that followed. Cite T+ minutes. Be specific and fair.',
   social_public_comms:
     'Assess every published statement and reply: quality (use the stored grade dimensions), timing, consistency across platforms, and reach versus hostile content (impression dominance). Quote the strongest and weakest artifacts with their scores. Judge whether format choices (statement, thread reply, creative) matched the moment.',
   social_team_executive:
@@ -468,6 +472,11 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       duration_minutes: durationMinutes,
       events: downsample(timelineEvents, 60),
     },
+    analysis: null,
+  };
+
+  sections.comms_responses = {
+    data: social.comms_responses,
     analysis: null,
   };
 
