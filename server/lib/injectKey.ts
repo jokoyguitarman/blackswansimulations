@@ -52,15 +52,20 @@ function allocateInjectKey(title: string, taken: Set<string>): string {
 
 /**
  * Stamp `delivery_config.inject_key` on generated injects. An existing valid key is kept.
- * Collisions within the list get a `_2`, `_3` suffix. Keys are unique per call, which is
- * one scenario's injects.
+ * Collisions within the list, and any key passed in `taken`, get a `_2`, `_3` suffix.
+ * Keys are unique per call. Apply passes every key that stays active so a new inject
+ * cannot reuse one.
  */
 export function stampGeneratedInjectKeys<
   T extends { title?: string | null; delivery_config?: object | null },
 >(
   injects: readonly T[],
+  options?: { taken?: readonly string[] },
 ): Array<Omit<T, 'delivery_config'> & { delivery_config: Record<string, unknown> }> {
   const taken = new Set<string>();
+  for (const key of options?.taken ?? []) {
+    if (isValidInjectKey(key)) taken.add(key);
+  }
   for (const inject of injects) {
     const existing = configOf(inject).inject_key;
     if (typeof existing === 'string' && isValidInjectKey(existing)) taken.add(existing);

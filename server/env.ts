@@ -319,6 +319,9 @@ export const env = {
   // open one. Admins are unlimited and are not counted.
   scenarioSetupEdits: process.env.SCENARIO_SETUP_EDITS === 'true',
   scenarioSetupEditLimit: envNonNegativeInt('SCENARIO_SETUP_EDIT_LIMIT', 3),
+  // Off: an applied setup edit does not spend a scenario credit. On: consumeCredit
+  // with reason scenario_setup_edit, refunded when the apply does not commit.
+  scenarioSetupEditChargesCredit: process.env.SCENARIO_SETUP_EDIT_CHARGES_CREDIT === 'true',
   // Peace period (docs/peace-period-and-spectator-spec.md §8). Off in every
   // environment until a trainer turns it on after 1 December. With it off,
   // start writes start_time = now and no phase gate runs.
