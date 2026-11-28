@@ -4,7 +4,6 @@
  * Phase defaults to crisis. Callers pass `peace`; this module does not read the session.
  */
 import type { ChatOptions } from '../ai/chatClient.js';
-import { matchesLeakTerms } from '../generation/peaceFeedCore.js';
 import {
   channelPhase,
   DM_REPLY_BODY,
@@ -23,8 +22,8 @@ import {
   assignBridgeStances,
   checkTopicReplies,
   leakTermsFromInitialState,
+  peacePromptSection,
   TOPIC_CLASSIFICATION_OBJECT,
-  topicPeaceBlock,
   type AssignedStance,
   type BridgeStance,
   type ParsedTopic,
@@ -102,7 +101,7 @@ export function buildTopicDmMessages(
   const stanceLine = `${input.handle} (${input.name}): ${input.personality}, bias: ${input.bias}, type: ${input.type}. If bridge: ${input.stance}.`;
   const context =
     phase === 'peace'
-      ? `PEACE:\n${topicPeaceBlock(input.orgName)}`
+      ? peacePromptSection(input.orgName)
       : channelCrisisFence(
           input.crisisDescription.substring(0, 300),
           input.orgName,
@@ -145,7 +144,7 @@ export function buildTopicEmailMessages(
   ].join('\n---\n');
   const context =
     phase === 'peace'
-      ? `PEACE:\n${topicPeaceBlock(input.orgName)}`
+      ? peacePromptSection(input.orgName)
       : `${channelCrisisFence(input.crisisDescription.substring(0, 400), input.orgName, 'Organization under crisis')}${input.factsContext}`;
   const system = `Your reply is about THIS email thread.
 
@@ -193,7 +192,6 @@ export interface ChannelScreenResult {
  * leak terms is stored as bridge, and any reply that matches leak terms is dropped.
  */
 export function screenChannelReply(input: ChannelScreenInput): ChannelScreenResult {
-  const phase = channelPhase(input.phase);
   const checked = checkTopicReplies({
     classification: input.classification,
     parsed: input.parsed,
@@ -203,23 +201,16 @@ export function screenChannelReply(input: ChannelScreenInput): ChannelScreenResu
     postKind: 'crisis',
     isReply: input.isReply,
     minConfidence: input.minConfidence,
+    phase: input.phase,
+    playerText: input.playerText,
   });
-  let label = checked.label;
-  let replyText = checked.reactions.length > 0 ? input.replyText : '';
-  let dropped = input.replyText.length > 0 && checked.reactions.length === 0;
-  if (phase === 'peace' && matchesLeakTerms(input.playerText, input.leakTerms)) {
-    label = 'bridge';
-  }
-  if (phase === 'peace' && replyText && matchesLeakTerms(replyText, input.leakTerms)) {
-    replyText = '';
-    dropped = true;
-  }
+  const replyText = checked.reactions.length > 0 ? input.replyText : '';
   return {
-    label,
+    label: checked.label,
     bridgeTopic: checked.bridgeTopic,
     confidence: checked.confidence,
     replyText,
-    dropped,
+    dropped: input.replyText.length > 0 && checked.reactions.length === 0,
   };
 }
 

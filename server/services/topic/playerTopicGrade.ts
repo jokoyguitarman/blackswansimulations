@@ -1,4 +1,5 @@
 import { logger } from '../../lib/logger.js';
+import { loadSessionTopicPhase } from '../peace/sessionTopicPhase.js';
 import {
   triggerNPCReactions,
   type NpcReactionOptions,
@@ -154,9 +155,10 @@ export async function gradePlayerEmailFromReply(
   options?: NpcEmailReplyOptions,
   runtime?: OutboundEmailGradeRuntime,
 ): Promise<void> {
+  const phase = channelPhase(options?.phase ?? (await loadSessionTopicPhase(sessionId)));
   let topic = null;
   try {
-    topic = await triggerNPCEmailReply(sessionId, playerEmail, options);
+    topic = await triggerNPCEmailReply(sessionId, playerEmail, { ...options, phase });
   } catch (err) {
     logger.error(
       { err, sessionId, playerEmailId: playerEmail.id },
@@ -174,7 +176,7 @@ export async function gradePlayerEmailFromReply(
       bodyText: playerEmail.body_text,
       topicAware: true,
       label: wrote.columnsAvailable ? label : 'unclassified',
-      phase: channelPhase(options?.phase),
+      phase,
       postKind: 'crisis',
       columnsAvailable: wrote.columnsAvailable,
     },

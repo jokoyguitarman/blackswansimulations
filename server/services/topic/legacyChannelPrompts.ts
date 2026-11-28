@@ -11,6 +11,7 @@ import {
   emailReplyUser,
   type EmailUserInput,
 } from './channelPromptShared.js';
+import { peacePromptSection, type TopicPhase } from './topicPromptCore.js';
 
 export interface LegacyDmInput {
   handle: string;
@@ -25,14 +26,20 @@ export interface LegacyDmInput {
   playerMessage: string;
 }
 
-export function buildLegacyDmReplyMessages(input: LegacyDmInput): { system: string; user: string } {
+export function buildLegacyDmReplyMessages(
+  input: LegacyDmInput & { phase?: TopicPhase },
+): { system: string; user: string } {
   const description = input.crisisDescription.substring(0, 300);
+  const situation =
+    input.phase === 'peace'
+      ? peacePromptSection(input.orgName)
+      : `Crisis context: ${description}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`;
   const system = `You are ${input.handle} (${input.name}), an NPC in a crisis simulation. Reply to a direct message in character.
 
 Your personality: ${input.personality}
 Your bias: ${input.bias}
 Your type: ${input.type}
-Crisis context: ${description}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}
+${situation}
 
 Conversation so far:
 ${input.conversation}
@@ -57,17 +64,24 @@ export interface LegacyEmailInput extends EmailUserInput {
   isMedia: boolean;
 }
 
-export function buildLegacyEmailReplyMessages(input: LegacyEmailInput): {
+export function buildLegacyEmailReplyMessages(
+  input: LegacyEmailInput & { phase?: TopicPhase },
+): {
   system: string;
   user: string;
 } {
   const description = input.crisisDescription.substring(0, 400);
+  const crisisLine =
+    input.phase === 'peace'
+      ? peacePromptSection(input.orgName)
+      : `Crisis context: ${description}${input.orgName ? `\nOrganization under crisis: ${input.orgName}` : ''}`;
+  const factsLine = input.phase === 'peace' ? '' : input.factsContext;
   const system = `You are generating an NPC email reply during a crisis simulation. The player sent an email and you must respond in character.
 
 ${input.respondentInfo}
 
-Crisis context: ${description}${input.orgName ? `\nOrganization under crisis: ${input.orgName}` : ''}
-${input.factsContext}
+${crisisLine}
+${factsLine}
 ${input.threadContext}
 
 ${EMAIL_RULES}

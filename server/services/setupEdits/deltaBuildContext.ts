@@ -182,6 +182,8 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
     taken_stakeholder_ids: loadedStakeholders.map((stakeholder) => stakeholder.id),
     active_keys: injects.map((inject) => inject.inject_key).filter((key) => key.length > 0),
     page_batch_size: env.warroomOrgPageBatch,
+    peace_period: state.peace_period,
+    org_page: state.org_page,
   };
 }
 

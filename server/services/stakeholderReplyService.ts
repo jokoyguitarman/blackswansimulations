@@ -22,6 +22,7 @@ import { getTeamIdentity } from './orgRegistryService.js';
 import { findById } from './stakeholderService.js';
 import {
   decideAndReply,
+  type DecideContext,
   type PlayerRef,
   type ReplyPlan,
 } from './stakeholderReconsiderationService.js';
@@ -377,6 +378,8 @@ export interface PlayerMessageCtx {
   context?: string;
   /** Player DM and email only, and only when topic-aware replies are on. */
   topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: DecideContext['client'];
 }
 
 /**
@@ -459,6 +462,7 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
       teamIdentity: identity,
       player,
       topic: ctx.topic,
+      client: ctx.client,
     });
     plan = ctx.topic
       ? {

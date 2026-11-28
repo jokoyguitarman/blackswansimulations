@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson } from './ai/chatClient.js';
+import { loadSessionTopicPhase } from './peace/sessionTopicPhase.js';
 import { getWebSocketService } from './websocketService.js';
 import { sanitizeEmailCategory } from './feedEngineService.js';
 import { pickResponders, resolveStakeholderRecipients } from '../lib/stakeholderRecipients.js';
@@ -327,7 +328,7 @@ export async function triggerNPCEmailReply(
 ): Promise<ChannelTopicResult | null> {
   if (!env.aiEnabled) return null;
 
-  const phase = channelPhase(options?.phase);
+  const phase = channelPhase(options?.phase ?? (await loadSessionTopicPhase(sessionId)));
   const topicAware = env.enableTopicAwareReplies;
   const finish = (screen: ChannelScreenResult | null = null) =>
     channelTopicResult(topicAware, playerEmail.id, screen);
@@ -424,13 +425,14 @@ export async function triggerNPCEmailReply(
       );
 
       if (recipients.primary || recipients.all.length > 0) {
-        const topic = topicAware
-          ? {
-              phase,
-              thread: `Subject: ${playerEmail.subject}\n${playerEmail.body_text}`,
-              isReply: Boolean(playerEmail.replied_to_id || playerEmail.thread_id),
-            }
-          : undefined;
+        const topic =
+          topicAware || phase === 'peace'
+            ? {
+                phase,
+                thread: `Subject: ${playerEmail.subject}\n${playerEmail.body_text}`,
+                isReply: Boolean(playerEmail.replied_to_id || playerEmail.thread_id),
+              }
+            : undefined;
         const messageCtx = {
           sessionId,
           channel: 'email' as const,
@@ -440,6 +442,7 @@ export async function triggerNPCEmailReply(
           refTable: 'sim_emails',
           refId: playerEmail.id,
           ...(topic ? { topic } : {}),
+          ...(options?.client ? { client: options.client } : {}),
         };
         const primary = recipients.primary;
         const responders = pickResponders(recipients.all, primary, playerEmail.id);
@@ -661,7 +664,7 @@ export async function triggerNPCEmailReply(
 
     // Build AI prompt
     const respondentInfo = useAiFallback
-      ? emailFallbackRespondent(toAddress, topicAware && phase === 'peace' ? 'peace' : 'crisis')
+      ? emailFallbackRespondent(toAddress, phase === 'peace' ? 'peace' : 'crisis')
       : `You are ${respondentName} (${respondentAddress}).
 ${respondentRole ? `Role/Title: ${respondentRole}` : ''}
 ${respondentPersonality ? `Personality: ${respondentPersonality}` : ''}`;
@@ -700,7 +703,7 @@ ${respondentPersonality ? `Personality: ${respondentPersonality}` : ''}`;
           history,
           stanceLine: `${stanceSource?.handle || respondentHandle || toAddress} (${respondentName || toAddress}): ${stanceSource?.personality || respondentPersonality}, bias: ${stanceSource?.bias || 'none'}, type: ${stanceSource?.type || respondentType || 'npc_public'}. If bridge: ${emailStance}.`,
         })
-      : buildLegacyEmailReplyMessages(emailInput);
+      : buildLegacyEmailReplyMessages({ ...emailInput, phase });
     const request = {
       tier: 'standard' as const,
       json: true as const,

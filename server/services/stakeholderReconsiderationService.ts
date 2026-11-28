@@ -11,7 +11,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { chatJson, systemUser } from './ai/chatClient.js';
+import { chatJson, systemUser, type ChatOptions } from './ai/chatClient.js';
 import { judgePeaceSchema, judgeResponseSchema } from './topic/channelPromptShared.js';
 import { readTopicClassification, type TopicLabel } from './topic/topicPromptCore.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
@@ -394,6 +394,12 @@ export interface JudgeInput {
   player?: PlayerRef | null;
   /** Set for player DM and email replies when topic-aware replies are on. */
   topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: {
+    chatJson(
+      options: Pick<ChatOptions, 'tier' | 'messages' | 'json' | 'maxTokens' | 'label'>,
+    ): Promise<unknown>;
+  };
 }
 
 /** Functions whose instructions an internal stakeholder carries out rather than debates. */
@@ -540,18 +546,21 @@ ${judgeResponseSchema(!!input.topic)}`;
   }`;
 
   try {
-    const parsed = await chatJson<{
+    const request = {
+      tier: 'standard' as const,
+      messages: systemUser(system, user),
+      json: true as const,
+      maxTokens: 1800,
+      label: 'stakeholder.judge',
+    };
+    const parsed = (
+      input.client ? await input.client.chatJson(request) : await chatJson(request)
+    ) as {
       should_reply?: unknown;
       reply?: { text?: unknown; subject?: unknown; delay_seconds?: unknown };
       verdicts?: unknown;
       classification?: unknown;
-    }>({
-      tier: 'standard',
-      messages: systemUser(system, user),
-      json: true,
-      maxTokens: 1800,
-      label: 'stakeholder.judge',
-    });
+    } | null;
     if (!parsed) {
       logger.warn({ sessionId: input.sessionId }, 'Stakeholder judge request failed');
       return null;
@@ -598,6 +607,8 @@ export interface DecideContext {
   player?: PlayerRef | null;
   /** Player DM and email only, and only when topic-aware replies are on. */
   topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: JudgeInput['client'];
 }
 
 /**
@@ -629,6 +640,7 @@ export async function decideAndReply(ctx: DecideContext): Promise<{
       latestSubject: ctx.latestSubject,
       player: ctx.player ?? null,
       topic: ctx.topic,
+      client: ctx.client,
     });
     if (!out) return { plan: fallback, verdicts: [], ...unclassified };
     if (peace) {

@@ -21,6 +21,9 @@ import {
 } from '../services/topic/gradeIfCrisisActivity.js';
 import { gradeOutboundEmail } from '../services/topic/gradeOutboundEmail.js';
 import { reactAndGradePlayerPost } from '../services/topic/playerTopicGrade.js';
+import { loadSessionTopicPhase } from '../services/peace/sessionTopicPhase.js';
+import { mediaScenarioContext } from '../services/peace/mediaContext.js';
+import type { TopicPhase } from '../services/topic/topicPromptCore.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
@@ -477,21 +480,28 @@ router.post(
         return res.status(500).json({ error: 'Failed to create post' });
       }
 
+      const peacePhase: TopicPhase | undefined = env.enablePeacePeriod
+        ? await loadSessionTopicPhase(session_id)
+        : undefined;
+      const reactionOptions = peacePhase ? { phase: peacePhase } : undefined;
       const startPlayerReactions = (failure: string) => {
         if (env.enableTopicAwareReplies && env.aiEnabled) {
-          reactAndGradePlayerPost({
-            sessionId: session_id,
-            post,
-            userId: user.id,
-            content,
-            postFormat: post_format,
-            imagePrompt: image_prompt || undefined,
-            replyToPostId: reply_to_post_id || undefined,
-            postAsPage: post_as_page || false,
-          });
+          reactAndGradePlayerPost(
+            {
+              sessionId: session_id,
+              post,
+              userId: user.id,
+              content,
+              postFormat: post_format,
+              imagePrompt: image_prompt || undefined,
+              replyToPostId: reply_to_post_id || undefined,
+              postAsPage: post_as_page || false,
+            },
+            reactionOptions,
+          );
           return;
         }
-        void triggerNPCReactions(session_id, post).catch((err) =>
+        void triggerNPCReactions(session_id, post, reactionOptions).catch((err) =>
           logger.warn({ err, postId: post.id }, failure),
         );
       };
@@ -612,7 +622,7 @@ router.post(
           postAsPage: post_as_page || false,
           topicAware: env.enableTopicAwareReplies,
           label: 'unclassified',
-          phase: 'crisis',
+          phase: peacePhase ?? 'crisis',
           postKind: 'crisis',
           columnsAvailable: true,
         });
@@ -641,28 +651,30 @@ router.post(
             const isVideo = post_format === 'video_concept';
             let mediaUrl: string | null = null;
 
-            // Fetch scenario context for realistic media generation
-            let mediaScenarioContext: string | undefined;
-            const { data: mediaSession } = await supabaseAdmin
-              .from('sessions')
-              .select('scenario_id')
-              .eq('id', session_id)
-              .single();
-            if (mediaSession?.scenario_id) {
-              const { data: mediaScenario } = await supabaseAdmin
-                .from('scenarios')
-                .select('description')
-                .eq('id', mediaSession.scenario_id)
+            // Peace sends no crisis text to the media model, and does not load the brief.
+            let scenarioContext: string | undefined;
+            if (peacePhase !== 'peace') {
+              const { data: mediaSession } = await supabaseAdmin
+                .from('sessions')
+                .select('scenario_id')
+                .eq('id', session_id)
                 .single();
-              mediaScenarioContext = mediaScenario?.description?.substring(0, 200) || undefined;
+              if (mediaSession?.scenario_id) {
+                const { data: mediaScenario } = await supabaseAdmin
+                  .from('scenarios')
+                  .select('description')
+                  .eq('id', mediaSession.scenario_id)
+                  .single();
+                scenarioContext = mediaScenarioContext(peacePhase, mediaScenario?.description);
+              }
             }
 
             if (isVideo) {
-              mediaUrl = await generateVideo(promptText, 10, '16:9', mediaScenarioContext);
+              mediaUrl = await generateVideo(promptText, 10, '16:9', scenarioContext);
               if (!mediaUrl) mediaUrl = await generateVideoThumbnail(promptText);
             } else {
               const style = imageStyle || 'social_media_photo';
-              mediaUrl = await generatePostImage(promptText, style, mediaScenarioContext);
+              mediaUrl = await generatePostImage(promptText, style, scenarioContext);
             }
 
             if (mediaUrl) {
@@ -1378,6 +1390,8 @@ router.post(
       );
       const gradeFromReply =
         env.enableTopicAwareReplies && env.aiEnabled && !primaryRecipientIsPlayer;
+      const loadedPhase = env.enablePeacePeriod ? await loadSessionTopicPhase(session_id) : 'crisis';
+      const phase = loadedPhase === 'peace' ? 'peace' : 'crisis';
       if (!gradeFromReply) {
         void gradeOutboundEmail({
           sessionId: session_id,
@@ -1387,7 +1401,7 @@ router.post(
           bodyText: body_text,
           topicAware: env.enableTopicAwareReplies,
           label: 'unclassified',
-          phase: 'crisis',
+          phase,
           postKind: 'crisis',
           columnsAvailable: true,
         });
@@ -1440,12 +1454,12 @@ router.post(
               const { replyAndGradePlayerEmail } =
                 await import('../services/topic/playerTopicGrade.js');
               setTimeout(() => {
-                replyAndGradePlayerEmail(session_id, playerEmail);
+                replyAndGradePlayerEmail(session_id, playerEmail, { phase });
               }, delay);
             } else {
               const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
               setTimeout(() => {
-                void triggerNPCEmailReply(session_id, playerEmail);
+                void triggerNPCEmailReply(session_id, playerEmail, { phase });
               }, delay);
             }
           } catch {

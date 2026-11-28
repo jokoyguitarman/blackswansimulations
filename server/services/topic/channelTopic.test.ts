@@ -4,6 +4,7 @@ import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { resetPeaceColumnsForTests } from '../../lib/peaceSchema.js';
 import { env } from '../../env.js';
 import { buildCharacterPrompt } from '../stakeholderReplyService.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
@@ -21,9 +22,10 @@ import {
   buildTopicEmailMessages,
   screenChannelReply,
   singleResponderStance,
+  type ChannelChatClient,
 } from './channelTopicCore.js';
 import { triggerNPCDMReply } from '../npcMessengerService.js';
-import { triggerNPCEmailReply } from '../npcEmailReplyService.js';
+import { triggerNPCEmailReply, type PlayerEmail } from '../npcEmailReplyService.js';
 import { gradePlayerEmailFromReply, labelPlayerDmFromReply } from './playerTopicGrade.js';
 import {
   keptVerdicts,
@@ -1336,4 +1338,166 @@ test('NPC-initiated DMs are not labelled, and the player routes keep their call 
   assert.ok(gradeAt > 0 && gradeAt < decisionAt && decisionAt < replyAt);
   assert.equal(social.includes('await gradeOutboundEmail'), false);
   assert.equal(social.includes('await triggerNPCEmailReply'), false);
+});
+
+test('during peace a player DM, a stakeholder DM, and an email send no crisis text and no grade', async () => {
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const scenarioId = 'scen-peace-wire';
+  const scenario = {
+    id: scenarioId,
+    updated_at: '2026-01-01T00:00:00.000Z',
+    title: 'Harbour',
+    description: CRISIS,
+    initial_state: {
+      org_name: 'Dyson',
+      npc_personas: [sam],
+      stakeholders: [
+        {
+          id: 'priya_nair',
+          name: 'Priya Nair',
+          title: 'Market lead',
+          organisation: 'Harbour Market',
+          relationship: 'community',
+          owning_team: 'communications',
+          email: 'priya@market.test',
+          handle: '@priya',
+          personality: 'warm',
+          knowledge: ['Saturday market opens at nine'],
+          grievance: CRISIS,
+          resolution_criteria: [CRISIS],
+          persuadability: 'medium',
+          hard_constraints: [CRISIS],
+        },
+      ],
+      fact_sheet: { confirmed_facts: [CRISIS], unconfirmed_claims: [] },
+      peace_period: { leak_terms: ['recall'] },
+    },
+  };
+  const prompts: string[] = [];
+  const tables: string[] = [];
+  const graded: string[] = [];
+  const originalFrom = supabaseAdmin.from;
+  const peace = env.enablePeacePeriod;
+  resetPeaceColumnsForTests();
+  env.enablePeacePeriod = true;
+  const client: ChannelChatClient = {
+    async chatJson(options) {
+      prompts.push(
+        (options.messages ?? [])
+          .map((message) => (typeof message.content === 'string' ? message.content : ''))
+          .join('\n'),
+      );
+      if (options.label === 'stakeholder.judge') {
+        return {
+          should_reply: true,
+          reply: { text: 'Saturday is fine.', delay_seconds: 15 },
+          classification: { label: 'on_topic', confidence: 0.9, bridge_topic: '' },
+        };
+      }
+      if (options.label === 'npcEmailReply.generate') {
+        return {
+          body: 'Saturday works.',
+          should_reply: true,
+          classification: { label: 'on_topic', confidence: 0.9, bridge_topic: '' },
+          email_category: 'general',
+          delay_seconds: 20,
+        };
+      }
+      return {
+        reply: 'See you Saturday.',
+        classification: { label: 'on_topic', confidence: 0.9, bridge_topic: '' },
+      };
+    },
+  };
+  supabaseAdmin.from = ((table: string) => {
+    tables.push(table);
+    let columns = '';
+    const row = () => {
+      if (table === 'sessions') {
+        if (columns.includes('scenario_id')) return { scenario_id: scenarioId };
+        return { start_time: future, opened_at: '2026-01-01T00:00:00.000Z' };
+      }
+      if (table === 'scenarios') return scenario;
+      return null;
+    };
+    const payload = () => ({ data: row(), error: null, count: 0 });
+    const chain: Record<string, unknown> = {};
+    for (const name of ['select', 'eq', 'neq', 'or', 'order', 'limit', 'in', 'gte', 'is', 'not', 'insert', 'update', 'delete']) {
+      chain[name] = (...args: unknown[]) => {
+        if (name === 'select') columns = String(args[0] ?? '');
+        return chain;
+      };
+    }
+    chain.single = () => Promise.resolve(payload());
+    chain.maybeSingle = () => Promise.resolve(payload());
+    chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+      Promise.resolve(payload()).then(resolve, reject);
+    return chain;
+  }) as unknown as typeof supabaseAdmin.from;
+
+  const runtime: OutboundEmailGradeRuntime = {
+    async loadSession() {
+      graded.push('session');
+      return null;
+    },
+    async loadScenario() {
+      graded.push('scenario');
+      return null;
+    },
+    async getPlayerTeamContext() {
+      graded.push('team');
+      return null;
+    },
+    async gradePlayerContent() {
+      graded.push('grade');
+      throw new Error('graded during peace');
+    },
+    async updateScore() {
+      graded.push('score');
+    },
+    async startSnapshot() {
+      graded.push('snapshot');
+    },
+  };
+
+  try {
+    await withFlags({ topic: true, stakeholder: true, ai: true }, async () => {
+      await triggerNPCDMReply('sess-peace', 'thread-peace', '@sam', 'Are you free Saturday?', 'user-1', {
+        client,
+      });
+      await triggerNPCDMReply(
+        'sess-peace',
+        'thread-peace',
+        '@priya',
+        'Are you free Saturday?',
+        'user-1',
+        { client },
+      );
+      const playerEmail: PlayerEmail = {
+        id: 'email-peace',
+        to_addresses: ['sam.lee@contacts.sim'],
+        subject: 'Saturday',
+        body_text: 'Breakfast on the waterfront?',
+        from_name: 'Player',
+        from_address: 'player@sim',
+        replied_to_id: null,
+        thread_id: null,
+        sender_user_id: 'user-1',
+      };
+      await gradePlayerEmailFromReply('sess-peace', playerEmail, { client }, runtime);
+    });
+    assert.equal(prompts.length, 3);
+    assert.equal(tables.includes('scenario_injects'), false);
+    for (const prompt of prompts) {
+      assert.equal(prompt.includes(CRISIS), false);
+      assert.equal(prompt.includes('Crisis context:'), false);
+      assert.equal(prompt.includes('YOUR PRIVATE SITUATION'), false);
+      assert.match(prompt, /Ordinary day/);
+    }
+    assert.deepEqual(graded, []);
+  } finally {
+    supabaseAdmin.from = originalFrom;
+    env.enablePeacePeriod = peace;
+    resetPeaceColumnsForTests();
+  }
 });

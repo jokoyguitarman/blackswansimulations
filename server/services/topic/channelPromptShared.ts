@@ -3,11 +3,16 @@
  * topic-aware builders. The flag-off builders interpolate these into the templates
  * that shipped on master.
  */
-import { TOPIC_CLASSIFICATION_OBJECT, topicPeaceBlock } from './topicPromptCore.js';
+import {
+  peacePromptSection,
+  TOPIC_CLASSIFICATION_OBJECT,
+  type TopicPhase,
+} from './topicPromptCore.js';
 
 export type ChannelPhase = 'peace' | 'crisis';
 
-export function channelPhase(phase: ChannelPhase | undefined): ChannelPhase {
+/** `not_started` and a missing phase are crisis. Only an explicit peace phase drops the crisis brief. */
+export function channelPhase(phase: TopicPhase | undefined): ChannelPhase {
   return phase === 'peace' ? 'peace' : 'crisis';
 }
 
@@ -180,7 +185,7 @@ export function emailFallbackRespondent(address: string, phase: ChannelPhase): s
 export function characterTopicBlock(phase: ChannelPhase, orgName: string, thread: string): string {
   const subject = thread.trim() || 'the message you were just sent';
   if (phase === 'peace') {
-    return `THREAD:\n${subject}\n\nPEACE:\n${topicPeaceBlock(orgName)}\nStay on this thread. Do not introduce an incident the thread has not raised.`;
+    return `THREAD:\n${subject}\n\n${peacePromptSection(orgName)}\nStay on this thread. Do not introduce an incident the thread has not raised.`;
   }
   return `THREAD:\n${subject}\nStay on this thread's subject. Use the crisis context ONLY if you label the player's message \`bridge\` or \`crisis\`. If your role is part of the crisis, you still keep to the thread's topic unless the label is \`bridge\` or \`crisis\`. For \`on_topic\` or \`off_topic\`, never mention the crisis.`;
 }

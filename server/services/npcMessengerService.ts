@@ -1,8 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson } from './ai/chatClient.js';
+import { loadSessionTopicPhase } from './peace/sessionTopicPhase.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
 import { formatDmConversation } from './topic/channelPromptShared.js';
@@ -82,13 +82,8 @@ async function resolveRecipientUserId(
 }
 
 async function npcMessagesSkipPeace(sessionId: string): Promise<boolean> {
-  if (!env.enablePeacePeriod) return false;
-  const { data } = await supabaseAdmin
-    .from('sessions')
-    .select('start_time')
-    .eq('id', sessionId)
-    .maybeSingle();
-  return skipForPeace({ start_time: data?.start_time ?? null });
+  const phase = await loadSessionTopicPhase(sessionId);
+  return phase === 'peace';
 }
 
 export async function triggerNPCMessages(sessionId: string): Promise<void> {
@@ -386,7 +381,7 @@ export async function triggerNPCDMReply(
 ): Promise<ChannelTopicResult | null> {
   if (!env.aiEnabled) return null;
 
-  const phase = channelPhase(options?.phase);
+  const phase = channelPhase(options?.phase ?? (await loadSessionTopicPhase(sessionId)));
   const topicAware = env.enableTopicAwareReplies;
   const playerMessageId = options?.playerMessageId ?? '';
   const finish = (screen: ChannelScreenResult | null = null) =>
@@ -416,9 +411,10 @@ export async function triggerNPCDMReply(
     const threadRows = await loadDmThread(threadId, topicAware);
     const isReply = topicAware ? threadRows.some((row) => row.id !== playerMessageId) : false;
     const conversation = formatDmConversation(threadRows);
-    const topic = topicAware
-      ? { phase, thread: conversation || playerMessage, isReply }
-      : undefined;
+    const topic =
+      topicAware || phase === 'peace'
+        ? { phase, thread: conversation || playerMessage, isReply }
+        : undefined;
 
     // Stakeholder record (contract §3): in-character reply from the record + inject verdicts.
     if (env.enableStakeholderEngine) {
@@ -446,6 +442,7 @@ export async function triggerNPCDMReply(
           refTable: 'sim_direct_messages',
           refId: null,
           topic,
+          client: options?.client,
         });
         let replyText = plan.text;
         let screened: ChannelScreenResult | null = null;
@@ -552,7 +549,7 @@ export async function triggerNPCDMReply(
       : 'stay';
     const prompted = topicAware
       ? buildTopicDmMessages({ ...dmInput, phase, stance: dmStance })
-      : buildLegacyDmReplyMessages(dmInput);
+      : buildLegacyDmReplyMessages({ ...dmInput, phase });
     const request = {
       tier: 'standard' as const,
       json: true as const,

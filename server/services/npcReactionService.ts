@@ -26,6 +26,7 @@ import {
   noteTopicSchemaMissing,
   topicSchemaMissing,
 } from './topic/topicColumns.js';
+import { loadSessionTopicPhase } from './peace/sessionTopicPhase.js';
 
 export interface ReactionChatResult {
   reactions?: Array<Record<string, unknown>>;
@@ -119,7 +120,7 @@ export async function triggerNPCReactions(
   if (!env.aiEnabled && !client) return null;
 
   const topicAware = env.enableTopicAwareReplies;
-  const phase: TopicPhase = options?.phase ?? 'crisis';
+  const phase: TopicPhase = options?.phase ?? (await loadSessionTopicPhase(sessionId));
 
   try {
     let topicPostKind: PostKind = 'crisis';
@@ -305,7 +306,7 @@ export async function triggerNPCReactions(
     // grounds those critiques in the scenario's actual open questions.
     const isOfficialComms = postFormat === 'official_statement' || isOfficialPagePost;
     let officialScrutinyBlock = '';
-    if (isOfficialComms) {
+    if (isOfficialComms && phase !== 'peace') {
       const factSheet = (initialState.fact_sheet || {}) as {
         confirmed_facts?: string[];
         unconfirmed_claims?: Array<{ claim?: string; status?: string }>;
@@ -393,6 +394,7 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
           playerContent,
           imagePrompt,
           userHandle: String(playerPost.author_handle),
+          phase,
         });
 
     const request = {
@@ -414,7 +416,7 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
     let reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
     let topic: TopicReactionResult | null = null;
 
-    if (topicAware) {
+    if (topicAware || phase === 'peace') {
       const leakTerms = leakTermsFromInitialState(initialState);
       const checked = checkTopicReplies({
         classification: parsed.classification,
@@ -424,14 +426,18 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
         postKind: topicPostKind,
         isReply,
         minConfidence: env.topicBridgeMinConfidence,
+        phase,
+        playerText: playerContent,
       });
       reactions = checked.reactions;
-      topic = {
-        label: checked.label,
-        confidence: checked.confidence,
-        bridgeTopic: checked.bridgeTopic,
-        postKind: topicPostKind,
-      };
+      if (topicAware) {
+        topic = {
+          label: checked.label,
+          confidence: checked.confidence,
+          bridgeTopic: checked.bridgeTopic,
+          postKind: topicPostKind,
+        };
+      }
       const logged = new Set<string>();
       for (const drop of checked.dropped) {
         if (logged.has(drop.handle)) continue;

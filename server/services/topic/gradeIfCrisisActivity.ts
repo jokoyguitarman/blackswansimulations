@@ -77,11 +77,11 @@ export function gradingLabel(
 }
 
 export function shouldSkipGrade(
-  input: Pick<
-    GradeActivityInput,
-    'topicAware' | 'label' | 'phase' | 'postKind' | 'columnsAvailable'
-  >,
+  input:
+    | GradeActivityInput
+    | Pick<GradeActivityInput, 'topicAware' | 'label' | 'phase' | 'postKind' | 'columnsAvailable'>,
 ): boolean {
+  if (input.phase === 'peace') return true;
   if (!input.topicAware) return false;
   return !isCrisisActivity({
     phase: input.phase,

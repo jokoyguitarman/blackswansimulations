@@ -288,6 +288,16 @@ export class WebSocketService {
     logger.info({ sessionId }, 'Session started event broadcasted');
   }
 
+  /** Trainer ended the peace early, or the client should treat crisis start as now. */
+  crisisStarted(sessionId: string, sessionData: Record<string, unknown>): void {
+    this.broadcastToSession(sessionId, {
+      type: 'session.crisis_started',
+      data: sessionData,
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId }, 'Crisis started event broadcasted');
+  }
+
   /**
    * State update events
    */

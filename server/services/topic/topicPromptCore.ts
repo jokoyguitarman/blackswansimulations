@@ -215,6 +215,9 @@ export function checkTopicReplies(input: {
   postKind: PostKind;
   isReply: boolean;
   minConfidence: number;
+  /** During peace, a player text that matches leak terms is a bridge, and every leaked reply is dropped. */
+  phase?: TopicPhase;
+  playerText?: string;
 }): TopicCheckResult {
   const parsed =
     input.parsed !== undefined
@@ -229,8 +232,14 @@ export function checkTopicReplies(input: {
     bridgeTopic = '';
   }
 
-  const leakCheck =
-    label === 'unclassified'
+  const peace = input.phase === 'peace';
+  if (peace && matchesLeakTerms(input.playerText ?? '', input.leakTerms)) {
+    label = 'bridge';
+  }
+
+  const leakCheck = peace
+    ? true
+    : label === 'unclassified'
       ? input.postKind === 'normal'
       : label !== 'bridge' && label !== 'crisis';
 
@@ -298,10 +307,14 @@ export interface TopicPromptInput {
 const PERSONAL_AUTHOR_BLOCK =
   "This is an individual. Personas treat it as one person's opinion: friends-and-followers tone, less formality. Media rarely pick it up unless it is inflammatory. Nobody treats it as the organisation's position, unless the person identifies themselves as staff.";
 
-/** The §5.3 peace block. DM, email and stakeholder prompts use this same sentence. */
-export function topicPeaceBlock(orgName: string): string {
+export function peaceContextBlock(orgName: string): string {
   const org = orgName.trim() || 'the organisation';
   return `Ordinary day. Nothing unusual has happened to ${org}. If someone mentions an incident, a recall, an accident or a scandal you have not heard of, react with mild confusion, ask what they mean, or ignore it. Never invent details.`;
+}
+
+/** The peace section both reply prompts use in place of the crisis brief. */
+export function peacePromptSection(orgName: string): string {
+  return `PEACE:\n${peaceContextBlock(orgName)}`;
 }
 
 export const TOPIC_CLASSIFICATION_OBJECT =
@@ -383,7 +396,7 @@ ${personaLines}`;
 
   const crisisOrPeace =
     input.phase === 'peace'
-      ? `PEACE:\n${topicPeaceBlock(input.orgName)}`
+      ? peacePromptSection(input.orgName)
       : `CRISIS CONTEXT: use ONLY if you label the comment \`bridge\`, and ONLY for personas whose stance is \`engage\`. Personas with \`stay\` reply about the post as if the remark were a passing jab (ignore it, deflect, or tease back about the post). For \`on_topic\` or \`off_topic\`, never mention the crisis.
 ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`;
 
