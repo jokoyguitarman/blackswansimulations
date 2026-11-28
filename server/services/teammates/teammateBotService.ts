@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeTeams } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { getWebSocketService, type WebSocketEvent } from '../websocketService.js';
@@ -472,11 +473,13 @@ class TeammateBotService {
     const scenarioId = (session as { scenario_id?: string | null } | null)?.scenario_id;
     if (!scenarioId) return [];
     const [{ data: teams }, { data: assignments }] = await Promise.all([
-      supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name, team_description, max_participants')
-        .eq('scenario_id', scenarioId)
-        .order('team_name', { ascending: true }),
+      activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, team_description, max_participants')
+          .eq('scenario_id', scenarioId)
+          .order('team_name', { ascending: true }),
+      ),
       supabaseAdmin.from('session_teams').select('user_id, team_name').eq('session_id', sessionId),
     ]);
     const botIds = new Set(bots.map((b) => b.user_id));

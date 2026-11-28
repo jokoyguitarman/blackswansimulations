@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { loadCommsResponsesSection, type CommsResponsesSection } from './aarCommsResponses.js';
 import { computeTeamScores } from './teamScoreService.js';
+import { orgsForSession } from '../lib/templateRows.js';
 
 export interface SocialMediaAARData {
   response_timeline: Array<{
@@ -151,6 +152,7 @@ export interface SocialMediaAARData {
     decided_by: string | null;
     by_trainer: boolean;
     org_key: string | null;
+    org_display: string | null;
     status: string;
     informed: string[];
     should_know_not_told: string[];
@@ -595,12 +597,34 @@ async function buildExecutiveDecisions(
       await import('./decisions/decisionLedger.js');
     const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
     const { getStakeholders } = await import('./stakeholderService.js');
-    const [decisions, events, scenarioId] = await Promise.all([
+    const [decisions, events, scenarioId, sessionRow] = await Promise.all([
       listDecisions(sessionId),
       listDecisionEvents(sessionId),
       getSessionScenarioId(sessionId),
+      supabaseAdmin
+        .from('sessions')
+        .select('start_time, current_state, scenario_id')
+        .eq('id', sessionId)
+        .maybeSingle(),
     ]);
     if (decisions.length === 0) return [];
+    let liveInitial: unknown;
+    const startedAt = (sessionRow.data?.start_time as string | null) ?? null;
+    if (!startedAt && scenarioId) {
+      const { data: scenarioRow } = await supabaseAdmin
+        .from('scenarios')
+        .select('initial_state')
+        .eq('id', scenarioId)
+        .maybeSingle();
+      liveInitial = scenarioRow?.initial_state;
+    }
+    const orgs = orgsForSession({
+      start_time: startedAt,
+      current_state: sessionRow.data?.current_state,
+      initial_state: liveInitial,
+    });
+    const orgName = (key: string | null) =>
+      key ? (orgs.find((org) => org.org_key === key)?.display_name ?? null) : null;
     const stakeholders = scenarioId ? await getStakeholders(scenarioId) : [];
     const nameOf = new Map(stakeholders.map((s) => [s.id, `${s.name} (${s.title})`]));
     const label = (kind: string, id: string) =>
@@ -634,6 +658,7 @@ async function buildExecutiveDecisions(
         decided_by: d.team_name,
         by_trainer: d.recorded_by_trainer,
         org_key: d.org_key,
+        org_display: orgName(d.org_key),
         status: d.status,
         informed: d.detail.informed.map((a) => label(a.actor_kind, a.actor_id)),
         should_know_not_told: d.detail.should_know_stakeholder_ids

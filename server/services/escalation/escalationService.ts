@@ -5,6 +5,7 @@
 
 import type { Server as SocketServer } from 'socket.io';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { getWebSocketService } from '../websocketService.js';
@@ -1036,14 +1037,16 @@ async function publishTemplateKey(
   input: { scenarioId: string; sessionId: string; trainerId: string | null; io: SocketServer | null },
   key: string,
 ): Promise<'published' | 'unresolved' | 'transient'> {
-  const { data, error } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, trigger_time_minutes')
-    .eq('scenario_id', input.scenarioId)
-    .is('session_id', null)
-    .eq('delivery_config->>inject_key', key)
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('id, trigger_time_minutes')
+      .eq('scenario_id', input.scenarioId)
+      .is('session_id', null)
+      .eq('delivery_config->>inject_key', key)
+      .limit(1)
+      .maybeSingle(),
+  );
   if (error) return 'transient';
   if (!data || data.trigger_time_minutes != null) return 'unresolved';
   try {
@@ -1179,11 +1182,13 @@ async function loadScenarioFacts(
       .select('duration_minutes, initial_state')
       .eq('id', scenarioId)
       .maybeSingle();
-    const injects = await supabaseAdmin
-      .from('scenario_injects')
-      .select('id, trigger_time_minutes, conditions_to_appear, conditions_to_cancel, delivery_config')
-      .eq('scenario_id', scenarioId)
-      .is('session_id', null);
+    const injects = await activeTemplateInjects(
+      supabaseAdmin
+        .from('scenario_injects')
+        .select('id, trigger_time_minutes, conditions_to_appear, conditions_to_cancel, delivery_config')
+        .eq('scenario_id', scenarioId)
+        .is('session_id', null),
+    );
     const stakeholders = (scenario.data?.initial_state as { stakeholders?: Array<{ id?: string }> } | null)
       ?.stakeholders;
     const ids = Array.isArray(stakeholders)

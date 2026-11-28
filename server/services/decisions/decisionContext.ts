@@ -2,6 +2,7 @@
  * Organic executive decisions — shared session/scenario context loaders.
  */
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { orgsForSession } from '../../lib/templateRows.js';
 import { getScenarioSnapshot, type ScenarioSnapshot } from '../../lib/scenarioCache.js';
 import { normalizeOrgPages, type OrgConfig } from '../socialCrisisGeneratorService.js';
 import { getStakeholders } from '../stakeholderService.js';
@@ -16,6 +17,7 @@ export interface SessionInfo {
   start_time: string | null;
   status: string;
   sim_mode: string | null;
+  current_state: Record<string, unknown>;
 }
 
 export interface DecisionContextBundle {
@@ -47,7 +49,7 @@ export interface DecisionContextBundle {
 export async function getSessionInfo(sessionId: string): Promise<SessionInfo | null> {
   const { data } = await supabaseAdmin
     .from('sessions')
-    .select('id, scenario_id, trainer_id, start_time, status, sim_mode')
+    .select('id, scenario_id, trainer_id, start_time, status, sim_mode, current_state')
     .eq('id', sessionId)
     .maybeSingle();
   if (!data?.scenario_id) return null;
@@ -58,6 +60,10 @@ export async function getSessionInfo(sessionId: string): Promise<SessionInfo | n
     start_time: data.start_time ? String(data.start_time) : null,
     status: String(data.status || ''),
     sim_mode: data.sim_mode ? String(data.sim_mode) : null,
+    current_state:
+      data.current_state && typeof data.current_state === 'object'
+        ? (data.current_state as Record<string, unknown>)
+        : {},
   };
 }
 
@@ -84,12 +90,15 @@ export async function loadDecisionContext(
   const stakeholderById = new Map(stakeholders.map((s) => [s.id, s]));
   const stakeholderByEmail = new Map(stakeholders.map((s) => [s.email.toLowerCase(), s]));
   const cast = new Map(stakeholders.map((s) => [s.id, toCastEntry(s)]));
-  const registry = (Array.isArray(is.orgs) ? (is.orgs as OrgRegistryEntry[]) : []).filter(
-    (o) => o && o.org_key,
-  );
+  const registry = orgsForSession({
+    start_time: session.start_time,
+    current_state: session.current_state,
+    initial_state: is,
+  }) as OrgRegistryEntry[];
   const orgCountry = new Map<string, string>();
   for (const o of registry) if (o.country) orgCountry.set(o.org_key, o.country);
-  const pages = normalizeOrgPages(is.org_page as Record<string, unknown> | undefined);
+  const pageState = session.start_time ? session.current_state : is;
+  const pages = normalizeOrgPages(pageState.org_page as Record<string, unknown> | undefined);
   const pressurePages = new Map<
     string,
     { spokesperson_id: string; display_name: string; country: string | null; page: OrgConfig }

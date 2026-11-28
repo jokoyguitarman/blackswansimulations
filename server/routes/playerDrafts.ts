@@ -4,6 +4,7 @@ import sanitizeHtml, { type IOptions } from 'sanitize-html';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { validate } from '../lib/validation.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { assertSessionAccess, getCallerTeams, type AccessUser } from '../lib/access.js';
 import {
@@ -523,13 +524,15 @@ router.post(
           }
         | undefined;
       if (draft.team_name) {
-        const { data: teamRow } = await supabaseAdmin
-          .from('scenario_teams')
-          // '*' so function_key (migration 197) is available once it exists.
-          .select('*')
-          .eq('scenario_id', session.scenario_id)
-          .eq('team_name', draft.team_name)
-          .maybeSingle();
+        const { data: teamRow } = await activeTeams(
+          supabaseAdmin
+            .from('scenario_teams')
+            // '*' so function_key (migration 197) is available once it exists.
+            .select('*')
+            .eq('scenario_id', session.scenario_id)
+            .eq('team_name', draft.team_name)
+            .maybeSingle(),
+        );
         const charterJson = (teamRow?.charter || {}) as Record<string, unknown>;
         const catalog = getCatalogCharter(
           resolveTeamFunction({

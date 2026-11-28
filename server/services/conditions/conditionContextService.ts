@@ -5,6 +5,7 @@
  */
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
 
@@ -193,12 +194,14 @@ export async function buildConditionEvaluationContext(
   const sessionFilterId = /^[0-9a-f-]{36}$/i.test(session.id) ? session.id : null;
   if (sessionFilterId && usesInjectKeyConditions(sources)) {
     try {
-      const { data: keyed } = await supabaseAdmin
-        .from('scenario_injects')
-        .select('id, delivery_config')
-        .eq('scenario_id', session.scenario_id)
-        .or(`session_id.is.null,session_id.eq.${sessionFilterId}`)
-        .not('delivery_config->>inject_key', 'is', null);
+      const { data: keyed } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select('id, delivery_config')
+          .eq('scenario_id', session.scenario_id)
+          .or(`session_id.is.null,session_id.eq.${sessionFilterId}`)
+          .not('delivery_config->>inject_key', 'is', null),
+      );
       for (const row of keyed ?? []) {
         const injectKey = String(
           ((row.delivery_config as Record<string, unknown>) ?? {}).inject_key ?? '',

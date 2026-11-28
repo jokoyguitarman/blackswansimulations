@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeTeams } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { getWebSocketService } from '../websocketService.js';
@@ -123,12 +124,14 @@ export async function addBot(
   // Team must exist in the scenario (closed set — same rule as routes/teams.ts).
   let teamCap: number | null = null;
   if (session.scenario_id) {
-    const { data: teamDef } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name, max_participants')
-      .eq('scenario_id', session.scenario_id)
-      .eq('team_name', teamName)
-      .maybeSingle();
+    const { data: teamDef } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name, max_participants')
+        .eq('scenario_id', session.scenario_id)
+        .eq('team_name', teamName)
+        .maybeSingle(),
+    );
     if (!teamDef) {
       return {
         ok: false,
@@ -303,10 +306,12 @@ export async function ensurePageHolder(sessionId: string): Promise<void> {
         .select('user_id, org_key')
         .eq('session_id', sessionId),
       listSessionBots(sessionId),
-      supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name, function_key, org_key, charter')
-        .eq('scenario_id', session.scenario_id),
+      activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, function_key, org_key, charter')
+          .eq('scenario_id', session.scenario_id),
+      ),
     ]);
     const protagonist = (pages ?? []).filter(
       (p) => String((p as { role?: string }).role ?? 'protagonist') === 'protagonist',

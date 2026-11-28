@@ -10,6 +10,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { updateTeamHeatMeter } from './heatMeterService.js';
 import { getWebSocketService } from './websocketService.js';
@@ -138,10 +139,12 @@ export async function runPursuitResponseCheck(sessionId: string): Promise<void> 
   if (!session) return;
 
   // Load investigative teams
-  const { data: allTeams } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name, is_investigative')
-    .eq('scenario_id', session.scenario_id);
+  const { data: allTeams } = await activeTeams(
+    supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name, is_investigative')
+      .eq('scenario_id', session.scenario_id),
+  );
 
   const investigativeTeamNames = new Set(
     (allTeams ?? [])
