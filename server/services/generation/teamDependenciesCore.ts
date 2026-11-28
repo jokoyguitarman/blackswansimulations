@@ -4,6 +4,7 @@
  * keys, team refs and consequence injects.
  */
 
+import { logger } from '../../lib/logger.js';
 import { isValidInjectKey, slugifyInjectTitle } from '../../lib/injectKey.js';
 import { CATALOG_ACTION_TYPES } from '../conditions/conditionCatalog.js';
 import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
@@ -55,6 +56,16 @@ export interface GenerationTeam {
   mission?: string | null;
   /** Omitted means playable. */
   playable?: boolean;
+  /**
+   * Charter duties. `undefined` means the caller did not supply a roster, so a
+   * `duty_missed` action id is kept. An array is authoritative.
+   */
+  duties?: readonly TeamDuty[];
+}
+
+export interface TeamDuty {
+  action_id: string;
+  timing_benchmark_minutes?: number | null;
 }
 
 export interface KnownInject {
@@ -202,14 +213,19 @@ export function fitText(text: string, maxChars: number): string {
 
 /**
  * Public channels (social_feed, news) must not name a team. Internal channels may.
- * Matching is case-insensitive on the whole team name.
+ * A multi-word or distinctive name matches in full, case-insensitively, on a word
+ * boundary. A single generic word such as "Operations" matches only in a possessive
+ * or as "the Operations team", so ordinary prose does not drop the consequence.
  */
-export function checkTeamNaming(inject: {
-  title?: string | null;
-  content?: string | null;
-  app?: string | null;
-  delivery_config?: { app?: unknown } | null;
-}, teamNames: readonly string[]): TeamNaming {
+export function checkTeamNaming(
+  inject: {
+    title?: string | null;
+    content?: string | null;
+    app?: string | null;
+    delivery_config?: { app?: unknown } | null;
+  },
+  teamNames: readonly string[],
+): TeamNaming {
   const app = text(inject.app) ?? text(inject.delivery_config?.app);
   if (!app || !PUBLIC_APPS.has(app)) return { namesTeam: false, matches: [] };
   const haystack = `${inject.title ?? ''}\n${inject.content ?? ''}`;
@@ -254,7 +270,9 @@ export function postProcessDependencies(
   const positives: GeneratedDependencyInject[] = [];
   for (const item of selected) {
     const built = buildConsequenceInjects(item.edge, model, takenInjectKeys);
-    item.edge.consequence_keys = built.consequences.map((inject) => inject.delivery_config.inject_key);
+    item.edge.consequence_keys = built.consequences.map(
+      (inject) => inject.delivery_config.inject_key,
+    );
     consequences.push(...built.consequences);
     positives.push(...built.positives);
   }
@@ -342,37 +360,75 @@ export function buildConsequenceInjects(
 
 /**
  * Intel items become ordinary information edges. The intel gates themselves
- * are not part of this result and are left unchanged.
+ * are not part of this result and are left unchanged. Holder and needed-by
+ * teams are resolved on the playable roster when one is supplied; an item
+ * that does not resolve is skipped.
  */
 export function registerIntelEdges(
   items: readonly IntelRegistrationItem[],
   takenIds: ReadonlySet<string> = new Set(),
+  teams?: readonly GenerationTeam[],
+  durationMinutes?: number,
 ): TeamDependencyEdge[] {
   const taken = new Set(takenIds);
+  const playable = teams?.filter((team) => team.playable !== false && team.team_name.trim());
+  const duration =
+    typeof durationMinutes === 'number' && Number.isFinite(durationMinutes) && durationMinutes > 0
+      ? Math.floor(durationMinutes)
+      : null;
   const edges: TeamDependencyEdge[] = [];
   for (const item of items) {
     const key = slugKey(item.intel_key);
-    const holder = text(item.holder_team);
-    if (!key || !holder) continue;
-    const downstream = [...new Set(item.needed_by.map((name) => text(name)).filter((name): name is string => !!name))]
-      .filter((name) => slugifyTeamName(name) !== slugifyTeamName(holder))
-      .slice(0, 3)
-      .map((name) => refOf(name));
-    if (downstream.length === 0) continue;
+    const holderName = text(item.holder_team);
+    if (!key || !holderName) continue;
+    const holder = playable ? resolveTeam(holderName, playable) : null;
+    if (playable && !holder) {
+      logger.warn(
+        { event: 'intel_dependency_skipped', intel_key: key, holder: holderName },
+        'Skipped an intel dependency whose holder is not a playable team',
+      );
+      continue;
+    }
+    const neededNames = [
+      ...new Set(item.needed_by.map((name) => text(name)).filter((name): name is string => !!name)),
+    ];
+    const downstream: TeamRef[] = [];
+    for (const name of neededNames) {
+      if (playable) {
+        const team = resolveTeam(name, playable);
+        if (!team || (holder && teamIdentity(teamRef(team)) === teamIdentity(teamRef(holder))))
+          continue;
+        downstream.push(teamRef(team));
+      } else if (slugifyTeamName(name) !== slugifyTeamName(holderName)) {
+        downstream.push(refOf(name));
+      }
+      if (downstream.length === 3) break;
+    }
+    if (downstream.length === 0) {
+      if (playable) {
+        logger.warn(
+          { event: 'intel_dependency_skipped', intel_key: key, holder: holderName },
+          'Skipped an intel dependency with no playable downstream team',
+        );
+      }
+      continue;
+    }
     const id = allocateDependencyId(`dep_intel_${key}`, `intel ${key}`, taken);
     if (!id) continue;
     const trigger = finiteMinutes(item.trigger_time_minutes, 8);
     const deadline = finiteMinutes(item.deadline_minutes, trigger + 10);
     const lag = clampInt(deadline - trigger, 2, 15, 5);
     const summary = text(item.summary) || `Fact ${key} reaches the teams that need it`;
+    const dueMinute =
+      duration == null ? Math.max(0, deadline) : clampInt(deadline, 0, duration, deadline);
     edges.push({
       id,
       kind: 'information',
-      upstream: refOf(holder),
+      upstream: holder ? teamRef(holder) : refOf(holderName),
       downstream,
       deliverable: summary.slice(0, 500),
       why: summary.slice(0, 2000),
-      due: { by_minute: Math.max(0, deadline) },
+      due: { by_minute: dueMinute },
       broken_when: { all: [`intel_missing:${key}`] },
       met_when: { all: [`intel_shared:${key}`] },
       lag_minutes: lag,
@@ -400,7 +456,10 @@ function buildEdge(
   }
   const upstream = resolveTeam(row.upstream, teams);
   if (!upstream || upstream.playable === false) {
-    dropped.push({ id: text(row.id) ?? undefined, reason: 'upstream team is unknown or not playable' });
+    dropped.push({
+      id: text(row.id) ?? undefined,
+      reason: 'upstream team is unknown or not playable',
+    });
     return null;
   }
   const downstream = downstreamTeams(row.downstream, teams, upstream);
@@ -437,10 +496,11 @@ function buildEdge(
     });
   }
   const askKey = ask?.delivery_config.inject_key ?? null;
+  const duties = upstream.duties;
   const signals = Array.isArray(row.signals) ? row.signals : [];
   const broken: string[] = [];
   for (const signal of signals) {
-    const key = signalToKey(signal, 'broken', askKey, knownWithAsk);
+    const key = signalToKey(signal, 'broken', askKey, knownWithAsk, duties);
     if (key) broken.push(key);
   }
   if (broken.length === 0) {
@@ -453,8 +513,8 @@ function buildEdge(
     row.met_signal === null
       ? null
       : row.met_signal
-        ? signalToKey(row.met_signal, 'met', askKey, knownWithAsk)
-        : defaultMetKey(signals, askKey, knownWithAsk);
+        ? signalToKey(row.met_signal, 'met', askKey, knownWithAsk, duties)
+        : defaultMetKey(signals, askKey, knownWithAsk, duties);
   const boundKey = firstInjectKey(broken) ?? askKey;
   const due = fixDue(row.due, duration, knownWithAsk, boundKey, signalMinutes(signals));
   const edge: TeamDependencyEdge = {
@@ -531,6 +591,7 @@ function signalToKey(
   pole: 'broken' | 'met',
   askKey: string | null,
   known: ReadonlyMap<string, KnownInject>,
+  duties?: readonly TeamDuty[],
 ): string | null {
   const row = asRecord(raw);
   if (!row) return null;
@@ -547,10 +608,15 @@ function signalToKey(
   }
   if (template === 'poor_reply') {
     if (!injectKey) return null;
-    return pole === 'met' ? `reply_passed:${injectKey}${suffix}` : `reply_failed:${injectKey}${suffix}`;
+    return pole === 'met'
+      ? `reply_passed:${injectKey}${suffix}`
+      : `reply_failed:${injectKey}${suffix}`;
   }
   if (template === 'duty_missed') {
-    const action = slugKey(text(row.action_id) ?? text(row.inject_key) ?? '');
+    const action = resolveDutyId(
+      slugKey(text(row.action_id) ?? text(row.inject_key) ?? ''),
+      duties,
+    );
     if (!action) return null;
     return pole === 'met' ? `duty_done:${action}${suffix}` : `duty_missed:${action}${suffix}`;
   }
@@ -585,11 +651,27 @@ function defaultMetKey(
   signals: readonly unknown[],
   askKey: string | null,
   known: ReadonlyMap<string, KnownInject>,
+  duties?: readonly TeamDuty[],
 ): string | null {
   for (const signal of signals) {
-    const key = signalToKey(signal, 'met', askKey, known);
+    const key = signalToKey(signal, 'met', askKey, known, duties);
     if (key) return key;
   }
+  return null;
+}
+
+/**
+ * `undefined` duties means no charter was supplied. A listed roster that does
+ * not contain the id is repaired to the only real duty, or dropped.
+ */
+function resolveDutyId(action: string, duties: readonly TeamDuty[] | undefined): string | null {
+  if (!duties) return action || null;
+  const ids = duties
+    .map((duty) => text(duty.action_id))
+    .filter((id): id is string => !!id && /^[a-z0-9_]{1,60}$/.test(id));
+  const match = action ? ids.find((id) => id === action || slugKey(id) === action) : undefined;
+  if (match) return match;
+  if (ids.length === 1) return ids[0];
   return null;
 }
 
@@ -625,7 +707,12 @@ function buildAsk(
   if (!content || !title) return null;
   const app = ASK_APPS.has(text(row.app) ?? '') ? (text(row.app) as string) : 'email';
   const injectKey = allocateInjectKey(null, title, taken);
-  const trigger = clampInt(row.trigger_time_minutes, 1, Math.max(1, duration), Math.min(12, duration));
+  const trigger = clampInt(
+    row.trigger_time_minutes,
+    1,
+    Math.max(1, duration),
+    Math.min(12, duration),
+  );
   const layer = `dependency:${depId}`;
   return {
     trigger_time_minutes: trigger,
@@ -663,7 +750,9 @@ function fixDue(
     if (trigger + within > duration) within = Math.max(0, duration - trigger);
     return { after_inject_key: after, within_minutes: within };
   }
-  return { by_minute: clampInt(row?.by_minute ?? withinFallback, 0, duration, Math.min(20, duration)) };
+  return {
+    by_minute: clampInt(row?.by_minute ?? withinFallback, 0, duration, Math.min(20, duration)),
+  };
 }
 
 function downstreamTeams(
@@ -690,7 +779,7 @@ function resolveTeam(raw: unknown, teams: readonly GenerationTeam[]): Generation
   const name =
     typeof raw === 'string'
       ? raw
-      : text(asRecord(raw)?.team_name) ?? text(asRecord(raw)?.name) ?? '';
+      : (text(asRecord(raw)?.team_name) ?? text(asRecord(raw)?.name) ?? '');
   const trimmed = name.trim();
   if (!trimmed) return null;
   const exact = teams.find((team) => team.team_name === trimmed);
@@ -826,7 +915,8 @@ function firstInjectKey(keys: readonly string[]): string | null {
 function signalMinutes(signals: readonly unknown[]): number {
   for (const signal of signals) {
     const minutes = asRecord(signal)?.minutes;
-    if (typeof minutes === 'number' && Number.isFinite(minutes)) return Math.max(1, Math.floor(minutes));
+    if (typeof minutes === 'number' && Number.isFinite(minutes))
+      return Math.max(1, Math.floor(minutes));
   }
   return 10;
 }
@@ -835,11 +925,65 @@ function sameEdge(raw: unknown, id: string): boolean {
   return text(raw) === id;
 }
 
+const GENERIC_TEAM_WORDS = new Set([
+  'operations',
+  'operation',
+  'ops',
+  'legal',
+  'communications',
+  'communication',
+  'comms',
+  'security',
+  'finance',
+  'financial',
+  'executive',
+  'executives',
+  'marketing',
+  'logistics',
+  'sales',
+  'procurement',
+  'support',
+  'media',
+  'press',
+  'hr',
+  'it',
+  'compliance',
+  'management',
+  'admin',
+  'administration',
+  'facilities',
+  'engineering',
+  'product',
+  'strategy',
+  'governance',
+  'risk',
+  'audit',
+  'customer',
+  'service',
+  'services',
+]);
+
 function nameMentions(haystack: string, teamName: string): boolean {
   const name = teamName.trim();
   if (name.length < 2) return false;
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 1 && GENERIC_TEAM_WORDS.has(parts[0].toLowerCase())) {
+    return genericTeamMention(haystack, name);
+  }
   const pattern = new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(name)}([^A-Za-z0-9]|$)`, 'i');
   return pattern.test(haystack);
+}
+
+function genericTeamMention(haystack: string, name: string): boolean {
+  const token = escapeRegExp(name);
+  const possessive = new RegExp(`(^|[^A-Za-z0-9])${token}(?:'s|')(?![A-Za-z0-9])`, 'i');
+  const role = 'team|department|unit|desk|staff|office|division|function';
+  const named = new RegExp(
+    `(^|[^A-Za-z0-9])(?:the\\s+)?${token}\\s+(?:${role})(?![A-Za-z0-9])`,
+    'i',
+  );
+  const ofTeam = new RegExp(`(^|[^A-Za-z0-9])(?:${role})\\s+of\\s+${token}(?![A-Za-z0-9])`, 'i');
+  return possessive.test(haystack) || named.test(haystack) || ofTeam.test(haystack);
 }
 
 function escapeRegExp(value: string): string {

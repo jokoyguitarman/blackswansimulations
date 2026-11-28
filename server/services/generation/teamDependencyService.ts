@@ -99,6 +99,7 @@ export interface DependencyCharterSource {
   mission?: string;
   function_key?: string | null;
   org_key?: string | null;
+  expected_actions?: readonly unknown[] | null;
 }
 
 const defaultClient: DependencyClient = {
@@ -129,11 +130,13 @@ export function dependencyTeamsFrom(input: {
     if (!team.team_name.trim() || team.team_name === 'Shared' || seen.has(team.team_name)) return;
     seen.add(team.team_name);
     const charter = charters.get(team.team_name);
+    const duties = dutiesFrom(charter?.expected_actions);
     teams.push({
       ...team,
       function_name: team.function_name || charter?.function_key || null,
       mission: team.mission || charter?.mission || null,
       org_key: team.org_key || charter?.org_key || null,
+      ...(duties ? { duties } : {}),
     });
   };
   for (const org of input.orgs ?? []) {
@@ -195,7 +198,10 @@ export async function generateTeamDependencies(
   const concurrency = options.concurrency ?? env.warroomGenConcurrency;
   const batchTeams = options.mapBatchTeams ?? env.warroomDependencyMapBatchTeams;
   const upstreamPerTeam = options.upstreamPerTeam ?? env.warroomDependencyUpstreamPerTeam;
-  const consequenceBatch = Math.max(1, options.consequenceBatch ?? env.warroomDependencyConsequenceBatch);
+  const consequenceBatch = Math.max(
+    1,
+    options.consequenceBatch ?? env.warroomDependencyConsequenceBatch,
+  );
   const summaryBudget = options.summaryBudget ?? CONVERGENCE_SUMMARY_MAX_CHARS;
   const duration = input.crisis.duration > 0 ? input.crisis.duration : 60;
   const known = stampStorylineKeys(input.storylines);
@@ -214,7 +220,10 @@ export async function generateTeamDependencies(
       const edges = Array.isArray(asRecord(raw)?.edges) ? (asRecord(raw)?.edges as unknown[]) : [];
       return plan.kind === 'cross' ? capCrossOrgEdges(edges, input.teams) : edges;
     } catch (err) {
-      logger.warn({ err, event: 'dependency_map_failed', kind: plan.kind }, 'Dependency map call failed');
+      logger.warn(
+        { err, event: 'dependency_map_failed', kind: plan.kind },
+        'Dependency map call failed',
+      );
       return [];
     }
   });
@@ -251,7 +260,10 @@ export async function generateTeamDependencies(
     try {
       raw = await client.complete(request);
     } catch (err) {
-      logger.warn({ err, event: 'dependency_consequences_failed' }, 'Dependency consequence call failed');
+      logger.warn(
+        { err, event: 'dependency_consequences_failed' },
+        'Dependency consequence call failed',
+      );
     }
     const consequences: GeneratedDependencyInject[] = [];
     const positives: GeneratedDependencyInject[] = [];
@@ -275,6 +287,8 @@ export async function generateTeamDependencies(
   const intel = registerIntelEdges(
     input.intelItems ?? [],
     new Set(processed.edges.map((edge) => edge.id)),
+    input.teams,
+    duration,
   );
   const edges = [...processed.edges, ...intel];
   const consequences = built.flatMap((batch) => batch.consequences);
@@ -344,6 +358,7 @@ function mapUserPrompt(
         : 'Dependencies may cross organisations where that is realistic.',
     'Teams:',
     ...lines,
+    dutyBlock(plan.teams),
     'Storyline injects already written:',
     storyline || '(none)',
   ]
@@ -408,15 +423,23 @@ async function repairNaming(
       json: true,
     });
   } catch (err) {
-    logger.warn({ err, event: 'dependency_naming_retry_failed', title: inject.title }, 'Naming retry failed');
+    logger.warn(
+      { err, event: 'dependency_naming_retry_failed', title: inject.title },
+      'Naming retry failed',
+    );
   }
   const row = asRecord(raw);
-  const title = typeof row?.title === 'string' && row.title.trim() ? row.title.trim() : inject.title;
+  const title =
+    typeof row?.title === 'string' && row.title.trim() ? row.title.trim() : inject.title;
   const content = typeof row?.content === 'string' ? row.content.trim() : '';
   const next = content ? { ...inject, title, content } : null;
   if (!next || checkTeamNaming(next, teamNames).namesTeam) {
     logger.warn(
-      { event: 'dependency_consequence_dropped_names_team', title: inject.title, teams: hit.matches },
+      {
+        event: 'dependency_consequence_dropped_names_team',
+        title: inject.title,
+        teams: hit.matches,
+      },
       'Dropped a public consequence that named an internal team',
     );
     return null;
@@ -433,7 +456,9 @@ function stampStorylineKeys(storylines: Record<string, SocialInject[]>): KnownIn
     original.delivery_config = {
       ...original.delivery_config,
       inject_key:
-        typeof row.delivery_config.inject_key === 'string' ? row.delivery_config.inject_key : undefined,
+        typeof row.delivery_config.inject_key === 'string'
+          ? row.delivery_config.inject_key
+          : undefined,
     };
   });
   return flat.flatMap((inject) => {
@@ -450,19 +475,109 @@ function stampStorylineKeys(storylines: Record<string, SocialInject[]>): KnownIn
 }
 
 function capCrossOrgEdges(edges: readonly unknown[], teams: readonly GenerationTeam[]): unknown[] {
-  const orgOf = new Map(teams.map((team) => [team.team_name, team.org_key || team.org_name || '']));
   const counts = new Map<string, number>();
   const kept: unknown[] = [];
   for (const raw of edges) {
-    const row = asRecord(raw);
-    const upstream = typeof row?.upstream === 'string' ? row.upstream : '';
-    const org = orgOf.get(upstream) || '';
+    const filtered = dropSameOrgEdge(raw, teams);
+    if (!filtered) continue;
+    const row = asRecord(filtered);
+    const upstream = teamByName(upstreamName(row), teams);
+    const org = upstream ? orgId(upstream) : '';
     const used = counts.get(org) ?? 0;
     if (org && used >= CROSS_ORG_EDGES_PER_ORG) continue;
     if (org) counts.set(org, used + 1);
-    kept.push(raw);
+    kept.push(filtered);
   }
   return kept;
+}
+
+/** A cross-org call keeps an edge only when some downstream team is in another organisation. */
+function dropSameOrgEdge(raw: unknown, teams: readonly GenerationTeam[]): unknown | null {
+  const row = asRecord(raw);
+  if (!row) return raw;
+  const upstream = teamByName(upstreamName(row), teams);
+  const upOrg = upstream ? orgId(upstream) : '';
+  const names = downstreamNames(row.downstream);
+  if (!upOrg || names.length === 0) return raw;
+  const cross = names.filter((name) => {
+    const team = teamByName(name, teams);
+    if (!team) return true;
+    const org = orgId(team);
+    return !org || org !== upOrg;
+  });
+  if (cross.length === 0) return null;
+  if (cross.length === names.length) return raw;
+  return { ...row, downstream: cross };
+}
+
+function upstreamName(row: Record<string, unknown> | null): string {
+  if (!row) return '';
+  if (typeof row.upstream === 'string') return row.upstream;
+  return text(asRecord(row.upstream)?.team_name) ?? text(asRecord(row.upstream)?.name) ?? '';
+}
+
+function downstreamNames(raw: unknown): string[] {
+  const listed = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  return listed.flatMap((item) => {
+    if (typeof item === 'string' && item.trim()) return [item.trim()];
+    const name = text(asRecord(item)?.team_name) ?? text(asRecord(item)?.name);
+    return name ? [name] : [];
+  });
+}
+
+function teamByName(name: string, teams: readonly GenerationTeam[]): GenerationTeam | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const exact = teams.find((team) => team.team_name === trimmed);
+  if (exact) return exact;
+  const lower = trimmed.toLowerCase();
+  const matches = teams.filter((team) => team.team_name.toLowerCase() === lower);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function orgId(team: GenerationTeam): string {
+  return team.org_key || team.org_name || '';
+}
+
+function dutyBlock(teams: readonly GenerationTeam[]): string {
+  const lines = teams.flatMap((team) => {
+    if (!team.duties || team.duties.length === 0) return [];
+    const duties = team.duties
+      .map((duty) => {
+        const id = duty.action_id.trim();
+        if (!id) return '';
+        return duty.timing_benchmark_minutes != null
+          ? `${id} (benchmark ${duty.timing_benchmark_minutes} min)`
+          : id;
+      })
+      .filter(Boolean);
+    if (duties.length === 0) return [];
+    return [`- ${team.team_name}: ${duties.join(', ')}`];
+  });
+  if (lines.length === 0) return '';
+  return [
+    'Charter duties (a duty_missed action_id must be one of these, not an invented id):',
+    ...lines,
+  ].join('\n');
+}
+
+function dutiesFrom(
+  actions: readonly unknown[] | null | undefined,
+): GenerationTeam['duties'] | undefined {
+  if (!Array.isArray(actions)) return undefined;
+  const duties: NonNullable<GenerationTeam['duties']>[number][] = [];
+  for (const raw of actions) {
+    const row = asRecord(raw);
+    const id = typeof row?.action_id === 'string' ? row.action_id.trim() : '';
+    if (!/^[a-z0-9_]{1,60}$/.test(id)) continue;
+    const benchmark = row?.timing_benchmark_minutes;
+    duties.push({
+      action_id: id,
+      timing_benchmark_minutes:
+        typeof benchmark === 'number' && Number.isFinite(benchmark) ? benchmark : null,
+    });
+  }
+  return duties;
 }
 
 function teamLine(team: GenerationTeam): string {
@@ -482,7 +597,8 @@ function storylineBlock(
     for (const inject of injects) {
       const key = inject.delivery_config?.inject_key;
       if (typeof key !== 'string' || !byKey.has(key)) continue;
-      const minute = inject.trigger_time_minutes == null ? '?' : String(inject.trigger_time_minutes);
+      const minute =
+        inject.trigger_time_minutes == null ? '?' : String(inject.trigger_time_minutes);
       lines.push(`- ${key} | ${team} | T+${minute} | ${inject.title}`);
     }
   }
@@ -504,4 +620,8 @@ function asSocialInject(inject: GeneratedDependencyInject): SocialInject {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }

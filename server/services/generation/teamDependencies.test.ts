@@ -17,15 +17,43 @@ import {
 import { postProcessResponseBranches, type BranchParent } from './responseBranchesCore.js';
 
 const SUPERMARKET: GenerationTeam[] = [
-  { team_name: 'Operations', org_key: 'retail', org_name: 'FreshMart', function_name: 'Operations', mission: 'Run the stores' },
-  { team_name: 'Communications', org_key: 'retail', org_name: 'FreshMart', function_name: 'Communications', mission: 'Speak for the company' },
-  { team_name: 'Legal', org_key: 'retail', org_name: 'FreshMart', function_name: 'Legal', mission: 'Approve what is said' },
-  { team_name: 'Customer Service', org_key: 'retail', org_name: 'FreshMart', function_name: 'Customer Service', mission: 'Answer the public' },
+  {
+    team_name: 'Operations',
+    org_key: 'retail',
+    org_name: 'FreshMart',
+    function_name: 'Operations',
+    mission: 'Run the stores',
+  },
+  {
+    team_name: 'Communications',
+    org_key: 'retail',
+    org_name: 'FreshMart',
+    function_name: 'Communications',
+    mission: 'Speak for the company',
+  },
+  {
+    team_name: 'Legal',
+    org_key: 'retail',
+    org_name: 'FreshMart',
+    function_name: 'Legal',
+    mission: 'Approve what is said',
+  },
+  {
+    team_name: 'Customer Service',
+    org_key: 'retail',
+    org_name: 'FreshMart',
+    function_name: 'Customer Service',
+    mission: 'Answer the public',
+  },
 ];
 
 const KNOWN: KnownInject[] = [
   { inject_key: 'bay3_headcount_request', title: 'Bay 3 headcount', trigger_time_minutes: 8 },
-  { inject_key: 'legal_approval_request', title: 'Approve the holding statement', trigger_time_minutes: 12 },
+  {
+    inject_key: 'legal_approval_request',
+    title: 'Approve the holding statement',
+    trigger_time_minutes: 12,
+  },
 ];
 
 function keysOf(group: { all?: string[]; conditions?: string[] } | null): string[] {
@@ -196,7 +224,9 @@ describe('postProcessDependencies', () => {
       60,
     );
     assert.equal(processed.consequences.length, 2);
-    const byTeam = new Map(processed.consequences.map((inject) => [inject.target_teams[0], inject]));
+    const byTeam = new Map(
+      processed.consequences.map((inject) => [inject.target_teams[0], inject]),
+    );
     for (const team of ['Communications', 'Customer Service']) {
       const inject = byTeam.get(team);
       assert.ok(inject, team);
@@ -223,16 +253,25 @@ describe('registerIntelEdges', () => {
       },
     ];
     const before = structuredClone(gates);
-    const edges = registerIntelEdges([
-      {
-        intel_key: 'vessel_manifest_k7',
-        holder_team: 'Port Authority Operations',
-        needed_by: ['Shipping Co Operations'],
-        trigger_time_minutes: 8,
-        deadline_minutes: 20,
-        summary: 'The vessel manifest for berth K7',
-      },
-    ]);
+    const teams: GenerationTeam[] = [
+      { team_name: 'Port Authority Operations', org_key: 'port', playable: true },
+      { team_name: 'Shipping Co Operations', org_key: 'ship', playable: true },
+    ];
+    const edges = registerIntelEdges(
+      [
+        {
+          intel_key: 'vessel_manifest_k7',
+          holder_team: 'Port Authority Operations',
+          needed_by: ['Shipping Co Operations'],
+          trigger_time_minutes: 8,
+          deadline_minutes: 90,
+          summary: 'The vessel manifest for berth K7',
+        },
+      ],
+      new Set(),
+      teams,
+      40,
+    );
     assert.deepEqual(gates, before);
     assert.equal(edges.length, 1);
     assert.equal(edges[0]?.source, 'intel');
@@ -244,6 +283,27 @@ describe('registerIntelEdges', () => {
       edges[0]?.downstream.map((team) => team.team_name),
       ['Shipping Co Operations'],
     );
+    assert.deepEqual(edges[0]?.due, { by_minute: 40 });
+  });
+
+  test('an AI-operated holder is not registered', () => {
+    const edges = registerIntelEdges(
+      [
+        {
+          intel_key: 'vessel_manifest_k7',
+          holder_team: 'Port Authority Operations',
+          needed_by: ['Shipping Co Operations'],
+          summary: 'The vessel manifest',
+        },
+      ],
+      new Set(),
+      [
+        { team_name: 'Port Authority Operations', org_key: 'port', playable: false },
+        { team_name: 'Shipping Co Operations', org_key: 'ship', playable: true },
+      ],
+      60,
+    );
+    assert.deepEqual(edges, []);
   });
 });
 
@@ -349,7 +409,9 @@ describe('example A', () => {
     assert.deepEqual(keysOf(restraint?.met_when ?? null), [
       'responded_relevant:legal_approval_request|team=@downstream',
     ]);
-    const reporter = processed.consequences.find((inject) => inject.title === 'Reporter presses for numbers');
+    const reporter = processed.consequences.find(
+      (inject) => inject.title === 'Reporter presses for numbers',
+    );
     assert.deepEqual(reporter?.target_teams, ['Communications']);
     assert.equal(reporter?.delivery_config.stakeholder_id, 'stk_maria_tan');
     assert.equal(reporter?.delivery_config.app, 'email');
@@ -392,9 +454,15 @@ describe('validateConditionalInjects dependency guards', () => {
         },
       ],
     });
-    assert.ok(unknown.issues.some((issue) => issue.code === 'MO-COND-011' && issue.message.includes('not_a_team')));
+    assert.ok(
+      unknown.issues.some(
+        (issue) => issue.code === 'MO-COND-011' && issue.message.includes('not_a_team'),
+      ),
+    );
     assert.equal(
-      unknown.issues.some((issue) => issue.code === 'MO-COND-011' && issue.message.includes('operations')),
+      unknown.issues.some(
+        (issue) => issue.code === 'MO-COND-011' && issue.message.includes('operations'),
+      ),
       false,
     );
 
@@ -601,7 +669,9 @@ describe('generateTeamDependencies', () => {
             })),
           };
         }
-        const described = JSON.parse(request.user.split('Dependencies:\n')[1]?.split('\n')[0] ?? '[]') as Array<{
+        const described = JSON.parse(
+          request.user.split('Dependencies:\n')[1]?.split('\n')[0] ?? '[]',
+        ) as Array<{
           id: string;
           downstream: string[];
         }>;
@@ -630,12 +700,19 @@ describe('generateTeamDependencies', () => {
     );
     const edges = result.team_dependencies.edges;
     assert.ok(edges.length >= 6);
-    const covered = new Set(edges.flatMap((edge) => [edge.upstream.team_name, ...edge.downstream.map((team) => team.team_name)]));
+    const covered = new Set(
+      edges.flatMap((edge) => [
+        edge.upstream.team_name,
+        ...edge.downstream.map((team) => team.team_name),
+      ]),
+    );
     for (const team of teams) assert.ok(covered.has(team.team_name), team.team_name);
     const orgOf = new Map(teams.map((team) => [team.team_name, team.org_key]));
     assert.ok(
       edges.some((edge) =>
-        edge.downstream.some((team) => orgOf.get(team.team_name) !== orgOf.get(edge.upstream.team_name)),
+        edge.downstream.some(
+          (team) => orgOf.get(team.team_name) !== orgOf.get(edge.upstream.team_name),
+        ),
       ),
     );
     assert.ok(result.consequences.length >= 6);
@@ -683,8 +760,8 @@ describe('generateTeamDependencies', () => {
             {
               edge_id: 'dep_ops_public',
               downstream: 'Communications',
-              title: 'Operations missed the deadline',
-              content: 'Operations never sent the figures.',
+              title: 'The Operations team missed the deadline',
+              content: 'The Operations team never sent the figures.',
               app: 'social_feed',
             },
           ],
@@ -703,7 +780,160 @@ describe('generateTeamDependencies', () => {
     );
     assert.equal(consequenceCalls, 2);
     assert.equal(result.consequences.length, 0);
-    assert.equal(checkTeamNaming({ title: 'Note', content: 'Operations never sent the figures.', app: 'email' }, ['Operations']).namesTeam, false);
+    assert.equal(
+      checkTeamNaming(
+        { title: 'Note', content: 'The Operations team never sent the figures.', app: 'email' },
+        ['Operations'],
+      ).namesTeam,
+      false,
+    );
+    assert.equal(
+      checkTeamNaming(
+        { title: 'Update', content: 'Daily operations continue overnight.', app: 'social_feed' },
+        ['Operations'],
+      ).namesTeam,
+      false,
+    );
+    assert.equal(
+      checkTeamNaming(
+        { title: 'Update', content: "Operations' delay left the statement blank.", app: 'news' },
+        ['Operations'],
+      ).namesTeam,
+      true,
+    );
+    assert.equal(
+      checkTeamNaming(
+        {
+          title: 'Update',
+          content: 'Customer Service has no line to give callers.',
+          app: 'social_feed',
+        },
+        ['Customer Service'],
+      ).namesTeam,
+      true,
+    );
+  });
+
+  test('duty_missed uses a real upstream duty, and a cross-org call drops same-org edges', async () => {
+    const teams: GenerationTeam[] = [
+      {
+        team_name: 'Retail Legal',
+        org_key: 'retail',
+        org_name: 'FreshMart',
+        playable: true,
+        duties: [{ action_id: 'legal_review_statement', timing_benchmark_minutes: 15 }],
+      },
+      { team_name: 'Retail Comms', org_key: 'retail', org_name: 'FreshMart', playable: true },
+      { team_name: 'Port Ops', org_key: 'port', org_name: 'Harbour Board', playable: true },
+      { team_name: 'Port Comms', org_key: 'port', org_name: 'Harbour Board', playable: true },
+    ];
+    let sawDuty = false;
+    const client: DependencyClient = {
+      async complete(request) {
+        if (request.label !== 'generator.dependencyMap') return { consequences: [], positives: [] };
+        sawDuty = sawDuty || request.user.includes('legal_review_statement (benchmark 15 min)');
+        if (request.user.includes('only for dependencies that cross')) {
+          return {
+            edges: [
+              {
+                id: 'dep_same_org',
+                kind: 'approval',
+                upstream: 'Retail Legal',
+                downstream: ['Retail Comms'],
+                deliverable: 'Same org approval',
+                why: 'Inside one organisation',
+                signals: [{ template: 'duty_missed', action_id: 'invented_duty' }],
+                met_signal: null,
+                lag_minutes: 5,
+                severity: 'medium',
+              },
+              {
+                id: 'dep_cross_org',
+                kind: 'information',
+                upstream: 'Retail Legal',
+                downstream: ['Port Ops'],
+                deliverable: 'Cross org notice',
+                why: 'The port needs the approval',
+                signals: [{ template: 'silent', minutes: 10 }],
+                met_signal: null,
+                lag_minutes: 5,
+                severity: 'medium',
+              },
+            ],
+          };
+        }
+        return { edges: [] };
+      },
+    };
+    const result = await generateTeamDependencies(
+      {
+        teams,
+        crisis: { crisisType: 'contamination', duration: 60 },
+        facts: [],
+        storylines: {},
+      },
+      { client, mapBatchTeams: 2, concurrency: 2 },
+    );
+    assert.equal(sawDuty, true);
+    assert.deepEqual(
+      result.team_dependencies.edges.map((edge) => edge.id),
+      ['dep_cross_org'],
+    );
+    const repaired = postProcessDependencies(
+      {
+        edges: [
+          {
+            id: 'dep_legal_only_duty',
+            kind: 'approval',
+            upstream: 'Retail Legal',
+            downstream: ['Retail Comms'],
+            deliverable: 'The statement',
+            why: 'Comms cannot publish',
+            signals: [{ template: 'duty_missed', action_id: 'invented_duty' }],
+            met_signal: null,
+            lag_minutes: 4,
+            severity: 'high',
+          },
+        ],
+      },
+      teams,
+      [],
+      60,
+    );
+    assert.deepEqual(keysOf(repaired.edges[0]?.broken_when ?? null), [
+      'duty_missed:legal_review_statement|team=@upstream',
+    ]);
+    const ambiguous = postProcessDependencies(
+      {
+        edges: [
+          {
+            id: 'dep_two_duties',
+            kind: 'approval',
+            upstream: 'Retail Legal',
+            downstream: ['Retail Comms'],
+            deliverable: 'The statement',
+            why: 'Comms cannot publish',
+            signals: [{ template: 'duty_missed', action_id: 'invented_duty' }],
+            met_signal: null,
+            lag_minutes: 4,
+            severity: 'high',
+          },
+        ],
+      },
+      [
+        {
+          ...teams[0],
+          duties: [
+            { action_id: 'legal_review_statement', timing_benchmark_minutes: 15 },
+            { action_id: 'legal_read_intel', timing_benchmark_minutes: 10 },
+          ],
+        },
+        teams[1],
+      ],
+      [],
+      60,
+    );
+    assert.equal(ambiguous.edges.length, 0);
   });
 });
 

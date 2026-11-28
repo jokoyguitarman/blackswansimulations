@@ -1349,6 +1349,7 @@ router.post(
                 mission: row.mission,
                 function_key: row.function_key ?? null,
                 org_key: row.org_key ?? null,
+                expected_actions: row.expected_actions,
               };
             }),
           });
@@ -1365,7 +1366,8 @@ router.post(
             storylines: dependencyStorylines,
             intelItems: intelItemsFromInjects(dependencyStorylines),
             stakeholders: (
-              (multiArtifacts?.stakeholders ?? (body.stakeholders as Stakeholder[] | undefined)) ??
+              multiArtifacts?.stakeholders ??
+              (body.stakeholders as Stakeholder[] | undefined) ??
               []
             ).map((stakeholder) => ({ id: stakeholder.id, name: stakeholder.name })),
           });
@@ -1415,9 +1417,15 @@ router.post(
             roster: teamCharters.map((charter) => charter.team_name),
             dependencies: body.team_dependencies
               ? {
-                  edges: (
-                    body.team_dependencies as { edges?: Array<{ upstream: { team_name: string }; downstream: { team_name: string }[] }> }
-                  ).edges ?? [],
+                  edges:
+                    (
+                      body.team_dependencies as {
+                        edges?: Array<{
+                          upstream: { team_name: string };
+                          downstream: { team_name: string }[];
+                        }>;
+                      }
+                    ).edges ?? [],
                   teams: teamCharters.map((charter) => charter.team_name),
                 }
               : null,
