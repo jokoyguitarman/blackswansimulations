@@ -173,6 +173,7 @@ export function createStageRunners(
           {
             stakeholders: input.stakeholders,
             stakeholderInjects: input.stakeholderInjects,
+            teamCharters: input.teamCharters,
           },
         ),
       );

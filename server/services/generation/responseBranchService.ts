@@ -75,6 +75,8 @@ export interface GenerateBranchesOptions {
   client?: ResponseBranchClient;
   /** When set, only these parent keys are sent to the model. */
   onlyParentKeys?: ReadonlySet<string>;
+  /** Branch `target_teams` outside this list fall back to the parent's teams. */
+  roster?: readonly string[];
 }
 
 const CONSEQUENCE_GUIDANCE =
@@ -150,7 +152,7 @@ export async function generateResponseBranches(
       raw && typeof raw === 'object'
         ? (raw as { branches?: unknown; rubrics?: unknown; escalations?: unknown })
         : {};
-    const processed = postProcessResponseBranches(model, batch, duration, taken);
+    const processed = postProcessResponseBranches(model, batch, duration, taken, options.roster ?? []);
     if (raw && typeof raw === 'object' && 'escalations' in (raw as object)) {
       applyModelEscalations(
         model.escalations,
@@ -187,6 +189,15 @@ export async function attachResponseBranches(input: {
   client?: ResponseBranchClient;
   /** Drop round-trip fields after rubrics have been copied onto the parents. */
   stripCarry?: boolean;
+  /** Team names a branch may target. Unknown names fall back to the parent. */
+  roster?: readonly string[];
+  dependencies?: {
+    edges: readonly {
+      upstream: { team_name: string };
+      downstream: readonly { team_name: string }[];
+    }[];
+    teams: readonly string[];
+  } | null;
 }): Promise<CoverageReport> {
   const pool = dedupe(input.injects);
   bindParentKeys(pool as unknown as BranchInject[]);
@@ -210,7 +221,7 @@ export async function attachResponseBranches(input: {
       input.stakeholders,
       input.factSheet,
       input.crisis,
-      { client: input.client, onlyParentKeys: pendingKeys },
+      { client: input.client, onlyParentKeys: pendingKeys, roster: input.roster },
     );
     for (const branch of generated.branches) {
       if (pool.includes(branch) || input.branchSink.includes(branch)) continue;
@@ -239,7 +250,7 @@ export async function attachResponseBranches(input: {
       if (inject.delivery_config?.branch) stripBranchCarry(inject as unknown as BranchInject);
     }
   }
-  const report = coverageReport(pool as unknown as BranchInject[], input.stakeholders);
+  const report = coverageReport(pool as unknown as BranchInject[], input.stakeholders, input.dependencies);
   logger.info(
     {
       event: 'conditional_coverage',
@@ -248,6 +259,9 @@ export async function attachResponseBranches(input: {
       redialing_calls: report.redialing_calls,
       stakeholders_with_ladder: report.stakeholders_with_ladder,
       gave_up_consequences: report.gave_up_consequences,
+      dependency_edges: report.dependency_edges,
+      cross_team_consequences: report.cross_team_consequences,
+      teams_without_dependency: report.teams_without_dependency,
     },
     'Conditional inject coverage',
   );
@@ -302,7 +316,7 @@ For every parent inject (an email, phone call, or direct message that asks for a
 - no_reply: appears on unresponded:<inject_key>:<window>, or email_unreplied / dm_unanswered / call_missed / call_unreturned for that channel. Cancel on responded:<inject_key>, or email_replied / call_answered for that channel.
 - poor_reply: appears on reply_failed:<inject_key> or reply_tone:<inject_key>:dismissive|defensive|hostile. Cancel on reply_best_passed:<inject_key>.
 - good_reply: appears on reply_passed:<inject_key>. A thank-you or a de-escalation. Cancel on reply_failed:<inject_key>.
-- risky_admission (optional): appears on reply_risky_admission:<inject_key> and escalates to legal or a regulator.
+- risky_admission (optional): appears on reply_risky_admission:<inject_key> and escalates to legal or a regulator. A poor reply may land on another team, for example a risky admission reaching Legal. Set target_teams to that team; an unknown team is replaced with the parent's teams.
 
 ${CONSEQUENCE_GUIDANCE}
 delivery_config.app is one of social_feed, email, group_chat, phone_call, news, messenger_dm, npc_dm.
@@ -321,7 +335,7 @@ Also return an escalation chain for every parent:
 - For a parent that has a chain, do not also write no_reply chasers except one final public consequence. That consequence is on_exhausted.publish_inject_key.
 
 Return ONLY JSON:
-{ "branches": [ { "parent_inject_key": "...", "branch": "no_reply|poor_reply|good_reply|risky_admission", "title": "...", "content": "...", "type": "email_inbound|phone_call|social_post|chat_message|dm", "delivery_config": { "app": "...", "inject_key": "..." }, "conditions_to_appear": { "all": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 0 } ], "rubrics": [ { "inject_key": "...", "asks": ["..."], "criteria": ["..."], "expected_tone": ["..."], "pass_threshold": 2 } ], "escalations": [ { "inject_key": "...", "escalation": { "max_steps": 3, "scope": "per_team", "stop_on": "any_response", "stop_on_contact": true, "steps": [ { "after_minutes": 5, "urgency": "follow_up", "app": "npc_dm", "content_mode": "template", "template": "Following up. Could you confirm {ask}?" } ], "on_exhausted": { "publish_inject_key": "..." } } } ] }`;
+{ "branches": [ { "parent_inject_key": "...", "branch": "no_reply|poor_reply|good_reply|risky_admission", "title": "...", "content": "...", "type": "email_inbound|phone_call|social_post|chat_message|dm", "target_teams": ["Legal"], "delivery_config": { "app": "...", "inject_key": "..." }, "conditions_to_appear": { "all": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 0 } ], "rubrics": [ { "inject_key": "...", "asks": ["..."], "criteria": ["..."], "expected_tone": ["..."], "pass_threshold": 2 } ], "escalations": [ { "inject_key": "...", "escalation": { "max_steps": 3, "scope": "per_team", "stop_on": "any_response", "stop_on_contact": true, "steps": [ { "after_minutes": 5, "urgency": "follow_up", "app": "npc_dm", "content_mode": "template", "template": "Following up. Could you confirm {ask}?" } ], "on_exhausted": { "publish_inject_key": "..." } } } ] }`;
 }
 
 function branchUserPrompt(

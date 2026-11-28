@@ -15,6 +15,7 @@ import {
 import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateCast } from './castCompletenessService.js';
 import { validateConditionalInjects } from './conditions/conditionalInjectsCore.js';
+import { toActiveTeams } from './dependencies/dependencyCore.js';
 import { validateEscalation } from './escalation/escalationCore.js';
 import { validateMoodLadder } from './mood/moodCore.js';
 import { collectConditionKeys } from './conditions/conditionCatalog.js';
@@ -112,6 +113,20 @@ export function validateScenarioPayload(
     ...payload.condition_injects,
     ...payload.decision_injects,
   ];
+  const dependencyTeams = toActiveTeams(
+    (charters.length > 0 ? charters : payload.teams).map((team) => {
+      const row = team as { team_name: string; org_key?: string | null; team_uid?: string | null };
+      return {
+        team_name: row.team_name,
+        org_key: row.org_key ?? null,
+        team_uid: row.team_uid ?? null,
+      };
+    }),
+    orgs.map((org) => ({
+      org_key: org.org_key,
+      operation: (org as { operation?: string | null }).operation ?? null,
+    })),
+  );
   const conditional = validateConditionalInjects({
     duration_minutes: payload.scenario.duration_minutes,
     injects,
@@ -119,6 +134,8 @@ export function validateScenarioPayload(
       id: stakeholder.id,
       mood_ladder: stakeholder.mood_ladder,
     })),
+    teams: dependencyTeams,
+    team_dependencies: (is as { team_dependencies?: unknown }).team_dependencies,
   });
   const keepConditional = new Set(conditional.injects);
   if (keepConditional.size !== injects.length) {

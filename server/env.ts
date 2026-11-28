@@ -185,6 +185,12 @@ export const env = {
   // Large-cast generation (scenario re-edit WP1). No per-build call budget.
   warroomGenConcurrency: envInt('WARROOM_GEN_CONCURRENCY', 4),
   warroomOrgPageBatch: envInt('WARROOM_ORG_PAGE_BATCH', 4),
+  /** Playable teams above this get one dependency-map call per organisation plus one cross-org call. */
+  warroomDependencyMapBatchTeams: envInt('WARROOM_DEPENDENCY_MAP_BATCH_TEAMS', 16),
+  /** Max upstream edges per downstream team during dependency generation. */
+  warroomDependencyUpstreamPerTeam: envInt('WARROOM_DEPENDENCY_UPSTREAM_PER_TEAM', 3),
+  /** Dependency edges per consequence-generation call. */
+  warroomDependencyConsequenceBatch: envInt('WARROOM_DEPENDENCY_CONSEQUENCE_BATCH', 8),
   // Estimate above which the wizard asks before Build (scenario re-edit WP2). 0 asks every time.
   warroomLargeBuildConfirmCalls: envNonNegativeInt('WARROOM_LARGE_BUILD_CONFIRM_CALLS', 150),
   socialPersonasTotalMax: envInt('SOCIAL_PERSONAS_TOTAL_MAX', 800),
