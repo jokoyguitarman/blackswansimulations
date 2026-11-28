@@ -76,13 +76,7 @@ import {
   SetupEditBanner,
   SetupEditReview,
 } from '../components/Scenario/SetupEditPanels';
-import {
-  BRIEF_EDIT_NOTE,
-  editBannerText,
-  editNumberFromAllowance,
-  makePrimaryNote,
-  recompileTooltips,
-} from '../lib/editModeBanner';
+import { BRIEF_EDIT_NOTE, editBannerText, editNumberFromAllowance, makePrimaryNote, recompileTooltips } from '../lib/editModeBanner';
 import {
   editModeFlags,
   isExistingOrg,
@@ -136,6 +130,7 @@ import {
 } from '../lib/buildStatus';
 import {
   EDIT_BUILD_NOT_STARTED,
+  abandonReviewFetch,
   alwaysSaveBuildingStep,
   attachOnBuildingStep,
   buildingFallbackKind,
@@ -144,6 +139,7 @@ import {
   planFailureText,
   planRetryDelayMs,
   resumeAttachesLatestBuild,
+  shouldOpenAppliedReview,
   succeededAttachAction,
   type EditBuildLookup,
 } from '../lib/setupEditResume';
@@ -478,11 +474,7 @@ export const SocialCrisisWizard = () => {
   const [baselinePrimaryKey, setBaselinePrimaryKey] = useState('primary');
   const [baselineOrgKeys, setBaselineOrgKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [baselineTeamUids, setBaselineTeamUids] = useState<ReadonlySet<string>>(() => new Set());
-  const [editTargets, setEditTargets] = useState<{
-    teams: string[];
-    injectKeys: string[];
-    orgKeys: string[];
-  }>({
+  const [editTargets, setEditTargets] = useState<{ teams: string[]; injectKeys: string[]; orgKeys: string[] }>({
     teams: [],
     injectKeys: [],
     orgKeys: [],
@@ -509,9 +501,7 @@ export const SocialCrisisWizard = () => {
   } | null>(null);
   const [applyingEdit, setApplyingEdit] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
-  const [removalPrompt, setRemovalPrompt] = useState<{ text: string; apply: () => void } | null>(
-    null,
-  );
+  const [removalPrompt, setRemovalPrompt] = useState<{ text: string; apply: () => void } | null>(null);
   const [compileAllowance, setCompileAllowance] = useState<SetupEditAllowance | null>(null);
   const [abandoningEdit, setAbandoningEdit] = useState(false);
   const [draftMissing, setDraftMissing] = useState(false);
@@ -1112,6 +1102,8 @@ export const SocialCrisisWizard = () => {
   const [buildKickoff, setBuildKickoff] = useState(false);
   const [gatewayReconnecting, setGatewayReconnecting] = useState(false);
   const appliedBuildRef = useRef<string | null>(null);
+  /** Set only after that build's review payload has been applied. */
+  const reviewAppliedRef = useRef<string | null>(null);
   const lastBuildIdRef = useRef<string | null>(null);
   /** Set while attachLatestBuild is in flight, so entering Building does not start a second lookup. */
   const attachingRef = useRef(false);
@@ -1323,15 +1315,12 @@ export const SocialCrisisWizard = () => {
         loadedPrimaryRef.current = key;
         setPrimaryOrgKey(key);
         if (typeof input.primary_org_uid === 'string') setPrimaryOrgUid(input.primary_org_uid);
-        if (typeof input.primary_facebook_handle === 'string')
-          setPrimaryFacebook(input.primary_facebook_handle);
+        if (typeof input.primary_facebook_handle === 'string') setPrimaryFacebook(input.primary_facebook_handle);
         if (typeof input.primary_x_handle === 'string') setPrimaryX(input.primary_x_handle);
-        if (typeof input.crisis_description === 'string')
-          setEditCrisisType(input.crisis_description);
+        if (typeof input.crisis_description === 'string') setEditCrisisType(input.crisis_description);
       }
     }
-    const reviewStages = (input as { setup_edit_review?: { stages?: ReviewStageOutput[] } })
-      .setup_edit_review?.stages;
+    const reviewStages = (input as { setup_edit_review?: { stages?: ReviewStageOutput[] } }).setup_edit_review?.stages;
     if (Array.isArray(reviewStages)) setEditOutputs(reviewStages);
     if (input.org_name) setOrgName(String(input.org_name));
     if (input.brand_logo_url) setBrandLogoUrl(String(input.brand_logo_url));
@@ -1429,45 +1418,53 @@ export const SocialCrisisWizard = () => {
   const finishSucceeded = useCallback(
     async (buildId: string) => {
       reviewBuildIdRef.current = buildId;
+      const editing = setupEditRef.current != null;
       if (appliedBuildRef.current === buildId) {
-        // Open review after Back: the stages are already applied.
-        if (setupEditRef.current) setStep(7);
+        // Open review after Back only once this build's stages are applied.
+        // A second succeeded poll while the fetch is in flight just returns.
+        if (
+          shouldOpenAppliedReview({
+            isSetupEdit: editing,
+            claimedBuildId: appliedBuildRef.current,
+            reviewAppliedBuildId: reviewAppliedRef.current,
+            buildId,
+          })
+        ) {
+          setStep(7);
+        }
         return;
       }
       appliedBuildRef.current = buildId;
       const epoch = buildEpochRef.current;
       const lookupEpoch = lookupEpochRef.current;
-      const abandoned = () => {
-        if (appliedBuildRef.current === buildId) appliedBuildRef.current = null;
+      const stop = () =>
+        abandonReviewFetch({
+          isSetupEdit: editing,
+          closed: closedRef.current,
+          epochChanged: buildEpochRef.current !== epoch || lookupEpochRef.current !== lookupEpoch,
+        });
+      const releaseClaim = () => {
+        if (editing && appliedBuildRef.current === buildId) appliedBuildRef.current = null;
       };
-      const superseded = () =>
-        closedRef.current ||
-        buildEpochRef.current !== epoch ||
-        lookupEpochRef.current !== lookupEpoch;
       let misses = 0;
       let review = await getReview(buildId, authHeaders);
       while (classifyReview(review.status, review.ok && review.data != null) === 'retry') {
-        if (superseded()) {
-          abandoned();
+        if (stop()) {
+          releaseClaim();
           return;
         }
         misses += 1;
         setGatewayReconnecting(true);
         await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
-        if (superseded()) {
-          abandoned();
+        if (stop()) {
+          releaseClaim();
           return;
         }
         review = await getReview(buildId, authHeaders);
       }
-      if (superseded()) {
-        abandoned();
-        return;
-      }
       setGatewayReconnecting(false);
       if (!review.ok || !review.data) {
         appliedBuildRef.current = null;
-        const editing = setupEditRef.current != null;
         setDurableCard(reviewOpenFailureCard(review.status, editing));
         // The retry card renders on Building. A new scenario is already there.
         if (editing) setStep(2);
@@ -1489,7 +1486,10 @@ export const SocialCrisisWizard = () => {
       }
       setLastBuildId(buildId);
       lastBuildIdRef.current = buildId;
-      if (setupEditRef.current) setEditReviewLoaded(true);
+      if (editing) {
+        reviewAppliedRef.current = buildId;
+        setEditReviewLoaded(true);
+      }
       setActiveBuildId(null);
       setDurableView(null);
       const draftId = wizardDraftIdRef.current;
@@ -1764,6 +1764,8 @@ export const SocialCrisisWizard = () => {
         step,
         activeBuildId,
         starting: buildKickoff || startingRef.current,
+        buildFailed: buildError != null,
+        conflict: conflictBuildId != null,
       })
     ) {
       return;
@@ -1773,7 +1775,16 @@ export const SocialCrisisWizard = () => {
     buildingLookupFor.current = draftId;
     setEditBuildLookup('checking');
     void attachLatestBuild(draftId, 2, { onSucceeded: 'stay' });
-  }, [step, setupEdit, activeBuildId, attachLatestBuild, editBuildLookup, buildKickoff]);
+  }, [
+    step,
+    setupEdit,
+    activeBuildId,
+    attachLatestBuild,
+    editBuildLookup,
+    buildKickoff,
+    buildError,
+    conflictBuildId,
+  ]);
 
   /* ─── Validation ───────────────────────────────────────────────────── */
 
@@ -3509,11 +3520,7 @@ export const SocialCrisisWizard = () => {
     }
   };
 
-  const removeExisting = (
-    nextInput: Record<string, unknown>,
-    apply: () => void,
-    existing: boolean,
-  ) => {
+  const removeExisting = (nextInput: Record<string, unknown>, apply: () => void, existing: boolean) => {
     if (!existing) {
       apply();
       return;
@@ -3802,10 +3809,7 @@ export const SocialCrisisWizard = () => {
                           type="checkbox"
                           checked={renameTeamsOn[PRIMARY_ORG_ID] !== false}
                           onChange={(event) => {
-                            setRenameTeamsOn((prev) => ({
-                              ...prev,
-                              [PRIMARY_ORG_ID]: event.target.checked,
-                            }));
+                            setRenameTeamsOn((prev) => ({ ...prev, [PRIMARY_ORG_ID]: event.target.checked }));
                             setTeamRoster(
                               event.target.checked
                                 ? withRenamedTeams(teamRoster, primaryShortName, multiOrg)
@@ -3921,10 +3925,7 @@ export const SocialCrisisWizard = () => {
                       <WrIcon name={org.operation === 'ai' ? 'sparkle' : 'office'} size={12} />{' '}
                       {org.operation === 'ai' ? 'Office · AI-operated' : 'Office · players'}
                       {isExistingOrg(org.org_key, baselineOrgKeys) ? ' · Existing' : ''}
-                      {setupEdit &&
-                      org.org_key &&
-                      org.org_key === baselinePrimaryKey &&
-                      makePrimaryKey
+                      {setupEdit && org.org_key && org.org_key === baselinePrimaryKey && makePrimaryKey
                         ? ' · Previous primary'
                         : ''}
                     </div>
@@ -3942,19 +3943,11 @@ export const SocialCrisisWizard = () => {
                       existingTeam={(uid) => isExistingTeam(uid, baselineTeamUids)}
                       headerExtra={
                         setupEdit && org.org_key === baselinePrimaryKey && makePrimaryKey ? (
-                          <button
-                            type="button"
-                            className="wr-btn sm"
-                            onClick={() => applyMakePrimary(org.id)}
-                          >
+                          <button type="button" className="wr-btn sm" onClick={() => applyMakePrimary(org.id)}>
                             Undo
                           </button>
                         ) : setupEdit && org.operation !== 'ai' && org.org_key ? (
-                          <button
-                            type="button"
-                            className="wr-btn sm"
-                            onClick={() => applyMakePrimary(org.id)}
-                          >
+                          <button type="button" className="wr-btn sm" onClick={() => applyMakePrimary(org.id)}>
                             Make primary
                           </button>
                         ) : null
@@ -3966,10 +3959,7 @@ export const SocialCrisisWizard = () => {
                               type="checkbox"
                               checked={renameTeamsOn[org.id] !== false}
                               onChange={(event) => {
-                                setRenameTeamsOn((prev) => ({
-                                  ...prev,
-                                  [org.id]: event.target.checked,
-                                }));
+                                setRenameTeamsOn((prev) => ({ ...prev, [org.id]: event.target.checked }));
                                 setExtraOrganisations((prev) =>
                                   prev.map((item) =>
                                     item.id !== org.id
@@ -3977,11 +3967,7 @@ export const SocialCrisisWizard = () => {
                                       : {
                                           ...item,
                                           team_roster: event.target.checked
-                                            ? withRenamedTeams(
-                                                item.team_roster,
-                                                item.short_name,
-                                                multiOrg,
-                                              )
+                                            ? withRenamedTeams(item.team_roster, item.short_name, multiOrg)
                                             : withoutRenamedTeams(item.team_roster),
                                         },
                                   ),
@@ -3994,15 +3980,9 @@ export const SocialCrisisWizard = () => {
                       }
                       onChange={(next) => {
                         const renamed = renameExtra(org, next);
-                        const removed = removedExistingTeams(
-                          org.team_roster,
-                          next.team_roster,
-                          baselineTeamUids,
-                        );
+                        const removed = removedExistingTeams(org.team_roster, next.team_roster, baselineTeamUids);
                         const apply = () =>
-                          setExtraOrganisations((prev) =>
-                            prev.map((item) => (item.id === org.id ? renamed : item)),
-                          );
+                          setExtraOrganisations((prev) => prev.map((item) => (item.id === org.id ? renamed : item)));
                         if (removed.length === 0) {
                           apply();
                           return;
@@ -4022,9 +4002,7 @@ export const SocialCrisisWizard = () => {
                         };
                         const input = {
                           ...buildDraftInput(),
-                          extra_organisations: extraOrganisations.filter(
-                            (item) => item.id !== org.id,
-                          ),
+                          extra_organisations: extraOrganisations.filter((item) => item.id !== org.id),
                         };
                         removeExisting(input, apply, isExistingOrg(org.org_key, baselineOrgKeys));
                       }}
@@ -4642,13 +4620,13 @@ export const SocialCrisisWizard = () => {
                     ? 'failed'
                     : isSkipped
                       ? 'skipped'
-                      : isDone
-                        ? 'done'
-                        : isContinuing
-                          ? 'continuing'
-                          : isRunning
-                            ? 'running'
-                            : 'queued'}
+                    : isDone
+                      ? 'done'
+                      : isContinuing
+                        ? 'continuing'
+                        : isRunning
+                          ? 'running'
+                          : 'queued'}
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div
@@ -5833,51 +5811,39 @@ export const SocialCrisisWizard = () => {
                 </button>
                 {wizardDraftId && (
                   <>
+                  <button
+                    onClick={() => {
+                      setScenarioId(null);
+                      setCompileProgress([]);
+                      setStep(1);
+                    }}
+                    className="wr-btn onDark lg"
+                    title={compileTips.modify}
+                  >
+                    <WrIcon name="edit" /> Modify &amp; recompile
+                  </button>
+                  {scenarioId && compileEdit.visible && (
                     <button
-                      onClick={() => {
-                        setScenarioId(null);
-                        setCompileProgress([]);
-                        setStep(1);
-                      }}
+                      type="button"
                       className="wr-btn onDark lg"
-                      title={compileTips.modify}
+                      disabled={compileEdit.disabled}
+                      title={compileEdit.disabled ? compileEdit.title : (compileTips.edit ?? compileEdit.title)}
+                      onClick={() => {
+                        const id = scenarioId;
+                        void api.scenarios
+                          .openSetupEdit(id)
+                          .then((opened) => {
+                            if (opened.draft_id) navigate(`/warroom/social-crisis?draft=${opened.draft_id}`);
+                            else setEditNotice('This edit has no draft. Abandon it and start again from the library.');
+                          })
+                          .catch((err: unknown) => {
+                            setEditNotice(err instanceof Error ? err.message : 'Could not open the setup edit.');
+                          });
+                      }}
                     >
-                      <WrIcon name="edit" /> Modify &amp; recompile
+                      <WrIcon name="edit" /> Edit setup
                     </button>
-                    {scenarioId && compileEdit.visible && (
-                      <button
-                        type="button"
-                        className="wr-btn onDark lg"
-                        disabled={compileEdit.disabled}
-                        title={
-                          compileEdit.disabled
-                            ? compileEdit.title
-                            : (compileTips.edit ?? compileEdit.title)
-                        }
-                        onClick={() => {
-                          const id = scenarioId;
-                          void api.scenarios
-                            .openSetupEdit(id)
-                            .then((opened) => {
-                              if (opened.draft_id)
-                                navigate(`/warroom/social-crisis?draft=${opened.draft_id}`);
-                              else
-                                setEditNotice(
-                                  'This edit has no draft. Abandon it and start again from the library.',
-                                );
-                            })
-                            .catch((err: unknown) => {
-                              setEditNotice(
-                                err instanceof Error
-                                  ? err.message
-                                  : 'Could not open the setup edit.',
-                              );
-                            });
-                        }}
-                      >
-                        <WrIcon name="edit" /> Edit setup
-                      </button>
-                    )}
+                  )}
                   </>
                 )}
               </div>
@@ -6001,11 +5967,7 @@ export const SocialCrisisWizard = () => {
             <SetupEditBanner
               text={editBannerText({
                 title: setupEdit.scenario_title,
-                editNumber: editNumberFromAllowance(
-                  0,
-                  setupEdit.remaining,
-                  compileAllowance?.limit ?? 3,
-                ),
+                editNumber: editNumberFromAllowance(0, setupEdit.remaining, compileAllowance?.limit ?? 3),
                 limit: compileAllowance?.limit ?? 3,
                 remaining: setupEdit.remaining,
               })}
@@ -6096,9 +6058,7 @@ export const SocialCrisisWizard = () => {
                     View in the library <WrIcon name="arrow" />
                   </a>
                 ) : (
-                  <span className="hint">
-                    Review the changes, then apply them to this scenario.
-                  </span>
+                  <span className="hint">Review the changes, then apply them to this scenario.</span>
                 )
               ) : scenarioId ? (
                 <a href="/scenarios" className="wr-btn accent lg">

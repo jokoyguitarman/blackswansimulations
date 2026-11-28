@@ -225,6 +225,14 @@ export function shouldClearIdempotencyKey(status: number): boolean {
   return status > 0 && !isDeployGap(status);
 }
 
+/**
+ * Keep polling only while the build can still change on its own.
+ * A terminal status stops the loop, including a later wake tick.
+ */
+export function continuePolling(status: BuildStatusName): boolean {
+  return status === 'queued' || status === 'running';
+}
+
 /** Polling stops on these. A deploy gap does not. */
 export function classifyPollStop(status: number): 'lost' | 'denied' | 'unavailable' | null {
   if (status === 404) return 'lost';

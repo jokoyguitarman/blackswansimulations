@@ -13,14 +13,57 @@ export function resumeAttachesLatestBuild(input: {
   return input.isSetupEdit && input.validStep === 7;
 }
 
-/** Entering Building with no live build looks the draft's build up. A build that is starting does not. */
+/**
+ * Entering Building with no live build looks the draft's build up.
+ * A build that is starting, a failed start, or a settings conflict does not.
+ */
 export function attachOnBuildingStep(input: {
   isSetupEdit: boolean;
   step: number;
   activeBuildId: string | null;
   starting: boolean;
+  buildFailed: boolean;
+  conflict: boolean;
 }): boolean {
-  return input.isSetupEdit && input.step === 2 && input.activeBuildId == null && !input.starting;
+  return (
+    input.isSetupEdit &&
+    input.step === 2 &&
+    input.activeBuildId == null &&
+    !input.starting &&
+    !input.buildFailed &&
+    !input.conflict
+  );
+}
+
+/**
+ * A repeat call for a build already being opened. Review is shown only after
+ * that build's review was applied, so a second succeeded poll cannot land on
+ * Review with the previous build still selected.
+ */
+export function shouldOpenAppliedReview(input: {
+  isSetupEdit: boolean;
+  claimedBuildId: string | null;
+  reviewAppliedBuildId: string | null;
+  buildId: string;
+}): boolean {
+  return (
+    input.isSetupEdit &&
+    input.claimedBuildId === input.buildId &&
+    input.reviewAppliedBuildId === input.buildId
+  );
+}
+
+/**
+ * Closing the wizard abandons an in-flight review fetch for every draft.
+ * A newer build or leaving Building abandons it only for a setup edit.
+ */
+export function abandonReviewFetch(input: {
+  isSetupEdit: boolean;
+  closed: boolean;
+  epochChanged: boolean;
+}): boolean {
+  if (input.closed) return true;
+  return input.isSetupEdit && input.epochChanged;
 }
 
 /**
@@ -62,7 +105,7 @@ export const EDIT_BUILD_NOT_STARTED = {
 /**
  * The idle Building card. Setup edits never use the in-browser copy.
  * The start card is only for a confirmed miss or a 501. A remembered build
- * shows the finished card, including while a lookup is still in flight.
+ * shows the finished card only after the lookup has settled.
  */
 export function buildingFallbackKind(input: {
   isSetupEdit: boolean;
@@ -72,7 +115,8 @@ export function buildingFallbackKind(input: {
 }): 'browser' | 'start' | 'finished' | 'checking' {
   if (!input.isSetupEdit) return 'browser';
   if (input.lookup === 'missing' || input.lookup === 'unavailable') return 'start';
-  if (input.lastBuildId && !input.starting) return 'finished';
+  if (input.starting || input.lookup === 'checking') return 'checking';
+  if (input.lastBuildId) return 'finished';
   return 'checking';
 }
 

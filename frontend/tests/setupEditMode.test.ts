@@ -28,6 +28,7 @@ import {
   PLAN_SERVER_UNREACHABLE,
   REVIEW_BUILD_FIRST,
   REVIEW_LOADING,
+  abandonReviewFetch,
   alwaysSaveBuildingStep,
   attachOnBuildingStep,
   buildingFallbackKind,
@@ -37,6 +38,7 @@ import {
   planRetryDelayMs,
   resumeAttachesLatestBuild,
   reviewPlaceholder,
+  shouldOpenAppliedReview,
   succeededAttachAction,
 } from '../src/lib/setupEditResume.ts';
 
@@ -399,10 +401,19 @@ describe('setup edit resume', () => {
   });
 
   test('Building looks up a build only for an idle setup edit', () => {
-    const idle = { isSetupEdit: true, step: 2, activeBuildId: null, starting: false };
+    const idle = {
+      isSetupEdit: true,
+      step: 2,
+      activeBuildId: null,
+      starting: false,
+      buildFailed: false,
+      conflict: false,
+    };
     assert.equal(attachOnBuildingStep(idle), true);
     assert.equal(attachOnBuildingStep({ ...idle, activeBuildId: 'build-1' }), false);
     assert.equal(attachOnBuildingStep({ ...idle, starting: true }), false);
+    assert.equal(attachOnBuildingStep({ ...idle, buildFailed: true }), false);
+    assert.equal(attachOnBuildingStep({ ...idle, conflict: true }), false);
     assert.equal(attachOnBuildingStep({ ...idle, isSetupEdit: false }), false);
     assert.equal(attachOnBuildingStep({ ...idle, step: 7 }), false);
   });
@@ -477,6 +488,15 @@ describe('setup edit resume', () => {
         lastBuildId: 'build-1',
         starting: false,
       }),
+      'checking',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'ready',
+        lastBuildId: 'build-1',
+        starting: false,
+      }),
       'finished',
     );
     assert.equal(
@@ -547,5 +567,36 @@ describe('setup edit resume', () => {
     assert.equal(REVIEW_LOADING, 'Loading the review…');
     assert.equal(REVIEW_BUILD_FIRST, 'Nothing to review yet. Build the edit first.');
     assert.equal(PLAN_SERVER_UNREACHABLE, "Couldn't reach the server.");
+  });
+
+  test('a second succeeded poll waits until that build review is applied', () => {
+    const pending = {
+      isSetupEdit: true,
+      claimedBuildId: 'build-new',
+      reviewAppliedBuildId: 'build-old',
+      buildId: 'build-new',
+    };
+    assert.equal(shouldOpenAppliedReview(pending), false);
+    assert.equal(
+      shouldOpenAppliedReview({ ...pending, reviewAppliedBuildId: 'build-new' }),
+      true,
+    );
+    assert.equal(
+      shouldOpenAppliedReview({
+        ...pending,
+        isSetupEdit: false,
+        reviewAppliedBuildId: 'build-new',
+      }),
+      false,
+    );
+    assert.equal(shouldOpenAppliedReview({ ...pending, claimedBuildId: null }), false);
+  });
+
+  test('an epoch change abandons the review fetch only for a setup edit', () => {
+    assert.equal(abandonReviewFetch({ isSetupEdit: false, closed: false, epochChanged: true }), false);
+    assert.equal(abandonReviewFetch({ isSetupEdit: true, closed: false, epochChanged: true }), true);
+    assert.equal(abandonReviewFetch({ isSetupEdit: true, closed: false, epochChanged: false }), false);
+    assert.equal(abandonReviewFetch({ isSetupEdit: false, closed: true, epochChanged: false }), true);
+    assert.equal(abandonReviewFetch({ isSetupEdit: true, closed: true, epochChanged: false }), true);
   });
 });

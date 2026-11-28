@@ -10,6 +10,7 @@ import {
   classifyMutation,
   classifyPollStop,
   classifyReview,
+  continuePolling,
   finishedEditBuildCard,
   reviewOpenFailureCard,
   emptyPollState,
@@ -300,6 +301,11 @@ describe('deploy gap on the other build calls', () => {
   });
 
   test('polling stops on 404, 403 and 501, and a wake does not overlap a tick', () => {
+    assert.equal(continuePolling('queued'), true);
+    assert.equal(continuePolling('running'), true);
+    for (const status of ['succeeded', 'failed', 'paused', 'cancelled'] as const) {
+      assert.equal(continuePolling(status), false);
+    }
     assert.equal(classifyPollStop(404), 'lost');
     assert.equal(classifyPollStop(403), 'denied');
     assert.equal(classifyPollStop(501), 'unavailable');
