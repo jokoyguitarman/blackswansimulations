@@ -1,6 +1,8 @@
+import { INJECT_ROW_COLUMNS, TEAM_ROW_COLUMNS } from '../scenarioClone/cloneColumns.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { activeTeams, activeTemplateInjects } from '../../lib/templateRows.js';
+import { textOf as text } from './jsonValue.js';
 import type { LobbySession, PlannerInject, PlannerTeam } from './remapPlanner.js';
 
 /**
@@ -12,13 +14,11 @@ import type { LobbySession, PlannerInject, PlannerTeam } from './remapPlanner.js
 
 const MISSING_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
 
-const TEAM_COLUMNS =
-  'id, team_uid, team_name, org_key, function_key, team_description, charter, expected_actions, scoring_rubric';
+const TEAM_COLUMNS = TEAM_ROW_COLUMNS.join(', ');
 const TEAM_COLUMNS_LEGACY =
   'id, team_name, org_key, function_key, team_description, charter, expected_actions, scoring_rubric';
 
-const INJECT_COLUMNS =
-  'id, title, content, type, severity, trigger_time_minutes, eligible_after_minutes, target_teams, inject_scope, requires_response, conditions_to_appear, conditions_to_cancel, trigger_condition, delivery_config, generation_source';
+const INJECT_COLUMNS = INJECT_ROW_COLUMNS.join(', ');
 
 export interface RemapState {
   initial_state: unknown;
@@ -105,7 +105,7 @@ async function loadTeams(scenarioId: string): Promise<PlannerTeam[]> {
         )
       : first;
   if (result.error) throw result.error;
-  const rows = Array.isArray(result.data) ? (result.data as Record<string, unknown>[]) : [];
+  const rows = Array.isArray(result.data) ? (result.data as unknown as Record<string, unknown>[]) : [];
   return rows.map(asTeam);
 }
 
@@ -118,7 +118,7 @@ async function loadInjects(scenarioId: string): Promise<PlannerInject[]> {
       .is('session_id', null),
   );
   if (result.error) throw result.error;
-  const rows = Array.isArray(result.data) ? (result.data as Record<string, unknown>[]) : [];
+  const rows = Array.isArray(result.data) ? (result.data as unknown as Record<string, unknown>[]) : [];
   const ids = rows.map((row) => text(row.id)).filter((id) => id.length > 0);
   const history = await injectsWithHistory(ids);
   return rows.map((row) => asInject(row, history.has(text(row.id))));
@@ -201,7 +201,7 @@ async function injectsWithHistory(ids: string[]): Promise<Set<string>> {
 async function loadScheduledSessions(scenarioId: string): Promise<LobbySession[]> {
   const result = await supabaseAdmin
     .from('sessions')
-    .select('id, status, start_time')
+    .select('id, status, start_time, scheduled_start_time')
     .eq('scenario_id', scenarioId)
     .eq('status', 'scheduled')
     .is('start_time', null);
@@ -276,6 +276,8 @@ async function loadScheduledSessions(scenarioId: string): Promise<LobbySession[]
     session_id: sessionId,
     status: 'scheduled',
     start_time: null,
+    scheduled_start_time:
+      text(sessions.find((row) => text(row.id) === sessionId)?.scheduled_start_time) || null,
     teams: teams
       .filter((row) => text(row.session_id) === sessionId)
       .map((row) => ({ user_id: text(row.user_id), team_name: text(row.team_name) })),
@@ -316,6 +318,13 @@ function asTeam(row: Record<string, unknown>): PlannerTeam {
     charter: row.charter ?? null,
     expected_actions: row.expected_actions ?? null,
     scoring_rubric: row.scoring_rubric ?? null,
+    required_roles: Array.isArray(row.required_roles)
+      ? row.required_roles.filter((item): item is string => typeof item === 'string')
+      : [],
+    min_participants: typeof row.min_participants === 'number' ? row.min_participants : null,
+    max_participants: typeof row.max_participants === 'number' ? row.max_participants : null,
+    counter_definitions: row.counter_definitions ?? null,
+    is_investigative: row.is_investigative === true,
   };
 }
 
@@ -345,9 +354,15 @@ function asInject(row: Record<string, unknown>, hasHistory: boolean): PlannerInj
         : null,
     generation_source: typeof row.generation_source === 'string' ? row.generation_source : null,
     has_history: hasHistory,
+    affected_roles: row.affected_roles ?? [],
+    ai_generated: row.ai_generated === true,
+    requires_coordination: row.requires_coordination === true,
+    triggered_by_user_id: typeof row.triggered_by_user_id === 'string' ? row.triggered_by_user_id : null,
+    required_gate_id: typeof row.required_gate_id === 'string' ? row.required_gate_id : null,
+    required_gate_not_met_id:
+      typeof row.required_gate_not_met_id === 'string' ? row.required_gate_not_met_id : null,
+    objective_penalty: row.objective_penalty ?? null,
+    state_effect: row.state_effect ?? null,
+    response_type: typeof row.response_type === 'string' ? row.response_type : null,
   };
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value : '';
 }

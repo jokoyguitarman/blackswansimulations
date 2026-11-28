@@ -64,7 +64,7 @@ export async function hasCredit(trainerId: string, type: CreditType): Promise<bo
 export async function consumeCredit(
   trainerId: string,
   type: CreditType,
-  reason: 'scenario_generated' | 'session_created',
+  reason: 'scenario_generated' | 'session_created' | 'scenario_setup_edit',
   refs: { scenarioId?: string; sessionId?: string } = {},
 ): Promise<ConsumeResult> {
   const { data, error } = await supabaseAdmin.rpc('consume_credit', {

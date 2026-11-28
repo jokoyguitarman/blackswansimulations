@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
 import { isPresetFunction, functionKeyForTeamRow } from '../scenarioOrgModel.js';
+import { asRecord, numberOrNull, textOf as text } from './jsonValue.js';
 
 /**
  * Reconstruct the setup a compiled scenario was built from, and the hash stored
@@ -74,6 +75,15 @@ export interface SnapshotCompetitor {
   x_handle?: string;
 }
 
+/** Texts frozen when the edit opened. Apply three-way checks these, not the live row. */
+export interface FrozenTexts {
+  title: string;
+  description: string;
+  briefing: string;
+  stakeholders: Array<{ id: string; grievance: string; knowledge: string[] }>;
+  objectives: Array<{ objective_id: string; objective_name: string; description: string }>;
+}
+
 export interface SetupSnapshot {
   crisis: SetupCrisis;
   organisations: SnapshotOrg[];
@@ -81,6 +91,8 @@ export interface SetupSnapshot {
   competitors: SnapshotCompetitor[];
   inject_keys: string[];
   multi_org: boolean;
+  /** Present on edits opened after the apply path started storing them. */
+  frozen_texts?: FrozenTexts;
 }
 
 export interface SnapshotTeamRow {
@@ -105,6 +117,7 @@ export interface SnapshotInjectRow {
 
 export interface ScenarioSnapshotSource {
   scenario: {
+    title?: string | null;
     description?: string | null;
     briefing?: string | null;
     duration_minutes?: number | null;
@@ -112,6 +125,11 @@ export interface ScenarioSnapshotSource {
   };
   teams: readonly SnapshotTeamRow[];
   injects: readonly SnapshotInjectRow[];
+  objectives?: ReadonlyArray<{
+    objective_id?: string | null;
+    objective_name?: string | null;
+    description?: string | null;
+  }>;
   /** Latest warroom_builds.request, used when setup_source was never stored. */
   build_request?: unknown;
 }
@@ -226,7 +244,7 @@ export function setupSourceFromCompile(input: CompileSetupSourceInput): SetupCri
 
 /** SHA-256 of the canonical snapshot, ignoring inject keys so a later inject edit does not look like a setup change. */
 export function baselineHash(snapshot: SetupSnapshot): string {
-  const { inject_keys: _injectKeys, ...rest } = snapshot;
+  const { inject_keys: _injectKeys, frozen_texts: _frozenTexts, ...rest } = snapshot;
   return createHash('sha256').update(canonicalJson(rest)).digest('hex');
 }
 
@@ -253,6 +271,37 @@ export function snapshotFromScenario(
     competitors,
     inject_keys: injectKeys,
     multi_org: organisations.length > 1,
+    frozen_texts: frozenTextsFromSource(source, state),
+  };
+}
+
+export function frozenTextsFromSource(
+  source: ScenarioSnapshotSource,
+  state: Record<string, unknown> | null = asRecord(source.scenario.initial_state),
+): FrozenTexts {
+  const stakeholders = Array.isArray(state?.stakeholders) ? state.stakeholders : [];
+  return {
+    title: text(source.scenario.title),
+    description: text(source.scenario.description),
+    briefing: text(source.scenario.briefing),
+    stakeholders: stakeholders.flatMap((raw) => {
+      const row = asRecord(raw);
+      const id = text(row?.id);
+      if (!row || !id) return [];
+      const knowledge = Array.isArray(row.knowledge)
+        ? row.knowledge.filter((item): item is string => typeof item === 'string')
+        : [];
+      return [{ id, grievance: text(row.grievance), knowledge }];
+    }),
+    objectives: (source.objectives ?? []).flatMap((row) => {
+      const objective_id = text(row.objective_id);
+      if (!objective_id) return [];
+      return [{
+        objective_id,
+        objective_name: text(row.objective_name),
+        description: text(row.description),
+      }];
+    }),
   };
 }
 
@@ -445,6 +494,7 @@ export function snapshotFromDraftInput(input: unknown, baseline: SetupSnapshot):
     competitors: rivalsFromDraft(draft.competitor_entries, baseline),
     inject_keys: baseline.inject_keys,
     multi_org: organisations.length > 1,
+    ...(baseline.frozen_texts ? { frozen_texts: baseline.frozen_texts } : {}),
   };
 }
 
@@ -870,15 +920,3 @@ function handleOf(org: Record<string, unknown>, platform: 'facebook' | 'x_twitte
   return text(block?.page_handle);
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}

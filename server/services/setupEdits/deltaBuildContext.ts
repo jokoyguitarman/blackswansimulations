@@ -6,6 +6,7 @@ import { inferLayer, injectProvenance, type LayerTeam } from '../../lib/injectFi
 import { injectKeyOf } from '../../lib/injectKey.js';
 import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeObjectives } from '../../lib/templateRows.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
 import type { FactSheet, NPCPersona, ObjectiveDef } from '../socialCrisisGeneratorService.js';
 import type { BuildRequest } from '../warroomBuild/buildTypes.js';
@@ -16,6 +17,7 @@ import { planRemap, type PlannerInject } from './remapPlanner.js';
 import { isSetupEditSchemaMissing } from './setupEditCore.js';
 import { noteSetupEditsUnavailable } from './setupEditService.js';
 import { computeDelta, type SetupDelta } from './setupDeltaCore.js';
+import { asRecord, textOf as text } from './jsonValue.js';
 import { snapshotFromDraftInput } from './setupSnapshotCore.js';
 import type { SetupEditBuildSource } from './prepareSetupEditBuild.js';
 
@@ -263,10 +265,12 @@ async function loadObjectives(
 ): Promise<Array<ObjectiveDef & { has_scores: boolean }>> {
   const fromState = Array.isArray(state.objectives) ? state.objectives : [];
   const rows = await readOptional('scenario_objectives', () =>
-    supabaseAdmin
-      .from('scenario_objectives')
-      .select('objective_id, objective_name, description, weight')
-      .eq('scenario_id', scenarioId),
+    activeObjectives(
+      supabaseAdmin
+        .from('scenario_objectives')
+        .select('objective_id, objective_name, description, weight')
+        .eq('scenario_id', scenarioId),
+    ),
   );
   const source = rows.length > 0 ? rows : fromState.map((item) => asRecord(item) ?? {});
   return source.map((row) => {
@@ -387,13 +391,4 @@ function asStakeholders(
 
 function isDelta(value: unknown): value is SetupDelta {
   return !!value && typeof value === 'object' && !Array.isArray(value) && 'empty' in value;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
 }
