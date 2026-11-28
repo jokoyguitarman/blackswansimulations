@@ -9,7 +9,10 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { getWebSocketService } from '../websocketService.js';
-import { registerSourceTeamResolver } from '../conditions/crossTeamCore.js';
+import {
+  registerReferencedInjectKeysResolver,
+  registerSourceTeamResolver,
+} from '../conditions/crossTeamCore.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
 import type { TeamDependencyEdge, TeamRef } from '../../../shared/teamDependencies.js';
 import { resolveTeamRef } from '../../../shared/teamDependencies.js';
@@ -19,6 +22,7 @@ import { evaluateDependency, nextState } from './dependencyRuntimeCore.js';
 import {
   dependencyIdFromKey,
   emptyDependencyState,
+  guardKeysForDependency,
   isDependencyStatus,
   nextHoldMinute,
   planDependencyWrite,
@@ -58,6 +62,7 @@ const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 let tableMissing = false;
 let tableWarned = false;
 const sourcesBySession = new Map<string, Map<string, readonly string[]>>();
+const referencesBySession = new Map<string, Map<string, readonly string[]>>();
 const sessionScope = new AsyncLocalStorage<string>();
 const inertLogged = new Set<string>();
 
@@ -88,6 +93,14 @@ export function rememberDependencySources(
   sourcesBySession.set(sessionId, new Map(teams));
 }
 
+/** Inject keys each dependency stands for, for the loop guard and cascade depth. */
+export function rememberDependencyReferences(
+  sessionId: string,
+  refs: ReadonlyMap<string, readonly string[]>,
+): void {
+  referencesBySession.set(sessionId, new Map(refs));
+}
+
 /** The source-team resolver reads this session for the duration of `fn`, including its awaits. */
 export function withDependencySession<T>(sessionId: string, fn: () => T): T {
   return sessionScope.run(sessionId, fn);
@@ -99,6 +112,14 @@ registerSourceTeamResolver('dependency_*', (key) => {
   const depId = dependencyIdFromKey(key);
   if (!depId) return [];
   return sourcesBySession.get(sessionId)?.get(depId) ?? [];
+});
+
+registerReferencedInjectKeysResolver('dependency_*', (key) => {
+  const sessionId = sessionScope.getStore();
+  if (!sessionId) return [];
+  const depId = dependencyIdFromKey(key);
+  if (!depId) return [];
+  return referencesBySession.get(sessionId)?.get(depId) ?? [];
 });
 
 function codeOf(err: unknown): string | null {
@@ -230,9 +251,16 @@ function publishMap(
   ctx: EvaluationContext,
   sessionId: string,
   map: Record<string, DependencyRuntimeState>,
+  edges: readonly TeamDependencyEdge[] = [],
+  evidenceById: ReadonlyMap<string, readonly { key: string }[]> = new Map(),
 ): Record<string, DependencyRuntimeState> {
   ctx.currentState.dependency_state = map;
   rememberDependencySources(sessionId, sourceTeamsFromState(map));
+  const refs = new Map<string, readonly string[]>();
+  for (const edge of edges) {
+    refs.set(edge.id, guardKeysForDependency(edge.broken_when, evidenceById.get(edge.id)));
+  }
+  rememberDependencyReferences(sessionId, refs);
   return map;
 }
 
@@ -358,12 +386,16 @@ export async function updateDependencyStates(
   const list = edges ? [...edges] : await loadScenarioDependencyEdges(session.scenario_id);
   if (list.length === 0) {
     rememberDependencySources(session.id, new Map());
+    rememberDependencyReferences(session.id, new Map());
     return null;
   }
   const stored = await loadRows(session.id);
   if (stored.missing) return publishMap(ctx, session.id, {});
   const teams = await loadTeams(session.scenario_id);
   const rowsById = new Map(stored.rows.map((row) => [row.dep_id, row]));
+  const evidenceById = new Map<string, readonly { key: string }[]>(
+    stored.rows.map((row) => [row.dep_id, row.evidence]),
+  );
   const map = projectDependencyStates(list, stored.rows, teams);
   const changed: string[] = [];
   for (const edge of list) {
@@ -381,11 +413,12 @@ export async function updateDependencyStates(
     const previous = rowsById.get(edge.id)?.status ?? null;
     const plan = planDependencyWrite(previous, upcoming, evaluation.evidence);
     if (!plan) continue;
+    evidenceById.set(edge.id, evaluation.evidence);
     const wrote = await applyWrite(session.id, edge.id, plan);
     if (wrote === 'missing') return publishMap(ctx, session.id, {});
     if (wrote === 'wrote') changed.push(edge.id);
   }
-  publishMap(ctx, session.id, map);
+  publishMap(ctx, session.id, map, list, evidenceById);
   for (const depId of changed) {
     const state = map[depId];
     if (state) emitChanged(session.trainer_id, session.id, depId, state);

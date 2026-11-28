@@ -1,7 +1,7 @@
 /**
  * Cross-team profile, cascade depth and the §6.4 guards. No database access.
- * WP2 supplies dependency source teams by registering a resolver; until then a
- * `dependency_*` key contributes no source team.
+ * Dependency facts arrive through two prefix hooks: source teams, and the
+ * inject keys a `dependency_*` key stands for. Neither hook imports that module.
  */
 
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
@@ -28,6 +28,15 @@ export interface CrossTeamProfile {
 
 /** Full condition key in, team names or slugs out. */
 export type SourceTeamResolver = (key: string) => readonly string[] | string | null | undefined;
+
+/**
+ * Full condition key in, the inject keys that condition stands for.
+ * A dependency registration returns the inject keys named by the edge's
+ * held conditions. Keys are used as given: this core does not parse them again.
+ */
+export type ReferencedInjectKeysResolver = (
+  key: string,
+) => readonly string[] | string | null | undefined;
 
 export interface DepthTrigger {
   cause_depth?: number;
@@ -102,6 +111,7 @@ const SEVERITY_RANK: Record<string, number> = {
 };
 
 const resolvers = new Map<string, SourceTeamResolver>();
+const referencedResolvers = new Map<string, ReferencedInjectKeysResolver>();
 
 /**
  * `prefix` matches the key body (the text before `|`) with startsWith.
@@ -115,6 +125,20 @@ export function registerSourceTeamResolver(prefix: string, fn: SourceTeamResolve
     if (resolvers.get(prefix) !== fn) return;
     if (previous) resolvers.set(prefix, previous);
     else resolvers.delete(prefix);
+  };
+}
+
+/** Same prefix rule as `registerSourceTeamResolver`. The remover restores the previous function. */
+export function registerReferencedInjectKeysResolver(
+  prefix: string,
+  fn: ReferencedInjectKeysResolver,
+): () => void {
+  const previous = referencedResolvers.get(prefix);
+  referencedResolvers.set(prefix, fn);
+  return () => {
+    if (referencedResolvers.get(prefix) !== fn) return;
+    if (previous) referencedResolvers.set(prefix, previous);
+    else referencedResolvers.delete(prefix);
   };
 }
 
@@ -150,8 +174,27 @@ export function isCrossTeam(
   return targetTeams.some((target) => !sourceTeams.some((source) => sameTeam(source, target)));
 }
 
-/** Inject keys named by a condition. Unknown keys, including unregistered `dependency_*`, name none. */
+/**
+ * Inject keys named by a condition. A registered prefix can add the inject
+ * keys that key stands for. An unregistered `dependency_*` key names none.
+ */
 export function referencedInjectKeys(key: string): string[] {
+  const refs: string[] = [];
+  const push = (value: string) => {
+    if (value && !refs.includes(value)) refs.push(value);
+  };
+  for (const value of injectKeysNamedBy(key)) push(value);
+  const body = scopeOf(key).body;
+  for (const [prefix, resolve] of referencedResolvers) {
+    if (!prefixMatches(prefix, body)) continue;
+    const raw = resolve(key);
+    const list = raw == null ? [] : typeof raw === 'string' ? [raw] : raw;
+    for (const value of list) push(value);
+  }
+  return refs;
+}
+
+function injectKeysNamedBy(key: string): string[] {
   const parsed = parseConditionKey(key);
   if ('error' in parsed) return [];
   const params = parsed.def.params ?? [];

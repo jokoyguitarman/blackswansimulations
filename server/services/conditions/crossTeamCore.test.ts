@@ -5,6 +5,8 @@ import {
   applyCrossTeamGuards,
   causeDepth,
   crossTeamProfile,
+  referencedInjectKeys,
+  registerReferencedInjectKeysResolver,
   registerSourceTeamResolver,
   type CrossTeamCandidate,
   type CrossTeamGuardEnv,
@@ -579,5 +581,130 @@ describe('condition explain', () => {
     assert.equal(cancelled.status, 'cancel_met');
     assert.deepEqual(cancelled.met_keys, [alpha]);
     assert.deepEqual(cancelled.failed_keys, []);
+  });
+});
+
+describe('dependency keys in the loop guard and cascade cap', () => {
+  const depKey = 'dependency_broken_for:dep_legal_statement_comms:5';
+  const duty = 'duty_missed:legal_review_statement|team=legal';
+
+  function back(minute: number): CrossTeamCandidate {
+    return {
+      id: 'cons_legal_comms',
+      inject_key: 'cons_legal_comms',
+      severity: 'medium',
+      minute,
+      source_teams: ['Legal'],
+      target_teams: ['Communications'],
+      is_cross_team: true,
+      origin: 'dependency',
+      cause_depth: 2,
+      met_keys: [depKey],
+    };
+  }
+
+  test('example C holds the return consequence until T+41, and an independent duty publishes it', () => {
+    assert.deepEqual(referencedInjectKeys(depKey), []);
+    const heldKeys = ['cons_comms_legal'];
+    let refs = heldKeys;
+    const remove = registerReferencedInjectKeysResolver('dependency_*', () => refs);
+    try {
+      assert.deepEqual(referencedInjectKeys(depKey), heldKeys);
+      const recent = [
+        fired('cons_comms_legal', 20, {
+          source_teams: ['Communications'],
+          target_teams: ['Legal'],
+          origin: 'dependency',
+          is_cross_team: true,
+        }),
+      ];
+      const held = applyCrossTeamGuards([back(30)], recent, [], env);
+      assert.equal(held.publish.length, 0);
+      assert.equal(held.hold[0]?.id, 'cons_legal_comms');
+
+      const released = applyCrossTeamGuards([back(41)], recent, [], env);
+      assert.equal(released.hold.length, 0);
+      assert.equal(released.publish[0]?.id, 'cons_legal_comms');
+
+      refs = [heldKeys[0] ?? '', duty];
+      const independent = applyCrossTeamGuards([back(30)], recent, [], env);
+      assert.equal(independent.hold.length, 0);
+      assert.equal(independent.publish[0]?.id, 'cons_legal_comms');
+    } finally {
+      remove();
+    }
+    assert.deepEqual(referencedInjectKeys(depKey), []);
+  });
+
+  test('the fourth cross-team hop of a dependency chain is cancelled', () => {
+    const parents: Record<string, string[]> = {
+      dep_1: ['root'],
+      dep_2: ['c1'],
+      dep_3: ['c2'],
+      dep_4: ['c3'],
+    };
+    const remove = registerReferencedInjectKeysResolver('dependency_*', (key) => {
+      const id = key.split(':')[1] ?? '';
+      return parents[id] ?? [];
+    });
+    try {
+      const hops = [
+        { dep: 'dep_1', inject: 'c1', source: 'A', target: 'B' },
+        { dep: 'dep_2', inject: 'c2', source: 'B', target: 'C' },
+        { dep: 'dep_3', inject: 'c3', source: 'C', target: 'D' },
+        { dep: 'dep_4', inject: 'c4', source: 'D', target: 'A' },
+      ];
+      const triggers: Record<string, RecentCrossTeamTrigger & { cause_depth: number }> = {
+        root: {
+          inject_key: 'root',
+          minute: 0,
+          cause_depth: 0,
+          source_teams: ['A'],
+          target_teams: ['A'],
+          origin: 'timed',
+          is_cross_team: false,
+        },
+      };
+      const candidates: CrossTeamCandidate[] = [];
+      for (const hop of hops) {
+        const met = [`dependency_broken_for:${hop.dep}:5`];
+        const depth = causeDepth(met, triggers);
+        triggers[hop.inject] = {
+          inject_key: hop.inject,
+          minute: 10,
+          cause_depth: depth,
+          source_teams: [hop.source],
+          target_teams: [hop.target],
+          origin: 'dependency',
+          is_cross_team: true,
+        };
+        candidates.push({
+          id: hop.inject,
+          inject_key: hop.inject,
+          minute: 40,
+          severity: 'medium',
+          cause_depth: depth,
+          is_cross_team: true,
+          source_teams: [hop.source],
+          target_teams: [hop.target],
+          origin: 'dependency',
+          met_keys: met,
+        });
+      }
+      assert.deepEqual(
+        hops.map((hop) => triggers[hop.inject]?.cause_depth),
+        [1, 2, 3, 4],
+      );
+      const result = applyCrossTeamGuards(candidates, [], [], env);
+      assert.deepEqual(
+        result.publish.map((item) => item.id),
+        ['c1', 'c2', 'c3'],
+      );
+      assert.equal(result.cancel.length, 1);
+      assert.equal(result.cancel[0]?.reason, 'cascade_cap');
+      assert.equal(result.cancel[0]?.candidate.id, 'c4');
+    } finally {
+      remove();
+    }
   });
 });
