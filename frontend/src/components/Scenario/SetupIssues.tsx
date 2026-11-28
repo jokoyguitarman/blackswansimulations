@@ -104,11 +104,14 @@ export function SetupIssueSummary({
   warnings,
   open,
   onOpenChange,
+  onJump,
 }: {
   errors: SetupIssue[];
   warnings: SetupIssue[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the lane page that holds the field, then scrolls. Falls back to a direct scroll. */
+  onJump?: (field: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -132,7 +135,9 @@ export function SetupIssueSummary({
   const hasErrors = errors.length > 0;
   const pick = (issue: SetupIssue) => {
     onOpenChange(false);
-    if (issue.field) jumpToField(issue.field);
+    if (!issue.field) return;
+    if (onJump) onJump(issue.field);
+    else jumpToField(issue.field);
   };
 
   return (

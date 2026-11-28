@@ -154,6 +154,8 @@ export const env = {
   // Large-cast generation (scenario re-edit WP1). No per-build call budget.
   warroomGenConcurrency: envInt('WARROOM_GEN_CONCURRENCY', 4),
   warroomOrgPageBatch: envInt('WARROOM_ORG_PAGE_BATCH', 4),
+  // Estimate above which the wizard asks before Build (scenario re-edit WP2). 0 asks every time.
+  warroomLargeBuildConfirmCalls: envNonNegativeInt('WARROOM_LARGE_BUILD_CONFIRM_CALLS', 150),
   socialPersonasTotalMax: envInt('SOCIAL_PERSONAS_TOTAL_MAX', 800),
   pressureEngineMaxPagesPerTick: envInt('PRESSURE_ENGINE_MAX_PAGES_PER_TICK', 4),
   // Inject scheduler configuration

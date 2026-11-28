@@ -1,4 +1,5 @@
 import { COUNTRIES, isKnownCountry } from '@shared/countries';
+import { ROSTER_COLLAPSE_AT } from './lanePaging';
 import { FieldNote, issueClass, useIssueLookup } from './SetupIssues';
 import {
   EXECUTIVE_TEAM,
@@ -54,7 +55,6 @@ export interface OrganisationDraft {
   /** The proposal name this card was created from, kept when the trainer renames it. */
   proposed_from?: string;
 }
-
 
 /* ─── Pressure organisations (pressure plan §5.1 / §11) ──────────────────── */
 
@@ -438,6 +438,8 @@ export function RosterBuilder({
   presetCatalog,
   compact,
   orgId = PRIMARY_ORG_ID,
+  expanded = true,
+  onExpandedChange,
 }: {
   roster: RosterEntry[];
   onChange: (next: RosterEntry[]) => void;
@@ -445,8 +447,13 @@ export function RosterBuilder({
   compact?: boolean;
   /** Owner of the roster, for Setup issue anchors. */
   orgId?: string;
+  /** Long rosters start collapsed. The parent opens one when an issue jumps to it. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const issueAt = useIssueLookup();
+  const collapsible = roster.length > ROSTER_COLLAPSE_AT;
+  const open = !collapsible || expanded;
   const presets: PresetTeamCard[] =
     presetCatalog.length > 0
       ? presetCatalog
@@ -478,6 +485,33 @@ export function RosterBuilder({
   };
 
   const rosterIssue = issueAt(orgField(orgId, 'roster'));
+  const teamCountLabel = `${roster.length} ${roster.length === 1 ? 'team' : 'teams'}`;
+
+  if (!open) {
+    return (
+      <div data-field={orgField(orgId, 'roster')}>
+        <ul className="text-[11px] terminal-text text-ink space-y-0.5 mb-2">
+          {roster.map((team, index) => (
+            <li key={`${team.team_name}-${index}`}>
+              {team.team_name.trim() || 'Unnamed team'}
+              {team.is_public_voice ? ' · public voice' : ''}
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onExpandedChange?.(true)}
+            className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded"
+          >
+            Expand
+          </button>
+          <span className="text-[10px] terminal-text text-muted">{teamCountLabel}</span>
+        </div>
+        <FieldNote issue={rosterIssue} />
+      </div>
+    );
+  }
 
   return (
     <div data-field={orgField(orgId, 'roster')}>
@@ -601,19 +635,27 @@ export function RosterBuilder({
 
       <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={() =>
-            roster.length < 6 &&
             onChange([
               ...roster,
               { team_name: '', description: '', is_custom: true, is_public_voice: false },
             ])
           }
-          disabled={roster.length >= 6}
-          className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
+          className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded"
         >
           + Add your own team
         </button>
-        <span className="text-[10px] terminal-text text-muted">{roster.length}/6 teams</span>
+        {collapsible && (
+          <button
+            type="button"
+            onClick={() => onExpandedChange?.(false)}
+            className="text-[10px] terminal-text text-muted hover:text-ink border border-border px-2 py-1 rounded"
+          >
+            Collapse
+          </button>
+        )}
+        <span className="text-[10px] terminal-text text-muted">{teamCountLabel}</span>
       </div>
 
       <FieldNote issue={rosterIssue} />
@@ -629,12 +671,16 @@ export function OrganisationCard({
   onChange,
   onRemove,
   presetCatalog,
+  rosterExpanded = true,
+  onRosterExpandedChange,
 }: {
   org: OrganisationDraft;
   index: number;
   onChange: (next: OrganisationDraft) => void;
   onRemove: () => void;
   presetCatalog: PresetTeamCard[];
+  rosterExpanded?: boolean;
+  onRosterExpandedChange?: (expanded: boolean) => void;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -771,6 +817,8 @@ export function OrganisationCard({
         presetCatalog={presetCatalog}
         compact
         orgId={org.id}
+        expanded={rosterExpanded}
+        onExpandedChange={onRosterExpandedChange}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { sameOrganisationName } from '../../shared/orgNames';
 import {
   MAX_DISMISSED,
+  RADAR_RUN_ADD_CAP,
   clearDismissal,
   isOnMap,
   mergeSpokespersonLinks,
@@ -183,6 +184,25 @@ describe('selectFootprintAdditions', () => {
     assert.deepEqual(
       picked.offices.map((o) => o.display_name),
       ['Dyson Vietnam'],
+    );
+  });
+
+  test('a radar run with 9 proposals adds 6 and leaves 3 as chips', () => {
+    const implied = Array.from({ length: 9 }, (_, index) => ({
+      display_name: `Dyson plant ${index} regional`,
+      country: 'Vietnam',
+    }));
+    const picked = selectFootprintAdditions(
+      { implied_organisations: implied, pressure_organisations: [] },
+      lists({ offices: [] }),
+      [],
+      { offices: RADAR_RUN_ADD_CAP, pressure: RADAR_RUN_ADD_CAP },
+    );
+    assert.equal(picked.offices.length, 6);
+    assert.equal(picked.noRoom.length, 3);
+    assert.deepEqual(
+      picked.noRoom,
+      implied.slice(6).map((office) => office.display_name),
     );
   });
 
