@@ -5,13 +5,13 @@ import { activeObjectives } from '../../lib/templateRows.js';
 import { seedOrgPages } from '../ambientContentService.js';
 import { consumeCredit, isAdmin, refundCredit, type ConsumeResult } from '../creditService.js';
 import { SupabaseBuildStore } from '../warroomBuild/buildStore.js';
+import { rejectSetupRevisions } from './briefRevisionCore.js';
 import { stageOutputsFromRows } from './deltaBuildTypes.js';
 import { loadSetupEditSource } from './deltaBuildContext.js';
-import { asSnapshot } from './prepareSetupEditBuild.js';
+import { asSnapshot, recomputeSetupEdit } from './prepareSetupEditBuild.js';
 import { asRecord, numberOrNull, textOf, textOrNull } from './jsonValue.js';
-import { planRemap, type OrphanResolution, type PlannerInject, type PlannerTeam } from './remapPlanner.js';
+import { type OrphanResolution, type PlannerInject, type PlannerTeam } from './remapPlanner.js';
 import { applyingIsStale, isSetupEditSchemaMissing, remainingEdits } from './setupEditCore.js';
-import { computeDelta } from './setupDeltaCore.js';
 import {
   mergeSetupEdit,
   MultiOrgValidationError,
@@ -24,7 +24,7 @@ import {
   type MergeSetupEditInput,
   type MergeTeamRow,
 } from './setupMergeCore.js';
-import { snapshotFromDraftInput, type SetupSnapshot } from './setupSnapshotCore.js';
+import { type SetupSnapshot } from './setupSnapshotCore.js';
 
 const buildOutputsStore = new SupabaseBuildStore();
 
@@ -50,6 +50,8 @@ export interface ApplySetupEditRequest {
   user: { id: string; role?: string };
   buildId: string;
   orphanDecisions: Readonly<Record<string, OrphanResolution>>;
+  /** Review rows the trainer kept as originally written. */
+  rejectedRevisionIds?: readonly string[];
 }
 
 export interface ScheduledSessionResult {
@@ -384,16 +386,6 @@ async function prepareApply(
       error: 'Apply needs a succeeded build for this edit.',
     };
   }
-  const edited = snapshotFromDraftInput(source.draft_input, baseline);
-  const delta = computeDelta(baseline, edited);
-  if (delta.empty) {
-    return {
-      ok: false,
-      status: 400,
-      code: 'SETUP_EDIT_EMPTY',
-      error: 'This edit does not change the setup.',
-    };
-  }
   const applyState = await readApplyState(request.scenarioId);
   if (!applyState) {
     return {
@@ -403,17 +395,17 @@ async function prepareApply(
       error: 'Setup edits are not available until the apply migration is applied.',
     };
   }
-  const plan = planRemap({
-    delta,
-    edited,
-    initial_state: applyState.initial_state,
-    teams: source.remap.teams,
-    injects: source.remap.injects,
-    sessions: source.remap.sessions,
+  const recomputed = recomputeSetupEdit(source, {
     resolutions: request.orphanDecisions,
+    initial_state: applyState.initial_state,
   });
+  if (!recomputed.ok) return recomputed;
+  const { baseline: editedBaseline, edited, plan } = recomputed;
   const objectives = await readObjectives(request.scenarioId);
-  const outputs = await loadStageOutputs(request.buildId);
+  const outputs = rejectSetupRevisions(
+    await loadStageOutputs(request.buildId),
+    request.rejectedRevisionIds ?? [],
+  );
   const starts = new Map(
     source.remap.sessions.map((session) => [session.session_id, session.scheduled_start_time ?? null]),
   );
@@ -434,7 +426,7 @@ async function prepareApply(
     },
     plan,
     buildOutputs: outputs,
-    edit: mergeEditForApply(request.editId, baseline, edited),
+    edit: mergeEditForApply(request.editId, editedBaseline, edited),
     resolutions: request.orphanDecisions,
   };
   return {

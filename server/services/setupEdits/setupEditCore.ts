@@ -66,6 +66,10 @@ export interface SetupEditSummary {
   error: string | null;
   created_at: string;
   applied_at: string | null;
+  /** Absent on rows loaded before the wizard needed to resume a draft. */
+  draft_id?: string | null;
+  applied_summary?: unknown;
+  opened_by_name?: string | null;
 }
 
 /** The in-flight row, if the list contains one. The list order is preserved. */

@@ -204,6 +204,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       error: null,
       created_at: edit.createdAt,
       applied_at: null,
+      draft_id: edit.draftId,
     };
   }
 
@@ -355,6 +356,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
         },
         service,
         apply: async () => ({ ok: false, status: 404, code: 'NOT_FOUND', error: 'Setup edit not found' }),
+        plan: async () => ({ ok: false, status: 404, code: 'SETUP_EDIT_NOT_FOUND', error: 'Setup edit not found' }),
       }),
     );
     server = createServer(app);
@@ -432,6 +434,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(second.status, 200);
     assert.equal(second.json.outcome, 'existing');
     assert.equal(second.json.edit_id, first.json.edit_id);
+    assert.equal(second.json.draft_id, drafts[0]?.id);
     assert.equal(edits.length, 1);
     assert.equal(drafts.length, 1);
     assert.equal(scenarios.get(SOCIAL)?.used, 0);

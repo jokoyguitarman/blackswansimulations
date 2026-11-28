@@ -10,6 +10,7 @@ import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { scenarioSetupEditsRouter } from './routes/scenarioSetupEdits.js';
+import { sessionSetupChangesRouter } from './routes/sessionSetupChanges.js';
 import { peaceFeedRouter } from './routes/peaceFeed.js';
 import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
 import { dashboardRouter } from './routes/dashboard.js';
@@ -297,6 +298,7 @@ app.use('/api/sessions', sessionRolesRouter);
 app.use('/api/sessions', escalationsRouter);
 app.use('/api/sessions', dependenciesRouter);
 app.use('/api/sessions', directorRouter);
+app.use('/api/sessions', sessionSetupChangesRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)
 app.use('/api/channels', channelsRouter);

@@ -16,8 +16,8 @@ export interface SetupEditButtonState {
 }
 
 /**
- * Library "Edit setup" control. The click that opens the wizard is wired later;
- * this only decides whether the button shows and why it is disabled.
+ * Library "Edit setup" control. Decides whether the button shows and why it
+ * is disabled. The page opens or resumes the wizard from the click.
  */
 export function setupEditButtonState(input: SetupEditButtonInput): SetupEditButtonState {
   if (!input.enabled) {

@@ -37,6 +37,7 @@ describe('setup edit apply route', { concurrency: false }, () => {
   let reseeded: string[] = [];
   let used = 0;
   let charge = false;
+  let lastApply: ApplySetupEditRequest | null = null;
 
   function prepared(): PreparedApply {
     const input = applyInput();
@@ -141,7 +142,11 @@ describe('setup edit apply route', { concurrency: false }, () => {
             return { available: true, ok: false, reason: 'not_found' };
           },
         },
-        apply: (request: ApplySetupEditRequest) => applySetupEdit(request, deps),
+        apply: (request: ApplySetupEditRequest) => {
+          lastApply = request;
+          return applySetupEdit(request, deps);
+        },
+        plan: async () => ({ ok: false, status: 404, code: 'SETUP_EDIT_NOT_FOUND', error: 'Setup edit not found' }),
       }),
     );
     server = createServer(app);
@@ -163,6 +168,7 @@ describe('setup edit apply route', { concurrency: false }, () => {
     reseeded = [];
     used = 0;
     charge = false;
+    lastApply = null;
   }
 
   async function apply(user = TRAINER) {
@@ -173,6 +179,22 @@ describe('setup edit apply route', { concurrency: false }, () => {
     });
     return { status: res.status, json: (await res.json()) as Record<string, unknown> };
   }
+
+  test('keep-original rows are forwarded as rejected revisions', async () => {
+    reset('applied');
+    const res = await fetch(`${base}/api/scenarios/${SCENARIO}/setup-edits/${EDIT}/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-user': TRAINER.id, 'x-role': 'trainer' },
+      body: JSON.stringify({
+        build_id: BUILD,
+        orphan_decisions: { 'role:cs_head': { choice: 'keep' } },
+        rejected_revisions: ['inj-plant'],
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(lastApply?.rejectedRevisionIds, ['inj-plant']);
+    assert.equal(lastApply?.orphanDecisions['role:cs_head']?.choice, 'keep');
+  });
 
   test('a live session is locked and does not reseed', async () => {
     reset('live');

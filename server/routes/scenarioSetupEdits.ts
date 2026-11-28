@@ -14,6 +14,7 @@ import {
   type ApplySetupEditRequest,
   type ApplySetupEditResult,
 } from '../services/setupEdits/applySetupEdit.js';
+import { planOpenSetupEdit, type PlanSetupEditResult } from '../services/setupEdits/planSetupEdit.js';
 import type { OrphanResolution } from '../services/setupEdits/remapPlanner.js';
 import {
   setupEditService,
@@ -57,7 +58,21 @@ const applyBody = z.object({
   body: z.object({
     build_id: z.string().uuid(),
     orphan_decisions: z.record(z.string(), orphanDecision).optional(),
+    rejected_revisions: z.array(z.string().min(1).max(80)).max(500).optional(),
   }),
+});
+
+const planBody = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+    editId: z.string().uuid(),
+  }),
+  body: z
+    .object({
+      resolutions: z.record(z.string(), orphanDecision).optional(),
+      draft_input: z.unknown().optional(),
+    })
+    .optional(),
 });
 
 export interface SetupEditApi {
@@ -80,6 +95,12 @@ export interface ScenarioSetupEditsDeps {
   canEdit: (scenarioId: string, user: { id: string; role?: string }) => Promise<EditabilityResult>;
   service: SetupEditApi;
   apply: (request: ApplySetupEditRequest) => Promise<ApplySetupEditResult>;
+  plan: (request: {
+    scenarioId: string;
+    editId: string;
+    resolutions?: Record<string, OrphanResolution>;
+    draftInput?: unknown;
+  }) => Promise<PlanSetupEditResult>;
 }
 
 function unavailable(res: Response): void {
@@ -270,7 +291,14 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
         return;
       }
       if (opened.outcome === 'existing') {
-        res.status(200).json({ edit_id: opened.editId, outcome: 'existing' });
+        const allowance = await deps.service.get(req.params.id);
+        const open =
+          allowance.available && allowance.found ? openEditOf(allowance.edits) : null;
+        res.status(200).json({
+          edit_id: opened.editId,
+          outcome: 'existing',
+          draft_id: open?.draft_id ?? null,
+        });
         return;
       }
       if (opened.outcome === 'busy') {
@@ -343,6 +371,61 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
     },
   );
 
+  router.post('/:editId/plan', deps.authMiddleware, validate(planBody), async (req, res) => {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      if (!user) {
+        res.status(401).json({ error: 'Missing authorization header' });
+        return;
+      }
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        res.status(403).json({ error: 'Only trainers can edit a scenario setup' });
+        return;
+      }
+      if (!deps.enabled()) {
+        unavailable(res);
+        return;
+      }
+      const owner = await deps.assertOwner(req.params.id, user);
+      if (!owner.ok) {
+        res.status(owner.status).json({ error: owner.error });
+        return;
+      }
+      const category = await deps.loadCategory(req.params.id);
+      if (category == null) {
+        res.status(404).json({ error: 'Scenario not found' });
+        return;
+      }
+      if (category !== SOCIAL) {
+        res.status(404).json({
+          error: 'Setup edits apply to social-crisis scenarios only.',
+          code: 'SETUP_EDIT_UNAVAILABLE',
+        });
+        return;
+      }
+      const editability = await deps.canEdit(req.params.id, user);
+      if (!editability.editable) {
+        locked(res, editability.reason);
+        return;
+      }
+      const body = (req.body ?? {}) as { resolutions?: Record<string, OrphanResolution>; draft_input?: unknown };
+      const result = await deps.plan({
+        scenarioId: req.params.id,
+        editId: req.params.editId,
+        resolutions: body.resolutions,
+        draftInput: body.draft_input,
+      });
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error, code: result.code });
+        return;
+      }
+      res.json({ plan: result.plan });
+    } catch (err) {
+      logger.error({ err }, 'Setup edit plan failed');
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
   router.post('/:editId/apply', deps.authMiddleware, validate(applyBody), async (req, res) => {
     try {
       const user = (req as AuthenticatedRequest).user;
@@ -387,6 +470,7 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
         user,
         buildId: req.body.build_id,
         orphanDecisions: decisions,
+        rejectedRevisionIds: req.body.rejected_revisions ?? [],
       });
       if (!result.ok) {
         res.status(result.status).json({ error: result.error, code: result.code });
@@ -415,4 +499,5 @@ export const scenarioSetupEditsRouter = createScenarioSetupEditsRouter({
   canEdit: canEditScenario,
   service: setupEditService,
   apply: (request) => applySetupEdit(request, createApplyDeps()),
+  plan: (request) => planOpenSetupEdit(request),
 });

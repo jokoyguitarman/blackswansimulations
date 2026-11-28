@@ -911,6 +911,73 @@ export const api = {
         }),
       );
     },
+    openSetupEdit: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        edit_id: string;
+        outcome: 'opened' | 'existing';
+        draft_id?: string | null;
+        baseline_hash?: string;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/setup-edits`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}),
+        }),
+      );
+    },
+    abandonSetupEdit: async (id: string, editId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ edit_id: string; status: string }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/setup-edits/${editId}/abandon`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}),
+        }),
+      );
+    },
+    planSetupEdit: async (
+      id: string,
+      editId: string,
+      body: { resolutions?: Record<string, unknown>; draft_input?: unknown } = {},
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ plan: import('./reviewSections').ReviewPlan }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/setup-edits/${editId}/plan`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+    applySetupEdit: async (
+      id: string,
+      editId: string,
+      body: {
+        build_id: string;
+        orphan_decisions?: Record<string, { choice: string; inject_key?: string; team_name?: string; org_keys?: string[] }>;
+        rejected_revisions?: string[];
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        summary: Record<string, unknown>;
+        remaining: number | null;
+        scheduled_sessions: Array<{
+          id: string;
+          title: null;
+          scheduled_start_time: string | null;
+          unassigned_players: Array<{ user_id: string; team_name: string }>;
+          new_teams: string[];
+        }>;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/setup-edits/${editId}/apply`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
     retryCustomFacts: async (id: string, opts?: { force?: boolean }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
@@ -1210,6 +1277,19 @@ export const api = {
       return handleResponse<{ data: SessionPageCoverageDTO }>(
         await fetch(apiUrl(`/api/sessions/${sessionId}/page-coverage`), { headers }),
       );
+    },
+    getSetupChanges: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        changes: Array<{
+          id: string;
+          applied_at: string;
+          edit_number: number | null;
+          opened_by_admin: boolean;
+          opened_by_name: string | null;
+          summary: unknown;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/setup-changes`), { headers }));
     },
     getCallCoverage: async (sessionId: string) => {
       const headers = await getAuthHeaders();

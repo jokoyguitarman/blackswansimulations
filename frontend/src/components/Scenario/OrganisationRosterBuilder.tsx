@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { COUNTRIES, isKnownCountry } from '@shared/countries';
 import { ROSTER_COLLAPSE_AT } from './lanePaging';
 import { FieldNote, issueClass, useIssueLookup } from './SetupIssues';
@@ -25,6 +26,11 @@ export interface RosterEntry {
   description: string;
   is_custom: boolean;
   is_public_voice: boolean;
+  /** Set on a team that already exists in the scenario. */
+  team_uid?: string;
+  function_key?: string;
+  /** Trainer rename of an existing team. Absent means the stored name stays. */
+  display_name?: string;
 }
 
 export interface PresetTeamCard {
@@ -54,6 +60,9 @@ export interface OrganisationDraft {
   proposed_reason?: string;
   /** The proposal name this card was created from, kept when the trainer renames it. */
   proposed_from?: string;
+  /** Identity of an organisation that already exists in the scenario. */
+  org_key?: string;
+  org_uid?: string;
 }
 
 /* ─── Pressure organisations (pressure plan §5.1 / §11) ──────────────────── */
@@ -73,6 +82,7 @@ export interface PressureOrgDraft {
   facebook_handle: string;
   x_handle: string;
   spokesperson_stakeholder_id?: string;
+  org_uid?: string;
   proposed_reason?: string;
   /** The proposal name this card was created from, kept when the trainer renames it. */
   proposed_from?: string;
@@ -124,10 +134,12 @@ export function PressureOrgCard({
   org,
   onChange,
   onRemove,
+  badge,
 }: {
   org: PressureOrgDraft;
   onChange: (next: PressureOrgDraft) => void;
   onRemove: () => void;
+  badge?: string;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -141,6 +153,7 @@ export function PressureOrgCard({
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] terminal-text text-warning uppercase tracking-wider">
           Pressure organisation · {PRESSURE_KIND_LABELS[org.kind]}
+          {badge ? ` · ${badge}` : ''}
           {org.spokesperson_stakeholder_id && (
             <span className="ml-2 text-muted normal-case">spokesperson linked</span>
           )}
@@ -239,10 +252,12 @@ export function RivalOrgCard({
   rival,
   onChange,
   onRemove,
+  badge,
 }: {
   rival: CompetitorDraft;
   onChange: (next: CompetitorDraft) => void;
   onRemove: () => void;
+  badge?: string;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -256,7 +271,7 @@ export function RivalOrgCard({
     <div className="border border-danger/30 rounded p-3 bg-surface">
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] terminal-text text-danger uppercase tracking-wider">
-          Rival page
+          Rival page{badge ? ` · ${badge}` : ''}
         </div>
         <button
           type="button"
@@ -440,6 +455,7 @@ export function RosterBuilder({
   orgId = PRIMARY_ORG_ID,
   expanded = true,
   onExpandedChange,
+  showExisting = false,
 }: {
   roster: RosterEntry[];
   onChange: (next: RosterEntry[]) => void;
@@ -450,6 +466,8 @@ export function RosterBuilder({
   /** Long rosters start collapsed. The parent opens one when an issue jumps to it. */
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  /** Existing teams show a badge and a display-name field. */
+  showExisting?: boolean;
 }) {
   const issueAt = useIssueLookup();
   const collapsible = roster.length > ROSTER_COLLAPSE_AT;
@@ -532,6 +550,7 @@ export function RosterBuilder({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs terminal-text text-ink font-bold">
                   {selected ? '☑' : '☐'} {preset.team_name}
+                  {showExisting && entry?.team_uid ? ' · Existing' : ''}
                   {preset.is_executive && (
                     <span className="ml-1 text-[9px] terminal-text text-warning border border-warning/40 rounded px-1">
                       leadership
@@ -554,6 +573,22 @@ export function RosterBuilder({
                   </label>
                 )}
               </div>
+              {showExisting && entry?.team_uid && (
+                <input
+                  value={entry.display_name ?? ''}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) =>
+                    onChange(
+                      roster.map((team) =>
+                        team.team_uid === entry.team_uid ? { ...team, display_name: event.target.value } : team,
+                      ),
+                    )
+                  }
+                  placeholder="Display name"
+                  aria-label={`Display name for ${preset.team_name}`}
+                  className="mt-1 w-full bg-surface border border-border text-ink terminal-text text-[10px] px-1.5 py-1 rounded"
+                />
+              )}
               {preset.mission && !compact && (
                 <div className="text-[10px] terminal-text text-muted mt-1 leading-relaxed line-clamp-2">
                   {preset.mission}
@@ -573,6 +608,9 @@ export function RosterBuilder({
             return (
               <div key={idx} className="border border-border rounded p-2.5">
                 <div className="flex items-center gap-2 mb-1.5">
+                  {showExisting && t.team_uid && (
+                    <span className="text-[9px] terminal-text uppercase tracking-wider text-muted">Existing</span>
+                  )}
                   <div className="flex-1 min-w-0" data-field={teamField(orgId, idx, 'name')}>
                     <input
                       value={t.team_name}
@@ -673,6 +711,11 @@ export function OrganisationCard({
   presetCatalog,
   rosterExpanded = true,
   onRosterExpandedChange,
+  removeDisabled = false,
+  removeTitle,
+  belowShort,
+  headerExtra,
+  showExistingTeams = false,
 }: {
   org: OrganisationDraft;
   index: number;
@@ -681,6 +724,11 @@ export function OrganisationCard({
   presetCatalog: PresetTeamCard[];
   rosterExpanded?: boolean;
   onRosterExpandedChange?: (expanded: boolean) => void;
+  removeDisabled?: boolean;
+  removeTitle?: string;
+  belowShort?: ReactNode;
+  headerExtra?: ReactNode;
+  showExistingTeams?: boolean;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -708,9 +756,18 @@ export function OrganisationCard({
           Organisation {index + 2}
           {org.display_name.trim() ? ` — ${org.display_name.trim()}` : ''}
         </span>
-        <button type="button" onClick={onRemove} className="wr-btn sm remove shrink-0">
-          Remove
-        </button>
+        <span className="flex items-center gap-2">
+          {headerExtra}
+          <button
+            type="button"
+            onClick={onRemove}
+            className="wr-btn sm remove shrink-0"
+            disabled={removeDisabled}
+            title={removeTitle}
+          >
+            Remove
+          </button>
+        </span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
         <div className="sm:col-span-2" {...name.anchor}>
@@ -732,6 +789,7 @@ export function OrganisationCard({
             aria-invalid={short.invalid}
           />
           <FieldNote issue={short.issue} />
+          {belowShort}
         </div>
         <div {...country.anchor}>
           <CountrySelect
@@ -819,6 +877,7 @@ export function OrganisationCard({
         orgId={org.id}
         expanded={rosterExpanded}
         onExpandedChange={onRosterExpandedChange}
+        showExisting={showExistingTeams}
       />
     </div>
   );

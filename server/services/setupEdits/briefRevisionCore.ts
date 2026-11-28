@@ -351,6 +351,27 @@ export function applyRevisionDecision(
   return { active: next, retired: false, accepted: true };
 }
 
+/**
+ * Review "keep original". Each id is passed through `applyRevisionDecision`
+ * with `reject`, and `accepted` is stored from that result. The merge then
+ * leaves the original row active.
+ */
+export function rejectSetupRevisions<T extends { revisions: readonly SetupRevision[] }>(
+  outputs: readonly T[],
+  rejectedIds: readonly string[],
+): T[] {
+  if (rejectedIds.length === 0) return outputs.slice();
+  const rejected = new Set(rejectedIds);
+  return outputs.map((output) => ({
+    ...output,
+    revisions: output.revisions.map((revision) => {
+      if (!rejected.has(revision.inject_id)) return revision;
+      const decided = applyRevisionDecision({}, revision, 'reject');
+      return { ...revision, accepted: decided.accepted };
+    }),
+  }));
+}
+
 export function mergeFactSheet(
   current: FactSheet,
   revised: FactSheet,

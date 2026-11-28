@@ -227,4 +227,17 @@ export interface ReviewPayload {
   /** Present only when the pages stage stored a peace feed. */
   peace_period?: PeaceFeed;
   team_dependencies?: TeamDependencies | null;
+  /**
+   * Present on a setup-edit build. The wizard's Review reads revisions, flags
+   * and generated rows from the stage outputs. Create-mode reviews omit it.
+   */
+  setup_edit_review?: {
+    stages: Array<{
+      stage: string;
+      skipped: boolean;
+      revisions: unknown[];
+      flags: unknown[];
+      generated: unknown;
+    }>;
+  };
 }

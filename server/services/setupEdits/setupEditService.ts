@@ -34,7 +34,7 @@ import {
  */
 
 const EDIT_COLUMNS =
-  'id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at';
+  'id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary';
 
 const OPEN_OUTCOMES = new Set<OpenSetupEditOutcome>([
   'opened',
@@ -151,7 +151,77 @@ function toSummary(row: Record<string, unknown>): SetupEditSummary {
     error: typeof row.error === 'string' ? row.error : null,
     created_at: String(row.created_at),
     applied_at: typeof row.applied_at === 'string' ? row.applied_at : null,
+    draft_id: typeof row.draft_id === 'string' ? row.draft_id : null,
+    applied_summary: row.applied_summary ?? null,
   };
+}
+
+export interface AppliedSetupChange {
+  id: string;
+  applied_at: string;
+  edit_number: number | null;
+  opened_by_admin: boolean;
+  opened_by_name: string | null;
+  summary: unknown;
+}
+
+/**
+ * Applied edits whose apply time is after the session was created.
+ * A missing migration 274 is "no changes", not an error.
+ */
+export async function listAppliedSetupChanges(
+  scenarioId: string,
+  createdAt: string,
+): Promise<{ available: boolean; changes: AppliedSetupChange[] }> {
+  const listed = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .select('id, applied_at, edit_number, opened_by, opened_by_admin, applied_summary')
+    .eq('scenario_id', scenarioId)
+    .eq('status', 'applied')
+    .gt('applied_at', createdAt)
+    .order('applied_at', { ascending: true });
+  if (listed.error) {
+    if (isSetupEditSchemaMissing(listed.error)) {
+      noteSetupEditsUnavailable();
+      return { available: false, changes: [] };
+    }
+    logger.error({ error: listed.error, scenarioId }, 'Failed to list setup changes for a session');
+    throw new Error(`Setup change list failed: ${listed.error.message}`);
+  }
+  const rows = (listed.data ?? []) as Array<Record<string, unknown>>;
+  const names = await openerNames(rows.map((row) => (typeof row.opened_by === 'string' ? row.opened_by : '')));
+  return {
+    available: true,
+    changes: rows
+      .filter((row) => typeof row.applied_at === 'string')
+      .map((row) => ({
+        id: String(row.id),
+        applied_at: String(row.applied_at),
+        edit_number: row.edit_number == null ? null : Number(row.edit_number),
+        opened_by_admin: Boolean(row.opened_by_admin),
+        opened_by_name: typeof row.opened_by === 'string' ? (names.get(row.opened_by) ?? null) : null,
+        summary: row.applied_summary ?? null,
+      })),
+  };
+}
+
+async function openerNames(ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  if (unique.length === 0) return new Map();
+  try {
+    const profiles = await supabaseAdmin.from('user_profiles').select('id, full_name').in('id', unique);
+    if (profiles.error || !Array.isArray(profiles.data)) return new Map();
+    const names = new Map<string, string>();
+    for (const row of profiles.data as Array<{ id?: string; full_name?: string | null }>) {
+      if (typeof row.id === 'string' && typeof row.full_name === 'string' && row.full_name.trim()) {
+        names.set(row.id, row.full_name.trim());
+      }
+    }
+    return names;
+  } catch (err) {
+    logger.warn({ err }, 'setup_edit_opener_names_unavailable');
+    return new Map();
+  }
 }
 
 export async function getSetupEdit(scenarioId: string): Promise<SetupEditSnapshot> {
@@ -200,11 +270,16 @@ export async function getSetupEdit(scenarioId: string): Promise<SetupEditSnapsho
   }
 
   const used = Number(scenario.data.setup_edits_used);
+  const edits = listed.map((row) => toSummary(stale.has(String(row.id)) ? { ...row, status: 'open' } : row));
+  const names = await openerNames(edits.map((edit) => edit.opened_by ?? ''));
   return {
     available: true,
     found: true,
     used: Number.isFinite(used) ? used : 0,
-    edits: listed.map((row) => toSummary(stale.has(String(row.id)) ? { ...row, status: 'open' } : row)),
+    edits: edits.map((edit) => ({
+      ...edit,
+      opened_by_name: edit.opened_by ? (names.get(edit.opened_by) ?? null) : null,
+    })),
   };
 }
 

@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
-import { api } from '../lib/api';
 import {
   listScenariosWithSummary,
   getSessionCredits,
@@ -15,6 +14,8 @@ import {
   type SetupEditAllowance,
 } from '../lib/scenarioLibraryApi';
 import { setupEditButtonState } from '../lib/setupEditButton';
+import { EditHistoryList } from '../components/Scenario/SetupEditPanels';
+import { ApiError, api } from '../lib/api';
 import { artFor, SHELL_ART } from '../lib/scenarioArt';
 import { WrIcon, teamIcon } from '../components/UI/WarRoomIcon';
 import { OriginBadge } from '../components/UI/OriginBadge';
@@ -130,7 +131,8 @@ const Kpis = ({ s, onDark = false }: { s: Scenario; onDark?: boolean }) => {
 };
 
 export const Scenarios = () => {
-  const { isTrainer } = useRoleVisibility();
+  const { isTrainer, role } = useRoleVisibility();
+  const isAdmin = role === 'admin';
   const navigate = useNavigate();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +149,7 @@ export const Scenarios = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sessionCredits, setSessionCredits] = useState<number | null>(null);
   const [setupEdits, setSetupEdits] = useState<Record<string, SetupEditAllowance>>({});
+  const [setupEditNote, setSetupEditNote] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadScenarios();
@@ -304,6 +307,31 @@ export const Scenarios = () => {
     const live = s.summary?.live_session_id;
     if (live) navigate(`/sessions/${live}`);
     else navigate(`/sessions?create=${s.id}`);
+  };
+
+  const openSetup = async (scenario: Scenario) => {
+    const open = setupEdits[scenario.id]?.open_edit;
+    const note = (message: string) => setSetupEditNote((prev) => ({ ...prev, [scenario.id]: message }));
+    try {
+      if (open && !open.draft_id) {
+        await api.scenarios.abandonSetupEdit(scenario.id, open.id);
+      }
+      const opened = await api.scenarios.openSetupEdit(scenario.id);
+      if (opened.draft_id) {
+        navigate(`/warroom/social-crisis?draft=${opened.draft_id}`);
+        return;
+      }
+      note('This edit has no draft. Abandon and start again.');
+    } catch (err) {
+      const retryable = err instanceof ApiError && err.code === 'SETUP_EDIT_CONFLICT';
+      note(
+        retryable
+          ? 'The scenario was saved while the setup edit was opening. Open it again.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not open the setup edit.',
+      );
+    }
   };
 
   const clearFilters = () => {
@@ -569,6 +597,9 @@ export const Scenarios = () => {
                       lock={lockState(s)}
                       isTrainer={isTrainer}
                       setupEdit={setupEdits[s.id]}
+                      setupNote={setupEditNote[s.id]}
+                      isAdmin={isAdmin}
+                      onEditSetup={() => void openSetup(s)}
                       onCollapse={() => setExpandedId(null)}
                       onOpen={() => handleViewScenario(s)}
                       onLaunch={() => launch(s)}
@@ -581,7 +612,9 @@ export const Scenarios = () => {
                       lock={lockState(s)}
                       isTrainer={isTrainer}
                       setupEdit={setupEdits[s.id]}
+                      setupNote={setupEditNote[s.id]}
                       deleting={deleting === s.id}
+                      onEditSetup={() => void openSetup(s)}
                       onExpand={() => (isTrainer ? setExpandedId(s.id) : handleViewScenario(s))}
                       onOpen={() => handleViewScenario(s)}
                       onLaunch={() => launch(s)}
@@ -656,6 +689,8 @@ export const Scenarios = () => {
                                 social={isSocial(s)}
                                 lock={lock}
                                 className="wr-btn sm"
+                                note={setupEditNote[s.id]}
+                                onOpen={() => void openSetup(s)}
                               />
                               <button className="wr-btn sm accent" onClick={() => launch(s)}>
                                 <WrIcon name="play" /> {lock === 'locked-live' ? 'Open' : 'Launch'}
@@ -832,11 +867,15 @@ const SetupEditButton = ({
   social,
   lock,
   className,
+  note,
+  onOpen,
 }: {
   allowance: SetupEditAllowance | undefined;
   social: boolean;
   lock: LockState;
   className: string;
+  note?: string;
+  onOpen: () => void;
 }) => {
   const state = setupEditButtonState({
     enabled: Boolean(social && allowance?.enabled),
@@ -846,17 +885,20 @@ const SetupEditButton = ({
     lockTitle: setupLockTitle(lock),
   });
   if (!state.visible) return null;
-  // Wizard open/resume is wired with edit mode. This renders the allowance only.
+  const draftless = allowance?.open_edit && !allowance.open_edit.draft_id;
   return (
-    <button
-      type="button"
-      className={className}
-      disabled={state.disabled}
-      title={state.title}
-      onClick={(event) => event.stopPropagation()}
-    >
-      {state.label}
-    </button>
+    <span className="inline-flex flex-col items-stretch gap-1" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className={className}
+        disabled={state.disabled}
+        title={state.title}
+        onClick={onOpen}
+      >
+        {draftless ? 'Abandon and start again' : state.label}
+      </button>
+      {note && <span className="text-[10px] text-muted">{note}</span>}
+    </span>
   );
 };
 
@@ -879,22 +921,26 @@ const Poster = ({
   lock,
   isTrainer,
   setupEdit,
+  setupNote,
   deleting,
   onExpand,
   onOpen,
   onLaunch,
   onDelete,
+  onEditSetup,
 }: {
   s: Scenario;
   index: number;
   lock: LockState;
   isTrainer: boolean;
   setupEdit: SetupEditAllowance | undefined;
+  setupNote?: string;
   deleting: boolean;
   onExpand: () => void;
   onOpen: () => void;
   onLaunch: () => void;
   onDelete: (e: React.MouseEvent) => void;
+  onEditSetup: () => void;
 }) => {
   const social = isSocial(s);
   const family = social ? 'var(--accent)' : 'var(--brand)';
@@ -973,6 +1019,8 @@ const Poster = ({
               social={social}
               lock={lock}
               className="wr-btn sm"
+              note={setupNote}
+              onOpen={onEditSetup}
             />
           </>
         ) : (
@@ -990,6 +1038,9 @@ const ExpandedPoster = ({
   lock,
   isTrainer,
   setupEdit,
+  setupNote,
+  isAdmin,
+  onEditSetup,
   onCollapse,
   onOpen,
   onLaunch,
@@ -998,6 +1049,9 @@ const ExpandedPoster = ({
   lock: LockState;
   isTrainer: boolean;
   setupEdit: SetupEditAllowance | undefined;
+  setupNote?: string;
+  isAdmin: boolean;
+  onEditSetup: () => void;
   onCollapse: () => void;
   onOpen: () => void;
   onLaunch: () => void;
@@ -1079,6 +1133,8 @@ const ExpandedPoster = ({
                 social={social}
                 lock={lock}
                 className="wr-btn onDark flex-1"
+                note={setupNote}
+                onOpen={onEditSetup}
               />
               <button className="wr-btn onDark flex-1" onClick={onLaunch}>
                 <WrIcon name="play" /> {lock === 'locked-live' ? 'Open session' : 'Launch'}
@@ -1088,6 +1144,9 @@ const ExpandedPoster = ({
         </div>
       </div>
       <div className="wr-peek">
+        {isTrainer && setupEdit?.history && (
+          <EditHistoryList rows={setupEdit.history} isAdmin={isAdmin} />
+        )}
         <section>
           <h5>
             <WrIcon name="users" /> Cast <span className="n">{contacts}</span>

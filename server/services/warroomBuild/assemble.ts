@@ -242,9 +242,6 @@ function dimensionLabels(
 
 /** Review payload in the same shape the wizard stores on the draft (§4.4). */
 export function assembleReview(request: BuildRequest, outputs: StageOutputs): ReviewPayload {
-  // The review is assembled from stage outputs. `request` is part of the signature so every
-  // caller passes the frozen build request alongside those outputs.
-  void request;
   const characters = outputs.characters;
   const storyline = outputs.storyline;
   const convergence = outputs.convergence;
@@ -288,5 +285,22 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
     ...(convergence?.team_dependencies
       ? { team_dependencies: convergence.team_dependencies }
       : {}),
+    ...(request.mode === 'setup_edit' ? { setup_edit_review: setupEditReview(outputs) } : {}),
   };
+}
+
+function setupEditReview(outputs: StageOutputs): NonNullable<ReviewPayload['setup_edit_review']> {
+  const stages = (['characters', 'storyline', 'convergence', 'pages'] as const).map((stage) => {
+    const raw = outputs[stage] as
+      | (Record<string, unknown> & { skipped?: boolean; revisions?: unknown; flags?: unknown; generated?: unknown })
+      | undefined;
+    return {
+      stage,
+      skipped: raw?.skipped === true,
+      revisions: Array.isArray(raw?.revisions) ? raw.revisions : [],
+      flags: Array.isArray(raw?.flags) ? raw.flags : [],
+      generated: raw?.generated ?? null,
+    };
+  });
+  return { stages };
 }
