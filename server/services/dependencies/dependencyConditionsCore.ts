@@ -7,7 +7,12 @@
  * beside those fields so lag holds and labels work; readers ignore them.
  */
 
-import { applyAnySugar, DEPENDENCY_ID, resolveTeamRef } from '../../../shared/teamDependencies.js';
+import {
+  applyAnySugar,
+  DEPENDENCY_ID,
+  dependencyIdInKey,
+  resolveTeamRef,
+} from '../../../shared/teamDependencies.js';
 import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import type { ActiveTeam, TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 
@@ -76,10 +81,7 @@ export function isDependencyStatus(value: unknown): value is DependencyStatus {
 }
 
 export function dependencyIdFromKey(key: string): string | null {
-  const parsed = parseConditionKey(key);
-  if ('error' in parsed || !DEPENDENCY_KEY_IDS.has(parsed.def.id)) return null;
-  const id = parsed.args[0] ?? '';
-  return DEPENDENCY_ID.test(id) ? id : null;
+  return dependencyIdInKey(key);
 }
 
 export function emptyDependencyState(

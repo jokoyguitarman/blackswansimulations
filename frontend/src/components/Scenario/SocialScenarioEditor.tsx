@@ -7,6 +7,7 @@ import {
 } from './PlayerRolesEditor';
 import { ConditionBuilder, type InjectChoice } from './ConditionBuilder';
 import { TeamDependenciesSection } from './TeamDependenciesSection';
+import type { ScenarioInjectRow } from './scenarioInject';
 import { DependencyCauseRow, DependencyQuickAction } from './InjectDependencyBar';
 import { useDependencyDocument, type DependencyDocument } from './dependencyDocument';
 import { appearKeysFrom, conditionGroupKeys } from '@shared/teamDependencies';
@@ -71,23 +72,7 @@ import { cloneScenario } from '../../lib/scenarioLibraryApi';
  * session launch credits or while a session on this scenario is live.
  */
 
-interface InjectRow {
-  id: string;
-  trigger_time_minutes: number | null;
-  trigger_condition: string | null;
-  conditions_to_appear?: unknown;
-  conditions_to_cancel?: unknown;
-  eligible_after_minutes?: number | null;
-  type: string;
-  title: string;
-  content: string;
-  severity: string;
-  inject_scope: string;
-  target_teams: string[] | null;
-  requires_response?: boolean;
-  delivery_config?: Record<string, unknown> | null;
-  generation_source?: string;
-}
+type InjectRow = ScenarioInjectRow;
 
 interface TeamRow {
   id: string;
@@ -691,17 +676,10 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               durationMinutes={scen.duration_minutes}
               locked={locked}
               document={dependencyDoc}
-              onInjectCreated={(row) =>
-                setInjectList((list) => [...list, row as unknown as InjectRow])
-              }
+              stakeholders={readStakeholderOptions(initialState)}
+              onInjectCreated={(row) => setInjectList((list) => [...list, row])}
               onInjectUpdated={(row) =>
-                setInjectList((list) =>
-                  list.map((item) =>
-                    item.id === String((row as { id?: string }).id)
-                      ? { ...item, ...(row as unknown as InjectRow) }
-                      : item,
-                  ),
-                )
+                setInjectList((list) => list.map((item) => (item.id === row.id ? row : item)))
               }
             />
             <TeamsSection
@@ -2706,7 +2684,7 @@ const InjectForm = ({
         deliveryConfig={buildDeliveryConfig()}
         injects={injects}
         document={dependencyDoc}
-        onInjectCreated={(row) => onInjectCreated?.(row as unknown as InjectRow)}
+            onInjectCreated={(row) => onInjectCreated?.(row)}
         onInjectKey={setLocalInjectKey}
       />
 

@@ -7,6 +7,7 @@ import {
   emptyConditionNames,
   withDependencyTeamScope,
 } from '../src/components/Scenario/conditionDraft.ts';
+import { buildDependencyEdge } from '../src/components/Scenario/dependencyEdgeDraft.ts';
 import {
   causeChipText,
   dependencyPreviewSentence,
@@ -232,5 +233,79 @@ describe('dependency condition builder', () => {
       all: ['unresponded:bay3_headcount_request:10|team=@downstream'],
     });
     assert.equal(withDependencyTeamScope({ ...row, team: '' }, def, '@upstream').team, '@upstream');
+  });
+
+  test('the drawer rejects a downstream team that is the upstream team', () => {
+    const refused = buildDependencyEdge({
+      model: {
+        id: '',
+        kind: 'information',
+        upstream: { team_uid: null, team_name: '' },
+        downstream: [],
+        deliverable: 'Headcount',
+        why: '',
+        dueMode: 'by_minute',
+        byMinute: 10,
+        afterInjectKey: '',
+        withinMinutes: 10,
+        broken: { quantifier: 'any', threshold: 1, keys: [] },
+        met: null,
+        lagMinutes: 5,
+        severity: 'medium',
+        consequenceKeys: [],
+        source: 'trainer',
+      },
+      upstream: { team_uid: null, team_name: 'Operations' },
+      downstream: [{ team_uid: null, team_name: 'Operations' }],
+      brokenKeys: ['unresponded:bay3_headcount_request:10|team=@upstream'],
+      brokenQuantifier: 'any',
+      brokenThreshold: 1,
+      metKeys: [],
+      metQuantifier: 'any',
+      metThreshold: 1,
+      brokenError: null,
+      metError: null,
+      durationMinutes: 90,
+      takenIds: new Set(),
+      source: 'trainer',
+    });
+    assert.ok('error' in refused);
+    const kept = buildDependencyEdge({
+      model: {
+        id: '',
+        kind: 'information',
+        upstream: { team_uid: null, team_name: '' },
+        downstream: [],
+        deliverable: 'Headcount',
+        why: '',
+        dueMode: 'by_minute',
+        byMinute: 10,
+        afterInjectKey: '',
+        withinMinutes: 10,
+        broken: { quantifier: 'any', threshold: 1, keys: [] },
+        met: null,
+        lagMinutes: 5,
+        severity: 'medium',
+        consequenceKeys: [],
+        source: 'trainer',
+      },
+      upstream: { team_uid: null, team_name: 'Operations' },
+      downstream: [{ team_uid: null, team_name: 'Communications' }],
+      brokenKeys: ['unresponded:bay3_headcount_request:10|team=@upstream'],
+      brokenQuantifier: 'any',
+      brokenThreshold: 1,
+      metKeys: [],
+      metQuantifier: 'any',
+      metThreshold: 1,
+      brokenError: null,
+      metError: null,
+      durationMinutes: 90,
+      takenIds: new Set(['dep_headcount']),
+      source: 'trainer',
+    });
+    assert.ok(!('error' in kept));
+    if ('error' in kept) return;
+    assert.equal(kept.edge.id, 'dep_headcount_2');
+    assert.equal(kept.edge.broken_when && 'conditions' in kept.edge.broken_when, true);
   });
 });

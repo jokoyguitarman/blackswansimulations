@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react';
 import {
+  conditionGroupKeys,
   displayRef,
   matchTeamRef,
   takenDependencyIds,
@@ -15,26 +16,8 @@ import {
   type EditorTeam,
 } from './dependencyDocument';
 import { DependencyDrawer, type DrawerInject } from './DependencyDrawer';
+import type { ScenarioInjectRow } from './scenarioInject';
 import { dependencyPreviewSentence, dependencyTableCells } from './dependencyPreview';
-
-interface StakeholderChoice {
-  id: string;
-  name: string;
-}
-
-function readStakeholders(initialState: Record<string, unknown>): StakeholderChoice[] {
-  if (!Array.isArray(initialState.stakeholders)) return [];
-  const options: StakeholderChoice[] = [];
-  for (const item of initialState.stakeholders) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { id?: unknown; name?: unknown };
-    const id = typeof row.id === 'string' ? row.id.trim() : '';
-    if (!id) continue;
-    const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : id;
-    options.push({ id, name });
-  }
-  return options;
-}
 
 function injectKey(inject: DrawerInject): string | null {
   const key = inject.delivery_config?.inject_key;
@@ -49,6 +32,7 @@ export function TeamDependenciesSection({
   durationMinutes,
   locked,
   document,
+  stakeholders,
   onInjectCreated,
   onInjectUpdated,
 }: {
@@ -59,8 +43,9 @@ export function TeamDependenciesSection({
   durationMinutes: number;
   locked: boolean;
   document: DependencyDocument;
-  onInjectCreated: (row: Record<string, unknown>) => void;
-  onInjectUpdated: (row: Record<string, unknown>) => void;
+  stakeholders: readonly { id: string; name: string }[];
+  onInjectCreated: (row: ScenarioInjectRow) => void;
+  onInjectUpdated: (row: ScenarioInjectRow) => void;
 }) {
   const orgs = readOrgs(initialState);
   const { edges, error, teams, commit } = document;
@@ -263,7 +248,7 @@ export function TeamDependenciesSection({
                     upstreamRemoved: card.upstream.removed,
                     downstream: card.downstream,
                     deliverable: card.edge.deliverable,
-                    brokenKeys: groupKeys(card.edge),
+                    brokenKeys: conditionGroupKeys(card.edge.broken_when),
                     lagMinutes: card.edge.lag_minutes,
                     consequences: card.edge.consequence_keys.map((key) => {
                       const found = injects.find((inject) => injectKey(inject) === key);
@@ -275,7 +260,7 @@ export function TeamDependenciesSection({
                     : dependencyPreviewSentence({
                         upstream: card.upstream.name,
                         downstream: card.downstream.map((team) => team.name),
-                        brokenKeys: groupKeys(card.edge),
+                        brokenKeys: conditionGroupKeys(card.edge.broken_when),
                         lagMinutes: card.edge.lag_minutes,
                         consequences: card.edge.consequence_keys.map((key) => ({
                           title: injects.find((inject) => injectKey(inject) === key)?.title || key,
@@ -368,7 +353,7 @@ export function TeamDependenciesSection({
           edge={editing === 'new' ? null : editing}
           teams={teams}
           injects={injects}
-          stakeholders={readStakeholders(initialState)}
+          stakeholders={stakeholders}
           durationMinutes={durationMinutes}
           takenDependencyIds={takenDependencyIds(edges, injects)}
           locked={locked}
@@ -390,8 +375,4 @@ export function TeamDependenciesSection({
 
 function teamRow(team: EditorTeam): { team_uid: string | null; team_name: string } {
   return { team_uid: team.team_uid ?? null, team_name: team.team_name };
-}
-
-function groupKeys(edge: TeamDependencyEdge): string[] {
-  return 'all' in edge.broken_when ? edge.broken_when.all : edge.broken_when.conditions;
 }

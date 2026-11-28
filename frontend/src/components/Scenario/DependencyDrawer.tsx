@@ -6,13 +6,10 @@ import {
   DEPENDENCY_KINDS,
   DEPENDENCY_SEVERITIES,
   conditionGroupKeys,
-  consequenceAppearKey,
-  consequenceCancelKeys,
+  consequenceInjectDraft,
   displayRef,
-  fromEditorModel,
   matchTeamRef,
   toEditorModel,
-  uniqueDependencyId,
   type ActiveTeam,
   type DependencyEditorModel,
   type DependencyKind,
@@ -21,7 +18,9 @@ import {
   type TeamRef,
 } from '@shared/teamDependencies';
 import { api } from '../../lib/api';
+import { buildDependencyEdge } from './dependencyEdgeDraft';
 import { formatSaveError } from './dependencyDocument';
+import { readScenarioInject, type ScenarioInjectRow } from './scenarioInject';
 import { ConditionBuilder, type InjectChoice } from './ConditionBuilder';
 import {
   compileDraft,
@@ -117,8 +116,8 @@ export function DependencyDrawer({
   locked: boolean;
   onClose: () => void;
   onCommit: (edge: TeamDependencyEdge) => Promise<void>;
-  onInjectCreated: (row: Record<string, unknown>) => void;
-  onInjectUpdated: (row: Record<string, unknown>) => void;
+  onInjectCreated: (row: ScenarioInjectRow) => void;
+  onInjectUpdated: (row: ScenarioInjectRow) => void;
 }) {
   const playable = teams.filter((team) => team.playable !== false);
   const [model, setModel] = useState<DependencyEditorModel>(() =>
@@ -248,82 +247,29 @@ export function DependencyDrawer({
     return taken;
   };
 
-  const buildEdge = (): { edge: TeamDependencyEdge } | { error: string } => {
-    if (!upstream) return { error: 'Choose the upstream team.' };
-    if (downstream.length < 1 || downstream.length > 3) {
-      return { error: 'Choose 1 to 3 downstream teams.' };
-    }
-    const identities = new Set(
-      downstream.map((team) => team.team_uid || slugifyTeamName(team.team_name)),
-    );
-    if (identities.size !== downstream.length)
-      return { error: 'Downstream teams must be distinct.' };
-    const upstreamId = upstream.team_uid || slugifyTeamName(upstream.team_name);
-    if (identities.has(upstreamId)) {
-      return { error: 'A downstream team has to be different from the upstream team.' };
-    }
-    if (!model.deliverable.trim()) return { error: 'Name the deliverable.' };
-    if (!Number.isInteger(model.lagMinutes) || model.lagMinutes < 0 || model.lagMinutes > 30) {
-      return { error: 'Lag must be a whole number from 0 to 30 minutes.' };
-    }
-    if (!brokenCompiled || brokenCompiled.errors.length > 0) {
-      return { error: brokenCompiled?.errors[0] ?? 'Breaks when is incomplete.' };
-    }
-    if (metCompiled && metCompiled.errors.length > 0) {
-      return { error: metCompiled.errors[0] ?? 'Resolved when is incomplete.' };
-    }
-    if (brokenKeys.length === 0) return { error: 'Add at least one break condition.' };
-    if (brokenKeys.some((key) => key.split('|')[0]?.startsWith('dependency_'))) {
-      return { error: 'A dependency cannot break on another dependency.' };
-    }
-    if (metKeys.some((key) => key.split('|')[0]?.startsWith('dependency_'))) {
-      return { error: 'Resolved when cannot use a dependency key.' };
-    }
-    if (model.dueMode === 'by_minute') {
-      if (!Number.isInteger(model.byMinute) || model.byMinute < 0) {
-        return { error: 'Due minute must be a whole number.' };
-      }
-      if (durationMinutes > 0 && model.byMinute > durationMinutes) {
-        return { error: `Due minute is past the ${durationMinutes}-minute scenario.` };
-      }
-    } else if (!isInjectKey(model.afterInjectKey)) {
-      return { error: 'Choose the inject the due window starts after.' };
-    }
-    const id = model.id || uniqueDependencyId(model.deliverable, takenDependencyIds);
-    const next = fromEditorModel({
-      ...model,
-      id,
+  const buildEdge = (): { edge: TeamDependencyEdge } | { error: string } =>
+    buildDependencyEdge({
+      model,
       upstream,
       downstream,
-      deliverable: model.deliverable.trim(),
-      why: model.why.trim(),
+      brokenKeys,
+      brokenQuantifier:
+        broken?.quantifier === 'at_least' ? 'at_least' : broken?.quantifier === 'all' ? 'all' : 'any',
+      brokenThreshold: broken?.threshold ?? 1,
+      metKeys,
+      metQuantifier: met?.quantifier === 'at_least' ? 'at_least' : met?.quantifier === 'all' ? 'all' : 'any',
+      metThreshold: met?.threshold ?? 1,
+      brokenError:
+        brokenCompiled == null
+          ? 'Breaks when is incomplete.'
+          : brokenCompiled.errors.length > 0
+            ? (brokenCompiled.errors[0] ?? 'Breaks when is incomplete.')
+            : null,
+      metError: metCompiled && metCompiled.errors.length > 0 ? (metCompiled.errors[0] ?? null) : null,
+      durationMinutes,
+      takenIds: takenDependencyIds,
       source: edge?.source ?? 'trainer',
-      broken: {
-        quantifier:
-          broken?.quantifier === 'at_least'
-            ? 'at_least'
-            : broken?.quantifier === 'all'
-              ? 'all'
-              : 'any',
-        threshold: broken?.quantifier === 'at_least' ? broken.threshold : 1,
-        keys: brokenKeys,
-      },
-      met:
-        metKeys.length === 0
-          ? null
-          : {
-              quantifier:
-                met?.quantifier === 'at_least'
-                  ? 'at_least'
-                  : met?.quantifier === 'all'
-                    ? 'all'
-                    : 'any',
-              threshold: met?.quantifier === 'at_least' ? met.threshold : 1,
-              keys: metKeys,
-            },
     });
-    return { edge: next };
-  };
 
   const save = async (next: TeamDependencyEdge) => {
     setSaving(true);
@@ -374,24 +320,19 @@ export function DependencyDrawer({
     setSaving(true);
     setMessage(null);
     try {
-      const created = await api.scenarios.createInject(scenarioId, {
-        title: `Consequence for ${name}`,
-        content: sentence,
-        type: 'email',
-        severity: built.edge.severity,
-        requires_response: true,
-        inject_scope: 'team_specific',
-        target_teams: [name],
-        trigger_time_minutes: null,
-        conditions_to_appear: { all: [consequenceAppearKey(built.edge)] },
-        conditions_to_cancel: consequenceCancelKeys(built.edge.id),
-        delivery_config: {
-          app: 'email',
-          inject_key: key,
-          cause: { kind: 'dependency', dep_id: built.edge.id },
-        },
-      });
-      onInjectCreated(created.data);
+      const created = await api.scenarios.createInject(
+        scenarioId,
+        consequenceInjectDraft({
+          edge: built.edge,
+          team: name,
+          injectKey: key,
+          title: `Consequence for ${name}`,
+          content: sentence,
+        }),
+      );
+      const row = readScenarioInject(created.data);
+      if (!row) throw new Error('The consequence inject came back without an id.');
+      onInjectCreated(row);
       const withKey: TeamDependencyEdge = {
         ...built.edge,
         consequence_keys: [...built.edge.consequence_keys, key],
@@ -410,7 +351,9 @@ export function DependencyDrawer({
     const key = uniqueInjectKey(target.title, takenInjectKeys());
     const config = { ...(target.delivery_config ?? {}), inject_key: key };
     const res = await api.scenarios.updateInject(scenarioId, injectId, { delivery_config: config });
-    onInjectUpdated(res.data);
+    const row = readScenarioInject(res.data);
+    if (!row) throw new Error('That inject came back without an id.');
+    onInjectUpdated(row);
     return key;
   };
 

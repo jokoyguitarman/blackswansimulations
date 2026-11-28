@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   readTeamDependencies,
   refreshEdgeTeamNames,
+  toActiveTeams,
   type ActiveTeam,
   type TeamDependencyEdge,
 } from '@shared/teamDependencies';
@@ -18,31 +19,6 @@ export interface EditorOrg {
   operation?: string;
   display_name?: string;
   name?: string;
-}
-
-/**
- * An organisation with `operation: 'ai'` is not playable. Teams with no org,
- * and orgs that omit operation, are playable. Same rule as the server validator.
- */
-export function editorActiveTeams(
-  teams: readonly EditorTeam[],
-  orgs: readonly EditorOrg[],
-): ActiveTeam[] {
-  const aiOrgs = new Set(
-    orgs.flatMap((org) => (org.operation === 'ai' && org.org_key ? [org.org_key] : [])),
-  );
-  const active: ActiveTeam[] = [];
-  for (const team of teams) {
-    const name = team.team_name.trim();
-    if (!name) continue;
-    const orgKey = team.org_key ?? null;
-    active.push({
-      team_uid: team.team_uid ?? null,
-      team_name: name,
-      playable: orgKey == null || !aiOrgs.has(orgKey),
-    });
-  }
-  return active;
 }
 
 export function readOrgs(initialState: Record<string, unknown>): EditorOrg[] {
@@ -92,7 +68,7 @@ export function useDependencyDocument(
   ) => Promise<unknown>,
   teams: readonly EditorTeam[],
 ): DependencyDocument {
-  const active = editorActiveTeams(teams, readOrgs(initialState));
+  const active = toActiveTeams(teams, readOrgs(initialState));
   const activeRef = useRef(active);
   activeRef.current = active;
   const stored = initialState.team_dependencies;

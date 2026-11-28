@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isInjectKey, uniqueInjectKey } from '@shared/injectKeySlug';
 import {
+  conditionGroupKeys,
+  consequenceInjectDraft,
+  dependencyIdInKey,
   displayRef,
   editorCrossTeamProfile,
   quickDependencyEdge,
@@ -13,6 +16,7 @@ import {
 import { api } from '../../lib/api';
 import { causeChipText, dependencyPreviewSentence } from './dependencyPreview';
 import { formatSaveError, type DependencyDocument } from './dependencyDocument';
+import { readScenarioInject, type ScenarioInjectRow } from './scenarioInject';
 
 const inputCls =
   'w-full text-xs bg-surface border border-border rounded px-2 py-1.5 text-ink disabled:opacity-60';
@@ -23,15 +27,6 @@ interface InjectRef {
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   delivery_config?: Record<string, unknown> | null;
-}
-
-function dependencyIdFromKey(key: string): string | null {
-  const body = key.split('|')[0] ?? '';
-  const match =
-    /^dependency_(?:broken_for|broken|met|recovered|resolved|waived):(dep_[a-z0-9_]{1,56})(?::|$)/.exec(
-      body,
-    );
-  return match?.[1] ?? null;
 }
 
 export function DependencyCauseRow({
@@ -47,7 +42,7 @@ export function DependencyCauseRow({
 }) {
   const causedId =
     readDependencyCause(deliveryConfig) ??
-    appearKeys.map(dependencyIdFromKey).find((id): id is string => !!id) ??
+    appearKeys.map(dependencyIdInKey).find((id): id is string => !!id) ??
     null;
   const edge = causedId ? document.edges.find((item) => item.id === causedId) : undefined;
   const profile = editorCrossTeamProfile({
@@ -104,7 +99,7 @@ export function DependencyQuickAction({
   deliveryConfig: Record<string, unknown>;
   injects: readonly InjectRef[];
   document: DependencyDocument;
-  onInjectCreated: (row: Record<string, unknown>) => void;
+  onInjectCreated: (row: ScenarioInjectRow) => void;
   onInjectKey: (key: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -115,6 +110,13 @@ export function DependencyQuickAction({
   const [consequenceTitle, setConsequenceTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const savedConsequence = useRef<{
+    edge: TeamDependencyEdge;
+    injectKey: string;
+    title: string;
+    content: string;
+    team: string;
+  } | null>(null);
 
   if (!requiresResponse) return null;
   const playable = document.teams.filter((team) => team.playable !== false);
@@ -154,7 +156,7 @@ export function DependencyQuickAction({
       setMessage('Choose the team that fails this and the team that feels it.');
       return;
     }
-    if (sameTeam(upstream, downstream)) {
+    if (sameTeamRef(upstream, downstream)) {
       setMessage('The other team has to be different from the team that fails this.');
       return;
     }
@@ -180,50 +182,59 @@ export function DependencyQuickAction({
         });
         onInjectKey(key);
       }
-      const depId = uniqueDependencyId(
-        injectTitle || downstream.team_name,
-        takenDependencyIds(document.edges, injects),
-      );
-      const consKey = uniqueInjectKey(title, takenKeys(injects, key));
-      const edge = quickDependencyEdge({
-        id: depId,
-        injectKey: key,
-        injectTitle: injectTitle.trim() || 'this inject',
-        upstream,
-        downstream,
-        withinMinutes: minutes,
-        lagMinutes: lag,
-        consequenceKey: consKey,
-      });
-      const sentence = dependencyPreviewSentence({
-        upstream: upstream.team_name,
-        downstream: [downstream.team_name],
-        brokenKeys: edgeBroken(edge),
-        metKeys: edgeMet(edge),
-        lagMinutes: edge.lag_minutes,
-        consequences: [{ team: downstream.team_name, title }],
-        injectTitles: { [key]: injectTitle || key },
-      });
-      await document.commit((current) => [...current, edge]);
-      try {
-        const created = await api.scenarios.createInject(scenarioId, {
-          title,
-          content: sentence,
-          type: 'email',
-          severity: 'medium',
-          requires_response: true,
-          inject_scope: 'team_specific',
-          target_teams: [downstream.team_name],
-          trigger_time_minutes: null,
-          conditions_to_appear: { all: [`dependency_broken_for:${edge.id}:${edge.lag_minutes}`] },
-          conditions_to_cancel: [`dependency_resolved:${edge.id}`, `dependency_waived:${edge.id}`],
-          delivery_config: {
-            app: 'email',
-            inject_key: consKey,
-            cause: { kind: 'dependency', dep_id: edge.id },
-          },
+      let pending = savedConsequence.current;
+      if (!pending) {
+        const depId = uniqueDependencyId(
+          injectTitle || downstream.team_name,
+          takenDependencyIds(document.edges, injects),
+        );
+        const consKey = uniqueInjectKey(title, takenKeys(injects, key));
+        const edge = quickDependencyEdge({
+          id: depId,
+          injectKey: key,
+          injectTitle: injectTitle.trim() || 'this inject',
+          upstream,
+          downstream,
+          withinMinutes: minutes,
+          lagMinutes: lag,
+          consequenceKey: consKey,
         });
-        onInjectCreated(created.data);
+        const content = dependencyPreviewSentence({
+          upstream: upstream.team_name,
+          downstream: [downstream.team_name],
+          brokenKeys: conditionGroupKeys(edge.broken_when),
+          metKeys: conditionGroupKeys(edge.met_when),
+          lagMinutes: edge.lag_minutes,
+          consequences: [{ team: downstream.team_name, title }],
+          injectTitles: { [key]: injectTitle || key },
+        });
+        await document.commit((current) =>
+          current.some((item) => item.id === edge.id) ? [...current] : [...current, edge],
+        );
+        pending = {
+          edge,
+          injectKey: consKey,
+          title,
+          content,
+          team: downstream.team_name,
+        };
+        savedConsequence.current = pending;
+      }
+      try {
+        const created = await api.scenarios.createInject(
+          scenarioId,
+          consequenceInjectDraft({
+            edge: pending.edge,
+            team: pending.team,
+            injectKey: pending.injectKey,
+            title: pending.title,
+            content: pending.content,
+          }),
+        );
+        const row = readScenarioInject(created.data);
+        if (!row) throw new Error('The consequence inject came back without an id.');
+        savedConsequence.current = null;
+        onInjectCreated(row);
       } catch (err) {
         setMessage(
           `The dependency was saved, but the consequence inject was not. ${formatSaveError(err)}`,
@@ -354,7 +365,7 @@ function resolveChoice(
   return { team_uid: team.team_uid ?? null, team_name: team.team_name };
 }
 
-function sameTeam(left: TeamRef, right: TeamRef): boolean {
+function sameTeamRef(left: TeamRef, right: TeamRef): boolean {
   if (left.team_uid && right.team_uid) return left.team_uid === right.team_uid;
   return left.team_name === right.team_name;
 }
@@ -369,11 +380,3 @@ function takenKeys(injects: readonly InjectRef[], extra?: string): Set<string> {
   return taken;
 }
 
-function edgeBroken(edge: TeamDependencyEdge): string[] {
-  return 'all' in edge.broken_when ? edge.broken_when.all : edge.broken_when.conditions;
-}
-
-function edgeMet(edge: TeamDependencyEdge): string[] {
-  if (!edge.met_when) return [];
-  return 'all' in edge.met_when ? edge.met_when.all : edge.met_when.conditions;
-}

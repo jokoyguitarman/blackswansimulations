@@ -6,6 +6,8 @@ import {
   applyAnySugar,
   consequenceAppearKey,
   consequenceCancelKeys,
+  consequenceInjectDraft,
+  dependencyIdInKey,
   crossTeamTeamsOf,
   dependencyCatalogEntries,
   displayRef,
@@ -257,32 +259,71 @@ describe('dependency editor model', () => {
     assert.equal(readDependencyCause({ cause: { kind: 'dependency', dep_id: edge.id } }), edge.id);
     const taken = new Set([edge.id]);
     assert.equal(uniqueDependencyId('Bay 3 headcount', taken), 'dep_bay_3_headcount');
-    const retired = takenDependencyIds(
-      [{ id: 'dep_still_here' }],
-      [
-        {
-          conditions_to_appear: {
-            any: ['dependency_broken_for:dep_bay_3_headcount:5'],
-          },
-          conditions_to_cancel: [
-            'dependency_resolved:dep_bay_3_headcount',
-            'dependency_waived:dep_bay_3_headcount',
-          ],
-          delivery_config: {
-            app: 'email',
-            cause: { kind: 'dependency', dep_id: 'dep_bay_3_headcount' },
-          },
-        },
-      ],
-    );
-    assert.equal(retired.has('dep_bay_3_headcount'), true);
-    assert.equal(retired.has('dep_still_here'), true);
-    assert.equal(retired.has('dependency_broken_for'), false);
-    assert.equal(uniqueDependencyId('Bay 3 headcount', retired), 'dep_bay_3_headcount_2');
+    assert.equal(dependencyIdInKey('dependency_broken_for:dep_bay_3_headcount:5'), 'dep_bay_3_headcount');
+    assert.equal(dependencyIdInKey('dependency_waived:dep_bay_3_headcount'), 'dep_bay_3_headcount');
+    assert.equal(dependencyIdInKey('unresponded:bay3_headcount_request:10|team=@upstream'), null);
+    const draft = consequenceInjectDraft({
+      edge,
+      team: 'Communications',
+      injectKey: 'comms_reporter_presses_for_numbers',
+      title: 'Reporter presses for numbers',
+      content: 'The figures never arrived.',
+    });
+    assert.deepEqual(draft.conditions_to_appear, {
+      all: ['dependency_broken_for:dep_ops_bay3_headcount:5'],
+    });
+    assert.deepEqual(draft.conditions_to_cancel, [
+      'dependency_resolved:dep_ops_bay3_headcount',
+      'dependency_waived:dep_ops_bay3_headcount',
+    ]);
+    assert.deepEqual(draft.target_teams, ['Communications']);
+    assert.deepEqual(draft.delivery_config.cause, {
+      kind: 'dependency',
+      dep_id: 'dep_ops_bay3_headcount',
+    });
     assert.equal(
       uniqueDependencyId('dep_ops_bay3_headcount', new Set(['dep_dep_ops_bay3_headcount'])),
       'dep_dep_ops_bay3_headcount_2',
     );
+  });
+
+  test('a retired id is reserved from appear, from cancel, and from cause separately', () => {
+    const fromAppear = takenDependencyIds(
+      [],
+      [{ conditions_to_appear: { all: ['dependency_broken_for:dep_from_appear:5'] } }],
+    );
+    assert.deepEqual([...fromAppear], ['dep_from_appear']);
+    assert.equal(
+      uniqueDependencyId(
+        'Bay 3 headcount',
+        takenDependencyIds([], [
+          { conditions_to_appear: { any: ['dependency_broken_for:dep_bay_3_headcount:5'] } },
+        ]),
+      ),
+      'dep_bay_3_headcount_2',
+    );
+
+    const fromCancel = takenDependencyIds(
+      [],
+      [{ conditions_to_cancel: ['dependency_waived:dep_from_cancel'] }],
+    );
+    assert.deepEqual([...fromCancel], ['dep_from_cancel']);
+
+    const fromCause = takenDependencyIds(
+      [],
+      [
+        {
+          delivery_config: {
+            cause: {
+              kind: 'dependency',
+              dep_id: 'dep_from_cause',
+              note: 'dependency_broken:dep_not_this',
+            },
+          },
+        },
+      ],
+    );
+    assert.deepEqual([...fromCause], ['dep_from_cause']);
   });
 
   test('a renamed team shows its new name, and a removed team stays an orphan', () => {

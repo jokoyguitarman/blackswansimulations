@@ -4,7 +4,11 @@
  * The zod schema lives in the server module so the editor build does not depend on zod.
  */
 
-import { slugifyTeamName } from './conditionKeyGrammar.js';
+import {
+  parseCatalogCondition,
+  slugifyTeamName,
+  type ConditionDefSpec,
+} from './conditionKeyGrammar.js';
 
 export const DEPENDENCY_KINDS = [
   'information',
@@ -36,6 +40,53 @@ export interface ActiveTeam {
   team_uid?: string | null;
   team_name: string;
   playable?: boolean;
+}
+
+/**
+ * A team is unplayable when its organisation is operated by the simulation
+ * (`operation: 'ai'`). Teams with no org, and orgs that omit operation, are playable.
+ */
+export function toActiveTeams(
+  rows: readonly {
+    team_uid?: string | null;
+    team_name?: string | null;
+    org_key?: string | null;
+  }[],
+  orgs: readonly { org_key?: string | null; operation?: string | null }[] = [],
+): ActiveTeam[] {
+  const aiOrgs = new Set(
+    orgs.flatMap((org) =>
+      org.operation === 'ai' && typeof org.org_key === 'string' && org.org_key ? [org.org_key] : [],
+    ),
+  );
+  const teams: ActiveTeam[] = [];
+  for (const row of rows) {
+    if (typeof row.team_name !== 'string' || !row.team_name.trim()) continue;
+    const orgKey = typeof row.org_key === 'string' ? row.org_key : null;
+    teams.push({
+      team_uid: typeof row.team_uid === 'string' && row.team_uid ? row.team_uid : null,
+      team_name: row.team_name,
+      playable: orgKey == null || !aiOrgs.has(orgKey),
+    });
+  }
+  return teams;
+}
+
+/** Two team names are the same when they are equal or share a slug. */
+export function sameTeam(a: string, b: string): boolean {
+  if (a === b) return true;
+  const left = slugifyTeamName(a);
+  const right = slugifyTeamName(b);
+  return left !== '' && left === right;
+}
+
+/** A recipient team that the firing keys are not about. */
+export function isCrossTeam(
+  sourceTeams: readonly string[],
+  targetTeams: readonly string[],
+): boolean {
+  if (sourceTeams.length === 0 || targetTeams.length === 0) return false;
+  return targetTeams.some((target) => !sourceTeams.some((source) => sameTeam(source, target)));
 }
 
 export type NormalizedConditions = { all: string[] } | { threshold: number; conditions: string[] };
@@ -168,6 +219,49 @@ export function consequenceCancelKeys(depId: string): string[] {
   return [`dependency_resolved:${depId}`, `dependency_waived:${depId}`];
 }
 
+/** The inject both the editor and the generator create for one downstream team. */
+export function consequenceInjectDraft(input: {
+  edge: { id: string; lag_minutes: number; severity?: string };
+  team: string;
+  injectKey: string;
+  title: string;
+  content: string;
+}): {
+  title: string;
+  content: string;
+  type: 'email';
+  severity: string;
+  requires_response: true;
+  inject_scope: 'team_specific';
+  target_teams: string[];
+  trigger_time_minutes: null;
+  conditions_to_appear: { all: [string] };
+  conditions_to_cancel: string[];
+  delivery_config: {
+    app: 'email';
+    inject_key: string;
+    cause: { kind: 'dependency'; dep_id: string };
+  };
+} {
+  return {
+    title: input.title,
+    content: input.content,
+    type: 'email',
+    severity: input.edge.severity && input.edge.severity.trim() ? input.edge.severity : 'medium',
+    requires_response: true,
+    inject_scope: 'team_specific',
+    target_teams: [input.team],
+    trigger_time_minutes: null,
+    conditions_to_appear: { all: [consequenceAppearKey(input.edge)] },
+    conditions_to_cancel: consequenceCancelKeys(input.edge.id),
+    delivery_config: {
+      app: 'email',
+      inject_key: input.injectKey,
+      cause: { kind: 'dependency', dep_id: input.edge.id },
+    },
+  };
+}
+
 export interface DependencyEditorQuantifier {
   quantifier: 'all' | 'any' | 'at_least';
   threshold: number;
@@ -249,16 +343,24 @@ function readConditionGroup(value: unknown): NormalizedConditions | null | { err
   return { error: 'a condition group must use all, any, or threshold' };
 }
 
+const TEAM_UID =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 function readTeamRef(value: unknown, label: string): TeamRef | { error: string } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { error: `${label} must be a team` };
   }
   const record = value as { team_uid?: unknown; team_name?: unknown };
-  const teamName = typeof record.team_name === 'string' ? record.team_name.trim() : '';
-  if (!teamName) return { error: `${label} is missing team_name` };
-  const uid =
-    typeof record.team_uid === 'string' && record.team_uid.trim() ? record.team_uid.trim() : null;
-  return { team_uid: uid, team_name: teamName };
+  if (typeof record.team_name !== 'string') return { error: `${label} is missing team_name` };
+  const teamName = record.team_name.trim();
+  if (teamName.length > 200) return { error: `${label} team_name is too long` };
+  if (record.team_uid == null || record.team_uid === '') {
+    return { team_uid: null, team_name: teamName };
+  }
+  if (typeof record.team_uid !== 'string' || !TEAM_UID.test(record.team_uid)) {
+    return { error: `${label} team_uid must be a uuid` };
+  }
+  return { team_uid: record.team_uid, team_name: teamName };
 }
 
 function readDue(value: unknown): DependencyDue | { error: string } {
@@ -455,43 +557,83 @@ export function fromEditorModel(model: DependencyEditorModel): TeamDependencyEdg
   };
 }
 
-function addDependencyId(taken: Set<string>, value: string): void {
-  if (DEPENDENCY_ID.test(value)) taken.add(value);
+const DEPENDENCY_KEY_DEFS: readonly ConditionDefSpec[] = [
+  {
+    id: 'dependency_broken_for',
+    kind: 'prefix',
+    prefix: 'dependency_broken_for:',
+    params: [
+      { name: 'dep', type: 'string' },
+      { name: 'N', type: 'minutes', min: 0, max: 240 },
+    ],
+    platform: 'cross',
+  },
+  {
+    id: 'dependency_broken',
+    kind: 'prefix',
+    prefix: 'dependency_broken:',
+    params: [{ name: 'dep', type: 'string' }],
+    platform: 'cross',
+  },
+  {
+    id: 'dependency_recovered',
+    kind: 'prefix',
+    prefix: 'dependency_recovered:',
+    params: [{ name: 'dep', type: 'string' }],
+    platform: 'cross',
+  },
+  {
+    id: 'dependency_resolved',
+    kind: 'prefix',
+    prefix: 'dependency_resolved:',
+    params: [{ name: 'dep', type: 'string' }],
+    platform: 'cross',
+  },
+  {
+    id: 'dependency_waived',
+    kind: 'prefix',
+    prefix: 'dependency_waived:',
+    params: [{ name: 'dep', type: 'string' }],
+    platform: 'cross',
+  },
+  {
+    id: 'dependency_met',
+    kind: 'prefix',
+    prefix: 'dependency_met:',
+    params: [{ name: 'dep', type: 'string' }],
+    platform: 'cross',
+  },
+];
+
+/** The dependency id named by a `dependency_*` condition key, or null. */
+export function dependencyIdInKey(key: string): string | null {
+  const parsed = parseCatalogCondition(key, DEPENDENCY_KEY_DEFS);
+  if ('error' in parsed || !parsed.def.id.startsWith('dependency_')) return null;
+  const id = parsed.args[0] ?? '';
+  return DEPENDENCY_ID.test(id) ? id : null;
 }
 
-function addDependencyIdsInText(taken: Set<string>, text: string): void {
-  addDependencyId(taken, text);
-  const keys =
-    /dependency_(?:broken_for|broken|met|recovered|resolved|waived):(dep_[a-z0-9_]{1,56})(?::|$)/g;
-  for (const match of text.matchAll(keys)) {
-    const id = match[1];
-    if (id) addDependencyId(taken, id);
-  }
-}
-
-function addDependencyIds(taken: Set<string>, value: unknown): void {
+function addConditionIds(taken: Set<string>, value: unknown): void {
   if (typeof value === 'string') {
-    addDependencyIdsInText(taken, value);
+    const id = dependencyIdInKey(value);
+    if (id) taken.add(id);
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) addDependencyIds(taken, item);
+    for (const item of value) addConditionIds(taken, item);
     return;
   }
-  if (value && typeof value === 'object') {
-    for (const item of Object.values(value)) addDependencyIds(taken, item);
-  }
+  if (!value || typeof value !== 'object') return;
+  const record = value as { all?: unknown; any?: unknown; conditions?: unknown };
+  if (Array.isArray(record.all)) addConditionIds(taken, record.all);
+  if (Array.isArray(record.any)) addConditionIds(taken, record.any);
+  if (Array.isArray(record.conditions)) addConditionIds(taken, record.conditions);
 }
 
 export interface DependencyIdSource {
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   delivery_config?: unknown;
-}
-
-function causeOf(config: unknown): unknown {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) return undefined;
-  return (config as { cause?: unknown }).cause;
 }
 
 /**
@@ -504,11 +646,14 @@ export function takenDependencyIds(
   injects: readonly DependencyIdSource[],
 ): Set<string> {
   const taken = new Set<string>();
-  for (const edge of edges) addDependencyId(taken, edge.id);
+  for (const edge of edges) {
+    if (DEPENDENCY_ID.test(edge.id)) taken.add(edge.id);
+  }
   for (const inject of injects) {
-    addDependencyIds(taken, inject.conditions_to_appear);
-    addDependencyIds(taken, inject.conditions_to_cancel);
-    addDependencyIds(taken, causeOf(inject.delivery_config));
+    addConditionIds(taken, inject.conditions_to_appear);
+    addConditionIds(taken, inject.conditions_to_cancel);
+    const causeId = readDependencyCause(inject.delivery_config);
+    if (causeId) taken.add(causeId);
   }
   return taken;
 }
@@ -601,31 +746,15 @@ export function refreshEdgeTeamNames(
 }
 
 function pushTeam(names: string[], name: string): void {
-  const slug = slugifyTeamName(name);
-  if (!slug) return;
-  if (names.some((existing) => slugifyTeamName(existing) === slug)) return;
+  if (!name) return;
+  if (names.some((existing) => sameTeam(existing, name))) return;
   names.push(name);
-}
-
-function dependencyIdInKey(key: string): string | null {
-  const body = key.split('|')[0] ?? '';
-  const match =
-    /^dependency_(?:broken_for|broken|met|recovered|resolved|waived):(dep_[a-z0-9_]{1,56})(?::|$)/.exec(
-      body,
-    );
-  return match?.[1] ?? null;
-}
-
-function sameTeamName(left: string, right: string): boolean {
-  const a = slugifyTeamName(left);
-  const b = slugifyTeamName(right);
-  return a !== '' && a === b;
 }
 
 /**
  * Editor stand-in for the server `crossTeamProfile`. Dependency keys contribute
- * the edge's upstream team. A `|team=` slug contributes that team. The inject
- * is cross-team when a target team is not one of those source teams.
+ * the edge's upstream team. A `|team=` slug contributes that team. Whether that
+ * is cross-team is `isCrossTeam`.
  */
 export function editorCrossTeamProfile(input: {
   appearKeys: readonly string[];
@@ -649,11 +778,11 @@ export function editorCrossTeamProfile(input: {
     pushTeam(source, team?.team_name ?? scope);
   }
   const target = input.targetTeams.map((team) => team.trim()).filter(Boolean);
-  const isCrossTeam =
-    source.length > 0 &&
-    target.length > 0 &&
-    target.some((team) => !source.some((item) => sameTeamName(item, team)));
-  return { source_teams: source, target_teams: target, is_cross_team: isCrossTeam };
+  return {
+    source_teams: source,
+    target_teams: target,
+    is_cross_team: isCrossTeam(source, target),
+  };
 }
 
 /** `cause: { kind: 'dependency', dep_id }` on an inject, or null. */
