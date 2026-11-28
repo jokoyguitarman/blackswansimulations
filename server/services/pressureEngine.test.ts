@@ -1,10 +1,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  actWithinCap,
   chooseMove,
+  orderLeastRecentlyPosted,
   selectLeastRecentlyPosted,
   type PageProgress,
 } from './pressureEngineService.js';
+import type { PagePosture } from './socialCrisisGeneratorService.js';
 
 const p = (over: Partial<PageProgress> = {}): PageProgress => ({
   minutesSinceLastPost: Infinity,
@@ -33,6 +36,62 @@ describe('pressure tick cap', () => {
     const rotated = [...pages.slice(1), pages[0]];
     const tied = selectLeastRecentlyPosted(rotated, () => null, 4);
     assert.deepEqual(tied, ['b', 'c', 'd', 'e']);
+  });
+
+  test('more than four finished pages do not keep active pages from posting', async () => {
+    type TickPage = {
+      key: string;
+      register: PagePosture['register'];
+      progress: PageProgress;
+      lastPosted: number | null;
+    };
+    const finished: TickPage[] = [
+      ...Array.from({ length: 3 }, (_, i) => ({
+        key: `stood-down-${i}`,
+        register: 'advocacy' as const,
+        progress: p({ stoodDown: true }),
+        lastPosted: null,
+      })),
+      {
+        key: 'ladder-done',
+        register: 'advocacy',
+        progress: p({ rung: 3, maxRung: 3, minutesSinceLastPost: 40 }),
+        lastPosted: null,
+      },
+      {
+        key: 'aligned-quiet',
+        register: 'aligned',
+        progress: p({ rung: 2, maxRung: 2, hqPublished: true, minutesSinceLastPost: 40 }),
+        lastPosted: null,
+      },
+    ];
+    const active: TickPage[] = [
+      {
+        key: 'live-a',
+        register: 'advocacy',
+        progress: p({ rung: 0, minutesSinceLastPost: 30 }),
+        lastPosted: 100,
+      },
+      {
+        key: 'live-b',
+        register: 'advocacy',
+        progress: p({ rung: 1, minutesSinceLastPost: 30 }),
+        lastPosted: 200,
+      },
+    ];
+    for (const page of finished) assert.equal(chooseMove(page.register, page.progress), 'skip');
+    assert.notEqual(chooseMove(active[0].register, active[0].progress), 'skip');
+    assert.notEqual(chooseMove(active[1].register, active[1].progress), 'skip');
+
+    const ordered = orderLeastRecentlyPosted([...finished, ...active], (page) => page.lastPosted);
+    const posts: string[] = [];
+    await actWithinCap(ordered, 4, async (page) => {
+      const move = chooseMove(page.register, page.progress);
+      if (move === 'skip') return false;
+      posts.push(page.key);
+      return true;
+    });
+    assert.deepEqual(posts, ['live-a', 'live-b']);
   });
 });
 

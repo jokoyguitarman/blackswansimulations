@@ -108,13 +108,10 @@ export function chooseMove(register: PagePosture['register'], p: PageProgress): 
 }
 
 /** Never-posted pages sort first. Equal times keep the incoming order. */
-export function selectLeastRecentlyPosted<T>(
+export function orderLeastRecentlyPosted<T>(
   items: readonly T[],
   lastPostedAt: (item: T) => number | null,
-  max: number,
 ): T[] {
-  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
-  if (cap === 0 || items.length === 0) return [];
   return items
     .map((item, index) => ({ item, index, at: lastPostedAt(item) }))
     .sort((a, b) => {
@@ -123,8 +120,37 @@ export function selectLeastRecentlyPosted<T>(
       if (a.at != null && b.at != null && a.at !== b.at) return a.at - b.at;
       return a.index - b.index;
     })
-    .slice(0, cap)
     .map((row) => row.item);
+}
+
+export function selectLeastRecentlyPosted<T>(
+  items: readonly T[],
+  lastPostedAt: (item: T) => number | null,
+  max: number,
+): T[] {
+  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  if (cap === 0 || items.length === 0) return [];
+  return orderLeastRecentlyPosted(items, lastPostedAt).slice(0, cap);
+}
+
+/**
+ * Walk least-recent-first. A page that does not act (it has stood down, finished
+ * its ladder, or otherwise returns false) does not consume the cap.
+ */
+export async function actWithinCap<T>(
+  leastRecentFirst: readonly T[],
+  max: number,
+  act: (page: T) => Promise<boolean>,
+): Promise<void> {
+  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  if (cap === 0) return;
+  let acted = 0;
+  for (const page of leastRecentFirst) {
+    if (await act(page)) {
+      acted += 1;
+      if (acted >= cap) return;
+    }
+  }
 }
 
 function rotate<T>(items: readonly T[], offset: number): T[] {
@@ -216,17 +242,13 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
   const lastPosted = await lastPostedAtByOrg(sessionId, pageRows);
   // Same-minute ties rotate so a tick cap does not always refresh the same pages.
   const rotated = rotate(eligible, Math.floor(elapsedMinutes));
-  const chosen = selectLeastRecentlyPosted(
-    rotated,
-    (orgKey) => lastPosted.get(orgKey) ?? null,
-    env.pressureEngineMaxPagesPerTick,
-  );
-  for (const orgKey of chosen) {
+  const ordered = orderLeastRecentlyPosted(rotated, (orgKey) => lastPosted.get(orgKey) ?? null);
+  await actWithinCap(ordered, env.pressureEngineMaxPagesPerTick, async (orgKey) => {
     const cfg = configByKey.get(orgKey);
-    if (!cfg) continue;
+    if (!cfg) return false;
     const rows = pageRows.filter((r) => r.org_key === orgKey);
     try {
-      await runPage(
+      return await runPage(
         sessionId,
         sessionRow.scenario_id,
         elapsedMinutes,
@@ -237,8 +259,9 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
       );
     } catch (err) {
       logger.warn({ err, sessionId, orgKey }, 'pressure engine: page tick failed');
+      return false;
     }
-  }
+  });
 }
 
 async function lastPostedAtByOrg(
@@ -278,7 +301,7 @@ async function runPage(
   rows: PageRow[],
   initialState: Record<string, unknown>,
   escalationRisk: number,
-): Promise<void> {
+): Promise<boolean> {
   const posture = cfg.posture!;
   const handles = rows.map((r) => r.page_handle);
 
@@ -353,7 +376,7 @@ async function runPage(
     escalationRisk,
   };
   const move = chooseMove(posture.register, progress);
-  if (move === 'skip') return;
+  if (move === 'skip') return false;
 
   const platform =
     rows.some((r) => r.platform === 'x_twitter') &&
@@ -400,7 +423,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     0.7,
   );
   const content = String(result?.content || '').trim();
-  if (!content) return;
+  if (!content) return false;
 
   // Contract §4.1 stamps page posts with the page's country — but only when humans play there;
   // otherwise the post is unscoped so the players present see it (pressure plan §11).
@@ -443,7 +466,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     .single();
   if (error || !post) {
     logger.warn({ error, sessionId, orgKey: cfg.org_key }, 'pressure post insert failed');
-    return;
+    return false;
   }
   await emitSessionEvent(
     sessionId,
@@ -470,6 +493,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     { sessionId, orgKey: cfg.org_key, move, register: posture.register },
     'pressure engine posted',
   );
+  return true;
 }
 
 async function protagonistPostsSince(

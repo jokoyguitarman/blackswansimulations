@@ -61,6 +61,7 @@ export function createConcurrencyLimiter(limit: number): ConcurrencyLimiter {
   ): Promise<R[]> => {
     const parent = hold.getStore();
     // Synchronous: two nested maps started together must not both release the one parent slot.
+    // Two concurrent nested fan-outs under one item, with grandchildren fanning out again, can deadlock.
     const nested = Boolean(parent?.holds);
     if (parent && nested) parent.holds = false;
     if (nested) release();
