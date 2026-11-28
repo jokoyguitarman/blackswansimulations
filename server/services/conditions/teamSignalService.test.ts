@@ -8,6 +8,7 @@ import {
   loadTeamSignalFacts,
   resetTeamSignalAggregatesForTests,
 } from './teamSignalService.js';
+import { env } from '../../env.js';
 import { activityMinute } from '../../lib/peaceGate.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 
@@ -103,6 +104,7 @@ interface BuiltQuery {
   eqs: Array<[string, unknown]>;
   ins: Array<[string, unknown[]]>;
   neqs: Array<[string, unknown]>;
+  gtes: Array<[string, unknown]>;
   order?: { column: string; ascending: boolean };
   limit?: number;
 }
@@ -113,6 +115,7 @@ function applyQuery(
 ): Array<Record<string, unknown>> {
   let out = rows.filter((row) => {
     if (query.eqs.some(([column, value]) => row[column] !== value)) return false;
+    if (query.gtes.some(([column, value]) => String(row[column] ?? '') < String(value))) return false;
     if (query.neqs.some(([column, value]) => row[column] === value)) return false;
     if (query.ins.some(([column, values]) => !values.includes(row[column]))) return false;
     return true;
@@ -158,24 +161,32 @@ function sortedGrades(grades: Record<string, number[]>): Record<string, number[]
 
 describe('narrowed team-signal queries', () => {
   const selects: string[] = [];
+  const gteLog: Array<{ select: string; column: string; value: unknown; limitAlready: boolean }> =
+    [];
   let aggregates = true;
   let aggregateCode = 'PGRST123';
   let chatSource = chatRows;
 
   after(() => {
     supabaseAdmin.from = originalFrom;
+    env.enablePeacePeriod = false;
   });
 
   function install(): void {
     selects.length = 0;
     (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
       let select = '';
-      const query: BuiltQuery = { eqs: [], ins: [], neqs: [] };
+      const query: BuiltQuery = { eqs: [], ins: [], neqs: [], gtes: [] };
       const builder: Record<string, unknown> = {};
       const self = () => builder;
-      for (const method of ['is', 'not', 'or', 'gte', 'lte', 'gt', 'lt', 'filter']) {
+      for (const method of ['is', 'not', 'or', 'lte', 'gt', 'lt', 'filter']) {
         builder[method] = self;
       }
+      builder.gte = (column: string, value: unknown) => {
+        query.gtes.push([column, value]);
+        gteLog.push({ select, column, value, limitAlready: query.limit != null });
+        return builder;
+      };
       builder.eq = (column: string, value: unknown) => {
         query.eqs.push([column, value]);
         return builder;
@@ -250,9 +261,19 @@ describe('narrowed team-signal queries', () => {
     }
     if (table === 'session_participants') return [{ user_id: TRAINER, role: 'trainer' }];
     if (table === 'session_decisions') return [];
-    if (table === 'player_actions' && select.includes('created_at.min()')) return dutyGroups;
+    if (table === 'player_actions' && select.includes('created_at.min()')) {
+      return dutyGroups.filter((row) =>
+        query.gtes.every(([, value]) => String(row.first_at) >= String(value)),
+      );
+    }
     if (table === 'player_actions' && select.includes('created_at.max()')) return actionMax;
-    if (table === 'player_actions') return rawActions;
+    if (table === 'player_actions') {
+      return rawActions.filter((row) =>
+        query.gtes.every(
+          ([column, value]) => String(row[column as 'created_at'] ?? '') >= String(value),
+        ),
+      );
+    }
     if (table === 'chat_messages' && select.includes('created_at.max()')) return chatMax;
     if (table === 'chat_messages') return applyQuery(chatSource, query);
     if (table === 'social_posts' && select.includes('id.count()')) return gradeCounts;
@@ -409,5 +430,40 @@ describe('narrowed team-signal queries', () => {
     await loadTeamSignalFacts(SESSION, START);
     assert.equal(selects.filter((line) => line.startsWith('chat_messages')).length, 1);
     chatSource = chatRows;
+  });
+
+  test('peace flag adds created_at >= start_time before both duty queries', async () => {
+    resetTeamSignalAggregatesForTests();
+    install();
+    aggregates = true;
+    env.enablePeacePeriod = false;
+    gteLog.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    assert.equal(
+      gteLog.some((entry) => entry.select.includes('player_actions') || entry.column === 'created_at'),
+      false,
+    );
+
+    env.enablePeacePeriod = true;
+    gteLog.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    const aggregated = gteLog.filter((entry) => entry.select.includes('created_at.min()'));
+    assert.equal(aggregated.length, 1);
+    assert.deepEqual(
+      aggregated.map((entry) => [entry.column, entry.value, entry.limitAlready]),
+      [['created_at', START, false]],
+    );
+
+    resetTeamSignalAggregatesForTests();
+    aggregates = false;
+    aggregateCode = 'PGRST123';
+    gteLog.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    const scanned = gteLog.filter((entry) => entry.select.startsWith('player_id, action_type'));
+    assert.equal(scanned.length, 1);
+    assert.equal(scanned[0]?.column, 'created_at');
+    assert.equal(scanned[0]?.value, START);
+    assert.equal(scanned[0]?.limitAlready, false);
+    env.enablePeacePeriod = false;
   });
 });

@@ -7,8 +7,19 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
-import { openedAtOf, selectSession as selectSessionClock, type SessionClockFields } from '../lib/peaceSchema.js';
-import { rosterValidAt } from '../lib/peaceGate.js';
+import {
+  openedAtOf,
+  selectSession as selectSessionClock,
+  type SessionClockFields,
+} from '../lib/peaceSchema.js';
+import { playerTopicLabels, type PlayerTopicLabel } from './scoring/crisisActivityCore.js';
+import { loadPlayerTopicSources } from './scoring/crisisActivityLookup.js';
+import {
+  countsOnCrisisClock,
+  crisisFiltersActive,
+  crisisMinute,
+  rosterValidAt,
+} from '../lib/peaceGate.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
@@ -83,6 +94,8 @@ export interface CommsResponsesSection {
   response_injects: number;
   timeline: CommsTimelineRow[];
   moods: CommsMoodRow[];
+  /** Present only when a player comment, DM or email carries a topic label. */
+  player_topics?: PlayerTopicLabel[];
 }
 
 export function emptyCommsResponses(): CommsResponsesSection {
@@ -203,6 +216,7 @@ export interface CommsResponsesInput {
   triggers?: readonly AarTriggerAttribution[] | null;
   /** inject_key → §5.9 sentence for a director delivery. */
   unscriptedNotes?: Readonly<Record<string, string>>;
+  playerTopics?: readonly PlayerTopicLabel[];
 }
 
 const EVENT_ORDER = [
@@ -485,11 +499,15 @@ export function buildCommsResponsesSection(input: CommsResponsesInput): CommsRes
   const notes = input.unscriptedNotes ?? {};
   const labelled = rows.map((row) => labelTimelineRow(row, triggerByKey, notes));
 
-  return {
+  const section: CommsResponsesSection = {
     response_injects: roots.size,
     timeline: labelled.slice(0, TIMELINE_CAP),
     moods: moodRows,
   };
+  if (input.playerTopics && input.playerTopics.length > 0) {
+    section.player_topics = [...input.playerTopics];
+  }
+  return section;
 }
 
 function labelTimelineRow(
@@ -638,10 +656,7 @@ function num(value: unknown): number | null {
 }
 
 function minuteAt(iso: unknown, startMs: number | null): number | null {
-  if (typeof iso !== 'string' || startMs == null) return null;
-  const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return null;
-  return Math.max(0, Math.floor((at - startMs) / 60000));
+  return crisisMinute(typeof iso === 'string' ? iso : null, startMs, 'floor');
 }
 
 export interface AarSessionParts {
@@ -664,6 +679,7 @@ export interface AarSessionParts {
   triggerRows: TriggerHistoryRow[] | null;
   /** Claims from before the response ledger, when a delivery row does not exist. */
   publications: Array<{ inject_id: string; claimed_at: string | null }>;
+  playerTopics?: PlayerTopicLabel[];
 }
 
 const DELIVERY_BASE =
@@ -730,6 +746,16 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
   parts.publications = await loadPublications(sessionId);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
+  if (crisisFiltersActive()) {
+    const startIso = typeof session?.start_time === 'string' ? session.start_time : null;
+    const topics = playerTopicLabels(
+      (await loadPlayerTopicSources(sessionId)).filter((row) =>
+        countsOnCrisisClock(row.at, startIso),
+      ),
+      started,
+    );
+    if (topics.length > 0) parts.playerTopics = topics;
+  }
   const triggers = await readInjectTriggers(sessionId);
   parts.triggerRows = triggers.missing ? null : triggers.rows;
   parts.triggers = parts.triggerRows
@@ -744,9 +770,11 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
   return parts;
 }
 
+// prettier-ignore
 async function loadPublications(
   sessionId: string,
 ): Promise<AarSessionParts['publications']> {
+  // prettier-ignore
   const result = await selectSession('inject_publications', 'inject_id, claimed_at', sessionId, 2000);
   if (result.error) {
     if (!isUnappliedSchema(result.error)) warnRead('inject_publications', result.error);

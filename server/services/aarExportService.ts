@@ -30,6 +30,7 @@ const SECTION_LABELS: Record<string, string> = {
   recommendations: 'Key takeaways and recommendations',
   // Social media crisis report sections
   social_executive: 'Executive summary',
+  before_the_crisis: 'Before the crisis',
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
   cross_team: 'Cross-team cause and effect',
