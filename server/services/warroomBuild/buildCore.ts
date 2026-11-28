@@ -7,6 +7,7 @@ import {
   type BuildRow,
   type BuildStage,
   type BuildView,
+  type ExtendedStage,
   type StageState,
   type StageStates,
 } from './buildTypes.js';
@@ -18,30 +19,42 @@ export function canonicalHash(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+/**
+ * Stages a run will execute. With the peace flag off this is today's `STAGES`.
+ */
+export function activeStages(includePeace = false): readonly ExtendedStage[] {
+  return includePeace ? [...STAGES, 'peace'] : STAGES;
+}
+
 /** The `stage_states` object inserted by `start_warroom_build`. */
-export function initialStageStates(): StageStates {
-  return {
+export function initialStageStates(includePeace = false): StageStates {
+  const states: StageStates = {
     characters: { status: 'pending', attempts: 0 },
     storyline: { status: 'pending', attempts: 0 },
     convergence: { status: 'pending', attempts: 0 },
     pages: { status: 'pending', attempts: 0 },
   };
+  if (includePeace) states.peace = { status: 'pending', attempts: 0 };
+  return states;
 }
 
 /** First stage that is not `done` or `skipped`, in stage order. */
-export function nextStage(states: StageStates): BuildStage | null {
-  for (const stage of STAGES) {
+export function nextStage(states: StageStates, includePeace = false): ExtendedStage | null {
+  for (const stage of activeStages(includePeace)) {
     const status = states[stage]?.status;
     if (status !== 'done' && status !== 'skipped') return stage;
   }
   return null;
 }
 
-function copyStates(states: StageStates): StageStates {
+function copyStates(states: StageStates, includePeace = false): StageStates {
   const out = {} as StageStates;
   for (const stage of STAGES) {
     const current = states[stage];
     out[stage] = current ? { ...current } : { status: 'pending', attempts: 0 };
+  }
+  if (includePeace) {
+    out.peace = states.peace ? { ...states.peace } : { status: 'pending', attempts: 0 };
   }
   return out;
 }
@@ -55,8 +68,13 @@ function elapsedMs(startedAt: string | undefined, finishedAt: string): number | 
 }
 
 /** Attempts + 1, status running, `started_at` set. Does not mutate `states`. */
-export function markRunning(states: StageStates, stage: BuildStage, now: string): StageStates {
-  const prev = copyStates(states);
+export function markRunning(
+  states: StageStates,
+  stage: ExtendedStage,
+  now: string,
+  includePeace = false,
+): StageStates {
+  const prev = copyStates(states, includePeace || stage === 'peace');
   prev[stage] = {
     status: 'running',
     attempts: (states[stage]?.attempts ?? 0) + 1,
@@ -65,8 +83,13 @@ export function markRunning(states: StageStates, stage: BuildStage, now: string)
   return prev;
 }
 
-export function markDone(states: StageStates, stage: BuildStage, now: string): StageStates {
-  const prev = copyStates(states);
+export function markDone(
+  states: StageStates,
+  stage: ExtendedStage,
+  now: string,
+  includePeace = false,
+): StageStates {
+  const prev = copyStates(states, includePeace || stage === 'peace');
   const current = states[stage];
   const ms = elapsedMs(current?.started_at, now);
   const next: StageState = {
@@ -82,11 +105,12 @@ export function markDone(states: StageStates, stage: BuildStage, now: string): S
 
 export function markFailed(
   states: StageStates,
-  stage: BuildStage,
+  stage: ExtendedStage,
   error: string,
   now: string,
+  includePeace = false,
 ): StageStates {
-  const prev = copyStates(states);
+  const prev = copyStates(states, includePeace || stage === 'peace');
   const current = states[stage];
   const ms = elapsedMs(current?.started_at, now);
   prev[stage] = {
@@ -100,8 +124,13 @@ export function markFailed(
   return prev;
 }
 
-export function markInterrupted(states: StageStates, stage: BuildStage, now: string): StageStates {
-  const prev = copyStates(states);
+export function markInterrupted(
+  states: StageStates,
+  stage: ExtendedStage,
+  now: string,
+  includePeace = false,
+): StageStates {
+  const prev = copyStates(states, includePeace || stage === 'peace');
   const current = states[stage];
   const ms = elapsedMs(current?.started_at, now);
   prev[stage] = {
@@ -117,11 +146,12 @@ export function markInterrupted(states: StageStates, stage: BuildStage, now: str
 /** Pages failure: the build continues, and the stage keeps the trainer-facing reason. */
 export function markSkipped(
   states: StageStates,
-  stage: BuildStage,
+  stage: ExtendedStage,
   error: string,
   now: string,
+  includePeace = false,
 ): StageStates {
-  const prev = copyStates(states);
+  const prev = copyStates(states, includePeace || stage === 'peace');
   const current = states[stage];
   const ms = elapsedMs(current?.started_at, now);
   prev[stage] = {
@@ -136,9 +166,10 @@ export function markSkipped(
 }
 
 /** Failed and interrupted stages become pending. Done and skipped stay. Attempts stay. */
-export function resetForResume(states: StageStates): StageStates {
-  const prev = copyStates(states);
-  for (const stage of STAGES) {
+export function resetForResume(states: StageStates, includePeace = false): StageStates {
+  const withPeace = includePeace || !!states.peace;
+  const prev = copyStates(states, withPeace);
+  for (const stage of activeStages(withPeace)) {
     const current = states[stage];
     if (!current) continue;
     if (current.status === 'failed' || current.status === 'interrupted') {
@@ -157,26 +188,32 @@ function viewStage(state: StageState | undefined): BuildView['stages'][BuildStag
   return out;
 }
 
-export function toView(row: BuildRow): BuildView {
+export function toView(row: BuildRow, includePeace = false): BuildView {
   const resumable = RESUMABLE_STATUSES.has(row.status) && row.cancel_reason !== 'replaced';
+  const stages: BuildView['stages'] = {
+    characters: viewStage(row.stage_states.characters),
+    storyline: viewStage(row.stage_states.storyline),
+    convergence: viewStage(row.stage_states.convergence),
+    pages: viewStage(row.stage_states.pages),
+  };
+  // A finished build from before the stage has no peace key. Don't invent a
+  // pending stage on a build that already succeeded.
+  if (includePeace && (row.stage_states.peace || row.status !== 'succeeded')) {
+    stages.peace = viewStage(row.stage_states.peace);
+  }
   return {
     id: row.id,
     draft_id: row.draft_id,
     status: row.status,
     current_stage: row.current_stage,
-    stages: {
-      characters: viewStage(row.stage_states.characters),
-      storyline: viewStage(row.stage_states.storyline),
-      convergence: viewStage(row.stage_states.convergence),
-      pages: viewStage(row.stage_states.pages),
-    },
+    stages,
     error: row.error,
     error_code: row.error_code,
     cancel_reason: row.cancel_reason,
     interruptions: row.interruptions,
     request_hash: row.request_hash,
     resumable,
-    resume_from: resumable ? nextStage(row.stage_states) : null,
+    resume_from: resumable ? nextStage(row.stage_states, includePeace) : null,
     compile: { status: row.compile_status, scenario_id: row.scenario_id },
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -209,17 +246,21 @@ export function stakeholdersReadyLine(contactCount: number, withConcern: number)
   return `${contactCount} stakeholder contacts created (${withConcern} with a live concern)`;
 }
 
+export function stageLabel(stage: ExtendedStage): string {
+  return stage === 'peace' ? 'Peace feed' : STAGE_LABEL[stage];
+}
+
 /** "Characters started" / "Storyline started (attempt 2)". */
-export function stageStartedLine(stage: BuildStage, attempts: number): string {
-  const label = STAGE_LABEL[stage];
+export function stageStartedLine(stage: ExtendedStage, attempts: number): string {
+  const label = stageLabel(stage);
   return attempts > 1 ? `${label} started (attempt ${attempts})` : `${label} started`;
 }
 
 export const PAGES_SKIP_WARNING =
   'Organisation pages could not be generated — the scenario compiles without them.';
 
-export function restartLine(stage: BuildStage): string {
-  return `The server is restarting — the build will continue from the ${STAGE_LABEL[stage]} stage.`;
+export function restartLine(stage: ExtendedStage): string {
+  return `The server is restarting — the build will continue from the ${stageLabel(stage)} stage.`;
 }
 
 /**

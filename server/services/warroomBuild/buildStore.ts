@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { env } from '../../env.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { initialStageStates } from './buildCore.js';
@@ -8,6 +9,7 @@ import type {
   BuildStage,
   BuildStatus,
   CancelReason,
+  ExtendedStage,
   LogKind,
   LogLine,
   StageOutputs,
@@ -37,11 +39,11 @@ export interface StartResult {
 export interface CompleteStageArgs {
   buildId: string;
   leaseToken: string;
-  stage: BuildStage;
+  stage: ExtendedStage;
   attempt: number;
   output: unknown;
   stageStates: StageStates;
-  nextStage: BuildStage | null;
+  nextStage: ExtendedStage | null;
   finalStatus: 'succeeded' | null;
 }
 
@@ -264,7 +266,7 @@ export class MemoryBuildStore implements BuildStore {
         pool: args.pool,
         status: 'queued',
         current_stage: 'characters',
-        stage_states: initialStageStates(),
+        stage_states: initialStageStates(env.enablePeaceFeedBuildStage),
         request: clone(args.request),
         request_hash: args.requestHash,
         idempotency_key: args.idempotencyKey,

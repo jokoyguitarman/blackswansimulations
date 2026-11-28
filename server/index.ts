@@ -10,6 +10,7 @@ import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { scenarioSetupEditsRouter } from './routes/scenarioSetupEdits.js';
+import { peaceFeedRouter } from './routes/peaceFeed.js';
 import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { execDecisionsRouter } from './routes/execDecisions.js';
@@ -286,6 +287,7 @@ app.use('/api/contact', express.json({ limit: '16kb' }));
 // API routes
 app.use('/api/health', healthRouter);
 app.use('/api/scenarios/:id/setup-edits', scenarioSetupEditsRouter);
+app.use('/api/scenarios/:id/peace-feed', peaceFeedRouter);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/scenarios', scenarioStakeholdersRouter);
 app.use('/api/dashboard', dashboardRouter);

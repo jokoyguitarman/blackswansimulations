@@ -11,7 +11,8 @@ import {
   runStorylinePipeline,
 } from '../multiOrgPipeline.js';
 import type { OrganisationsValidation } from '../scenarioOrgModel.js';
-import type { StageInput } from './assemble.js';
+import { peaceStageInput, type StageInput } from './assemble.js';
+import { runPeaceStage } from '../generation/peaceFeedService.js';
 import { charactersReadyLine, formatProgress, stakeholdersReadyLine } from './buildCore.js';
 import type { BuildRequest, LogKind } from './buildTypes.js';
 
@@ -21,6 +22,11 @@ export interface StageContext {
 }
 
 export type StageRunner = (input: StageInput, ctx: StageContext) => Promise<unknown>;
+
+export type PeaceStageRunner = (
+  input: ReturnType<typeof peaceStageInput>,
+  ctx: StageContext,
+) => Promise<unknown>;
 
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
@@ -54,8 +60,10 @@ async function runStage<T>(stage: string, ctx: StageContext, fn: () => Promise<T
   return result;
 }
 
-/** One runner per stage. Each wraps the existing pipeline and stops if the caller aborted. */
-export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
+/** One runner per stage. Peace is present but a run only calls it when the flag is on. */
+export function createStageRunners(): Record<StageInput['stage'], StageRunner> & {
+  peace: PeaceStageRunner;
+} {
   return {
     characters: async (input, ctx) => {
       if (input.stage !== 'characters')
@@ -160,6 +168,22 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         pressure_injects: result.pressure_injects,
         persona_twins: result.persona_twins,
       };
+    },
+    peace: async (input, ctx) => {
+      if (input.stage !== 'peace') throw new Error('peace runner expected peace input');
+      throwIfAborted(ctx.signal);
+      const output = await runStage('peace', ctx, () =>
+        runPeaceStage(
+          {
+            personas: input.personas,
+            orgPage: input.org_page,
+            crisisBrief: input.crisisBrief,
+          },
+          ctx,
+        ),
+      );
+      throwIfAborted(ctx.signal);
+      return output;
     },
   };
 }

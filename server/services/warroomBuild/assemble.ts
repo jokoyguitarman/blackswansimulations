@@ -2,12 +2,15 @@ import { mergeSpokespersonLinks } from '../../../shared/pressureOrgLinks.js';
 import type { CrisisContext } from '../multiOrgGenerationService.js';
 import { crisisContextFrom, type DecisionContext } from '../multiOrgPipeline.js';
 import type { NPCPersona, SocialInject } from '../socialCrisisGeneratorService.js';
+import type { PeaceFeed } from '../generation/peaceFeedCore.js';
+import { feedContainsLeak } from '../generation/peaceFeedCore.js';
 import type {
   BuildRequest,
   BuildStage,
   CharactersOutput,
   ConvergenceOutput,
   PagesOutput,
+  PeaceOutput,
   ReviewPayload,
   StageOutputs,
   StorylineOutput,
@@ -59,6 +62,14 @@ export interface PagesStageInput {
 
 export type StageInput =
   CharactersStageInput | StorylineStageInput | ConvergenceStageInput | PagesStageInput;
+
+export interface PeaceStageInput {
+  stage: 'peace';
+  request: BuildRequest;
+  personas: NPCPersona[];
+  org_page: Record<string, unknown> | null;
+  crisisBrief: string;
+}
 
 function requireCharacters(outputs: StageOutputs): CharactersOutput {
   if (!outputs.characters) throw new Error('stage input requires characters output');
@@ -156,6 +167,35 @@ export function stageInput(
   };
 }
 
+/** Inputs for the optional peace stage. Pages may have been skipped. */
+export function peaceStageInput(request: BuildRequest, outputs: StageOutputs): PeaceStageInput {
+  const characters = outputs.characters;
+  const storyline = outputs.storyline;
+  const pages = pagesUsable(outputs.pages) ? outputs.pages : undefined;
+  const personas = dedupeByHandle([
+    ...(characters?.personas ?? []),
+    ...(storyline?.persona_twins ?? []),
+    ...(pages?.persona_twins ?? []),
+  ]);
+  const facts = (characters?.fact_sheet?.confirmed_facts ?? []).filter(
+    (fact) => typeof fact === 'string' && fact.trim(),
+  );
+  return {
+    stage: 'peace',
+    request,
+    personas,
+    org_page: (pages?.org_page as Record<string, unknown> | null | undefined) ?? null,
+    crisisBrief: [request.crisis_type, request.context, ...facts].filter(Boolean).join('\n'),
+  };
+}
+
+function storedPeaceFeed(output: PeaceOutput | undefined): PeaceFeed | undefined {
+  const feed = output?.peace_period;
+  if (!feed || !Array.isArray(feed.posts) || feed.posts.length === 0) return undefined;
+  if (feedContainsLeak(feed)) return undefined;
+  return feed;
+}
+
 function appendIntel(
   teamStorylines: Record<string, SocialInject[]>,
   intel: Record<string, SocialInject[]> | undefined,
@@ -201,6 +241,7 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
   const convergence = outputs.convergence;
   const pages = pagesUsable(outputs.pages) ? outputs.pages : undefined;
   const pageOrgs = pages?.orgs ?? [];
+  const peace = storedPeaceFeed(outputs.peace);
 
   return {
     personas: dedupeByHandle([
@@ -234,5 +275,6 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
     objectives: convergence?.objectives ?? [],
     dimension_labels: dimensionLabels(convergence),
     org_page: pages?.org_page ?? null,
+    ...(peace ? { peace_period: peace } : {}),
   };
 }

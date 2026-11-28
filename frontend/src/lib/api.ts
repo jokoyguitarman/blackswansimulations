@@ -360,6 +360,38 @@ export const api = {
         }),
       );
     },
+    /** 404 when ENABLE_PEACE_PERIOD is off. The editor hides the card on that. */
+    getPeaceFeed: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { peace_period: Record<string, unknown> | null } }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), { headers }),
+      );
+    },
+    generatePeaceFeed: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          peace_period: Record<string, unknown> | null;
+          warning: string | null;
+          generated: boolean;
+        };
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    updatePeaceFeed: async (id: string, body: { seconds?: number; enabled?: boolean }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { peace_period: Record<string, unknown> | null } }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/peace-feed`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
     delete: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse(

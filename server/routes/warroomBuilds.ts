@@ -243,7 +243,7 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
         return;
       }
       const row = await deps.service.latestForDraft(draft.id);
-      res.json({ data: { build: row ? toView(row) : null } });
+      res.json({ data: { build: row ? toView(row, env.enablePeaceFeedBuildStage) : null } });
     } catch (err) {
       if (isDurableSchemaMissing(err)) {
         unavailable(res);
@@ -280,7 +280,7 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
     if (!(await guard(req, res))) return;
     await withBuild(deps, req, res, async (row) => {
       const resumed = await deps.service.resume(row.id);
-      res.json({ data: { build: toView(resumed) } });
+      res.json({ data: { build: toView(resumed, env.enablePeaceFeedBuildStage) } });
     });
   });
 
@@ -292,7 +292,13 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
     }
     await withBuild(deps, req, res, async (row) => {
       const cancelled = await deps.service.cancel(row.id);
-      res.json({ data: { build: cancelled ? toView(cancelled) : toView(row) } });
+      res.json({
+        data: {
+          build: cancelled
+            ? toView(cancelled, env.enablePeaceFeedBuildStage)
+            : toView(row, env.enablePeaceFeedBuildStage),
+        },
+      });
     });
   });
 
