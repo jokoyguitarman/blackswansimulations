@@ -69,6 +69,53 @@ export const FX = {
 export type FxQuality = 'high' | 'low' | 'classic';
 
 /**
+ * The Effects menu. Auto keeps the High → Low → Classic governor.
+ * High, Low, and Classic stay where the user put them.
+ */
+export type FxQualityChoice = 'auto' | FxQuality;
+
+/**
+ * Written only when the user picks a tier. The older `rtsFxQuality` key was
+ * also written by the governor, so a stored High, Low, or Classic there is
+ * not an explicit choice and is ignored.
+ */
+export const FX_QUALITY_CHOICE_KEY = 'rtsFxQualityChoice';
+
+const FX_QUALITY_CHOICES: readonly FxQualityChoice[] = ['auto', 'high', 'low', 'classic'];
+
+export function isFxQualityChoice(value: string | null): value is FxQualityChoice {
+  return value !== null && (FX_QUALITY_CHOICES as readonly string[]).includes(value);
+}
+
+/**
+ * Missing, legacy, or unknown values read as Auto. An old `rtsFxQuality`
+ * entry cannot be told apart from an automatic drop, so it is not a choice.
+ */
+export function readFxQualityChoice(stored: string | null): FxQualityChoice {
+  return isFxQualityChoice(stored) ? stored : 'auto';
+}
+
+/**
+ * Reads the effects menu. `read` may also see the old `rtsFxQuality` key.
+ * That key is not consulted: the governor wrote it as well as the menu.
+ */
+export function readStoredFxQualityChoice(read: (key: string) => string | null): FxQualityChoice {
+  return readFxQualityChoice(read(FX_QUALITY_CHOICE_KEY));
+}
+
+/** Auto starts at the top of the ladder. A fixed choice is that tier. */
+export function startingFxQuality(choice: FxQualityChoice): FxQuality {
+  return choice === 'auto' ? 'high' : choice;
+}
+
+/** Next step of an automatic run. Classic has nowhere left to go. */
+export function downgradeFxQuality(current: FxQuality): FxQuality | null {
+  if (current === 'high') return 'low';
+  if (current === 'low') return 'classic';
+  return null;
+}
+
+/**
  * Draw time over 6 ms always steps the quality down.
  * A slow frame steps it down only when the overlay was actually drawing
  * smoke, fire, or embers (`effectsActive`). An idle field is not the cause.
@@ -88,4 +135,56 @@ export function shouldAutoDowngrade(
  */
 export function noteDowngradeFrom(remembered: FxQuality | null, current: FxQuality): FxQuality {
   return remembered ?? current;
+}
+
+export interface FxQualityStep {
+  /** Quality the overlay should draw. */
+  quality: FxQuality;
+  /** Auto actually stepped down on this check. */
+  downgraded: boolean;
+  /**
+   * Fixed tier, frames are slow, and a lower tier exists.
+   * A hint only: the tier itself does not change.
+   */
+  hint: boolean;
+  /** Quality Undo restores. Unchanged when this check did not step down. */
+  remembered: FxQuality | null;
+}
+
+/**
+ * One check of the effects governor.
+ * Auto steps High → Low → Classic. That step is not persisted.
+ * A fixed choice never changes. When its frames are slow and a lower tier
+ * exists, the result asks for a hint instead.
+ * `suppressed` is Undo: Auto stops stepping for the rest of the visit.
+ */
+export function stepFxQuality(args: {
+  choice: FxQualityChoice;
+  quality: FxQuality;
+  slow: boolean;
+  suppressed: boolean;
+  remembered: FxQuality | null;
+}): FxQualityStep {
+  const { choice, quality, slow, suppressed, remembered } = args;
+  if (choice !== 'auto') {
+    return {
+      quality: choice,
+      downgraded: false,
+      hint: slow && downgradeFxQuality(choice) !== null,
+      remembered: null,
+    };
+  }
+  if (!slow || suppressed) {
+    return { quality, downgraded: false, hint: false, remembered };
+  }
+  const next = downgradeFxQuality(quality);
+  if (!next) {
+    return { quality, downgraded: false, hint: false, remembered };
+  }
+  return {
+    quality: next,
+    downgraded: true,
+    hint: false,
+    remembered: noteDowngradeFrom(remembered, quality),
+  };
 }
