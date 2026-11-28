@@ -19,6 +19,8 @@ import {
   routeGradesPlayerPost,
 } from '../services/topic/gradeIfCrisisActivity.js';
 import { reactAndGradePlayerPost } from '../services/topic/playerTopicGrade.js';
+import { loadSessionTopicPhase } from '../services/peace/sessionTopicPhase.js';
+import type { TopicPhase } from '../services/topic/topicPromptCore.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
@@ -474,21 +476,28 @@ router.post(
         return res.status(500).json({ error: 'Failed to create post' });
       }
 
+      const peacePhase: TopicPhase | undefined = env.enablePeacePeriod
+        ? await loadSessionTopicPhase(session_id)
+        : undefined;
+      const reactionOptions = peacePhase ? { phase: peacePhase } : undefined;
       const startPlayerReactions = (failure: string) => {
         if (env.enableTopicAwareReplies && env.aiEnabled) {
-          reactAndGradePlayerPost({
-            sessionId: session_id,
-            post,
-            userId: user.id,
-            content,
-            postFormat: post_format,
-            imagePrompt: image_prompt || undefined,
-            replyToPostId: reply_to_post_id || undefined,
-            postAsPage: post_as_page || false,
-          });
+          reactAndGradePlayerPost(
+            {
+              sessionId: session_id,
+              post,
+              userId: user.id,
+              content,
+              postFormat: post_format,
+              imagePrompt: image_prompt || undefined,
+              replyToPostId: reply_to_post_id || undefined,
+              postAsPage: post_as_page || false,
+            },
+            reactionOptions,
+          );
           return;
         }
-        void triggerNPCReactions(session_id, post).catch((err) =>
+        void triggerNPCReactions(session_id, post, reactionOptions).catch((err) =>
           logger.warn({ err, postId: post.id }, failure),
         );
       };
@@ -609,7 +618,7 @@ router.post(
           postAsPage: post_as_page || false,
           topicAware: env.enableTopicAwareReplies,
           label: 'unclassified',
-          phase: 'crisis',
+          phase: peacePhase ?? 'crisis',
           postKind: 'crisis',
           columnsAvailable: true,
         });

@@ -54,7 +54,8 @@ import {
   peaceColumnsMissing,
   startClaimWithoutPeaceColumns,
 } from '../lib/peaceSchema.js';
-import { resolvePeaceSeconds, startClaimFields } from '../lib/sessionPhase.js';
+import { resolvePeaceSeconds, sessionPhase, startClaimFields } from '../lib/sessionPhase.js';
+import { withoutSessionLeakTerms } from '../lib/peacePayload.js';
 
 const router = Router();
 
@@ -1323,7 +1324,7 @@ router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedR
     if (env.enablePeacePeriod) {
       payload.crisis_starts_at = (session as { start_time?: string | null }).start_time ?? null;
     }
-    res.json({ data: payload });
+    res.json({ data: env.enablePeacePeriod ? withoutSessionLeakTerms(payload) : payload });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /sessions/:id');
     res.status(500).json({ error: 'Internal server error' });
@@ -1479,6 +1480,74 @@ router.post(
       res.status(201).json({ data });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /sessions');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+const endPeaceSchema = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+});
+
+// Trainer ends the peace immediately. 404 while ENABLE_PEACE_PERIOD is off,
+// before auth, so the route is absent the same way a missing route is.
+router.post(
+  '/:id/end-peace',
+  (req, res, next) => {
+    if (!env.enablePeacePeriod) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    next();
+  },
+  requireAuth,
+  validate(endPeaceSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const access = await assertSessionOwner(id, req.user!, 'id, trainer_id, start_time, status');
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+      const startTime = typeof access.session?.start_time === 'string' ? access.session.start_time : null;
+      if (sessionPhase({ start_time: startTime }) !== 'peace') {
+        return res.status(409).json({ error: 'Session is not in a peace period' });
+      }
+      const now = new Date().toISOString();
+      const { data, error } = await supabaseAdmin
+        .from('sessions')
+        .update({ start_time: now })
+        .eq('id', id)
+        .gt('start_time', now)
+        .select()
+        .maybeSingle();
+      if (error) {
+        logger.error({ error, sessionId: id }, 'Failed to end peace');
+        return res.status(500).json({ error: 'Failed to end peace' });
+      }
+      if (!data) {
+        return res.status(409).json({ error: 'Session is not in a peace period' });
+      }
+      const row = data as Record<string, unknown>;
+      try {
+        getWebSocketService().crisisStarted(id, {
+          session_id: id,
+          start_time: row.start_time,
+          crisis_starts_at: row.start_time,
+        });
+      } catch (broadcastError) {
+        logger.error({ error: broadcastError, sessionId: id }, 'Failed to broadcast crisis started');
+      }
+      res.json({
+        data: withoutSessionLeakTerms({
+          ...row,
+          crisis_starts_at: row.start_time ?? null,
+        }),
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /sessions/:id/end-peace');
       res.status(500).json({ error: 'Internal server error' });
     }
   },
@@ -1875,10 +1944,10 @@ router.patch(
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
       const body =
         data && env.enablePeacePeriod
-          ? {
+          ? withoutSessionLeakTerms({
               ...(data as Record<string, unknown>),
               crisis_starts_at: (data as { start_time?: unknown }).start_time ?? null,
-            }
+            })
           : data;
       res.json({ data: body });
     } catch (err) {

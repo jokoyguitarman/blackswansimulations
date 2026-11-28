@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
+import { websocketClient } from '../../lib/websocketClient';
+import { crisisBriefLocked, showCrisisBriefSection } from '../../lib/briefingLock';
+import { BriefingCrisisSection } from './BriefingCrisisSection';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -36,23 +39,44 @@ export async function fetchMyTeam(sessionId: string): Promise<MyTeamBriefing | n
   return (json.data as MyTeamBriefing | null) ?? null;
 }
 
-/** Booth worlds only: the opening situation and the goals every team shares. Null elsewhere. */
-export function useBoothBriefing(sessionId: string | undefined): BoothBriefing | null {
-  const [booth, setBooth] = useState<BoothBriefing | null>(null);
+interface BriefingPayload {
+  booth: BoothBriefing | null;
+  general: string | null;
+  crisisStartsAt: string | null;
+}
+
+function useBriefingPayload(sessionId: string | undefined): BriefingPayload | null {
+  const [payload, setPayload] = useState<BriefingPayload | null>(null);
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
     api.briefing
       .get(sessionId)
       .then((result) => {
-        if (!cancelled) setBooth(result.data.booth ?? null);
+        if (cancelled) return;
+        setPayload({
+          booth: result.data.booth ?? null,
+          general: result.data.general_briefing ?? null,
+          crisisStartsAt: result.data.crisis_starts_at ?? null,
+        });
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [sessionId]);
-  return booth;
+  return payload;
+}
+
+/** Booth worlds only: the opening situation and the goals every team shares. Null elsewhere. */
+export function useBoothBriefing(sessionId: string | undefined): BoothBriefing | null {
+  const payload = useBriefingPayload(sessionId);
+  return useMemo(() => {
+    if (!payload?.booth) return null;
+    const locked = crisisBriefLocked({ crisis_starts_at: payload.crisisStartsAt });
+    if (!locked) return payload.booth;
+    return { situation: '', goals: null };
+  }, [payload]);
 }
 
 const LABEL = 'text-[11px] font-semibold uppercase tracking-wider mb-1.5';
@@ -60,9 +84,31 @@ const LABEL = 'text-[11px] font-semibold uppercase tracking-wider mb-1.5';
 /** The desktop's Briefing window: the same briefing the phone shows on its home screen. */
 export default function BriefingApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const booth = useBoothBriefing(sessionId);
+  const briefing = useBriefingPayload(sessionId);
+  const booth = briefing?.booth ?? null;
   const [team, setTeam] = useState<MyTeamBriefing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
+  const [crisisOpened, setCrisisOpened] = useState(false);
+  const clock = briefing ? { crisis_starts_at: briefing.crisisStartsAt } : null;
+  const peaceClock = showCrisisBriefSection(clock);
+  const locked = peaceClock && !crisisOpened && crisisBriefLocked(clock, now);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    return websocketClient.on('session.crisis_started', (event) => {
+      const data = event.data as { session_id?: string } | undefined;
+      if (!data?.session_id || data.session_id === sessionId) setCrisisOpened(true);
+    });
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!briefing?.crisisStartsAt || crisisOpened) return;
+    const delay = Date.parse(briefing.crisisStartsAt) - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0) return;
+    const timer = setTimeout(() => setNow(Date.now()), delay);
+    return () => clearTimeout(timer);
+  }, [briefing?.crisisStartsAt, crisisOpened]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -120,7 +166,7 @@ export default function BriefingApp() {
               )}
             </div>
 
-            {booth?.situation && (
+            {booth?.situation && !locked && (
               <div>
                 <div className={LABEL} style={{ color: 'rgba(255,255,255,0.4)' }}>
                   What's going on
@@ -174,7 +220,14 @@ export default function BriefingApp() {
               </div>
             )}
 
-            {booth?.goals && (
+            {peaceClock && (
+              <BriefingCrisisSection
+                locked={locked}
+                text={locked ? null : briefing?.general ?? null}
+              />
+            )}
+
+            {booth?.goals && !locked && (
               <div>
                 <div className={LABEL} style={{ color: 'rgba(255,255,255,0.4)' }}>
                   What every team must do

@@ -2,6 +2,7 @@
  * The reaction prompt shipped on master, moved here unchanged.
  * `ENABLE_TOPIC_AWARE_REPLIES` off uses this and nothing else.
  */
+import { peaceContextBlock, type TopicPhase } from './topicPromptCore.js';
 import {
   MEDIA_REACT_LINE,
   reactionTypesAndRules,
@@ -22,6 +23,8 @@ export interface LegacyReactionPromptInput {
   imagePrompt?: string;
   /** Legacy user message stringifies author_handle with no '@player' fallback. */
   userHandle: string;
+  /** Omitted or crisis keeps the prompt byte-identical to today. */
+  phase?: TopicPhase;
 }
 
 export function buildLegacyReactionMessages(input: LegacyReactionPromptInput): {
@@ -35,8 +38,12 @@ The player posted a ${input.postFormat} format post. Their handle is ${input.pla
 ${input.npcContext}
 
 ${reactionTypesAndRules(input.playerHandle, input.isOfficialComms)}
-${input.officialScrutinyBlock}
-Crisis context: ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}
+${input.phase === 'peace' ? '' : input.officialScrutinyBlock}
+${
+  input.phase === 'peace'
+    ? `PEACE:\n${peaceContextBlock(input.orgName)}`
+    : `Crisis context: ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`
+}
 ${input.threadContext}
 
 Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${input.isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}

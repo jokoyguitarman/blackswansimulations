@@ -201,6 +201,21 @@ describe('session start route', () => {
     assert.equal('opened_at' in updates[0], false);
   });
 
+  test('an editor-disabled peace feed does not shift start_time', async () => {
+    env.enablePeacePeriod = true;
+    scenarioRow = {
+      category: 'social_media_crisis',
+      initial_state: {
+        peace_period: { enabled: false, posts: [{ ref: 'P1' }], seconds: 300 },
+      },
+    };
+    sessionRow.sim_mode = 'social_media';
+    const { status, json } = await start({ status: 'in_progress', peace_seconds: 120 });
+    assert.equal(status, 200, JSON.stringify(json));
+    assert.equal('opened_at' in updates[0], false);
+    assert.equal('peace_seconds' in updates[0], false);
+  });
+
   test('a missing peace column retries with start_time = now and no new columns', async () => {
     env.enablePeacePeriod = true;
     failPeaceColumns = true;

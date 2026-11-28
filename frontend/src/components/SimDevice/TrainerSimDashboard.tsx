@@ -11,6 +11,7 @@ import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
 import { playerClockHidden, trainerClockStart } from '../../lib/crisisClock';
+import { PeaceCountdownChip } from './PeaceCountdownChip';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1589,6 +1590,9 @@ export default function TrainerSimDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {!isReview && sessionId ? (
+            <PeaceCountdownChip sessionId={sessionId} source={sessionInfo} onStarted={() => void loadSessionInfo()} />
+          ) : null}
           <button
             onClick={() => setShowExplainer(true)}
             className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"

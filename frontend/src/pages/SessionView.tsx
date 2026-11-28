@@ -1339,15 +1339,14 @@ export const SessionView = () => {
     }
   };
 
-  const handleStartSession = async (override?: boolean) => {
+  const handleStartSession = async (override?: boolean, peaceSeconds?: number) => {
     if (!id) return;
     try {
-      await api.sessions.update(
-        id,
-        override
-          ? { status: 'in_progress', start_override: { acknowledge: true } }
-          : { status: 'in_progress' },
-      );
+      await api.sessions.update(id, {
+        status: 'in_progress',
+        ...(override ? { start_override: { acknowledge: true } } : {}),
+        ...(peaceSeconds != null ? { peace_seconds: peaceSeconds } : {}),
+      });
       await loadSession();
     } catch (error) {
       if (error instanceof ApiError && (error.code === PAGES_UNASSIGNED || error.code === 'CALL_COVERAGE_INCOMPLETE')) {
@@ -1491,6 +1490,7 @@ export const SessionView = () => {
               session={session}
               onStartSession={handleStartSession}
               onSessionUpdate={loadSession}
+              scenarioId={session.scenario_id}
             />
           )}
         </main>

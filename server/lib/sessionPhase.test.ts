@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_PERIOD_MAX_SECONDS } from '../../shared/peaceFeed.js';
 import {
   crisisElapsedFractionalMinutes,
   crisisElapsedMinutes,
@@ -104,7 +105,11 @@ describe('crisis elapsed helpers match the old formulas for every non-negative e
 });
 
 describe('resolvePeaceSeconds', () => {
-  const feed = { peace_period: { seconds: 300, posts: [{ ref: 'P1' }] } };
+  const feed = { peace_period: { seconds: PEACE_PERIOD_DEFAULT_SECONDS, posts: [{ ref: 'P1' }] } };
+  const limits = {
+    defaultSeconds: PEACE_PERIOD_DEFAULT_SECONDS,
+    maxSeconds: PEACE_PERIOD_MAX_SECONDS,
+  };
 
   test('flag off, a non-social session, and a scenario with no feed all stay at 0', () => {
     assert.equal(
@@ -113,30 +118,27 @@ describe('resolvePeaceSeconds', () => {
         initialState: feed,
         social: true,
         enabled: false,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
       0,
     );
     assert.equal(
       resolvePeaceSeconds({
-        requested: 300,
+        requested: PEACE_PERIOD_DEFAULT_SECONDS,
         initialState: feed,
         social: false,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
       0,
     );
     assert.equal(
       resolvePeaceSeconds({
-        requested: 300,
+        requested: PEACE_PERIOD_DEFAULT_SECONDS,
         initialState: { peace_period: { posts: [] } },
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
       0,
     );
@@ -146,8 +148,17 @@ describe('resolvePeaceSeconds', () => {
         initialState: {},
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
+      }),
+      0,
+    );
+    assert.equal(
+      resolvePeaceSeconds({
+        requested: 120,
+        initialState: { peace_period: { enabled: false, posts: [{ ref: 'P1' }], seconds: 300 } },
+        social: true,
+        enabled: true,
+        ...limits,
       }),
       0,
     );
@@ -160,8 +171,7 @@ describe('resolvePeaceSeconds', () => {
         initialState: feed,
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
       120,
     );
@@ -171,10 +181,9 @@ describe('resolvePeaceSeconds', () => {
         initialState: feed,
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
-      300,
+      PEACE_PERIOD_DEFAULT_SECONDS,
     );
     assert.equal(
       resolvePeaceSeconds({
@@ -182,10 +191,9 @@ describe('resolvePeaceSeconds', () => {
         initialState: { peace_period: { posts: [{ ref: 'P1' }] } },
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
-      300,
+      PEACE_PERIOD_DEFAULT_SECONDS,
     );
     assert.equal(
       resolvePeaceSeconds({
@@ -193,10 +201,9 @@ describe('resolvePeaceSeconds', () => {
         initialState: feed,
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
-      900,
+      PEACE_PERIOD_MAX_SECONDS,
     );
     assert.equal(
       resolvePeaceSeconds({
@@ -204,8 +211,7 @@ describe('resolvePeaceSeconds', () => {
         initialState: feed,
         social: true,
         enabled: true,
-        defaultSeconds: 300,
-        maxSeconds: 900,
+        ...limits,
       }),
       0,
     );

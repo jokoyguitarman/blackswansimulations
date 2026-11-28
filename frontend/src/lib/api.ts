@@ -1120,6 +1120,16 @@ export const api = {
         }),
       );
     },
+    /** 404 when ENABLE_PEACE_PERIOD is off. */
+    endPeace: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/sessions/${id}/end-peace`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
     join: async (id: string, role: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
@@ -1622,6 +1632,8 @@ export const api = {
           team_name?: string | null;
           /** Booth worlds only: the opening situation and the goals every team shares. */
           booth?: { situation: string; goals: string | null } | null;
+          /** Set only when ENABLE_PEACE_PERIOD is on. Equal to the crisis start. */
+          crisis_starts_at?: string | null;
         };
       }>(await fetch(apiUrl(`/api/briefing/session/${sessionId}`), { headers }));
     },
