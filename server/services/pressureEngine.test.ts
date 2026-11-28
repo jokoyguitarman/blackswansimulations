@@ -120,7 +120,7 @@ describe('runPage model outcomes', () => {
   const originalFrom = supabaseAdmin.from;
 
   function install(mode: 'empty' | 'insert-fails' | 'recent'): void {
-    supabaseAdmin.from = (() => {
+    (supabaseAdmin as { from: (table: string) => unknown }).from = () => {
       let inserted = false;
       let selected = '';
       const query: Record<string, unknown> = {};
@@ -154,7 +154,7 @@ describe('runPage model outcomes', () => {
         return Promise.resolve(value).then(resolve, reject);
       };
       return query;
-    }) as typeof supabaseAdmin.from;
+    };
   }
 
   async function tick(
