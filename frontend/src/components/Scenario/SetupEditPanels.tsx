@@ -3,6 +3,12 @@ import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { remainingBesideApply } from '../../lib/editModeBanner';
 import {
+  PLAN_SERVER_UNREACHABLE,
+  REVIEW_BUILD_FIRST,
+  REVIEW_LOADING,
+  reviewPlaceholder,
+} from '../../lib/setupEditResume';
+import {
   applyBlockedByPlan,
   canonicalOrphanChoice,
   completeOrphanDecision,
@@ -181,6 +187,9 @@ export function SetupEditReview({
   applying,
   remaining,
   error,
+  hasBuild,
+  outputsLoaded,
+  onRetry,
   onToggleRow,
   onKeepSection,
   onDecide,
@@ -195,6 +204,11 @@ export function SetupEditReview({
   applying: boolean;
   remaining: number | null;
   error: string | null;
+  /** A durable build id is already on the draft. */
+  hasBuild: boolean;
+  /** The finished build's review stages have been applied, even when the list is empty. */
+  outputsLoaded: boolean;
+  onRetry?: () => void;
   onToggleRow: (injectId: string) => void;
   onKeepSection: (injectIds: string[], keep: boolean) => void;
   onDecide: (id: string, decision: OrphanChoiceInput | null) => void;
@@ -202,10 +216,27 @@ export function SetupEditReview({
 }) {
   const blocked = applying || applyBlockedByPlan({ plan, planning });
   const unresolved = plan?.orphans?.length ?? 0;
+  const placeholder = reviewPlaceholder({
+    sectionCount: sections.length,
+    planning,
+    hasBuild,
+    planLoaded: plan != null,
+    outputsLoaded,
+    unreachable: error === PLAN_SERVER_UNREACHABLE,
+  });
   return (
     <div className="space-y-4">
-      {sections.length === 0 && (
-        <p className="text-sm text-muted">Nothing to review yet. Build the edit first.</p>
+      {placeholder === 'build_first' && <p className="text-sm text-muted">{REVIEW_BUILD_FIRST}</p>}
+      {placeholder === 'loading' && <p className="text-sm text-muted">{REVIEW_LOADING}</p>}
+      {placeholder === 'retry' && (
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-danger">{PLAN_SERVER_UNREACHABLE}</p>
+          {onRetry && (
+            <button type="button" className="wr-btn sm" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+        </div>
       )}
       {sections.map((section) => {
         const rejectable = section.rows.filter((row) => row.rejectable && row.injectId);
@@ -251,7 +282,7 @@ export function SetupEditReview({
           </section>
         );
       })}
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && placeholder !== 'retry' && <p className="text-sm text-danger">{error}</p>}
       <div className="wr-ctabar" style={{ marginTop: 4 }}>
         <span className="hint">
           {unresolved > 0

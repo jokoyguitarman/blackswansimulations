@@ -21,6 +21,24 @@ import { removalConfirmText, reviewSections } from '../src/lib/reviewSections.ts
 import { editHistoryLine, editHistoryWho, lobbySetupNotice, visibleEditHistory } from '../src/lib/setupEditHistory.ts';
 import { withRenamedTeams, withoutRenamedTeams } from '../src/lib/teamRename.ts';
 import { composeTeamName } from '../../shared/teamNames.ts';
+import { nextPollDelayMs } from '../src/lib/buildStatus.ts';
+import {
+  EDIT_BUILD_NOT_STARTED,
+  PLAN_FETCH_ATTEMPTS,
+  PLAN_SERVER_UNREACHABLE,
+  REVIEW_BUILD_FIRST,
+  REVIEW_LOADING,
+  alwaysSaveBuildingStep,
+  attachOnBuildingStep,
+  buildingFallbackKind,
+  isTransientPlanError,
+  latestBuildMissAction,
+  planFailureText,
+  planRetryDelayMs,
+  resumeAttachesLatestBuild,
+  reviewPlaceholder,
+  succeededAttachAction,
+} from '../src/lib/setupEditResume.ts';
 
 const link = {
   edit_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -369,5 +387,165 @@ describe('team rename', () => {
     const unswapped = resumeEditBaseline(frozen, { ...saved, primary_org_key: 'primary' });
     assert.equal(unswapped.makePrimaryKey, null);
     assert.equal(unswapped.previousPrimary('primary'), false);
+  });
+});
+
+describe('setup edit resume', () => {
+  test('only a setup edit saved on Review reattaches the latest build', () => {
+    assert.equal(resumeAttachesLatestBuild({ validStep: 7, isSetupEdit: true }), true);
+    assert.equal(resumeAttachesLatestBuild({ validStep: 7, isSetupEdit: false }), false);
+    assert.equal(resumeAttachesLatestBuild({ validStep: 2, isSetupEdit: true }), false);
+    assert.equal(resumeAttachesLatestBuild({ validStep: 1, isSetupEdit: true }), false);
+  });
+
+  test('Building looks up a build only for an idle setup edit', () => {
+    const idle = { isSetupEdit: true, step: 2, activeBuildId: null, starting: false };
+    assert.equal(attachOnBuildingStep(idle), true);
+    assert.equal(attachOnBuildingStep({ ...idle, activeBuildId: 'build-1' }), false);
+    assert.equal(attachOnBuildingStep({ ...idle, starting: true }), false);
+    assert.equal(attachOnBuildingStep({ ...idle, isSetupEdit: false }), false);
+    assert.equal(attachOnBuildingStep({ ...idle, step: 7 }), false);
+  });
+
+  test('staying on a finished build is limited to setup edits', () => {
+    assert.equal(succeededAttachAction('stay', true), 'stay');
+    assert.equal(succeededAttachAction('stay', false), 'review');
+    assert.equal(succeededAttachAction('review', true), 'review');
+    assert.equal(succeededAttachAction(undefined, true), 'review');
+  });
+
+  test('a missing setup-edit build with a remembered id opens that review', () => {
+    assert.equal(
+      latestBuildMissAction({ isSetupEdit: true, lastBuildId: 'build-1', outcome: 'missing' }),
+      'open_remembered_review',
+    );
+    assert.equal(
+      latestBuildMissAction({ isSetupEdit: true, lastBuildId: null, outcome: 'missing' }),
+      'fallback',
+    );
+    assert.equal(
+      latestBuildMissAction({ isSetupEdit: true, lastBuildId: 'build-1', outcome: 'unavailable' }),
+      'fallback',
+    );
+    assert.equal(
+      latestBuildMissAction({ isSetupEdit: false, lastBuildId: 'build-1', outcome: 'missing' }),
+      'fallback',
+    );
+  });
+
+  test('the Building fallback never says the edit runs in the browser', () => {
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: false,
+        lookup: 'idle',
+        lastBuildId: null,
+        starting: false,
+      }),
+      'browser',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'missing',
+        lastBuildId: 'build-1',
+        starting: false,
+      }),
+      'start',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'unavailable',
+        lastBuildId: null,
+        starting: false,
+      }),
+      'start',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'idle',
+        lastBuildId: 'build-1',
+        starting: false,
+      }),
+      'finished',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'checking',
+        lastBuildId: 'build-1',
+        starting: false,
+      }),
+      'finished',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'idle',
+        lastBuildId: 'build-1',
+        starting: true,
+      }),
+      'checking',
+    );
+    assert.equal(
+      buildingFallbackKind({
+        isSetupEdit: true,
+        lookup: 'idle',
+        lastBuildId: null,
+        starting: false,
+      }),
+      'checking',
+    );
+    assert.equal(EDIT_BUILD_NOT_STARTED.button, 'Start the build');
+    assert.equal(/browser/i.test(EDIT_BUILD_NOT_STARTED.body), false);
+    assert.equal(alwaysSaveBuildingStep(true), true);
+    assert.equal(alwaysSaveBuildingStep(false), false);
+  });
+
+  test('the plan retries a dropped connection and a 5xx, then says the server was unreachable', () => {
+    assert.equal(isTransientPlanError(new TypeError('Failed to fetch')), true);
+    assert.equal(isTransientPlanError(new Error('Failed to fetch')), true);
+    assert.equal(
+      isTransientPlanError(Object.assign(new Error('bad gateway'), { status: 502 })),
+      true,
+    );
+    assert.equal(isTransientPlanError(Object.assign(new Error('down'), { status: 500 })), true);
+    assert.equal(isTransientPlanError(Object.assign(new Error('timeout'), { status: 0 })), true);
+    assert.equal(isTransientPlanError(Object.assign(new Error('missing'), { status: 404 })), false);
+    assert.equal(isTransientPlanError(Object.assign(new Error('no'), { status: 400 })), false);
+    assert.equal(isTransientPlanError(new Error('This edit has no draft.')), false);
+    assert.equal(planRetryDelayMs(1, false), nextPollDelayMs(1, false));
+    assert.equal(planRetryDelayMs(2, false), nextPollDelayMs(2, false));
+    assert.equal(planRetryDelayMs(PLAN_FETCH_ATTEMPTS, false), null);
+    assert.equal(planFailureText(new TypeError('Failed to fetch')), PLAN_SERVER_UNREACHABLE);
+    assert.equal(planFailureText(new Error('This edit has no draft.')), 'This edit has no draft.');
+  });
+
+  test('an empty review is loading or retrying when a build exists', () => {
+    const base = {
+      sectionCount: 0,
+      planning: false,
+      hasBuild: false,
+      planLoaded: false,
+      outputsLoaded: false,
+      unreachable: false,
+    };
+    assert.equal(reviewPlaceholder(base), 'build_first');
+    assert.equal(reviewPlaceholder({ ...base, planning: true }), 'loading');
+    assert.equal(reviewPlaceholder({ ...base, hasBuild: true }), 'loading');
+    assert.equal(
+      reviewPlaceholder({ ...base, hasBuild: true, planLoaded: true, outputsLoaded: false }),
+      'loading',
+    );
+    assert.equal(
+      reviewPlaceholder({ ...base, hasBuild: true, planLoaded: true, outputsLoaded: true }),
+      null,
+    );
+    assert.equal(reviewPlaceholder({ ...base, sectionCount: 2, hasBuild: false }), null);
+    assert.equal(reviewPlaceholder({ ...base, unreachable: true, hasBuild: true }), 'retry');
+    assert.equal(REVIEW_LOADING, 'Loading the review…');
+    assert.equal(REVIEW_BUILD_FIRST, 'Nothing to review yet. Build the edit first.');
+    assert.equal(PLAN_SERVER_UNREACHABLE, "Couldn't reach the server.");
   });
 });

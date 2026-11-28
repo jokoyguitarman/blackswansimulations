@@ -10,6 +10,8 @@ import {
   classifyMutation,
   classifyPollStop,
   classifyReview,
+  finishedEditBuildCard,
+  reviewOpenFailureCard,
   emptyPollState,
   mapToWizardStage,
   nextPollDelayMs,
@@ -304,6 +306,33 @@ describe('deploy gap on the other build calls', () => {
     assert.equal(classifyPollStop(502), null);
     assert.equal(claimPollTick(false), 'run');
     assert.equal(claimPollTick(true), 'queue');
+  });
+});
+
+describe('review open failure', () => {
+  test('a swept setup-edit review asks for a new build', () => {
+    const expired = reviewOpenFailureCard(404, true);
+    assert.equal(expired.heading, 'This review expired');
+    assert.equal(expired.body, 'This review expired. Build again.');
+    assert.deepEqual(expired.actions, ['build_again']);
+    assert.equal(expired.primaryLabel, 'Build again');
+  });
+
+  test('other review failures keep the retry card, including a new scenario 404', () => {
+    const retry = reviewOpenFailureCard(404, false);
+    assert.equal(retry.heading, "Couldn't open the finished build");
+    assert.deepEqual(retry.actions, ['open_review']);
+    assert.equal(retry.primaryLabel, 'Retry');
+    const gateway = reviewOpenFailureCard(500, true);
+    assert.equal(gateway.heading, "Couldn't open the finished build");
+    assert.deepEqual(gateway.actions, ['open_review']);
+  });
+
+  test('a finished setup edit offers open review and rebuild', () => {
+    const card = finishedEditBuildCard();
+    assert.equal(card.heading, 'This build finished');
+    assert.deepEqual(card.actions, ['open_review', 'build_again']);
+    assert.equal(card.primaryLabel, 'Open review');
   });
 });
 
