@@ -387,7 +387,7 @@ export async function readSessionInjects(
   validAt: string,
 ): Promise<{ catalog: InjectBriefRow[]; published: InjectBriefRow[] }> {
   try {
-    const [catalogResult, published] = await Promise.all([
+    const [catalogResult, stamps] = await Promise.all([
       templateInjectsValidAt(scenarioId, sessionId, validAt, {
         select:
           'id, title, target_teams, conditions_to_appear, conditions_to_cancel, trigger_time_minutes, delivery_config',
@@ -401,8 +401,8 @@ export async function readSessionInjects(
     }
     const catalog = asRecords(catalogResult.data).map(briefFrom);
     const published = catalog.flatMap((brief) => {
-      if (!published.minutes.has(brief.id)) return [];
-      return [{ ...brief, published_minute: published.minutes.get(brief.id) ?? null }];
+      if (!stamps.minutes.has(brief.id)) return [];
+      return [{ ...brief, published_minute: stamps.minutes.get(brief.id) ?? null }];
     });
     return { catalog, published };
   } catch {
