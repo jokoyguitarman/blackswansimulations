@@ -71,6 +71,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
   let enabled = true;
   let openCalls = 0;
   let seq = 0;
+  let identityConflict = false;
   const scenarios = new Map<string, FakeScenario>();
   const edits: FakeEdit[] = [];
   const drafts: FakeDraft[] = [];
@@ -80,6 +81,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     enabled = true;
     openCalls = 0;
     seq = 0;
+    identityConflict = false;
     edits.length = 0;
     drafts.length = 0;
     scenarios.clear();
@@ -261,6 +263,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       return { available: true, outcome: 'opened', editId: created.id };
     },
     async attachOpenedDraft(scenarioId, editId, ctx) {
+      if (identityConflict) return { available: true, ok: false, reason: 'conflict' };
       const source = sources.get(scenarioId);
       const edit = edits.find((row) => row.id === editId && row.scenarioId === scenarioId);
       if (!source || !edit) return { available: true, ok: false, reason: 'not_found' };
@@ -580,6 +583,17 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       (edits[0].baseline as unknown as SetupSnapshot).organisations[0].org_uid,
       stamped.orgs[0].org_uid,
     );
+  });
+
+  test('a lost identity write abandons the edit and asks for a retry', async () => {
+    seed();
+    identityConflict = true;
+    const res = await post(SOCIAL);
+    assert.equal(res.status, 409);
+    assert.equal(res.json.code, 'SETUP_EDIT_CONFLICT');
+    assert.equal(edits[0].status, 'abandoned');
+    assert.equal(drafts.length, 0);
+    assert.equal(scenarios.get(SOCIAL)?.used, 0);
   });
 
   test('a failed draft leaves the edit abandoned and the used count unchanged', async () => {

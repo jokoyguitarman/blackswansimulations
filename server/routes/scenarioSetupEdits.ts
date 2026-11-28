@@ -220,6 +220,13 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
         }
         if (!attached.ok) {
           await deps.service.abandon(req.params.id, opened.editId);
+          if (attached.reason === 'conflict') {
+            res.status(409).json({
+              error: 'The scenario was saved while the setup edit was opening. Open it again.',
+              code: 'SETUP_EDIT_CONFLICT',
+            });
+            return;
+          }
           res.status(attached.reason === 'not_found' ? 404 : 500).json({
             error:
               attached.reason === 'not_found'

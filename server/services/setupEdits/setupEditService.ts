@@ -47,33 +47,37 @@ let buildsUnavailableLogged = false;
 
 class SnapshotUnavailable extends Error {}
 
+type PersistIdentityResult = { ok: true; state: unknown } | { ok: false; reason: 'conflict' };
+
 /**
  * Write org_uid stamps only when the scenario row is still the one we read.
- * A concurrent save wins: re-read once, stamp that version, and if it moved
- * again keep the fresh state in memory without overwriting it.
+ * A concurrent save wins the first attempt. Re-read once and try again. If
+ * that write also misses, the caller abandons the edit instead of snapshotting
+ * uids that were never saved.
  */
 async function persistOrgIdentity(
   scenarioId: string,
   updatedAt: string | null,
   initialState: unknown,
-): Promise<unknown> {
+): Promise<PersistIdentityResult> {
   const next = stampOrgIdentity(materializeLegacyPrimary(initialState, scenarioId));
-  if (canonicalJson(next) === canonicalJson(initialState)) return initialState;
-  const wrote = await writeIdentity(scenarioId, updatedAt, next);
-  if (wrote) return next;
+  if (canonicalJson(next) === canonicalJson(initialState)) return { ok: true, state: initialState };
+  if (await writeIdentity(scenarioId, updatedAt, next)) return { ok: true, state: next };
 
   const again = await supabaseAdmin
     .from('scenarios')
     .select('initial_state, updated_at')
     .eq('id', scenarioId)
     .maybeSingle<{ initial_state: unknown; updated_at: string | null }>();
-  if (again.error || !again.data) return next;
+  if (again.error || !again.data) return { ok: false, reason: 'conflict' };
   const restamped = stampOrgIdentity(materializeLegacyPrimary(again.data.initial_state, scenarioId));
   if (canonicalJson(restamped) === canonicalJson(again.data.initial_state)) {
-    return again.data.initial_state;
+    return { ok: true, state: again.data.initial_state };
   }
-  await writeIdentity(scenarioId, again.data.updated_at, restamped);
-  return restamped;
+  if (await writeIdentity(scenarioId, again.data.updated_at, restamped)) {
+    return { ok: true, state: restamped };
+  }
+  return { ok: false, reason: 'conflict' };
 }
 
 async function writeIdentity(
@@ -98,7 +102,7 @@ export interface AttachDraftContext {
 
 export type AttachDraftResult =
   | { available: false }
-  | { available: true; ok: false; reason: 'not_found' | 'failed' }
+  | { available: true; ok: false; reason: 'not_found' | 'failed' | 'conflict' }
   | { available: true; ok: true; draftId: string; baselineHash: string };
 
 export function noteSetupEditsUnavailable(): void {
@@ -274,11 +278,13 @@ export async function attachOpenedDraft(
   }
   if (!scenario.data) return { available: true, ok: false, reason: 'not_found' };
 
-  const stamped = await persistOrgIdentity(
+  const persisted = await persistOrgIdentity(
     scenarioId,
     scenario.data.updated_at,
     scenario.data.initial_state,
   );
+  if (!persisted.ok) return { available: true, ok: false, reason: 'conflict' };
+  const stamped = persisted.state;
 
   let teams: SnapshotTeamRow[];
   let injects: SnapshotInjectRow[];
@@ -303,7 +309,7 @@ export async function attachOpenedDraft(
     build_request: buildRequest,
   };
   const snapshot = snapshotFromScenario(source, {
-    assignOrgUid: () => stableOrgUid(scenarioId, 'primary'),
+    assignOrgUid: (orgKey) => stableOrgUid(scenarioId, orgKey),
   });
   const hash = baselineHash(snapshot);
   const input = draftInputFromSnapshot(snapshot, {

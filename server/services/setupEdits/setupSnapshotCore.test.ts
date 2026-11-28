@@ -416,7 +416,7 @@ describe('setup snapshot', () => {
         teams: [],
         injects: [],
       },
-      { assignOrgUid: () => stableOrgUid('scenario-legacy', 'primary') },
+      { assignOrgUid: (orgKey) => stableOrgUid('scenario-legacy', orgKey) },
     );
     assert.equal(snapshot.organisations[0].org_uid, orgs[0].org_uid);
     assert.equal(snapshot.organisations[0].facebook_handle, '@legacy');
@@ -424,6 +424,77 @@ describe('setup snapshot', () => {
       stableOrgUid('scenario-legacy', 'primary'),
       stableOrgUid('scenario-other', 'primary'),
     );
+  });
+
+  test('a page that already lists organisations is not given an orgs registry', () => {
+    const pageUid = '11111111-1111-4111-8111-111111111111';
+    const allyUid = '22222222-2222-4222-8222-222222222222';
+    const state = {
+      org_name: 'HQ',
+      country: 'Singapore',
+      org_page: {
+        orgs: [
+          {
+            org_key: 'primary',
+            org_uid: pageUid,
+            display_name: 'HQ',
+            is_primary: true,
+            role: 'protagonist',
+          },
+          { org_key: 'org_ally_sg', org_uid: allyUid, display_name: 'Ally', role: 'protagonist' },
+          { org_key: 'org_antagonist_rival_0', display_name: 'Rival', role: 'antagonist' },
+        ],
+      },
+    };
+    const materialized = materializeLegacyPrimary(state, 'scenario-pages');
+    assert.equal(materialized, state);
+    assert.equal(Object.hasOwn(materialized, 'orgs'), false);
+    const prepared = stampOrgIdentity(materialized) as unknown as {
+      orgs?: unknown;
+      org_page: { orgs: Array<{ org_key: string; org_uid: string }> };
+      org_key_history: Array<{ org_uid: string; org_key: string; until_edit: string | null }>;
+    };
+    assert.equal(prepared.orgs, undefined);
+    assert.equal(prepared.org_page.orgs[0].org_uid, pageUid);
+    assert.equal(prepared.org_page.orgs[1].org_uid, allyUid);
+    const openPrimary = prepared.org_key_history.filter(
+      (entry) => entry.org_key === 'primary' && entry.until_edit == null,
+    );
+    assert.equal(openPrimary.length, 1);
+    assert.equal(openPrimary[0].org_uid, pageUid);
+  });
+
+  test('a missing org_uid is derived from that organisation key', () => {
+    const snapshot = snapshotFromScenario(
+      {
+        scenario: {
+          initial_state: {
+            orgs: [
+              {
+                org_key: 'primary',
+                display_name: 'Acme',
+                country: 'Singapore',
+                side: 'protagonist',
+                is_primary: true,
+              },
+              {
+                org_key: 'org_ally_sg',
+                display_name: 'Ally',
+                country: 'Singapore',
+                side: 'protagonist',
+              },
+            ],
+          },
+        },
+        teams: [],
+        injects: [],
+      },
+      { assignOrgUid: (orgKey) => stableOrgUid('scenario-keys', orgKey) },
+    );
+    const [primary, ally] = snapshot.organisations;
+    assert.equal(primary.org_uid, stableOrgUid('scenario-keys', 'primary'));
+    assert.equal(ally.org_uid, stableOrgUid('scenario-keys', 'org_ally_sg'));
+    assert.notEqual(primary.org_uid, ally.org_uid);
   });
 
   test('the edit draft uses wizard input keys and pins identities', () => {

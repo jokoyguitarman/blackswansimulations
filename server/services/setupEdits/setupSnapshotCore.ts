@@ -113,8 +113,8 @@ export interface ScenarioSnapshotSource {
 }
 
 export interface SnapshotOptions {
-  /** Used when a legacy organisation has no org_uid. Defaults to a random UUID. */
-  assignOrgUid?: () => string;
+  /** Used when an organisation has no org_uid. The argument is that org's key. */
+  assignOrgUid?: (orgKey: string) => string;
 }
 
 export interface CompileSetupSourceInput {
@@ -138,27 +138,46 @@ export function stableOrgUid(scenarioId: string, orgKey: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+function isProtagonistRecord(raw: unknown): boolean {
+  const org = asRecord(raw);
+  if (!org || typeof org.org_key !== 'string' || !org.org_key.trim()) return false;
+  return org.side !== 'antagonist' && org.side !== 'pressure' && org.role !== 'antagonist' && org.role !== 'pressure';
+}
+
+/** org_uid already stored on the page's primary, when the page lists organisations. */
+function pagePrimaryUid(state: Record<string, unknown>): string {
+  const page = asRecord(state.org_page);
+  const listed = Array.isArray(page?.orgs) ? page.orgs : [];
+  for (const raw of listed) {
+    const org = asRecord(raw);
+    if (!org) continue;
+    const key = typeof org.org_key === 'string' ? org.org_key.trim() : '';
+    const uid = typeof org.org_uid === 'string' ? org.org_uid.trim() : '';
+    if (uid && (org.is_primary === true || key === 'primary')) return uid;
+  }
+  return '';
+}
+
 /**
- * Oldest scenarios store only org_page.facebook / x_twitter and no orgs[].
- * Add the primary registry row, with a stable org_uid, so the snapshot and the
- * write-back share one id.
+ * Oldest scenarios store only org_page.facebook / x_twitter and no organisation
+ * list. Add the primary registry row so the snapshot and the write-back share
+ * one id. A page that already lists organisations is left alone: the runtime
+ * registry prefers `orgs` and would hide those pages.
  */
 export function materializeLegacyPrimary<T>(initialState: T, scenarioId: string): T {
   const state = asRecord(initialState);
   if (!state) return initialState;
   const orgs = Array.isArray(state.orgs) ? state.orgs : [];
-  const hasProtagonist = orgs.some((raw) => {
-    const org = asRecord(raw);
-    if (!org || typeof org.org_key !== 'string' || !org.org_key.trim()) return false;
-    return org.side !== 'antagonist' && org.side !== 'pressure' && org.role !== 'antagonist' && org.role !== 'pressure';
-  });
-  if (hasProtagonist) return initialState;
+  if (orgs.some(isProtagonistRecord)) return initialState;
+  const page = asRecord(state.org_page);
+  const pageOrgs = Array.isArray(page?.orgs) ? page.orgs : [];
+  if (pageOrgs.length > 0) return initialState;
   const copy = structuredClone(state);
   const existing = Array.isArray(copy.orgs) ? copy.orgs : [];
   copy.orgs = [
     ...existing,
     {
-      org_uid: stableOrgUid(scenarioId, 'primary'),
+      org_uid: pagePrimaryUid(state) || stableOrgUid(scenarioId, 'primary'),
       org_key: 'primary',
       display_name: text(copy.org_name) || 'Organisation',
       country: text(copy.country),
@@ -397,7 +416,7 @@ function protagonistOrgs(
   state: Record<string, unknown> | null,
   crisis: SetupCrisis,
   teams: readonly SnapshotTeamRow[],
-  assignUid: () => string,
+  assignUid: (orgKey: string) => string,
 ): SnapshotOrg[] {
   const byKey = new Map<string, LooseOrg>();
   for (const org of registry) {
@@ -413,7 +432,7 @@ function protagonistOrgs(
     const page = pages.find((org) => org.is_primary) ?? pages.find((org) => org.side === 'protagonist');
     orgs = [
       {
-        org_uid: page?.org_uid || assignUid(),
+        org_uid: page?.org_uid || assignUid('primary'),
         org_key: 'primary',
         display_name: text(state?.org_name) || crisis.org_name || page?.display_name || 'Organisation',
         short_name: page?.short_name || '',
@@ -434,7 +453,7 @@ function protagonistOrgs(
   const built = orgs.map((org) => {
     const page = pageByKey.get(org.org_key);
     return {
-      org_uid: org.org_uid || page?.org_uid || assignUid(),
+      org_uid: org.org_uid || page?.org_uid || assignUid(org.org_key || 'primary'),
       org_key: org.org_key,
       display_name: org.display_name || page?.display_name || org.org_key,
       short_name: org.short_name || page?.short_name || '',
@@ -470,7 +489,7 @@ function pressureOrgs(
   registry: LooseOrg[],
   pages: LooseOrg[],
   protagonists: Set<string>,
-  assignUid: () => string,
+  assignUid: (orgKey: string) => string,
 ): SnapshotPressure[] {
   const byKey = new Map<string, LooseOrg>();
   for (const org of [...registry, ...pages]) {
@@ -480,7 +499,7 @@ function pressureOrgs(
   }
   return [...byKey.values()]
     .map((org) => ({
-      org_uid: org.org_uid || assignUid(),
+      org_uid: org.org_uid || assignUid(org.org_key),
       org_key: org.org_key,
       display_name: org.display_name || org.org_key,
       country: org.country,
@@ -498,7 +517,7 @@ function pressureOrgs(
 function competitorOrgs(
   registry: LooseOrg[],
   pages: LooseOrg[],
-  assignUid: () => string,
+  assignUid: (orgKey: string) => string,
 ): SnapshotCompetitor[] {
   const byKey = new Map<string, LooseOrg>();
   for (const org of [...registry, ...pages]) {
@@ -508,7 +527,7 @@ function competitorOrgs(
   }
   return [...byKey.values()]
     .map((org) => ({
-      org_uid: org.org_uid || assignUid(),
+      org_uid: org.org_uid || assignUid(org.org_key),
       org_key: org.org_key,
       name: org.display_name || org.org_key,
       country: org.country,
