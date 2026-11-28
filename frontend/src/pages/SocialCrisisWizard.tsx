@@ -62,7 +62,8 @@ import {
   LANE_PAGE_SIZE,
   ROSTER_COLLAPSE_AT,
   filterLane,
-  laneShowsSearch,
+  laneSearchVisible,
+  laneVisibleIds,
   locateField,
   takeLanePages,
   type LaneCardRef,
@@ -799,6 +800,18 @@ export const SocialCrisisWizard = () => {
         ].join(' '),
       })),
     [competitorEntries],
+  );
+  const visibleOrgIds = useMemo(
+    () => laneVisibleIds(orgLaneCards, orgQuery, orgPages),
+    [orgLaneCards, orgQuery, orgPages],
+  );
+  const visiblePressureIds = useMemo(
+    () => laneVisibleIds(pressureLaneCards, pressureQuery, pressurePages),
+    [pressureLaneCards, pressureQuery, pressurePages],
+  );
+  const visibleRivalIds = useMemo(
+    () => laneVisibleIds(rivalLaneCards, rivalQuery, rivalPages),
+    [rivalLaneCards, rivalQuery, rivalPages],
   );
 
   // Jumps run after the render that shows the notes, so the scroll lands on the final layout.
@@ -3253,9 +3266,6 @@ export const SocialCrisisWizard = () => {
     }
   };
 
-  const visibleLaneIds = (cards: LaneCardRef[], query: string, pages: number) =>
-    new Set(takeLanePages(filterLane(cards, query), pages).map((card) => card.id));
-
   const laneTools = (
     lane: LaneName,
     total: number,
@@ -3263,10 +3273,10 @@ export const SocialCrisisWizard = () => {
     setQuery: (value: string) => void,
     setPages: (value: number | ((current: number) => number)) => void,
   ) => {
+    if (!laneSearchVisible(total, query)) return null;
     const cards =
       lane === 'orgs' ? orgLaneCards : lane === 'pressure' ? pressureLaneCards : rivalLaneCards;
     const filtered = filterLane(cards, query);
-    if (!laneShowsSearch(total) && !(query.trim() && filtered.length === 0)) return null;
     const label =
       lane === 'orgs'
         ? 'Search organisations'
@@ -3275,19 +3285,17 @@ export const SocialCrisisWizard = () => {
           : 'Search rivals';
     return (
       <div className="wr-lanetools">
-        {laneShowsSearch(total) && (
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPages(1);
-            }}
-            placeholder="Search this lane"
-            aria-label={label}
-            className="wr-field"
-          />
-        )}
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPages(1);
+          }}
+          placeholder="Search this lane"
+          aria-label={label}
+          className="wr-field"
+        />
         {query.trim() && filtered.length === 0 && (
           <span className="text-[11px] text-muted">No matches</span>
         )}
@@ -3526,7 +3534,7 @@ export const SocialCrisisWizard = () => {
           {laneTools('orgs', orgLaneCards.length, orgQuery, setOrgQuery, setOrgPages)}
           <div className="space-y-3.5">
             {/* HQ node */}
-            {visibleLaneIds(orgLaneCards, orgQuery, orgPages).has(PRIMARY_ORG_ID) && (
+            {visibleOrgIds.has(PRIMARY_ORG_ID) && (
               <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
                 <div className="kicker">
                   <WrIcon name="building" size={12} /> Headquarters · players
@@ -3694,7 +3702,7 @@ export const SocialCrisisWizard = () => {
 
             {/* Additional organisations: each in its own country with its own team roster */}
             {extraOrganisations
-              .filter((org) => visibleLaneIds(orgLaneCards, orgQuery, orgPages).has(org.id))
+              .filter((org) => visibleOrgIds.has(org.id))
               .map((org) => {
                 const i = extraOrganisations.findIndex((item) => item.id === org.id);
                 return (
@@ -3879,9 +3887,7 @@ export const SocialCrisisWizard = () => {
           )}
           <div className="wr-cards">
             {pressureOrgs
-              .filter((group) =>
-                visibleLaneIds(pressureLaneCards, pressureQuery, pressurePages).has(group.id),
-              )
+              .filter((group) => visiblePressureIds.has(group.id))
               .map((p) => (
                 <div
                   key={p.id}
@@ -3979,9 +3985,7 @@ export const SocialCrisisWizard = () => {
           {laneTools('rivals', rivalLaneCards.length, rivalQuery, setRivalQuery, setRivalPages)}
           <div className="wr-cards">
             {competitorEntries
-              .filter((entry) =>
-                visibleLaneIds(rivalLaneCards, rivalQuery, rivalPages).has(entry.id),
-              )
+              .filter((entry) => visibleRivalIds.has(entry.id))
               .map((e) => (
                 <div
                   key={e.id}
@@ -3990,10 +3994,10 @@ export const SocialCrisisWizard = () => {
                 >
                   <div className="kicker">
                     <WrIcon name="swords" size={12} /> Competitor
+                    {isExistingOrg(e.org_key, baselineOrgKeys) ? ' · Existing' : ''}
                   </div>
                   <RivalOrgCard
                     rival={e}
-                    badge={isExistingOrg(e.org_key, baselineOrgKeys) ? 'Existing' : undefined}
                     onChange={(next) =>
                       setCompetitorEntries((prev) => prev.map((x) => (x.id === e.id ? next : x)))
                     }

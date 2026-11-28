@@ -85,3 +85,39 @@ export function takeLanePages<T>(items: T[], pagesShown: number, pageSize = LANE
 export function laneShowsSearch(count: number, pageSize = LANE_PAGE_SIZE): boolean {
   return count > pageSize;
 }
+
+/**
+ * A long lane shows a search box. A shorter one keeps the box while a query
+ * is still applied, so the filter can be cleared after cards are removed.
+ */
+export function laneSearchVisible(
+  count: number,
+  query: string,
+  pageSize = LANE_PAGE_SIZE,
+): boolean {
+  return laneShowsSearch(count, pageSize) || query.trim().length > 0;
+}
+
+/** Ids on the pages currently drawn, after the lane search. */
+export function laneVisibleIds(
+  cards: LaneCardRef[],
+  query: string,
+  pagesShown: number,
+  pageSize = LANE_PAGE_SIZE,
+): Set<string> {
+  return new Set(
+    takeLanePages(filterLane(cards, query), pagesShown, pageSize).map((card) => card.id),
+  );
+}
+
+/**
+ * Growing a roster past the collapse line while it is open has to be recorded
+ * as expanded. Otherwise the team that crosses the line is hidden at once.
+ */
+export function rosterExpandOnGrow(
+  previousCount: number,
+  nextCount: number,
+  wasOpen: boolean,
+): boolean {
+  return wasOpen && previousCount <= ROSTER_COLLAPSE_AT && nextCount > ROSTER_COLLAPSE_AT;
+}

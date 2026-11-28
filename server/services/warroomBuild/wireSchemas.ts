@@ -53,7 +53,7 @@ export const competitorsSchema = z.array(
     facebook_handle: z.string().max(60).optional(),
     x_handle: z.string().max(60).optional(),
     org_key: z.string().optional(),
-    description: z.string().max(RIVAL_DESCRIPTION_MAX).optional(),
+    description: z.string().trim().max(RIVAL_DESCRIPTION_MAX).optional(),
   }),
 );
 
