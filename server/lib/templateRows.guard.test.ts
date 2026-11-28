@@ -37,6 +37,17 @@ export function violationsInFile(relPath: string, source: string): string[] {
     );
   }
 
+  const objectiveRe = /from\(\s*['"]scenario_objectives['"]\s*\)/g;
+  for (const match of source.matchAll(objectiveRe)) {
+    const index = match.index ?? 0;
+    const statement = statementAround(source, index);
+    if (/activeObjectives\s*\(/.test(statement)) continue;
+    if (/\.insert\s*\(|\.update\s*\(/.test(statement) || /templateRows-allow:/.test(statement)) continue;
+    failures.push(
+      `${relPath}:${lineOf(source, index)} scenario_objectives read does not go through templateRows.ts`,
+    );
+  }
+
   const injectRe = /from\(\s*['"]scenario_injects['"]\s*\)/g;
   for (const match of source.matchAll(injectRe)) {
     const index = match.index ?? 0;

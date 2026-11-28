@@ -6,6 +6,26 @@ const SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204',
 
 const IN_FLIGHT = new Set(['open', 'applying']);
 
+/** An apply that has not finished returns to open after this long. */
+export const APPLY_HEARTBEAT_MS = 10 * 60 * 1000;
+
+export function applyingIsStale(heartbeat: string | null | undefined, now: Date): boolean {
+  if (!heartbeat) return true;
+  const at = Date.parse(heartbeat);
+  if (Number.isNaN(at)) return true;
+  return now.getTime() - at >= APPLY_HEARTBEAT_MS;
+}
+
+/** Applying rows whose heartbeat is missing or older than the reclaim window. */
+export function staleApplyIds(
+  rows: ReadonlyArray<{ id: string; status: string; apply_heartbeat_at?: string | null }>,
+  now: Date,
+): string[] {
+  return rows
+    .filter((row) => row.status === 'applying' && applyingIsStale(row.apply_heartbeat_at ?? null, now))
+    .map((row) => row.id);
+}
+
 export const EMPTY_SETUP_BASELINE: Record<string, never> = {};
 
 /** SHA-256 of the canonical JSON for the empty baseline stored until the snapshot exists. */

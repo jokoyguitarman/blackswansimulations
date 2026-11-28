@@ -14,6 +14,7 @@
 -- Rollback (branch or local database only, never the shared project):
 --   DROP FUNCTION IF EXISTS public.apply_scenario_setup_edit(UUID, TEXT, JSONB, BOOLEAN, INT);
 --   DROP FUNCTION IF EXISTS public.scenario_initial_state_md5(UUID);
+--   DROP FUNCTION IF EXISTS public.scenario_apply_state(UUID);
 --   Restore scenario_teams / scenario_injects retire_reason checks to
 --   ('removed','renamed','revised'), drop scenario_setup_edit from credit_ledger's
 --   reason check, and restore UNIQUE(scenario_id, objective_id) after duplicate
@@ -111,6 +112,35 @@ AS $$
    WHERE id = p_scenario_id;
 $$;
 
+-- One read of the row the merge will use, with the md5 the apply RPC compares.
+CREATE OR REPLACE FUNCTION public.scenario_apply_state(p_scenario_id UUID)
+RETURNS TABLE (
+  initial_state JSONB,
+  state_md5 TEXT,
+  title TEXT,
+  description TEXT,
+  briefing TEXT,
+  category TEXT,
+  difficulty TEXT,
+  duration_minutes INT
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT
+    s.initial_state,
+    md5(s.initial_state::text),
+    s.title,
+    s.description,
+    s.briefing,
+    s.category,
+    s.difficulty,
+    s.duration_minutes
+  FROM public.scenarios s
+  WHERE s.id = p_scenario_id;
+$$;
+
 -- Returns applied | stale | live_session | limit_reached | not_applying | not_found | count_failed.
 -- The caller has already moved the edit to applying. p_is_admin is the applying user's role.
 CREATE OR REPLACE FUNCTION public.apply_scenario_setup_edit(
@@ -188,12 +218,13 @@ BEGIN
   END IF;
 
   v_hit := false;
-  IF jsonb_array_length(COALESCE(p_bundle->'history_free_inject_ids', '[]'::jsonb)) > 0 THEN
+  IF jsonb_typeof(p_bundle->'injects'->'patch') = 'array'
+     AND jsonb_array_length(p_bundle->'injects'->'patch') > 0 THEN
     SELECT EXISTS (
       SELECT 1
         FROM public.inject_publications p
-        JOIN jsonb_array_elements_text(p_bundle->'history_free_inject_ids') AS wanted(id)
-          ON p.inject_id = wanted.id::uuid
+        JOIN jsonb_array_elements(p_bundle->'injects'->'patch') AS wanted(row)
+          ON p.inject_id = (wanted.row->>'id')::uuid
     ) INTO v_hit;
     IF v_hit THEN
       RETURN 'stale';
@@ -203,10 +234,10 @@ BEGIN
         SELECT EXISTS (
           SELECT 1
             FROM public.inject_deliveries d
-            JOIN jsonb_array_elements_text($1) AS wanted(id)
-              ON d.inject_id = wanted.id::uuid
+            JOIN jsonb_array_elements($1) AS wanted(row)
+              ON d.inject_id = (wanted.row->>'id')::uuid
         )
-      $hist$ INTO v_hit USING p_bundle->'history_free_inject_ids';
+      $hist$ INTO v_hit USING p_bundle->'injects'->'patch';
       IF v_hit THEN
         RETURN 'stale';
       END IF;
@@ -232,7 +263,8 @@ BEGIN
     FROM jsonb_to_recordset(COALESCE(p_bundle->'teams'->'retire', '[]'::jsonb))
       AS r(id uuid, reason text, superseded_by uuid)
    WHERE t.id = r.id
-     AND t.scenario_id = v_scenario;
+     AND t.scenario_id = v_scenario
+     AND t.retired_at IS NULL;
 
   INSERT INTO public.scenario_teams (
     id,
@@ -342,7 +374,8 @@ BEGIN
     FROM jsonb_to_recordset(COALESCE(p_bundle->'injects'->'retire', '[]'::jsonb))
       AS r(id uuid, reason text, superseded_by uuid)
    WHERE i.id = r.id
-     AND i.scenario_id = v_scenario;
+     AND i.scenario_id = v_scenario
+     AND i.retired_at IS NULL;
 
   INSERT INTO public.scenario_injects (
     id,
@@ -455,7 +488,8 @@ BEGIN
      SET retired_at = now()
     FROM jsonb_to_recordset(COALESCE(p_bundle->'objectives'->'retire', '[]'::jsonb)) AS r(id uuid)
    WHERE o.id = r.id
-     AND o.scenario_id = v_scenario;
+     AND o.scenario_id = v_scenario
+     AND o.retired_at IS NULL;
 
   INSERT INTO public.scenario_objectives (
     id, scenario_id, objective_id, objective_name, description, success_criteria, weight
@@ -515,17 +549,17 @@ BEGIN
 
     v_renames := COALESCE(v_session->'rename'->'team_names', '[]'::jsonb);
     UPDATE public.session_teams AS st
-       SET team_name = m.to_name
-      FROM jsonb_to_recordset(v_renames) AS m(from_name text, to_name text)
+       SET team_name = m."to"
+      FROM jsonb_to_recordset(v_renames) AS m("from" text, "to" text)
      WHERE st.session_id = v_session_id
-       AND st.team_name = m.from_name;
+       AND st.team_name = m."from";
 
     UPDATE public.chat_channels AS c
-       SET team_name = m.to_name
+       SET team_name = m."to"
       FROM jsonb_to_recordset(COALESCE(v_session->'rename'->'channels', '[]'::jsonb))
-        AS m(from_name text, to_name text)
+        AS m("from" text, "to" text)
      WHERE c.session_id = v_session_id
-       AND c.team_name = m.from_name;
+       AND c.team_name = m."from";
 
     -- Insert the new line, move takers onto it, then delete the old line.
     -- The taker foreign key has no ON UPDATE, so this order is required.
@@ -535,9 +569,15 @@ BEGIN
         SELECT value
           FROM jsonb_array_elements(COALESCE(v_session->'rename'->'call_lines', '[]'::jsonb))
       LOOP
-        EXECUTE
-          'INSERT INTO public.session_call_lines (session_id, team_name) VALUES ($1, $2) ON CONFLICT (session_id, team_name) DO NOTHING'
-          USING v_session_id, v_move->>'to_team';
+        EXECUTE $line$
+          INSERT INTO public.session_call_lines (session_id, team_name, version, unattended_since)
+          SELECT $1, $2, COALESCE(old.version, 0), old.unattended_since
+            FROM (SELECT 1) AS seed
+            LEFT JOIN public.session_call_lines AS old
+              ON old.session_id = $1 AND old.team_name = $3
+          ON CONFLICT (session_id, team_name) DO NOTHING
+        $line$
+          USING v_session_id, v_move->>'to_team', v_move->>'from_team';
         EXECUTE
           'UPDATE public.session_call_takers SET team_name = $1 WHERE session_id = $2 AND team_name = $3'
           USING v_move->>'to_team', v_session_id, v_move->>'from_team';
@@ -582,11 +622,11 @@ BEGIN
 
     -- One statement, so the two keys of a swap are not applied one after the other.
     UPDATE public.session_page_controllers AS spc
-       SET org_key = m.to_key
+       SET org_key = m."to"
       FROM jsonb_to_recordset(COALESCE(v_session->'remap_page_controllers', '[]'::jsonb))
-        AS m(from_key text, to_key text, user_id uuid)
+        AS m("from" text, "to" text, user_id uuid)
      WHERE spc.session_id = v_session_id
-       AND spc.org_key = m.from_key
+       AND spc.org_key = m."from"
        AND spc.user_id = m.user_id;
 
     DELETE FROM public.session_page_controllers
@@ -598,11 +638,11 @@ BEGIN
     IF to_regclass('public.session_dependency_states') IS NOT NULL THEN
       EXECUTE $dep$
         UPDATE public.session_dependency_states AS s
-           SET upstream_team = m.to_name,
+           SET upstream_team = m."to",
                updated_at = now()
-          FROM jsonb_to_recordset($1) AS m(from_name text, to_name text)
+          FROM jsonb_to_recordset($1) AS m("from" text, "to" text)
          WHERE s.session_id = $2
-           AND s.upstream_team = m.from_name
+           AND s.upstream_team = m."from"
       $dep$ USING v_renames, v_session_id;
       EXECUTE $dep$
         UPDATE public.session_dependency_states AS s
@@ -611,10 +651,10 @@ BEGIN
           FROM (
             SELECT s2.dep_id,
                    ARRAY(
-                     SELECT COALESCE(m.to_name, u.name)
+                     SELECT COALESCE(m."to", u.name)
                        FROM unnest(s2.downstream_teams) WITH ORDINALITY AS u(name, ord)
-                       LEFT JOIN jsonb_to_recordset($1) AS m(from_name text, to_name text)
-                         ON m.from_name = u.name
+                       LEFT JOIN jsonb_to_recordset($1) AS m("from" text, "to" text)
+                         ON m."from" = u.name
                       ORDER BY u.ord
                    ) AS names
               FROM public.session_dependency_states s2
@@ -662,10 +702,12 @@ $$;
 
 REVOKE ALL ON FUNCTION
   public.scenario_initial_state_md5(UUID),
+  public.scenario_apply_state(UUID),
   public.apply_scenario_setup_edit(UUID, TEXT, JSONB, BOOLEAN, INT)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.scenario_initial_state_md5(UUID),
+  public.scenario_apply_state(UUID),
   public.apply_scenario_setup_edit(UUID, TEXT, JSONB, BOOLEAN, INT)
   TO service_role;
 

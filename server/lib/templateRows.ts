@@ -186,6 +186,11 @@ export function activeTemplateInjects<Q>(query: Q): Q {
   return applyActiveFilter(query);
 }
 
+/** Active scenario_objectives read. Missing retired_at degrades to every row. */
+export function activeObjectives<Q>(query: Q): Q {
+  return applyActiveFilter(query);
+}
+
 export interface QueryResult<T = Record<string, unknown>> {
   data: T[] | null;
   error: { code?: string; message?: string } | null;

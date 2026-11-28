@@ -1,15 +1,16 @@
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
-import { activeTeams, activeTemplateInjects } from '../../lib/templateRows.js';
+import { activeObjectives } from '../../lib/templateRows.js';
 import { seedOrgPages } from '../ambientContentService.js';
 import { consumeCredit, isAdmin, refundCredit, type ConsumeResult } from '../creditService.js';
-import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
-import { blankGenerated, type SetupEditStageOutput } from './deltaBuildTypes.js';
+import { SupabaseBuildStore } from '../warroomBuild/buildStore.js';
+import { stageOutputsFromRows } from './deltaBuildTypes.js';
 import { loadSetupEditSource } from './deltaBuildContext.js';
 import { asSnapshot } from './prepareSetupEditBuild.js';
+import { asRecord, numberOrNull, textOf, textOrNull } from './jsonValue.js';
 import { planRemap, type OrphanResolution, type PlannerInject, type PlannerTeam } from './remapPlanner.js';
-import { isSetupEditSchemaMissing, remainingEdits } from './setupEditCore.js';
+import { applyingIsStale, isSetupEditSchemaMissing, remainingEdits } from './setupEditCore.js';
 import { computeDelta } from './setupDeltaCore.js';
 import {
   mergeSetupEdit,
@@ -17,29 +18,30 @@ import {
   SetupMergeError,
   type ApplyBundle,
   type ApplySummary,
-  type MergeCurrent,
+  type MergeEdit,
   type MergeInjectRow,
   type MergeObjective,
-  type MergeScenario,
   type MergeSetupEditInput,
   type MergeTeamRow,
 } from './setupMergeCore.js';
-import { snapshotFromDraftInput } from './setupSnapshotCore.js';
+import { snapshotFromDraftInput, type SetupSnapshot } from './setupSnapshotCore.js';
 
-/** An apply that has not finished returns to open after this long. */
-export const APPLY_HEARTBEAT_MS = 10 * 60 * 1000;
+const buildOutputsStore = new SupabaseBuildStore();
 
-const TEAM_COLUMNS =
-  'id, team_uid, team_name, team_description, required_roles, min_participants, max_participants, counter_definitions, is_investigative, charter, expected_actions, scoring_rubric, org_key, function_key';
+export { APPLY_HEARTBEAT_MS, applyingIsStale, staleApplyIds } from './setupEditCore.js';
 
-const INJECT_COLUMNS =
-  'id, trigger_time_minutes, trigger_condition, type, title, content, affected_roles, severity, requires_response, ai_generated, inject_scope, target_teams, requires_coordination, triggered_by_user_id, required_gate_id, required_gate_not_met_id, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, objective_penalty, state_effect, generation_source, delivery_config, response_type';
-
-export function applyingIsStale(heartbeat: string | null | undefined, now: Date): boolean {
-  if (!heartbeat) return true;
-  const at = Date.parse(heartbeat);
-  if (Number.isNaN(at)) return true;
-  return now.getTime() - at >= APPLY_HEARTBEAT_MS;
+/** The merge edit, with three-way texts taken from the snapshot frozen at open. */
+export function mergeEditForApply(
+  editId: string,
+  baseline: SetupSnapshot,
+  edited: SetupSnapshot,
+): MergeEdit {
+  return {
+    id: editId,
+    baseline,
+    edited,
+    ...(baseline.frozen_texts ? { opened: baseline.frozen_texts } : {}),
+  };
 }
 
 export interface ApplySetupEditRequest {
@@ -71,10 +73,12 @@ export interface PreparedApply {
   input: MergeSetupEditInput;
   sessions: Array<{
     id: string;
+    title: string;
     reseed: boolean;
     unassigned_players: Array<{ user_id: string; team_name: string }>;
   }>;
-  title: string;
+  /** md5(initial_state::text) from the same read the merge used. */
+  stateMd5: string;
 }
 
 export interface ApplyDeps {
@@ -82,7 +86,6 @@ export interface ApplyDeps {
   claim(request: ApplySetupEditRequest, now: Date): Promise<'claimed' | 'busy' | 'unavailable'>;
   heartbeat(editId: string, now: Date): Promise<void>;
   release(editId: string, error: string | null): Promise<void>;
-  md5(scenarioId: string): Promise<string | null>;
   rpc(args: {
     editId: string;
     md5: string;
@@ -160,14 +163,9 @@ export async function applySetupEdit(
         await deps.heartbeat(request.editId, deps.now());
       }
 
-      const md5 = await deps.md5(request.scenarioId);
-      if (!md5) {
-        await abort();
-        return { ok: false, status: 404, code: 'NOT_FOUND', error: 'Scenario not found' };
-      }
       const rpc = await deps.rpc({
         editId: request.editId,
-        md5,
+        md5: prepared.stateMd5,
         bundle,
         isAdmin: isAdmin(request.user),
         limit: deps.limit(),
@@ -191,7 +189,7 @@ export async function applySetupEdit(
           remaining: remainingEdits(used, deps.limit(), isAdmin(request.user)),
           scheduled_sessions: prepared.sessions.map((session) => ({
             id: session.id,
-            title: prepared.title,
+            title: session.title,
             unassigned_players: session.unassigned_players,
             new_teams: bundle.new_team_names,
           })),
@@ -308,84 +306,12 @@ function outcomeResult(outcome: string): ApplySetupEditResult {
   return { ok: false, status: 500, code: 'APPLY_FAILED', error: 'The setup edit could not be applied.' };
 }
 
-/** Turn the four stage rows into the outputs the merge reads. Placeholders are not copied onto the scenario. */
-export function stageOutputsFromRows(
-  rows: ReadonlyArray<{ stage: string; output: unknown }>,
-): SetupEditStageOutput[] {
-  const byStage = new Map(rows.map((row) => [row.stage, row.output]));
-  return ['characters', 'storyline', 'convergence', 'pages'].map((stage) =>
-    normaliseStage(byStage.get(stage), stage),
-  );
-}
-
-function normaliseStage(raw: unknown, stage: string): SetupEditStageOutput {
-  const row = asRecord(raw) ?? {};
-  const generated = asRecord(row.generated);
-  const narrative = asRecord(row.narrative_update);
-  const fact = asRecord(row.fact_sheet);
-  return {
-    revisions: Array.isArray(row.revisions) ? (row.revisions as SetupEditStageOutput['revisions']) : [],
-    flags: Array.isArray(row.flags) ? (row.flags as SetupEditStageOutput['flags']) : [],
-    generated: generated
-      ? { ...blankGenerated(), ...(generated as object) }
-      : blankGenerated(),
-    text_updates: Array.isArray(row.text_updates)
-      ? (row.text_updates as SetupEditStageOutput['text_updates'])
-      : [],
-    narrative_update:
-      narrative && typeof narrative.briefing === 'string'
-        ? {
-            title: text(narrative.title),
-            description: text(narrative.description),
-            briefing: narrative.briefing,
-            briefing_kept: narrative.briefing_kept === true,
-          }
-        : null,
-    objective_updates: Array.isArray(row.objective_updates)
-      ? (row.objective_updates as SetupEditStageOutput['objective_updates'])
-      : [],
-    setup_source_update: (asRecord(row.setup_source_update) as SetupEditStageOutput['setup_source_update']) ?? null,
-    stakeholder_updates: Array.isArray(row.stakeholder_updates)
-      ? (row.stakeholder_updates as SetupEditStageOutput['stakeholder_updates'])
-      : [],
-    brief_diff: null,
-    swap_premise: typeof row.swap_premise === 'string' ? row.swap_premise : null,
-    skipped: row.skipped === true,
-    personas: Array.isArray(row.personas) ? (row.personas as SetupEditStageOutput['personas']) : [],
-    fact_sheet:
-      fact && Array.isArray(fact.confirmed_facts)
-        ? (fact as unknown as SetupEditStageOutput['fact_sheet'])
-        : { confirmed_facts: [], unconfirmed_claims: [] },
-    communities: [],
-    countries: [],
-    injects: [],
-    team_storylines: {},
-    team_charters: [],
-    stakeholders: [],
-    stakeholder_injects: [],
-    persona_twins: [],
-    orgs: [],
-    sop_steps: [],
-    decision_context: { leakiness: 0, labour_signal: false, product_safety_signal: false },
-    pressure_organisations: [],
-    sharedInjects: [],
-    convergenceGates: [],
-    narrative: null,
-    objectives: [],
-    dimensionLabels: null,
-    org_page: null,
-    pressure_injects: [],
-    ...(stage === 'pages' ? { peace_period: usablePeaceFeed(row.peace_period) } : {}),
-  };
-}
-
 export function createApplyDeps(): ApplyDeps {
   return {
     prepare: prepareApply,
     claim: claimApply,
     heartbeat: touchHeartbeat,
     release: releaseApply,
-    md5: readStateMd5,
     rpc: callApplyRpc,
     reseed: (sessionId, initialState) => seedOrgPages(sessionId, initialState),
     used: readUsed,
@@ -464,30 +390,54 @@ async function prepareApply(
       error: 'This edit does not change the setup.',
     };
   }
+  const applyState = await readApplyState(request.scenarioId);
+  if (!applyState) {
+    return {
+      ok: false,
+      status: 404,
+      code: 'SETUP_EDITS_UNAVAILABLE',
+      error: 'Setup edits are not available until the apply migration is applied.',
+    };
+  }
   const plan = planRemap({
     delta,
     edited,
-    initial_state: source.remap.initial_state,
+    initial_state: applyState.initial_state,
     teams: source.remap.teams,
     injects: source.remap.injects,
     sessions: source.remap.sessions,
     resolutions: request.orphanDecisions,
   });
-  const rows = await loadScenarioRows(request.scenarioId, source.remap.teams, source.remap.injects);
-  const outputs = await loadOutputs(request.buildId);
+  const objectives = await readObjectives(request.scenarioId);
+  const outputs = await loadStageOutputs(request.buildId);
+  const titles = new Map(source.remap.sessions.map((session) => [session.session_id, session.title ?? '']));
   const input: MergeSetupEditInput = {
-    current: rows,
+    current: {
+      scenario: {
+        title: applyState.title,
+        description: applyState.description,
+        briefing: applyState.briefing,
+        category: applyState.category,
+        difficulty: applyState.difficulty,
+        duration_minutes: applyState.duration_minutes,
+        initial_state: applyState.initial_state,
+        objectives,
+      },
+      teams: source.remap.teams.map(teamFromPlanner),
+      injects: source.remap.injects.map(injectFromPlanner),
+    },
     plan,
     buildOutputs: outputs,
-    edit: { id: request.editId, baseline, edited },
+    edit: mergeEditForApply(request.editId, baseline, edited),
     resolutions: request.orphanDecisions,
   };
   return {
     ok: true,
     input,
-    title: rows.scenario.title,
+    stateMd5: applyState.state_md5,
     sessions: plan.scheduled_sessions.map((session) => ({
       id: session.session_id,
+      title: titles.get(session.session_id) ?? '',
       reseed: session.reseed_org_pages,
       unassigned_players: session.unassigned_players,
     })),
@@ -515,79 +465,50 @@ async function loadBuild(
   };
 }
 
-async function loadOutputs(buildId: string): Promise<SetupEditStageOutput[]> {
-  const result = await supabaseAdmin
-    .from('warroom_build_outputs')
-    .select('stage, output')
-    .eq('build_id', buildId);
-  if (result.error) {
-    if (isSetupEditSchemaMissing(result.error)) return stageOutputsFromRows([]);
-    throw new Error(result.error.message);
+async function readApplyState(scenarioId: string): Promise<{
+  initial_state: unknown;
+  state_md5: string;
+  title: string;
+  description: string;
+  briefing: string;
+  category: string;
+  difficulty: string;
+  duration_minutes: number;
+} | null> {
+  const { data, error } = await supabaseAdmin.rpc('scenario_apply_state', {
+    p_scenario_id: scenarioId,
+  });
+  if (error) {
+    if (isSetupEditSchemaMissing(error)) return null;
+    throw new Error(error.message);
   }
-  return stageOutputsFromRows((result.data ?? []) as Array<{ stage: string; output: unknown }>);
-}
-
-async function loadScenarioRows(
-  scenarioId: string,
-  plannerTeams: readonly PlannerTeam[],
-  plannerInjects: readonly PlannerInject[],
-): Promise<MergeCurrent> {
-  const scenario = await supabaseAdmin
-    .from('scenarios')
-    .select('title, description, briefing, category, difficulty, duration_minutes, initial_state')
-    .eq('id', scenarioId)
-    .maybeSingle<{
-      title: string | null;
-      description: string | null;
-      briefing: string | null;
-      category: string | null;
-      difficulty: string | null;
-      duration_minutes: number | null;
-      initial_state: unknown;
-    }>();
-  if (scenario.error || !scenario.data) throw new Error(scenario.error?.message || 'Scenario not found');
-  const history = new Map(plannerInjects.map((row) => [row.id, row.has_history]));
-  const teams = await readTeams(scenarioId, plannerTeams);
-  const injects = await readInjects(scenarioId, history);
-  const objectives = await readObjectives(scenarioId);
-  const row = scenario.data;
-  const current: MergeScenario = {
-    title: row.title ?? '',
-    description: row.description ?? '',
-    briefing: row.briefing ?? '',
-    category: row.category ?? 'social_media_crisis',
-    difficulty: row.difficulty ?? 'intermediate',
-    duration_minutes: row.duration_minutes ?? 60,
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!row || typeof row.state_md5 !== 'string') return null;
+  return {
     initial_state: row.initial_state ?? {},
-    objectives,
+    state_md5: row.state_md5,
+    title: textOf(row.title),
+    description: textOf(row.description),
+    briefing: textOf(row.briefing),
+    category: textOf(row.category) || 'social_media_crisis',
+    difficulty: textOf(row.difficulty) || 'intermediate',
+    duration_minutes: numberOrNull(row.duration_minutes) ?? 60,
   };
-  return { scenario: current, teams, injects };
 }
 
-async function readTeams(scenarioId: string, fallback: readonly PlannerTeam[]): Promise<MergeTeamRow[]> {
-  const result = await activeTeams(
-    supabaseAdmin.from('scenario_teams').select(TEAM_COLUMNS).eq('scenario_id', scenarioId),
-  );
-  if (result.error) {
-    if (isSetupEditSchemaMissing(result.error)) return fallback.map(teamFromPlanner);
-    throw new Error(result.error.message);
+async function loadStageOutputs(buildId: string) {
+  try {
+    const outputs = await buildOutputsStore.getOutputs(buildId);
+    return stageOutputsFromRows([
+      { stage: 'characters', output: outputs.characters },
+      { stage: 'storyline', output: outputs.storyline },
+      { stage: 'convergence', output: outputs.convergence },
+      { stage: 'pages', output: outputs.pages },
+    ]);
+  } catch (err) {
+    if (isSetupEditSchemaMissing(err)) return stageOutputsFromRows([]);
+    throw err;
   }
-  return ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    id: text(row.id),
-    team_uid: text(row.team_uid) || text(row.id),
-    team_name: text(row.team_name),
-    team_description: textOrNull(row.team_description),
-    required_roles: stringList(row.required_roles),
-    min_participants: numberOrNull(row.min_participants),
-    max_participants: numberOrNull(row.max_participants),
-    counter_definitions: row.counter_definitions ?? null,
-    is_investigative: row.is_investigative === true,
-    charter: row.charter ?? null,
-    expected_actions: row.expected_actions ?? null,
-    scoring_rubric: typeof row.scoring_rubric === 'string' ? row.scoring_rubric : null,
-    org_key: textOrNull(row.org_key),
-    function_key: textOrNull(row.function_key),
-  }));
 }
 
 function teamFromPlanner(row: PlannerTeam): MergeTeamRow {
@@ -596,11 +517,11 @@ function teamFromPlanner(row: PlannerTeam): MergeTeamRow {
     team_uid: row.team_uid,
     team_name: row.team_name,
     team_description: row.team_description,
-    required_roles: [],
-    min_participants: 1,
-    max_participants: null,
-    counter_definitions: null,
-    is_investigative: false,
+    required_roles: row.required_roles ?? [],
+    min_participants: row.min_participants ?? 1,
+    max_participants: row.max_participants ?? null,
+    counter_definitions: row.counter_definitions ?? null,
+    is_investigative: row.is_investigative === true,
     charter: row.charter,
     expected_actions: row.expected_actions,
     scoring_rubric: typeof row.scoring_rubric === 'string' ? row.scoring_rubric : null,
@@ -609,66 +530,55 @@ function teamFromPlanner(row: PlannerTeam): MergeTeamRow {
   };
 }
 
-async function readInjects(
-  scenarioId: string,
-  history: Map<string, boolean>,
-): Promise<MergeInjectRow[]> {
-  const result = await activeTemplateInjects(
-    supabaseAdmin
-      .from('scenario_injects')
-      .select(INJECT_COLUMNS)
-      .eq('scenario_id', scenarioId)
-      .is('session_id', null),
-  );
-  if (result.error) throw new Error(result.error.message);
-  return ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    id: text(row.id),
-    has_history: history.get(text(row.id)) === true,
-    trigger_time_minutes: numberOrNull(row.trigger_time_minutes),
-    trigger_condition: textOrNull(row.trigger_condition),
-    type: text(row.type) || 'social_post',
-    title: text(row.title),
-    content: text(row.content),
+function injectFromPlanner(row: PlannerInject): MergeInjectRow {
+  return {
+    id: row.id,
+    has_history: row.has_history,
+    trigger_time_minutes: row.trigger_time_minutes ?? null,
+    trigger_condition: row.trigger_condition ?? null,
+    type: row.type || 'social_post',
+    title: row.title ?? '',
+    content: row.content ?? '',
     affected_roles: row.affected_roles ?? [],
-    severity: text(row.severity) || 'medium',
+    severity: row.severity || 'medium',
     requires_response: row.requires_response === true,
     ai_generated: row.ai_generated === true,
-    inject_scope: textOrNull(row.inject_scope),
-    target_teams: stringList(row.target_teams),
+    inject_scope: row.inject_scope ?? null,
+    target_teams: row.target_teams ?? [],
     requires_coordination: row.requires_coordination === true,
-    triggered_by_user_id: textOrNull(row.triggered_by_user_id),
-    required_gate_id: textOrNull(row.required_gate_id),
-    required_gate_not_met_id: textOrNull(row.required_gate_not_met_id),
+    triggered_by_user_id: row.triggered_by_user_id ?? null,
+    required_gate_id: row.required_gate_id ?? null,
+    required_gate_not_met_id: row.required_gate_not_met_id ?? null,
     conditions_to_appear: row.conditions_to_appear ?? null,
     conditions_to_cancel: row.conditions_to_cancel ?? null,
-    eligible_after_minutes: numberOrNull(row.eligible_after_minutes),
+    eligible_after_minutes: row.eligible_after_minutes ?? null,
     objective_penalty: row.objective_penalty ?? null,
     state_effect: row.state_effect ?? null,
-    generation_source: textOrNull(row.generation_source),
-    delivery_config: asRecord(row.delivery_config),
-    response_type: textOrNull(row.response_type),
-  }));
+    generation_source: row.generation_source ?? null,
+    delivery_config: row.delivery_config ?? null,
+    response_type: row.response_type ?? null,
+  };
 }
 
 async function readObjectives(scenarioId: string): Promise<MergeObjective[]> {
-  const result = await supabaseAdmin
-    .from('scenario_objectives')
-    .select('id, objective_id, objective_name, description, weight, success_criteria, retired_at')
-    .eq('scenario_id', scenarioId);
+  const result = await activeObjectives(
+    supabaseAdmin
+      .from('scenario_objectives')
+      .select('id, objective_id, objective_name, description, weight, success_criteria')
+      .eq('scenario_id', scenarioId),
+  );
   if (result.error) {
     if (isSetupEditSchemaMissing(result.error)) return [];
     throw new Error(result.error.message);
   }
-  return ((result.data ?? []) as Array<Record<string, unknown>>)
-    .filter((row) => row.retired_at == null)
-    .map((row) => ({
-      id: text(row.id),
-      objective_id: text(row.objective_id),
-      objective_name: text(row.objective_name),
-      description: textOrNull(row.description),
-      weight: numberOrNull(row.weight),
-      success_criteria: row.success_criteria ?? {},
-    }));
+  return ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: textOf(row.id),
+    objective_id: textOf(row.objective_id),
+    objective_name: textOf(row.objective_name),
+    description: textOrNull(row.description),
+    weight: numberOrNull(row.weight),
+    success_criteria: row.success_criteria ?? {},
+  }));
 }
 
 async function claimApply(
@@ -729,17 +639,6 @@ async function releaseApply(editId: string, error: string | null): Promise<void>
     .eq('status', 'applying');
 }
 
-async function readStateMd5(scenarioId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin.rpc('scenario_initial_state_md5', {
-    p_scenario_id: scenarioId,
-  });
-  if (error) {
-    if (isSetupEditSchemaMissing(error)) return null;
-    throw new Error(error.message);
-  }
-  return typeof data === 'string' ? data : null;
-}
-
 async function callApplyRpc(args: {
   editId: string;
   md5: string;
@@ -769,26 +668,4 @@ async function readUsed(scenarioId: string): Promise<number> {
   if (result.error || !result.data) return 0;
   const used = Number(result.data.setup_edits_used);
   return Number.isFinite(used) ? used : 0;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-function textOrNull(value: unknown): string | null {
-  return typeof value === 'string' && value ? value : null;
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
 }

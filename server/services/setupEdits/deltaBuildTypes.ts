@@ -6,6 +6,9 @@ import type { SetupFlag, SetupRevision } from './briefRevisionCore.js';
 import type { RemapPlan } from './remapPlanner.js';
 import type { SetupDelta } from './setupDeltaCore.js';
 import type { PeaceFeed } from '../../../shared/peaceFeed.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
+import { asRecord, textOf } from './jsonValue.js';
 import type { SetupCrisis, SetupSnapshot } from './setupSnapshotCore.js';
 
 /**
@@ -213,6 +216,8 @@ export interface GeneratedRows {
   pages: Array<Record<string, unknown>>;
   branches: SocialInject[];
   layer_injects: SocialInject[];
+  dependency_edges: TeamDependencyEdge[];
+  dependency_injects: SocialInject[];
 }
 
 export interface TextUpdate {
@@ -295,5 +300,81 @@ export function blankGenerated(): GeneratedRows {
     pages: [],
     branches: [],
     layer_injects: [],
+    dependency_edges: [],
+    dependency_injects: [],
+  };
+}
+
+const STAGE_NAMES = ['characters', 'storyline', 'convergence', 'pages'] as const;
+
+/** The four stage rows, in pipeline order. Pages keeps a usable peace feed. */
+export function stageOutputsFromRows(
+  rows: ReadonlyArray<{ stage: string; output: unknown }>,
+): SetupEditStageOutput[] {
+  const byStage = new Map(rows.map((row) => [row.stage, row.output]));
+  return STAGE_NAMES.map((stage) => stageOutputFromUnknown(byStage.get(stage), stage));
+}
+
+export function stageOutputFromUnknown(raw: unknown, stage: string): SetupEditStageOutput {
+  const row = asRecord(raw) ?? {};
+  const generated = asRecord(row.generated);
+  const narrative = asRecord(row.narrative_update);
+  const fact = asRecord(row.fact_sheet);
+  return {
+    revisions: Array.isArray(row.revisions) ? (row.revisions as SetupEditStageOutput['revisions']) : [],
+    flags: Array.isArray(row.flags) ? (row.flags as SetupEditStageOutput['flags']) : [],
+    generated: generated ? { ...blankGenerated(), ...(generated as Partial<GeneratedRows>) } : blankGenerated(),
+    text_updates: Array.isArray(row.text_updates)
+      ? (row.text_updates as SetupEditStageOutput['text_updates'])
+      : [],
+    narrative_update:
+      narrative && typeof narrative.briefing === 'string'
+        ? {
+            title: textOf(narrative.title),
+            description: textOf(narrative.description),
+            briefing: narrative.briefing,
+            briefing_kept: narrative.briefing_kept === true,
+          }
+        : null,
+    objective_updates: Array.isArray(row.objective_updates)
+      ? (row.objective_updates as SetupEditStageOutput['objective_updates'])
+      : [],
+    setup_source_update: (asRecord(row.setup_source_update) as SetupEditStageOutput['setup_source_update']) ?? null,
+    stakeholder_updates: Array.isArray(row.stakeholder_updates)
+      ? (row.stakeholder_updates as SetupEditStageOutput['stakeholder_updates'])
+      : [],
+    brief_diff: null,
+    swap_premise: typeof row.swap_premise === 'string' ? row.swap_premise : null,
+    skipped: row.skipped === true,
+    personas: Array.isArray(row.personas) ? (row.personas as SetupEditStageOutput['personas']) : [],
+    fact_sheet:
+      fact && Array.isArray(fact.confirmed_facts)
+        ? {
+            confirmed_facts: fact.confirmed_facts.filter((item): item is string => typeof item === 'string'),
+            unconfirmed_claims: Array.isArray(fact.unconfirmed_claims)
+              ? (fact.unconfirmed_claims as FactSheet['unconfirmed_claims'])
+              : [],
+          }
+        : { confirmed_facts: [], unconfirmed_claims: [] },
+    communities: [],
+    countries: [],
+    injects: [],
+    team_storylines: {},
+    team_charters: [],
+    stakeholders: [],
+    stakeholder_injects: [],
+    persona_twins: [],
+    orgs: [],
+    sop_steps: [],
+    decision_context: { leakiness: 0, labour_signal: false, product_safety_signal: false },
+    pressure_organisations: [],
+    sharedInjects: [],
+    convergenceGates: [],
+    narrative: null,
+    objectives: [],
+    dimensionLabels: null,
+    org_page: null,
+    pressure_injects: [],
+    ...(stage === 'pages' ? { peace_period: usablePeaceFeed(row.peace_period) } : {}),
   };
 }

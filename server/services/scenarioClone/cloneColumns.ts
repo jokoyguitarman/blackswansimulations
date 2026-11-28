@@ -92,6 +92,10 @@ export const INJECT_CLONE_COLUMNS = [
   'response_type',
 ] as const;
 
+/** id plus the clone list. Apply and the remap loader select this set. */
+export const TEAM_ROW_COLUMNS = ['id', ...TEAM_CLONE_COLUMNS] as const;
+export const INJECT_ROW_COLUMNS = ['id', ...INJECT_CLONE_COLUMNS] as const;
+
 export const OBJECTIVE_CLONE_COLUMNS = [
   'objective_id',
   'objective_name',

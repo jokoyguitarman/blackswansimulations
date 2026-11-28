@@ -8,13 +8,16 @@ import type { SocialInject } from '../socialCrisisGeneratorService.js';
 import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import { computeDelta } from './setupDeltaCore.js';
 import { planRemap, EDIT_TOKEN, type RemapPlannerInput } from './remapPlanner.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import {
+  applySqlRecordColumns,
   mergeSetupEdit,
   orgPagesSeededBy,
   SetupMergeError,
   threeWayText,
   type ApplyBundle,
   type MergeInjectRow,
+  type MergeObjective,
   type MergeTeamRow,
 } from './setupMergeCore.js';
 import {
@@ -390,6 +393,192 @@ describe('peace period on apply', () => {
   });
 });
 
+describe('objective revisions', () => {
+  function withObjective(write: 'in_place' | 'cow') {
+    const outputs = emptyOutputs();
+    outputs[1].objective_updates = [{
+      objective_id: 'hold_the_line',
+      write,
+      fields: { objective_name: 'Hold the story', description: 'Updated line', weight: 30 },
+    }];
+    const objectives: MergeObjective[] = [{
+      id: 'obj-row',
+      objective_id: 'hold_the_line',
+      objective_name: 'Hold',
+      description: 'Old line',
+      weight: 25,
+      success_criteria: { evidence: 'a statement' },
+    }];
+    const spec = applyInput({ outputs });
+    spec.current.scenario.objectives = objectives;
+    spec.edit.id = EDIT;
+    return mergeSetupEdit(spec);
+  }
+
+  test('an in-place revision updates the row matched by the text slug', () => {
+    const bundle = withObjective('in_place');
+    assert.equal(bundle.objectives.update.length, 1);
+    assert.equal(bundle.objectives.update[0].id, 'obj-row');
+    assert.equal(bundle.objectives.update[0].objective_name, 'Hold the story');
+    assert.equal(bundle.objectives.insert.length, 0);
+    assert.equal(bundle.objectives.retire.length, 0);
+  });
+
+  test('a copy-on-write revision retires the row and keeps the slug', () => {
+    const bundle = withObjective('cow');
+    assert.equal(bundle.objectives.update.length, 0);
+    assert.deepEqual(bundle.objectives.retire, [{ id: 'obj-row' }]);
+    assert.equal(bundle.objectives.insert.length, 1);
+    assert.equal(bundle.objectives.insert[0].objective_id, 'hold_the_line');
+    assert.notEqual(bundle.objectives.insert[0].id, 'obj-row');
+    assert.equal(bundle.objectives.insert[0].objective_name, 'Hold the story');
+  });
+});
+
+describe('inject revision fields', () => {
+  test('a time-only revision is written in place', () => {
+    const outputs = emptyOutputs();
+    outputs[1].revisions = [{
+      inject_id: 'inj-plant',
+      inject_key: 'plant_update',
+      layer: 'storyline',
+      decision: 'revise',
+      reason: 'Move it later',
+      accepted: true,
+      write: 'in_place',
+      new: {
+        title: 'plant_update',
+        content: 'The night shift reported smoke.',
+        trigger_time_minutes: 45,
+        delivery_config: { inject_key: 'plant_update', app: 'email' },
+      },
+      carried: { escalation: true },
+    }];
+    const bundle = bundleOf({ outputs });
+    assert.equal(bundle.injects.patch.length, 1);
+    assert.equal(bundle.injects.patch[0].id, 'inj-plant');
+    assert.equal(bundle.injects.patch[0].trigger_time_minutes, 45);
+    assert.equal(bundle.injects.patch[0].title, 'plant_update');
+    assert.equal(bundle.injects.insert.length, 0);
+  });
+});
+
+describe('dependency rows on apply', () => {
+  test('a renamed team and an added team keep a valid edge and insert its inject', () => {
+    const baseline = acmeSnapshot();
+    const edited = acmeSnapshot([
+      snapshotTeam({
+        team_uid: 'uid-comms',
+        team_name: 'Communications',
+        function_key: 'Communications',
+        description: 'Night desk',
+        is_public_voice: true,
+      }),
+      snapshotTeam({ team_uid: 'uid-legal', team_name: 'Counsel', function_key: 'Legal', description: 'Counsel' }),
+      snapshotTeam({ team_uid: 'uid-ops', team_name: 'Operations', function_key: 'Operations' }),
+    ]);
+    const source = input({
+      delta: computeDelta(baseline, edited),
+      edited,
+      initial_state: baseState({
+        team_dependencies: {
+          v: 1,
+          edges: [dependencyEdge('dep_comms_legal', 'Communications', 'Legal')],
+        },
+      }),
+      teams: [
+        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications', function_key: 'Communications' }),
+        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal', function_key: 'Legal', team_description: 'Counsel' }),
+      ],
+      injects: [
+        inject({
+          id: 'inj-legal',
+          inject_key: 'legal_note',
+          title: 'Legal note',
+          content: 'Ask counsel tonight.',
+          target_teams: ['Legal'],
+          has_history: false,
+          delivery_config: { app: 'email' },
+        }),
+      ],
+      sessions: [
+        emptySession({
+          session_id: 'sess-rename',
+          teams: [{ user_id: 'user-1', team_name: 'Legal' }],
+          channels: [{ team_name: 'Legal', message_count: 1 }],
+          call_lines: [{ team_name: 'Legal' }],
+          call_takers: [{ team_name: 'Legal', user_id: 'user-1' }],
+        }),
+      ],
+    });
+    const plan = planRemap(source);
+    const outputs = emptyOutputs();
+    outputs[1].generated.dependency_edges = [dependencyEdge('dep_counsel_ops', 'Counsel', 'Operations')];
+    outputs[1].generated.dependency_injects = [{
+      title: 'Counsel missed the handoff',
+      content: 'Operations is waiting on the night report.',
+      type: 'social_post',
+      severity: 'high',
+      inject_scope: 'team_specific',
+      target_teams: ['Operations'],
+      delivery_config: {
+        app: 'email',
+        cause: { kind: 'dependency', dep_id: 'dep_counsel_ops' },
+      },
+    }];
+    const spec = applyInput({
+      plan,
+      outputs,
+      edit: { id: EDIT, baseline, edited },
+      current: {
+        scenario: {
+          title: 'Warehouse fire',
+          description: 'Smoke in the loading bay',
+          briefing: 'The warehouse is burning',
+          category: 'social_media_crisis',
+          difficulty: 'intermediate',
+          duration_minutes: 60,
+          initial_state: source.initial_state,
+          objectives: [],
+        },
+        teams: source.teams.map((row) => teamRow({
+          id: row.id,
+          team_uid: row.team_uid,
+          team_name: row.team_name,
+          org_key: row.org_key,
+          function_key: row.function_key,
+          team_description: row.team_description,
+        })),
+        injects: source.injects.map((row) => injectRow({
+          id: row.id,
+          inject_key: injectKeyOf(row),
+          has_history: row.has_history,
+          title: row.title ?? '',
+          content: row.content ?? '',
+          target_teams: row.target_teams ?? [],
+          delivery_config: row.delivery_config ?? undefined,
+        })),
+      },
+    });
+    const bundle = mergeSetupEdit(spec);
+    assert.equal(bundle.teams.insert.some((row) => row.team_name === 'Counsel'), true);
+    assert.equal(bundle.teams.insert.some((row) => row.team_name === 'Operations'), true);
+    const state = bundle.scenario.initial_state as { team_dependencies: { v: number; edges: TeamDependencyEdge[] } };
+    assert.deepEqual(
+      state.team_dependencies.edges.map((edge) => edge.id),
+      ['dep_comms_legal', 'dep_counsel_ops'],
+    );
+    const created = bundle.injects.insert.find((row) => row.title === 'Counsel missed the handoff');
+    assert.ok(created);
+    assert.equal(created.response_type, 'standard');
+    assert.equal((created.delivery_config.gen as { layer: string }).layer, 'dependency:dep_counsel_ops');
+    const session = bundle.scheduled_sessions[0];
+    assert.deepEqual(Object.keys(session.rename.team_names[0]).sort(), ['from', 'to']);
+    assert.deepEqual(Object.keys(session.rename.channels[0]).sort(), ['from', 'to']);
+    assert.deepEqual(Object.keys(session.rename.call_lines[0]).sort(), ['from_team', 'steps', 'to_team']);
+  });
+});
+
 describe('apply migration guards', () => {
   const sql = readFileSync(new URL('../../../migrations/277_apply_scenario_setup_edit.sql', import.meta.url), 'utf8');
 
@@ -411,8 +600,114 @@ describe('apply migration guards', () => {
     assert.doesNotMatch(sql, /public\.escalation_chains/);
     assert.doesNotMatch(sql, /public\.escalation_chain_steps/);
     assert.doesNotMatch(sql, /public\.stakeholder_moods/);
+    assert.doesNotMatch(sql, /history_free_inject_ids/);
+    assert.match(sql, /JOIN jsonb_array_elements\(p_bundle->'injects'->'patch'\)/);
+    assert.match(
+      sql,
+      /INSERT INTO public\.session_call_lines \(session_id, team_name, version, unattended_since\)/,
+    );
+  });
+
+  test('jsonb_to_recordset columns are the keys the merge bundle writes', () => {
+    const parsed = parseRecordsetColumns(sql);
+    const expected = applySqlRecordColumns();
+    assert.deepEqual(
+      [...parsed.keys()].sort(),
+      Object.keys(expected).map((key) => key.replace(/\s+/g, '')).sort(),
+    );
+    for (const [argument, keys] of Object.entries(expected)) {
+      assert.deepEqual(
+        parsed.get(argument.replace(/\s+/g, ''))?.slice().sort(),
+        [...keys].sort(),
+        argument,
+      );
+    }
+    const swapped = planRemap(swapSource());
+    const controller = swapped.scheduled_sessions[0]?.remap_page_controllers[0];
+    assert.ok(controller);
+    assert.deepEqual(Object.keys(controller).sort(), ['from', 'to', 'user_id']);
   });
 });
+
+function parseRecordsetColumns(sql: string): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  const needle = 'jsonb_to_recordset(';
+  let cursor = 0;
+  while (cursor < sql.length) {
+    const start = sql.indexOf(needle, cursor);
+    if (start < 0) break;
+    const argOpen = start + needle.length - 1;
+    const argEnd = matchingParen(sql, argOpen);
+    const argument = sql.slice(argOpen + 1, argEnd).replace(/\s+/g, '');
+    let index = argEnd + 1;
+    while (/\s/.test(sql[index] ?? '')) index += 1;
+    if (sql.slice(index, index + 2) !== 'AS') throw new Error(`expected AS after ${argument}`);
+    index += 2;
+    while (/\s/.test(sql[index] ?? '')) index += 1;
+    while (/[A-Za-z0-9_]/.test(sql[index] ?? '')) index += 1;
+    while (/\s/.test(sql[index] ?? '')) index += 1;
+    if (sql[index] !== '(') throw new Error(`expected columns after ${argument}`);
+    const colsEnd = matchingParen(sql, index);
+    const names = splitTopLevel(sql.slice(index + 1, colsEnd)).map((part) =>
+      part.trim().split(/\s+/)[0]?.replace(/"/g, '') ?? '',
+    );
+    const previous = found.get(argument);
+    if (previous && previous.join('\0') !== names.join('\0')) {
+      throw new Error(`${argument} declares two column lists`);
+    }
+    found.set(argument, names);
+    cursor = colsEnd + 1;
+  }
+  return found;
+}
+
+function matchingParen(sql: string, open: number): number {
+  let depth = 0;
+  for (let index = open; index < sql.length; index += 1) {
+    if (sql[index] === '(') depth += 1;
+    else if (sql[index] === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  throw new Error('unbalanced parenthesis');
+}
+
+function splitTopLevel(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const char of list) {
+    if (char === '(') depth += 1;
+    if (char === ')') depth -= 1;
+    if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function dependencyEdge(id: string, upstream: string, downstream: string): TeamDependencyEdge {
+  return {
+    id,
+    kind: 'information',
+    upstream: { team_uid: null, team_name: upstream },
+    downstream: [{ team_uid: null, team_name: downstream }],
+    deliverable: 'the night report',
+    why: 'the next team cannot post without it',
+    due: { by_minute: 30 },
+    broken_when: { all: ['team_silent:8|team=@upstream'] },
+    met_when: null,
+    lag_minutes: 0,
+    severity: 'high',
+    consequence_keys: [],
+    source: 'war_room',
+  };
+}
 
 function peaceFeed(content: string, leak: string): PeaceFeed {
   return {

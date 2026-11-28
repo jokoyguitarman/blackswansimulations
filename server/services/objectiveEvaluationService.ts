@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeObjectives } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { evaluateObjectiveCompletion, type ObjectiveCompletionEvaluation } from './aiService.js';
@@ -140,7 +141,7 @@ export async function evaluateAllObjectivesForSession(
     // Get session to verify it's in progress
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('id, status, start_time')
+      .select('id, status, start_time, scenario_id')
       .eq('id', sessionId)
       .single();
 
@@ -182,10 +183,13 @@ export async function evaluateAllObjectivesForSession(
 
     // Get objective definitions with success criteria
     const objectiveIds = objectives.map((o) => o.objective_id);
-    const { data: objectiveDefinitions, error: definitionsError } = await supabaseAdmin
-      .from('scenario_objectives')
-      .select('objective_id, objective_name, description, success_criteria')
-      .in('objective_id', objectiveIds);
+    const { data: objectiveDefinitions, error: definitionsError } = await activeObjectives(
+      supabaseAdmin
+        .from('scenario_objectives')
+        .select('objective_id, objective_name, description, success_criteria')
+        .eq('scenario_id', session.scenario_id)
+        .in('objective_id', objectiveIds),
+    );
 
     if (definitionsError) {
       logger.error({ error: definitionsError, sessionId }, 'Failed to get objective definitions');

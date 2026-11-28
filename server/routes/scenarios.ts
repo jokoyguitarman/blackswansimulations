@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
-import { activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
+import { activeObjectives, activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
 import { cloneScenarioSchema, handleCloneScenario } from './scenarioClone.js';
 import { catalogDependencies } from '../services/dependencies/dependencySchema.js';
 import { normalizeScenarioDependencies } from '../services/dependencies/dependencyContext.js';
@@ -1693,11 +1693,13 @@ router.patch(
       // Keep the scenarios.objectives text list (shown in previews/briefings)
       // in sync when the name changed.
       if (req.body.objective_name !== undefined) {
-        const { data: objRows, error: listErr } = await supabaseAdmin
-          .from('scenario_objectives')
-          .select('objective_name')
-          .eq('scenario_id', id)
-          .order('created_at', { ascending: true });
+        const { data: objRows, error: listErr } = await activeObjectives(
+          supabaseAdmin
+            .from('scenario_objectives')
+            .select('objective_name')
+            .eq('scenario_id', id)
+            .order('created_at', { ascending: true }),
+        );
         if (!listErr && objRows) {
           const { error: syncErr } = await supabaseAdmin
             .from('scenarios')
@@ -1733,11 +1735,13 @@ router.get('/:id/objectives', requireAuth, async (req: AuthenticatedRequest, res
     if (user.role !== 'trainer' && user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
-    const { data, error } = await supabaseAdmin
-      .from('scenario_objectives')
-      .select('*')
-      .eq('scenario_id', id)
-      .order('created_at', { ascending: true });
+    const { data, error } = await activeObjectives(
+      supabaseAdmin
+        .from('scenario_objectives')
+        .select('*')
+        .eq('scenario_id', id)
+        .order('created_at', { ascending: true }),
+    );
     if (error) {
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario objectives');
       return res.status(500).json({ error: 'Failed to fetch objectives' });

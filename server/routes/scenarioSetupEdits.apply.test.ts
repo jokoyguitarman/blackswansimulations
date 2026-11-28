@@ -6,13 +6,16 @@ import type { AddressInfo } from 'node:net';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import {
   applySetupEdit,
+  mergeEditForApply,
   type ApplyDeps,
   type ApplySetupEditRequest,
   type PreparedApply,
 } from '../services/setupEdits/applySetupEdit.js';
-import { applyInput, emptyPlan } from '../services/setupEdits/fixtures/applyWorld.js';
+import { staleApplyIds } from '../services/setupEdits/setupEditCore.js';
+import { applyInput, baseState, emptyOutputs, emptyPlan } from '../services/setupEdits/fixtures/applyWorld.js';
+import { snapshotFromScenario } from '../services/setupEdits/setupSnapshotCore.js';
 import { createScenarioSetupEditsRouter } from './scenarioSetupEdits.js';
-import type { ApplyBundle } from '../services/setupEdits/setupMergeCore.js';
+import { mergeSetupEdit, type ApplyBundle } from '../services/setupEdits/setupMergeCore.js';
 
 const SCENARIO = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const EDIT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -27,7 +30,7 @@ describe('setup edit apply route', { concurrency: false }, () => {
   let base: string;
   let mode: Mode = 'applied';
   let prepares = 0;
-  let rpcCalls: Array<{ isAdmin: boolean; bundle: ApplyBundle }> = [];
+  let rpcCalls: Array<{ isAdmin: boolean; md5: string; bundle: ApplyBundle }> = [];
   let consumed = 0;
   let refunded = 0;
   let released = 0;
@@ -51,7 +54,17 @@ describe('setup edit apply route', { concurrency: false }, () => {
         ],
       });
     }
-    return { ok: true, input, sessions: [{ id: 'sess-1', reseed: true, unassigned_players: [] }], title: 'Warehouse fire' };
+    return {
+      ok: true,
+      input,
+      stateMd5: 'state-md5-from-the-loaded-row',
+      sessions: [{
+        id: 'sess-1',
+        title: '2026-07-01T09:00:00+00',
+        reseed: true,
+        unassigned_players: [],
+      }],
+    };
   }
 
   const deps: ApplyDeps = {
@@ -66,11 +79,8 @@ describe('setup edit apply route', { concurrency: false }, () => {
     async release() {
       released += 1;
     },
-    async md5() {
-      return `md5-${prepares}`;
-    },
     async rpc(args) {
-      rpcCalls.push({ isAdmin: args.isAdmin, bundle: args.bundle });
+      rpcCalls.push({ isAdmin: args.isAdmin, md5: args.md5, bundle: args.bundle });
       if (mode === 'live') return { result: 'live_session', error: null };
       if (mode === 'stale') return { result: 'stale', error: null };
       if (mode === 'limit') return { result: 'limit_reached', error: null };
@@ -196,7 +206,10 @@ describe('setup edit apply route', { concurrency: false }, () => {
     assert.equal(res.status, 200);
     assert.equal(res.json.remaining, null);
     assert.equal(rpcCalls[0]?.isAdmin, true);
+    assert.equal(rpcCalls[0]?.md5, 'state-md5-from-the-loaded-row');
     assert.equal(used, 0);
+    const sessions = res.json.scheduled_sessions as Array<{ title: string }>;
+    assert.equal(sessions[0]?.title, '2026-07-01T09:00:00+00');
     assert.deepEqual(reseeded, ['sess-1']);
     assert.equal(consumed, 0);
   });
@@ -217,5 +230,119 @@ describe('setup edit apply route', { concurrency: false }, () => {
     assert.equal(res.status, 403);
     assert.equal(consumed, 1);
     assert.equal(refunded, 1);
+  });
+});
+
+describe('apply three-way texts from the frozen snapshot', () => {
+  test('a diverged title, grievance and objective stay when the model proposes replacements', () => {
+    const baseline = snapshotFromScenario({
+      scenario: {
+        title: 'Warehouse fire',
+        description: 'Smoke in the loading bay',
+        briefing: 'The warehouse is burning',
+        initial_state: baseState({ stakeholders: cast('No water', ['dusk']) }),
+      },
+      teams: [],
+      injects: [],
+      objectives: [{ objective_id: 'hold_the_line', objective_name: 'Hold', description: 'Old line' }],
+    });
+    const outputs = emptyOutputs();
+    outputs[1].narrative_update = {
+      title: 'Model title',
+      description: 'Model description',
+      briefing: 'Model briefing',
+      briefing_kept: false,
+    };
+    outputs[1].stakeholder_updates = [{
+      id: 'mina_cho',
+      grievance: 'Plenty of water',
+      knowledge: ['dawn'],
+    }];
+    outputs[1].objective_updates = [{
+      objective_id: 'hold_the_line',
+      write: 'in_place',
+      fields: { objective_name: 'Model name', description: 'Model line', weight: 40 },
+    }];
+    const spec = applyInput({
+      edit: mergeEditForApply(EDIT, baseline, baseline),
+      outputs,
+    });
+    spec.current.scenario.title = 'Trainer title';
+    spec.current.scenario.description = 'Trainer description';
+    spec.current.scenario.briefing = 'Trainer briefing';
+    spec.current.scenario.initial_state = baseState({
+      stakeholders: cast('Trainer grievance', ['noon']),
+    });
+    spec.current.scenario.objectives = [{
+      id: 'obj-row',
+      objective_id: 'hold_the_line',
+      objective_name: 'Trainer hold',
+      description: 'Trainer line',
+      weight: 25,
+      success_criteria: {},
+    }];
+    const bundle = mergeSetupEdit(spec);
+    assert.equal(bundle.scenario.set_title, false);
+    assert.equal(bundle.scenario.title, 'Trainer title');
+    assert.equal(bundle.scenario.set_description, false);
+    assert.equal(bundle.scenario.description, 'Trainer description');
+    assert.equal(bundle.scenario.set_briefing, false);
+    assert.equal(bundle.scenario.briefing, 'Trainer briefing');
+    const stakeholders = (bundle.scenario.initial_state as {
+      stakeholders: Array<{ grievance: string; knowledge: string[] }>;
+    }).stakeholders;
+    assert.equal(stakeholders[0].grievance, 'Trainer grievance');
+    assert.deepEqual(stakeholders[0].knowledge, ['noon']);
+    assert.equal(bundle.objectives.update[0]?.objective_name, 'Trainer hold');
+    assert.equal(bundle.objectives.update[0]?.description, 'Trainer line');
+    assert.equal(bundle.summary.text_kept.includes('title'), true);
+    assert.equal(bundle.summary.text_kept.includes('stakeholder:mina_cho:grievance'), true);
+    assert.equal(bundle.summary.text_kept.includes('objective:obj-row:name'), true);
+  });
+});
+
+function cast(grievance: string, knowledge: string[]) {
+  const contact = (
+    id: string,
+    relationship: 'internal' | 'media' | 'regulator',
+    owning_team: string,
+    title: string,
+    ownGrievance: string,
+    ownKnowledge: string[],
+  ) => ({
+    id,
+    name: title,
+    title,
+    organisation: 'Acme',
+    relationship,
+    owning_team,
+    org_key: 'primary',
+    email: `${id}@acme.test`,
+    handle: `@${id}`,
+    grievance: ownGrievance,
+    knowledge: ownKnowledge,
+    resolution_criteria: ownGrievance ? ['A public correction'] : [],
+  });
+  return [
+    contact('mina_cho', 'media', 'Communications', 'Reporter', grievance, knowledge),
+    contact('plant_lead', 'internal', 'Communications', 'Plant Manager', '', []),
+    contact('hr_lead', 'internal', 'Legal', 'HR Manager', '', []),
+    contact('mom_officer', 'regulator', 'Legal', 'Inspector', '', []),
+  ];
+}
+
+describe('stale apply reclaim', () => {
+  test('a heartbeat older than ten minutes is reopened and a fresh one is not', () => {
+    const now = new Date('2026-06-01T00:10:00.000Z');
+    const ids = staleApplyIds(
+      [
+        { id: 'old', status: 'applying', apply_heartbeat_at: '2026-06-01T00:00:00.000Z' },
+        { id: 'fresh', status: 'applying', apply_heartbeat_at: '2026-06-01T00:05:00.000Z' },
+        { id: 'open', status: 'open', apply_heartbeat_at: '2026-06-01T00:00:00.000Z' },
+        { id: 'missing', status: 'applying', apply_heartbeat_at: null },
+      ],
+      now,
+    );
+    assert.deepEqual(ids, ['old', 'missing']);
   });
 });

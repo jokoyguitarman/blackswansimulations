@@ -1,11 +1,12 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
-import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../../lib/templateRows.js';
+import { activeObjectives, activeTeams, activeTemplateInjects, stampOrgIdentity } from '../../lib/templateRows.js';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { isAdmin } from '../creditService.js';
 import { env } from '../../env.js';
 import {
   isSetupEditSchemaMissing,
+  staleApplyIds,
   type AbandonSetupEditResult,
   type OpenSetupEditOutcome,
   type OpenSetupEditResult,
@@ -153,18 +154,33 @@ export async function getSetupEdit(scenarioId: string): Promise<SetupEditSnapsho
   }
   if (!scenario.data) return { available: true, found: false };
 
-  const edits = await supabaseAdmin
-    .from('scenario_setup_edits')
-    .select(EDIT_COLUMNS)
-    .eq('scenario_id', scenarioId)
-    .order('created_at', { ascending: false });
-  if (edits.error) {
-    if (isSetupEditSchemaMissing(edits.error)) {
-      noteSetupEditsUnavailable();
-      return { available: false };
+  const listed = await listEditRows(scenarioId);
+  if (listed === 'unavailable') return { available: false };
+
+  const now = new Date();
+  const stale = new Set(
+    staleApplyIds(
+      listed.map((row) => ({
+        id: String(row.id),
+        status: String(row.status),
+        apply_heartbeat_at:
+          typeof row.apply_heartbeat_at === 'string' ? row.apply_heartbeat_at : null,
+      })),
+      now,
+    ),
+  );
+  for (const id of stale) {
+    const released = await supabaseAdmin
+      .from('scenario_setup_edits')
+      .update({ status: 'open', error: null })
+      .eq('id', id)
+      .eq('scenario_id', scenarioId)
+      .eq('status', 'applying')
+      .select('id');
+    if (released.error) {
+      logger.error({ error: released.error, scenarioId, editId: id }, 'Failed to reclaim a stale apply');
+      throw new Error(`Setup edit reclaim failed: ${released.error.message}`);
     }
-    logger.error({ error: edits.error, scenarioId }, 'Failed to list setup edits');
-    throw new Error(`Setup edit list failed: ${edits.error.message}`);
   }
 
   const used = Number(scenario.data.setup_edits_used);
@@ -172,8 +188,41 @@ export async function getSetupEdit(scenarioId: string): Promise<SetupEditSnapsho
     available: true,
     found: true,
     used: Number.isFinite(used) ? used : 0,
-    edits: ((edits.data ?? []) as unknown as Array<Record<string, unknown>>).map(toSummary),
+    edits: listed.map((row) => toSummary(stale.has(String(row.id)) ? { ...row, status: 'open' } : row)),
   };
+}
+
+async function listEditRows(
+  scenarioId: string,
+): Promise<Array<Record<string, unknown>> | 'unavailable'> {
+  const first = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .select(`${EDIT_COLUMNS}, apply_heartbeat_at`)
+    .eq('scenario_id', scenarioId)
+    .order('created_at', { ascending: false });
+  if (!first.error) return (first.data ?? []) as unknown as Array<Record<string, unknown>>;
+  if (!columnMissing(first.error, 'apply_heartbeat_at')) {
+    if (isSetupEditSchemaMissing(first.error)) {
+      noteSetupEditsUnavailable();
+      return 'unavailable';
+    }
+    logger.error({ error: first.error, scenarioId }, 'Failed to list setup edits');
+    throw new Error(`Setup edit list failed: ${first.error.message}`);
+  }
+  const second = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .select(EDIT_COLUMNS)
+    .eq('scenario_id', scenarioId)
+    .order('created_at', { ascending: false });
+  if (second.error) {
+    if (isSetupEditSchemaMissing(second.error)) {
+      noteSetupEditsUnavailable();
+      return 'unavailable';
+    }
+    logger.error({ error: second.error, scenarioId }, 'Failed to list setup edits');
+    throw new Error(`Setup edit list failed: ${second.error.message}`);
+  }
+  return (second.data ?? []) as unknown as Array<Record<string, unknown>>;
 }
 
 export async function openSetupEdit(
@@ -288,10 +337,12 @@ export async function attachOpenedDraft(
 
   let teams: SnapshotTeamRow[];
   let injects: SnapshotInjectRow[];
+  let objectives: ScenarioSnapshotSource['objectives'];
   let buildRequest: unknown;
   try {
     teams = await loadActiveTeams(scenarioId);
     injects = await loadActiveInjects(scenarioId);
+    objectives = await loadObjectiveTexts(scenarioId);
     buildRequest = await loadBuildRequest(scenarioId, stamped);
   } catch (err) {
     if (err instanceof SnapshotUnavailable) return { available: false };
@@ -299,6 +350,7 @@ export async function attachOpenedDraft(
   }
   const source: ScenarioSnapshotSource = {
     scenario: {
+      title: scenario.data.title,
       description: scenario.data.description,
       briefing: scenario.data.briefing,
       duration_minutes: scenario.data.duration_minutes,
@@ -306,6 +358,7 @@ export async function attachOpenedDraft(
     },
     teams,
     injects,
+    objectives,
     build_request: buildRequest,
   };
   const snapshot = snapshotFromScenario(source, {
@@ -403,6 +456,23 @@ async function loadActiveTeams(scenarioId: string): Promise<SnapshotTeamRow[]> {
     throw new SnapshotUnavailable();
   }
   throw new Error(`Setup snapshot teams failed: ${first.error.message}`);
+}
+
+async function loadObjectiveTexts(scenarioId: string): Promise<ScenarioSnapshotSource['objectives']> {
+  const result = await activeObjectives(
+    supabaseAdmin
+      .from('scenario_objectives')
+      .select('objective_id, objective_name, description')
+      .eq('scenario_id', scenarioId),
+  );
+  if (result.error) {
+    if (isSetupEditSchemaMissing(result.error)) {
+      noteSetupEditsUnavailable();
+      throw new SnapshotUnavailable();
+    }
+    throw new Error(`Setup snapshot objectives failed: ${result.error.message}`);
+  }
+  return (result.data ?? []) as NonNullable<ScenarioSnapshotSource['objectives']>;
 }
 
 async function loadActiveInjects(scenarioId: string): Promise<SnapshotInjectRow[]> {

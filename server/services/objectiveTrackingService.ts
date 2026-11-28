@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeObjectives } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { evaluateAllObjectivesForSession as evaluateAllObjectivesWithAI } from './objectiveEvaluationService.js';
 
@@ -205,10 +206,9 @@ export async function initializeSessionObjectives(sessionId: string): Promise<vo
     }
 
     // Get scenario objectives
-    const { data: objectives, error: objectivesError } = await supabaseAdmin
-      .from('scenario_objectives')
-      .select('*')
-      .eq('scenario_id', session.scenario_id);
+    const { data: objectives, error: objectivesError } = await activeObjectives(
+      supabaseAdmin.from('scenario_objectives').select('*').eq('scenario_id', session.scenario_id),
+    );
 
     if (objectivesError) {
       logger.error({ error: objectivesError, sessionId }, 'Failed to get scenario objectives');

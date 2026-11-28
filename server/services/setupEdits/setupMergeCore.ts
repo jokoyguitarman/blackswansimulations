@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { fingerprintInject } from '../../lib/injectFingerprint.js';
 import { injectKeyOf, stampGeneratedInjectKeys } from '../../lib/injectKey.js';
+import { readTeamDependencies } from '../../../shared/teamDependencies.js';
 import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
+import { asRecord, numberOrNull, objectList, stringList, textOf, textOrNull } from './jsonValue.js';
 import { sanitizeTeamTargeting } from '../socialCrisisPersistenceService.js';
 import {
   MultiOrgValidationError,
@@ -19,11 +22,12 @@ import {
   EDIT_TOKEN,
   type InjectFieldPatch,
   type OrphanResolution,
+  type NameMap,
   type RemapPlan,
   type ScheduledSessionPlan,
 } from './remapPlanner.js';
 import type { SetupEditStageOutput, TextUpdate } from './deltaBuildTypes.js';
-import type { SetupSnapshot } from './setupSnapshotCore.js';
+import type { FrozenTexts, SetupSnapshot } from './setupSnapshotCore.js';
 
 /**
  * Pure apply bundle for one setup edit. No database. The SQL function in
@@ -111,14 +115,8 @@ export interface MergeCurrent {
   injects: readonly MergeInjectRow[];
 }
 
-/** Texts frozen when the edit opened. A field is three-way checked only when it is present. */
-export interface OpenedTexts {
-  briefing?: string;
-  description?: string;
-  title?: string;
-  stakeholders?: ReadonlyArray<{ id: string; grievance: string; knowledge: string[] }>;
-  objectives?: ReadonlyArray<{ id: string; objective_name: string; description: string }>;
-}
+/** Texts frozen when the edit opened. Absent on edits opened before the snapshot stored them. */
+export type OpenedTexts = FrozenTexts;
 
 export interface MergeEdit {
   id: string;
@@ -638,8 +636,8 @@ function composeInjects(
       objective_penalty: null,
       state_effect: asRecord(row.state_effect) ?? row.state_effect ?? null,
       generation_source: 'war_room',
-      delivery_config: config,
-      response_type: null,
+      delivery_config: stampDependencyLayer(config),
+      response_type: 'standard',
     });
   }
 
@@ -722,6 +720,7 @@ function composeState(input: MergeSetupEditInput, textKept: string[]): unknown {
   if (factSheet) state.fact_sheet = factSheet;
   overlayPages(state, input);
   ensureEditedProtagonists(state, input);
+  appendDependencyEdges(state, input.buildOutputs);
   if (peace) state.peace_period = peace;
   return state;
 }
@@ -774,16 +773,16 @@ function composeObjectives(
   insert: ObjectiveInsert[];
   active: MergeObjective[];
 } {
-  const byId = new Map(input.current.scenario.objectives.map((row) => [row.id, { ...row }]));
-  const opened = new Map((input.edit.opened?.objectives ?? []).map((row) => [row.id, row]));
+  const bySlug = new Map(input.current.scenario.objectives.map((row) => [row.objective_id, { ...row }]));
+  const opened = new Map((input.edit.opened?.objectives ?? []).map((row) => [row.objective_id, row]));
   const update: ObjectiveUpdate[] = [];
   const retire: Array<{ id: string }> = [];
   const insert: ObjectiveInsert[] = [];
   const updates = input.buildOutputs.flatMap((output) => output.objective_updates ?? []);
   for (const change of updates) {
-    const current = byId.get(change.objective_id);
+    const current = bySlug.get(change.objective_id);
     if (!current) continue;
-    const baseline = opened.get(current.id);
+    const baseline = opened.get(current.objective_id);
     const name = baseline
       ? threeWayText(baseline.objective_name, current.objective_name, change.fields.objective_name)
       : { value: change.fields.objective_name, kept: false };
@@ -808,8 +807,8 @@ function composeObjectives(
         weight: fields.weight,
         success_criteria: current.success_criteria ?? {},
       });
-      byId.delete(current.id);
-      byId.set(id, {
+      bySlug.delete(current.objective_id);
+      bySlug.set(current.objective_id, {
         id,
         objective_id: current.objective_id,
         objective_name: fields.objective_name,
@@ -825,7 +824,7 @@ function composeObjectives(
     current.description = fields.description;
     current.weight = fields.weight;
   }
-  return { update, retire, insert, active: [...byId.values()] };
+  return { update, retire, insert, active: [...bySlug.values()] };
 }
 
 function projectPayload(
@@ -1212,8 +1211,29 @@ function collectGenerated(outputs: readonly SetupEditStageOutput[]): SocialInjec
       ...generated.layer_injects,
     );
     for (const list of Object.values(generated.team_storylines ?? {})) rows.push(...list);
+    rows.push(...(generated.dependency_injects ?? []));
   }
   return rows;
+}
+
+function stampDependencyLayer(config: Record<string, unknown>): Record<string, unknown> {
+  const cause = asRecord(config.cause);
+  const depId = typeof cause?.dep_id === 'string' ? cause.dep_id : '';
+  if (!depId) return config;
+  const gen = asRecord(config.gen) ?? {};
+  return { ...config, gen: { ...gen, layer: `dependency:${depId}` } };
+}
+
+function appendDependencyEdges(state: Record<string, unknown>, outputs: readonly SetupEditStageOutput[]): void {
+  const added = outputs.flatMap((output) => output.generated?.dependency_edges ?? []);
+  if (added.length === 0) return;
+  const current = asRecord(state.team_dependencies);
+  const existing = Array.isArray(current?.edges) ? current.edges : [];
+  const read = readTeamDependencies({ v: 1, edges: [...existing, ...added] });
+  if ('error' in read) {
+    throw new SetupMergeError('DEPENDENCY_INVALID', read.error);
+  }
+  state.team_dependencies = read.dependencies;
 }
 
 function revisionsById(outputs: readonly SetupEditStageOutput[]): Map<string, SetupRevision> {
@@ -1340,15 +1360,7 @@ function patchOf(id: string, row: Omit<InjectInsert, 'id'>): InjectPatchWrite {
 }
 
 function injectChanged(row: MergeInjectRow, next: Omit<InjectInsert, 'id'>): boolean {
-  return (
-    row.title !== next.title ||
-    row.content !== next.content ||
-    (row.inject_scope || 'universal') !== next.inject_scope ||
-    JSON.stringify(row.target_teams ?? []) !== JSON.stringify(next.target_teams) ||
-    JSON.stringify(row.conditions_to_appear ?? null) !== JSON.stringify(next.conditions_to_appear ?? null) ||
-    JSON.stringify(row.conditions_to_cancel ?? null) !== JSON.stringify(next.conditions_to_cancel ?? null) ||
-    JSON.stringify(row.delivery_config ?? {}) !== JSON.stringify(next.delivery_config)
-  );
+  return fingerprintInject(row) !== fingerprintInject(next);
 }
 
 function restoreCarried(
@@ -1389,29 +1401,102 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function objectList(value: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value.filter((row) => row && typeof row === 'object' && !Array.isArray(row)) as Array<Record<string, unknown>>;
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
-}
-
-function textOf(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-function textOrNull(value: unknown): string | null {
-  return typeof value === 'string' && value ? value : null;
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+/** JSON keys each jsonb_to_recordset in migration 277 must declare. */
+export function applySqlRecordColumns(): Record<string, readonly string[]> {
+  const rename = { from: 'from', to: 'to' } satisfies NameMap['team_names'][number];
+  const controller = {
+    from: 'from',
+    to: 'to',
+    user_id: 'user',
+  } satisfies ScheduledSessionPlan['remap_page_controllers'][number];
+  const teamRetire = { id: 'id', reason: 'removed', superseded_by: null } satisfies TeamRetireWrite;
+  const teamInsert = {
+    id: 'id',
+    team_name: 'name',
+    team_description: null,
+    required_roles: [],
+    min_participants: 1,
+    max_participants: null,
+    counter_definitions: null,
+    is_investigative: false,
+    charter: null,
+    expected_actions: null,
+    scoring_rubric: null,
+    org_key: null,
+    function_key: null,
+    team_uid: 'uid',
+  } satisfies TeamInsert;
+  const injectPatch = {
+    id: 'id',
+    title: 't',
+    content: 'c',
+    type: 'social_post',
+    severity: 'low',
+    trigger_time_minutes: null,
+    trigger_condition: null,
+    inject_scope: 'universal',
+    target_teams: [],
+    requires_response: false,
+    conditions_to_appear: null,
+    conditions_to_cancel: null,
+    eligible_after_minutes: null,
+    delivery_config: {},
+    state_effect: null,
+    generation_source: null,
+  } satisfies InjectPatchWrite;
+  const injectRetire = { id: 'id', reason: 'removed', superseded_by: null } satisfies InjectRetireWrite;
+  const injectInsert = {
+    id: 'id',
+    trigger_time_minutes: null,
+    trigger_condition: null,
+    type: 'social_post',
+    title: 't',
+    content: 'c',
+    affected_roles: [],
+    severity: 'low',
+    requires_response: false,
+    ai_generated: true,
+    inject_scope: 'universal',
+    target_teams: [],
+    requires_coordination: false,
+    triggered_by_user_id: null,
+    required_gate_id: null,
+    required_gate_not_met_id: null,
+    conditions_to_appear: null,
+    conditions_to_cancel: null,
+    eligible_after_minutes: null,
+    objective_penalty: null,
+    state_effect: null,
+    generation_source: 'war_room',
+    delivery_config: {},
+    response_type: 'standard',
+  } satisfies InjectInsert;
+  const objectiveUpdate = {
+    id: 'id',
+    objective_name: 'name',
+    description: 'd',
+    weight: 1,
+  } satisfies ObjectiveUpdate;
+  const objectiveInsert = {
+    id: 'id',
+    objective_id: 'slug',
+    objective_name: 'name',
+    description: 'd',
+    weight: 1,
+    success_criteria: {},
+  } satisfies ObjectiveInsert;
+  return {
+    "COALESCE(p_bundle->'teams'->'retire', '[]'::jsonb)": Object.keys(teamRetire),
+    "COALESCE(p_bundle->'teams'->'insert', '[]'::jsonb)": Object.keys(teamInsert),
+    "COALESCE(p_bundle->'injects'->'patch', '[]'::jsonb)": Object.keys(injectPatch),
+    "COALESCE(p_bundle->'injects'->'retire', '[]'::jsonb)": Object.keys(injectRetire),
+    "COALESCE(p_bundle->'injects'->'insert', '[]'::jsonb)": Object.keys(injectInsert),
+    "COALESCE(p_bundle->'objectives'->'update', '[]'::jsonb)": Object.keys(objectiveUpdate),
+    "COALESCE(p_bundle->'objectives'->'retire', '[]'::jsonb)": ['id'],
+    "COALESCE(p_bundle->'objectives'->'insert', '[]'::jsonb)": Object.keys(objectiveInsert),
+    v_renames: Object.keys(rename),
+    "COALESCE(v_session->'rename'->'channels', '[]'::jsonb)": Object.keys(rename),
+    "COALESCE(v_session->'remap_page_controllers', '[]'::jsonb)": Object.keys(controller),
+    $1: Object.keys(rename),
+  };
 }
