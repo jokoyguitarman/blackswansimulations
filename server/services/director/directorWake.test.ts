@@ -67,6 +67,9 @@ function store(): DirectorStore {
     async loadUpcoming() {
       return [];
     },
+    async loadStakeholders() {
+      return [{ id: 'stk_maria', name: 'Maria Tan', email: 'maria@straits.example' }];
+    },
     async saveSeed() {
       return 'ok';
     },

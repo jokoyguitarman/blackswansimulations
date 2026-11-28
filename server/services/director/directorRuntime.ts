@@ -4,12 +4,10 @@
  * countdown sweep queries only when a session might have something due.
  */
 
-export const SWEEP_FALLBACK_TICKS = 2;
 /** A hung model call must not hold the per-session lock forever. */
 export const DIRECTOR_WAKE_LOCK_MS = 60_000;
 
 const pendingCount = new Map<string, number>();
-const sweepTick = new Map<string, number>();
 const wakes = new Set<string>();
 const wakeToken = new Map<string, number>();
 const paused = new Set<string>();
@@ -18,7 +16,6 @@ const publishSlots = new Map<string, number | null>();
 
 export function resetDirectorRuntime(): void {
   pendingCount.clear();
-  sweepTick.clear();
   wakes.clear();
   wakeToken.clear();
   paused.clear();
@@ -36,17 +33,26 @@ export function noteProposalSettled(sessionId: string): void {
   pendingCount.set(sessionId, Math.max(0, current - 1));
 }
 
+/** True only when this process has counted a still-pending proposal for the session. */
+export function hasPendingProposals(sessionId: string): boolean {
+  return (pendingCount.get(sessionId) ?? 0) > 0;
+}
+
+/** Replace counts after the one startup discovery query. */
+export function replacePendingCounts(counts: ReadonlyMap<string, number>): void {
+  pendingCount.clear();
+  for (const [sessionId, count] of counts) {
+    if (count > 0) pendingCount.set(sessionId, count);
+  }
+}
+
 /**
- * Query due rows every tick while this process knows a proposal is pending.
- * Otherwise at most once every {@link SWEEP_FALLBACK_TICKS} ticks, so a
- * restart still finds rows that were pending before the process started.
+ * The sweep queries only while a proposal is known to be pending.
+ * Startup discovery, inserts, and approvals maintain that set. A tick with
+ * nothing pending does not read the database.
  */
 export function sweepThisTick(sessionId: string): boolean {
-  const n = (sweepTick.get(sessionId) ?? 0) + 1;
-  sweepTick.set(sessionId, n);
-  const pending = pendingCount.get(sessionId);
-  if (pending != null && pending > 0) return true;
-  return n % SWEEP_FALLBACK_TICKS === 1;
+  return hasPendingProposals(sessionId);
 }
 
 /**

@@ -25,7 +25,12 @@ import {
 import { createDirectorRouter } from './director.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { publishedCapEvents } from '../services/director/directorPublish.js';
-import { resetDirectorRuntime, setDirectorPaused } from '../services/director/directorRuntime.js';
+import {
+  hasPendingProposals,
+  noteProposalPending,
+  resetDirectorRuntime,
+  setDirectorPaused,
+} from '../services/director/directorRuntime.js';
 import type { Signal } from '../services/director/directorSignals.js';
 
 const SESSION = '11111111-1111-4111-8111-111111111111';
@@ -406,6 +411,7 @@ test('approve twice publishes once, and a meta-word edit is rejected', async () 
 test('auto publishes after the grace and not after a veto', async () => {
   reset();
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  noteProposalPending(SESSION);
   assert.equal(publishedCapEvents(rows).length, 0);
   await createDirectorCommands(deps()).sweep({
     sessionId: SESSION,
@@ -418,6 +424,7 @@ test('auto publishes after the grace and not after a veto', async () => {
 
   reset();
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  noteProposalPending(SESSION);
   const veto = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/veto`, {
     reason: 'Too soon',
   });
@@ -436,6 +443,7 @@ test('a target that crossed its fair share during the countdown is rejected at p
   reset();
   overCap = true;
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  noteProposalPending(SESSION);
   await createDirectorCommands(deps()).sweep({
     sessionId: SESSION,
     elapsedMinutes: 27,
@@ -455,6 +463,7 @@ test('high inside auto expires unapproved', async () => {
       createdAt: new Date(now.getTime() - 6 * 60_000).toISOString(),
     }),
   ];
+  noteProposalPending(SESSION);
   await createDirectorCommands(deps()).sweep({
     sessionId: SESSION,
     elapsedMinutes: 27,
@@ -477,6 +486,7 @@ test('an edit cancels the countdown and a paused countdown expires', async () =>
 
   reset();
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  noteProposalPending(SESSION);
   setDirectorPaused(SESSION, true);
   await createDirectorCommands(deps()).sweep({
     sessionId: SESSION,
@@ -497,7 +507,10 @@ test('the live mode and the ops ceiling gate publish', async () => {
       trainerId: TRAINER,
       remainingCap: 3,
     });
-  const due = () => [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  const due = () => {
+    noteProposalPending(SESSION);
+    return [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  };
 
   reset();
   sessionMode = 'off';
@@ -541,4 +554,60 @@ test('mode switches convert countdowns or expire pending proposals', async () =>
   const off = await call('PATCH', `/${SESSION}/director`, { mode: 'off' });
   assert.equal(off.status, 200);
   assert.equal(rows[0]?.status, 'expired');
+});
+
+test('a tick with nothing pending does not query, and a failed publish leaves that set', async () => {
+  reset();
+  let queries = 0;
+  const quiet = createDirectorCommands({
+    ...deps(),
+    async resolvedMode() {
+      queries += 1;
+      return 'auto';
+    },
+    async dueProposals() {
+      queries += 1;
+      return [];
+    },
+  });
+  await quiet.sweep({ sessionId: SESSION, elapsedMinutes: 27, trainerId: TRAINER, remainingCap: 3 });
+  assert.equal(queries, 0);
+
+  rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];
+  noteProposalPending(SESSION);
+  const failing = deps();
+  failing.publishInject = async () => {
+    throw new Error('delivery failed');
+  };
+  await createDirectorCommands(failing).sweep({
+    sessionId: SESSION,
+    elapsedMinutes: 27,
+    trainerId: TRAINER,
+    remainingCap: 3,
+  });
+  assert.equal(rows[0]?.status, 'failed');
+  assert.equal(hasPendingProposals(SESSION), false);
+});
+
+test('a countdown that came due long ago expires instead of publishing', async () => {
+  reset();
+  rows = [row({ autoPublishAt: new Date(now.getTime() - 10 * 60_000).toISOString() })];
+  noteProposalPending(SESSION);
+  await createDirectorCommands(deps()).sweep({
+    sessionId: SESSION,
+    elapsedMinutes: 27,
+    trainerId: TRAINER,
+    remainingCap: 3,
+  });
+  assert.equal(published.length, 0);
+  assert.equal(rows[0]?.status, 'expired');
+});
+
+test('a database error saving the mode is returned to the trainer', async () => {
+  reset();
+  const broken = deps();
+  broken.setSessionMode = async () => 'error';
+  const result = await createDirectorCommands(broken).patch(SESSION, TRAINER, { mode: 'suggest' });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 503);
 });

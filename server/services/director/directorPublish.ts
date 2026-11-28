@@ -81,6 +81,21 @@ export function publishedCapEvents(
   return events;
 }
 
+/**
+ * A countdown that has been due for longer than the veto window plus one
+ * suggestion lifetime is too old to publish (downtime, or the director was off).
+ */
+export function countdownIsStale(
+  autoPublishAt: string,
+  nowMs: number,
+  graceSeconds: number,
+  ttlMinutes: number,
+): boolean {
+  const due = Date.parse(autoPublishAt);
+  if (!Number.isFinite(due)) return false;
+  return nowMs - due > (graceSeconds + ttlMinutes * 60) * 1000;
+}
+
 /** A wake that started in auto must not store a countdown if the mode moved. */
 export function applyLiveMode(draft: DirectorDraft, mode: DirectorMode): DirectorDraft {
   if (draft.status !== 'proposed') return draft;

@@ -291,11 +291,21 @@ export class InjectSchedulerService {
     this.isRunning = true;
     logger.info({ intervalMs: this.checkIntervalMs }, 'Starting InjectSchedulerService');
 
-    // Run immediately on start, then on interval
+    void this.boot();
+  }
+
+  /** Discover pending director rows once, then tick. A tick itself does not discover. */
+  private async boot(): Promise<void> {
+    try {
+      const { discoverPendingDirectorProposals } = await import('./director/directorService.js');
+      await discoverPendingDirectorProposals();
+    } catch (err) {
+      logger.warn({ err }, 'director pending proposals were not discovered');
+    }
+    if (!this.isRunning) return;
     this.checkAndPublishInjects().catch((err) => {
       logger.error({ error: err }, 'Error in initial inject check');
     });
-
     this.intervalId = setInterval(() => {
       this.checkAndPublishInjects().catch((err) => {
         logger.error({ error: err }, 'Error in periodic inject check');

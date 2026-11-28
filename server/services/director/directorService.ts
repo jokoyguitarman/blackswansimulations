@@ -5,6 +5,7 @@
  */
 
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTeams, activeTemplateInjects } from '../../lib/templateRows.js';
@@ -54,6 +55,7 @@ import {
   directorIsPaused,
   endWake,
   noteProposalPending,
+  replacePendingCounts,
   resetDirectorRuntime,
   snoozedTeams,
   wakeOwns,
@@ -125,6 +127,8 @@ export interface DirectorStore {
   loadTeams(scenarioId: string): Promise<Array<{ name: string }>>;
   loadMemberships(sessionId: string): Promise<Array<{ user_id: string; team_name: string }>>;
   loadUpcoming(scenarioId: string, minute: number): Promise<UpcomingInject[]>;
+  /** Validated cast. Production uses `getStakeholders`. */
+  loadStakeholders?(scenarioId: string): Promise<DirectorPerson[]>;
   saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missing'>;
   insertProposal(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'>;
   insertEvent(row: Record<string, unknown>): Promise<void>;
@@ -216,6 +220,9 @@ export async function runDirector(
     store.loadUpcoming(input.scenarioId, input.elapsedMinutes),
   ]);
   const proposals = history;
+  const people = store.loadStakeholders
+    ? await store.loadStakeholders(input.scenarioId)
+    : await loadPublishPeople(input.scenarioId);
 
   const turn = buildTurn({
     input,
@@ -230,6 +237,7 @@ export async function runDirector(
     teams,
     memberships,
     upcoming,
+    people,
   });
   const draft = await runDirectorTurn(turn, options.client ?? defaultClient);
   if (!draft.log || !draft.status || !draft.wake_reason || !draft.mode) return;
@@ -349,6 +357,7 @@ function buildTurn(parts: {
   teams: Array<{ name: string }>;
   memberships: Array<{ user_id: string; team_name: string }>;
   upcoming: UpcomingInject[];
+  people: DirectorPerson[];
 }): DirectorTurnInput {
   const { input, scenario, settings } = parts;
   const roster = rosterOf(parts.teams, scenario.initial, parts.memberships);
@@ -399,7 +408,7 @@ function buildTurn(parts: {
       protectedTeams: settings.protected,
       allowedApps: settings.apps,
       roleIds: parsePlayerRoles(scenario.initial.player_roles).map((role) => role.role_id),
-      stakeholders: readPeople(scenario.initial),
+      stakeholders: parts.people.map((person) => ({ id: person.id, name: person.name })),
       npcs: readNpcs(scenario.initial),
       orgs: readOrgs(scenario.initial).map((org) => org.name),
       brief: readBrief(scenario),
@@ -444,6 +453,7 @@ function observationOf(
     deliveryRows: DeliveryFact[];
     upcoming: UpcomingInject[];
     settings: DirectorSettings;
+    people: DirectorPerson[];
   },
 ): DirectorTurnInput['observation'] {
   const facts = readFacts(scenario.initial);
@@ -486,7 +496,7 @@ function observationOf(
       ).length,
     })),
     signals: [],
-    cast: readPeople(scenario.initial),
+    cast: parts.people.map((person) => ({ id: person.id, name: person.name })),
     npcs: readNpcs(scenario.initial).map((npc) => ({ handle: npc.handle })),
       protectedTeams: [
         ...parts.settings.protected,
@@ -1293,6 +1303,7 @@ const defaultStore: DirectorStore = {
   loadTeams,
   loadMemberships,
   loadUpcoming,
+  loadStakeholders: loadPublishPeople,
   saveSeed,
   insertProposal: insertProposalRow,
   insertEvent,
@@ -1404,17 +1415,6 @@ function readClaims(initial: Record<string, unknown>): string[] {
     .slice(0, 5);
 }
 
-function readPeople(initial: Record<string, unknown>): Array<{ id: string; name: string }> {
-  const rows = Array.isArray(initial.stakeholders) ? initial.stakeholders : [];
-  const people: Array<{ id: string; name: string }> = [];
-  for (const item of rows) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { id?: string; name?: string };
-    if (row.id && row.name) people.push({ id: row.id, name: row.name });
-  }
-  return people;
-}
-
 function readNpcs(initial: Record<string, unknown>): Array<{ handle: string; name?: string }> {
   const raw = initial.personas ?? initial.npc_personas ?? initial.social_personas;
   if (!Array.isArray(raw)) return [];
@@ -1502,6 +1502,38 @@ export function scheduleDirectorWake(
   return true;
 }
 
+/**
+ * One read at scheduler start. Later ticks query only sessions this found pending,
+ * plus any proposal inserted afterwards.
+ */
+export async function discoverPendingDirectorProposals(): Promise<void> {
+  if (directorUnavailable || !env.directorEnabled) return;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('director_proposals')
+      .select('session_id')
+      .eq('status', 'proposed')
+      .limit(500);
+    if (error) {
+      if (SCHEMA_CODES.has(error.code ?? '')) noteUnavailable(error);
+      else {
+        warnOnce(`discover:${error.code ?? 'unknown'}`, error, 'director pending rows were not discovered');
+      }
+      return;
+    }
+    const counts = new Map<string, number>();
+    for (const row of data ?? []) {
+      const id = String(row.session_id ?? '');
+      if (!id) continue;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    replacePendingCounts(counts);
+  } catch (err) {
+    if (schemaError(err)) noteUnavailable(err);
+    else warnOnce('discover:throw', err, 'director pending rows were not discovered');
+  }
+}
+
 /** Cheap write at session start. The first director tick still fills a missing seed. */
 export async function ensureDirectorSeed(sessionId: string, scenarioId: string): Promise<void> {
   invalidateDirectorScenario(scenarioId);
@@ -1569,7 +1601,7 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
     if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
     if (error) {
       warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', { sessionId });
-      return 'ok';
+      return 'error';
     }
     invalidateDirectorSession(sessionId);
     return 'ok';
@@ -1703,14 +1735,14 @@ async function loadSessionDirector(sessionId: string): Promise<SessionDirector |
     return null;
   }
   if (!data || typeof data.scenario_id !== 'string') return null;
-  const started = data.start_time ? Date.parse(String(data.start_time)) : NaN;
-  const elapsed = Number.isFinite(started) ? Math.max(0, Math.floor((Date.now() - started) / 60000)) : 0;
   return {
     id: sessionId,
     scenarioId: data.scenario_id,
     trainerId: typeof data.trainer_id === 'string' ? data.trainer_id : null,
     directorMode: (data.director_mode as string | null) ?? null,
-    elapsedMinutes: elapsed,
+    elapsedMinutes: crisisElapsedMinutes(
+      typeof data.start_time === 'string' ? data.start_time : null,
+    ),
   };
 }
 

@@ -32,6 +32,7 @@ import {
 import { logger } from '../../lib/logger.js';
 import {
   buildDirectorInject,
+  countdownIsStale,
   publishedCapEvents,
   type DirectorNpc,
   type DirectorPerson,
@@ -147,7 +148,7 @@ export interface DirectorCommandDeps {
     expectStatus: string,
     patch: ProposalPatch,
   ): Promise<'updated' | 'lost' | 'missing'>;
-  setSessionMode(sessionId: string, mode: DirectorMode): Promise<'ok' | 'missing'>;
+  setSessionMode(sessionId: string, mode: DirectorMode): Promise<'ok' | 'missing' | 'error'>;
   expirePending(sessionId: string): Promise<string[] | 'missing'>;
   convertCountdowns(sessionId: string): Promise<string[] | 'missing'>;
   publishFacts(sessionId: string, minute: number): Promise<PublishFacts | null>;
@@ -315,6 +316,7 @@ async function patchConsole(
     );
     const saved = await deps.setSessionMode(sessionId, body.mode);
     if (saved === 'missing') return fail(503, 'AI director is not available');
+    if (saved === 'error') return fail(503, 'Director mode was not saved');
     const to = resolveDirectorMode(settings, { mode: body.mode }, { mode: scenarioMode });
     const effect = modeSwitchEffect(from, to);
     if (effect === 'expire_pending') {
@@ -479,13 +481,13 @@ async function sweepSession(
   deps: DirectorCommandDeps,
   input: { sessionId: string; elapsedMinutes: number; trainerId: string | null; remainingCap: number },
 ): Promise<void> {
+  if (!sweepThisTick(input.sessionId)) return;
   const mode = await deps.resolvedMode(input.sessionId);
   if (mode === 'missing') return;
   if (mode === 'off') {
     await expirePending(deps, input.sessionId, input.trainerId);
     return;
   }
-  if (!sweepThisTick(input.sessionId)) return;
   if (mode === 'suggest') await deps.convertCountdowns(input.sessionId);
   armPublishSlots(input.sessionId, input.remainingCap);
   const now = deps.now();
@@ -504,6 +506,7 @@ async function sweepSession(
     } catch (err) {
       await deps.updateProposal(row.id, 'auto_published', { status: 'failed' }).catch(() => 'lost');
       await deps.updateProposal(row.id, 'proposed', { status: 'failed' }).catch(() => 'lost');
+      noteProposalSettled(input.sessionId);
       logger.warn({ err, proposalId: row.id }, 'director publish failed');
     }
   }
@@ -538,6 +541,14 @@ async function sweepOne(
 ): Promise<void> {
   const kind = dueKind(row, input.now.getTime(), input.ttl);
   if (kind === 'wait' || !row.proposal) return;
+  const settings = deps.settings();
+  if (
+    row.autoPublishAt &&
+    countdownIsStale(row.autoPublishAt, input.now.getTime(), settings.graceSeconds, settings.ttlMinutes)
+  ) {
+    await settle(deps, row, input.trainerId, 'expired', 'Countdown expired before it could publish');
+    return;
+  }
   if (kind === 'expire' || input.mode === 'suggest') {
     if (kind === 'expire' || suggestionExpiresAt(row.createdAt, input.ttl) <= input.now.getTime()) {
       await settle(deps, row, input.trainerId, 'expired', 'Suggestion expired');
@@ -677,6 +688,7 @@ async function commitPublish(
       status: 'failed',
       injectId: inserted.id,
     });
+    noteProposalSettled(input.session.id);
     logger.warn({ err, proposalId: input.row.id }, 'director inject publish failed');
     return fail(503, 'Publishing the inject failed');
   }
