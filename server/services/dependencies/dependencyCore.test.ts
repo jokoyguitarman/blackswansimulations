@@ -10,7 +10,14 @@ import {
 } from '../conditionEvaluatorService.js';
 import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import { assembleConditionEvaluationContext } from '../conditions/conditionContextService.js';
-import { crossTeamProfile, isCrossTeamHop } from '../conditions/crossTeamCore.js';
+import {
+  applyCrossTeamGuards,
+  causeDepth,
+  crossTeamProfile,
+  isCrossTeamHop,
+  referencedInjectKeys,
+  type CrossTeamCandidate,
+} from '../conditions/crossTeamCore.js';
 import type { CommsDelivery, CommsState } from '../ledger/injectLedgerCore.js';
 import {
   evaluateDependency,
@@ -25,6 +32,7 @@ import {
 import { catalogDependencies, teamDependenciesSchema } from './dependencySchema.js';
 import {
   dependencyTriggerCause,
+  guardKeysForDependency,
   nextHoldMinute,
   planDependencyWrite,
   projectDependencyStates,
@@ -33,6 +41,7 @@ import {
 } from './dependencyConditionsCore.js';
 import {
   dependencyTableMissing,
+  rememberDependencyReferences,
   rememberDependencySources,
   withDependencySession,
 } from './dependencyService.js';
@@ -793,5 +802,171 @@ describe('dependency runtime', () => {
     );
     assert.deepEqual(profile.source_teams, ['Operations']);
     assert.equal(profile.is_cross_team, true);
+  });
+});
+
+describe('dependency keys feed the loop guard and the cascade cap', () => {
+  const brokenWhen = {
+    any: [
+      'unresponded:cons_comms_legal:5|team=@upstream',
+      'unresponded:legal_own_mail:10|team=@upstream',
+      'duty_missed:legal_review_statement|team=@upstream',
+    ],
+  };
+  const duty = 'duty_missed:legal_review_statement|team=legal';
+  const depKey = 'dependency_broken_for:dep_legal_statement_comms:5';
+  const guardEnv = {
+    maxPerTeamWindow: 2,
+    windowMinutes: 15,
+    pressureMaxDeliveries10Min: 6,
+    loopWindowMinutes: 20,
+    maxCascadeDepth: 3,
+  };
+
+  test('held evidence is preferred, and broken_when is the fallback', () => {
+    assert.deepEqual(
+      guardKeysForDependency(brokenWhen, [{ key: 'unresponded:cons_comms_legal:5|team=legal' }]),
+      ['cons_comms_legal'],
+    );
+    assert.deepEqual(
+      guardKeysForDependency(brokenWhen, [
+        { key: 'unresponded:cons_comms_legal:5|team=legal' },
+        { key: duty },
+      ]),
+      ['cons_comms_legal', duty],
+    );
+    assert.deepEqual(guardKeysForDependency(brokenWhen, []), [
+      'cons_comms_legal',
+      'legal_own_mail',
+      'duty_missed:legal_review_statement|team=@upstream',
+    ]);
+  });
+
+  test('example C is held at T+30, released at T+41, and publishes when the duty also held', () => {
+    const recent = [
+      {
+        inject_key: 'cons_comms_legal',
+        minute: 20,
+        source_teams: ['Communications'],
+        target_teams: ['Legal'],
+        origin: 'dependency',
+        is_cross_team: true,
+        cause_depth: 1,
+      },
+    ];
+    const candidate = (minute: number): CrossTeamCandidate => ({
+      id: 'cons_legal_comms',
+      inject_key: 'cons_legal_comms',
+      minute,
+      severity: 'medium',
+      source_teams: ['Legal'],
+      target_teams: ['Communications'],
+      is_cross_team: true,
+      origin: 'dependency',
+      cause_depth: 2,
+      met_keys: [depKey],
+    });
+    const session = 'example-c';
+    rememberDependencyReferences(
+      session,
+      new Map([['dep_legal_statement_comms', guardKeysForDependency(brokenWhen, [
+        { key: 'unresponded:cons_comms_legal:5|team=legal' },
+      ])]]),
+    );
+    const held = withDependencySession(session, () =>
+      applyCrossTeamGuards([candidate(30)], recent, [], guardEnv),
+    );
+    assert.equal(held.hold[0]?.id, 'cons_legal_comms');
+    assert.equal(held.publish.length, 0);
+    const released = withDependencySession(session, () =>
+      applyCrossTeamGuards([candidate(41)], recent, [], guardEnv),
+    );
+    assert.equal(released.hold.length, 0);
+    assert.equal(released.publish[0]?.id, 'cons_legal_comms');
+
+    rememberDependencyReferences(
+      session,
+      new Map([[
+        'dep_legal_statement_comms',
+        guardKeysForDependency(brokenWhen, [
+          { key: 'unresponded:cons_comms_legal:5|team=legal' },
+          { key: duty },
+        ]),
+      ]]),
+    );
+    const independent = withDependencySession(session, () =>
+      applyCrossTeamGuards([candidate(30)], recent, [], guardEnv),
+    );
+    assert.equal(independent.hold.length, 0);
+    assert.equal(independent.publish[0]?.id, 'cons_legal_comms');
+    assert.deepEqual(withDependencySession(session, () => referencedInjectKeys(depKey)), [
+      'cons_comms_legal',
+      duty,
+    ]);
+  });
+
+  test('the fourth dependency hop is cancelled by the cascade cap', () => {
+    const session = 'dep-chain';
+    const parents = [
+      ['dep_1', 'root'],
+      ['dep_2', 'c1'],
+      ['dep_3', 'c2'],
+      ['dep_4', 'c3'],
+    ] as const;
+    rememberDependencyReferences(
+      session,
+      new Map(parents.map(([dep, inject]) => [dep, [inject]])),
+    );
+    const hops = [
+      { dep: 'dep_1', inject: 'c1', source: 'A', target: 'B' },
+      { dep: 'dep_2', inject: 'c2', source: 'B', target: 'C' },
+      { dep: 'dep_3', inject: 'c3', source: 'C', target: 'D' },
+      { dep: 'dep_4', inject: 'c4', source: 'D', target: 'A' },
+    ];
+    const triggers: Record<string, { cause_depth: number; source_teams: string[]; target_teams: string[]; origin: string; is_cross_team: boolean }> = {
+      root: {
+        cause_depth: 0,
+        source_teams: ['A'],
+        target_teams: ['A'],
+        origin: 'timed',
+        is_cross_team: false,
+      },
+    };
+    const candidates: CrossTeamCandidate[] = [];
+    withDependencySession(session, () => {
+      for (const hop of hops) {
+        const depth = causeDepth([`dependency_broken_for:${hop.dep}:5`], triggers);
+        triggers[hop.inject] = {
+          cause_depth: depth,
+          source_teams: [hop.source],
+          target_teams: [hop.target],
+          origin: 'dependency',
+          is_cross_team: true,
+        };
+        candidates.push({
+          id: hop.inject,
+          inject_key: hop.inject,
+          minute: 40,
+          severity: 'medium',
+          cause_depth: depth,
+          is_cross_team: true,
+          source_teams: [hop.source],
+          target_teams: [hop.target],
+          origin: 'dependency',
+          met_keys: [`dependency_broken_for:${hop.dep}:5`],
+        });
+      }
+    });
+    assert.deepEqual(
+      hops.map((hop) => triggers[hop.inject]?.cause_depth),
+      [1, 2, 3, 4],
+    );
+    const result = applyCrossTeamGuards(candidates, [], [], guardEnv);
+    assert.deepEqual(
+      result.publish.map((item) => item.id),
+      ['c1', 'c2', 'c3'],
+    );
+    assert.equal(result.cancel[0]?.reason, 'cascade_cap');
+    assert.equal(result.cancel[0]?.candidate.id, 'c4');
   });
 });

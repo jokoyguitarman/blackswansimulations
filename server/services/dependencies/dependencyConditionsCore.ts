@@ -7,10 +7,9 @@
  * beside those fields so lag holds and labels work; readers ignore them.
  */
 
-import { DEPENDENCY_ID } from '../../../shared/teamDependencies.js';
+import { applyAnySugar, DEPENDENCY_ID, resolveTeamRef } from '../../../shared/teamDependencies.js';
 import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import type { ActiveTeam, TeamDependencyEdge } from '../../../shared/teamDependencies.js';
-import { resolveTeamRef } from '../../../shared/teamDependencies.js';
 
 export const DEPENDENCY_STATUSES = ['pending', 'met', 'broken', 'recovered', 'waived'] as const;
 export type DependencyStatus = (typeof DEPENDENCY_STATUSES)[number];
@@ -329,4 +328,56 @@ export function evaluateDependencyKey(
 ): boolean | undefined {
   const explained = explainDependencyKey(parsed, currentState, elapsedMinutes, parsed.def.label);
   return explained?.met;
+}
+
+/** Condition keys inside a `broken_when` / `met_when` group, after `{ any }` sugar. */
+export function conditionKeysOf(group: unknown): string[] {
+  const normalized = applyAnySugar(group);
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return [];
+  const record = normalized as { all?: unknown; conditions?: unknown };
+  if (Array.isArray(record.all)) return record.all.filter((item): item is string => typeof item === 'string');
+  if (Array.isArray(record.conditions)) {
+    return record.conditions.filter((item): item is string => typeof item === 'string');
+  }
+  return [];
+}
+
+function injectKeysNamedBy(key: string): string[] {
+  const parsed = parseConditionKey(key, { allowPlaceholders: true });
+  if ('error' in parsed) return [];
+  const refs: string[] = [];
+  (parsed.def.params ?? []).forEach((param, index) => {
+    const value = parsed.args[index];
+    if (param.type === 'inject_key' && value) refs.push(value);
+  });
+  return refs;
+}
+
+/**
+ * Inject keys named by the conditions that broke an edge.
+ * A condition that names none (a duty, silence, a decision) is returned itself,
+ * so the loop guard can see it is not a reply to the opposing consequence.
+ */
+export function dependencyReferencedKeys(conditionKeys: readonly string[]): string[] {
+  const out: string[] = [];
+  const push = (value: string) => {
+    if (value && !out.includes(value)) out.push(value);
+  };
+  for (const key of conditionKeys) {
+    const refs = injectKeysNamedBy(key);
+    if (refs.length === 0) push(key);
+    else for (const ref of refs) push(ref);
+  }
+  return out;
+}
+
+/**
+ * Held evidence wins. With none stored, every `broken_when` key is the fallback.
+ */
+export function guardKeysForDependency(
+  brokenWhen: unknown,
+  evidence: readonly { key: string }[] | null | undefined,
+): string[] {
+  const held = (evidence ?? []).map((item) => item.key).filter((key) => key.trim() !== '');
+  return dependencyReferencedKeys(held.length > 0 ? held : conditionKeysOf(brokenWhen));
 }
