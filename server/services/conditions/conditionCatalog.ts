@@ -1213,10 +1213,65 @@ const COMMS_CONDITIONS: ConditionDef[] = [
   ),
 ];
 
+const dependencyIdParam: ConditionParam = { name: 'dep', type: 'string' };
+const dependencyLagParam: ConditionParam = { name: 'N', type: 'minutes', min: 0, max: 240 };
+
+const DEPENDENCY_CONDITIONS: ConditionDef[] = [
+  comms(
+    'dependency_broken',
+    [dependencyIdParam],
+    'cross',
+    'negative',
+    'Dependency {dep} broke',
+    'The dependency broke at some point. Stays true after a late delivery.',
+  ),
+  comms(
+    'dependency_broken_for',
+    [dependencyIdParam, dependencyLagParam],
+    'cross',
+    'negative',
+    'Dependency {dep} has been broken for {N} minutes',
+    'The dependency is still broken and the lag has elapsed. A trainer hold keeps this false until the hold minute.',
+  ),
+  comms(
+    'dependency_met',
+    [dependencyIdParam],
+    'cross',
+    'positive',
+    'Dependency {dep} was met on time',
+    'The dependency was met before it broke.',
+  ),
+  comms(
+    'dependency_recovered',
+    [dependencyIdParam],
+    'cross',
+    'positive',
+    'Dependency {dep} was delivered late',
+    'The dependency broke and was then met.',
+  ),
+  comms(
+    'dependency_resolved',
+    [dependencyIdParam],
+    'cross',
+    'positive',
+    'Dependency {dep} is resolved',
+    'The dependency was met on time or delivered late. The usual cancel key for its consequences.',
+  ),
+  comms(
+    'dependency_waived',
+    [dependencyIdParam],
+    'cross',
+    'neutral',
+    'Dependency {dep} was waived',
+    'The trainer waived the dependency.',
+  ),
+];
+
 export const CONDITION_CATALOG: ConditionDef[] = [
   ...FIXED_CONDITION_KEYS.map(fixedConditionDef),
   ...PREFIX_CONDITIONS,
   ...COMMS_CONDITIONS,
+  ...DEPENDENCY_CONDITIONS,
 ];
 
 export type ParsedCondition =

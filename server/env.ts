@@ -188,6 +188,8 @@ export const env = {
   conditionPublishMaxPerTick: envInt('CONDITION_PUBLISH_MAX_PER_TICK', 3),
   // Cross-team throttle, pressure ceiling, loop guard and cascade cap.
   // Recording stays off until migration 278 is applied.
+  // Dependency runtime. Dormant until migration 280 is applied. Set false to skip updates.
+  crossTeamDependencies: process.env.CROSS_TEAM_DEPENDENCIES !== 'false',
   crossTeamMaxPerTeamWindow: envInt('CROSS_TEAM_MAX_PER_TEAM_WINDOW', 2),
   crossTeamWindowMinutes: envInt('CROSS_TEAM_WINDOW_MINUTES', 15),
   teamPressureMaxDeliveries10Min: envInt('TEAM_PRESSURE_MAX_DELIVERIES_10MIN', 6),

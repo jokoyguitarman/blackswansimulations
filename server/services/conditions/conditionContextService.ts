@@ -7,7 +7,9 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
+import { env } from '../../env.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
+import { loadContextDependencyState } from '../dependencies/dependencyService.js';
 
 export interface ConditionContextSession {
   id: string;
@@ -148,6 +150,17 @@ export async function buildConditionEvaluationContext(
   const elapsedMinutes = opts.elapsedMinutes ?? sessionElapsedMinutes(session.start_time);
   const currentState = opts.currentState ?? session.current_state ?? {};
   const sources = opts.conditionSources ?? [];
+  if (
+    env.crossTeamDependencies &&
+    (currentState.dependency_state == null || typeof currentState.dependency_state !== 'object')
+  ) {
+    try {
+      const dependencyState = await loadContextDependencyState(session.id, session.scenario_id);
+      if (dependencyState) currentState.dependency_state = dependencyState;
+    } catch (err) {
+      logger.warn({ err, sessionId: session.id }, 'dependency state was not added to the evaluation context');
+    }
+  }
 
   const [
     gatesResult,

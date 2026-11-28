@@ -3,10 +3,18 @@ import { describe, test } from 'node:test';
 import { collectConditionKeys } from '../conditions/conditionCatalog.js';
 import { validateInjectTriggerShape } from '../conditions/injectTriggerShape.js';
 import {
+  describeConditionKey,
+  evaluateConditionKey,
   evaluateInjectConditions,
   type EvaluationContext,
 } from '../conditionEvaluatorService.js';
+import { parseConditionKey } from '../conditions/conditionCatalog.js';
+import { assembleConditionEvaluationContext } from '../conditions/conditionContextService.js';
+import { crossTeamProfile, isCrossTeamHop } from '../conditions/crossTeamCore.js';
+import type { CommsDelivery, CommsState } from '../ledger/injectLedgerCore.js';
 import {
+  evaluateDependency,
+  nextState,
   prepareTeamDependencies,
   toActiveTeams,
   validateDependencies,
@@ -15,6 +23,19 @@ import {
   type TeamDependencyEdge,
 } from './dependencyCore.js';
 import { catalogDependencies, teamDependenciesSchema } from './dependencySchema.js';
+import {
+  dependencyTriggerCause,
+  nextHoldMinute,
+  planDependencyWrite,
+  projectDependencyStates,
+  type DependencyRuntimeState,
+  type StoredDependencyRow,
+} from './dependencyConditionsCore.js';
+import {
+  dependencyTableMissing,
+  rememberDependencySources,
+  withDependencySession,
+} from './dependencyService.js';
 
 const OPS = '6f1c0000-0000-4000-8000-000000000001';
 const COMMS = 'a93e0000-0000-4000-8000-000000000002';
@@ -413,5 +434,364 @@ describe('condition any sugar', () => {
       }),
       'ok',
     );
+  });
+});
+
+const HEAD = 'dep_ops_headcount_comms';
+const BROKEN_FOR = `dependency_broken_for:${HEAD}:5`;
+const APPEAR = { all: [BROKEN_FOR] };
+const CANCEL = [`dependency_resolved:${HEAD}`, `dependency_waived:${HEAD}`];
+
+function parsedEdge(overrides: Record<string, unknown> = {}): TeamDependencyEdge {
+  const parsed = teamDependenciesSchema.parse({ v: 1, edges: [edge(overrides)] });
+  const found = parsed.edges[0];
+  if (!found) throw new Error('edge did not parse');
+  return found;
+}
+
+function delivery(
+  partial: Partial<CommsDelivery> & { delivery_id: string; inject_key: string },
+): CommsDelivery {
+  return {
+    inject_id: 'inj',
+    channel: 'email',
+    delivered_minute: 8,
+    recipient_teams: ['Operations'],
+    session_wide: false,
+    stakeholder_id: null,
+    call_state: null,
+    call_group_id: null,
+    attempt_no: 1,
+    chain_root_key: null,
+    chain_step: null,
+    urgency: null,
+    mood_rung: null,
+    opened_minute: null,
+    first_response_minute: null,
+    first_response_team: null,
+    first_response_by_team: {},
+    responses: [],
+    ...partial,
+  };
+}
+
+function relevantReply(minute: number): CommsDelivery['responses'][number] {
+  return {
+    minute,
+    team: 'Operations',
+    user_id: 'ops-user',
+    is_bot: false,
+    attribution: 'email_reply',
+    judgement_status: 'done',
+    judgement: { addresses_inject: true, passed: true },
+  };
+}
+
+function comms(rows: CommsDelivery[], extra: Partial<CommsState> = {}): CommsState {
+  const by_key: Record<string, CommsDelivery[]> = {};
+  for (const row of rows) (by_key[row.inject_key] ??= []).push(row);
+  return { by_key, generated_at_minute: 0, truncated: false, ...extra };
+}
+
+function runtimeContext(
+  elapsed: number,
+  state: CommsState,
+  dependency?: Record<string, DependencyRuntimeState>,
+): EvaluationContext {
+  return {
+    sessionId: 'session-1',
+    scenarioId: 'scenario-1',
+    elapsedMinutes: elapsed,
+    currentState: {
+      comms_state: state,
+      ...(dependency ? { dependency_state: dependency } : {}),
+    },
+    executedDecisions: [],
+    publishedScenarioInjectIds: [],
+  };
+}
+
+const silent = comms([delivery({ delivery_id: 'd1', inject_key: 'bay3_headcount_request' })]);
+
+function replyAt(minute: number): CommsState {
+  return comms([
+    delivery({
+      delivery_id: 'd1',
+      inject_key: 'bay3_headcount_request',
+      responses: [relevantReply(minute)],
+    }),
+  ]);
+}
+
+describe('dependency runtime', () => {
+  const opsEdge = parsedEdge();
+  const pending = projectDependencyStates([opsEdge], [], TEAMS)[HEAD];
+  if (!pending) throw new Error('expected a pending dependency');
+
+  function step(current: DependencyRuntimeState, elapsed: number, state: CommsState) {
+    const evaluation = evaluateDependency(opsEdge, runtimeContext(elapsed, state), TEAMS);
+    return { evaluation, state: nextState(current, evaluation, elapsed) };
+  }
+
+  test('the six dependency keys parse on the cross platform and reject a team scope', () => {
+    for (const key of [
+      `dependency_broken:${HEAD}`,
+      BROKEN_FOR,
+      `dependency_met:${HEAD}`,
+      `dependency_recovered:${HEAD}`,
+      `dependency_resolved:${HEAD}`,
+      `dependency_waived:${HEAD}`,
+    ]) {
+      const parsed = parseConditionKey(key);
+      assert.equal('error' in parsed, false, key);
+      if ('error' in parsed) continue;
+      assert.equal(parsed.def.platform, 'cross', key);
+      assert.equal(parsed.def.teamScope, undefined, key);
+    }
+    const scoped = parseConditionKey(`dependency_broken:${HEAD}|team=operations`);
+    assert.equal('error' in scoped, true);
+  });
+
+  test('pending becomes broken when the upstream team has not replied, and broken_minute is set once', () => {
+    const early = step(pending, 17, silent);
+    assert.equal(early.evaluation.broken, false);
+    assert.equal(early.state.status, 'pending');
+    assert.equal(early.state.broken_minute, null);
+
+    const broken = step(pending, 18, silent);
+    assert.equal(broken.evaluation.broken, true);
+    assert.equal(broken.state.status, 'broken');
+    assert.equal(broken.state.broken_minute, 18);
+
+    const again = step(broken.state, 20, silent);
+    assert.equal(again.state.status, 'broken');
+    assert.equal(again.state.broken_minute, 18);
+  });
+
+  test('met first is never broken, and met wins when both hold in one tick', () => {
+    const onTime = step(pending, 12, replyAt(12));
+    assert.equal(onTime.evaluation.met, true);
+    assert.equal(onTime.evaluation.broken, false);
+    assert.equal(onTime.state.status, 'met');
+    assert.equal(onTime.state.met_minute, 12);
+    const later = nextState(
+      onTime.state,
+      { broken: true, met: false, evidence: [], inert: false },
+      30,
+    );
+    assert.equal(later.status, 'met');
+    assert.equal(later.broken_minute, null);
+
+    const both = step(pending, 19, replyAt(19));
+    assert.equal(both.evaluation.met, true);
+    assert.equal(both.evaluation.broken, true);
+    assert.equal(both.state.status, 'met');
+    assert.equal(both.state.broken_minute, null);
+  });
+
+  test('broken then met becomes recovered, and the lag key turns off while dependency_broken stays true', () => {
+    const broken = step(pending, 18, silent).state;
+    const recovered = step(broken, 20, replyAt(20));
+    assert.equal(recovered.state.status, 'recovered');
+    assert.equal(recovered.state.broken_minute, 18);
+    assert.equal(recovered.state.recovered_minute, 20);
+    const at = runtimeContext(23, replyAt(20), { [HEAD]: recovered.state });
+    assert.equal(evaluateConditionKey(`dependency_broken:${HEAD}`, at), true);
+    assert.equal(evaluateConditionKey(BROKEN_FOR, at), false);
+    assert.equal(evaluateConditionKey(`dependency_recovered:${HEAD}`, at), true);
+    assert.equal(evaluateConditionKey(`dependency_resolved:${HEAD}`, at), true);
+    assert.equal(evaluateConditionKey(`dependency_met:${HEAD}`, at), false);
+  });
+
+  test('dependency_broken_for is true exactly at the lag and false while a hold is still ahead', () => {
+    const broken = step(pending, 18, silent).state;
+    const before = runtimeContext(22, silent, { [HEAD]: broken });
+    const atLag = runtimeContext(23, silent, { [HEAD]: broken });
+    assert.equal(evaluateConditionKey(BROKEN_FOR, before), false);
+    assert.equal(evaluateConditionKey(BROKEN_FOR, atLag), true);
+    assert.equal(
+      describeConditionKey(BROKEN_FOR, atLag).label,
+      "Operations didn't deliver \u2018Confirmed headcount for Bay 3\u2019 to Communications (5 min ago)",
+    );
+
+    const held = { ...broken, hold_until_minute: 26 };
+    assert.equal(evaluateConditionKey(BROKEN_FOR, runtimeContext(23, silent, { [HEAD]: held })), false);
+    assert.equal(evaluateConditionKey(`dependency_broken:${HEAD}`, runtimeContext(23, silent, { [HEAD]: held })), true);
+    assert.equal(evaluateConditionKey(BROKEN_FOR, runtimeContext(26, silent, { [HEAD]: held })), true);
+    assert.equal(nextHoldMinute(null, 18), 23);
+    assert.equal(nextHoldMinute(30, 20), 30);
+  });
+
+  test('an @downstream key is evaluated once per downstream team and holds if any team matches', () => {
+    const fan = parsedEdge({
+      downstream: [ref(COMMS, 'Communications'), ref(CS, 'Customer Service')],
+      broken_when: { all: ['action_count_gte:post_created:1|team=@downstream'] },
+      met_when: null,
+    });
+    const onlyService = comms([], {
+      action_counts: [
+        { action_type: 'post_created', team_slug: 'customer_service', count: 1, first_minute: 3 },
+      ],
+    });
+    const hit = evaluateDependency(fan, runtimeContext(6, onlyService), TEAMS);
+    assert.equal(hit.broken, true);
+    assert.equal(hit.evidence.length, 1);
+    assert.match(hit.evidence[0]?.key ?? '', /\|team=customer_service$/);
+
+    const neither = evaluateDependency(fan, runtimeContext(6, comms([])), TEAMS);
+    assert.equal(neither.broken, false);
+    assert.deepEqual(neither.evidence, []);
+
+    const onlyComms = comms([], {
+      action_counts: [
+        { action_type: 'post_created', team_slug: 'communications', count: 2, first_minute: 2 },
+      ],
+    });
+    const commsHit = evaluateDependency(fan, runtimeContext(6, onlyComms), TEAMS);
+    assert.equal(commsHit.broken, true);
+    assert.match(commsHit.evidence[0]?.key ?? '', /\|team=communications$/);
+  });
+
+  test('an inert edge never transitions', () => {
+    const gone = TEAMS.filter((team) => team.team_uid !== OPS);
+    const evaluation = evaluateDependency(opsEdge, runtimeContext(18, silent), gone);
+    assert.equal(evaluation.inert, true);
+    assert.equal(evaluation.broken, false);
+    const stayed = nextState(
+      pending,
+      { broken: true, met: false, evidence: [], inert: true },
+      18,
+    );
+    assert.equal(stayed.status, 'pending');
+    assert.equal(stayed.broken_minute, null);
+  });
+
+  test('dependency keys are false and do not throw when the state map is empty', () => {
+    const blank = runtimeContext(30, silent);
+    for (const key of [
+      `dependency_broken:${HEAD}`,
+      BROKEN_FOR,
+      `dependency_met:${HEAD}`,
+      `dependency_recovered:${HEAD}`,
+      `dependency_resolved:${HEAD}`,
+      `dependency_waived:${HEAD}`,
+    ]) {
+      assert.equal(evaluateConditionKey(key, blank), false, key);
+      assert.equal(describeConditionKey(key, blank).met, false, key);
+    }
+    assert.equal(dependencyTableMissing({ code: '42P01', message: 'relation missing' }), true);
+    assert.equal(dependencyTableMissing({ code: '42703', message: 'column missing' }), true);
+    assert.equal(dependencyTableMissing({ code: 'PGRST204', message: 'schema cache' }), true);
+    assert.equal(dependencyTableMissing({ code: 'PGRST205', message: 'schema cache' }), true);
+    assert.equal(dependencyTableMissing({ code: '23505', message: 'duplicate' }), false);
+  });
+
+  test('the trainer panel context and the scheduler context agree on one fixture', () => {
+    const transitioned = step(pending, 18, silent).state;
+    const row: StoredDependencyRow = {
+      dep_id: HEAD,
+      status: 'broken',
+      upstream_team: 'Operations',
+      downstream_teams: ['Communications'],
+      broken_minute: 18,
+      met_minute: null,
+      recovered_minute: null,
+      hold_until_minute: null,
+      evidence: [],
+    };
+    const projected = projectDependencyStates([opsEdge], [row], TEAMS)[HEAD];
+    assert.ok(projected);
+    assert.equal(projected?.status, transitioned.status);
+    assert.equal(projected?.broken_minute, transitioned.broken_minute);
+    assert.equal(projected?.upstream, transitioned.upstream);
+    const parts = {
+      sessionId: 'session-1',
+      scenarioId: 'scenario-1',
+      elapsedMinutes: 23,
+      decisions: [],
+      publishedEvents: [],
+      cancelledEvents: [],
+      gates: [],
+      gateProgress: [],
+      placedAssetsCount: 0,
+      keyedInjects: [],
+    };
+    const scheduler = assembleConditionEvaluationContext({
+      ...parts,
+      currentState: { comms_state: silent, dependency_state: { [HEAD]: transitioned } },
+    });
+    const panel = assembleConditionEvaluationContext({
+      ...parts,
+      currentState: { comms_state: silent, dependency_state: { [HEAD]: projected } },
+    });
+    for (const key of [`dependency_broken:${HEAD}`, BROKEN_FOR, `dependency_resolved:${HEAD}`]) {
+      assert.equal(evaluateConditionKey(key, scheduler), evaluateConditionKey(key, panel), key);
+    }
+    assert.equal(evaluateConditionKey(BROKEN_FOR, scheduler), true);
+  });
+
+  test('example A: Operations silence breaks at T+18 and the Communications consequence fires at T+23 unless they reply first', () => {
+    const ignored = step(pending, 18, silent).state;
+    assert.equal(ignored.status, 'broken');
+    assert.equal(ignored.broken_minute, 18);
+    const tooSoon = runtimeContext(22, silent, { [HEAD]: ignored });
+    const due = runtimeContext(23, silent, { [HEAD]: ignored });
+    assert.equal(evaluateInjectConditions(APPEAR, CANCEL, tooSoon).status, 'not_eligible');
+    assert.equal(evaluateInjectConditions(APPEAR, CANCEL, due).status, 'appear_met');
+
+    const early = step(pending, 15, replyAt(15)).state;
+    assert.equal(early.status, 'met');
+    assert.equal(
+      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(15), { [HEAD]: early })).status,
+      'cancel_met',
+    );
+
+    const late = step(ignored, 20, replyAt(20)).state;
+    assert.equal(late.status, 'recovered');
+    assert.equal(
+      evaluateInjectConditions(APPEAR, CANCEL, runtimeContext(23, replyAt(20), { [HEAD]: late })).status,
+      'cancel_met',
+    );
+  });
+
+  test('a dependency key names the upstream team, and a dependency cause records origin fields', () => {
+    const insert = planDependencyWrite(null, step(pending, 18, silent).state, [
+      { key: 'unresponded:bay3_headcount_request:10|team=operations', detail: 'No reply', minute: 18 },
+    ]);
+    assert.equal(insert?.op, 'insert');
+    assert.equal(insert?.whereStatus, null);
+    assert.equal(insert?.row.upstream_team, 'Operations');
+    assert.deepEqual(insert?.row.downstream_teams, ['Communications']);
+    const recovered = step(step(pending, 18, silent).state, 20, replyAt(20)).state;
+    const update = planDependencyWrite('broken', recovered, []);
+    assert.equal(update?.op, 'update');
+    assert.equal(update?.whereStatus, 'broken');
+    assert.equal(Object.prototype.hasOwnProperty.call(update?.row ?? {}, 'upstream_team'), false);
+    assert.equal(planDependencyWrite('broken', step(pending, 18, silent).state, []), null);
+
+    assert.deepEqual(
+      dependencyTriggerCause({ cause: { kind: 'dependency', dep_id: HEAD } }),
+      { cause_kind: 'dependency', dep_id: HEAD },
+    );
+    assert.equal(dependencyTriggerCause({ cause: { kind: 'mood', dep_id: HEAD } }).dep_id, null);
+    assert.equal(
+      isCrossTeamHop({
+        origin: 'dependency',
+        cause_depth: 1,
+        source_teams: ['Operations'],
+        target_teams: ['Communications'],
+      }),
+      true,
+    );
+
+    rememberDependencySources('sess-dep', new Map([[HEAD, ['Operations']]]));
+    const profile = withDependencySession('sess-dep', () =>
+      crossTeamProfile({ target_teams: ['Communications'] }, [BROKEN_FOR], [
+        { name: 'Operations' },
+        { name: 'Communications' },
+      ]),
+    );
+    assert.deepEqual(profile.source_teams, ['Operations']);
+    assert.equal(profile.is_cross_team, true);
   });
 });

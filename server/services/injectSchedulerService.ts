@@ -51,6 +51,13 @@ import {
   recordInjectTrigger,
   releaseCrossTeamGuardNotes,
 } from './conditions/injectTriggerService.js';
+import { dependencyTriggerCause } from './dependencies/dependencyConditionsCore.js';
+import {
+  loadScenarioDependencyEdges,
+  rememberDependencySources,
+  updateDependencyStates,
+  withDependencySession,
+} from './dependencies/dependencyService.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -1004,6 +1011,49 @@ export class InjectSchedulerService {
       logger.warn({ err, sessionId: session.id }, 'comms_state load failed');
     }
 
+    let dependencyEdges: Awaited<ReturnType<typeof loadScenarioDependencyEdges>> = [];
+    if (env.crossTeamDependencies) {
+      dependencyEdges = await loadScenarioDependencyEdges(session.scenario_id);
+      if (dependencyEdges.length === 0) rememberDependencySources(session.id, new Map());
+    }
+    let sharedEvalContext: ReturnType<typeof buildConditionEvaluationContext> | null = null;
+    const evaluationContext = (): ReturnType<typeof buildConditionEvaluationContext> => {
+      if (!sharedEvalContext) {
+        sharedEvalContext = buildConditionEvaluationContext(
+          {
+            id: session.id,
+            scenario_id: session.scenario_id,
+            start_time: session.start_time,
+            current_state: nextState,
+          },
+          {
+            elapsedMinutes,
+            currentState: nextState,
+            conditionSources: condInjectsRaw ?? [],
+          },
+        );
+      }
+      return sharedEvalContext;
+    };
+    if (dependencyEdges.length > 0) {
+      try {
+        const dependencyState = await updateDependencyStates(
+          {
+            id: session.id,
+            scenario_id: session.scenario_id,
+            trainer_id: session.trainer_id,
+            start_time: session.start_time,
+          },
+          await evaluationContext(),
+          elapsedMinutes,
+          dependencyEdges,
+        );
+        if (dependencyState) nextState.dependency_state = dependencyState;
+      } catch (err) {
+        logger.warn({ err, sessionId: session.id }, 'dependency state update failed');
+      }
+    }
+
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
     let conditionalPublished = 0;
     try {
@@ -1036,19 +1086,7 @@ export class InjectSchedulerService {
       }
 
       if (condInjects.length > 0) {
-        const evalContext = await buildConditionEvaluationContext(
-          {
-            id: session.id,
-            scenario_id: session.scenario_id,
-            start_time: session.start_time,
-            current_state: nextState,
-          },
-          {
-            elapsedMinutes,
-            currentState: nextState,
-            conditionSources: condInjectsRaw ?? [],
-          },
-        );
+        const evalContext = await evaluationContext();
 
         const ready: Array<{
           condInject: (typeof condInjects)[number];
@@ -1095,7 +1133,7 @@ export class InjectSchedulerService {
                   } | null;
                 }
               ).delivery_config ?? null;
-            const cause = deliveryConfig?.cause ?? null;
+            const cause = dependencyTriggerCause(deliveryConfig);
             ready.push({
               condInject,
               id: condInject.id,
@@ -1108,20 +1146,22 @@ export class InjectSchedulerService {
               met_keys: result.met_keys,
               generation_source:
                 (condInject as { generation_source?: string | null }).generation_source ?? null,
-              cause_kind: typeof cause?.kind === 'string' ? cause.kind : null,
-              dep_id: typeof cause?.dep_id === 'string' ? cause.dep_id : null,
+              cause_kind: cause.cause_kind,
+              dep_id: cause.dep_id,
             });
           }
         }
 
         const ordered = orderPublishCandidates(ready);
-        const guarded = await applySessionCrossTeamGuards({
-          sessionId: session.id,
-          scenarioId: session.scenario_id,
-          elapsedMinutes,
-          ordered,
-          context: evalContext,
-        });
+        const guarded = await withDependencySession(session.id, () =>
+          applySessionCrossTeamGuards({
+            sessionId: session.id,
+            scenarioId: session.scenario_id,
+            elapsedMinutes,
+            ordered,
+            context: evalContext,
+          }),
+        );
         for (const injectId of guarded.cancelledIds) cancelledInjectIds.add(injectId);
         const cap = env.conditionPublishMaxPerTick;
         let publishedCount = 0;
