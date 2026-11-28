@@ -8,6 +8,8 @@ import { getIntelStatus, type IntelStatusEntry } from './intelSharingService.js'
 import type { SectionEntry } from './aarSectionService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
+import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
+import { rosterValidAt } from '../lib/peaceGate.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -159,12 +161,20 @@ interface TimelineEvent {
   tone?: 'positive' | 'negative' | 'neutral';
 }
 
+interface SocialSessionClock extends SessionClockFields {
+  start_time?: string | null;
+  end_time?: string | null;
+  created_at?: string | null;
+  current_state?: unknown;
+  scenario_id?: string | null;
+}
+
 export async function buildSocialSectionsData(sessionId: string): Promise<SocialSectionsMap> {
-  const { data: session } = await supabaseAdmin
-    .from('sessions')
-    .select('start_time, end_time, created_at, current_state, scenario_id')
-    .eq('id', sessionId)
-    .single();
+  const sessionResult = await selectSession<SocialSessionClock>(
+    'start_time, end_time, created_at, current_state, scenario_id',
+    (query) => query.eq('id', sessionId).single(),
+  );
+  const session = sessionResult.data;
 
   const startIso = (session?.start_time as string) || (session?.created_at as string) || null;
   const startMs = startIso ? new Date(startIso).getTime() : null;
@@ -283,7 +293,10 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       initial_state: startedAt ? undefined : liveInitial,
     });
     if (session?.scenario_id) {
-      const loaded = await teamsValidAt(String(session.scenario_id), startedAt ?? new Date());
+      const loaded = await teamsValidAt(
+        String(session.scenario_id),
+        rosterValidAt({ start_time: startedAt, opened_at: openedAtOf(session) }),
+      );
       for (const raw of loaded.data ?? []) {
         const teamName = typeof raw.team_name === 'string' ? raw.team_name : '';
         if (!teamName) continue;

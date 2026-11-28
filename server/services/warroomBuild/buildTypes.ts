@@ -8,6 +8,7 @@ import type {
 } from '../socialCrisisGeneratorService.js';
 import type { CountryEntry, OrgRegistryEntry, Stakeholder } from '../../lib/stakeholderContract.js';
 import type { DecisionContext } from '../multiOrgPipeline.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import {
   competitorsSchema,
   organisationsSchema,
@@ -182,6 +183,8 @@ export interface PagesOutput {
   persona_twins?: NPCPersona[];
   /** Set when the stage was skipped. Review ignores page fields. */
   skipped?: boolean;
+  /** Peace feed generated at the end of this stage. Absent when the flag is off. */
+  peace_period?: PeaceFeed;
 }
 
 export interface StageOutputs {
@@ -219,4 +222,6 @@ export interface ReviewPayload {
   objectives: ObjectiveDef[];
   dimension_labels: Record<string, string> | null;
   org_page: Record<string, unknown> | null;
+  /** Present only when the pages stage stored a peace feed. */
+  peace_period?: PeaceFeed;
 }

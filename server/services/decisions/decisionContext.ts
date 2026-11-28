@@ -2,6 +2,7 @@
  * Organic executive decisions — shared session/scenario context loaders.
  */
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { orgsForSession } from '../../lib/templateRows.js';
 import { getScenarioSnapshot, type ScenarioSnapshot } from '../../lib/scenarioCache.js';
 import { normalizeOrgPages, type OrgConfig } from '../socialCrisisGeneratorService.js';
@@ -74,8 +75,7 @@ export async function getSessionInfo(sessionId: string): Promise<SessionInfo | n
  * cascade insert fail with `invalid input syntax for type integer` (spec §15).
  */
 export function elapsedMinutesOf(session: SessionInfo): number {
-  if (!session.start_time) return 0;
-  return Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000));
+  return crisisElapsedMinutes(session.start_time);
 }
 
 export async function loadDecisionContext(

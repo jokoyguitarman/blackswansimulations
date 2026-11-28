@@ -5,7 +5,10 @@
  */
 
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
+import { isCrossTeam, sameTeam } from '../../../shared/teamDependencies.js';
 import { parseConditionKey } from './conditionCatalog.js';
+
+export { isCrossTeam };
 
 export interface CrossTeamTeam {
   /** Display name stored on the trigger row. */
@@ -163,15 +166,6 @@ export function crossTeamProfile(
     target_teams: target,
     is_cross_team: isCrossTeam(source, target),
   };
-}
-
-/** A recipient team that the firing keys are not about. */
-export function isCrossTeam(
-  sourceTeams: readonly string[],
-  targetTeams: readonly string[],
-): boolean {
-  if (sourceTeams.length === 0 || targetTeams.length === 0) return false;
-  return targetTeams.some((target) => !sourceTeams.some((source) => sameTeam(source, target)));
 }
 
 /**
@@ -486,13 +480,6 @@ function pushTeam(out: string[], name: string): void {
   if (!name) return;
   if (out.some((existing) => sameTeam(existing, name))) return;
   out.push(name);
-}
-
-function sameTeam(a: string, b: string): boolean {
-  if (a === b) return true;
-  const left = slugifyTeamName(a);
-  const right = slugifyTeamName(b);
-  return left !== '' && left === right;
 }
 
 function teamKey(name: string): string {

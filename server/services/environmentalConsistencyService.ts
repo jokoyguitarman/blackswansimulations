@@ -10,6 +10,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { getTeamCatalogAssets } from '../lib/teamAssetCatalog.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -233,9 +234,9 @@ export async function buildCasualtyContext(sessionId: string): Promise<string> {
     .single();
   if (!session) return '';
 
-  const elapsedMinutes = session.start_time
-    ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-    : 0;
+  const elapsedMinutes = crisisElapsedMinutes(
+    session.start_time ? String(session.start_time) : null,
+  );
 
   const { data: casualties } = await supabaseAdmin
     .from('scenario_casualties')
@@ -415,9 +416,9 @@ export async function buildHazardSafetyContext(sessionId: string): Promise<strin
     .single();
   if (!session) return '';
 
-  const elapsedMinutes = session.start_time
-    ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-    : 0;
+  const elapsedMinutes = crisisElapsedMinutes(
+    session.start_time ? String(session.start_time) : null,
+  );
 
   const { data: hazards } = await supabaseAdmin
     .from('scenario_hazards')

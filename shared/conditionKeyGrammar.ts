@@ -331,8 +331,9 @@ export function builderModelToKey(
 export function keyToBuilderModel(
   key: string,
   catalog: readonly ConditionDefSpec[],
+  options?: ParseCatalogOptions,
 ): { model: BuilderModel } | { error: string } {
-  const parsed = parseCatalogCondition(key, catalog);
+  const parsed = parseCatalogCondition(key, catalog, options);
   if ('error' in parsed) return parsed;
   const model: BuilderModel = {
     platform: parsed.def.platform,

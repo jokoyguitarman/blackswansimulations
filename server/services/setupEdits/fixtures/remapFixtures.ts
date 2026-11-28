@@ -1,6 +1,11 @@
 import type { SetupDelta } from '../setupDeltaCore.js';
 import type { SetupSnapshot, SnapshotOrg, SnapshotTeam } from '../setupSnapshotCore.js';
-import type { LobbySession, PlannerInject, PlannerTeam, RemapPlannerInput } from '../remapPlanner.js';
+import type {
+  LobbySession,
+  PlannerInject,
+  PlannerTeam,
+  RemapPlannerInput,
+} from '../remapPlanner.js';
 
 export function delta(partial: Partial<SetupDelta> = {}): SetupDelta {
   return {
@@ -55,7 +60,9 @@ export function inject(
   };
 }
 
-export function emptySession(partial: Partial<LobbySession> & Pick<LobbySession, 'session_id'>): LobbySession {
+export function emptySession(
+  partial: Partial<LobbySession> & Pick<LobbySession, 'session_id'>,
+): LobbySession {
   return {
     status: 'scheduled',
     start_time: null,
@@ -117,7 +124,9 @@ export function snapshot(orgs: SnapshotOrg[], partial: Partial<SetupSnapshot> = 
   };
 }
 
-export function input(partial: Partial<RemapPlannerInput> & Pick<RemapPlannerInput, 'delta' | 'edited'>): RemapPlannerInput {
+export function input(
+  partial: Partial<RemapPlannerInput> & Pick<RemapPlannerInput, 'delta' | 'edited'>,
+): RemapPlannerInput {
   return {
     initial_state: partial.initial_state ?? {},
     teams: partial.teams ?? [],

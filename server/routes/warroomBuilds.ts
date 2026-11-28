@@ -334,7 +334,11 @@ export function createWarroomBuildsRouter(deps: WarroomBuildsRouterDeps): Router
     }
     await withBuild(deps, req, res, async (row) => {
       const cancelled = await deps.service.cancel(row.id);
-      res.json({ data: { build: cancelled ? toView(cancelled) : toView(row) } });
+      res.json({
+        data: {
+          build: cancelled ? toView(cancelled) : toView(row),
+        },
+      });
     });
   });
 

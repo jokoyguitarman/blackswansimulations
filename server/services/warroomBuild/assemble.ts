@@ -1,4 +1,5 @@
 import { mergeSpokespersonLinks } from '../../../shared/pressureOrgLinks.js';
+import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import type { CrisisContext } from '../multiOrgGenerationService.js';
 import { crisisContextFrom, type DecisionContext } from '../multiOrgPipeline.js';
 import type { NPCPersona, SocialInject } from '../socialCrisisGeneratorService.js';
@@ -65,6 +66,8 @@ export interface PagesStageInput {
   brief_diff?: unknown;
   swap_premise?: string | null;
   prior_retired_keys?: string[];
+  /** Characters and storyline twins. The pages runner adds its own twins. */
+  personas: NPCPersona[];
 }
 
 export type StageInput =
@@ -180,6 +183,7 @@ export function stageInput(
       duration: 60,
       org_name: request.org_name,
     }),
+    personas: personasAfterStoryline(characters, storyline),
     ...(editBase
       ? {
           ...editBase,
@@ -244,6 +248,7 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
   const convergence = outputs.convergence;
   const pages = pagesUsable(outputs.pages) ? outputs.pages : undefined;
   const pageOrgs = pages?.orgs ?? [];
+  const peace = usablePeaceFeed(pages?.peace_period);
 
   return {
     personas: dedupeByHandle([
@@ -277,5 +282,6 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
     objectives: convergence?.objectives ?? [],
     dimension_labels: dimensionLabels(convergence),
     org_page: pages?.org_page ?? null,
+    ...(peace ? { peace_period: peace } : {}),
   };
 }

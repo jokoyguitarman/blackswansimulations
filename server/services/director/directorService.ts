@@ -191,9 +191,7 @@ export async function runDirector(
   void recordDirectorEvent(store, input.sessionId, seq, draft);
 }
 
-export async function replayStoredSession(
-  sessionId: string,
-): Promise<
+export async function replayStoredSession(sessionId: string): Promise<
   | {
       ok: boolean;
       mismatches: Array<{ seq: number; field: string; stored: unknown; recomputed: unknown }>;
@@ -663,9 +661,14 @@ async function loadSession(sessionId: string): Promise<SessionDirectorRow | 'mis
     .maybeSingle();
   if (error) {
     if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
-    warnOnce(`session:${error.code ?? 'unknown'}`, error, 'director session settings were not read', {
-      sessionId,
-    });
+    warnOnce(
+      `session:${error.code ?? 'unknown'}`,
+      error,
+      'director session settings were not read',
+      {
+        sessionId,
+      },
+    );
     return null;
   }
   return {
@@ -706,7 +709,9 @@ async function saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missin
     .is('director_seed', null);
   if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
   if (error) {
-    warnOnce(`seed:${error.code ?? 'unknown'}`, error, 'director seed was not stored', { sessionId });
+    warnOnce(`seed:${error.code ?? 'unknown'}`, error, 'director seed was not stored', {
+      sessionId,
+    });
   }
   return 'ok';
 }
@@ -981,7 +986,9 @@ async function insertProposal(
   return saved === 'ok';
 }
 
-async function insertProposalRow(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'> {
+async function insertProposalRow(
+  row: Record<string, unknown>,
+): Promise<'ok' | 'missing' | 'error'> {
   const { error } = await supabaseAdmin.from('director_proposals').insert(row);
   if (!error) return 'ok';
   if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
@@ -1134,7 +1141,9 @@ function warnOnce(
 function displayTitle(scenario: ScenarioRow): string {
   const title = scenario.title.trim();
   if (title) return title;
-  const org = readOrgs(scenario.initial).find((item) => item.name.trim())?.name.trim();
+  const org = readOrgs(scenario.initial)
+    .find((item) => item.name.trim())
+    ?.name.trim();
   return org || 'the crisis';
 }
 

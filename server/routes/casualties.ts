@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { hasMarshalProximity } from '../services/exitFlowService.js';
 import { assertSessionAccess, assertTeamMembership } from '../lib/access.js';
 import {
@@ -67,9 +68,7 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
     if (!access.ok) return res.status(access.status).json({ error: access.error });
     const session = access.session as unknown as { scenario_id: string; start_time: string | null };
 
-    const elapsedMinutes = session.start_time
-      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-      : 0;
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
     const { data: casualties, error } = await supabaseAdmin
       .from('scenario_casualties')
@@ -235,9 +234,7 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
 
     const session = access.session as unknown as { scenario_id: string; start_time: string | null };
 
-    const elapsedMinutes = session.start_time
-      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-      : 0;
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
     const { data: casualty, error: casError } = await supabaseAdmin
       .from('scenario_casualties')

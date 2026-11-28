@@ -2,7 +2,12 @@ import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { countryCode, countrySlug } from '../../../shared/countries.js';
 import { formatConditionKey, slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
-import { fingerprintInject, inferLayer, isAiOwned, type LayerTeam } from '../../lib/injectFingerprint.js';
+import {
+  fingerprintInject,
+  inferLayer,
+  isAiOwned,
+  type LayerTeam,
+} from '../../lib/injectFingerprint.js';
 import { injectKeysInParsedCondition, parseConditionKey } from '../conditions/conditionCatalog.js';
 import { makeOrgKey } from '../scenarioOrgModel.js';
 import type { SetupDelta } from './setupDeltaCore.js';
@@ -128,7 +133,8 @@ export interface InjectSuccessor {
   changes: InjectFieldPatch;
 }
 
-export type InjectRetireReason = 'targets_only_removed' | 'team_layer' | 'org_key' | 'pressure_layer' | 'dependent';
+export type InjectRetireReason =
+  'targets_only_removed' | 'team_layer' | 'org_key' | 'pressure_layer' | 'dependent';
 
 export interface InjectRetire {
   inject_id: string;
@@ -145,7 +151,8 @@ export interface JsonPatch {
   value: unknown;
 }
 
-export type RetiredBucket = 'orgs' | 'org_page_orgs' | 'stakeholders' | 'countries' | 'player_roles';
+export type RetiredBucket =
+  'orgs' | 'org_page_orgs' | 'stakeholders' | 'countries' | 'player_roles';
 
 export interface RetiredEntry {
   bucket: RetiredBucket;
@@ -195,13 +202,7 @@ export type OrphanKind =
   | 'team_dependency';
 
 export type OrphanChoice =
-  | 'keep'
-  | 'retire'
-  | 'retarget'
-  | 'reassign'
-  | 'move_to_retired'
-  | 'clear'
-  | 'remove';
+  'keep' | 'retire' | 'retarget' | 'reassign' | 'move_to_retired' | 'clear' | 'remove';
 
 /**
  * One trainer decision for an orphan id.
@@ -277,7 +278,13 @@ export interface RemapPlan {
 interface SwapResolved {
   plan: PrimarySwapPlan;
   /** Identity of O used for the fresh key, after any rename in this edit. */
-  oldOrg: { org_uid: string; display_name: string; short_name: string; country: string; city?: string };
+  oldOrg: {
+    org_uid: string;
+    display_name: string;
+    short_name: string;
+    country: string;
+    city?: string;
+  };
   newOrg: SnapshotOrg | null;
 }
 
@@ -359,7 +366,9 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   }
   plan.orphans = kept;
   plan.applicable = kept.length === 0;
-  plan.initial_state.move_to_retired.sort((a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key));
+  plan.initial_state.move_to_retired.sort(
+    (a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key),
+  );
   plan.scheduled_sessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
   return plan;
 }
@@ -371,22 +380,36 @@ function resolutionApplies(orphan: Orphan, resolution: OrphanResolution): boolea
     return choice === 'move_to_retired' || (choice === 'reassign' && !!resolution.team_name);
   }
   if (orphan.kind === 'condition') {
-    return choice === 'retire' || (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key));
+    return (
+      choice === 'retire' ||
+      (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key))
+    );
   }
   if (orphan.kind === 'stakeholder') {
-    return choice === 'retire' || choice === 'move_to_retired' || (choice === 'reassign' && !!resolution.team_name);
+    return (
+      choice === 'retire' ||
+      choice === 'move_to_retired' ||
+      (choice === 'reassign' && !!resolution.team_name)
+    );
   }
   if (orphan.kind === 'pressure_targets') {
     return choice === 'remove' || (choice === 'retarget' && (resolution.org_keys?.length ?? 0) > 0);
   }
   if (orphan.kind === 'chain_target') {
-    return choice === 'clear' || (choice === 'retarget' && !!(resolution.inject_key || resolution.team_name));
+    return (
+      choice === 'clear' ||
+      (choice === 'retarget' && !!(resolution.inject_key || resolution.team_name))
+    );
   }
   if (orphan.kind === 'mood_consequence') {
     return choice === 'clear' || (choice === 'retarget' && !!resolution.inject_key);
   }
   if (orphan.kind === 'team_dependency') {
-    return choice === 'remove' || choice === 'clear' || (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key));
+    return (
+      choice === 'remove' ||
+      choice === 'clear' ||
+      (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key))
+    );
   }
   return false;
 }
@@ -400,11 +423,15 @@ function applyOneResolution(
 ): void {
   if (orphan.kind === 'player_role') applyRoleResolution(plan, input, state, orphan, resolution);
   else if (orphan.kind === 'condition') applyConditionResolution(plan, input, orphan, resolution);
-  else if (orphan.kind === 'stakeholder') applyStakeholderResolution(plan, state, orphan, resolution);
-  else if (orphan.kind === 'pressure_targets') applyPressureResolution(plan, state, orphan, resolution);
+  else if (orphan.kind === 'stakeholder')
+    applyStakeholderResolution(plan, state, orphan, resolution);
+  else if (orphan.kind === 'pressure_targets')
+    applyPressureResolution(plan, state, orphan, resolution);
   else if (orphan.kind === 'chain_target') applyChainResolution(plan, input, orphan, resolution);
-  else if (orphan.kind === 'mood_consequence') applyMoodResolution(plan, input, state, orphan, resolution);
-  else if (orphan.kind === 'team_dependency') applyDependencyResolution(plan, state, orphan, resolution);
+  else if (orphan.kind === 'mood_consequence')
+    applyMoodResolution(plan, input, state, orphan, resolution);
+  else if (orphan.kind === 'team_dependency')
+    applyDependencyResolution(plan, state, orphan, resolution);
 }
 
 function applyRoleResolution(
@@ -430,13 +457,22 @@ function applyRoleResolution(
       }
     }
     plan.warnings = plan.warnings.filter(
-      (warning) => !(warning.code === 'retired_role_fallback' && warning.role_id === orphan.role_id),
+      (warning) =>
+        !(warning.code === 'retired_role_fallback' && warning.role_id === orphan.role_id),
     );
     return;
   }
   if (resolution.choice === 'move_to_retired') {
-    upsertPatch(plan, '/player_roles', roles.filter((row) => textOf(row.role_id) !== orphan.role_id));
-    plan.initial_state.move_to_retired.push({ bucket: 'player_roles', key: orphan.role_id, value: role });
+    upsertPatch(
+      plan,
+      '/player_roles',
+      roles.filter((row) => textOf(row.role_id) !== orphan.role_id),
+    );
+    plan.initial_state.move_to_retired.push({
+      bucket: 'player_roles',
+      key: orphan.role_id,
+      value: role,
+    });
   }
 }
 
@@ -456,10 +492,16 @@ function applyConditionResolution(
   if (plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
   const nextKey = retargetConditionKey(orphan.condition_key, resolution);
   const changes = ensureInjectChanges(plan, inject);
-  const appear = 'conditions_to_appear' in changes ? changes.conditions_to_appear : inject.conditions_to_appear;
-  const cancel = 'conditions_to_cancel' in changes ? changes.conditions_to_cancel : inject.conditions_to_cancel;
-  changes.conditions_to_appear = mapConditionContainer(appear, (key) => (key === orphan.condition_key ? nextKey : key));
-  changes.conditions_to_cancel = mapConditionContainer(cancel, (key) => (key === orphan.condition_key ? nextKey : key));
+  const appear =
+    'conditions_to_appear' in changes ? changes.conditions_to_appear : inject.conditions_to_appear;
+  const cancel =
+    'conditions_to_cancel' in changes ? changes.conditions_to_cancel : inject.conditions_to_cancel;
+  changes.conditions_to_appear = mapConditionContainer(appear, (key) =>
+    key === orphan.condition_key ? nextKey : key,
+  );
+  changes.conditions_to_cancel = mapConditionContainer(cancel, (key) =>
+    key === orphan.condition_key ? nextKey : key,
+  );
 }
 
 function retargetConditionKey(key: string, resolution: OrphanResolution): string {
@@ -467,10 +509,12 @@ function retargetConditionKey(key: string, resolution: OrphanResolution): string
   if ('error' in parsed) return key;
   let args = [...parsed.args];
   let scope = parsed.scope ? { ...parsed.scope } : undefined;
-  if (resolution.team_name && scope?.team) scope = { ...scope, team: slugifyTeamName(resolution.team_name) };
+  if (resolution.team_name && scope?.team)
+    scope = { ...scope, team: slugifyTeamName(resolution.team_name) };
   if (resolution.inject_key) {
     const refs = new Set(referencedInjectKeys(parsed));
-    if (refs.size > 0) args = args.map((arg) => (refs.has(arg) ? resolution.inject_key ?? arg : arg));
+    if (refs.size > 0)
+      args = args.map((arg) => (refs.has(arg) ? (resolution.inject_key ?? arg) : arg));
   }
   const formatted = formatConditionKey(parsed.def, args, scope);
   return 'error' in formatted ? key : formatted.key;
@@ -514,7 +558,8 @@ function applyPressureResolution(
   if (resolution.choice === 'retarget') {
     const keys = [...(resolution.org_keys ?? [])];
     for (const org of objectList(orgs)) {
-      if (textOf(org.org_key) === key && Array.isArray(org.targets_org_keys)) org.targets_org_keys = keys;
+      if (textOf(org.org_key) === key && Array.isArray(org.targets_org_keys))
+        org.targets_org_keys = keys;
     }
     for (const org of objectList(asRecord(page)?.orgs)) {
       if (textOf(org.org_key) !== key) continue;
@@ -628,25 +673,31 @@ function applyDependencyResolution(
   orphan: Orphan,
   resolution: OrphanResolution,
 ): void {
-  const doc = asRecord(structuredClone(patchValue(plan, '/team_dependencies', state.team_dependencies)));
+  const doc = asRecord(
+    structuredClone(patchValue(plan, '/team_dependencies', state.team_dependencies)),
+  );
   if (!doc || !Array.isArray(doc.edges)) return;
   doc.edges = doc.edges.flatMap((raw) => {
     const edge = asRecord(raw);
     if (!edge || textOf(edge.id) !== orphan.dependency_id) return [raw];
     if (resolution.choice === 'remove') return [];
     if (resolution.choice === 'clear' && orphan.target_key) {
-      edge.consequence_keys = stringList(edge.consequence_keys).filter((key) => key !== orphan.target_key);
+      edge.consequence_keys = stringList(edge.consequence_keys).filter(
+        (key) => key !== orphan.target_key,
+      );
     }
     if (resolution.choice === 'retarget') {
       if (resolution.team_name) {
         edge.upstream = retargetRemovedRef(edge.upstream, resolution.team_name);
         if (Array.isArray(edge.downstream)) {
-          edge.downstream = edge.downstream.map((ref) => retargetRemovedRef(ref, resolution.team_name ?? ''));
+          edge.downstream = edge.downstream.map((ref) =>
+            retargetRemovedRef(ref, resolution.team_name ?? ''),
+          );
         }
       }
       if (resolution.inject_key && orphan.target_key) {
         edge.consequence_keys = stringList(edge.consequence_keys).map((key) =>
-          key === orphan.target_key ? resolution.inject_key ?? key : key,
+          key === orphan.target_key ? (resolution.inject_key ?? key) : key,
         );
       }
     }
@@ -663,7 +714,9 @@ function retargetRemovedRef(value: unknown, teamName: string): unknown {
 
 function retireDependentInject(plan: RemapPlan, inject: PlannerInject): void {
   if (plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
-  plan.injects.rewrite_in_place = plan.injects.rewrite_in_place.filter((row) => row.inject_id !== inject.id);
+  plan.injects.rewrite_in_place = plan.injects.rewrite_in_place.filter(
+    (row) => row.inject_id !== inject.id,
+  );
   plan.injects.cow = plan.injects.cow.filter((row) => row.source_id !== inject.id);
   plan.injects.retire.push({
     inject_id: inject.id,
@@ -700,7 +753,8 @@ function ensureInjectChanges(plan: RemapPlan, inject: PlannerInject): InjectFiel
 }
 
 function ensureConfig(changes: InjectFieldPatch, inject: PlannerInject): Record<string, unknown> {
-  if (!changes.delivery_config) changes.delivery_config = structuredClone(inject.delivery_config ?? {});
+  if (!changes.delivery_config)
+    changes.delivery_config = structuredClone(inject.delivery_config ?? {});
   return changes.delivery_config;
 }
 
@@ -738,7 +792,9 @@ function upsertPatch(plan: RemapPlan, path: string, value: unknown): void {
   }
   plan.initial_state.patch.push({ op: 'replace', path, value });
   plan.initial_state.patch.sort(
-    (a, b) => PATCH_PATHS.indexOf(a.path as (typeof PATCH_PATHS)[number]) - PATCH_PATHS.indexOf(b.path as (typeof PATCH_PATHS)[number]),
+    (a, b) =>
+      PATCH_PATHS.indexOf(a.path as (typeof PATCH_PATHS)[number]) -
+      PATCH_PATHS.indexOf(b.path as (typeof PATCH_PATHS)[number]),
   );
 }
 
@@ -806,7 +862,10 @@ function orgKeyOfTeam(team: PlannerTeam, swap: SwapResolved | null): string {
   return swap ? (swap.plan.map[raw] ?? raw) : raw;
 }
 
-function resolveSwap(input: RemapPlannerInput, state: Record<string, unknown>): SwapResolved | null {
+function resolveSwap(
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+): SwapResolved | null {
   const requested = input.delta.primary_swap;
   if (!requested) return null;
   const registry = objectList(state.orgs);
@@ -846,7 +905,8 @@ function resolveSwap(input: RemapPlannerInput, state: Record<string, unknown>): 
   const sorted: Record<string, string> = {};
   for (const key of Object.keys(map).sort()) sorted[key] = map[key];
 
-  const oldName = editedOld?.display_name || textOf(currentOld.display_name) || 'The former primary';
+  const oldName =
+    editedOld?.display_name || textOf(currentOld.display_name) || 'The former primary';
   const newName = editedNew.display_name || 'The new primary';
   return {
     plan: {
@@ -999,7 +1059,12 @@ function planInjects(working: Working): RemapPlan['injects'] {
     if (!draft.changed) continue;
     const key = injectKeyOf(inject);
     if (inject.has_history) {
-      cow.push({ source_id: inject.id, inject_key: key, has_history: true, changes: draft.changes });
+      cow.push({
+        source_id: inject.id,
+        inject_key: key,
+        has_history: true,
+        changes: draft.changes,
+      });
     } else {
       rewrite_in_place.push({
         inject_id: inject.id,
@@ -1039,7 +1104,12 @@ function draftInject(working: Working, inject: PlannerInject, layers: LayerTeam[
   if (explicitOrg) {
     const mapped = working.mapKey(explicitOrg);
     if (working.removedOrgKeys.has(mapped)) {
-      return emptyDraft({ inject_id: inject.id, inject_key: key, reason: 'org_key', org_key: mapped });
+      return emptyDraft({
+        inject_id: inject.id,
+        inject_key: key,
+        reason: 'org_key',
+        org_key: mapped,
+      });
     }
   }
   const layer = stamped || layerOf(inject, config, layers);
@@ -1100,7 +1170,10 @@ function draftInject(working: Working, inject: PlannerInject, layers: LayerTeam[
     retire: null,
     changes,
     changed,
-    nextConditions: conditionKeysOf(changes.conditions_to_appear ?? inject.conditions_to_appear, changes.conditions_to_cancel ?? inject.conditions_to_cancel),
+    nextConditions: conditionKeysOf(
+      changes.conditions_to_appear ?? inject.conditions_to_appear,
+      changes.conditions_to_cancel ?? inject.conditions_to_cancel,
+    ),
     nextConfig: (changes.delivery_config ?? config) as Record<string, unknown> | null,
   };
 }
@@ -1160,10 +1233,7 @@ function remapNames(names: readonly string[], working: Working): string[] {
   return out;
 }
 
-function rewriteConditionValue(
-  value: unknown,
-  working: Working,
-): { value: unknown } {
+function rewriteConditionValue(value: unknown, working: Working): { value: unknown } {
   if (working.slugMap.size === 0) return { value };
   return { value: mapConditionContainer(value, (key) => rewriteConditionKey(key, working)) };
 }
@@ -1324,7 +1394,8 @@ function noteTextWarnings(working: Working, inject: PlannerInject): void {
   for (const move of working.input.delta.relocated_orgs) {
     if (owned) continue;
     const mapped = working.mapKey(move.org_key);
-    const orgKey = typeof inject.delivery_config?.org_key === 'string' ? inject.delivery_config.org_key : '';
+    const orgKey =
+      typeof inject.delivery_config?.org_key === 'string' ? inject.delivery_config.org_key : '';
     if (orgKey && working.mapKey(orgKey) === mapped) {
       working.warnings.push({
         code: 'hand_edit_relocation',
@@ -1385,7 +1456,9 @@ function noteInjectOrphans(
         inject_id: inject.id,
         inject_key: injectKey,
         condition_key: key,
-        team_name: [...working.removedTeamNames].find((name) => slugifyTeamName(name) === parsed.scope?.team),
+        team_name: [...working.removedTeamNames].find(
+          (name) => slugifyTeamName(name) === parsed.scope?.team,
+        ),
       });
     }
     if ('error' in parsed) continue;
@@ -1433,7 +1506,8 @@ function noteChainOrphans(
   const escalation = asRecord(config?.escalation);
   if (!escalation) return;
   const exhausted = asRecord(escalation.on_exhausted);
-  const publish = typeof exhausted?.publish_inject_key === 'string' ? exhausted.publish_inject_key : '';
+  const publish =
+    typeof exhausted?.publish_inject_key === 'string' ? exhausted.publish_inject_key : '';
   if (publish && retiredKeys.has(publish)) {
     working.orphans.push({
       id: `chain:${inject.id}:${publish}`,
@@ -1488,7 +1562,9 @@ function noteMoodOrphans(
         kind: 'mood_consequence',
         message: `A mood rung publishes retired inject ${key}.`,
         choices: ['keep', 'clear', 'retarget'],
-        ...(owner === 'inject' ? { inject_id: ownerId, inject_key: ownerKey } : { stakeholder_id: ownerId }),
+        ...(owner === 'inject'
+          ? { inject_id: ownerId, inject_key: ownerKey }
+          : { stakeholder_id: ownerId }),
         target_key: key,
       });
     }
@@ -1499,7 +1575,8 @@ function retiredRoleIds(working: Working): Set<string> {
   const ids = new Set<string>();
   for (const role of objectList(asRecord(working.input.initial_state)?.player_roles)) {
     const team = textOf(role.team_name);
-    if (team && working.removedTeamNames.has(team) && textOf(role.role_id)) ids.add(textOf(role.role_id));
+    if (team && working.removedTeamNames.has(team) && textOf(role.role_id))
+      ids.add(textOf(role.role_id));
   }
   return ids;
 }
@@ -1531,9 +1608,17 @@ function planInitialState(
     { path: '/org_page', value: orgPage.value, before: state.org_page ?? null },
     { path: '/stakeholders', value: stakeholders.value, before: state.stakeholders ?? null },
     { path: '/player_roles', value: roles.value, before: state.player_roles ?? null },
-    { path: '/strategic_benchmarks', value: benchmarks.value, before: state.strategic_benchmarks ?? null },
+    {
+      path: '/strategic_benchmarks',
+      value: benchmarks.value,
+      before: state.strategic_benchmarks ?? null,
+    },
     { path: '/team_charters', value: charters.value, before: state.team_charters ?? null },
-    { path: '/team_dependencies', value: dependencies.value, before: state.team_dependencies ?? null },
+    {
+      path: '/team_dependencies',
+      value: dependencies.value,
+      before: state.team_dependencies ?? null,
+    },
     { path: '/personas', value: personas.value, before: state.personas ?? null },
     { path: '/countries', value: countries.value, before: state.countries ?? null },
     { path: '/decision_context', value: decision.value, before: state.decision_context ?? null },
@@ -1570,7 +1655,11 @@ function planOrgs(
     applyEditedIdentity(org, working);
     if (isProtagonist(org)) retargetProtagonist(org, working);
     if (isPressure(org)) retargetPressure(org, working);
-    if (working.removedOrgKeys.has(textOf(org.org_key)) || working.removedRivals.has(key) || working.removedPressure.has(key)) {
+    if (
+      working.removedOrgKeys.has(textOf(org.org_key)) ||
+      working.removedRivals.has(key) ||
+      working.removedPressure.has(key)
+    ) {
       retired.push({ bucket: 'orgs', key: textOf(org.org_key) || key, value: org });
       continue;
     }
@@ -1673,7 +1762,9 @@ function newPrimaryRegistry(org: SnapshotOrg): Record<string, unknown> {
 }
 
 function siteKeyFor(orgKey: string, org: Record<string, unknown>, current: string): string {
-  const place = current.includes('_') ? current.slice(current.indexOf('_') + 1) : countrySlug(textOf(org.city) || textOf(org.country) || textOf(org.display_name)) || 'site';
+  const place = current.includes('_')
+    ? current.slice(current.indexOf('_') + 1)
+    : countrySlug(textOf(org.city) || textOf(org.country) || textOf(org.display_name)) || 'site';
   if (orgKey === 'primary') return `hq_${place}`.slice(0, 40);
   if (current.startsWith('hq_') || current === 'hq') {
     const prefix = countrySlug(textOf(org.short_name) || textOf(org.display_name)) || 'org';
@@ -1714,7 +1805,11 @@ function planOrgPage(
       working.removedRivals.has(key) ||
       working.removedPressure.has(key);
     if (remove) {
-      retired.push({ bucket: 'org_page_orgs', key: textOf(org.org_key) || key, value: structuredClone(org) });
+      retired.push({
+        bucket: 'org_page_orgs',
+        key: textOf(org.org_key) || key,
+        value: structuredClone(org),
+      });
       continue;
     }
     next.push(org);
@@ -1729,7 +1824,9 @@ function retargetPagePressure(org: Record<string, unknown>, working: Working): v
     const original = stringList(posture.targets_org_keys);
     const mapped = original.map((key) => working.mapKey(key));
     const kept = mapped.filter((key) => !working.removedOrgKeys.has(key));
-    posture.targets_org_keys = noteEmptyPressureTargets(working, org, original, kept) ? mapped : kept;
+    posture.targets_org_keys = noteEmptyPressureTargets(working, org, original, kept)
+      ? mapped
+      : kept;
     org.posture = posture;
   }
   if (Array.isArray(org.targets_org_keys)) {
@@ -1756,12 +1853,22 @@ function syncPageIdentity(org: Record<string, unknown>, working: Working): void 
   if (handle && typeof org.facebook_handle === 'string') org.facebook_handle = handle;
   if (xHandle && typeof org.x_handle === 'string') org.x_handle = xHandle;
   const facebook = asRecord(org.facebook);
-  if (facebook && handle && typeof facebook.page_handle === 'string' && facebook.page_handle !== handle) {
+  if (
+    facebook &&
+    handle &&
+    typeof facebook.page_handle === 'string' &&
+    facebook.page_handle !== handle
+  ) {
     facebook.page_handle = handle;
     org.facebook = facebook;
   }
   const twitter = asRecord(org.x_twitter);
-  if (twitter && xHandle && typeof twitter.page_handle === 'string' && twitter.page_handle !== xHandle) {
+  if (
+    twitter &&
+    xHandle &&
+    typeof twitter.page_handle === 'string' &&
+    twitter.page_handle !== xHandle
+  ) {
     twitter.page_handle = xHandle;
     org.x_twitter = twitter;
   }
@@ -1794,7 +1901,8 @@ function planStakeholders(
       row.owning_team = working.nameMap.get(owning);
     }
     const orgKey = textOf(row.org_key);
-    const ownedBySurvivor = owning !== '' && survivingTeams.has(owning) && !working.removedTeamNames.has(owning);
+    const ownedBySurvivor =
+      owning !== '' && survivingTeams.has(owning) && !working.removedTeamNames.has(owning);
     if (orgKey && working.removedOrgKeys.has(orgKey) && !ownedBySurvivor) {
       retired.push({ bucket: 'stakeholders', key: id || orgKey, value: row });
       continue;
@@ -1827,7 +1935,14 @@ function planStakeholders(
     next.push(row);
   }
   for (const row of next) {
-    noteMoodOrphans(working, textOf(row.id), '', row.mood_ladder, retiredInjectKeys(working), 'stakeholder');
+    noteMoodOrphans(
+      working,
+      textOf(row.id),
+      '',
+      row.mood_ladder,
+      retiredInjectKeys(working),
+      'stakeholder',
+    );
   }
   return { value: next };
 }
@@ -1917,8 +2032,13 @@ function planBenchmarks(working: Working, state: Record<string, unknown>): { val
     if (team && working.nameMap.has(team)) {
       const renamed = working.nameMap.get(team) ?? team;
       copy.team = renamed;
-      for (const field of ['description', 'consequence_if_done', 'consequence_if_missed'] as const) {
-        if (typeof copy[field] === 'string') copy[field] = substituteNames(copy[field] as string, working.renames);
+      for (const field of [
+        'description',
+        'consequence_if_done',
+        'consequence_if_missed',
+      ] as const) {
+        if (typeof copy[field] === 'string')
+          copy[field] = substituteNames(copy[field] as string, working.renames);
       }
     }
     next.push(copy);
@@ -1965,8 +2085,14 @@ function rewriteEdge(raw: unknown, working: Working): unknown {
     copy.downstream = copy.downstream.map((ref) => rewriteTeamRef(ref, working));
   }
   if (working.slugMap.size > 0) {
-    if (copy.broken_when) copy.broken_when = mapConditionContainer(copy.broken_when, (key) => rewriteConditionKey(key, working));
-    if (copy.met_when) copy.met_when = mapConditionContainer(copy.met_when, (key) => rewriteConditionKey(key, working));
+    if (copy.broken_when)
+      copy.broken_when = mapConditionContainer(copy.broken_when, (key) =>
+        rewriteConditionKey(key, working),
+      );
+    if (copy.met_when)
+      copy.met_when = mapConditionContainer(copy.met_when, (key) =>
+        rewriteConditionKey(key, working),
+      );
   }
   const id = textOf(copy.id) || 'edge';
   if (edgeReferencesRemoved(copy, working)) {
@@ -2017,7 +2143,10 @@ function edgeReferencesRemoved(edge: Record<string, unknown>, working: Working):
     if (!ref) return false;
     const uid = textOf(ref.team_uid);
     const name = textOf(ref.team_name);
-    return (uid !== '' && working.removedTeamUids.has(uid)) || (name !== '' && working.removedTeamNames.has(name));
+    return (
+      (uid !== '' && working.removedTeamUids.has(uid)) ||
+      (name !== '' && working.removedTeamNames.has(name))
+    );
   });
 }
 
@@ -2034,7 +2163,9 @@ function planPersonas(working: Working, state: Record<string, unknown>): { value
     const copy = structuredClone(persona);
     delete copy.country;
     const backstory = typeof copy.backstory === 'string' ? copy.backstory : '';
-    copy.backstory = /Based in /.test(backstory) ? backstory : `${backstory} (Based in ${country}.)`.trim();
+    copy.backstory = /Based in /.test(backstory)
+      ? backstory
+      : `${backstory} (Based in ${country}.)`.trim();
     return copy;
   });
   return { value: changed ? next : state.personas };
@@ -2110,7 +2241,8 @@ function planHistory(working: Working, state: Record<string, unknown>): { value:
   const rows = objectList(state.org_key_history).map((row) => structuredClone(row));
   const swap = working.swap.plan;
   closeHistory(rows, swap.from_org_uid, swap.old_primary_key);
-  if (swap.new_primary_previous_key) closeHistory(rows, swap.to_org_uid, swap.new_primary_previous_key);
+  if (swap.new_primary_previous_key)
+    closeHistory(rows, swap.to_org_uid, swap.new_primary_previous_key);
   openHistory(rows, swap.from_org_uid, swap.old_primary_new_key);
   openHistory(rows, swap.to_org_uid, 'primary');
   return { value: rows };
@@ -2188,15 +2320,38 @@ function sessionPlan(
       to_team: working.nameMap.get(line.team_name) ?? line.team_name,
       steps: CALL_LINE_STEPS,
     }));
-  const removeTeams = [...new Set(session.teams.map((row) => row.team_name).filter((name) => working.removedTeamNames.has(name)))].sort();
-  const deleteCallLines = [...new Set(session.call_lines.map((line) => line.team_name).filter((name) => working.removedTeamNames.has(name)))].sort();
-  const deleteChannels = [...new Set(
-    session.channels
-      .filter((channel) => channel.team_name && working.removedTeamNames.has(channel.team_name) && channel.message_count === 0)
-      .map((channel) => channel.team_name as string),
-  )].sort();
+  const removeTeams = [
+    ...new Set(
+      session.teams
+        .map((row) => row.team_name)
+        .filter((name) => working.removedTeamNames.has(name)),
+    ),
+  ].sort();
+  const deleteCallLines = [
+    ...new Set(
+      session.call_lines
+        .map((line) => line.team_name)
+        .filter((name) => working.removedTeamNames.has(name)),
+    ),
+  ].sort();
+  const deleteChannels = [
+    ...new Set(
+      session.channels
+        .filter(
+          (channel) =>
+            channel.team_name &&
+            working.removedTeamNames.has(channel.team_name) &&
+            channel.message_count === 0,
+        )
+        .map((channel) => channel.team_name as string),
+    ),
+  ].sort();
   const retiredRoles = retiredRoleIds(working);
-  const retireRoles = [...new Set(session.role_assignments.map((row) => row.role_id).filter((id) => retiredRoles.has(id)))].sort();
+  const retireRoles = [
+    ...new Set(
+      session.role_assignments.map((row) => row.role_id).filter((id) => retiredRoles.has(id)),
+    ),
+  ].sort();
   const unassigned = session.teams
     .filter((row) => working.removedTeamNames.has(row.team_name))
     .map((row) => ({ user_id: row.user_id, team_name: row.team_name }))
@@ -2205,7 +2360,12 @@ function sessionPlan(
   for (const row of session.page_controllers) presentOrgKeys.add(row.org_key);
   for (const row of session.org_pages ?? []) presentOrgKeys.add(row.org_key);
   const removeOrgKeys = [...presentOrgKeys]
-    .filter((key) => working.removedOrgKeys.has(working.mapKey(key)) || working.removedRivals.has(key) || working.removedPressure.has(key))
+    .filter(
+      (key) =>
+        working.removedOrgKeys.has(working.mapKey(key)) ||
+        working.removedRivals.has(key) ||
+        working.removedPressure.has(key),
+    )
     .map((key) => working.mapKey(key))
     .sort();
   const uniqueRemoveOrg = [...new Set(removeOrgKeys)];
@@ -2222,12 +2382,24 @@ function sessionPlan(
     retireRoles.length > 0 ||
     uniqueRemoveOrg.length > 0 ||
     remapControllers.length > 0 ||
-    (reseed && (working.swap != null || uniqueRemoveOrg.length > 0 || (session.org_pages?.length ?? 0) > 0));
+    (reseed &&
+      (working.swap != null || uniqueRemoveOrg.length > 0 || (session.org_pages?.length ?? 0) > 0));
   if (!touched && !reseed) return null;
-  if (!touched && reseed && !sessionHasPages(session) && remapControllers.length === 0 && working.swap == null) {
+  if (
+    !touched &&
+    reseed &&
+    !sessionHasPages(session) &&
+    remapControllers.length === 0 &&
+    working.swap == null
+  ) {
     return null;
   }
-  const doReseed = reseed && (working.swap != null || uniqueRemoveOrg.length > 0 || sessionHasPages(session) || working.input.delta.renamed_orgs.length > 0);
+  const doReseed =
+    reseed &&
+    (working.swap != null ||
+      uniqueRemoveOrg.length > 0 ||
+      sessionHasPages(session) ||
+      working.input.delta.renamed_orgs.length > 0);
   return {
     session_id: session.session_id,
     rename: { team_names: teamNames, channels, call_lines: callLines },
@@ -2298,7 +2470,12 @@ function sortOrphans(orphans: Orphan[]): void {
 }
 
 function sortWarnings(warnings: Warning[]): void {
-  warnings.sort((a, b) => a.code.localeCompare(b.code) || (a.inject_id ?? '').localeCompare(b.inject_id ?? '') || a.message.localeCompare(b.message));
+  warnings.sort(
+    (a, b) =>
+      a.code.localeCompare(b.code) ||
+      (a.inject_id ?? '').localeCompare(b.inject_id ?? '') ||
+      a.message.localeCompare(b.message),
+  );
 }
 
 function conditionKeysOf(appear: unknown, cancel: unknown): string[] {
@@ -2341,7 +2518,8 @@ function mentionsName(text: string, name: string): boolean {
 }
 
 function preserveCase(match: string, replacement: string): string {
-  if (match === match.toUpperCase() && match !== match.toLowerCase()) return replacement.toUpperCase();
+  if (match === match.toUpperCase() && match !== match.toLowerCase())
+    return replacement.toUpperCase();
   if (match === match.toLowerCase()) return replacement.toLowerCase();
   const words = match.split(/\s+/);
   const titled = words.every((word) => word.length === 0 || word[0] === word[0].toUpperCase());
@@ -2370,7 +2548,10 @@ function stringList(value: unknown): string[] {
 
 function objectList(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item));
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      !!item && typeof item === 'object' && !Array.isArray(item),
+  );
 }
 
 function pageOrgList(state: Record<string, unknown>): Record<string, unknown>[] {
@@ -2391,11 +2572,19 @@ function isProtagonist(org: Record<string, unknown>): boolean {
 }
 
 function isPressure(org: Record<string, unknown>): boolean {
-  return org.side === 'pressure' || org.role === 'pressure' || textOf(org.org_key).startsWith('org_pressure_');
+  return (
+    org.side === 'pressure' ||
+    org.role === 'pressure' ||
+    textOf(org.org_key).startsWith('org_pressure_')
+  );
 }
 
 function isRival(org: Record<string, unknown>): boolean {
-  return org.side === 'antagonist' || org.role === 'antagonist' || textOf(org.org_key).startsWith('org_antagonist_');
+  return (
+    org.side === 'antagonist' ||
+    org.role === 'antagonist' ||
+    textOf(org.org_key).startsWith('org_antagonist_')
+  );
 }
 
 function cloneJson<T>(value: T): T {
