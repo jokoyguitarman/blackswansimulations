@@ -1336,6 +1336,25 @@ export class InjectSchedulerService {
       logger.warn({ err: moodErr, sessionId: session.id }, 'stakeholder mood tick failed');
     }
 
+    try {
+      const { runDirector } = await import('./director/directorService.js');
+      const stateRecord = nextState as Record<string, unknown>;
+      await runDirector({
+        sessionId: session.id,
+        scenarioId: session.scenario_id,
+        trainerId: session.trainer_id,
+        status: session.status,
+        elapsedMinutes,
+        comms:
+          (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
+        dependencyState: Object.prototype.hasOwnProperty.call(stateRecord, 'dependency_state')
+          ? (stateRecord.dependency_state as Record<string, { status: string }> | null)
+          : undefined,
+      });
+    } catch (directorErr) {
+      logger.warn({ err: directorErr, sessionId: session.id }, 'AI director tick failed');
+    }
+
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
     try {
       await evaluatePinResolution(session.id);

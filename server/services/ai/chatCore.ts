@@ -109,6 +109,8 @@ export interface BodyOptions {
   json?: boolean | JsonSchemaSpec;
   maxTokens?: number;
   temperature?: number;
+  /** OpenAI `seed`. Omitted for Bedrock, which ignores it. */
+  seed?: number;
   /** When true, a `json_schema` request is downgraded to `json_object` + inlined schema. */
   schemaFallback?: boolean;
 }
@@ -117,6 +119,7 @@ export interface RequestBody {
   model: string;
   messages: ChatMessage[];
   temperature?: number;
+  seed?: number;
   max_tokens?: number;
   max_completion_tokens?: number;
   response_format?:
@@ -169,6 +172,10 @@ export function buildRequestBody(
           ? false
           : !modelRejectsTemperature(target.model);
     if (send) body.temperature = opts.temperature;
+  }
+
+  if (opts.seed != null && target.provider === 'openai' && Number.isInteger(opts.seed)) {
+    body.seed = opts.seed;
   }
 
   if (opts.json) {
