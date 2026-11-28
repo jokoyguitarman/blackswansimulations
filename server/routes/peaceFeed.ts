@@ -58,9 +58,7 @@ export interface PeaceFeedRouteDeps {
   canEdit: (scenarioId: string, user: { id: string; role?: string }) => Promise<EditabilityResult>;
   loadScenario: (scenarioId: string) => Promise<PeaceScenarioRow | null>;
   savePeacePeriod: (scenarioId: string, peace: PeaceFeed | null) => Promise<void>;
-  generate: (
-    input: GeneratePeaceFeedInput,
-  ) => Promise<GeneratePeaceFeedResult>;
+  generate: (input: GeneratePeaceFeedInput) => Promise<GeneratePeaceFeedResult>;
 }
 
 function unavailable(res: Response): void {
@@ -209,7 +207,10 @@ export function createPeaceFeedRouter(deps: PeaceFeedRouteDeps): Router {
       const feed = result.ok ? usablePeaceFeed(result.feed) : null;
       if (!feed) {
         const warning = result.ok ? 'Peace feed was not stored.' : result.warning;
-        logger.warn({ scenarioId: req.params.id, warning }, 'peace feed regenerate stored nothing new');
+        logger.warn(
+          { scenarioId: req.params.id, warning },
+          'peace feed regenerate stored nothing new',
+        );
         res.json({ data: { peace_period: previous, warning, generated: false } });
         return;
       }

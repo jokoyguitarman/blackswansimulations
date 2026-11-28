@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_PERIOD_MAX_SECONDS, type PeaceFeed, type PeaceFeedPost } from '@shared/peaceFeed';
+import {
+  PEACE_PERIOD_DEFAULT_SECONDS,
+  PEACE_PERIOD_MAX_SECONDS,
+  type PeaceFeed,
+  type PeaceFeedPost,
+} from '@shared/peaceFeed';
 import { ApiError, api } from '../../lib/api';
 import { peaceCardVisible } from '../../lib/peacePeriodCard';
 import { WrSection } from '../UI/Collapsible';
 
 function authorLabel(post: PeaceFeedPost): string {
   const author = post.author;
-  if (author?.kind === 'page') return `${author.org_key ?? 'page'} · ${author.platform ?? post.platform ?? ''}`;
+  if (author?.kind === 'page')
+    return `${author.org_key ?? 'page'} · ${author.platform ?? post.platform ?? ''}`;
   return author?.handle || 'Persona';
 }
 
@@ -161,7 +167,9 @@ export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
             {busy ? 'Working…' : posts.length > 0 ? 'Regenerate' : 'Generate'}
           </button>
           {message && (
-            <span className={`text-xs pb-1.5 ${error ? 'text-danger' : 'text-success'}`}>{message}</span>
+            <span className={`text-xs pb-1.5 ${error ? 'text-danger' : 'text-success'}`}>
+              {message}
+            </span>
           )}
         </div>
         {feed && feed.leak_terms.length > 0 && (
@@ -170,11 +178,16 @@ export function PeacePeriodCard({ scenarioId, locked, onPeacePeriod }: Props) {
           </p>
         )}
         {posts.length === 0 ? (
-          <p className="text-xs text-muted">No peace feed yet. Generate one to give this scenario a quiet start.</p>
+          <p className="text-xs text-muted">
+            No peace feed yet. Generate one to give this scenario a quiet start.
+          </p>
         ) : (
           <ol className="space-y-2">
             {posts.map((post, index) => (
-              <li key={post.ref || index} className="text-xs border border-border rounded px-2 py-1.5">
+              <li
+                key={post.ref || index}
+                className="text-xs border border-border rounded px-2 py-1.5"
+              >
                 <div className="text-[11px] text-muted">
                   {post.ref || `P${index + 1}`} · {authorLabel(post)} · {post.offset_seconds ?? 0}s
                 </div>
