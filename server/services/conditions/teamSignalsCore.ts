@@ -8,6 +8,24 @@ import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
 
 const DECISION_CATEGORY_SET = new Set<string>(DECISION_CATEGORIES);
 
+const TEAM_SIGNAL_PREFIXES = [
+  'duty_missed:',
+  'duty_done:',
+  'duty_late:',
+  'team_silent:',
+  'content_failed:',
+  'decision_made:',
+] as const;
+
+/** True when any condition key needs the team-signal reads. */
+export function needsTeamSignalFacts(keys: Iterable<string>): boolean {
+  for (const key of keys) {
+    const body = key.trim();
+    if (TEAM_SIGNAL_PREFIXES.some((prefix) => body.startsWith(prefix))) return true;
+  }
+  return false;
+}
+
 export interface ActivityHit {
   team_slug: string;
   minute: number;

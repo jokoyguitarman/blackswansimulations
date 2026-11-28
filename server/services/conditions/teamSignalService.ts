@@ -5,6 +5,7 @@
  */
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { teamsValidAt } from '../../lib/templateRows.js';
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
 import { isLedgerSchemaMissing } from '../ledger/ledgerSchema.js';
@@ -104,7 +105,7 @@ export async function loadTeamSignalFacts(
       decisionRows,
       roles,
     ] = await Promise.all([
-      loadRoster(scenario),
+      loadRoster(scenario, startTime ?? new Date()),
       loadMembership(sessionId),
       loadTrainerIds(sessionId),
       loadDutyActions(sessionId),
@@ -184,17 +185,14 @@ interface RosterTeam {
   expected: CharterAction[];
 }
 
-async function loadRoster(scenario: {
-  id: string | null;
-  known: boolean;
-}): Promise<{ teams: RosterTeam[]; known: boolean }> {
+async function loadRoster(
+  scenario: { id: string | null; known: boolean },
+  at: string | Date,
+): Promise<{ teams: RosterTeam[]; known: boolean }> {
   if (!scenario.known) return { teams: [], known: false };
   if (!scenario.id) return { teams: [], known: true };
   try {
-    const { data, error } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('*')
-      .eq('scenario_id', scenario.id);
+    const { data, error } = await teamsValidAt(scenario.id, at);
     if (error) {
       warnOnce('team_signal_roster_unavailable', error, 'Charter duties are off for this process');
       return { teams: [], known: false };

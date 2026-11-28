@@ -398,9 +398,17 @@ export async function setDeliveryCallState(input: {
 export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,
+  options?: { teamSignals?: boolean },
 ): Promise<CommsState> {
+  const teamSignals = options?.teamSignals !== false;
   if (ledgerTablesMissing()) {
-    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+    return attachCommsFacts(
+      sessionId,
+      elapsedMinutes,
+      null,
+      emptyCommsState(elapsedMinutes),
+      teamSignals,
+    );
   }
   try {
     const [deliveriesResult, responsesResult, clock] = await Promise.all([
@@ -426,6 +434,7 @@ export async function loadCommsState(
         elapsedMinutes,
         clock.startTime,
         emptyCommsState(elapsedMinutes),
+        teamSignals,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -434,6 +443,7 @@ export async function loadCommsState(
         elapsedMinutes,
         clock.startTime,
         emptyCommsState(elapsedMinutes),
+        teamSignals,
       );
     }
     const built = buildCommsState({
@@ -444,10 +454,16 @@ export async function loadCommsState(
       countBots: env.injectLedgerCountBots,
     });
     await enrichRoleDeliveryColumns(built);
-    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built);
+    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built, teamSignals);
   } catch (err) {
     failLedger(err, 'loadCommsState');
-    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+    return attachCommsFacts(
+      sessionId,
+      elapsedMinutes,
+      null,
+      emptyCommsState(elapsedMinutes),
+      teamSignals,
+    );
   }
 }
 
@@ -611,6 +627,7 @@ async function attachCommsFacts(
   elapsedMinutes: number,
   startTime: string | null,
   state: CommsState,
+  teamSignals = true,
 ): Promise<CommsState> {
   try {
     const clockStart = startTime ?? (await loadSessionClock(sessionId)).startTime;
@@ -620,7 +637,9 @@ async function attachCommsFacts(
       loadActionCounts(sessionId, clockStart),
       loadScenarioStakeholders(sessionId),
       simCallsAvailable(),
-      loadTeamSignalFacts(sessionId, clockStart),
+      teamSignals
+        ? loadTeamSignalFacts(sessionId, clockStart)
+        : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
     const emailKnown = email.known && stakeholders.known && actions.known;
@@ -645,7 +664,7 @@ async function attachCommsFacts(
       action_counts_truncated: actions.known && actions.truncated,
       chains,
       ...moods,
-      ...signals,
+      ...(signals ?? {}),
     };
   } catch (err) {
     warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');

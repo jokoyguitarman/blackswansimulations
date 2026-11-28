@@ -4,12 +4,29 @@ import {
   decisionFacts,
   gradesByTeam,
   latestActivity,
+  needsTeamSignalFacts,
   overallGrade,
   roleTeamSlugs,
   teamLabelMap,
 } from './teamSignalsCore.js';
 
 describe('team signal facts', () => {
+  test('signal reads are skipped unless a tick key uses them', () => {
+    assert.equal(
+      needsTeamSignalFacts([
+        'unresponded:k1:10|team=legal',
+        'decision_recorded:public_position',
+        'chain_active:k1',
+        'mood_is:stk_a:angry',
+      ]),
+      false,
+    );
+    assert.equal(needsTeamSignalFacts(['duty_late:review|role=cs_head']), true);
+    assert.equal(needsTeamSignalFacts(['team_silent:10|team=legal']), true);
+    assert.equal(needsTeamSignalFacts(['content_failed:2:50|team=comms']), true);
+    assert.equal(needsTeamSignalFacts(['decision_made:public_position|team=comms']), true);
+  });
+
   test('activity keeps the later minute per team', () => {
     const activity = latestActivity([
       { team_slug: 'legal', minute: 4 },
