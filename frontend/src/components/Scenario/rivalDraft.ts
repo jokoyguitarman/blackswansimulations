@@ -5,6 +5,8 @@ export interface CompetitorDraft {
   facebook_handle?: string;
   x_handle?: string;
   description: string;
+  org_key?: string;
+  org_uid?: string;
 }
 
 /** A rival card as it may appear in a saved draft, including drafts from before descriptions. */
@@ -15,6 +17,8 @@ export interface RivalDraftInput {
   facebook_handle?: unknown;
   x_handle?: unknown;
   description?: unknown;
+  org_key?: unknown;
+  org_uid?: unknown;
 }
 
 function newRivalId(): string {
@@ -47,5 +51,7 @@ export function resumeRivalDraft(raw: RivalDraftInput, fallbackCountry: string):
     facebook_handle: asString(raw.facebook_handle),
     x_handle: asString(raw.x_handle),
     description: asString(raw.description) ?? '',
+    ...(asString(raw.org_key) ? { org_key: asString(raw.org_key) } : {}),
+    ...(asString(raw.org_uid) ? { org_uid: asString(raw.org_uid) } : {}),
   };
 }

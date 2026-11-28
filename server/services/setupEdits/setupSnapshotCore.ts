@@ -95,6 +95,60 @@ export interface SetupSnapshot {
   frozen_texts?: FrozenTexts;
 }
 
+/** Identity frozen on the edit row. The wizard draft is not a baseline. */
+export interface BaselineIdentity {
+  primary_org_key: string;
+  org_keys: string[];
+  team_uids: string[];
+}
+
+function textKey(value: unknown, field: string): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const key = (value as Record<string, unknown>)[field];
+  return typeof key === 'string' && key.trim() ? key : null;
+}
+
+/**
+ * Org keys, team uids and the primary key of a WP7 snapshot.
+ * Returns null when the snapshot has no organisation key.
+ */
+export function baselineIdentity(snapshot: unknown): BaselineIdentity | null {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
+  const row = snapshot as Partial<SetupSnapshot>;
+  if (!Array.isArray(row.organisations)) return null;
+  const orgKeys = new Set<string>();
+  const teamUids = new Set<string>();
+  let primary: string | null = null;
+  let first: string | null = null;
+  for (const org of row.organisations) {
+    const key = textKey(org, 'org_key');
+    if (!key) continue;
+    orgKeys.add(key);
+    if (!first) first = key;
+    if (!primary && org && typeof org === 'object' && org.is_primary) primary = key;
+    const teams = org && typeof org === 'object' && Array.isArray(org.teams) ? org.teams : [];
+    for (const team of teams) {
+      const uid = textKey(team, 'team_uid');
+      if (uid) teamUids.add(uid);
+    }
+  }
+  for (const org of row.pressure_organisations ?? []) {
+    const key = textKey(org, 'org_key');
+    if (key) orgKeys.add(key);
+  }
+  for (const org of row.competitors ?? []) {
+    const key = textKey(org, 'org_key');
+    if (key) orgKeys.add(key);
+  }
+  const primaryKey = primary ?? first;
+  if (!primaryKey) return null;
+  return {
+    primary_org_key: primaryKey,
+    org_keys: [...orgKeys].sort(),
+    team_uids: [...teamUids].sort(),
+  };
+}
+
 export interface SnapshotTeamRow {
   id?: string;
   team_uid?: string | null;

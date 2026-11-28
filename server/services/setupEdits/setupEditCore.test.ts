@@ -6,6 +6,7 @@ import {
   canOpen,
   emptySetupBaselineHash,
   isSetupEditSchemaMissing,
+  historyForViewer,
   openEditOf,
   remainingEdits,
 } from './setupEditCore.js';
@@ -20,6 +21,23 @@ describe('setup edit allowance', () => {
     assert.equal(canOpen(2, 3, false), true);
     assert.equal(canOpen(3, 3, false), false);
     assert.equal(canOpen(4, 3, false), false);
+  });
+
+  test('trainers do not receive abandoned or failed edits', () => {
+    const rows = [
+      { id: 'open', status: 'open' },
+      { id: 'applied', status: 'applied' },
+      { id: 'abandoned', status: 'abandoned' },
+      { id: 'failed', status: 'failed' },
+    ];
+    assert.deepEqual(
+      historyForViewer(rows, false).map((row) => row.id),
+      ['open', 'applied'],
+    );
+    assert.deepEqual(
+      historyForViewer(rows, true).map((row) => row.id),
+      ['open', 'applied', 'abandoned', 'failed'],
+    );
   });
 
   test('admins are unlimited', () => {

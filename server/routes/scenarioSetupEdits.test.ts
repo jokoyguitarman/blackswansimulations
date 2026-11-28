@@ -16,6 +16,7 @@ import {
 } from '../services/setupEdits/setupEditCore.js';
 import {
   baselineHash,
+  baselineIdentity,
   draftInputFromSnapshot,
   snapshotFromScenario,
   type ScenarioSnapshotSource,
@@ -204,6 +205,8 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       error: null,
       created_at: edit.createdAt,
       applied_at: null,
+      draft_id: edit.draftId,
+      baseline_identity: baselineIdentity(edit.baseline),
     };
   }
 
@@ -355,6 +358,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
         },
         service,
         apply: async () => ({ ok: false, status: 404, code: 'NOT_FOUND', error: 'Setup edit not found' }),
+        plan: async () => ({ ok: false, status: 404, code: 'SETUP_EDIT_NOT_FOUND', error: 'Setup edit not found' }),
       }),
     );
     server = createServer(app);
@@ -415,6 +419,15 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     });
     assert.equal(drafts[0].input.crisis_description, 'Plant fire');
     assert.equal(edits[0].counted, false);
+    const frozen = baselineIdentity(edits[0].baseline);
+    assert.equal(frozen?.primary_org_key, 'primary');
+    assert.deepEqual(res.json.baseline_identity, frozen);
+    drafts[0].input = {
+      ...drafts[0].input,
+      primary_org_key: 'org_bravo',
+      make_primary: 'org_bravo',
+      extra_organisations: [{ org_key: 'org_fresh' }, { org_key: 'primary' }],
+    };
     const listed = await get(SOCIAL);
     assert.equal(listed.status, 200);
     assert.equal(listed.json.enabled, true);
@@ -422,6 +435,14 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(listed.json.used, 0);
     assert.equal(listed.json.remaining, 3);
     assert.equal((listed.json.open_edit as { id: string }).id, res.json.edit_id);
+    assert.deepEqual(
+      (listed.json.open_edit as { baseline_identity: unknown }).baseline_identity,
+      frozen,
+    );
+    assert.equal(
+      (frozen?.org_keys ?? []).includes('org_fresh'),
+      false,
+    );
     assert.equal((listed.json.history as unknown[]).length, 1);
   });
 
@@ -432,6 +453,8 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     assert.equal(second.status, 200);
     assert.equal(second.json.outcome, 'existing');
     assert.equal(second.json.edit_id, first.json.edit_id);
+    assert.equal(second.json.draft_id, drafts[0]?.id);
+    assert.deepEqual(second.json.baseline_identity, baselineIdentity(edits[0]?.baseline));
     assert.equal(edits.length, 1);
     assert.equal(drafts.length, 1);
     assert.equal(scenarios.get(SOCIAL)?.used, 0);

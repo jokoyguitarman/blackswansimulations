@@ -4,6 +4,7 @@ import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { stampOrgIdentity } from '../../lib/templateRows.js';
 import {
   baselineHash,
+  baselineIdentity,
   draftInputFromSnapshot,
   hashUploadedDocument,
   materializeLegacyPrimary,
@@ -532,5 +533,34 @@ describe('setup snapshot', () => {
       remaining: 2,
     });
     assert.equal(input.brief_reconstructed, undefined);
+  });
+});
+
+describe('baselineIdentity', () => {
+  test('reads org keys, team uids and the primary from the frozen snapshot', () => {
+    const identity = baselineIdentity({
+      organisations: [
+        {
+          org_key: 'org_bravo',
+          is_primary: false,
+          teams: [{ team_uid: 'uid-legal' }, { team_uid: '  ' }],
+        },
+        {
+          org_key: 'primary',
+          is_primary: true,
+          teams: [{ team_uid: 'uid-comms' }],
+        },
+      ],
+      pressure_organisations: [{ org_key: 'press_1' }],
+      competitors: [{ org_key: 'rival_1' }, { org_key: '' }],
+    });
+    assert.deepEqual(identity, {
+      primary_org_key: 'primary',
+      org_keys: ['org_bravo', 'press_1', 'primary', 'rival_1'],
+      team_uids: ['uid-comms', 'uid-legal'],
+    });
+    assert.equal(baselineIdentity(null), null);
+    assert.equal(baselineIdentity({ organisations: [] }), null);
+    assert.equal(baselineIdentity({ organisations: [{ display_name: 'Nameless' }] }), null);
   });
 });

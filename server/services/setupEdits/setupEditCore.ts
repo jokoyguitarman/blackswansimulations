@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
+import type { BaselineIdentity } from './setupSnapshotCore.js';
 
 /** PostgREST / Postgres codes that mean migration 274 is not in this database. */
 const SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
@@ -66,11 +67,28 @@ export interface SetupEditSummary {
   error: string | null;
   created_at: string;
   applied_at: string | null;
+  /** Absent on rows loaded before the wizard needed to resume a draft. */
+  draft_id?: string | null;
+  applied_summary?: unknown;
+  opened_by_name?: string | null;
+  /**
+   * Frozen identity of this edit's baseline snapshot. Present on rows whose
+   * baseline was loaded. The wizard uses this instead of the draft.
+   */
+  baseline_identity?: BaselineIdentity | null;
 }
 
 /** The in-flight row, if the list contains one. The list order is preserved. */
 export function openEditOf<T extends { status: string }>(edits: readonly T[]): T | null {
   return edits.find((edit) => IN_FLIGHT.has(edit.status)) ?? null;
+}
+
+const TRAINER_HIDDEN = new Set(['abandoned', 'failed']);
+
+/** Abandoned and failed edits are returned to admins only. Open edits stay, for resume. */
+export function historyForViewer<T extends { status: string }>(edits: readonly T[], isAdmin: boolean): T[] {
+  if (isAdmin) return [...edits];
+  return edits.filter((edit) => !TRAINER_HIDDEN.has(edit.status));
 }
 
 export type OpenSetupEditOutcome = 'opened' | 'existing' | 'busy' | 'limit_reached' | 'not_found';

@@ -234,6 +234,8 @@ export interface ApplySummary {
   objectives_updated: number;
   scheduled_sessions: number;
   unassigned_players: number;
+  /** Per scheduled session, so a lobby does not repeat another session's count. */
+  unassigned_by_session: Array<{ session_id: string; count: number }>;
   primary_swap: boolean;
   /** Fields the three-way rule left alone because the live value had moved. */
   text_kept: string[];
@@ -368,6 +370,10 @@ function composeBundle(input: MergeSetupEditInput): ApplyBundle {
       (sum, session) => sum + session.unassigned_players.length,
       0,
     ),
+    unassigned_by_session: input.plan.scheduled_sessions.map((session) => ({
+      session_id: session.session_id,
+      count: session.unassigned_players.length,
+    })),
     primary_swap: input.plan.primary_swap != null,
     text_kept: textKept,
   };
