@@ -29,7 +29,8 @@ import {
   type DependencyInjectRef,
   type TeamDependencyEdge,
 } from './dependencyCore.js';
-import { catalogDependencies, teamDependenciesSchema } from './dependencySchema.js';
+import { catalogDependencies, dependencyEdgeSchema, teamDependenciesSchema } from './dependencySchema.js';
+import { readDependencyEdge } from '../../../shared/teamDependencies.js';
 import {
   dependencyTriggerCause,
   guardKeysForDependency,
@@ -968,5 +969,35 @@ describe('dependency keys feed the loop guard and the cascade cap', () => {
     );
     assert.equal(result.cancel[0]?.reason, 'cascade_cap');
     assert.equal(result.cancel[0]?.candidate.id, 'c4');
+  });
+});
+
+describe('shared reader and zod schema', () => {
+  test('they accept the same edge and reject a non-uuid team', () => {
+    const stored = edge();
+    const parsed = dependencyEdgeSchema.safeParse(stored);
+    const shared = readDependencyEdge(stored);
+    assert.equal(parsed.success, true);
+    assert.ok(!('error' in shared));
+    if (!parsed.success || 'error' in shared) return;
+    assert.equal(shared.edge.id, parsed.data.id);
+    assert.equal(shared.edge.deliverable, parsed.data.deliverable);
+    assert.equal(shared.edge.lag_minutes, parsed.data.lag_minutes);
+    assert.equal(shared.edge.upstream.team_uid, parsed.data.upstream.team_uid);
+    assert.deepEqual(
+      'conditions' in shared.edge.broken_when ? shared.edge.broken_when.conditions : shared.edge.broken_when.all,
+      'conditions' in parsed.data.broken_when ? parsed.data.broken_when.conditions : parsed.data.broken_when.all,
+    );
+
+    const badUid = edge({ upstream: { team_uid: 'not-a-uuid', team_name: 'Operations' } });
+    assert.equal(dependencyEdgeSchema.safeParse(badUid).success, false);
+    assert.ok('error' in readDependencyEdge(badUid));
+
+    const emptyName = edge({ upstream: { team_uid: null, team_name: '  ' } });
+    assert.equal(dependencyEdgeSchema.safeParse(emptyName).success, true);
+    const sharedEmpty = readDependencyEdge(emptyName);
+    assert.ok(!('error' in sharedEmpty));
+    if ('error' in sharedEmpty) return;
+    assert.equal(sharedEmpty.edge.upstream.team_name, '');
   });
 });

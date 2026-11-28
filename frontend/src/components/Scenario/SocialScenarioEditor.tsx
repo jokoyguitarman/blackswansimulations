@@ -6,6 +6,11 @@ import {
   type SendToValue,
 } from './PlayerRolesEditor';
 import { ConditionBuilder, type InjectChoice } from './ConditionBuilder';
+import { TeamDependenciesSection } from './TeamDependenciesSection';
+import type { ScenarioInjectRow } from './scenarioInject';
+import { DependencyCauseRow, DependencyQuickAction } from './InjectDependencyBar';
+import { useDependencyDocument, type DependencyDocument } from './dependencyDocument';
+import { appearKeysFrom, conditionGroupKeys } from '@shared/teamDependencies';
 import {
   compileDraft,
   draftFromStored,
@@ -68,27 +73,12 @@ import { cloneScenario } from '../../lib/scenarioLibraryApi';
  * session launch credits or while a session on this scenario is live.
  */
 
-interface InjectRow {
-  id: string;
-  trigger_time_minutes: number | null;
-  trigger_condition: string | null;
-  conditions_to_appear?: unknown;
-  conditions_to_cancel?: unknown;
-  eligible_after_minutes?: number | null;
-  type: string;
-  title: string;
-  content: string;
-  severity: string;
-  inject_scope: string;
-  target_teams: string[] | null;
-  requires_response?: boolean;
-  delivery_config?: Record<string, unknown> | null;
-  generation_source?: string;
-}
+type InjectRow = ScenarioInjectRow;
 
 interface TeamRow {
   id: string;
   team_name: string;
+  team_uid?: string | null;
   team_description: string;
   min_participants: number;
   max_participants: number;
@@ -319,6 +309,7 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
     },
     [scen.initial_state, scenarioId],
   );
+  const dependencyDoc = useDependencyDocument(initialState, saveInitialState, teamList);
 
   /* ── Situation Map detail frame (docs/design/warroom/scenario-detail.html, spec §6.1) ── */
   const navigate = useNavigate();
@@ -390,6 +381,12 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
     { id: 'facts', label: 'Fact sheet', count: factCount || undefined, family: 'var(--success)' },
     { id: 'pages', label: 'Pages', family: 'var(--f-org)' },
     { id: 'injects', label: 'Injects', count: injectList.length, family: 'var(--brand)' },
+    {
+      id: 'dependencies',
+      label: 'Team dependencies',
+      count: dependencyDoc.edges.length,
+      family: 'var(--f-org)',
+    },
     { id: 'teams', label: 'Teams & charters', count: teamList.length, family: 'var(--f-org)' },
     { id: 'objectives', label: 'Objectives', count: objectiveList.length, family: 'var(--brand)' },
     { id: 'research', label: 'Research guidelines', family: 'var(--f-intel)' },
@@ -682,6 +679,21 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               saveInitialState={saveInitialState}
               durationMinutes={scen.duration_minutes}
               locked={locked}
+              dependencyDoc={dependencyDoc}
+            />
+            <TeamDependenciesSection
+              scenarioId={scenarioId}
+              initialState={initialState}
+              teamList={teamList}
+              injects={injectList}
+              durationMinutes={scen.duration_minutes}
+              locked={locked}
+              document={dependencyDoc}
+              stakeholders={readStakeholderOptions(initialState)}
+              onInjectCreated={(row) => setInjectList((list) => [...list, row])}
+              onInjectUpdated={(row) =>
+                setInjectList((list) => list.map((item) => (item.id === row.id ? row : item)))
+              }
             />
             <TeamsSection
               scenarioId={scenarioId}
@@ -1507,6 +1519,7 @@ const InjectsSection = ({
   saveInitialState,
   durationMinutes,
   locked,
+  dependencyDoc,
 }: {
   scenarioId: string;
   injectList: InjectRow[];
@@ -1518,6 +1531,7 @@ const InjectsSection = ({
   ) => Promise<unknown>;
   durationMinutes: number;
   locked: boolean;
+  dependencyDoc: DependencyDocument;
 }) => {
   const personas = (initialState.npc_personas || []) as PersonaShape[];
   const stakeholders = readStakeholderOptions(initialState);
@@ -1708,8 +1722,10 @@ const InjectsSection = ({
                     injects={injectList}
                     durationMinutes={durationMinutes}
                     saveInitialState={saveInitialState}
+                    dependencyDoc={dependencyDoc}
                     onSaved={onSaved}
                     onPeerUpdated={onPeerUpdated}
+                    onInjectCreated={(row) => setInjectList((list) => [...list, row])}
                     onDeleted={onDeleted}
                     onCancel={() => setExpandedId(null)}
                   />
@@ -1741,8 +1757,10 @@ const InjectsSection = ({
             injects={injectList}
             durationMinutes={durationMinutes}
             saveInitialState={saveInitialState}
+            dependencyDoc={dependencyDoc}
             onSaved={onCreated}
             onPeerUpdated={onPeerUpdated}
+            onInjectCreated={(row) => setInjectList((list) => [...list, row])}
             onDeleted={() => undefined}
             onCancel={() => setAdding(false)}
           />
@@ -1911,8 +1929,10 @@ const InjectForm = ({
   playerRoles = [],
   durationMinutes,
   saveInitialState,
+  dependencyDoc,
   onSaved,
   onPeerUpdated,
+  onInjectCreated,
   onDeleted,
   onCancel,
 }: {
@@ -1927,8 +1947,10 @@ const InjectForm = ({
   saveInitialState?: (
     mutate: (state: Record<string, unknown>) => Record<string, unknown>,
   ) => Promise<unknown>;
+  dependencyDoc: DependencyDocument;
   onSaved: (row: InjectRow) => void;
   onPeerUpdated?: (row: InjectRow) => void;
+  onInjectCreated?: (row: InjectRow) => void;
   onDeleted: (id: string) => void;
   onCancel: () => void;
 }) => {
@@ -2428,6 +2450,16 @@ const InjectForm = ({
       {triggerMode === 'conditional' && !catalog && !catalogError && (
         <p className="text-[11px] text-muted mt-1">Loading the condition catalogue…</p>
       )}
+      <DependencyCauseRow
+        appearKeys={
+          triggerMode === 'conditional' && compiled
+            ? conditionGroupKeys(compiled.conditions_to_appear)
+            : appearKeysFrom(inject?.conditions_to_appear)
+        }
+        targetTeams={scope === 'team_specific' ? targetTeams : []}
+        deliveryConfig={(inject?.delivery_config as Record<string, unknown> | null) ?? null}
+        document={dependencyDoc}
+      />
       {triggerMode === 'conditional' && catalog && draft && (
         <ConditionBuilder
           defs={catalog.defs}
@@ -2644,7 +2676,7 @@ const InjectForm = ({
             </div>
           )}
         </div>
-        <div className="flex items-end pb-1">
+        <div className="flex flex-col justify-end pb-1">
           <label className="flex items-center gap-2 text-xs text-muted">
             <input
               type="checkbox"
@@ -2655,6 +2687,19 @@ const InjectForm = ({
           </label>
         </div>
       </div>
+      <DependencyQuickAction
+        scenarioId={scenarioId}
+        injectId={inject?.id ?? null}
+        injectTitle={title}
+        injectKey={localInjectKey}
+        requiresResponse={requiresResponse}
+        targetTeams={scope === 'team_specific' ? targetTeams : []}
+        deliveryConfig={buildDeliveryConfig()}
+        injects={injects}
+        document={dependencyDoc}
+            onInjectCreated={(row) => onInjectCreated?.(row)}
+        onInjectKey={setLocalInjectKey}
+      />
 
       {app === 'phone_call' && (
         <>
