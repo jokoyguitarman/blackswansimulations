@@ -100,11 +100,42 @@ export function resolvePeaceSeconds(input: PeaceSecondsInput): number {
   const peace = asRecord(asRecord(input.initialState)?.peace_period);
   const posts = peace?.posts;
   if (!Array.isArray(posts) || posts.length === 0) return 0;
+  // The editor's off switch keeps the posts but starts with no peace.
+  if (peace?.enabled === false) return 0;
   const raw = input.requested != null && input.requested !== '' ? input.requested : peace?.seconds;
   const parsed = raw == null || raw === '' ? input.defaultSeconds : Number(raw);
   const seconds = Number.isFinite(parsed) ? parsed : input.defaultSeconds;
   const cap = Math.min(PEACE_SECONDS_COLUMN_MAX, Math.max(0, Math.floor(input.maxSeconds)));
   return Math.min(cap, Math.max(0, Math.floor(seconds)));
+}
+
+/**
+ * What the session lobby shows the trainer who is starting this session.
+ * Null when there is nothing to switch: not social, no posts, or the editor
+ * turned the feed off. `seconds` is the default the start will use.
+ * Leak terms are never included.
+ */
+export function peaceLobbyOffer(
+  initialState: unknown,
+  social: boolean,
+  defaultSeconds: number,
+  maxSeconds: number,
+): { seconds: number } | null {
+  if (!social) return null;
+  const peace = asRecord(asRecord(initialState)?.peace_period);
+  const posts = peace?.posts;
+  if (!Array.isArray(posts) || posts.length === 0) return null;
+  if (peace?.enabled === false) return null;
+  return {
+    seconds: resolvePeaceSeconds({
+      requested: undefined,
+      initialState,
+      social: true,
+      enabled: true,
+      defaultSeconds,
+      maxSeconds,
+    }),
+  };
 }
 
 /** Columns for the first start. Peace of 0 writes only `start_time`, as today. */

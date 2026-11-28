@@ -1,8 +1,9 @@
 /**
- * Peace-lane hook. WP3 publishes the feed and calls
- * `runEngagementTick(sessionId, { ambient: false })` from here.
- * WP1 leaves the hook empty.
+ * Peace-lane hook. The scheduler calls this and returns while the session
+ * is in peace. The publisher is the production hook; tests install a spy.
  */
+
+import { publishPeaceFeed } from './peacePublisher.js';
 
 export interface PeaceLaneSession {
   id: string;
@@ -12,15 +13,13 @@ export interface PeaceLaneSession {
 
 export type PeaceLaneHook = (session: PeaceLaneSession) => Promise<void>;
 
-const emptyHook: PeaceLaneHook = async () => {};
-
-let hook: PeaceLaneHook = emptyHook;
+let hook: PeaceLaneHook = publishPeaceFeed;
 
 export async function runPeaceLane(session: PeaceLaneSession): Promise<void> {
   await hook(session);
 }
 
-/** Tests install a spy. Production keeps the empty hook. */
+/** Tests install a spy. Passing null restores the publisher. */
 export function setPeaceLaneHookForTests(next: PeaceLaneHook | null): void {
-  hook = next ?? emptyHook;
+  hook = next ?? publishPeaceFeed;
 }
