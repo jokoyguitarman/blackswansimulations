@@ -709,6 +709,7 @@ function CommsTimelineTable({ rows }: { rows: unknown[] }) {
         !!row && typeof row === 'object' && !Array.isArray(row),
     )
     .slice(0, AAR_STORED_CAP);
+  // prettier-ignore
   const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'origin_note', 'detail'] as const;
   return (
     <div className="overflow-x-auto">

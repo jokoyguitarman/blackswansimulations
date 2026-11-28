@@ -163,8 +163,20 @@ describe('flags off: scoring and social AAR match master', () => {
       const builder: Record<string, unknown> = {};
       const self = () => builder;
       for (const method of [
-        'neq', 'in', 'is', 'or', 'order', 'limit', 'lte', 'gt', 'lt', 'filter', 'like',
-        'match', 'contains', 'range',
+        'neq',
+        'in',
+        'is',
+        'or',
+        'order',
+        'limit',
+        'lte',
+        'gt',
+        'lt',
+        'filter',
+        'like',
+        'match',
+        'contains',
+        'range',
       ]) {
         builder[method] = self;
       }
@@ -196,10 +208,20 @@ describe('flags off: scoring and social AAR match master', () => {
       const list = () => {
         let rows = rowsFor(table).filter((row) => {
           const record = row as Record<string, unknown>;
-          if (query.eqs.some(([column, value]) => record[column] !== value && column !== 'scenario_id' && column !== 'session_id')) {
+          if (
+            query.eqs.some(
+              ([column, value]) =>
+                record[column] !== value && column !== 'scenario_id' && column !== 'session_id',
+            )
+          ) {
             return false;
           }
-          if (query.nots.some(([column, operator, value]) => operator === 'is' && value === null && record[column] == null)) {
+          if (
+            query.nots.some(
+              ([column, operator, value]) =>
+                operator === 'is' && value === null && record[column] == null,
+            )
+          ) {
             return false;
           }
           return true;

@@ -172,11 +172,7 @@ export async function loadContentIndex(sessionId: string): Promise<ContentIndex>
       'id, user_id, reply_to_post_id, created_at, topic_class, topic_kind',
       sessionId,
     ),
-    readSessionPages(
-      'sim_emails',
-      'id, sent_by_player_id, created_at, topic_class',
-      sessionId,
-    ),
+    readSessionPages('sim_emails', 'id, sent_by_player_id, created_at, topic_class', sessionId),
     readSessionPages('sim_direct_messages', 'id, created_at, topic_class', sessionId),
   ]);
   return buildContentIndex([
@@ -223,9 +219,7 @@ export async function loadPeaceActivityRows(
   clock: { openedAt: string | null; crisisStart: string | null },
 ): Promise<PeaceSourceRow[]> {
   const window =
-    clock.openedAt && clock.crisisStart
-      ? { gte: clock.openedAt, lt: clock.crisisStart }
-      : null;
+    clock.openedAt && clock.crisisStart ? { gte: clock.openedAt, lt: clock.crisisStart } : null;
   if (!window) return [];
   const [posts, emails, messages, actions] = await Promise.all([
     readSessionPages(

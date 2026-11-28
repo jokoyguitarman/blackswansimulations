@@ -770,9 +770,11 @@ async function loadParts(sessionId: string): Promise<AarSessionParts> {
   return parts;
 }
 
+// prettier-ignore
 async function loadPublications(
   sessionId: string,
 ): Promise<AarSessionParts['publications']> {
+  // prettier-ignore
   const result = await selectSession('inject_publications', 'inject_id, claimed_at', sessionId, 2000);
   if (result.error) {
     if (!isUnappliedSchema(result.error)) warnRead('inject_publications', result.error);

@@ -146,9 +146,11 @@ export function compositeScore(parts: {
   if (parts.content != null) components.push({ value: parts.content, weight: CONTENT_WEIGHT });
   if (parts.tasks != null) components.push({ value: parts.tasks, weight: TASK_WEIGHT });
   if (parts.role != null) components.push({ value: parts.role, weight: ROLE_WEIGHT });
+  // prettier-ignore
   if (parts.collaboration != null) components.push({ value: parts.collaboration, weight: COLLAB_WEIGHT });
   const weightSum = components.reduce((sum, component) => sum + component.weight, 0);
   if (weightSum === 0) return null;
+  // prettier-ignore
   return Math.round(components.reduce((sum, component) => sum + component.value * component.weight, 0) / weightSum);
 }
 

@@ -762,6 +762,7 @@ async function buildExecutiveDecisions(
             title: n.content.title,
             planned_minute: d.detail.detected_at_minute + n.delay_minutes,
             fired_minute: n.fired_at_minute ?? null,
+            // prettier-ignore
             outcome: outcomeFor(n.inject_id, n.fired_at_minute != null) as
               | 'fired'
               | 'withdrawn'
