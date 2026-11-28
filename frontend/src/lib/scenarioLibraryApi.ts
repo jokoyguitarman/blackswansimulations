@@ -134,6 +134,42 @@ export interface PeekTeam {
   charter?: Record<string, unknown> | null;
 }
 
+export interface SetupEditAllowance {
+  enabled: boolean;
+  limit: number;
+  used: number;
+  remaining: number | null;
+}
+
+/**
+ * GET /api/scenarios/:id/setup-edits. A 404 (flag off) or enabled:false
+ * (migration 274 absent) means the library shows no button. Failures are
+ * swallowed so a missing migration does not surface an error.
+ */
+export async function getSetupEditAllowance(id: string): Promise<SetupEditAllowance | null> {
+  try {
+    const res = await fetch(url(`/api/scenarios/${id}/setup-edits`), { headers: await headers() });
+    if (!res.ok) return null;
+    const json = (await res.json()) as Partial<SetupEditAllowance>;
+    if (json.enabled !== true) {
+      return {
+        enabled: false,
+        limit: typeof json.limit === 'number' ? json.limit : 0,
+        used: 0,
+        remaining: null,
+      };
+    }
+    return {
+      enabled: true,
+      limit: typeof json.limit === 'number' ? json.limit : 0,
+      used: typeof json.used === 'number' ? json.used : 0,
+      remaining: typeof json.remaining === 'number' ? json.remaining : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getScenarioTeamsPeek(id: string): Promise<PeekTeam[]> {
   const res = await fetch(url(`/api/scenarios/${id}/teams`), { headers: await headers() });
   if (!res.ok) return [];

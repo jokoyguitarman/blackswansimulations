@@ -26,6 +26,14 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Non-negative integer from the environment, or the fallback when unset or invalid. */
+function envNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 const runBackgroundEngines =
   process.env.RUN_BACKGROUND_ENGINES === 'true' ||
   (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false');
@@ -253,4 +261,9 @@ export const env = {
   // post-training games on the same scenario.
   scenarioCreditsPerInvoice: Number(process.env.SCENARIO_CREDITS_PER_INVOICE ?? 1),
   sessionCreditsPerInvoice: Number(process.env.SESSION_CREDITS_PER_INVOICE ?? 2),
+  // Setup re-edit. Off until migration 274 is applied and SCENARIO_SETUP_EDITS=true.
+  // The limit is applied edits per scenario for non-admins. 0 means a trainer cannot
+  // open one. Admins are unlimited and are not counted.
+  scenarioSetupEdits: process.env.SCENARIO_SETUP_EDITS === 'true',
+  scenarioSetupEditLimit: envNonNegativeInt('SCENARIO_SETUP_EDIT_LIMIT', 3),
 };
