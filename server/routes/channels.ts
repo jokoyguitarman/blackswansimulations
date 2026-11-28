@@ -11,7 +11,8 @@ import {
   createNotificationsForUsers,
 } from '../services/notificationService.js';
 import { createDefaultChannels, ensureTeamChannels } from '../services/channelService.js';
-import { assertSessionAccess } from '../lib/access.js';
+import { isSessionStaff } from '../lib/socialAccess.js';
+import { requirePlayerWrite, requireSocialStaff } from '../lib/socialSessionGuard.js';
 import {
   assertChannelAccess,
   listAccessibleChannels,
@@ -572,10 +573,7 @@ router.post(
       }
 
       // Verify the CALLER belongs to the session (trainer/admin/participant).
-      const access = await assertSessionAccess(sessionId, user);
-      if (!access.ok) {
-        return res.status(access.status).json({ error: access.error });
-      }
+      if (!(await requirePlayerWrite(res, sessionId, user))) return;
 
       // Verify recipient is a participant
       const { data: recipient, error: recipientError } = await supabaseAdmin
@@ -884,6 +882,7 @@ router.post('/:channelId/read', requireAuth, async (req: AuthenticatedRequest, r
     const user = req.user!;
     const access = await assertChannelAccess(channelId, user);
     if (!access.ok) return res.status(access.status).json({ error: access.error });
+    if (!(await requirePlayerWrite(res, access.channel.session_id, user))) return;
 
     const at = new Date().toISOString();
     const { error } = await supabaseAdmin
@@ -931,9 +930,9 @@ router.post(
       const user = req.user!;
       const { stakeholder_id } = req.body as { stakeholder_id: string };
 
-      const access = await assertSessionAccess(sessionId, user);
-      if (!access.ok) return res.status(access.status).json({ error: access.error });
-      const isTrainer = access.session?.trainer_id === user.id || user.role === 'admin';
+      const session = await requirePlayerWrite(res, sessionId, user);
+      if (!session) return;
+      const isTrainer = isSessionStaff(user, session);
 
       const { canUserSeeStakeholder } = await import('../services/stakeholderService.js');
       const { toPlayerVisible } = await import('../lib/stakeholderContract.js');
@@ -1006,6 +1005,7 @@ router.post(
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can create channels' });
       }
+      if (!(await requireSocialStaff(res, session_id, user))) return;
 
       const { data, error } = await supabaseAdmin
         .from('chat_channels')
@@ -1049,6 +1049,7 @@ router.post(
         return res.status(channelAccess.status).json({ error: channelAccess.error });
       }
       const channel: ChannelRow = channelAccess.channel;
+      if (!(await requirePlayerWrite(res, channel.session_id, user))) return;
 
       if (reply_to) {
         const { data: referenced, error: referencedError } = await supabaseAdmin

@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
+import { requirePlayerWrite, requireSocialRead } from '../lib/socialSessionGuard.js';
 
 const router = Router();
 
@@ -13,6 +14,8 @@ const router = Router();
 router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const platformFilter = req.query.platform as string | undefined;
 
     let query = supabaseAdmin
@@ -44,6 +47,14 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 router.get('/:groupId/posts', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { groupId } = req.params;
+    const user = req.user!;
+    const { data: group } = await supabaseAdmin
+      .from('sim_groups')
+      .select('session_id')
+      .eq('id', groupId)
+      .maybeSingle();
+    if (!group?.session_id) return res.status(404).json({ error: 'Group not found' });
+    if (!(await requireSocialRead(res, group.session_id as string, user))) return;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const offset = (page - 1) * limit;
@@ -110,6 +121,17 @@ router.post('/:groupId/posts', requireAuth, async (req: AuthenticatedRequest, re
       return res.status(400).json({ error: 'session_id and content are required' });
     }
 
+    const { data: group } = await supabaseAdmin
+      .from('sim_groups')
+      .select('session_id')
+      .eq('id', groupId)
+      .maybeSingle();
+    if (!group?.session_id) return res.status(404).json({ error: 'Group not found' });
+    if (session_id !== group.session_id) {
+      return res.status(400).json({ error: 'Group is not in that session' });
+    }
+    if (!(await requirePlayerWrite(res, group.session_id as string, user))) return;
+
     const displayName = displayNameOf(user);
     const handle = handleFor(displayName);
 
@@ -163,6 +185,10 @@ router.post('/:groupId/join', requireAuth, async (req: AuthenticatedRequest, res
     if (fetchError || !group) {
       return res.status(404).json({ error: 'Group not found' });
     }
+    if (session_id && session_id !== group.session_id) {
+      return res.status(400).json({ error: 'Group is not in that session' });
+    }
+    if (!(await requirePlayerWrite(res, group.session_id as string, user))) return;
 
     const { error: updateError } = await supabaseAdmin
       .from('sim_groups')
@@ -189,16 +215,18 @@ router.post('/:groupId/join', requireAuth, async (req: AuthenticatedRequest, res
 router.post('/:groupId/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { postId } = req.params;
+    const user = req.user!;
 
     const { data: post, error: fetchError } = await supabaseAdmin
       .from('sim_group_posts')
-      .select('id, like_count')
+      .select('id, like_count, session_id')
       .eq('id', postId)
       .single();
 
     if (fetchError || !post) {
       return res.status(404).json({ error: 'Post not found' });
     }
+    if (!(await requirePlayerWrite(res, post.session_id as string, user))) return;
 
     const { error: updateError } = await supabaseAdmin
       .from('sim_group_posts')
