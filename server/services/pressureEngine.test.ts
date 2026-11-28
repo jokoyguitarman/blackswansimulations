@@ -1,6 +1,10 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseMove, type PageProgress } from './pressureEngineService.js';
+import {
+  chooseMove,
+  selectLeastRecentlyPosted,
+  type PageProgress,
+} from './pressureEngineService.js';
 
 const p = (over: Partial<PageProgress> = {}): PageProgress => ({
   minutesSinceLastPost: Infinity,
@@ -14,6 +18,22 @@ const p = (over: Partial<PageProgress> = {}): PageProgress => ({
   decisionTouched: false,
   escalationRisk: 30,
   ...over,
+});
+
+describe('pressure tick cap', () => {
+  test('keeps the least-recently posted pages and rotates ties', () => {
+    const pages = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const posted = new Map<string, number>([
+      ['c', 30],
+      ['d', 10],
+      ['e', 50],
+    ]);
+    const chosen = selectLeastRecentlyPosted(pages, (key) => posted.get(key) ?? null, 4);
+    assert.deepEqual(chosen, ['a', 'b', 'f', 'd']);
+    const rotated = [...pages.slice(1), pages[0]];
+    const tied = selectLeastRecentlyPosted(rotated, () => null, 4);
+    assert.deepEqual(tied, ['b', 'c', 'd', 'e']);
+  });
 });
 
 describe('pressure registers', () => {

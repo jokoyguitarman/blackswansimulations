@@ -1,4 +1,6 @@
 import { env } from '../../env.js';
+import { withAiCallCount } from '../../lib/aiCallScope.js';
+import { logger } from '../../lib/logger.js';
 import { coerceBlueprint } from '../blueprint/blueprintTypes.js';
 import {
   crisisContextFrom,
@@ -44,6 +46,14 @@ function blueprintFor(request: BuildRequest) {
     : null;
 }
 
+async function runStage<T>(stage: string, ctx: StageContext, fn: () => Promise<T>): Promise<T> {
+  const { result, calls } = await withAiCallCount(fn);
+  const line = `${stage}: ${calls} AI calls`;
+  logger.info(line);
+  ctx.log('progress', line);
+  return result;
+}
+
 /** One runner per stage. Each wraps the existing pipeline and stops if the caller aborted. */
 export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
   return {
@@ -58,7 +68,7 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         duration: request.duration,
         org_name: request.org_name,
       });
-      const result = await runNpcsPipeline(orgs, crisis);
+      const result = await runStage('characters', ctx, () => runNpcsPipeline(orgs, crisis));
       throwIfAborted(ctx.signal);
       ctx.log('progress', charactersReadyLine(result.personas.length));
       return {
@@ -80,16 +90,18 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
         duration: request.duration,
         org_name: request.org_name,
       });
-      const result = await runStorylinePipeline(
-        orgs,
-        crisis,
-        input.personas,
-        input.fact_sheet,
-        blueprintFor(request),
-        (msg) => {
-          const line = formatProgress(msg);
-          if (line) ctx.log('progress', line);
-        },
+      const result = await runStage('storyline', ctx, () =>
+        runStorylinePipeline(
+          orgs,
+          crisis,
+          input.personas,
+          input.fact_sheet,
+          blueprintFor(request),
+          (msg) => {
+            const line = formatProgress(msg);
+            if (line) ctx.log('progress', line);
+          },
+        ),
       );
       throwIfAborted(ctx.signal);
       if (result.stakeholders.length > 0) {
@@ -104,18 +116,20 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
       if (input.stage !== 'convergence')
         throw new Error('convergence runner expected convergence input');
       const orgs = assertOrgs(input.request);
-      const result = await runConvergencePipeline(
-        orgs,
-        input.crisisCtx,
-        input.teamStorylines,
-        input.personas,
-        input.factSheet,
-        blueprintFor(input.request),
-        undefined,
-        {
-          stakeholders: input.stakeholders,
-          stakeholderInjects: input.stakeholderInjects,
-        },
+      const result = await runStage('convergence', ctx, () =>
+        runConvergencePipeline(
+          orgs,
+          input.crisisCtx,
+          input.teamStorylines,
+          input.personas,
+          input.factSheet,
+          blueprintFor(input.request),
+          undefined,
+          {
+            stakeholders: input.stakeholders,
+            stakeholderInjects: input.stakeholderInjects,
+          },
+        ),
       );
       throwIfAborted(ctx.signal);
       return result;
@@ -124,17 +138,19 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
       if (input.stage !== 'pages') throw new Error('pages runner expected pages input');
       const request = input.request;
       const orgs = assertOrgs(request, input.pressure_organisations);
-      const result = await runOrgPagePipeline(
-        orgs,
-        request.crisis_type,
-        request.brand_logo_url,
-        request.auto_antagonist !== false,
-        (msg) => ctx.log('progress', msg),
-        {
-          stakeholders: input.stakeholders,
-          factSheet: input.fact_sheet,
-          crisis: input.crisis,
-        },
+      const result = await runStage('pages', ctx, () =>
+        runOrgPagePipeline(
+          orgs,
+          request.crisis_type,
+          request.brand_logo_url,
+          request.auto_antagonist !== false,
+          (msg) => ctx.log('progress', msg),
+          {
+            stakeholders: input.stakeholders,
+            factSheet: input.fact_sheet,
+            crisis: input.crisis,
+          },
+        ),
       );
       throwIfAborted(ctx.signal);
       return {

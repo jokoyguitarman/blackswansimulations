@@ -1,4 +1,6 @@
+import { env } from '../env.js';
 import { logger } from '../lib/logger.js';
+import { limitConcurrency } from '../lib/limitConcurrency.js';
 import {
   callSocialCrisisAI,
   type BrandedHistoryPost,
@@ -109,8 +111,17 @@ export async function generatePressureOrgPages(
     if (!byCountry.has(p.country)) byCountry.set(p.country, []);
     byCountry.get(p.country)!.push(p);
   }
-  const results = await Promise.all(
-    Array.from(byCountry.entries()).map(async ([country, list]) => {
+  const batchSize = Math.max(1, env.warroomOrgPageBatch);
+  const batches: Array<{ country: string; list: NormalisedPressureOrg[] }> = [];
+  for (const [country, list] of byCountry) {
+    for (let offset = 0; offset < list.length; offset += batchSize) {
+      batches.push({ country, list: list.slice(offset, offset + batchSize) });
+    }
+  }
+  const results = await limitConcurrency(
+    batches,
+    env.warroomGenConcurrency,
+    async ({ country, list }) => {
       onProgress?.(`Generating pressure-group pages for ${country}...`);
       const targetsLine = (p: NormalisedPressureOrg) =>
         p.targets_org_keys
@@ -148,7 +159,7 @@ Everything authentic to ${country}. Return ONLY valid JSON: { "pages": [ ... ] }
           protagonists,
         ),
       );
-    }),
+    },
   );
   const configs = results.flat();
   logger.info({ count: configs.length }, 'pressure_pages_generated');

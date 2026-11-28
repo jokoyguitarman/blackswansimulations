@@ -19,6 +19,9 @@ import {
   type OrgTeamCharter,
 } from './scenarioOrgModel.js';
 import { countryDialPrefix } from '../../shared/countries.js';
+import { env } from '../env.js';
+import { limitConcurrency } from '../lib/limitConcurrency.js';
+import { KEY_PERSONAS_PER_COUNTRY, PERSONA_BACKGROUND_BATCH } from './personaBudget.js';
 
 /**
  * Multi-organisation generation orchestration (contract §5): the parts of the
@@ -138,9 +141,6 @@ Detailed context: ${crisis.context}`,
 
 // ─── Per country: the public crowd ───────────────────────────────────────────
 
-const KEY_PERSONAS_PER_COUNTRY = 14;
-const BACKGROUND_BATCH = 40;
-
 export async function generatePersonasForCountry(
   crisis: CrisisContext,
   country: string,
@@ -186,14 +186,17 @@ Return ONLY valid JSON: { "personas": [ { "handle": "@...", "name": "...", "type
   logger.info({ country, added: personas.length }, 'crowd_key_voices_complete');
 
   // Background batches until the target (never fail on shortfall).
-  const batches = Math.max(0, Math.ceil((targetCount - personas.length) / BACKGROUND_BATCH));
+  const batches = Math.max(
+    0,
+    Math.ceil((targetCount - personas.length) / PERSONA_BACKGROUND_BATCH),
+  );
   for (let b = 0; b < batches; b++) {
     onProgress?.(`${country}: background crowd batch ${b + 1}/${batches}...`);
     const existing = Array.from(taken.handles).slice(-120);
     const bgResult = await callSocialCrisisAI(
       `You are generating BACKGROUND social media users in ${country} for a crisis simulation: regular people who mix crisis reactions with normal life content.
 
-Generate exactly ${BACKGROUND_BATCH} unique personas. Names culturally appropriate for ${country}. Handles unique (lowercase letters/digits/underscore).
+Generate exactly ${PERSONA_BACKGROUND_BATCH} unique personas. Names culturally appropriate for ${country}. Handles unique (lowercase letters/digits/underscore).
 ${existing.length > 0 ? `Do NOT reuse any of these handles: ${existing.join(', ')}` : ''}
 
 Each: handle, name, type "npc_public", personality (1 sentence), bias ("angry"|"sympathetic"|"indifferent"|"skeptical"|"supportive"|"none"), follower_count (50-2000), normal_interests (2-3 topics).
@@ -273,34 +276,38 @@ export async function buildOrgCharters(
     .map((t) => t.function_key);
   const customs = org.teams.filter((t) => t.is_custom);
 
-  const [presets, customCharters] = await Promise.all([
-    presetFunctions.length > 0
-      ? adaptTeamCharters(
-          crisis.crisisType,
-          crisis.context,
-          org.country,
-          org.display_name,
-          presetFunctions,
-          orgCtx,
-        )
-      : Promise.resolve([]),
-    Promise.all(
-      customs.map((t) =>
-        synthesizeTeamCharter(
-          t.function_key,
-          t.description,
-          {
-            crisisType: crisis.crisisType,
-            context: crisis.context,
-            country: org.country,
-            orgName: org.display_name,
-          },
-          t.is_public_voice,
-          orgCtx,
-        ),
-      ),
-    ),
-  ]);
+  const jobs = [
+    ...(presetFunctions.length > 0 ? [{ kind: 'preset' as const }] : []),
+    ...customs.map((team) => ({ kind: 'custom' as const, team })),
+  ];
+  const produced = await limitConcurrency(jobs, env.warroomGenConcurrency, async (job) => {
+    if (job.kind === 'preset') {
+      const charters = await adaptTeamCharters(
+        crisis.crisisType,
+        crisis.context,
+        org.country,
+        org.display_name,
+        presetFunctions,
+        orgCtx,
+      );
+      return { kind: 'preset' as const, charters };
+    }
+    const charter = await synthesizeTeamCharter(
+      job.team.function_key,
+      job.team.description,
+      {
+        crisisType: crisis.crisisType,
+        context: crisis.context,
+        country: org.country,
+        orgName: org.display_name,
+      },
+      job.team.is_public_voice,
+      orgCtx,
+    );
+    return { kind: 'custom' as const, charter };
+  });
+  const presets = produced.flatMap((row) => (row.kind === 'preset' ? row.charters : []));
+  const customCharters = produced.flatMap((row) => (row.kind === 'custom' ? [row.charter] : []));
 
   const byFunction = new Map<string, (typeof presets)[number]>();
   for (const p of presets) byFunction.set(p.team_name, p);

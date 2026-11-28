@@ -107,6 +107,33 @@ export function chooseMove(register: PagePosture['register'], p: PageProgress): 
   return 'skip';
 }
 
+/** Never-posted pages sort first. Equal times keep the incoming order. */
+export function selectLeastRecentlyPosted<T>(
+  items: readonly T[],
+  lastPostedAt: (item: T) => number | null,
+  max: number,
+): T[] {
+  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  if (cap === 0 || items.length === 0) return [];
+  return items
+    .map((item, index) => ({ item, index, at: lastPostedAt(item) }))
+    .sort((a, b) => {
+      if (a.at == null && b.at != null) return -1;
+      if (a.at != null && b.at == null) return 1;
+      if (a.at != null && b.at != null && a.at !== b.at) return a.at - b.at;
+      return a.index - b.index;
+    })
+    .slice(0, cap)
+    .map((row) => row.item);
+}
+
+function rotate<T>(items: readonly T[], offset: number): T[] {
+  if (items.length === 0) return [];
+  const n = ((Math.floor(offset) % items.length) + items.length) % items.length;
+  if (n === 0) return [...items];
+  return [...items.slice(n), ...items.slice(0, n)];
+}
+
 interface PageRow {
   org_key: string;
   platform: string;
@@ -180,10 +207,23 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
 
   // Group by org; only pages with a posture (pressure or aligned) belong to this engine.
   const orgKeys = Array.from(new Set(pageRows.map((r) => r.org_key)));
-  for (const orgKey of orgKeys) {
+  const eligible = orgKeys.filter((orgKey) => {
     const cfg = configByKey.get(orgKey);
-    if (!cfg || !cfg.posture) continue;
-    if (cfg.role === 'protagonist' && cfg.operation !== 'ai') continue;
+    if (!cfg || !cfg.posture) return false;
+    if (cfg.role === 'protagonist' && cfg.operation !== 'ai') return false;
+    return true;
+  });
+  const lastPosted = await lastPostedAtByOrg(sessionId, pageRows);
+  // Same-minute ties rotate so a tick cap does not always refresh the same pages.
+  const rotated = rotate(eligible, Math.floor(elapsedMinutes));
+  const chosen = selectLeastRecentlyPosted(
+    rotated,
+    (orgKey) => lastPosted.get(orgKey) ?? null,
+    env.pressureEngineMaxPagesPerTick,
+  );
+  for (const orgKey of chosen) {
+    const cfg = configByKey.get(orgKey);
+    if (!cfg) continue;
     const rows = pageRows.filter((r) => r.org_key === orgKey);
     try {
       await runPage(
@@ -199,6 +239,35 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
       logger.warn({ err, sessionId, orgKey }, 'pressure engine: page tick failed');
     }
   }
+}
+
+async function lastPostedAtByOrg(
+  sessionId: string,
+  pageRows: PageRow[],
+): Promise<Map<string, number>> {
+  const last = new Map<string, number>();
+  const handles = pageRows.map((row) => row.page_handle).filter(Boolean);
+  if (handles.length === 0) return last;
+  const handleToOrg = new Map(pageRows.map((row) => [row.page_handle, row.org_key]));
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('social_posts')
+      .select('author_handle, created_at')
+      .eq('session_id', sessionId)
+      .in('author_handle', handles)
+      .order('created_at', { ascending: false })
+      .limit(Math.max(handles.length * 3, 40));
+    if (error || !data) return last;
+    for (const post of data) {
+      const orgKey = handleToOrg.get(String(post.author_handle));
+      if (!orgKey || last.has(orgKey)) continue;
+      const at = new Date(String(post.created_at)).getTime();
+      if (Number.isFinite(at)) last.set(orgKey, at);
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'pressure engine: recent posts unavailable');
+  }
+  return last;
 }
 
 async function runPage(
