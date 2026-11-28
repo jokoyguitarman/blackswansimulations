@@ -13,6 +13,12 @@ const RESPONSE_BRANCH_BATCH = 10;
 const STAKEHOLDER_CHUNK = 2;
 /** Page-generation batch when the caller does not pass one (`WARROOM_ORG_PAGE_BATCH`). */
 const PAGE_BATCH_DEFAULT = 4;
+/** One dependency-map call at or below this many playable teams (`WARROOM_DEPENDENCY_MAP_BATCH_TEAMS`). */
+const DEPENDENCY_MAP_BATCH_DEFAULT = 16;
+/** Max upstream edges per downstream team (`WARROOM_DEPENDENCY_UPSTREAM_PER_TEAM`). */
+const DEPENDENCY_UPSTREAM_DEFAULT = 3;
+/** Edges per consequence call (`WARROOM_DEPENDENCY_CONSEQUENCE_BATCH`). */
+const DEPENDENCY_CONSEQUENCE_BATCH_DEFAULT = 8;
 
 export interface BuildEstimateInput {
   countries: number;
@@ -30,6 +36,9 @@ export interface BuildEstimateOptions {
   pageBatch: number;
   personaCap: number;
   personaFloor: number;
+  dependencyMapBatchTeams: number;
+  dependencyUpstreamPerTeam: number;
+  dependencyConsequenceBatch: number;
 }
 
 export interface BuildCallBreakdown {
@@ -45,6 +54,8 @@ export interface BuildCallBreakdown {
   backbone: number;
   convergence: number;
   intel: number;
+  dependencyMap: number;
+  dependencyConsequences: number;
   responseBranches: number;
   primaryPage: number;
   secondaryPages: number;
@@ -81,7 +92,38 @@ function estimateOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOpt
     pageBatch: over?.pageBatch ?? PAGE_BATCH_DEFAULT,
     personaCap: over?.personaCap ?? PERSONA_PER_COUNTRY_CAP,
     personaFloor: over?.personaFloor ?? PERSONA_PER_COUNTRY_FLOOR,
+    dependencyMapBatchTeams: over?.dependencyMapBatchTeams ?? DEPENDENCY_MAP_BATCH_DEFAULT,
+    dependencyUpstreamPerTeam: over?.dependencyUpstreamPerTeam ?? DEPENDENCY_UPSTREAM_DEFAULT,
+    dependencyConsequenceBatch: over?.dependencyConsequenceBatch ?? DEPENDENCY_CONSEQUENCE_BATCH_DEFAULT,
   };
+}
+
+/**
+ * Map calls: 1 when the cast fits in one batch or there is a single organisation,
+ * otherwise one intra-org call per organisation plus one cross-org call
+ * (every organisation is assumed to have at least two teams).
+ * Edges are capped at ceil(1.5 × teams) and at upstream-per-team × teams.
+ * Consequence calls are batches of those edges.
+ */
+export function dependencyCallsFor(
+  teams: number,
+  orgs: number,
+  options?: Partial<
+    Pick<
+      BuildEstimateOptions,
+      'dependencyMapBatchTeams' | 'dependencyUpstreamPerTeam' | 'dependencyConsequenceBatch'
+    >
+  >,
+): { map: number; consequences: number } {
+  const teamCount = nonNegative(teams);
+  if (teamCount < 2) return { map: 0, consequences: 0 };
+  const batch = Math.max(1, nonNegative(options?.dependencyMapBatchTeams ?? DEPENDENCY_MAP_BATCH_DEFAULT) || 1);
+  const upstream = Math.max(1, nonNegative(options?.dependencyUpstreamPerTeam ?? DEPENDENCY_UPSTREAM_DEFAULT) || 1);
+  const size = Math.max(1, nonNegative(options?.dependencyConsequenceBatch ?? DEPENDENCY_CONSEQUENCE_BATCH_DEFAULT) || 1);
+  const orgCount = nonNegative(orgs);
+  const map = teamCount <= batch || orgCount <= 1 ? 1 : orgCount + 1;
+  const edges = Math.min(Math.ceil(teamCount * 1.5), upstream * teamCount);
+  return { map, consequences: edges > 0 ? Math.ceil(edges / size) : 0 };
 }
 
 /**
@@ -96,7 +138,10 @@ function estimateOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOpt
  * - one cast call per organisation (a fresh cast has carrier gaps);
  * - one pressure-page call per pressure country (that country's groups fit in one batch);
  * - no named rivals (`alliesAndRivals === 0`) still costs one call to invent a rival;
- * - stakeholder and branch calls assume the first attempt succeeds.
+ * - stakeholder and branch calls assume the first attempt succeeds;
+ * - dependency generation is 1 map call up to WARROOM_DEPENDENCY_MAP_BATCH_TEAMS
+ *   (otherwise orgs + 1) plus one consequence call per 8 estimated edges
+ *   (ceil(1.5 × teams), also capped by the upstream-per-team budget).
  *
  * Defaults match the server env defaults. The server wrapper passes the live
  * `WARROOM_ORG_PAGE_BATCH` and `SOCIAL_PERSONAS_TOTAL_MAX`.
@@ -124,6 +169,7 @@ export function explainBuildCalls(
   );
   const personas = countries * personaAiCalls(perCountry);
   const building = orgs > 0;
+  const dependencies = building ? dependencyCallsFor(teams, orgs, opts) : { map: 0, consequences: 0 };
   // Invention does not add a call: it rides on the first batch, or is the only
   // batch when the trainer named neither allies nor rivals.
   const secondaryPages = batchOrgPages(
@@ -146,6 +192,8 @@ export function explainBuildCalls(
     backbone: building ? 1 : 0,
     convergence: building ? 1 : 0,
     intel: building && teams >= 2 ? 1 : 0,
+    dependencyMap: dependencies.map,
+    dependencyConsequences: dependencies.consequences,
     responseBranches: building && parents > 0 ? Math.ceil(parents / RESPONSE_BRANCH_BATCH) : 0,
     primaryPage: building ? 1 : 0,
     secondaryPages: building ? secondaryPages : 0,

@@ -1190,6 +1190,8 @@ export async function generateConvergenceLayer(
     orgName?: string;
   },
   blueprint?: ScenarioBlueprint | null,
+  /** One line per dependency. The prompt is told not to duplicate these edges. */
+  dependencySummary?: string,
 ): Promise<{
   sharedInjects: SocialInject[];
   convergenceGates: SocialInject[];
@@ -1230,6 +1232,11 @@ ${catalogPromptBlock(SCENARIO_CONDITION_PLATFORMS)}
 
 Storyline injects already created (design the shared chaos and convergence gates as organic consequences of these beats):
 ${storylineSummary}
+${
+  dependencySummary?.trim()
+    ? `\nTeam dependencies already designed. Do not duplicate these dependencies:\n${dependencySummary.trim()}\n`
+    : ''
+}
 
 NPCs: ${npcHandles}
 

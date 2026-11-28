@@ -14,9 +14,12 @@ import {
   collectConditionKeys,
   parseConditionKey,
   retainKnownConditions,
+  slugifyTeamName,
   type ConditionDef,
   type ParsedCondition,
 } from './conditionCatalog.js';
+import { validateDependencies, type ActiveTeam } from '../dependencies/dependencyCore.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 
 export interface ConditionalInjectIssue {
   code: string;
@@ -98,6 +101,10 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
   duration_minutes?: number | null;
   injects: readonly T[];
   stakeholders?: readonly { id: string; mood_ladder?: unknown }[] | null;
+  /** Active roster. When set, a `|team=` slug that matches nobody is MO-COND-011. */
+  teams?: readonly ActiveTeam[] | null;
+  /** `initial_state.team_dependencies`. Validated here, and used by the cycle check. */
+  team_dependencies?: unknown;
 }): ConditionalInjectValidation<T> {
   const issues: ConditionalInjectIssue[] = [];
   const duration = scenario.duration_minutes;
@@ -118,10 +125,68 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
     reportPhone(inject, path, issues);
     reportNpcDm(inject, path, issues);
   });
-  reportCycles(withParents, apps, issues);
+  const dependencyEdges = reportDependencies(scenario.team_dependencies, scenario.teams, withParents, scenario.duration_minutes, issues);
+  reportUnknownTeamSlugs(withParents, scenario.teams, issues);
+  reportCycles(withParents, apps, issues, dependencyEdges);
   reportChainsAndLadders(withParents, scenario.stakeholders, scenario.duration_minutes, issues);
 
   return { injects: [...withParents], issues };
+}
+
+function reportDependencies(
+  document: unknown,
+  teams: readonly ActiveTeam[] | null | undefined,
+  injects: readonly ConditionalInjectInput[],
+  duration: number | null | undefined,
+  issues: ConditionalInjectIssue[],
+): TeamDependencyEdge[] {
+  if (document == null) return [];
+  const read = document as { edges?: unknown };
+  const edges = Array.isArray(read?.edges) ? read.edges : document;
+  const refs = injects.flatMap((inject) => {
+    const key = inject.delivery_config?.inject_key;
+    if (typeof key !== 'string' || !key) return [];
+    return [
+      {
+        inject_key: key,
+        trigger_time_minutes: inject.trigger_time_minutes ?? null,
+        conditional: inject.trigger_time_minutes == null,
+        condition_keys: collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel),
+      },
+    ];
+  });
+  const durationArg = typeof duration === 'number' && Number.isFinite(duration) ? duration : null;
+  const result = validateDependencies(edges, teams ?? [], refs, durationArg);
+  for (const item of result.issues) {
+    issues.push({ code: item.code, path: item.path, message: item.message, severity: item.severity });
+  }
+  return result.edges;
+}
+
+function reportUnknownTeamSlugs(
+  injects: readonly ConditionalInjectInput[],
+  teams: readonly ActiveTeam[] | null | undefined,
+  issues: ConditionalInjectIssue[],
+): void {
+  if (!teams) return;
+  const slugs = new Set(teams.map((team) => slugifyTeamName(team.team_name)).filter((slug) => slug));
+  injects.forEach((inject, index) => {
+    const path = injectPath(inject, index);
+    const seen = new Set<string>();
+    for (const key of collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel)) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const parsed = parseConditionKey(key);
+      if ('error' in parsed || !parsed.scope?.team) continue;
+      if (slugs.has(parsed.scope.team)) continue;
+      issues.push({
+        code: 'MO-COND-011',
+        path,
+        severity: 'error',
+        message: `Condition ${key} names team "${parsed.scope.team}", which is not an active team`,
+      });
+    }
+  });
 }
 
 function keepAfterUnknownKeys(inject: ConditionalInjectInput): boolean {
@@ -559,23 +624,49 @@ function reportLadder(
   }
 }
 
+function dependencyIdFromKey(key: string): string | null {
+  const body = key.split('|')[0]?.trim() ?? '';
+  if (!body.startsWith('dependency_')) return null;
+  const rest = body.slice('dependency_'.length);
+  const colon = rest.indexOf(':');
+  if (colon < 0) return null;
+  const id = (rest.slice(colon + 1).split(':')[0] ?? '').trim();
+  return /^dep_[a-z0-9_]+$/.test(id) ? id : null;
+}
+
+function brokenWhenKeys(edge: TeamDependencyEdge): string[] {
+  return 'all' in edge.broken_when ? edge.broken_when.all : edge.broken_when.conditions;
+}
+
 function reportCycles(
   injects: readonly ConditionalInjectInput[],
   apps: ReadonlyMap<string, string>,
   issues: ConditionalInjectIssue[],
+  dependencyEdges: readonly TeamDependencyEdge[] = [],
 ): void {
+  const byDep = new Map(dependencyEdges.map((edge) => [edge.id, edge]));
   const graph = new Map<string, string[]>();
   for (const inject of injects) {
     const key = inject.delivery_config?.inject_key;
     if (typeof key !== 'string' || !key) continue;
     const edges = graph.get(key) ?? [];
     graph.set(key, edges);
+    const link = (ref: string, allowSelf: boolean) => {
+      if ((!allowSelf && ref === key) || !apps.has(ref) || edges.includes(ref)) return;
+      edges.push(ref);
+    };
     for (const condition of collectConditionKeys(inject.conditions_to_appear, null)) {
       const parsed = parseConditionKey(condition);
-      if ('error' in parsed) continue;
-      for (const ref of injectKeyArgs(parsed)) {
-        if (ref === key || !apps.has(ref)) continue;
-        if (!edges.includes(ref)) edges.push(ref);
+      if (!('error' in parsed)) {
+        for (const ref of injectKeyArgs(parsed)) link(ref, false);
+      }
+      const depId = dependencyIdFromKey(condition);
+      const dependency = depId ? byDep.get(depId) : undefined;
+      if (!dependency) continue;
+      for (const broken of brokenWhenKeys(dependency)) {
+        const parsedBroken = parseConditionKey(broken, { allowPlaceholders: true });
+        if ('error' in parsedBroken) continue;
+        for (const ref of injectKeyArgs(parsedBroken)) link(ref, true);
       }
     }
   }

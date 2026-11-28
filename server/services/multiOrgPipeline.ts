@@ -8,6 +8,11 @@ import {
 import { personasForCountryCount } from './personaBudget.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import {
+  dependencyTeamsFrom,
+  generateTeamDependencies,
+  intelItemsFromInjects,
+} from './generation/teamDependencyService.js';
+import {
   generateConvergenceLayer,
   generateIntelDependencies,
   generateUnifiedStoryline,
@@ -660,6 +665,7 @@ export interface ConvergencePipelineResult {
     escalation_risk: string;
   };
   intel_injects: Record<string, SocialInject[]>;
+  team_dependencies?: { v: 1; edges: unknown[] } | null;
 }
 
 /**
@@ -670,6 +676,7 @@ export interface ConvergenceBranchInput {
   stakeholders?: Stakeholder[];
   stakeholderInjects?: SocialInject[];
   client?: ResponseBranchClient;
+  teamCharters?: TeamCharterWire[];
 }
 
 export async function runConvergencePipeline(
@@ -711,37 +718,93 @@ export async function runConvergencePipeline(
     ? orgsResult.orgs.flatMap((o) => o.teams.map((t) => t.team_name))
     : Object.keys(teamStorylines).filter((k) => k !== 'Shared');
 
-  const [result, intelResult] = await Promise.all([
-    limitConcurrency([0], env.warroomGenConcurrency, () =>
-      generateConvergenceLayer(teamStorylines, personas, factSheet, crisisContext, blueprint),
-    ).then((rows) => rows[0]),
-    limitConcurrency([0], env.warroomGenConcurrency, () =>
-      generateIntelDependencies(
-        teamStorylines,
-        personas,
-        factSheet,
-        crisisContext,
-        validTeamNames,
-        orgSummary,
-      ).catch((err: unknown) => {
-        logger.warn(
-          jobId ? { err, jobId } : { err },
-          'Intel dependency generation failed (non-critical)',
-        );
-        return {
-          intelInjects: {} as Record<string, SocialInject[]>,
-          intelGates: [] as SocialInject[],
-        };
-      }),
-    ).then((rows) => rows[0]),
-  ]);
+  const intelResult = await limitConcurrency([0], env.warroomGenConcurrency, () =>
+    generateIntelDependencies(
+      teamStorylines,
+      personas,
+      factSheet,
+      crisisContext,
+      validTeamNames,
+      orgSummary,
+    ).catch((err: unknown) => {
+      logger.warn(
+        jobId ? { err, jobId } : { err },
+        'Intel dependency generation failed (non-critical)',
+      );
+      return {
+        intelInjects: {} as Record<string, SocialInject[]>,
+        intelGates: [] as SocialInject[],
+      };
+    }),
+  ).then((rows) => rows[0]);
 
-  // Paired intel gates ride the convergence-gate bucket; intel emails are
-  // returned separately so the wizard can merge them into team storylines.
+  // After intel, before the convergence prompt, so the prompt can avoid duplicating edges.
+  const dependencyTeams = dependencyTeamsFrom({
+    orgs: orgsResult?.orgs,
+    storylineTeams: validTeamNames,
+    charters: branchInput?.teamCharters,
+  });
+  let dependencies: Awaited<ReturnType<typeof generateTeamDependencies>> | null = null;
+  if (dependencyTeams.filter((team) => team.playable !== false).length >= 2) {
+    try {
+      dependencies = await generateTeamDependencies({
+        teams: dependencyTeams,
+        crisis: {
+          crisisType: crisisContext.crisisType,
+          duration: crisisContext.duration,
+          context: crisisContext.context,
+          country: crisisContext.country,
+        },
+        facts: factSheet.confirmed_facts ?? [],
+        storylines: teamStorylines,
+        intelItems: intelItemsFromInjects(intelResult.intelInjects),
+        stakeholders: (branchInput?.stakeholders ?? []).map((stakeholder) => ({
+          id: stakeholder.id,
+          name: stakeholder.name,
+        })),
+      });
+    } catch (err) {
+      logger.warn(
+        jobId ? { err, jobId } : { err },
+        'Team dependency generation failed (non-critical)',
+      );
+    }
+  }
+
+  const result = await limitConcurrency([0], env.warroomGenConcurrency, () =>
+    generateConvergenceLayer(
+      teamStorylines,
+      personas,
+      factSheet,
+      crisisContext,
+      blueprint,
+      dependencies?.summary,
+    ),
+  ).then((rows) => rows[0]);
+
+  const asksByTeam: Record<string, SocialInject[]> = {};
+  for (const ask of dependencies?.asks ?? []) {
+    const team = ask.target_teams[0];
+    if (!team) continue;
+    asksByTeam[team] = [...(asksByTeam[team] ?? []), ask];
+  }
+  const intelWithAsks: Record<string, SocialInject[]> = { ...intelResult.intelInjects };
+  for (const [team, asks] of Object.entries(asksByTeam)) {
+    intelWithAsks[team] = [...(intelWithAsks[team] ?? []), ...asks];
+  }
+
+  // Paired intel gates ride the convergence-gate bucket; intel emails and
+  // dependency asks are returned separately so the wizard merges them into team storylines.
   const data: ConvergencePipelineResult = {
     ...result,
-    convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
-    intel_injects: intelResult.intelInjects,
+    convergenceGates: [
+      ...result.convergenceGates,
+      ...intelResult.intelGates,
+      ...(dependencies?.consequences ?? []),
+      ...(dependencies?.positives ?? []),
+    ],
+    intel_injects: intelWithAsks,
+    team_dependencies: dependencies?.team_dependencies ?? null,
   };
   if (jobId) {
     logger.info(
@@ -772,6 +835,10 @@ export async function runConvergencePipeline(
       ],
       branchSink: data.convergenceGates,
       client: branchInput?.client,
+      roster: validTeamNames,
+      dependencies: dependencies
+        ? { edges: dependencies.team_dependencies.edges, teams: validTeamNames }
+        : null,
     });
   } catch (err) {
     logger.warn({ err, jobId }, 'Response branch generation failed (non-critical)');

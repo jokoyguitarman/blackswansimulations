@@ -1,0 +1,507 @@
+/**
+ * War Room dependency map and its consequence injects.
+ * Tests pass a fake client. The default client is the shared chat client.
+ */
+
+import { logger } from '../../lib/logger.js';
+import { env } from '../../env.js';
+import { limitConcurrency } from '../../lib/limitConcurrency.js';
+import { stampGeneratedInjectKeys } from '../../lib/injectKey.js';
+import { chatJson, systemUser } from '../ai/chatClient.js';
+import { CONVERGENCE_SUMMARY_MAX_CHARS } from '../convergenceSummary.js';
+import type { SocialInject } from '../socialCrisisGeneratorService.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import {
+  buildConsequenceInjects,
+  checkTeamNaming,
+  dependencyEdgeSummary,
+  fitText,
+  planDependencyMapCalls,
+  postProcessDependencies,
+  registerIntelEdges,
+  signalTemplatePrompt,
+  type GeneratedDependencyInject,
+  type GenerationTeam,
+  type IntelRegistrationItem,
+  type KnownInject,
+  type MapCallPlan,
+} from './teamDependenciesCore.js';
+
+const CROSS_ORG_EDGES_PER_ORG = 2;
+
+export interface DependencyChatRequest {
+  system: string;
+  user: string;
+  label: 'generator.dependencyMap' | 'generator.dependencyConsequences';
+  tier: 'standard';
+  json: true;
+}
+
+export interface DependencyClient {
+  complete(request: DependencyChatRequest): Promise<unknown>;
+}
+
+export interface DependencyCrisis {
+  crisisType: string;
+  duration: number;
+  context?: string;
+  country?: string;
+  orgName?: string;
+}
+
+export interface DependencyStakeholder {
+  id: string;
+  name?: string | null;
+}
+
+export interface GenerateTeamDependenciesInput {
+  teams: readonly GenerationTeam[];
+  crisis: DependencyCrisis;
+  facts: readonly string[];
+  storylines: Record<string, SocialInject[]>;
+  intelItems?: readonly IntelRegistrationItem[];
+  stakeholders?: readonly DependencyStakeholder[];
+}
+
+export interface GenerateTeamDependenciesOptions {
+  client?: DependencyClient;
+  concurrency?: number;
+  mapBatchTeams?: number;
+  upstreamPerTeam?: number;
+  consequenceBatch?: number;
+  summaryBudget?: number;
+}
+
+export interface GenerateTeamDependenciesResult {
+  team_dependencies: { v: 1; edges: TeamDependencyEdge[] };
+  consequences: SocialInject[];
+  positives: SocialInject[];
+  asks: SocialInject[];
+  summary: string;
+  mapCalls: number;
+  consequenceCalls: number;
+}
+
+export interface DependencyOrgSource {
+  org_key: string;
+  display_name: string;
+  operation?: string;
+  teams: ReadonlyArray<{
+    team_name: string;
+    team_uid?: string;
+    function_key?: string;
+    description?: string;
+  }>;
+}
+
+export interface DependencyCharterSource {
+  team_name: string;
+  mission?: string;
+  function_key?: string | null;
+  org_key?: string | null;
+}
+
+const defaultClient: DependencyClient = {
+  async complete(request) {
+    return chatJson({
+      tier: 'standard',
+      json: true,
+      messages: systemUser(request.system, request.user),
+      maxTokens: request.label === 'generator.dependencyMap' ? 4000 : 6000,
+      temperature: 0.7,
+      timeoutMs: 240_000,
+      retry: { attempts: 3, baseDelayMs: 750 },
+      growOnTruncation: true,
+      label: request.label,
+    });
+  },
+};
+
+export function dependencyTeamsFrom(input: {
+  orgs?: readonly DependencyOrgSource[];
+  storylineTeams?: readonly string[];
+  charters?: readonly DependencyCharterSource[];
+}): GenerationTeam[] {
+  const charters = new Map((input.charters ?? []).map((charter) => [charter.team_name, charter]));
+  const teams: GenerationTeam[] = [];
+  const seen = new Set<string>();
+  const push = (team: GenerationTeam) => {
+    if (!team.team_name.trim() || team.team_name === 'Shared' || seen.has(team.team_name)) return;
+    seen.add(team.team_name);
+    const charter = charters.get(team.team_name);
+    teams.push({
+      ...team,
+      function_name: team.function_name || charter?.function_key || null,
+      mission: team.mission || charter?.mission || null,
+      org_key: team.org_key || charter?.org_key || null,
+    });
+  };
+  for (const org of input.orgs ?? []) {
+    for (const team of org.teams) {
+      push({
+        team_name: team.team_name,
+        team_uid: team.team_uid ?? null,
+        org_key: org.org_key,
+        org_name: org.display_name,
+        function_name: team.function_key,
+        mission: team.description,
+        playable: org.operation !== 'ai',
+      });
+    }
+  }
+  if (teams.length === 0) {
+    for (const name of input.storylineTeams ?? []) push({ team_name: name, playable: true });
+  }
+  return teams;
+}
+
+export function intelItemsFromInjects(
+  intelInjects: Record<string, SocialInject[]>,
+): IntelRegistrationItem[] {
+  const items: IntelRegistrationItem[] = [];
+  for (const [holder, injects] of Object.entries(intelInjects)) {
+    for (const inject of injects) {
+      const config = inject.delivery_config;
+      const key = typeof config?.intel_key === 'string' ? config.intel_key : '';
+      if (!key) continue;
+      const needed = Array.isArray(config.intel_needed_by)
+        ? config.intel_needed_by.filter((name): name is string => typeof name === 'string')
+        : [];
+      items.push({
+        intel_key: key,
+        holder_team: holder,
+        needed_by: needed,
+        trigger_time_minutes: inject.trigger_time_minutes ?? null,
+        summary: typeof config.intel_summary === 'string' ? config.intel_summary : inject.title,
+      });
+    }
+  }
+  return items;
+}
+
+export function isTeamDependenciesDocument(
+  value: unknown,
+): value is { v: 1; edges: TeamDependencyEdge[] } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { v?: unknown; edges?: unknown };
+  return record.v === 1 && Array.isArray(record.edges);
+}
+
+export async function generateTeamDependencies(
+  input: GenerateTeamDependenciesInput,
+  options: GenerateTeamDependenciesOptions = {},
+): Promise<GenerateTeamDependenciesResult> {
+  const client = options.client ?? defaultClient;
+  const concurrency = options.concurrency ?? env.warroomGenConcurrency;
+  const batchTeams = options.mapBatchTeams ?? env.warroomDependencyMapBatchTeams;
+  const upstreamPerTeam = options.upstreamPerTeam ?? env.warroomDependencyUpstreamPerTeam;
+  const consequenceBatch = Math.max(1, options.consequenceBatch ?? env.warroomDependencyConsequenceBatch);
+  const summaryBudget = options.summaryBudget ?? CONVERGENCE_SUMMARY_MAX_CHARS;
+  const duration = input.crisis.duration > 0 ? input.crisis.duration : 60;
+  const known = stampStorylineKeys(input.storylines);
+  const plans = planDependencyMapCalls(input.teams, batchTeams);
+  const cap = upstreamPerTeam;
+  const mapRaw = await limitConcurrency(plans, concurrency, async (plan) => {
+    const request: DependencyChatRequest = {
+      system: mapSystemPrompt(cap),
+      user: mapUserPrompt(plan, input, known, summaryBudget),
+      label: 'generator.dependencyMap',
+      tier: 'standard',
+      json: true,
+    };
+    try {
+      const raw = await client.complete(request);
+      const edges = Array.isArray(asRecord(raw)?.edges) ? (asRecord(raw)?.edges as unknown[]) : [];
+      return plan.kind === 'cross' ? capCrossOrgEdges(edges, input.teams) : edges;
+    } catch (err) {
+      logger.warn({ err, event: 'dependency_map_failed', kind: plan.kind }, 'Dependency map call failed');
+      return [];
+    }
+  });
+
+  const processed = postProcessDependencies(
+    { edges: mapRaw.flat() },
+    input.teams,
+    known,
+    duration,
+    { upstreamPerTeam: cap },
+  );
+  if (processed.dropped.length > 0) {
+    logger.warn(
+      { event: 'dependency_edges_dropped', dropped: processed.dropped.length },
+      'Dropped dependency edges that failed post-processing',
+    );
+  }
+
+  const batches = chunk(processed.edges, consequenceBatch);
+  const teamNames = input.teams.map((team) => team.team_name);
+  const taken = new Set<string>([
+    ...known.map((inject) => inject.inject_key).filter((key): key is string => !!key),
+    ...processed.asks.map((inject) => inject.delivery_config.inject_key),
+  ]);
+  const built = await limitConcurrency(batches, concurrency, async (batch) => {
+    const request: DependencyChatRequest = {
+      system: consequenceSystemPrompt(),
+      user: consequenceUserPrompt(batch, input),
+      label: 'generator.dependencyConsequences',
+      tier: 'standard',
+      json: true,
+    };
+    let raw: unknown = null;
+    try {
+      raw = await client.complete(request);
+    } catch (err) {
+      logger.warn({ err, event: 'dependency_consequences_failed' }, 'Dependency consequence call failed');
+    }
+    const consequences: GeneratedDependencyInject[] = [];
+    const positives: GeneratedDependencyInject[] = [];
+    for (const edge of batch) {
+      const rows = buildConsequenceInjects(edge, raw, taken);
+      edge.consequence_keys = [];
+      for (const inject of rows.consequences) {
+        const kept = await repairNaming(inject, teamNames, client);
+        if (!kept) continue;
+        consequences.push(kept);
+        edge.consequence_keys.push(kept.delivery_config.inject_key);
+      }
+      for (const inject of rows.positives) {
+        const kept = await repairNaming(inject, teamNames, client);
+        if (kept) positives.push(kept);
+      }
+    }
+    return { consequences, positives };
+  });
+
+  const intel = registerIntelEdges(
+    input.intelItems ?? [],
+    new Set(processed.edges.map((edge) => edge.id)),
+  );
+  const edges = [...processed.edges, ...intel];
+  const consequences = built.flatMap((batch) => batch.consequences);
+  const positives = built.flatMap((batch) => batch.positives);
+  return {
+    team_dependencies: { v: 1, edges },
+    consequences: consequences.map(asSocialInject),
+    positives: positives.map(asSocialInject),
+    asks: processed.asks.map(asSocialInject),
+    summary: dependencyEdgeSummary(edges),
+    mapCalls: plans.length,
+    consequenceCalls: batches.length,
+  };
+}
+
+/**
+ * Compile uses a document the convergence stage already produced.
+ * When that document is missing and nothing was stamped, it generates one.
+ */
+export async function resolveTeamDependencies(
+  existing: unknown,
+  input: GenerateTeamDependenciesInput,
+  options: GenerateTeamDependenciesOptions = {},
+): Promise<GenerateTeamDependenciesResult | null> {
+  if (isTeamDependenciesDocument(existing)) {
+    return {
+      team_dependencies: { v: 1, edges: existing.edges },
+      consequences: [],
+      positives: [],
+      asks: [],
+      summary: dependencyEdgeSummary(existing.edges),
+      mapCalls: 0,
+      consequenceCalls: 0,
+    };
+  }
+  const playable = input.teams.filter((team) => team.playable !== false);
+  if (playable.length < 2) return null;
+  return generateTeamDependencies(input, options);
+}
+
+function mapSystemPrompt(cap: number): string {
+  return `You design the team interdependencies of a crisis-response exercise. Teams: one per line below, with their organisation, function and mission. A dependency is something one team (upstream) must deliver — information, a decision, an approval, a resource, an action, coverage, or restraint (not doing something) — that other teams (downstream, 1 to 3) need to do their own job in THIS crisis. For each dependency choose how it breaks, using only these signal templates:
+${signalTemplatePrompt()}
+and bind each template to an existing upstream inject from the storylines (by inject_key), or ask for a new short "ask" inject to the upstream team. Rules: every team appears in at least one dependency; no team has more than ${cap} upstream dependencies; dependencies cross organisations where it is realistic; never invent a team.
+Return ONLY JSON: { "edges": [ { "id": "dep_...", "kind": "information|decision|approval|resource|action|coverage|restraint", "upstream": "<team name>", "downstream": ["..."], "deliverable": "...", "why": "...", "signals": [ { "template": "no_reply|poor_reply|duty_missed|silent|content_failed|decision|restraint_action|intel", "inject_key": "...", "minutes": 10, "action_id": "...", "action_type": "...", "count": 1, "n": 1, "score": 45, "category": "...", "intel_key": "...", "scope": "@upstream|@downstream" } ], "met_signal": null, "due": { "by_minute": 20 }, "lag_minutes": 5, "severity": "low|medium|high", "needs_ask": null } ] }`;
+}
+
+function mapUserPrompt(
+  plan: MapCallPlan,
+  input: GenerateTeamDependenciesInput,
+  known: readonly KnownInject[],
+  summaryBudget: number,
+): string {
+  const lines = plan.teams.map(teamLine);
+  const storyline = storylineBlock(input.storylines, plan, known);
+  const body = [
+    `Crisis: ${input.crisis.crisisType}`,
+    input.crisis.orgName ? `Organisation: ${input.crisis.orgName}` : '',
+    input.crisis.country ? `Country: ${input.crisis.country}` : '',
+    `Duration: ${input.crisis.duration} minutes`,
+    input.crisis.context ? `Context: ${input.crisis.context}` : '',
+    `Confirmed facts: ${input.facts.slice(0, 8).join('; ')}`,
+    plan.kind === 'intra'
+      ? `This call is only for dependencies inside ${plan.orgName}. Do not name a team from outside this list.`
+      : plan.kind === 'cross'
+        ? `This call is only for dependencies that cross organisations. Return at most ${CROSS_ORG_EDGES_PER_ORG} edges per organisation.`
+        : 'Dependencies may cross organisations where that is realistic.',
+    'Teams:',
+    ...lines,
+    'Storyline injects already written:',
+    storyline || '(none)',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return plan.kind === 'cross' ? fitText(body, summaryBudget) : body;
+}
+
+function consequenceSystemPrompt(): string {
+  return `You write the consequences of a broken team dependency in a crisis-response exercise.
+
+For each dependency, write one consequence for every downstream team named below. A consequence lands where a real one would: a reporter emails Communications, angry callers reach Customer Service, a regulator writes to Legal. Internal emails, group chats and phone calls may name the team that let them down. Public posts (social_feed) and news articles never name an internal team.
+
+For one edge in three, also write an optional positive beat that appears when the dependency is met on time. Use a sender id from the stakeholder list. Never invent a person.
+
+Return ONLY JSON:
+{ "consequences": [ { "edge_id": "dep_...", "downstream": "<team name>", "title": "...", "content": "...", "app": "email|group_chat|phone_call|social_feed|news", "sender": "stk_...", "severity": "low|medium|high", "requires_response": false } ], "positives": [ { "edge_id": "dep_...", "downstream": "<team name>", "title": "...", "content": "...", "app": "email|group_chat", "sender": "stk_...", "severity": "low" } ] }`;
+}
+
+function consequenceUserPrompt(
+  edges: readonly TeamDependencyEdge[],
+  input: GenerateTeamDependenciesInput,
+): string {
+  const described = edges.map((edge) => ({
+    id: edge.id,
+    kind: edge.kind,
+    upstream: edge.upstream.team_name,
+    downstream: edge.downstream.map((team) => team.team_name),
+    deliverable: edge.deliverable,
+    why: edge.why,
+    lag_minutes: edge.lag_minutes,
+    severity: edge.severity,
+  }));
+  return [
+    `Crisis: ${input.crisis.crisisType}`,
+    `Duration: ${input.crisis.duration} minutes`,
+    input.crisis.context ? `Context: ${input.crisis.context}` : '',
+    `Confirmed facts: ${input.facts.slice(0, 8).join('; ')}`,
+    `Stakeholders: ${JSON.stringify((input.stakeholders ?? []).map((stakeholder) => ({ id: stakeholder.id, name: stakeholder.name ?? '' })))}`,
+    `Dependencies:\n${JSON.stringify(described)}`,
+    'Public posts and news never name internal teams. Internal channels may.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function repairNaming(
+  inject: GeneratedDependencyInject,
+  teamNames: readonly string[],
+  client: DependencyClient,
+): Promise<GeneratedDependencyInject | null> {
+  const hit = checkTeamNaming(inject, teamNames);
+  if (!hit.namesTeam) return inject;
+  let raw: unknown = null;
+  try {
+    raw = await client.complete({
+      system:
+        'Rewrite one crisis inject. Public posts and news never name internal teams. Return ONLY JSON: { "title": "...", "content": "..." }',
+      user: `Do not name these teams: ${teamNames.join(', ')}. The previous draft named ${hit.matches.join(', ')}.\nApp: ${inject.delivery_config.app}\nTitle: ${inject.title}\nContent: ${inject.content}`,
+      label: 'generator.dependencyConsequences',
+      tier: 'standard',
+      json: true,
+    });
+  } catch (err) {
+    logger.warn({ err, event: 'dependency_naming_retry_failed', title: inject.title }, 'Naming retry failed');
+  }
+  const row = asRecord(raw);
+  const title = typeof row?.title === 'string' && row.title.trim() ? row.title.trim() : inject.title;
+  const content = typeof row?.content === 'string' ? row.content.trim() : '';
+  const next = content ? { ...inject, title, content } : null;
+  if (!next || checkTeamNaming(next, teamNames).namesTeam) {
+    logger.warn(
+      { event: 'dependency_consequence_dropped_names_team', title: inject.title, teams: hit.matches },
+      'Dropped a public consequence that named an internal team',
+    );
+    return null;
+  }
+  return next;
+}
+
+function stampStorylineKeys(storylines: Record<string, SocialInject[]>): KnownInject[] {
+  const flat = Object.values(storylines).flat();
+  const stamped = stampGeneratedInjectKeys(flat);
+  stamped.forEach((row, index) => {
+    const original = flat[index];
+    if (!original) return;
+    original.delivery_config = {
+      ...original.delivery_config,
+      inject_key:
+        typeof row.delivery_config.inject_key === 'string' ? row.delivery_config.inject_key : undefined,
+    };
+  });
+  return flat.flatMap((inject) => {
+    const key = inject.delivery_config?.inject_key;
+    if (typeof key !== 'string') return [];
+    return [
+      {
+        inject_key: key,
+        title: inject.title,
+        trigger_time_minutes: inject.trigger_time_minutes ?? null,
+      },
+    ];
+  });
+}
+
+function capCrossOrgEdges(edges: readonly unknown[], teams: readonly GenerationTeam[]): unknown[] {
+  const orgOf = new Map(teams.map((team) => [team.team_name, team.org_key || team.org_name || '']));
+  const counts = new Map<string, number>();
+  const kept: unknown[] = [];
+  for (const raw of edges) {
+    const row = asRecord(raw);
+    const upstream = typeof row?.upstream === 'string' ? row.upstream : '';
+    const org = orgOf.get(upstream) || '';
+    const used = counts.get(org) ?? 0;
+    if (org && used >= CROSS_ORG_EDGES_PER_ORG) continue;
+    if (org) counts.set(org, used + 1);
+    kept.push(raw);
+  }
+  return kept;
+}
+
+function teamLine(team: GenerationTeam): string {
+  return `- ${team.team_name} | org: ${team.org_name || team.org_key || 'scenario'} | function: ${team.function_name || 'unspecified'} | mission: ${(team.mission || '').replace(/\s+/g, ' ').slice(0, 240)}`;
+}
+
+function storylineBlock(
+  storylines: Record<string, SocialInject[]>,
+  plan: MapCallPlan,
+  known: readonly KnownInject[],
+): string {
+  const names = new Set(plan.teams.map((team) => team.team_name));
+  const byKey = new Map(known.map((inject) => [inject.inject_key, inject]));
+  const lines: string[] = [];
+  for (const [team, injects] of Object.entries(storylines)) {
+    if (plan.kind !== 'cross' && team !== 'Shared' && !names.has(team)) continue;
+    for (const inject of injects) {
+      const key = inject.delivery_config?.inject_key;
+      if (typeof key !== 'string' || !byKey.has(key)) continue;
+      const minute = inject.trigger_time_minutes == null ? '?' : String(inject.trigger_time_minutes);
+      lines.push(`- ${key} | ${team} | T+${minute} | ${inject.title}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let offset = 0; offset < items.length; offset += size) {
+    batches.push(items.slice(offset, offset + size));
+  }
+  return batches;
+}
+
+function asSocialInject(inject: GeneratedDependencyInject): SocialInject {
+  return inject as unknown as SocialInject;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}

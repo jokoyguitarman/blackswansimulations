@@ -129,6 +129,7 @@ export function createStageRunners(): Record<StageInput['stage'], StageRunner> {
           {
             stakeholders: input.stakeholders,
             stakeholderInjects: input.stakeholderInjects,
+            teamCharters: input.teamCharters,
           },
         ),
       );
