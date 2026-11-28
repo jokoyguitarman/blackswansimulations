@@ -8,6 +8,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { getWebSocketService } from '../websocketService.js';
 import {
   registerReferencedInjectKeysResolver,
@@ -176,10 +177,7 @@ function rowFrom(raw: Record<string, unknown>): StoredDependencyRow | null {
 }
 
 export function sessionMinute(startTime: string | null | undefined, now = Date.now()): number {
-  if (!startTime) return 0;
-  const start = Date.parse(startTime);
-  if (!Number.isFinite(start)) return 0;
-  return Math.max(0, Math.floor((now - start) / 60000));
+  return crisisElapsedMinutes(startTime, now);
 }
 
 export async function loadScenarioDependencyEdges(scenarioId: string): Promise<TeamDependencyEdge[]> {

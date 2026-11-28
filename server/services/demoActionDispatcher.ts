@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { getWebSocketService } from './websocketService.js';
 import { logAndBroadcastEvent } from './eventService.js';
 import { validatePlacement } from './placementValidationService.js';
@@ -329,9 +330,7 @@ export class DemoActionDispatcher {
     const sessionScenarioId = (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
     const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
     const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
-    const elapsedMinutes = startTime
-      ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-      : 0;
+    const elapsedMinutes = crisisElapsedMinutes(startTime ?? null);
 
     // Phase 2.5: Pre-evaluation placement extraction
     // Extract infrastructure intent from the decision text and create placements on the map

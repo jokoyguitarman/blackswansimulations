@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import {
   isCrisisActivity,
   type PostKind,
@@ -174,7 +175,7 @@ export async function gradeIfCrisisActivity(
     }
 
     const elapsedMinutes = sessionData.start_time
-      ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
+      ? crisisElapsedMinutes(sessionData.start_time)
       : undefined;
 
     const teamCtx = await runtime.getPlayerTeamContext(input.sessionId, input.userId);

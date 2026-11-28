@@ -6,6 +6,7 @@ import { validate } from '../lib/validation.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { assertSessionAccess, getCallerTeams, type AccessUser } from '../lib/access.js';
 import {
   getCatalogCharter,
@@ -511,7 +512,7 @@ router.post(
       }>;
       const researchGuidelines = researchTeams.flatMap((team) => team.guidelines || []).slice(0, 5);
       const elapsedMinutes = session.start_time
-        ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60_000))
+        ? crisisElapsedMinutes(session.start_time)
         : undefined;
       // Grade against the team stamped on the document at creation, not the
       // author's current assignment (they may have been reassigned mid-session).
