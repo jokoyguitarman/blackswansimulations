@@ -43,6 +43,8 @@ export interface ChatOptions {
   maxTokens?: number;
   /** Subject to AI_TEMPERATURE_POLICY; dropped for models that reject it. */
   temperature?: number;
+  /** OpenAI `seed`. Sent only when the active provider is OpenAI; Bedrock ignores it. */
+  seed?: number;
   /** Per-request abort; defaults to AI_TIMEOUT_MS. */
   timeoutMs?: number;
   /** Retries on 429/5xx/network/timeout. Default 3 attempts, 750ms * attempt backoff. */
@@ -348,6 +350,7 @@ async function execute(opts: ChatOptions): Promise<ChatResult | null> {
       json: opts.json,
       maxTokens,
       temperature: opts.temperature,
+      seed: opts.seed,
       schemaFallback,
     });
 
