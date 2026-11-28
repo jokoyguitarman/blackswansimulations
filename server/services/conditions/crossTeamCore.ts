@@ -166,7 +166,6 @@ export function referencedInjectKeys(key: string): string[] {
 /**
  * A hop is a referenced inject that was itself cross-team: its source and
  * target teams differ, or its origin is a dependency or director event.
- * A same-team `inject_published:` parent does not add a level.
  */
 export function isCrossTeamHop(trigger: DepthTrigger | undefined): boolean {
   if (!trigger) return false;
@@ -176,23 +175,35 @@ export function isCrossTeamHop(trigger: DepthTrigger | undefined): boolean {
 }
 
 /**
- * 1 + the deepest cross-team hop the met keys reference. A same-team or missing
- * row counts as an authored root (depth 0), so the first consequence is depth 1.
+ * Cross-team hops a stored row passes to the next inject.
+ * A same-team row stores inherited hops + 1, so the extra 1 is not a hop.
+ */
+export function passedOnHops(trigger: DepthTrigger | undefined): number {
+  if (!trigger) return 0;
+  const depth = trigger.cause_depth ?? 0;
+  if (isCrossTeamHop(trigger)) return depth;
+  return Math.max(0, depth - 1);
+}
+
+/**
+ * Depth written on this inject's trigger row: hops inherited from the met
+ * keys, plus 1. For a cross-team, dependency, or director inject that extra 1
+ * is its own hop and is what the cascade cap compares. A same-team row stores
+ * the same shape (inherited hops + 1) so the next inject can recover the hops;
+ * the cap does not apply to it.
  */
 export function causeDepth(
   metKeys: readonly string[],
   triggersByKey: Readonly<Record<string, DepthTrigger | undefined>>,
 ): number {
-  let max = 0;
+  let inherited = 0;
   for (const key of metKeys) {
     for (const ref of referencedInjectKeys(key)) {
-      const trigger = triggersByKey[ref];
-      if (!isCrossTeamHop(trigger)) continue;
-      const depth = trigger?.cause_depth ?? 0;
-      if (depth > max) max = depth;
+      const passed = passedOnHops(triggersByKey[ref]);
+      if (passed > inherited) inherited = passed;
     }
   }
-  return 1 + max;
+  return inherited + 1;
 }
 
 export function applyCrossTeamGuards<T extends CrossTeamCandidate>(

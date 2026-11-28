@@ -304,7 +304,14 @@ describe('cross-team guards', () => {
       dep: { cause_depth: 1, source_teams: ['A'], target_teams: ['A'], origin: 'dependency' },
     };
     assert.equal(causeDepth(['unresponded:root:5|team=a'], triggers), 1);
-    assert.equal(causeDepth(['inject_published:same'], triggers), 1);
+    // A same-team row stores inherited hops + 1. Depth 1 passes on nothing; depth 4 passes on 3.
+    assert.equal(
+      causeDepth(['inject_published:same'], {
+        same: { cause_depth: 1, source_teams: ['A'], target_teams: ['A'], origin: 'conditional' },
+      }),
+      1,
+    );
+    assert.equal(causeDepth(['inject_published:same'], triggers), 4);
     assert.equal(causeDepth(['unresponded:c1:5|team=a'], triggers), 2);
     assert.equal(causeDepth(['unresponded:c2:5|team=a'], triggers), 3);
     assert.equal(causeDepth(['unresponded:c3:5|team=a'], triggers), 4);
@@ -363,6 +370,68 @@ describe('cross-team guards', () => {
     );
     assert.equal(director.publish.length, 0);
     assert.equal(director.cancel[0]?.candidate.id, 'dir');
+  });
+
+  test('an alternating chain cancels the fourth cross-team hop', () => {
+    const steps = [
+      { key: 'ab', source: 'A', target: 'B', cross: true },
+      { key: 'bb', source: 'B', target: 'B', cross: false },
+      { key: 'bc', source: 'B', target: 'C', cross: true },
+      { key: 'cc', source: 'C', target: 'C', cross: false },
+      { key: 'cd', source: 'C', target: 'D', cross: true },
+      { key: 'dd', source: 'D', target: 'D', cross: false },
+      { key: 'da', source: 'D', target: 'A', cross: true },
+    ];
+    const triggers: Record<
+      string,
+      {
+        cause_depth: number;
+        source_teams: string[];
+        target_teams: string[];
+        origin: string;
+        is_cross_team: boolean;
+      }
+    > = {};
+    const depths: Record<string, number> = {};
+    let previous: string | null = null;
+    for (const step of steps) {
+      const met = previous ? [`inject_published:${previous}`] : [];
+      const depth = causeDepth(met, triggers);
+      depths[step.key] = depth;
+      triggers[step.key] = {
+        cause_depth: depth,
+        source_teams: [step.source],
+        target_teams: [step.target],
+        origin: 'conditional',
+        is_cross_team: step.cross,
+      };
+      previous = step.key;
+    }
+    // Same-team rows store inherited hops + 1 (bb 2, cc 3, dd 4) so the next hop keeps them.
+    assert.deepEqual(depths, { ab: 1, bb: 2, bc: 2, cc: 3, cd: 3, dd: 4, da: 4 });
+    const result = applyCrossTeamGuards(
+      steps.map((step) => ({
+        id: step.key,
+        inject_key: step.key,
+        minute: 10,
+        severity: 'medium',
+        cause_depth: depths[step.key],
+        is_cross_team: step.cross,
+        source_teams: [step.source],
+        target_teams: [step.target],
+        origin: 'conditional' as const,
+      })),
+      [],
+      [],
+      env,
+    );
+    assert.deepEqual(
+      result.publish.map((item) => item.id),
+      ['ab', 'bb', 'bc', 'cc', 'cd', 'dd'],
+    );
+    assert.equal(result.cancel.length, 1);
+    assert.equal(result.cancel[0]?.reason, 'cascade_cap');
+    assert.equal(result.cancel[0]?.candidate.id, 'da');
   });
 
   test('same-team candidates keep the order the scheduler handed in', () => {

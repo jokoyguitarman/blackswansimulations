@@ -22,7 +22,7 @@ import {
   causeDepth,
   crossTeamProfile,
   isCrossTeam,
-  isCrossTeamHop,
+  passedOnHops,
   PRESSURE_WINDOW_MINUTES,
   referencedInjectKeys,
   type DepthTrigger,
@@ -191,7 +191,15 @@ export async function applySessionCrossTeamGuards<T extends ConditionalGuardItem
 
   const cancelledIds: string[] = [];
   for (const row of decision.defer) {
-    if (!claimGuardState(input.sessionId, row.candidate.id, 'deferred')) continue;
+    if (guardStateNoted(input.sessionId, row.candidate.id, 'deferred')) continue;
+    const wrote = await recordGuardEvent(input.sessionId, 'cross_team_deferred', {
+      inject_id: row.candidate.id,
+      inject_key: row.candidate.inject_key,
+      reason: row.reason,
+      minute: input.elapsedMinutes,
+    });
+    if (!wrote) continue;
+    rememberGuardState(input.sessionId, row.candidate.id, 'deferred');
     logger.info(
       {
         event: 'cross_team_deferred',
@@ -203,15 +211,17 @@ export async function applySessionCrossTeamGuards<T extends ConditionalGuardItem
       },
       'Cross-team consequence deferred',
     );
-    await recordGuardEvent(input.sessionId, 'cross_team_deferred', {
-      inject_id: row.candidate.id,
-      inject_key: row.candidate.inject_key,
-      reason: row.reason,
-      minute: input.elapsedMinutes,
-    });
   }
   for (const row of decision.hold) {
-    if (!claimGuardState(input.sessionId, row.id, 'held')) continue;
+    if (guardStateNoted(input.sessionId, row.id, 'held')) continue;
+    const wrote = await recordGuardEvent(input.sessionId, 'cross_team_held', {
+      inject_id: row.id,
+      inject_key: row.inject_key,
+      reason: 'cross_team_loop_held',
+      minute: input.elapsedMinutes,
+    });
+    if (!wrote) continue;
+    rememberGuardState(input.sessionId, row.id, 'held');
     logger.info(
       {
         event: 'cross_team_loop_held',
@@ -222,12 +232,6 @@ export async function applySessionCrossTeamGuards<T extends ConditionalGuardItem
       },
       'Cross-team loop held a consequence',
     );
-    await recordGuardEvent(input.sessionId, 'cross_team_held', {
-      inject_id: row.id,
-      inject_key: row.inject_key,
-      reason: 'cross_team_loop_held',
-      minute: input.elapsedMinutes,
-    });
   }
   for (const row of decision.cancel) {
     const wrote = await recordGuardEvent(input.sessionId, 'inject_cancelled', {
@@ -338,21 +342,42 @@ interface GuardFacts {
 }
 
 function hopRank(trigger: DepthTrigger): number {
-  return isCrossTeamHop(trigger) ? (trigger.cause_depth ?? 0) + 1 : 0;
+  return passedOnHops(trigger);
 }
 
 const notedGuardStates = new Set<string>();
 
-/** One session event per inject the first time it is deferred or held in this process. */
-function claimGuardState(
+function guardStateKey(
+  sessionId: string,
+  injectId: string | undefined,
+  state: 'deferred' | 'held',
+): string {
+  return `${sessionId}:${injectId ?? ''}:${state}`;
+}
+
+function guardStateNoted(
   sessionId: string,
   injectId: string | undefined,
   state: 'deferred' | 'held',
 ): boolean {
-  const key = `${sessionId}:${injectId ?? ''}:${state}`;
-  if (notedGuardStates.has(key)) return false;
-  notedGuardStates.add(key);
-  return true;
+  return notedGuardStates.has(guardStateKey(sessionId, injectId, state));
+}
+
+function rememberGuardState(
+  sessionId: string,
+  injectId: string | undefined,
+  state: 'deferred' | 'held',
+): void {
+  notedGuardStates.add(guardStateKey(sessionId, injectId, state));
+}
+
+/** Drop notes for sessions that are no longer in progress, so a finished run cannot pin memory. */
+export function releaseCrossTeamGuardNotes(activeSessionIds: readonly string[]): void {
+  const active = new Set(activeSessionIds);
+  for (const key of notedGuardStates) {
+    const sessionId = key.slice(0, key.indexOf(':'));
+    if (!active.has(sessionId)) notedGuardStates.delete(key);
+  }
 }
 
 function emptyFacts(): GuardFacts {

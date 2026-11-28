@@ -49,6 +49,7 @@ import { orderPublishCandidates } from './conditions/commsConditionsCore.js';
 import {
   applySessionCrossTeamGuards,
   recordInjectTrigger,
+  releaseCrossTeamGuardNotes,
 } from './conditions/injectTriggerService.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -322,6 +323,8 @@ export class InjectSchedulerService {
         logger.error({ error: sessionsError }, 'Failed to fetch active sessions');
         return;
       }
+
+      releaseCrossTeamGuardNotes((sessions ?? []).map((session) => session.id));
 
       if (!sessions || sessions.length === 0) {
         logger.debug('No active sessions found (status=in_progress with start_time)');
@@ -957,7 +960,10 @@ export class InjectSchedulerService {
       conditions_to_appear?: unknown;
       conditions_to_cancel?: unknown;
       eligible_after_minutes?: number | null;
-      delivery_config?: { inject_key?: unknown; cause?: { kind?: unknown; dep_id?: unknown } | null } | null;
+      delivery_config?: {
+        inject_key?: unknown;
+        cause?: { kind?: unknown; dep_id?: unknown } | null;
+      } | null;
       generation_source?: string | null;
     }> = [];
     let teamSignals = true;
