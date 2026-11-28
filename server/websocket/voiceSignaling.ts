@@ -1,6 +1,8 @@
 import { Server as SocketServer, type Socket } from 'socket.io';
+import { findSessionParticipant } from '../lib/access.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { staffViewAsEnabled } from '../lib/viewerDecision.js';
 import { allowVoiceInitiate, allowVoiceSignal, type VoiceMembership } from './voiceSpectator.js';
 
 interface AuthenticatedSocket extends Socket {
@@ -49,21 +51,6 @@ function memoryMembership(callId: string | undefined, userId: string): VoiceMemb
   return call.participants.has(userId) ? 'member' : 'outsider';
 }
 
-async function isSessionParticipant(
-  userId: string,
-  sessionId: string | undefined,
-): Promise<boolean> {
-  if (!sessionId) return false;
-  const { data, error } = await supabaseAdmin
-    .from('session_participants')
-    .select('user_id')
-    .eq('session_id', sessionId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (error) return false;
-  return !!data;
-}
-
 async function isStoredCallParticipant(callId: string, userId: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin
     .from('voice_calls')
@@ -87,7 +74,7 @@ function voiceGate<T>(
   handle: (payload: T) => void | Promise<void>,
 ): (payload: T) => void {
   return (payload) => {
-    if (process.env.ENABLE_STAFF_VIEW_AS !== 'true') {
+    if (!staffViewAsEnabled()) {
       void handle(payload);
       return;
     }
@@ -96,7 +83,8 @@ function voiceGate<T>(
       let allowed = false;
       try {
         if (kind === 'initiate') {
-          allowed = allowVoiceInitiate(true, await isSessionParticipant(userId, sessionId));
+          const playing = sessionId ? await findSessionParticipant(sessionId, userId) : 'no';
+          allowed = allowVoiceInitiate(true, playing === 'yes');
         } else {
           const membership = memoryMembership(callId, userId);
           const dbMember =

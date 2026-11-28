@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS staff_view_audit (
   mode             TEXT NOT NULL CHECK (mode IN ('spectator', 'view_as', 'sandbox')),
   first_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Increments at most once a minute, together with last_at. It counts minutes
+  -- of viewing, not every HTTP request.
   request_count    INTEGER NOT NULL DEFAULT 1 CHECK (request_count >= 1)
 );
 

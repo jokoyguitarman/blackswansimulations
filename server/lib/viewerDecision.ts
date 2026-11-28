@@ -103,3 +103,12 @@ export function staffPlayerActionBlock(input: {
 export function getSideEffectAllowed(mode: ViewerMode | undefined): boolean {
   return mode == null || mode === 'self';
 }
+
+/** Read at call time so a test can prove the flags-off path without reloading the process. */
+export function staffViewAsEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  return source.ENABLE_STAFF_VIEW_AS === 'true';
+}
+
+export function staffPlayerActionGuardEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  return source.STAFF_PLAYER_ACTION_GUARD === 'true';
+}

@@ -12,7 +12,7 @@ import {
   sandboxExemptFromConcludedFreeze,
   SESSION_CONCLUDED_CODE,
 } from '../lib/socialAccess.js';
-import { resetStaffViewAuditForTests } from '../lib/staffViewAudit.js';
+import { recordStaffView, resetStaffViewAuditForTests } from '../lib/staffViewAudit.js';
 import {
   GET_LAZY_SEEDS,
   GETS_WITHOUT_SESSION_CHECK,
@@ -37,6 +37,7 @@ import { applyMountedViewer, staffViewAsEnabled, staffViewer } from './viewer.js
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { allowVoiceInitiate, allowVoiceSignal } from '../websocket/voiceSpectator.js';
 import { registerVoiceSignaling } from '../websocket/voiceSignaling.js';
+import { notificationsRouter } from '../routes/notifications.js';
 
 logger.level = 'silent';
 
@@ -104,7 +105,12 @@ function baseTables(): Record<string, Row[]> {
 
 function install(
   tables: Record<string, Row[]>,
-  options?: { auditError?: string; users?: Map<string, Record<string, unknown>> },
+  options?: {
+    auditError?: string;
+    users?: Map<string, Record<string, unknown>>;
+    readErrors?: Record<string, string>;
+    insertError?: (table: string) => string | undefined;
+  },
 ): DbHandle {
   const calls: Array<{ table: string; op: string }> = [];
   const originalFrom = supabaseAdmin.from;
@@ -172,6 +178,8 @@ function install(
     };
     const pack = () => {
       calls.push({ table, op: 'read' });
+      const readCode = options?.readErrors?.[table];
+      if (readCode) return { data: null, error: { code: readCode, message: 'fail' }, count: 0 };
       if (failed())
         return { data: null, error: { code: auditError, message: 'missing' }, count: 0 };
       const data = matching();
@@ -193,6 +201,8 @@ function install(
     };
     chain.insert = async (payload: Row) => {
       calls.push({ table, op: 'insert' });
+      const insertCode = options?.insertError?.(table);
+      if (insertCode) return { data: null, error: { code: insertCode, message: 'insert failed' } };
       if (failed()) return { data: null, error: { code: auditError, message: 'missing' } };
       (tables[table] ??= []).push(payload);
       return { data: payload, error: null };
@@ -384,6 +394,11 @@ describe('staff viewer', { concurrency: false }, () => {
           entry.path === found.path,
       );
       assert.ok(registered, `unregistered ${found.method} ${found.router} ${found.path}`);
+      assert.match(
+        found.body,
+        /\brequireAuth\b|\bauth\b/,
+        `${found.method} ${found.router} ${found.path} must authenticate before the viewer runs`,
+      );
       if (found.method === 'GET') {
         const checked = marker.test(found.body);
         const allowed = GETS_WITHOUT_SESSION_CHECK.some(
@@ -759,6 +774,96 @@ describe('staff viewer', { concurrency: false }, () => {
     }
   });
 
+  test('view-as and spectator need a route session before any identity swap', async () => {
+    const db = install(baseTables());
+    try {
+      setFlags(true, false);
+      await withApp(appFor('notifications', admin), async (base) => {
+        const list = await hit(base, 'GET', '/', viewHeaders);
+        const unread = await hit(base, 'GET', '/unread/count', viewHeaders);
+        const bound = await hit(base, 'GET', `/?session_id=${SESSION}`, viewHeaders);
+        assert.equal(list.status, 400);
+        assert.equal(list.json.code, VIEW_AS_SESSION_MISMATCH);
+        assert.equal(unread.status, 400);
+        assert.equal(unread.json.code, VIEW_AS_SESSION_MISMATCH);
+        assert.equal(bound.status, 200);
+        assert.equal(bound.json.userId, SUBJECT_ID);
+      });
+    } finally {
+      db.restore();
+    }
+  });
+
+  test('a non-staff view-as header does not look up the target row', async () => {
+    const db = install(baseTables());
+    try {
+      setFlags(true, false);
+      await withApp(appFor('socialMedia', outsider), async (base) => {
+        const denied = await hit(base, 'GET', `/posts/${ROW}`, viewHeaders);
+        assert.equal(denied.status, 403);
+        assert.equal(denied.json.code, VIEW_AS_DENIED);
+      });
+      assert.equal(
+        db.calls.some((call) => call.table === 'social_posts'),
+        false,
+      );
+      assert.ok(db.calls.some((call) => call.table === 'sessions'));
+    } finally {
+      db.restore();
+    }
+  });
+
+  test('staff player guard fails closed when the session lookup errors', async () => {
+    const db = install(baseTables(), { readErrors: { sessions: 'XX000' } });
+    try {
+      setFlags(false, true);
+      await withApp(appFor('socialMedia', trainer), async (base) => {
+        const res = await hit(base, 'POST', '/posts', {}, { session_id: SESSION });
+        assert.equal(res.status, 403);
+        assert.equal(res.json.code, STAFF_PLAYER_ACTION_BLOCKED);
+      });
+    } finally {
+      db.restore();
+    }
+  });
+
+  test('a raced audit insert is success and does not use up the schema warning', async () => {
+    let inserts = 0;
+    const db = install(baseTables(), {
+      insertError: (table) => {
+        if (table !== 'staff_view_audit') return undefined;
+        inserts += 1;
+        return inserts === 1 ? '23505' : '42P01';
+      },
+    });
+    const warnings: string[] = [];
+    const original = logger.warn.bind(logger);
+    logger.warn = ((obj: unknown, msg?: string) => {
+      warnings.push(typeof msg === 'string' ? msg : JSON.stringify(obj));
+    }) as typeof logger.warn;
+    try {
+      await recordStaffView({
+        sessionId: SESSION,
+        staffUserId: ADMIN_ID,
+        subjectUserId: SUBJECT_ID,
+        mode: 'view_as',
+        now: 1_000,
+      });
+      await recordStaffView({
+        sessionId: SESSION,
+        staffUserId: ADMIN_ID,
+        subjectUserId: PLAYER_ID,
+        mode: 'view_as',
+        now: 1_000,
+      });
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0] ?? '', /migration 283/);
+    } finally {
+      logger.warn = original;
+      db.restore();
+    }
+  });
+
   test('unapplied migration 283 logs one warning and viewing still works', async () => {
     const warnings: string[] = [];
     const original = logger.warn.bind(logger);
@@ -1056,6 +1161,81 @@ describe('player-surface route wiring', { concurrency: false }, () => {
         db.calls.some((call) => call.table === 'social_posts' && call.op === 'insert'),
         false,
       );
+    } finally {
+      db.restore();
+    }
+  });
+
+  test('view-as notification reads are limited to the header session', async () => {
+    const otherSession = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const users = new Map<string, Record<string, unknown>>([['admin-token', tokenUser(ADMIN_ID, 'admin')]]);
+    const tables = baseTables();
+    tables.notifications = [
+      {
+        id: 'n-this',
+        user_id: SUBJECT_ID,
+        session_id: SESSION,
+        read: false,
+        created_at: '2026-01-02T00:00:00Z',
+      },
+      {
+        id: 'n-other',
+        user_id: SUBJECT_ID,
+        session_id: otherSession,
+        read: false,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'n-staff',
+        user_id: ADMIN_ID,
+        session_id: SESSION,
+        read: false,
+        created_at: '2026-01-03T00:00:00Z',
+      },
+    ];
+    const db = install(tables, { users });
+    try {
+      const app = express();
+      app.use(express.json());
+      app.use('/api/notifications', notificationsRouter);
+      const headers = {
+        authorization: 'Bearer admin-token',
+        'x-sim-session': SESSION,
+        'x-sim-view-as': SUBJECT_ID,
+      };
+      await withApp(app, async (base) => {
+        setFlags(true, false);
+        const before = db.calls.filter((call) => call.table === 'notifications').length;
+        const missing = await hit(base, 'GET', '/api/notifications', headers);
+        const missingCount = await hit(base, 'GET', '/api/notifications/unread/count', headers);
+        assert.equal(missing.status, 400);
+        assert.equal(missing.json.code, VIEW_AS_SESSION_MISMATCH);
+        assert.equal(missingCount.status, 400);
+        assert.equal(
+          db.calls.filter((call) => call.table === 'notifications').length,
+          before,
+        );
+
+        const scoped = await hit(base, 'GET', `/api/notifications?session_id=${SESSION}`, headers);
+        assert.equal(scoped.status, 200);
+        const ids = ((scoped.json as { data: Array<{ id: string }> }).data ?? []).map((row) => row.id);
+        assert.deepEqual(ids, ['n-this']);
+
+        const count = await hit(
+          base,
+          'GET',
+          `/api/notifications/unread/count?session_id=${SESSION}`,
+          headers,
+        );
+        assert.equal(count.status, 200);
+        assert.equal((count.json as { count?: number }).count, 1);
+
+        setFlags(false, false);
+        const own = await hit(base, 'GET', '/api/notifications', headers);
+        assert.equal(own.status, 200);
+        const ownIds = ((own.json as { data: Array<{ id: string }> }).data ?? []).map((row) => row.id);
+        assert.deepEqual(ownIds, ['n-staff']);
+      });
     } finally {
       db.restore();
     }

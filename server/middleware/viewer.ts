@@ -1,16 +1,20 @@
-import type { RequestHandler, Response } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import type { AuthenticatedRequest } from './auth.js';
+import { findSessionParticipant } from '../lib/access.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { canSpectate } from '../lib/socialAccess.js';
+import { loadSocialSession } from '../lib/socialSessionGuard.js';
 import { recordStaffView } from '../lib/staffViewAudit.js';
 import {
   lookupSurfaceRoute,
+  SURFACE_ROUTER_FILES,
   type RouterId,
   type SessionBind,
   type SurfaceRoute,
 } from '../lib/surfaceRoutes.js';
 import {
+  STAFF_PLAYER_ACTION_BLOCKED,
   VIEW_AS_DENIED,
   VIEW_AS_SESSION_MISMATCH,
   getSideEffectAllowed,
@@ -20,33 +24,24 @@ import {
   parseViewHeaders,
   spectatorWriteBlock,
   staffPlayerActionBlock,
+  staffPlayerActionGuardEnabled,
+  staffViewAsEnabled,
   type ViewerMode,
 } from '../lib/viewerDecision.js';
 
 export type { ViewerMode };
-export { getSideEffectAllowed };
+export { getSideEffectAllowed, staffPlayerActionGuardEnabled, staffViewAsEnabled };
 
-const ROUTER = Symbol('staffViewerRouter');
-
-export interface ViewerUser {
-  id: string;
-  email?: string;
-  role?: string;
-  agency?: string;
-  displayName?: string;
-  metadata?: Record<string, unknown>;
-}
+type RequestUser = NonNullable<AuthenticatedRequest['user']>;
 
 export interface ViewerContext {
-  realUser: ViewerUser;
-  subject: ViewerUser | null;
+  realUser: RequestUser;
+  subject: RequestUser | null;
   mode: ViewerMode;
   sessionId: string | null;
 }
 
-interface Marked {
-  [ROUTER]?: RouterId;
-}
+const mountedRouter = new WeakMap<Request, RouterId>();
 
 type Resolved =
   | { kind: 'none' }
@@ -54,20 +49,6 @@ type Resolved =
   | { kind: 'missing' }
   | { kind: 'error' }
   | { kind: 'id'; id: string; staffOverride: boolean };
-
-type LoadedSession =
-  | { kind: 'ok'; row: { id: string; trainer_id: string | null; status: string | null } }
-  | { kind: 'missing' }
-  | { kind: 'error' };
-
-/** Read at call time so a test can prove the flags-off path without reloading the process. */
-export function staffViewAsEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
-  return source.ENABLE_STAFF_VIEW_AS === 'true';
-}
-
-export function staffPlayerActionGuardEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
-  return source.STAFF_PLAYER_ACTION_GUARD === 'true';
-}
 
 /**
  * Mount once, ahead of the routes, on every player-surface router.
@@ -79,7 +60,7 @@ export function staffViewer(routerId: RouterId): RequestHandler {
       next();
       return;
     }
-    (req as Marked)[ROUTER] = routerId;
+    mountedRouter.set(req, routerId);
     next();
   };
 }
@@ -94,8 +75,8 @@ export function applyMountedViewer(
   res: Response,
 ): false | Promise<boolean> {
   if (!staffViewAsEnabled() && !staffPlayerActionGuardEnabled()) return false;
-  const routerId = (req as Marked)[ROUTER];
-  if (!routerId) return false;
+  const routerId = mountedRouter.get(req);
+  if (!routerId || !(routerId in SURFACE_ROUTER_FILES)) return false;
   return enforceViewer(req, res, routerId);
 }
 
@@ -107,10 +88,7 @@ async function enforceViewer(
   try {
     const user = req.user;
     if (!user) return false;
-    const pattern =
-      typeof (req as { route?: { path?: string } }).route?.path === 'string'
-        ? (req as { route: { path: string } }).route.path
-        : req.path;
+    const pattern = req.route?.path ?? req.path;
     const route = lookupSurfaceRoute(routerId, req.method, pattern);
     if (!route) return false;
 
@@ -149,29 +127,12 @@ async function spectate(
   req: AuthenticatedRequest,
   res: Response,
   route: SurfaceRoute,
-  user: NonNullable<AuthenticatedRequest['user']>,
+  user: RequestUser,
   headers:
     | { type: 'view_as'; sessionId: string; subjectId: string }
     | { type: 'spectator'; sessionId: string },
 ): Promise<boolean> {
-  const resolved = await resolveBind(route, req);
-  if (resolved.kind === 'error') {
-    res.status(500).json({ error: 'Internal server error' });
-    return true;
-  }
-  if (resolved.kind === 'missing') {
-    res.status(404).json({ error: 'Not found' });
-    return true;
-  }
-  if (resolved.kind === 'id' && resolved.id !== headers.sessionId) {
-    res.status(400).json({
-      error: 'X-Sim-Session does not match this request',
-      code: VIEW_AS_SESSION_MISMATCH,
-    });
-    return true;
-  }
-
-  const session = await loadSession(headers.sessionId);
+  const session = await loadSocialSession(headers.sessionId);
   if (session.kind === 'error') {
     res.status(500).json({ error: 'Internal server error' });
     return true;
@@ -180,7 +141,7 @@ async function spectate(
     res.status(404).json({ error: 'Session not found' });
     return true;
   }
-  if (!canSpectate(user, session.row)) {
+  if (!canSpectate(user, session.session)) {
     res.status(403).json({
       error: 'You cannot view this session as that participant',
       code: VIEW_AS_DENIED,
@@ -188,11 +149,30 @@ async function spectate(
     return true;
   }
 
-  const realUser = toViewerUser(user);
-  let subject: ViewerUser | null = null;
   const mode: 'view_as' | 'spectator' = headers.type === 'view_as' ? 'view_as' : 'spectator';
+  const resolved = await resolveBind(route, req);
+  if (resolved.kind === 'error') {
+    res.status(500).json({ error: 'Internal server error' });
+    return true;
+  }
+  if (resolved.kind === 'absent' || resolved.kind === 'none') {
+    return unboundFrame(res, mode, req.method);
+  }
+  if (resolved.kind === 'missing') {
+    res.status(404).json({ error: 'Not found' });
+    return true;
+  }
+  if (resolved.id !== headers.sessionId) {
+    res.status(400).json({
+      error: 'X-Sim-Session does not match this request',
+      code: VIEW_AS_SESSION_MISMATCH,
+    });
+    return true;
+  }
+
+  let subject: RequestUser | null = null;
   if (headers.type === 'view_as') {
-    const playing = await isParticipant(session.row.id, headers.subjectId);
+    const playing = await findSessionParticipant(session.session.id, headers.subjectId);
     if (playing === 'error') {
       res.status(500).json({ error: 'Internal server error' });
       return true;
@@ -208,10 +188,10 @@ async function spectate(
     req.user = subject;
   }
 
-  req.viewer = { realUser, subject, mode, sessionId: session.row.id };
+  req.viewer = { realUser: user, subject, mode, sessionId: session.session.id };
   await recordStaffView({
-    sessionId: session.row.id,
-    staffUserId: realUser.id,
+    sessionId: session.session.id,
+    staffUserId: user.id,
     subjectUserId: headers.type === 'view_as' ? headers.subjectId : null,
     mode,
   });
@@ -223,39 +203,50 @@ async function spectate(
   return false;
 }
 
-async function blockStaffPlayerAction(
-  req: AuthenticatedRequest,
-  res: Response,
-  route: SurfaceRoute,
-  user: NonNullable<AuthenticatedRequest['user']>,
-): Promise<boolean> {
-  const resolved = await resolveBind(route, req);
-  if (resolved.kind === 'error' || resolved.kind !== 'id' || resolved.staffOverride) return false;
-  const session = await loadSession(resolved.id);
-  if (session.kind !== 'ok' || !isLiveSession(session.row.status)) return false;
-  const playing = await isParticipant(session.row.id, user.id);
-  if (playing !== 'no') return false;
+/** A frame with no route session does not swap identity. Writes are still read-only. */
+function unboundFrame(res: Response, mode: 'view_as' | 'spectator', method: string): boolean {
+  const block = spectatorWriteBlock(mode, method);
+  if (block) {
+    res.status(block.status).json({ error: block.error, code: block.code });
+    return true;
+  }
+  res.status(400).json({
+    error: 'X-Sim-Session does not match this request',
+    code: VIEW_AS_SESSION_MISMATCH,
+  });
+  return true;
+}
+
+function denyStaffPlayerAction(res: Response): boolean {
   const block = staffPlayerActionBlock({
-    method: req.method,
+    method: 'POST',
     routeClass: 'player',
     staffRole: true,
     live: true,
     participant: false,
   });
-  if (!block) return false;
-  res.status(block.status).json({ error: block.error, code: block.code });
+  res.status(block?.status ?? 403).json({
+    error: block?.error ?? 'Staff cannot take player actions in a live session they are not playing',
+    code: block?.code ?? STAFF_PLAYER_ACTION_BLOCKED,
+  });
   return true;
 }
 
-function toViewerUser(user: NonNullable<AuthenticatedRequest['user']>): ViewerUser {
-  return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    agency: user.agency,
-    displayName: user.displayName,
-    metadata: user.metadata,
-  };
+async function blockStaffPlayerAction(
+  req: AuthenticatedRequest,
+  res: Response,
+  route: SurfaceRoute,
+  user: RequestUser,
+): Promise<boolean> {
+  const resolved = await resolveBind(route, req);
+  if (resolved.kind === 'error') return denyStaffPlayerAction(res);
+  if (resolved.kind !== 'id' || resolved.staffOverride) return false;
+  const session = await loadSocialSession(resolved.id);
+  if (session.kind === 'error') return denyStaffPlayerAction(res);
+  if (session.kind !== 'ok' || !isLiveSession(session.session.status)) return false;
+  const playing = await findSessionParticipant(session.session.id, user.id);
+  if (playing === 'yes') return false;
+  return denyStaffPlayerAction(res);
 }
 
 function readLocated(
@@ -263,10 +254,7 @@ function readLocated(
   req: AuthenticatedRequest,
 ): unknown {
   if (bind.kind === 'param') return req.params[bind.name];
-  if (bind.kind === 'body') {
-    const body = req.body as Record<string, unknown> | undefined;
-    return body?.[bind.name];
-  }
+  if (bind.kind === 'body') return req.body?.[bind.name];
   const value = req.query[bind.name];
   return Array.isArray(value) ? value[0] : value;
 }
@@ -294,11 +282,10 @@ async function resolveBind(route: SurfaceRoute, req: AuthenticatedRequest): Prom
       .limit(1)
       .maybeSingle();
     if (error) return { kind: 'error' };
-    const record = data as Record<string, unknown> | null;
-    const sessionId = typeof record?.session_id === 'string' ? record.session_id : null;
-    if (!sessionId) return { kind: 'missing' };
+    const sessionId = field(data, 'session_id');
+    if (typeof sessionId !== 'string') return { kind: 'missing' };
     const staffOverride = route.staffWhen
-      ? String(record?.[route.staffWhen.column] ?? '') === route.staffWhen.equals
+      ? String(field(data, route.staffWhen.column) ?? '') === route.staffWhen.equals
       : false;
     return { kind: 'id', id: sessionId, staffOverride };
   } catch {
@@ -306,45 +293,13 @@ async function resolveBind(route: SurfaceRoute, req: AuthenticatedRequest): Prom
   }
 }
 
-async function loadSession(id: string): Promise<LoadedSession> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('sessions')
-      .select('id, trainer_id, status')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) return { kind: 'error' };
-    const row = data as { id?: unknown; trainer_id?: unknown; status?: unknown } | null;
-    if (!row || typeof row.id !== 'string') return { kind: 'missing' };
-    return {
-      kind: 'ok',
-      row: {
-        id: row.id,
-        trainer_id: typeof row.trainer_id === 'string' ? row.trainer_id : null,
-        status: typeof row.status === 'string' ? row.status : null,
-      },
-    };
-  } catch {
-    return { kind: 'error' };
-  }
+function field(row: unknown, key: string): unknown {
+  if (typeof row !== 'object' || row === null) return undefined;
+  if (!Object.prototype.hasOwnProperty.call(row, key)) return undefined;
+  return Reflect.get(row, key);
 }
 
-async function isParticipant(sessionId: string, userId: string): Promise<'yes' | 'no' | 'error'> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('session_participants')
-      .select('user_id')
-      .eq('session_id', sessionId)
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) return 'error';
-    return data ? 'yes' : 'no';
-  } catch {
-    return 'error';
-  }
-}
-
-async function loadSubject(id: string): Promise<ViewerUser> {
+async function loadSubject(id: string): Promise<RequestUser> {
   try {
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
@@ -352,12 +307,14 @@ async function loadSubject(id: string): Promise<ViewerUser> {
       .eq('id', id)
       .maybeSingle();
     if (error || !data) return { id };
-    const profile = data as { role?: unknown; agency_name?: unknown; full_name?: unknown };
-    const fullName = typeof profile.full_name === 'string' ? profile.full_name.trim() : '';
+    const role = field(data, 'role');
+    const agency = field(data, 'agency_name');
+    const name = field(data, 'full_name');
+    const fullName = typeof name === 'string' ? name.trim() : '';
     return {
       id,
-      role: typeof profile.role === 'string' ? profile.role : undefined,
-      agency: typeof profile.agency_name === 'string' ? profile.agency_name : undefined,
+      role: typeof role === 'string' ? role : undefined,
+      agency: typeof agency === 'string' ? agency : undefined,
       displayName: fullName || undefined,
       metadata: {},
     };

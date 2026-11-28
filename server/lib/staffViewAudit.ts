@@ -118,6 +118,11 @@ export async function recordStaffView(input: StaffViewAuditInput): Promise<void>
       request_count: 1,
     });
     if (insertError) {
+      // Two first views raced. The other insert won; this one is still a view.
+      if (codeOf(insertError) === '23505') {
+        recent.set(key, now);
+        return;
+      }
       if (schemaMissing(insertError)) turnOff(insertError);
       else warnOnce(insertError, false);
       return;
