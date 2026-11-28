@@ -37,6 +37,10 @@ export function ConditionBuilder({
   names,
   extraKeys,
   onAssignInjectKey,
+  fixedTeamScope,
+  appearOnly = false,
+  allowEmpty = false,
+  emptyLabel,
 }: {
   defs: readonly ConditionDefSpec[];
   draft: ConditionDraft;
@@ -48,11 +52,21 @@ export function ConditionBuilder({
   names: ConditionNames;
   extraKeys: readonly string[];
   onAssignInjectKey: (injectId: string) => Promise<string>;
+  /** Dependency conditions always scope to this placeholder. The team menu is hidden. */
+  fixedTeamScope?: '@upstream' | '@downstream';
+  /** Hide cancel conditions and the not-before minute. */
+  appearOnly?: boolean;
+  allowEmpty?: boolean;
+  emptyLabel?: string;
 }) {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [rawError, setRawError] = useState<string | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const parseOptions = {
+    allowPlaceholders: fixedTeamScope != null,
+    allowEmpty,
+  };
   const compiled = compileDraft(
     draft,
     defs,
@@ -69,7 +83,14 @@ export function ConditionBuilder({
           ]
         : [],
     ),
+    parseOptions,
   );
+  const scopedRow = (row: ConditionRow): ConditionRow => {
+    if (!fixedTeamScope) return row;
+    const def = defById(defs, row.event);
+    if (!def?.teamScope) return { ...row, team: '', role: '' };
+    return { ...row, team: fixedTeamScope, role: '' };
+  };
   const platforms = platformsIn(defs);
 
   const updateRow = (
@@ -144,22 +165,24 @@ export function ConditionBuilder({
           />
         )}
         <span className="text-[11px] text-muted">of these hold</span>
-        <button
-          type="button"
-          className="ml-auto text-[11px] text-brand hover:underline"
-          onClick={() => {
-            setRawError(null);
-            if (draft.raw) {
-              const next = draftFromRaw(draft, defs);
-              if ('error' in next) setRawError(next.error);
-              else onChange(next.draft);
-            } else {
-              onChange(draftToRaw(draft, defs));
-            }
-          }}
-        >
-          {draft.raw ? 'Use dropdowns' : 'Raw keys'}
-        </button>
+        {!fixedTeamScope && (
+          <button
+            type="button"
+            className="ml-auto text-[11px] text-brand hover:underline"
+            onClick={() => {
+              setRawError(null);
+              if (draft.raw) {
+                const next = draftFromRaw(draft, defs);
+                if ('error' in next) setRawError(next.error);
+                else onChange(next.draft);
+              } else {
+                onChange(draftToRaw(draft, defs));
+              }
+            }}
+          >
+            {draft.raw ? 'Use dropdowns' : 'Raw keys'}
+          </button>
+        )}
       </div>
 
       {draft.raw ? (
@@ -199,7 +222,10 @@ export function ConditionBuilder({
                 teams={teams}
                 roles={roles}
                 assigning={assigning === row.id}
-                onChange={(patch) => updateRow('appear', row.id, patch)}
+                fixedTeamScope={fixedTeamScope}
+                onChange={(patch) =>
+                  updateRow('appear', row.id, (current) => scopedRow(patch(current)))
+                }
                 onRemove={() =>
                   onChange({ ...draft, appear: draft.appear.filter((item) => item.id !== row.id) })
                 }
@@ -210,63 +236,72 @@ export function ConditionBuilder({
               type="button"
               className="text-[11px] text-brand hover:underline"
               onClick={() =>
-                onChange({ ...draft, appear: [...draft.appear, newConditionRow(defs)] })
+                onChange({ ...draft, appear: [...draft.appear, scopedRow(newConditionRow(defs))] })
               }
             >
               + Add condition
             </button>
           </div>
 
-          <div className="mt-3 text-[11px] text-muted font-medium">Unless (cancel if any)</div>
-          <div className="mt-1 space-y-1.5">
-            {draft.cancel.map((row) => (
-              <ConditionRowEditor
-                key={row.id}
-                row={row}
-                defs={defs}
-                platforms={platforms}
-                injects={injects}
-                stakeholders={stakeholders}
-                teams={teams}
-                roles={roles}
-                assigning={assigning === row.id}
-                onChange={(patch) => updateRow('cancel', row.id, patch)}
-                onRemove={() =>
-                  onChange({ ...draft, cancel: draft.cancel.filter((item) => item.id !== row.id) })
-                }
-                onAssign={(index, injectId) => assignKey('cancel', row, index, injectId)}
-              />
-            ))}
-            <button
-              type="button"
-              className="text-[11px] text-brand hover:underline"
-              onClick={() =>
-                onChange({ ...draft, cancel: [...draft.cancel, newConditionRow(defs)] })
-              }
-            >
-              + Add cancel condition
-            </button>
-          </div>
+          {!appearOnly && (
+            <>
+              <div className="mt-3 text-[11px] text-muted font-medium">Unless (cancel if any)</div>
+              <div className="mt-1 space-y-1.5">
+                {draft.cancel.map((row) => (
+                  <ConditionRowEditor
+                    key={row.id}
+                    row={row}
+                    defs={defs}
+                    platforms={platforms}
+                    injects={injects}
+                    stakeholders={stakeholders}
+                    teams={teams}
+                    roles={roles}
+                    assigning={assigning === row.id}
+                    onChange={(patch) => updateRow('cancel', row.id, patch)}
+                    onRemove={() =>
+                      onChange({
+                        ...draft,
+                        cancel: draft.cancel.filter((item) => item.id !== row.id),
+                      })
+                    }
+                    onAssign={(index, injectId) => assignKey('cancel', row, index, injectId)}
+                  />
+                ))}
+                <button
+                  type="button"
+                  className="text-[11px] text-brand hover:underline"
+                  onClick={() =>
+                    onChange({ ...draft, cancel: [...draft.cancel, newConditionRow(defs)] })
+                  }
+                >
+                  + Add cancel condition
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
 
-      <label className="mt-3 text-[11px] text-muted font-medium flex items-center gap-2">
-        Not before T+
-        <input
-          aria-label="Not before minute"
-          type="number"
-          min={0}
-          value={draft.eligibleAfter}
-          placeholder="any time"
-          onChange={(event) => onChange({ ...draft, eligibleAfter: event.target.value })}
-          className={`${fieldCls} w-20`}
-        />
-        <span className="font-normal">min</span>
-      </label>
+      {!appearOnly && (
+        <label className="mt-3 text-[11px] text-muted font-medium flex items-center gap-2">
+          Not before T+
+          <input
+            aria-label="Not before minute"
+            type="number"
+            min={0}
+            value={draft.eligibleAfter}
+            placeholder="any time"
+            onChange={(event) => onChange({ ...draft, eligibleAfter: event.target.value })}
+            className={`${fieldCls} w-20`}
+          />
+          <span className="font-normal">min</span>
+        </label>
+      )}
 
       <p className="mt-2 text-[11px] text-ink" data-section="condition-preview">
         <span className="text-muted font-medium">Preview: </span>
-        {compiled.preview}
+        {allowEmpty && draft.appear.length === 0 && emptyLabel ? emptyLabel : compiled.preview}
       </p>
       {compiled.warnings.map((warning) => (
         <p key={warning} className="mt-1 text-[11px] text-warning" data-section="condition-warning">
@@ -292,6 +327,7 @@ function ConditionRowEditor({
   teams,
   roles,
   assigning,
+  fixedTeamScope,
   onChange,
   onRemove,
   onAssign,
@@ -304,13 +340,15 @@ function ConditionRowEditor({
   teams: readonly { name: string; slug: string }[];
   roles: readonly { role_id: string; title: string }[];
   assigning: boolean;
+  fixedTeamScope?: '@upstream' | '@downstream';
   onChange: (patch: (row: ConditionRow) => ConditionRow) => void;
   onRemove: () => void;
   onAssign: (index: number, injectId: string) => void;
 }) {
   const def = defById(defs, row.event);
   const events = defsForPlatform(defs, row.platform);
-  const showRoleScope = Boolean((def?.teamScope && roles.length > 0) || row.role);
+  const showRoleScope =
+    !fixedTeamScope && Boolean((def?.teamScope && roles.length > 0) || row.role);
   return (
     <div className="flex flex-wrap items-center gap-1.5 bg-surface border border-border rounded p-1.5">
       <select
@@ -366,7 +404,12 @@ function ConditionRowEditor({
           onAssign={(injectId) => onAssign(index, injectId)}
         />
       ))}
-      {def?.teamScope && (
+      {def?.teamScope && fixedTeamScope && (
+        <span className="text-[11px] text-muted px-1" data-section="fixed-team-scope">
+          {fixedTeamScope === '@upstream' ? 'upstream team' : 'downstream team'}
+        </span>
+      )}
+      {def?.teamScope && !fixedTeamScope && (
         <select
           aria-label="Team scope"
           className={fieldCls}
