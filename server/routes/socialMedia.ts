@@ -2826,12 +2826,19 @@ router.get(
       // 6. Evaluate each inject's conditions individually
       const results = condInjects.map((inj) => {
         const condAppear = inj.conditions_to_appear as
-          { all: string[] } | { threshold: number; conditions: string[] } | null;
+          | { all: string[] }
+          | { threshold: number; conditions: string[] }
+          | { any: string[] }
+          | null;
 
         let keys: string[] = [];
         let mode: 'all' | 'threshold' = 'all';
         let threshold: number | undefined;
 
+        const anyKeys =
+          condAppear && 'any' in condAppear
+            ? (condAppear as { any?: unknown }).any
+            : undefined;
         if (condAppear && 'all' in condAppear) {
           keys = condAppear.all || [];
           mode = 'all';
@@ -2839,6 +2846,10 @@ router.get(
           keys = condAppear.conditions || [];
           mode = 'threshold';
           threshold = Math.max(1, condAppear.threshold ?? 1);
+        } else if (Array.isArray(anyKeys)) {
+          keys = anyKeys.filter((key): key is string => typeof key === 'string');
+          mode = 'threshold';
+          threshold = 1;
         }
 
         const conditions = keys.map((key) => {

@@ -68,11 +68,13 @@ function collectAppearKeys(value: unknown): string[] {
   if (Array.isArray(value))
     return value.filter((k): k is string => typeof k === 'string' && k.trim() !== '');
   if (typeof value !== 'object') return [];
-  const record = value as { all?: unknown; conditions?: unknown };
+  const record = value as { all?: unknown; any?: unknown; conditions?: unknown };
   const list = Array.isArray(record.all)
     ? record.all
     : Array.isArray(record.conditions)
       ? record.conditions
-      : [];
+      : Array.isArray(record.any)
+        ? record.any
+        : [];
   return list.filter((k): k is string => typeof k === 'string' && k.trim() !== '');
 }

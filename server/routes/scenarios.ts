@@ -4,6 +4,8 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
 import { cloneScenarioSchema, handleCloneScenario } from './scenarioClone.js';
+import { dependencyCatalogEntries } from '../../shared/teamDependencies.js';
+import { normalizeScenarioDependencies } from '../services/dependencies/dependencyContext.js';
 import { logger } from '../lib/logger.js';
 import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
 import { env } from '../env.js';
@@ -474,6 +476,9 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
           if (!name) return [];
           return [{ name, slug: slugifyTeamName(name) }];
         }),
+        dependencies: dependencyCatalogEntries(
+          (initial as { team_dependencies?: unknown } | null)?.team_dependencies,
+        ),
       },
     });
   } catch (err) {
@@ -1906,7 +1911,7 @@ router.patch(
       // Check if user owns the scenario or is admin
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('created_by')
+        .select('created_by, duration_minutes')
         .eq('id', id)
         .single();
 
@@ -1949,6 +1954,28 @@ router.patch(
                 : 'EDIT_LOCKED_NO_CREDITS',
           });
         }
+      }
+
+      if (updates.initial_state && typeof updates.initial_state === 'object') {
+        const duration =
+          typeof updates.duration_minutes === 'number'
+            ? updates.duration_minutes
+            : typeof scenario.duration_minutes === 'number'
+              ? scenario.duration_minutes
+              : null;
+        const dependencies = await normalizeScenarioDependencies(
+          id,
+          updates.initial_state as Record<string, unknown>,
+          duration,
+        );
+        if ('issues' in dependencies) {
+          const first = dependencies.issues.find((item) => item.severity === 'error');
+          return res.status(400).json({
+            error: first?.message ?? 'Invalid team dependencies',
+            issues: dependencies.issues,
+          });
+        }
+        updates.initial_state = dependencies.initialState;
       }
 
       const { data, error } = await supabaseAdmin

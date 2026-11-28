@@ -18,7 +18,10 @@ import { emptyCommsState, type CommsState } from './ledger/injectLedgerCore.js';
 // Types (contract with inject engine)
 // ---------------------------------------------------------------------------
 
-export type ConditionsToAppear = { threshold: number; conditions: string[] } | { all: string[] };
+export type ConditionsToAppear =
+  | { threshold: number; conditions: string[] }
+  | { all: string[] }
+  | { any: string[] };
 
 export type ConditionsToCancel = string[];
 
@@ -769,18 +772,31 @@ export function evaluateInjectConditions(
   if (conditionsToAppear == null) return { status: 'not_eligible' };
   if (typeof conditionsToAppear !== 'object') return { status: 'not_eligible' };
 
-  const allKeys =
-    'all' in conditionsToAppear ? conditionsToAppear.all : conditionsToAppear.conditions;
+  const record = conditionsToAppear as {
+    all?: unknown;
+    any?: unknown;
+    conditions?: unknown;
+    threshold?: unknown;
+  };
+  // `{ any: [...] }` is threshold 1. `all` and `conditions` keep their previous meaning.
+  if (!('all' in record) && !Array.isArray(record.conditions) && Array.isArray(record.any)) {
+    const anyKeys = record.any.filter((key): key is string => typeof key === 'string');
+    if (anyKeys.length === 0) return { status: 'not_eligible' };
+    const metCount = anyKeys.filter((key) => evaluateKey(key, context)).length;
+    return metCount >= 1 ? { status: 'appear_met' } : { status: 'not_eligible' };
+  }
+
+  const allKeys = 'all' in record ? record.all : record.conditions;
   if (!Array.isArray(allKeys) || allKeys.length === 0) return { status: 'not_eligible' };
 
   // 3) Appear: all or N-of-M
-  if ('all' in conditionsToAppear) {
+  if ('all' in record) {
     const allMet = allKeys.every((k) => evaluateKey(k, context));
     return allMet ? { status: 'appear_met' } : { status: 'not_eligible' };
   }
 
   // N-of-M: require at least threshold conditions true; threshold 0 is treated as 1 to avoid "always appear"
-  const rawThreshold = (conditionsToAppear as { threshold: number }).threshold ?? 0;
+  const rawThreshold = (record.threshold as number | undefined) ?? 0;
   const threshold = Math.max(1, rawThreshold);
   const metCount = allKeys.filter((k) => evaluateKey(k, context)).length;
   return metCount >= threshold ? { status: 'appear_met' } : { status: 'not_eligible' };
