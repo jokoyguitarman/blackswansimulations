@@ -117,7 +117,13 @@ function errorOf(result: unknown): unknown {
   return (result as { error?: unknown }).error ?? null;
 }
 
-function withMissingColumnRetry<Q>(filtered: Q, url: URL, search: string): Q {
+/** Drop versioning predicates from the URL that is about to be sent again. */
+function stripVersioningParams(url: URL): void {
+  url.searchParams.delete('retired_at');
+  url.searchParams.delete('valid_from');
+}
+
+function withMissingColumnRetry<Q>(filtered: Q, url: URL): Q {
   let settled = false;
   const proxy = new Proxy(filtered as object, {
     get(target, prop, receiver) {
@@ -136,7 +142,9 @@ function withMissingColumnRetry<Q>(filtered: Q, url: URL, search: string): Q {
               if (!settled && isTemplateVersioningMissing(errorOf(result))) {
                 settled = true;
                 noteMissing();
-                url.search = search;
+                // Filters chained after the wrap live on this same URL.
+                // Restoring a snapshot taken at wrap time would drop them.
+                stripVersioningParams(url);
                 return then.call(target, onFulfilled, onRejected);
               }
               settled = true;
@@ -163,10 +171,9 @@ function applyActiveFilter<Q>(query: Q): Q {
   if (state === 'absent') return query;
   const builder = query as unknown as FilterableQuery;
   const url = builder.url instanceof URL ? builder.url : undefined;
-  const search = url ? url.search : null;
   const filtered = builder.is('retired_at', null) as unknown as Q;
-  if (state === 'present' || !url || search == null) return filtered;
-  return withMissingColumnRetry(filtered, url, search);
+  if (state === 'present' || !url) return filtered;
+  return withMissingColumnRetry(filtered, url);
 }
 
 /** Active scenario_teams read. Call this as the outermost await. */

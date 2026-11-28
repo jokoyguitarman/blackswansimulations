@@ -117,6 +117,51 @@ describe('versioning degrade', () => {
     assert.equal(templateVersioningWarningCount(), 1);
   });
 
+  test('a filter chained after the wrap is kept when the column is missing', async () => {
+    const url = new URL('http://db.local/scenario_teams?scenario_id=eq.1');
+    const fetches: string[] = [];
+    const query = {
+      url,
+      is(column: string, value: null) {
+        url.searchParams.append(column, `is.${value}`);
+        return this;
+      },
+      eq(column: string, value: string) {
+        url.searchParams.append(column, `eq.${value}`);
+        return this;
+      },
+      then(onFulfilled?: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) {
+        fetches.push(url.searchParams.toString());
+        const retired = url.searchParams.get('retired_at');
+        const result = retired
+          ? {
+              data: null,
+              error: {
+                code: 'PGRST204',
+                message: "Could not find the 'retired_at' column of 'scenario_teams' in the schema cache",
+              },
+            }
+          : { data: [{ team_name: 'Alpha' }], error: null };
+        return Promise.resolve(result).then(onFulfilled, onRejected);
+      },
+    };
+    const wrapped = activeTeams(query) as typeof query;
+    wrapped.eq('org_key', 'org_slm_my');
+    url.searchParams.append('valid_from', 'lte.2026-01-01T00:00:00.000Z');
+    const result = (await wrapped) as { data: Array<{ team_name: string }> | null; error: null };
+    assert.deepEqual(result.data, [{ team_name: 'Alpha' }]);
+    assert.equal(fetches.length, 2);
+    assert.match(fetches[0], /retired_at=is\.null/);
+    assert.match(fetches[0], /org_key=eq\.org_slm_my/);
+    assert.match(fetches[0], /valid_from=/);
+    assert.equal(url.searchParams.get('retired_at'), null);
+    assert.equal(url.searchParams.get('valid_from'), null);
+    assert.equal(url.searchParams.get('org_key'), 'eq.org_slm_my');
+    assert.equal(url.searchParams.get('scenario_id'), 'eq.1');
+    assert.doesNotMatch(fetches[1], /retired_at|valid_from/);
+    assert.match(fetches[1], /org_key=eq\.org_slm_my/);
+  });
+
   test('a different missing column does not turn versioning off', async () => {
     const url = new URL('http://db.local/scenario_teams');
     const query = {
