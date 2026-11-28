@@ -5,13 +5,16 @@ import { api } from '../lib/api';
 import {
   listScenariosWithSummary,
   getSessionCredits,
+  getSetupEditAllowance,
   getScenarioInjectsPeek,
   getScenarioTeamsPeek,
   type LibraryScenario,
   type ScenarioSummaryOrg,
   type PeekInject,
   type PeekTeam,
+  type SetupEditAllowance,
 } from '../lib/scenarioLibraryApi';
+import { setupEditButtonState } from '../lib/setupEditButton';
 import { artFor, SHELL_ART } from '../lib/scenarioArt';
 import { WrIcon, teamIcon } from '../components/UI/WarRoomIcon';
 import { OriginBadge } from '../components/UI/OriginBadge';
@@ -143,6 +146,7 @@ export const Scenarios = () => {
   const [view, setView] = useState<'cards' | 'list'>('cards');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sessionCredits, setSessionCredits] = useState<number | null>(null);
+  const [setupEdits, setSetupEdits] = useState<Record<string, SetupEditAllowance>>({});
 
   useEffect(() => {
     loadScenarios();
@@ -152,6 +156,36 @@ export const Scenarios = () => {
     if (!isTrainer) return;
     getSessionCredits().then(setSessionCredits);
   }, [isTrainer]);
+
+  useEffect(() => {
+    if (!isTrainer) return;
+    const ids = scenarios.filter(isSocial).map((scenario) => scenario.id);
+    if (ids.length === 0) {
+      setSetupEdits({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const first = await getSetupEditAllowance(ids[0]);
+      if (cancelled) return;
+      if (!first?.enabled) {
+        setSetupEdits({});
+        return;
+      }
+      const next: Record<string, SetupEditAllowance> = { [ids[0]]: first };
+      const rest = await Promise.all(
+        ids.slice(1).map(async (id) => [id, await getSetupEditAllowance(id)] as const),
+      );
+      if (cancelled) return;
+      for (const [id, allowance] of rest) {
+        if (allowance?.enabled) next[id] = allowance;
+      }
+      setSetupEdits(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTrainer, scenarios]);
 
   const loadScenarios = async () => {
     try {
@@ -534,6 +568,7 @@ export const Scenarios = () => {
                       s={s}
                       lock={lockState(s)}
                       isTrainer={isTrainer}
+                      setupEdit={setupEdits[s.id]}
                       onCollapse={() => setExpandedId(null)}
                       onOpen={() => handleViewScenario(s)}
                       onLaunch={() => launch(s)}
@@ -545,6 +580,7 @@ export const Scenarios = () => {
                       index={i}
                       lock={lockState(s)}
                       isTrainer={isTrainer}
+                      setupEdit={setupEdits[s.id]}
                       deleting={deleting === s.id}
                       onExpand={() => (isTrainer ? setExpandedId(s.id) : handleViewScenario(s))}
                       onOpen={() => handleViewScenario(s)}
@@ -615,6 +651,12 @@ export const Scenarios = () => {
                               >
                                 <WrIcon name="edit" /> Edit
                               </button>
+                              <SetupEditButton
+                                allowance={setupEdits[s.id]}
+                                social={isSocial(s)}
+                                lock={lock}
+                                className="wr-btn sm"
+                              />
                               <button className="wr-btn sm accent" onClick={() => launch(s)}>
                                 <WrIcon name="play" /> {lock === 'locked-live' ? 'Open' : 'Launch'}
                               </button>
@@ -779,6 +821,45 @@ const LockLabel = ({ lock }: { lock: LockState }) =>
     <span className="wr-lock draft">Draft</span>
   );
 
+const setupLockTitle = (lock: LockState): string | undefined => {
+  if (lock === 'locked-live') return 'A session is live — editing is locked';
+  if (lock === 'locked-credits') return 'No session credits — editing is locked';
+  return undefined;
+};
+
+const SetupEditButton = ({
+  allowance,
+  social,
+  lock,
+  className,
+}: {
+  allowance: SetupEditAllowance | undefined;
+  social: boolean;
+  lock: LockState;
+  className: string;
+}) => {
+  const state = setupEditButtonState({
+    enabled: Boolean(social && allowance?.enabled),
+    remaining: allowance?.remaining ?? null,
+    limit: allowance?.limit ?? 0,
+    locked: lock === 'locked-live' || lock === 'locked-credits',
+    lockTitle: setupLockTitle(lock),
+  });
+  if (!state.visible) return null;
+  // Wizard open/resume is wired with edit mode. This renders the allowance only.
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={state.disabled}
+      title={state.title}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {state.label}
+    </button>
+  );
+};
+
 const StatusChip = ({ s, lock }: { s: Scenario; lock: LockState }) =>
   lock === 'locked-live' ? (
     <span className="status live">
@@ -797,6 +878,7 @@ const Poster = ({
   index,
   lock,
   isTrainer,
+  setupEdit,
   deleting,
   onExpand,
   onOpen,
@@ -807,6 +889,7 @@ const Poster = ({
   index: number;
   lock: LockState;
   isTrainer: boolean;
+  setupEdit: SetupEditAllowance | undefined;
   deleting: boolean;
   onExpand: () => void;
   onOpen: () => void;
@@ -885,6 +968,12 @@ const Poster = ({
                 </button>
               </>
             )}
+            <SetupEditButton
+              allowance={setupEdit}
+              social={social}
+              lock={lock}
+              className="wr-btn sm"
+            />
           </>
         ) : (
           <button className="wr-btn sm" onClick={onOpen}>
@@ -900,6 +989,7 @@ const ExpandedPoster = ({
   s,
   lock,
   isTrainer,
+  setupEdit,
   onCollapse,
   onOpen,
   onLaunch,
@@ -907,6 +997,7 @@ const ExpandedPoster = ({
   s: Scenario;
   lock: LockState;
   isTrainer: boolean;
+  setupEdit: SetupEditAllowance | undefined;
   onCollapse: () => void;
   onOpen: () => void;
   onLaunch: () => void;
@@ -983,6 +1074,12 @@ const ExpandedPoster = ({
               >
                 <WrIcon name="edit" /> Edit
               </button>
+              <SetupEditButton
+                allowance={setupEdit}
+                social={social}
+                lock={lock}
+                className="wr-btn onDark flex-1"
+              />
               <button className="wr-btn onDark flex-1" onClick={onLaunch}>
                 <WrIcon name="play" /> {lock === 'locked-live' ? 'Open session' : 'Launch'}
               </button>
