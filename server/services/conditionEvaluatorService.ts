@@ -12,6 +12,7 @@ import {
   parseConditionKey,
 } from './conditions/conditionCatalog.js';
 import { evaluateCommsKey, explainCommsKey } from './conditions/commsConditionsCore.js';
+import { explainDependencyKey, evaluateDependencyKey } from './dependencies/dependencyConditionsCore.js';
 import { emptyCommsState, type CommsState } from './ledger/injectLedgerCore.js';
 
 // ---------------------------------------------------------------------------
@@ -594,6 +595,8 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   if (!('error' in parsed)) {
     const comms = evaluateCommsKey(parsed, commsStateOf(context), context.elapsedMinutes);
     if (comms !== undefined) return comms;
+    const dependency = evaluateDependencyKey(parsed, context.currentState, context.elapsedMinutes);
+    if (dependency !== undefined) return dependency;
   }
 
   const prefixPathway = 'prior_pathway_outcome_fired:';
@@ -726,6 +729,8 @@ export function describeConditionKey(
           : explained.detail,
     };
   }
+  const dependency = explainDependencyKey(parsed, context.currentState, context.elapsedMinutes, label);
+  if (dependency) return dependency;
   const met = evaluateKey(key, context);
   if (
     parsed.def.id === 'player_message_is_consistent_across_channels' ||

@@ -1,6 +1,7 @@
 /**
  * Pure checks for initial_state.team_dependencies. No database and no network.
- * Runtime state, generation and the editor are other work packages.
+ * Runtime transitions are re-exported from dependencyRuntimeCore.ts.
+ * Generation and the editor are other work packages.
  */
 
 import {
@@ -14,6 +15,9 @@ import {
 import { dependencyEdgeSchema } from './dependencySchema.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { parseConditionKey, type ConditionDef } from '../conditions/conditionCatalog.js';
+
+export { evaluateDependency, nextState } from './dependencyRuntimeCore.js';
+export type { DependencyEvaluation } from './dependencyRuntimeCore.js';
 
 export type { ActiveTeam, TeamDependencyEdge, TeamDependencies };
 

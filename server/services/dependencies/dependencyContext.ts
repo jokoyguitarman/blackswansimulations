@@ -106,6 +106,23 @@ async function loadInjectRefs(scenarioId: string): Promise<DependencyInjectRef[]
   return refs;
 }
 
+/** Active teams for a scenario. Retired rows stay out. Missing team_uid falls back to names. */
+export async function loadScenarioTeams(
+  scenarioId: string,
+): Promise<{ teams: ReturnType<typeof toActiveTeams> } | { error: string }> {
+  const loaded = await loadTeamRows(scenarioId);
+  if ('error' in loaded) return loaded;
+  return {
+    teams: toActiveTeams(
+      loaded.rows.map((row) => ({
+        team_uid: typeof row.team_uid === 'string' ? row.team_uid : null,
+        team_name: typeof row.team_name === 'string' ? row.team_name : null,
+        org_key: typeof row.org_key === 'string' ? row.org_key : null,
+      })),
+    ),
+  };
+}
+
 export async function normalizeScenarioDependencies(
   scenarioId: string,
   initialState: Record<string, unknown>,
