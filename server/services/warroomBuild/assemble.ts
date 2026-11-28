@@ -250,7 +250,7 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
   const convergence = outputs.convergence;
   const pages = pagesUsable(outputs.pages) ? outputs.pages : undefined;
   const pageOrgs = pages?.orgs ?? [];
-  const peace = usablePeaceFeed(pages?.peace_period ?? outputs.pages?.peace_period);
+  const peace = usablePeaceFeed(pages?.peace_period);
 
   return {
     personas: dedupeByHandle([

@@ -9,7 +9,7 @@ import {
   type LayerTeam,
 } from '../../lib/injectFingerprint.js';
 import { injectKeysInParsedCondition, parseConditionKey } from '../conditions/conditionCatalog.js';
-import { peaceHandleRenames, rewritePeacePeriod } from '../generation/peaceFeedCore.js';
+import { pageHandlesOf, peaceHandleRenames, rewritePeacePeriod } from '../generation/peaceFeedCore.js';
 import { makeOrgKey } from '../scenarioOrgModel.js';
 import type { SetupDelta } from './setupDeltaCore.js';
 import type { SetupSnapshot, SnapshotOrg, SnapshotTeam } from './setupSnapshotCore.js';
@@ -2166,10 +2166,15 @@ function planPeacePeriod(
     ...working.removedRivals,
     ...working.removedPressure,
   ]);
+  const dropKey = (key: string) => dropOrgKeys.has(key) || dropOrgKeys.has(working.mapKey(key));
   return {
     value: rewritePeacePeriod(state.peace_period, {
       mapKey: (key) => working.mapKey(key),
       dropOrgKeys,
+      dropCommentHandles: [
+        ...pageHandlesOf(state.org_page, dropKey),
+        ...pageHandlesOf(state.orgs, dropKey),
+      ],
       handleRenames: peaceHandleRenames({
         orgPageBefore: state.org_page,
         orgPageAfter: orgPage,

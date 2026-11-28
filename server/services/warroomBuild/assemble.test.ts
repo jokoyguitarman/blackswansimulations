@@ -326,12 +326,12 @@ describe('A7 pages skipped', () => {
     assert.equal(absent.team_charters[0]?.team_name, 'Legal');
   });
 
-  test('a skipped pages output still contributes a peace feed', () => {
+  test('a pages stage that ran contributes its peace feed', () => {
     const review = assembleReview(
       request(),
       outputs({
         pages: {
-          skipped: true,
+          org_page: { page_name: 'Meridian' },
           peace_period: {
             version: 1,
             seconds: 300,
@@ -353,7 +353,7 @@ describe('A7 pages skipped', () => {
         },
       }),
     );
-    assert.equal(review.org_page, null);
+    assert.equal(review.org_page?.page_name, 'Meridian');
     assert.equal(review.peace_period?.posts[0]?.content, 'Saturday breakfast');
   });
 });

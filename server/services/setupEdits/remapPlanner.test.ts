@@ -1679,7 +1679,10 @@ describe('remap planner', () => {
       content: 'Acme breakfast.',
       media_description: '',
       offset_seconds: 20,
-      comments: [{ author_handle: '@sam', content: 'Nice', offset_seconds: 30 }],
+      comments: [
+        { author_handle: '@sam', content: 'Nice', offset_seconds: 30 },
+        { author_handle: '@bravo', content: 'Our hours too', offset_seconds: 35 },
+      ],
     };
     const persona = {
       ref: 'P3',
@@ -1703,7 +1706,17 @@ describe('remap planner', () => {
           }),
         ]),
         initial_state: {
-          orgs: [acme(), bravo()],
+          orgs: [acme(), bravo({ facebook_handle: '@bravo' })],
+          org_page: {
+            orgs: [
+              {
+                org_uid: 'uid-b',
+                org_key: 'org_bravo_my',
+                side: 'protagonist',
+                facebook: { page_handle: '@bravo', page_name: 'Bravo' },
+              },
+            ],
+          },
           peace_period: {
             version: 1,
             seconds: 300,
@@ -1727,8 +1740,19 @@ describe('remap planner', () => {
         },
       }),
     );
-    const peace = replaced(plan, '/peace_period') as { posts: unknown[]; leak_terms: string[] };
-    assert.deepEqual(peace.posts, [kept, persona]);
+    const peace = replaced(plan, '/peace_period') as {
+      posts: Array<{ ref: string; comments: Array<{ author_handle: string }> }>;
+      leak_terms: string[];
+    };
+    assert.deepEqual(
+      peace.posts.map((item) => item.ref),
+      ['P1', 'P3'],
+    );
+    assert.deepEqual(
+      peace.posts[0]?.comments.map((comment) => comment.author_handle),
+      ['@sam'],
+    );
+    assert.equal(peace.posts[1], persona);
     assert.deepEqual(peace.leak_terms, ['recall']);
   });
 

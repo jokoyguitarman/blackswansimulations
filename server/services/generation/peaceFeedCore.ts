@@ -701,21 +701,27 @@ export interface PeacePeriodRewrite {
   /** Org keys whose page posts leave the feed. Checked before and after `mapKey`. */
   dropOrgKeys: ReadonlySet<string>;
   handleRenames: readonly PeaceHandleRename[];
+  /** Page handles of removed organisations. Their comments on surviving posts are dropped. */
+  dropCommentHandles?: readonly string[];
 }
 
 /**
  * Rewrites one stored peace feed. Org re-keys and the primary swap update page
- * authors. A removed org's posts are dropped. A renamed handle updates persona
- * authors and comment authors. Returns the same value when nothing changes.
+ * authors. A removed org's posts are dropped, and so are comments that page
+ * left on other posts. A renamed handle updates persona authors and comment
+ * authors. Returns the same value when nothing changes.
  */
 export function rewritePeacePeriod(value: unknown, rewrite: PeacePeriodRewrite): unknown {
   const feed = asRecord(value);
   if (!feed || !Array.isArray(feed.posts)) return value;
   const handles = handleMapOf(rewrite.handleRenames);
+  const dropComments = new Set(
+    (rewrite.dropCommentHandles ?? []).map((handle) => handleKey(handle)).filter((handle) => handle.length > 0),
+  );
   let changed = false;
   const posts: unknown[] = [];
   for (const raw of feed.posts) {
-    const next = rewriteOnePost(raw, rewrite, handles);
+    const next = rewriteOnePost(raw, rewrite, handles, dropComments);
     if (next === undefined) {
       changed = true;
       continue;
@@ -758,7 +764,11 @@ export function peaceHandleRenames(input: {
   return renames;
 }
 
-/** Keeps `feed.posts` and replaces leak terms. An empty reply leaves the feed as it was. */
+/**
+ * Replaces leak terms and drops posts that now match them, the same drop
+ * `dropOffendingPosts` uses. An empty reply, or a reply that would remove
+ * every post, leaves the feed as it was so the result still stores.
+ */
 export function replacePeaceLeakTerms(feed: PeaceFeed, terms: readonly string[]): PeaceFeed {
   const cleaned = cleanTerms(terms);
   if (cleaned.length === 0) return feed;
@@ -768,22 +778,65 @@ export function replacePeaceLeakTerms(feed: PeaceFeed, terms: readonly string[])
   ) {
     return feed;
   }
-  return { ...feed, leak_terms: cleaned };
+  const dropped = dropOffendingPosts({ ...feed, leak_terms: cleaned }, []);
+  if (dropped.posts.length === 0) return feed;
+  if (dropped.posts.length === feed.posts.length) return { ...feed, leak_terms: cleaned };
+  return dropped;
 }
 
 /**
  * Appends page posts for `addedOrgKeys` and leaves every existing post in place.
- * Posts that leak, sit outside the offset window, or name another organisation are ignored.
+ * The reply is normalised and checked with the same rules as a full feed.
  * Existing posts fill the feed first; nothing is added once the feed is full.
  */
 export function mergeAddedPeacePosts(
   feed: PeaceFeed,
   raw: unknown,
+  cast: PeaceCast,
   addedOrgKeys: ReadonlySet<string>,
 ): PeaceFeed {
-  const added = readAddedPagePosts(raw, feed, addedOrgKeys);
+  const room = PEACE_POST_MAX - feed.posts.length;
+  if (room <= 0 || addedOrgKeys.size === 0) return feed;
+  const normalised = normalisePeaceFeed(raw, cast, {
+    seconds: feed.seconds,
+    enabled: feed.enabled,
+  });
+  if (!normalised) return feed;
+  const candidates = normalised.posts.filter(
+    (post) => post.author.kind === 'page' && addedOrgKeys.has(post.author.org_key),
+  );
+  if (candidates.length === 0) return feed;
+  const probe = { ...feed, posts: candidates };
+  const checked = dropOffendingPosts(probe, checkPeaceFeed(probe, cast));
+  const used = new Set(feed.posts.map((post) => post.ref));
+  const added: PeaceFeedPost[] = [];
+  for (const post of checked.posts) {
+    if (added.length >= room) break;
+    const ref = used.has(post.ref) ? nextPeaceRef(used) : post.ref;
+    used.add(ref);
+    added.push(ref === post.ref ? post : { ...post, ref });
+  }
   if (added.length === 0) return feed;
   return { ...feed, posts: [...feed.posts, ...added] };
+}
+
+/** Handles of organisation pages whose key `drop` accepts, from a page document or a list of orgs. */
+export function pageHandlesOf(source: unknown, drop: (orgKey: string) => boolean): string[] {
+  const rows = Array.isArray(source) ? source.filter(isOrgRecord) : orgRecords(source);
+  const handles: string[] = [];
+  for (const org of rows) {
+    const key = typeof org.org_key === 'string' ? org.org_key.trim() : '';
+    if (!key || !drop(key)) continue;
+    for (const field of HANDLE_FIELDS) {
+      const handle = handleField(org, field);
+      if (handle) handles.push(handle);
+    }
+  }
+  return handles;
+}
+
+function isOrgRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 const HANDLE_FIELDS = ['facebook_handle', 'x_handle', 'facebook.page_handle', 'x_twitter.page_handle'] as const;
@@ -862,6 +915,7 @@ function rewriteOnePost(
   raw: unknown,
   rewrite: PeacePeriodRewrite,
   handles: ReadonlyMap<string, string>,
+  dropComments: ReadonlySet<string>,
 ): unknown | undefined {
   const post = asRecord(raw);
   if (!post) return raw;
@@ -871,11 +925,11 @@ function rewriteOnePost(
     const mapped = rewrite.mapKey(original);
     if (rewrite.dropOrgKeys.has(original) || rewrite.dropOrgKeys.has(mapped)) return undefined;
     const authorNext = mapped !== author.org_key ? { ...author, org_key: mapped } : author;
-    const comments = rewriteComments(post.comments, handles);
+    const comments = rewriteComments(post.comments, handles, dropComments);
     if (authorNext === author && comments === post.comments) return raw;
     return postWith(post, authorNext, comments);
   }
-  const comments = rewriteComments(post.comments, handles);
+  const comments = rewriteComments(post.comments, handles, dropComments);
   let authorNext = author;
   if (author?.kind === 'persona' && typeof author.handle === 'string') {
     const next = renamedHandle(author.handle, handles);
@@ -896,92 +950,33 @@ function postWith(
   return next;
 }
 
-function rewriteComments(value: unknown, handles: ReadonlyMap<string, string>): unknown {
+function rewriteComments(
+  value: unknown,
+  handles: ReadonlyMap<string, string>,
+  dropComments: ReadonlySet<string>,
+): unknown {
   if (!Array.isArray(value)) return value;
   let changed = false;
-  const comments = value.map((item) => {
-    const comment = asRecord(item);
-    if (!comment || typeof comment.author_handle !== 'string') return item;
-    const next = renamedHandle(comment.author_handle, handles);
-    if (!next || next === comment.author_handle) return item;
-    changed = true;
-    return { ...comment, author_handle: next };
-  });
-  return changed ? comments : value;
-}
-
-function readAddedPagePosts(
-  raw: unknown,
-  feed: PeaceFeed,
-  addedOrgKeys: ReadonlySet<string>,
-): PeaceFeedPost[] {
-  const room = PEACE_POST_MAX - feed.posts.length;
-  if (room <= 0 || addedOrgKeys.size === 0) return [];
-  const record = unwrapFeed(raw);
-  if (!record || !Array.isArray(record.posts)) return [];
-  const window = offsetWindow(feed.seconds);
-  const used = new Set(feed.posts.map((post) => post.ref));
-  const added: PeaceFeedPost[] = [];
-  for (const entry of record.posts) {
-    if (added.length >= room) break;
-    const post = asRecord(entry);
-    if (!post || typeof post.content !== 'string' || !post.content.trim()) continue;
-    const author = asRecord(post.author);
-    const orgKey = typeof author?.org_key === 'string' ? author.org_key.trim() : '';
-    if (author?.kind !== 'page' || !addedOrgKeys.has(orgKey)) continue;
-    const platform = canonicalPlatform(
-      typeof post.platform === 'string'
-        ? post.platform
-        : typeof author.platform === 'string'
-          ? author.platform
-          : 'facebook',
-    );
-    const offset = integerOffset(post.offset_seconds);
-    if (offset == null || offset < window.min || offset > window.max) continue;
-    const comments = readAddedComments(post.comments, window);
-    if (!comments) continue;
-    const draft: PeaceFeedPost = {
-      ref: '',
-      author: { kind: 'page', org_key: orgKey, platform },
-      platform,
-      post_format:
-        typeof post.post_format === 'string' && post.post_format.trim()
-          ? post.post_format.trim()
-          : 'text',
-      content: post.content.trim(),
-      media_description:
-        typeof post.media_description === 'string' ? post.media_description.trim() : '',
-      offset_seconds: offset,
-      comments,
-    };
-    if (textsOf(draft).some((text) => matchesLeakTerms(text, feed.leak_terms))) continue;
-    draft.ref = nextPeaceRef(used);
-    used.add(draft.ref);
-    added.push(draft);
-  }
-  return added;
-}
-
-function readAddedComments(
-  value: unknown,
-  window: { min: number; max: number },
-): PeaceFeedComment[] | null {
-  if (!Array.isArray(value)) return [];
-  const comments: PeaceFeedComment[] = [];
+  const comments = [];
   for (const item of value) {
-    if (comments.length >= PEACE_COMMENT_MAX) break;
     const comment = asRecord(item);
-    if (!comment || typeof comment.content !== 'string' || !comment.content.trim()) continue;
-    const offset = integerOffset(comment.offset_seconds);
-    if (offset == null || offset < window.min || offset > window.max) return null;
-    const handle = typeof comment.author_handle === 'string' ? comment.author_handle : '';
-    comments.push({
-      author_handle: canonicalHandle(handle || '@unknown'),
-      content: comment.content.trim(),
-      offset_seconds: offset,
-    });
+    if (!comment || typeof comment.author_handle !== 'string') {
+      comments.push(item);
+      continue;
+    }
+    if (dropComments.has(handleKey(comment.author_handle))) {
+      changed = true;
+      continue;
+    }
+    const next = renamedHandle(comment.author_handle, handles);
+    if (!next || next === comment.author_handle) {
+      comments.push(item);
+      continue;
+    }
+    changed = true;
+    comments.push({ ...comment, author_handle: next });
   }
-  return comments;
+  return changed ? comments : value;
 }
 
 function nextPeaceRef(used: ReadonlySet<string>): string {

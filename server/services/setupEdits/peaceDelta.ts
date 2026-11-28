@@ -6,13 +6,14 @@
 
 import { env } from '../../env.js';
 import { logger } from '../../lib/logger.js';
-import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_POST_MAX } from '../../../shared/peaceFeed.js';
+import { PEACE_POST_MAX } from '../../../shared/peaceFeed.js';
 import {
+  PEACE_FEED_EMPTY_WARNING,
   mergeAddedPeacePosts,
   replacePeaceLeakTerms,
+  usablePeaceFeed,
   type PeaceCast,
   type PeaceFeed,
-  type PeaceFeedPost,
   type PeacePage,
 } from '../generation/peaceFeedCore.js';
 import {
@@ -32,6 +33,7 @@ import type { DeltaBuildContext } from './deltaBuildTypes.js';
 export async function revisePeaceForEdit(
   ctx: DeltaBuildContext,
   generatedPages: ReadonlyArray<Record<string, unknown>> = [],
+  warn?: (message: string) => void,
 ): Promise<PeaceFeed | undefined> {
   if (!env.enablePeaceFeedBuildStage) return undefined;
   const baseline = peaceBaseline(ctx);
@@ -41,85 +43,55 @@ export async function revisePeaceForEdit(
 
   let feed = baseline;
   if (ctx.delta.brief_changed) {
-    feed = await withPeaceFallback(feed, 'peace leak terms skipped', async () => {
+    feed = await withPeaceFallback(feed, warn, async () => {
       const terms = await requestPeaceLeakTerms(crisisBrief(ctx), ctx.peaceClient);
       return replacePeaceLeakTerms(feed, terms);
     });
   }
   if (added.length > 0 && feed.posts.length < PEACE_POST_MAX) {
     const keys = new Set(added);
-    const cast = castForAdded(ctx, keys, generatedPages);
-    if (cast.pages.length > 0) {
-      feed = await withPeaceFallback(feed, 'peace posts for added organisations skipped', async () => {
+    const cast = castForPeace(ctx, keys, generatedPages);
+    const promptCast = {
+      personas: cast.personas,
+      pages: cast.pages.filter((page) => keys.has(page.org_key)),
+    };
+    if (promptCast.pages.length > 0) {
+      feed = await withPeaceFallback(feed, warn, async () => {
         const raw = await requestAddedPeacePosts(
           {
-            cast,
+            cast: promptCast,
             seconds: feed.seconds,
             leakTerms: feed.leak_terms,
             room: PEACE_POST_MAX - feed.posts.length,
           },
           ctx.peaceClient,
         );
-        return mergeAddedPeacePosts(feed, raw, keys);
+        return mergeAddedPeacePosts(feed, raw, cast, keys);
       });
     }
   }
   if (feed === baseline) return undefined;
-  return feed;
+  return usablePeaceFeed(feed) ?? undefined;
 }
 
 async function withPeaceFallback(
   current: PeaceFeed,
-  message: string,
+  warn: ((message: string) => void) | undefined,
   step: () => Promise<PeaceFeed>,
 ): Promise<PeaceFeed> {
   try {
     return await step();
   } catch (err) {
     if (isPeaceInterrupt(err)) throw err;
-    logger.warn({ err }, message);
+    warn?.(PEACE_FEED_EMPTY_WARNING);
+    logger.warn({ err }, 'peace feed skipped');
     return current;
   }
 }
 
 function peaceBaseline(ctx: DeltaBuildContext): PeaceFeed | null {
   const patched = ctx.plan.initial_state.patch.find((item) => item.path === '/peace_period');
-  return asPeaceFeed(patched ? patched.value : ctx.peace_period);
-}
-
-function asPeaceFeed(value: unknown): PeaceFeed | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.posts) || record.posts.length === 0) return null;
-  const posts = asPosts(record.posts);
-  if (!posts) return null;
-  const seconds = typeof record.seconds === 'number' && Number.isFinite(record.seconds)
-    ? record.seconds
-    : PEACE_PERIOD_DEFAULT_SECONDS;
-  return {
-    version: 1,
-    seconds,
-    enabled: record.enabled !== false,
-    leak_terms: Array.isArray(record.leak_terms)
-      ? record.leak_terms.filter((term): term is string => typeof term === 'string')
-      : [],
-    posts,
-  };
-}
-
-function asPosts(value: unknown[]): PeaceFeedPost[] | null {
-  if (!value.every(isStoredPost)) return null;
-  return value as PeaceFeedPost[];
-}
-
-function isStoredPost(value: unknown): value is PeaceFeedPost {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const post = value as Record<string, unknown>;
-  if (typeof post.ref !== 'string' || typeof post.content !== 'string') return false;
-  const author = post.author;
-  if (!author || typeof author !== 'object' || Array.isArray(author)) return false;
-  const kind = (author as Record<string, unknown>).kind;
-  return kind === 'page' || kind === 'persona';
+  return usablePeaceFeed(patched ? patched.value : ctx.peace_period);
 }
 
 function crisisBrief(ctx: DeltaBuildContext): string {
@@ -146,22 +118,17 @@ function postedOrgKey(ctx: DeltaBuildContext, orgKey: string): string {
   return swap?.map[orgKey] ?? orgKey;
 }
 
-function castForAdded(
+function castForPeace(
   ctx: DeltaBuildContext,
   keys: ReadonlySet<string>,
   generatedPages: ReadonlyArray<Record<string, unknown>>,
 ): PeaceCast {
   const existing = castFromParts(ctx.personas, ctx.org_page);
-  const generated = castFromParts(
-    [],
-    { orgs: generatedPages.map((page) => retitle(ctx, page)) },
-  );
+  const generated = castFromParts([], { orgs: generatedPages.map((page) => retitle(ctx, page)) });
   const synthetic = castFromParts([], { orgs: snapshotPages(ctx, keys) });
   return {
     personas: existing.personas,
-    pages: dedupePages([...generated.pages, ...existing.pages, ...synthetic.pages]).filter((page) =>
-      keys.has(page.org_key),
-    ),
+    pages: dedupePages([...existing.pages, ...generated.pages, ...synthetic.pages]),
   };
 }
 

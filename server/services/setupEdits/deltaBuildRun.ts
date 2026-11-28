@@ -53,11 +53,17 @@ export interface DeltaCarry {
   retiredKeys: string[];
 }
 
+export interface DeltaStageHooks {
+  /** Trainer-facing build log, the same channel the create-mode peace step uses. */
+  warn?: (message: string) => void;
+}
+
 export async function runDeltaStage(
   stage: DeltaStageName,
   ctx: DeltaBuildContext,
   generators: DeltaGenerators,
   carry?: DeltaCarry,
+  hooks?: DeltaStageHooks,
 ): Promise<SetupEditStageOutput> {
   const state = startState(ctx, carry);
   let diff = carry?.briefDiff ?? null;
@@ -112,7 +118,7 @@ export async function runDeltaStage(
   }
 
   if (stage === 'pages') {
-    const peace = await revisePeaceForEdit(ctx, state.generated.pages);
+    const peace = await revisePeaceForEdit(ctx, state.generated.pages, hooks?.warn);
     if (peace) state.peace_period = peace;
   }
 
@@ -130,25 +136,26 @@ export async function runDeltaStage(
 export async function runDeltaBuild(
   ctx: DeltaBuildContext,
   generators: DeltaGenerators,
+  hooks?: DeltaStageHooks,
 ): Promise<Record<DeltaStageName, SetupEditStageOutput>> {
-  const characters = await runDeltaStage('characters', ctx, generators);
+  const characters = await runDeltaStage('characters', ctx, generators, undefined, hooks);
   const afterCharacters = retiredKeysOf(characters);
   const storyline = await runDeltaStage('storyline', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: afterCharacters,
-  });
+  }, hooks);
   const afterStoryline = [...afterCharacters, ...retiredKeysOf(storyline)];
   const convergence = await runDeltaStage('convergence', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: afterStoryline,
-  });
+  }, hooks);
   const pages = await runDeltaStage('pages', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: [...afterStoryline, ...retiredKeysOf(convergence)],
-  });
+  }, hooks);
   return { characters, storyline, convergence, pages };
 }
 
@@ -865,6 +872,7 @@ function finish(
     generated.pages.length > 0 ||
     generated.branches.length > 0 ||
     generated.pressure_injects.length > 0 ||
+    state.peace_period != null ||
     diff != null;
   return {
     revisions: state.revisions,
