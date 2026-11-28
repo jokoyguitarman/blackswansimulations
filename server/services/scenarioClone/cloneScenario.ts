@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../../lib/templateRows.js';
+import { backfillDependencyTeamUids } from '../../../shared/teamDependencies.js';
 import {
   cloneCasualtyRows,
   cloneColumnRows,
@@ -181,6 +182,22 @@ async function insertScenario(
   return { id: null, error: { message: 'scenario insert exceeded column retries' } };
 }
 
+async function loadCloneTeamRefs(
+  db: CloneDb,
+  scenarioId: string,
+): Promise<Array<{ team_uid?: string | null; team_name?: string | null }>> {
+  const first = await activeTeams(
+    db.from('scenario_teams').select('team_uid, team_name').eq('scenario_id', scenarioId),
+  );
+  if (!first.error) return rowsOf(first.data);
+  if (missingColumnName(first.error) !== 'team_uid') return [];
+  const second = await activeTeams(
+    db.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+  );
+  if (second.error) return [];
+  return rowsOf(second.data);
+}
+
 async function stampCopiedState(db: CloneDb, scenarioId: string): Promise<void> {
   const loaded = await db
     .from('scenarios')
@@ -195,7 +212,8 @@ async function stampCopiedState(db: CloneDb, scenarioId: string): Promise<void> 
     return;
   }
   const current = (loaded.data as { initial_state?: unknown }).initial_state;
-  const stamped = stampOrgIdentity(current);
+  const teams = await loadCloneTeamRefs(db, scenarioId);
+  const stamped = backfillDependencyTeamUids(stampOrgIdentity(current), teams);
   if (JSON.stringify(stamped) === JSON.stringify(current)) return;
   const updated = await db
     .from('scenarios')
@@ -285,9 +303,17 @@ async function cloneByRows(
   if (!source.row) return { ok: false, status: 404, error: 'Scenario not found' };
 
   const title = resolveCloneTitle(String(source.row.title ?? ''), input.title);
+  // templateRows-allow: this read is the clone writer; activeTeams drops retired rows.
+  const sourceTeams = await activeTeams(
+    db.from('scenario_teams').select('*').eq('scenario_id', input.scenarioId),
+  );
   const inserted = await insertScenario(
     db,
-    cloneScenarioInsert(source.row, { title, createdBy: input.userId }),
+    cloneScenarioInsert(source.row, {
+      title,
+      createdBy: input.userId,
+      teams: sourceTeams.error ? [] : rowsOf(sourceTeams.data),
+    }),
   );
   if (inserted.error || !inserted.id) {
     logger.error(
@@ -297,20 +323,16 @@ async function cloneByRows(
     return { ok: false, status: 500, error: 'Failed to clone scenario' };
   }
 
-  // templateRows-allow: this read is the clone writer; activeTeams drops retired rows.
-  const teams = await activeTeams(
-    db.from('scenario_teams').select('*').eq('scenario_id', input.scenarioId),
-  );
-  if (teams.error) {
+  if (sourceTeams.error) {
     logger.error(
-      { error: teams.error, scenarioId: inserted.id },
+      { error: sourceTeams.error, scenarioId: inserted.id },
       'Failed to read teams for cloning',
     );
   } else {
     const teamError = await insertRows(
       db,
       'scenario_teams',
-      cloneTeamRows(rowsOf(teams.data), inserted.id, input.nowIso),
+      cloneTeamRows(rowsOf(sourceTeams.data), inserted.id, input.nowIso),
     );
     if (teamError) {
       logger.error(

@@ -346,8 +346,7 @@ function readConditionGroup(value: unknown): NormalizedConditions | null | { err
   return { error: 'a condition group must use all, any, or threshold' };
 }
 
-const TEAM_UID =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const TEAM_UID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 function readTeamRef(value: unknown, label: string): TeamRef | { error: string } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -728,6 +727,71 @@ export function displayRef(
   const current = resolveTeamRef(ref, teams);
   if (current) return { name: current, removed: false };
   return { name: ref.team_name, removed: true };
+}
+
+/**
+ * Stamp `team_uid` onto dependency refs that have only a name.
+ * An existing uid is left alone, so a removed team's uid cannot attach to
+ * whoever later reused the display name. Idempotent. Edit-open and clone
+ * call this the same way they stamp `org_uid`.
+ */
+export function backfillDependencyTeamUids<T>(
+  initialState: T,
+  teams: readonly { team_uid?: string | null; team_name?: string | null }[],
+): T {
+  if (!initialState || typeof initialState !== 'object' || Array.isArray(initialState)) {
+    return initialState;
+  }
+  const state = initialState as Record<string, unknown>;
+  const doc = state.team_dependencies;
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return initialState;
+  const edges = (doc as { edges?: unknown }).edges;
+  if (!Array.isArray(edges) || edges.length === 0) return initialState;
+  const roster = teams.flatMap((team) => {
+    const teamName = typeof team.team_name === 'string' ? team.team_name.trim() : '';
+    const teamUid = typeof team.team_uid === 'string' ? team.team_uid.trim() : '';
+    if (!teamName || !teamUid) return [];
+    return [{ team_uid: teamUid, team_name: teamName }];
+  });
+  if (roster.length === 0) return initialState;
+  let changed = false;
+  const nextEdges = edges.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+    const edge = raw as Record<string, unknown>;
+    const upstream = fillMissingTeamUid(edge.upstream, roster);
+    let downstreamChanged = false;
+    const downstream = Array.isArray(edge.downstream)
+      ? edge.downstream.map((ref) => {
+          const filled = fillMissingTeamUid(ref, roster);
+          if (filled.changed) downstreamChanged = true;
+          return filled.value;
+        })
+      : edge.downstream;
+    if (!upstream.changed && !downstreamChanged) return raw;
+    changed = true;
+    return { ...edge, upstream: upstream.value, downstream };
+  });
+  if (!changed) return initialState;
+  return {
+    ...state,
+    team_dependencies: { ...(doc as Record<string, unknown>), edges: nextEdges },
+  } as T;
+}
+
+function fillMissingTeamUid(
+  value: unknown,
+  roster: readonly { team_uid: string; team_name: string }[],
+): { value: unknown; changed: boolean } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { value, changed: false };
+  const ref = value as { team_uid?: unknown; team_name?: unknown };
+  if (typeof ref.team_uid === 'string' && ref.team_uid.trim()) return { value, changed: false };
+  const name = typeof ref.team_name === 'string' ? ref.team_name : '';
+  const match = matchTeamRef({ team_uid: null, team_name: name }, roster);
+  if (!match) return { value, changed: false };
+  return {
+    value: { ...ref, team_uid: match.team_uid, team_name: match.team_name },
+    changed: true,
+  };
 }
 
 /** Rewrite cached names from the teams that still resolve. Uids already set stay. */

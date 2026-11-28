@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../../lib/templateRows.js';
+import { backfillDependencyTeamUids } from '../../../shared/teamDependencies.js';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { isAdmin } from '../creditService.js';
 import { env } from '../../env.js';
@@ -49,6 +50,17 @@ class SnapshotUnavailable extends Error {}
 
 type PersistIdentityResult = { ok: true; state: unknown } | { ok: false; reason: 'conflict' };
 
+function stampScenarioIdentity(
+  initialState: unknown,
+  scenarioId: string,
+  teams: readonly { team_uid?: string | null; team_name?: string | null }[],
+): unknown {
+  return backfillDependencyTeamUids(
+    stampOrgIdentity(materializeLegacyPrimary(initialState, scenarioId)),
+    teams,
+  );
+}
+
 /**
  * Write org_uid stamps only when the scenario row is still the one we read.
  * A concurrent save wins the first attempt. Re-read once and try again. If
@@ -59,8 +71,9 @@ async function persistOrgIdentity(
   scenarioId: string,
   updatedAt: string | null,
   initialState: unknown,
+  teams: readonly { team_uid?: string | null; team_name?: string | null }[],
 ): Promise<PersistIdentityResult> {
-  const next = stampOrgIdentity(materializeLegacyPrimary(initialState, scenarioId));
+  const next = stampScenarioIdentity(initialState, scenarioId, teams);
   if (canonicalJson(next) === canonicalJson(initialState)) return { ok: true, state: initialState };
   if (await writeIdentity(scenarioId, updatedAt, next)) return { ok: true, state: next };
 
@@ -70,7 +83,7 @@ async function persistOrgIdentity(
     .eq('id', scenarioId)
     .maybeSingle<{ initial_state: unknown; updated_at: string | null }>();
   if (again.error || !again.data) return { ok: false, reason: 'conflict' };
-  const restamped = stampOrgIdentity(materializeLegacyPrimary(again.data.initial_state, scenarioId));
+  const restamped = stampScenarioIdentity(again.data.initial_state, scenarioId, teams);
   if (canonicalJson(restamped) === canonicalJson(again.data.initial_state)) {
     return { ok: true, state: again.data.initial_state };
   }
@@ -85,7 +98,10 @@ async function writeIdentity(
   updatedAt: string | null,
   initialState: unknown,
 ): Promise<boolean> {
-  let query = supabaseAdmin.from('scenarios').update({ initial_state: initialState }).eq('id', scenarioId);
+  let query = supabaseAdmin
+    .from('scenarios')
+    .update({ initial_state: initialState })
+    .eq('id', scenarioId);
   if (typeof updatedAt === 'string' && updatedAt) query = query.eq('updated_at', updatedAt);
   const written = await query.select('id');
   if (written.error) {
@@ -273,24 +289,42 @@ export async function attachOpenedDraft(
       noteSetupEditsUnavailable();
       return { available: false };
     }
-    logger.error({ error: scenario.error, scenarioId }, 'Failed to load scenario for setup snapshot');
+    logger.error(
+      { error: scenario.error, scenarioId },
+      'Failed to load scenario for setup snapshot',
+    );
     throw new Error(`Setup snapshot failed: ${scenario.error.message}`);
   }
   if (!scenario.data) return { available: true, ok: false, reason: 'not_found' };
+
+  let teams: SnapshotTeamRow[];
+  try {
+    teams = await loadActiveTeams(scenarioId);
+  } catch (err) {
+    if (err instanceof SnapshotUnavailable) {
+      await persistOrgIdentity(
+        scenarioId,
+        scenario.data.updated_at,
+        scenario.data.initial_state,
+        [],
+      );
+      return { available: false };
+    }
+    throw err;
+  }
 
   const persisted = await persistOrgIdentity(
     scenarioId,
     scenario.data.updated_at,
     scenario.data.initial_state,
+    teams,
   );
   if (!persisted.ok) return { available: true, ok: false, reason: 'conflict' };
   const stamped = persisted.state;
 
-  let teams: SnapshotTeamRow[];
   let injects: SnapshotInjectRow[];
   let buildRequest: unknown;
   try {
-    teams = await loadActiveTeams(scenarioId);
     injects = await loadActiveInjects(scenarioId);
     buildRequest = await loadBuildRequest(scenarioId, stamped);
   } catch (err) {
@@ -376,8 +410,7 @@ function columnMissing(
 }
 
 async function loadActiveTeams(scenarioId: string): Promise<SnapshotTeamRow[]> {
-  const full =
-    'id, team_uid, team_name, team_description, org_key, function_key, charter';
+  const full = 'id, team_uid, team_name, team_description, org_key, function_key, charter';
   const first = await activeTeams(
     supabaseAdmin.from('scenario_teams').select(full).eq('scenario_id', scenarioId),
   );
@@ -426,7 +459,12 @@ async function loadActiveInjects(scenarioId: string): Promise<SnapshotInjectRow[
 async function loadBuildRequest(scenarioId: string, state: unknown): Promise<unknown> {
   const record = state && typeof state === 'object' ? (state as Record<string, unknown>) : null;
   const stored = record?.setup_source;
-  if (stored && typeof stored === 'object' && !Array.isArray(stored) && Object.keys(stored).length > 0) {
+  if (
+    stored &&
+    typeof stored === 'object' &&
+    !Array.isArray(stored) &&
+    Object.keys(stored).length > 0
+  ) {
     return null;
   }
   const result = await supabaseAdmin
@@ -440,7 +478,10 @@ async function loadBuildRequest(scenarioId: string, state: unknown): Promise<unk
       noteBuildsUnavailable();
       return null;
     }
-    logger.error({ error: result.error, scenarioId }, 'Failed to load build request for setup snapshot');
+    logger.error(
+      { error: result.error, scenarioId },
+      'Failed to load build request for setup snapshot',
+    );
     throw new Error(`Setup snapshot build request failed: ${result.error.message}`);
   }
   const row = (result.data ?? [])[0] as { request?: unknown } | undefined;

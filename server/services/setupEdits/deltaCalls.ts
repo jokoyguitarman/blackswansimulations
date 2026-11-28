@@ -1,4 +1,9 @@
-import { affectedLayers, mentionsBriefChange, type BriefDiff } from './affectedLayers.js';
+import {
+  affectedLayers,
+  mentionsBriefChange,
+  revisesWithParent,
+  type BriefDiff,
+} from './affectedLayers.js';
 import { mentionsCentreRole } from './briefRevisionCore.js';
 import type { DeltaBuildContext } from './deltaBuildTypes.js';
 
@@ -14,6 +19,7 @@ export type DeltaCall =
   | { op: 'stakeholders'; org_key: string }
   | { op: 'spokesperson'; org_key: string }
   | { op: 'revise_layer'; layer: string; country?: string }
+  | { op: 'dependency_delta' }
   | { op: 'stakeholder_text' }
   | { op: 'convergence_delta' }
   | { op: 'narrative' }
@@ -40,6 +46,7 @@ export function listDeltaCalls(ctx: DeltaBuildContext, diff: BriefDiff | null): 
       country: orgCountry(ctx, team.org_key),
     });
   }
+  if (delta.added_teams.length > 0) calls.push({ op: 'dependency_delta' });
   for (const orgKey of delta.added_orgs) calls.push({ op: 'stakeholders', org_key: orgKey });
   for (const orgKey of delta.added_pressure) calls.push({ op: 'spokesperson', org_key: orgKey });
   if (delta.added_teams.length > 0) calls.push({ op: 'convergence_delta' });
@@ -47,7 +54,7 @@ export function listDeltaCalls(ctx: DeltaBuildContext, diff: BriefDiff | null): 
   const layers = new Set<string>();
   if (diff && diff.severity !== 'cosmetic') {
     for (const layer of affectedLayers(diff, ctx.injects)) {
-      if (!layer.startsWith('branch:')) layers.add(layer);
+      if (!revisesWithParent(layer)) layers.add(layer);
     }
   }
   if (swap) layers.add('backbone');

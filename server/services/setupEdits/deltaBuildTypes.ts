@@ -1,5 +1,11 @@
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
-import type { NPCPersona, FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
+import type {
+  NPCPersona,
+  FactSheet,
+  ObjectiveDef,
+  SocialInject,
+} from '../socialCrisisGeneratorService.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import type { TeamCharterWire } from '../warroomBuild/wireSchemas.js';
 import type { BriefDiff } from './affectedLayers.js';
 import type { SetupFlag, SetupRevision } from './briefRevisionCore.js';
@@ -107,6 +113,8 @@ export interface DeltaBuildContext {
   taken_stakeholder_ids: string[];
   active_keys: string[];
   page_batch_size: number;
+  /** Edges already on the scenario. Added-team generation does not regenerate them. */
+  team_dependencies: TeamDependencyEdge[];
 }
 
 export interface LayerDecision {
@@ -143,10 +151,18 @@ export interface DeltaGenerators {
     /** Layer names already on the scenario, so the model's flags can match them. */
     layers: string[];
   }): Promise<BriefDiff>;
-  reviseFactSheet(input: { factSheet: FactSheet; diff: BriefDiff; appendOnly: boolean }): Promise<FactSheet>;
+  reviseFactSheet(input: {
+    factSheet: FactSheet;
+    diff: BriefDiff;
+    appendOnly: boolean;
+  }): Promise<FactSheet>;
   generatePersonas(input: { ctx: DeltaBuildContext; country: string }): Promise<NPCPersona[]>;
   generatePersonaGroups(input: { ctx: DeltaBuildContext; groups: string[] }): Promise<NPCPersona[]>;
-  generateCharter(input: { ctx: DeltaBuildContext; teamName: string; orgKey: string }): Promise<TeamCharterWire>;
+  generateCharter(input: {
+    ctx: DeltaBuildContext;
+    teamName: string;
+    orgKey: string;
+  }): Promise<TeamCharterWire>;
   generateTeamStoryline(input: {
     ctx: DeltaBuildContext;
     teamName: string;
@@ -186,10 +202,29 @@ export interface DeltaGenerators {
     narrative: { title: string; description: string; briefing: string };
     objectives: ObjectiveDef[];
   }>;
-  regenerateBranches(input: { parentKey: string; parentTitle: string; diff: BriefDiff }): Promise<SocialInject[]>;
+  regenerateBranches(input: {
+    parentKey: string;
+    parentTitle: string;
+    diff: BriefDiff;
+  }): Promise<SocialInject[]>;
+  dependencyDelta(input: {
+    ctx: DeltaBuildContext;
+    addedTeams: Array<{ team_name: string; org_key: string }>;
+    existingEdges: TeamDependencyEdge[];
+  }): Promise<{
+    edges: TeamDependencyEdge[];
+    consequences: SocialInject[];
+    positives: SocialInject[];
+    asks: SocialInject[];
+  }>;
   generatePages(input: {
     ctx: DeltaBuildContext;
-    orgs: Array<{ org_key: string; name: string; role: 'ally' | 'rival' | 'pressure'; description?: string }>;
+    orgs: Array<{
+      org_key: string;
+      name: string;
+      role: 'ally' | 'rival' | 'pressure';
+      description?: string;
+    }>;
   }): Promise<Array<Record<string, unknown>>>;
   revisePageHistory(input: {
     orgKey: string;
@@ -212,6 +247,8 @@ export interface GeneratedRows {
   pages: Array<Record<string, unknown>>;
   branches: SocialInject[];
   layer_injects: SocialInject[];
+  dependency_edges: TeamDependencyEdge[];
+  dependency_injects: SocialInject[];
 }
 
 export interface TextUpdate {
@@ -265,7 +302,11 @@ export interface SetupEditStageOutput {
   orgs: unknown[];
   sop_steps: unknown[];
   decision_context: { leakiness: number; labour_signal: boolean; product_safety_signal: boolean };
-  pressure_organisations: Array<{ display_name: string; org_key: string; spokesperson_stakeholder_id?: string }>;
+  pressure_organisations: Array<{
+    display_name: string;
+    org_key: string;
+    spokesperson_stakeholder_id?: string;
+  }>;
   sharedInjects: SocialInject[];
   convergenceGates: SocialInject[];
   narrative: { title: string; description: string; briefing: string } | null;
@@ -289,5 +330,7 @@ export function blankGenerated(): GeneratedRows {
     pages: [],
     branches: [],
     layer_injects: [],
+    dependency_edges: [],
+    dependency_injects: [],
   };
 }

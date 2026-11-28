@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
+import { readTeamDependencies } from '../../../shared/teamDependencies.js';
 import { env } from '../../env.js';
 import { inferLayer, injectProvenance, type LayerTeam } from '../../lib/injectFingerprint.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
@@ -25,8 +26,7 @@ export function resetDeltaContextWarningForTests(): void {
 }
 
 export type LoadedSetupEdit =
-  | { available: false }
-  | { available: true; source: SetupEditBuildSource | null };
+  { available: false } | { available: true; source: SetupEditBuildSource | null };
 
 /** The open edit, its draft, and the rows the remap planner reads. */
 export async function loadSetupEditSource(editId: string): Promise<LoadedSetupEdit> {
@@ -161,10 +161,15 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
     },
     injects,
     teams,
-    stakeholders: loadedStakeholders.map(({ handle: _handle, email: _email, ...stakeholder }) => stakeholder),
+    stakeholders: loadedStakeholders.map(
+      ({ handle: _handle, email: _email, ...stakeholder }) => stakeholder,
+    ),
     personas,
     fact_sheet: factSheet,
-    fact_sheet_trainer_edited: stampedDiffers(canonicalJson(factSheet), text(setup?.fact_sheet_hash)),
+    fact_sheet_trainer_edited: stampedDiffers(
+      canonicalJson(factSheet),
+      text(setup?.fact_sheet_hash),
+    ),
     briefing,
     briefing_trainer_edited: stampedDiffers(briefing.trim(), text(setup?.briefing_hash)),
     narrative: {
@@ -178,11 +183,19 @@ export async function loadDeltaBuildContext(request: BuildRequest): Promise<Delt
       ...personas.map((persona) => persona.handle),
       ...loadedStakeholders.map((stakeholder) => stakeholder.handle),
     ].filter((handle) => handle.length > 0),
-    taken_emails: loadedStakeholders.map((stakeholder) => stakeholder.email).filter((email) => email.length > 0),
+    taken_emails: loadedStakeholders
+      .map((stakeholder) => stakeholder.email)
+      .filter((email) => email.length > 0),
     taken_stakeholder_ids: loadedStakeholders.map((stakeholder) => stakeholder.id),
     active_keys: injects.map((inject) => inject.inject_key).filter((key) => key.length > 0),
     page_batch_size: env.warroomOrgPageBatch,
+    team_dependencies: dependencyEdgesOf(state.team_dependencies),
   };
+}
+
+function dependencyEdgesOf(value: unknown): DeltaBuildContext['team_dependencies'] {
+  const read = readTeamDependencies(value);
+  return 'error' in read ? [] : read.dependencies.edges;
 }
 
 function toDeltaInject(inject: PlannerInject, teams: LayerTeam[]): DeltaInject {
@@ -335,7 +348,9 @@ function asFactSheet(value: unknown): FactSheet {
       ? (row.unconfirmed_claims as FactSheet['unconfirmed_claims'])
       : [],
     crisis_cluster:
-      row?.crisis_cluster === 'victim' || row?.crisis_cluster === 'accidental' || row?.crisis_cluster === 'preventable'
+      row?.crisis_cluster === 'victim' ||
+      row?.crisis_cluster === 'accidental' ||
+      row?.crisis_cluster === 'preventable'
         ? row.crisis_cluster
         : undefined,
   };
@@ -345,7 +360,9 @@ function asPersonas(value: unknown): NPCPersona[] {
   return Array.isArray(value) ? (value as NPCPersona[]) : [];
 }
 
-function asStakeholders(value: unknown): Array<DeltaBuildContext['stakeholders'][number] & { handle: string; email: string }> {
+function asStakeholders(
+  value: unknown,
+): Array<DeltaBuildContext['stakeholders'][number] & { handle: string; email: string }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((raw) => {
     const row = raw as Partial<Stakeholder>;
