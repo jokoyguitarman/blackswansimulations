@@ -1,3 +1,10 @@
+import {
+  COMMON_STAKEHOLDERS_MIN,
+  MAX_SPILLOVER_COUNTRIES,
+  MOOD_LADDER_BATCH,
+  SPILLOVER_PERSONAS,
+  STAKEHOLDERS_PER_TEAM_MIN,
+} from './generationBudgets.js';
 import { batchOrgPages } from '../server/services/orgPageBatching.js';
 import {
   PERSONA_PER_COUNTRY_CAP,
@@ -27,6 +34,13 @@ export interface BuildEstimateInput {
   customTeams: number;
   alliesAndRivals: number;
   pressureCountries: number;
+  /** Pressure organisations. One spokesperson call each (no reused contact). */
+  pressureOrgs: number;
+  /**
+   * Footprint spillover countries. Capped at {@link MAX_SPILLOVER_COUNTRIES};
+   * each costs the spillover persona calls.
+   */
+  spilloverCountries: number;
   /** Branch-parent injects. Batches of {@link RESPONSE_BRANCH_BATCH}. */
   injectsEstimate: number;
 }
@@ -45,18 +59,21 @@ export interface BuildCallBreakdown {
   factSheet: number;
   footprint: number;
   personas: number;
+  spilloverPersonas: number;
   adaptCharters: number;
   customCharters: number;
   teamStorylines: number;
   stakeholders: number;
   commonStakeholders: number;
   cast: number;
+  spokespersons: number;
   backbone: number;
   convergence: number;
   intel: number;
   dependencyMap: number;
   dependencyConsequences: number;
   responseBranches: number;
+  moodLadders: number;
   primaryPage: number;
   secondaryPages: number;
   pressurePages: number;
@@ -145,18 +162,55 @@ export function dependencyCallsFor(
 }
 
 /**
+ * Stakeholders the first generation attempt asks for: the low end of "6-8" per
+ * team, the low end of "3-6" common contacts, plus one spokesperson per
+ * pressure organisation. Roster contacts are not included. A build with the
+ * minimum two teams already exceeds eight people, which is when mood ladders
+ * drop the roster tier. Cast-gap principals are omitted: they are generated
+ * only when a carrier is missing.
+ */
+export function ladderStakeholderCount(teams: number, orgs: number, pressureOrgs: number): number {
+  if (nonNegative(orgs) === 0) return 0;
+  return (
+    nonNegative(teams) * STAKEHOLDERS_PER_TEAM_MIN +
+    COMMON_STAKEHOLDERS_MIN +
+    nonNegative(pressureOrgs)
+  );
+}
+
+/** Mood-ladder calls: one per {@link MOOD_LADDER_BATCH} ladder stakeholders. */
+export function moodLadderCalls(stakeholders: number): number {
+  const count = nonNegative(stakeholders);
+  if (count === 0) return 0;
+  return Math.ceil(count / MOOD_LADDER_BATCH);
+}
+
+/**
+ * Persona calls for spillover countries. Each country uses the pipeline's
+ * fixed crowd of {@link SPILLOVER_PERSONAS}, and the country count is capped
+ * at {@link MAX_SPILLOVER_COUNTRIES}.
+ */
+export function spilloverPersonaCalls(spilloverCountries: number): number {
+  const countries = Math.min(nonNegative(spilloverCountries), MAX_SPILLOVER_COUNTRIES);
+  if (countries === 0) return 0;
+  return countries * personaAiCalls(SPILLOVER_PERSONAS);
+}
+
+/**
  * Expected AI calls for one full social-crisis build. There is no enforced
  * budget (decision O2); this is the number shown before Build.
  *
  * Assumptions, because the input is counts rather than a roster:
  * - the key-voice call returns 14 personas, then background batches fill the country target;
- * - spillover countries and mood-ladder calls are not in the input and are not counted;
+ * - spillover countries use the same crowd and cap as `runNpcsPipeline`;
+ * - mood ladders use {@link ladderStakeholderCount} batched by {@link MOOD_LADDER_BATCH};
+ * - one spokesperson call per pressure organisation (generated when no contact matches);
  * - one adapt-charter call per organisation that has a preset team, presets spread
  *   one per org (executives are not distinguished);
  * - one cast call per organisation (a fresh cast has carrier gaps);
  * - one pressure-page call per pressure country (that country's groups fit in one batch);
  * - no named rivals (`alliesAndRivals === 0`) still costs one call to invent a rival;
- * - stakeholder and branch calls assume the first attempt succeeds;
+ * - stakeholder and branch calls assume the first attempt succeeds (retries are not counted);
  * - dependency generation is 1 map call up to WARROOM_DEPENDENCY_MAP_BATCH_TEAMS
  *   (otherwise orgs + 1) plus one consequence call per 8 estimated edges
  *   (ceil(1.5 × teams), also capped by the upstream-per-team budget).
@@ -177,6 +231,7 @@ export function explainBuildCalls(
   const pageBatch = Math.max(1, nonNegative(opts.pageBatch) || 1);
   const alliesAndRivals = nonNegative(input.alliesAndRivals);
   const pressureCountries = nonNegative(input.pressureCountries);
+  const pressureOrgs = nonNegative(input.pressureOrgs);
   const parents = nonNegative(input.injectsEstimate);
 
   const perCountry = personasForCountryCount(
@@ -201,18 +256,21 @@ export function explainBuildCalls(
     factSheet: building ? 1 : 0,
     footprint: building ? 1 : 0,
     personas,
+    spilloverPersonas: building ? spilloverPersonaCalls(input.spilloverCountries) : 0,
     adaptCharters: Math.min(orgs, presetTeams),
     customCharters: customTeams,
     teamStorylines: teams,
     stakeholders: stakeholderCallsFor(orgs, teams),
     commonStakeholders: building ? 1 : 0,
     cast: orgs,
+    spokespersons: building ? pressureOrgs : 0,
     backbone: building ? 1 : 0,
     convergence: building ? 1 : 0,
     intel: building && teams >= 2 ? 1 : 0,
     dependencyMap: dependencies.map,
     dependencyConsequences: dependencies.consequences,
     responseBranches: building && parents > 0 ? Math.ceil(parents / RESPONSE_BRANCH_BATCH) : 0,
+    moodLadders: moodLadderCalls(ladderStakeholderCount(teams, orgs, pressureOrgs)),
     primaryPage: building ? 1 : 0,
     secondaryPages: building ? secondaryPages : 0,
     pressurePages: building ? pressureCountries : 0,

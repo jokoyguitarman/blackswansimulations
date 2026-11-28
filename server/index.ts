@@ -9,7 +9,10 @@ import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { scenariosRouter } from './routes/scenarios.js';
-import { scenarioSetupEditsRouter } from './routes/scenarioSetupEdits.js';
+import {
+  scenarioSetupEditsRouter,
+  setupEditAllowancesRouter,
+} from './routes/scenarioSetupEdits.js';
 import { sessionSetupChangesRouter } from './routes/sessionSetupChanges.js';
 import { peaceFeedRouter } from './routes/peaceFeed.js';
 import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
@@ -289,6 +292,7 @@ app.use('/api/contact', express.json({ limit: '16kb' }));
 
 // API routes
 app.use('/api/health', healthRouter);
+app.use('/api/scenarios/setup-edits', setupEditAllowancesRouter);
 app.use('/api/scenarios/:id/setup-edits', scenarioSetupEditsRouter);
 app.use('/api/scenarios/:id/peace-feed', peaceFeedRouter);
 app.use('/api/scenarios', scenariosRouter);

@@ -4,7 +4,7 @@ import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import {
   listScenariosWithSummary,
   getSessionCredits,
-  getSetupEditAllowance,
+  getSetupEditAllowances,
   getScenarioInjectsPeek,
   getScenarioTeamsPeek,
   type LibraryScenario,
@@ -168,23 +168,9 @@ export const Scenarios = () => {
       return;
     }
     let cancelled = false;
-    void (async () => {
-      const first = await getSetupEditAllowance(ids[0]);
-      if (cancelled) return;
-      if (!first?.enabled) {
-        setSetupEdits({});
-        return;
-      }
-      const next: Record<string, SetupEditAllowance> = { [ids[0]]: first };
-      const rest = await Promise.all(
-        ids.slice(1).map(async (id) => [id, await getSetupEditAllowance(id)] as const),
-      );
-      if (cancelled) return;
-      for (const [id, allowance] of rest) {
-        if (allowance?.enabled) next[id] = allowance;
-      }
-      setSetupEdits(next);
-    })();
+    void getSetupEditAllowances(ids).then((next) => {
+      if (!cancelled) setSetupEdits(next ?? {});
+    });
     return () => {
       cancelled = true;
     };

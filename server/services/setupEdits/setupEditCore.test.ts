@@ -4,11 +4,15 @@ import { describe, test } from 'node:test';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import {
   canOpen,
+  capRowsPerScenario,
   emptySetupBaselineHash,
   isSetupEditSchemaMissing,
   historyForViewer,
   openEditOf,
+  parseAllowanceIds,
   remainingEdits,
+  SETUP_EDIT_ALLOWANCE_IDS_MAX,
+  SETUP_EDIT_HISTORY_LIMIT,
 } from './setupEditCore.js';
 
 describe('setup edit allowance', () => {
@@ -83,6 +87,33 @@ describe('setup edit allowance', () => {
     assert.equal(isSetupEditSchemaMissing({ code: '23505' }), false);
     assert.equal(isSetupEditSchemaMissing(new Error('nope')), false);
     assert.equal(isSetupEditSchemaMissing(null), false);
+  });
+
+  test('history keeps the newest rows of each scenario', () => {
+    const rows = [
+      { scenario_id: 'a', id: 'a-new' },
+      { scenario_id: 'b', id: 'b-new' },
+      { scenario_id: 'a', id: 'a-old' },
+      { scenario_id: 'a', id: 'a-older' },
+    ];
+    assert.deepEqual(
+      capRowsPerScenario(rows, 2).map((row) => row.id),
+      ['a-new', 'b-new', 'a-old'],
+    );
+    assert.equal(capRowsPerScenario(rows, 0).length, 0);
+    assert.equal(SETUP_EDIT_HISTORY_LIMIT, 50);
+  });
+
+  test('allowance ids are uuids, deduped, and bounded', () => {
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    assert.deepEqual(parseAllowanceIds(`${id},${id.toUpperCase()}`), { ok: true, ids: [id] });
+    assert.equal(parseAllowanceIds('').ok, false);
+    assert.equal(parseAllowanceIds('not-a-uuid').ok, false);
+    const many = Array.from(
+      { length: SETUP_EDIT_ALLOWANCE_IDS_MAX + 1 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    assert.deepEqual(parseAllowanceIds(many.join(',')), { ok: false, reason: 'too_many' });
   });
 
   test('the empty baseline hash is SHA-256 of canonical {}', () => {

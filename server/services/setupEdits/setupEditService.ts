@@ -6,9 +6,14 @@ import { canonicalJson } from '../../../shared/canonicalJson.js';
 import { isAdmin } from '../creditService.js';
 import { env } from '../../env.js';
 import {
+  capRowsPerScenario,
   isSetupEditSchemaMissing,
+  SETUP_EDIT_HISTORY_LIMIT,
+  SETUP_EDIT_HISTORY_READ_BATCH,
   staleApplyIds,
   type AbandonSetupEditResult,
+  type ListAllowancesResult,
+  type SetupEditAllowanceRows,
   type OpenSetupEditOutcome,
   type OpenSetupEditResult,
   type SetupEditSnapshot,
@@ -36,6 +41,12 @@ import {
 
 const EDIT_COLUMNS =
   'id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary, baseline';
+
+/** Library history does not need the baseline snapshot. */
+const LIBRARY_EDIT_COLUMNS =
+  'id, scenario_id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary';
+
+const SOCIAL_CATEGORY = 'social_media_crisis';
 
 const OPEN_OUTCOMES = new Set<OpenSetupEditOutcome>([
   'opened',
@@ -292,7 +303,8 @@ async function listEditRows(
     .from('scenario_setup_edits')
     .select(`${EDIT_COLUMNS}, apply_heartbeat_at`)
     .eq('scenario_id', scenarioId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(SETUP_EDIT_HISTORY_LIMIT);
   if (!first.error) return (first.data ?? []) as unknown as Array<Record<string, unknown>>;
   if (!columnMissing(first.error, 'apply_heartbeat_at')) {
     if (isSetupEditSchemaMissing(first.error)) {
@@ -306,7 +318,8 @@ async function listEditRows(
     .from('scenario_setup_edits')
     .select(EDIT_COLUMNS)
     .eq('scenario_id', scenarioId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(SETUP_EDIT_HISTORY_LIMIT);
   if (second.error) {
     if (isSetupEditSchemaMissing(second.error)) {
       noteSetupEditsUnavailable();
@@ -385,6 +398,97 @@ export async function abandonSetupEdit(
   }
   if (!existing.data) return { available: true, outcome: 'not_found' };
   return { available: true, outcome: 'not_open' };
+}
+
+/** Newest history rows for one scenario. One query, capped under PostgREST's row limit. */
+async function listScenarioEditHistory(
+  scenarioId: string,
+): Promise<Array<Record<string, unknown>> | 'unavailable'> {
+  const listed = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .select(LIBRARY_EDIT_COLUMNS)
+    .eq('scenario_id', scenarioId)
+    .order('created_at', { ascending: false })
+    .limit(SETUP_EDIT_HISTORY_LIMIT);
+  if (listed.error) {
+    if (isSetupEditSchemaMissing(listed.error)) {
+      noteSetupEditsUnavailable();
+      return 'unavailable';
+    }
+    logger.error({ error: listed.error, scenarioId }, 'Failed to list setup edit allowances');
+    throw new Error(`Setup edit allowance failed: ${listed.error.message}`);
+  }
+  return (listed.data ?? []) as Array<Record<string, unknown>>;
+}
+
+/**
+ * One read for the library: used counts and the newest history rows for the
+ * scenarios this caller owns. Does not reclaim stale applies and does not
+ * load baselines. A missing migration is `{ available: false }`.
+ */
+export async function listSetupEditAllowances(
+  scenarioIds: readonly string[],
+  user: { id: string; role?: string },
+): Promise<ListAllowancesResult> {
+  const ids = [...new Set(scenarioIds)];
+  if (ids.length === 0) return { available: true, byId: {} };
+
+  const scenarios = await supabaseAdmin
+    .from('scenarios')
+    .select('id, setup_edits_used, created_by, category')
+    .in('id', ids);
+  if (scenarios.error) {
+    if (isSetupEditSchemaMissing(scenarios.error)) {
+      noteSetupEditsUnavailable();
+      return { available: false };
+    }
+    logger.error({ error: scenarios.error }, 'Failed to read setup edit allowances');
+    throw new Error(`Setup edit allowance failed: ${scenarios.error.message}`);
+  }
+
+  const admin = isAdmin(user);
+  const owned = ((scenarios.data ?? []) as Array<Record<string, unknown>>).filter((row) => {
+    if (row.category !== SOCIAL_CATEGORY) return false;
+    if (admin) return true;
+    return typeof row.created_by === 'string' && row.created_by === user.id;
+  });
+  const byId: Record<string, SetupEditAllowanceRows> = {};
+  for (const row of owned) {
+    const id = String(row.id);
+    const used = Number(row.setup_edits_used);
+    byId[id] = { used: Number.isFinite(used) ? used : 0, edits: [] };
+  }
+  const ownedIds = Object.keys(byId);
+  if (ownedIds.length === 0) return { available: true, byId };
+
+  const historyRows: Array<Record<string, unknown>> = [];
+  for (let offset = 0; offset < ownedIds.length; offset += SETUP_EDIT_HISTORY_READ_BATCH) {
+    const slice = ownedIds.slice(offset, offset + SETUP_EDIT_HISTORY_READ_BATCH);
+    const pages = await Promise.all(slice.map((scenarioId) => listScenarioEditHistory(scenarioId)));
+    for (const page of pages) {
+      if (page === 'unavailable') return { available: false };
+      historyRows.push(...page);
+    }
+  }
+
+  const tagged = historyRows.flatMap((row) => {
+    const scenarioId = typeof row.scenario_id === 'string' ? row.scenario_id : '';
+    return scenarioId ? [{ scenario_id: scenarioId, row }] : [];
+  });
+  const capped = capRowsPerScenario(tagged, SETUP_EDIT_HISTORY_LIMIT);
+  const names = await openerNames(
+    capped.map((item) => (typeof item.row.opened_by === 'string' ? item.row.opened_by : '')),
+  );
+  for (const item of capped) {
+    const bucket = byId[item.scenario_id];
+    if (!bucket) continue;
+    const edit = toSummary(item.row);
+    bucket.edits.push({
+      ...edit,
+      opened_by_name: edit.opened_by ? (names.get(edit.opened_by) ?? null) : null,
+    });
+  }
+  return { available: true, byId };
 }
 
 /**
@@ -640,4 +744,5 @@ export const setupEditService = {
   open: openSetupEdit,
   abandon: abandonSetupEdit,
   attachOpenedDraft,
+  listAllowances: listSetupEditAllowances,
 };

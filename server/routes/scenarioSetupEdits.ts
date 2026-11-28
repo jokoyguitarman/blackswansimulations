@@ -24,9 +24,12 @@ import {
 import {
   historyForViewer,
   openEditOf,
+  parseAllowanceIds,
   remainingEdits,
   type AbandonSetupEditResult,
+  type ListAllowancesResult,
   type OpenSetupEditResult,
+  type SetupEditAllowanceRows,
   type SetupEditSnapshot,
   type SetupEditSummary,
 } from '../services/setupEdits/setupEditCore.js';
@@ -63,6 +66,12 @@ const applyBody = z.object({
   }),
 });
 
+const allowancesQuery = z.object({
+  query: z.object({
+    ids: z.string().trim().min(1).max(8000),
+  }),
+});
+
 const planBody = z.object({
   params: z.object({
     id: z.string().uuid(),
@@ -80,6 +89,10 @@ export interface SetupEditApi {
   get(scenarioId: string): Promise<SetupEditSnapshot>;
   open(scenarioId: string, user: { id: string; role?: string }): Promise<OpenSetupEditResult>;
   abandon(scenarioId: string, editId: string): Promise<AbandonSetupEditResult>;
+  listAllowances(
+    scenarioIds: readonly string[],
+    user: { id: string; role?: string },
+  ): Promise<ListAllowancesResult>;
   attachOpenedDraft(
     scenarioId: string,
     editId: string,
@@ -496,7 +509,73 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
   return router;
 }
 
-export const scenarioSetupEditsRouter = createScenarioSetupEditsRouter({
+function allowanceFor(
+  limit: number,
+  user: { role?: string },
+  row: SetupEditAllowanceRows,
+) {
+  return allowanceBody(limit, user, {
+    available: true,
+    found: true,
+    used: row.used,
+    edits: row.edits,
+  });
+}
+
+/**
+ * One allowance read for the library. Mounted at `/api/scenarios/setup-edits`
+ * so it is not captured by `/:id`.
+ */
+export function createSetupEditAllowancesRouter(
+  deps: Pick<ScenarioSetupEditsDeps, 'enabled' | 'limit' | 'authMiddleware' | 'service'>,
+): Router {
+  const router = Router();
+  router.get('/allowances', deps.authMiddleware, validate(allowancesQuery), async (req, res) => {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      if (!user) {
+        res.status(401).json({ error: 'Missing authorization header' });
+        return;
+      }
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        res.status(403).json({ error: 'Only trainers can edit a scenario setup' });
+        return;
+      }
+      if (!deps.enabled()) {
+        unavailable(res);
+        return;
+      }
+      const parsed = parseAllowanceIds(String(req.query.ids ?? ''));
+      if (!parsed.ok) {
+        res.status(400).json({
+          error:
+            parsed.reason === 'too_many'
+              ? 'Too many scenario ids.'
+              : 'Scenario ids must be a comma-separated list of uuids.',
+          code: 'SETUP_EDIT_ALLOWANCE_IDS',
+        });
+        return;
+      }
+      const listed = await deps.service.listAllowances(parsed.ids, user);
+      if (!listed.available) {
+        res.json({ enabled: false, limit: deps.limit(), allowances: {} });
+        return;
+      }
+      const limit = deps.limit();
+      const allowances: Record<string, ReturnType<typeof allowanceBody>> = {};
+      for (const [id, row] of Object.entries(listed.byId)) {
+        allowances[id] = allowanceFor(limit, user, row);
+      }
+      res.json({ enabled: true, limit, allowances });
+    } catch (err) {
+      logger.error({ err }, 'Setup edit allowances failed');
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+  return router;
+}
+
+const setupEditRouteDeps = {
   enabled: () => env.scenarioSetupEdits,
   limit: () => env.scenarioSetupEditLimit,
   authMiddleware: requireAuth,
@@ -504,6 +583,14 @@ export const scenarioSetupEditsRouter = createScenarioSetupEditsRouter({
   loadCategory: loadScenarioCategory,
   canEdit: canEditScenario,
   service: setupEditService,
-  apply: (request) => applySetupEdit(request, createApplyDeps()),
-  plan: (request) => planOpenSetupEdit(request),
-});
+  apply: (request: ApplySetupEditRequest) => applySetupEdit(request, createApplyDeps()),
+  plan: (request: {
+    scenarioId: string;
+    editId: string;
+    resolutions?: Record<string, OrphanResolution>;
+    draftInput?: unknown;
+  }) => planOpenSetupEdit(request),
+};
+
+export const scenarioSetupEditsRouter = createScenarioSetupEditsRouter(setupEditRouteDeps);
+export const setupEditAllowancesRouter = createSetupEditAllowancesRouter(setupEditRouteDeps);

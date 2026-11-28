@@ -22,7 +22,12 @@ import {
   type ScenarioSnapshotSource,
   type SetupSnapshot,
 } from '../services/setupEdits/setupSnapshotCore.js';
-import { createScenarioSetupEditsRouter, type SetupEditApi } from './scenarioSetupEdits.js';
+import {
+  createScenarioSetupEditsRouter,
+  createSetupEditAllowancesRouter,
+  type ScenarioSetupEditsDeps,
+  type SetupEditApi,
+} from './scenarioSetupEdits.js';
 
 const TRAINER = { id: '11111111-1111-4111-8111-111111111111', role: 'trainer' };
 const ADMIN = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
@@ -71,6 +76,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
   let base: string;
   let enabled = true;
   let openCalls = 0;
+  let allowanceCalls = 0;
   let seq = 0;
   let identityConflict = false;
   const scenarios = new Map<string, FakeScenario>();
@@ -81,6 +87,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
   function seed(): void {
     enabled = true;
     openCalls = 0;
+    allowanceCalls = 0;
     seq = 0;
     identityConflict = false;
     edits.length = 0;
@@ -305,15 +312,31 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       edit.status = 'abandoned';
       return { available: true, outcome: 'abandoned' };
     },
+    async listAllowances(ids, user) {
+      allowanceCalls += 1;
+      if (ids.includes(BROKE)) return { available: false };
+      const byId: Record<string, { used: number; edits: ReturnType<typeof summary>[] }> = {};
+      for (const id of ids) {
+        const scenario = scenarios.get(id);
+        if (!scenario || scenario.category !== 'social_media_crisis') continue;
+        if (user.role !== 'admin' && scenario.ownerId !== user.id) continue;
+        byId[id] = {
+          used: scenario.used,
+          edits: edits
+            .filter((edit) => edit.scenarioId === id)
+            .map(summary)
+            .reverse(),
+        };
+      }
+      return { available: true, byId };
+    },
   };
 
   before(async () => {
     seed();
     const app = express();
     app.use(express.json());
-    app.use(
-      '/api/scenarios/:id/setup-edits',
-      createScenarioSetupEditsRouter({
+    const routeDeps: ScenarioSetupEditsDeps = {
         enabled: () => enabled,
         limit: () => 3,
         authMiddleware: (req, _res, next) => {
@@ -359,8 +382,9 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
         service,
         apply: async () => ({ ok: false, status: 404, code: 'NOT_FOUND', error: 'Setup edit not found' }),
         plan: async () => ({ ok: false, status: 404, code: 'SETUP_EDIT_NOT_FOUND', error: 'Setup edit not found' }),
-      }),
-    );
+    };
+    app.use('/api/scenarios/setup-edits', createSetupEditAllowancesRouter(routeDeps));
+    app.use('/api/scenarios/:id/setup-edits', createScenarioSetupEditsRouter(routeDeps));
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address() as AddressInfo;
@@ -645,5 +669,96 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     const closed = await abandon(SOCIAL, editId);
     assert.equal(closed.status, 409);
     assert.equal(closed.json.code, 'SETUP_EDIT_NOT_OPEN');
+  });
+
+  async function allowances(ids: string[], user?: { id: string; role: string }) {
+    const res = await fetch(
+      `${base}/api/scenarios/setup-edits/allowances?ids=${encodeURIComponent(ids.join(','))}`,
+      { headers: headers(user) },
+    );
+    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+  }
+
+  test('the library reads every owned social scenario in one request', async () => {
+    seed();
+    edits.push({
+      id: '66666666-6666-4666-8666-666666666666',
+      scenarioId: SOCIAL,
+      openedBy: TRAINER.id,
+      openedByAdmin: false,
+      status: 'applied',
+      counted: true,
+      baseline: EMPTY_SETUP_BASELINE,
+      baselineHash: emptySetupBaselineHash(),
+      draftId: null,
+      createdAt: '2026-01-02T00:00:00.000Z',
+    });
+    edits.push({
+      id: '77777777-7777-4777-8777-777777777777',
+      scenarioId: SOCIAL,
+      openedBy: TRAINER.id,
+      openedByAdmin: false,
+      status: 'abandoned',
+      counted: false,
+      baseline: EMPTY_SETUP_BASELINE,
+      baselineHash: emptySetupBaselineHash(),
+      draftId: null,
+      createdAt: '2026-01-03T00:00:00.000Z',
+    });
+    allowanceCalls = 0;
+    const res = await allowances([SOCIAL, LIMITED, FOREIGN, FIELD]);
+    assert.equal(res.status, 200);
+    assert.equal(allowanceCalls, 1);
+    assert.equal(res.json.enabled, true);
+    const rows = res.json.allowances as Record<string, { used: number; remaining: number | null; history: unknown[] }>;
+    assert.equal(rows[SOCIAL].used, 0);
+    assert.equal(rows[SOCIAL].remaining, 3);
+    assert.equal(rows[LIMITED].remaining, 0);
+    assert.equal(rows[SOCIAL].history.length, 1);
+    assert.equal(rows[FOREIGN], undefined);
+    assert.equal(rows[FIELD], undefined);
+  });
+
+  test('an admin’s batched read includes another trainer’s scenario and abandoned edits', async () => {
+    seed();
+    edits.push({
+      id: '77777777-7777-4777-8777-777777777777',
+      scenarioId: FOREIGN,
+      openedBy: OTHER.id,
+      openedByAdmin: false,
+      status: 'abandoned',
+      counted: false,
+      baseline: EMPTY_SETUP_BASELINE,
+      baselineHash: emptySetupBaselineHash(),
+      draftId: null,
+      createdAt: '2026-01-03T00:00:00.000Z',
+    });
+    const res = await allowances([FOREIGN], ADMIN);
+    assert.equal(res.status, 200);
+    const row = (res.json.allowances as Record<string, { remaining: number | null; history: unknown[] }>)[FOREIGN];
+    assert.equal(row.remaining, null);
+    assert.equal(row.history.length, 1);
+  });
+
+  test('a batched read is hidden when the flag is off and rejected for a bad id list', async () => {
+    seed();
+    enabled = false;
+    const off = await allowances([SOCIAL]);
+    assert.equal(off.status, 404);
+    assert.equal(off.json.code, 'SETUP_EDITS_UNAVAILABLE');
+    enabled = true;
+    const player = await allowances([SOCIAL], PLAYER);
+    assert.equal(player.status, 403);
+    const bad = await allowances(['not-a-uuid']);
+    assert.equal(bad.status, 400);
+    const tooMany = Array.from(
+      { length: 101 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    const over = await allowances(tooMany);
+    assert.equal(over.status, 400);
+    const missing = await allowances([BROKE]);
+    assert.equal(missing.status, 200);
+    assert.equal(missing.json.enabled, false);
   });
 });

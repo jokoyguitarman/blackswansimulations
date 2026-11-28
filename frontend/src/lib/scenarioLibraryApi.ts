@@ -2,6 +2,7 @@
  * Scenario library data — kept out of lib/api.ts on purpose (another agent has that file in
  * flight). Same auth + base-URL conventions as api.ts.
  */
+import { SETUP_EDIT_ALLOWANCE_IDS_MAX } from '@shared/setupEditAllowance';
 import type { FrozenBaselineIdentity } from './editModeFlags';
 import { supabase } from './supabase';
 
@@ -205,30 +206,65 @@ function parseEditHistory(value: unknown): SetupEditHistoryEntry[] {
   return value.map(parseEditEntry).filter((row): row is SetupEditHistoryEntry => row != null);
 }
 
+function allowanceFromJson(json: Partial<SetupEditAllowance>): SetupEditAllowance | null {
+  if (json.enabled !== true) return null;
+  return {
+    enabled: true,
+    limit: typeof json.limit === 'number' ? json.limit : 0,
+    used: typeof json.used === 'number' ? json.used : 0,
+    remaining: typeof json.remaining === 'number' ? json.remaining : null,
+    open_edit: parseEditEntry(json.open_edit),
+    history: parseEditHistory(json.history),
+  };
+}
+
+/**
+ * One read for every social-crisis card. A 404 (flag off) or enabled:false
+ * (migration 274 absent) means the library shows no buttons.
+ */
+export async function getSetupEditAllowances(
+  ids: readonly string[],
+): Promise<Record<string, SetupEditAllowance> | null> {
+  if (ids.length === 0) return {};
+  const out: Record<string, SetupEditAllowance> = {};
+  try {
+    for (let offset = 0; offset < ids.length; offset += SETUP_EDIT_ALLOWANCE_IDS_MAX) {
+      const slice = ids.slice(offset, offset + SETUP_EDIT_ALLOWANCE_IDS_MAX);
+      const res = await fetch(
+        url(`/api/scenarios/setup-edits/allowances?ids=${encodeURIComponent(slice.join(','))}`),
+        { headers: await headers() },
+      );
+      if (!res.ok) return null;
+      const json = (await res.json()) as {
+        enabled?: boolean;
+        allowances?: Record<string, Partial<SetupEditAllowance>>;
+      };
+      if (json.enabled !== true || !json.allowances) return null;
+      for (const [id, row] of Object.entries(json.allowances)) {
+        const parsed = allowanceFromJson(row);
+        if (parsed) out[id] = parsed;
+      }
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 export async function getSetupEditAllowance(id: string): Promise<SetupEditAllowance | null> {
   try {
     const res = await fetch(url(`/api/scenarios/${id}/setup-edits`), { headers: await headers() });
     if (!res.ok) return null;
     const json = (await res.json()) as Partial<SetupEditAllowance>;
-    const history = parseEditHistory(json.history);
-    const open = parseEditEntry(json.open_edit);
-    if (json.enabled !== true) {
-      return {
-        enabled: false,
-        limit: typeof json.limit === 'number' ? json.limit : 0,
-        used: 0,
-        remaining: null,
-        open_edit: null,
-        history: [],
-      };
-    }
+    const parsed = allowanceFromJson(json);
+    if (parsed) return parsed;
     return {
-      enabled: true,
+      enabled: false,
       limit: typeof json.limit === 'number' ? json.limit : 0,
-      used: typeof json.used === 'number' ? json.used : 0,
-      remaining: typeof json.remaining === 'number' ? json.remaining : null,
-      open_edit: open,
-      history,
+      used: 0,
+      remaining: null,
+      open_edit: null,
+      history: [],
     };
   } catch {
     return null;

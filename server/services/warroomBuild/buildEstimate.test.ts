@@ -5,6 +5,7 @@ import { logger } from '../../lib/logger.js';
 import { limitConcurrency, withConcurrencyLimit } from '../../lib/limitConcurrency.js';
 import { batchOrgPages } from '../orgPageBatching.js';
 import { personaAiCalls, personasForCountryCount } from '../personaBudget.js';
+import { SPILLOVER_PERSONAS } from '../../../shared/generationBudgets.js';
 import {
   generateAllTeamStorylines,
   type FactSheet,
@@ -12,6 +13,9 @@ import {
 } from '../socialCrisisGeneratorService.js';
 import {
   estimateBuildCalls,
+  ladderStakeholderCount,
+  moodLadderCalls,
+  spilloverPersonaCalls,
   stakeholderCallsFor,
   type BuildEstimateInput,
 } from './buildEstimate.js';
@@ -23,11 +27,17 @@ const FIXTURE: BuildEstimateInput = {
   customTeams: 1,
   alliesAndRivals: 9,
   pressureCountries: 2,
+  pressureOrgs: 2,
+  spilloverCountries: 1,
   injectsEstimate: 25,
 };
 
-/** Hand-counted from the pipeline's call sites for FIXTURE at the default budgets. */
-const FIXTURE_CALLS = 40;
+/**
+ * Hand-counted from the pipeline's call sites for FIXTURE at the default budgets.
+ * Includes one spillover country (2 persona calls), two spokespersons, and
+ * mood ladders for the first-attempt stakeholder ask.
+ */
+const FIXTURE_CALLS = 49;
 
 async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   let calls = 0;
@@ -42,6 +52,7 @@ async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   for (let country = 0; country < input.countries; country++) {
     for (let n = 0; n < perCountry; n++) await ai();
   }
+  for (let n = 0; n < spilloverPersonaCalls(input.spilloverCountries); n++) await ai();
   const custom = Math.min(input.teams, Math.max(0, input.customTeams));
   const preset = input.teams - custom;
   for (let n = 0; n < Math.min(input.orgs, preset); n++) await ai();
@@ -50,6 +61,7 @@ async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   for (let n = 0; n < stakeholderCallsFor(input.orgs, input.teams); n++) await ai();
   await ai();
   for (let n = 0; n < input.orgs; n++) await ai();
+  for (let n = 0; n < input.pressureOrgs; n++) await ai();
   await ai();
   await ai();
   if (input.teams >= 2) await ai();
@@ -61,6 +73,13 @@ async function runStubbedPipeline(input: BuildEstimateInput): Promise<number> {
   }
   if (input.injectsEstimate > 0) {
     for (let n = 0; n < Math.ceil(input.injectsEstimate / 10); n++) await ai();
+  }
+  for (
+    let n = 0;
+    n < moodLadderCalls(ladderStakeholderCount(input.teams, input.orgs, input.pressureOrgs));
+    n++
+  ) {
+    await ai();
   }
   await ai();
   const pages = batchOrgPages(
@@ -88,6 +107,8 @@ describe('estimateBuildCalls', () => {
         customTeams: 0,
         alliesAndRivals: 2,
         pressureCountries: 1,
+        pressureOrgs: 0,
+        spilloverCountries: 0,
         injectsEstimate: 10,
       };
       let previous = estimateBuildCalls(base);
@@ -98,6 +119,23 @@ describe('estimateBuildCalls', () => {
       }
       assert.equal(estimateBuildCalls(FIXTURE), FIXTURE_CALLS);
       assert.equal(await runStubbedPipeline(FIXTURE), estimateBuildCalls(FIXTURE));
+      const bare: BuildEstimateInput = { ...FIXTURE, spilloverCountries: 0, pressureOrgs: 0 };
+      const bareCalls = estimateBuildCalls(bare);
+      assert.equal(
+        estimateBuildCalls({ ...bare, spilloverCountries: 2 }) - bareCalls,
+        2 * personaAiCalls(SPILLOVER_PERSONAS),
+      );
+      assert.equal(
+        estimateBuildCalls({ ...bare, spilloverCountries: 5 }),
+        estimateBuildCalls({ ...bare, spilloverCountries: 2 }),
+      );
+      const withSpokes = estimateBuildCalls({ ...bare, pressureOrgs: 3 });
+      const ladderDelta =
+        moodLadderCalls(ladderStakeholderCount(bare.teams, bare.orgs, 3)) -
+        moodLadderCalls(ladderStakeholderCount(bare.teams, bare.orgs, 0));
+      assert.equal(withSpokes - bareCalls, 3 + ladderDelta);
+      assert.equal(moodLadderCalls(7), 2);
+      assert.equal(moodLadderCalls(6), 1);
     } finally {
       env.socialPersonasTotalMax = previousMax;
       env.warroomOrgPageBatch = previousBatch;
