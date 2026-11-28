@@ -58,7 +58,7 @@ let calls: Recorded[] = [];
 
 function install(): void {
   calls = [];
-  supabaseAdmin.from = ((table: string) => {
+  (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
     const call: Recorded = { table, ops: [] };
     calls.push(call);
     const query: Record<string, unknown> = {};
@@ -74,7 +74,7 @@ function install(): void {
     query.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
       Promise.resolve(answer(call)).then(resolve, reject);
     return query;
-  }) as typeof supabaseAdmin.from;
+  };
 }
 
 function answer(call: Recorded): { data: unknown; error: null } {
