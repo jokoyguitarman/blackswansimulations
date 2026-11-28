@@ -9,6 +9,7 @@ import {
   parseCatalogCondition,
   type ConditionScope,
 } from '../../../shared/conditionKeyGrammar.js';
+import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
 
 export { slugifyTeamName, KNOWN_CONDITION_SCOPES } from '../../../shared/conditionKeyGrammar.js';
 export type { ConditionScope };
@@ -28,6 +29,7 @@ export interface ConditionParam {
   enum?: string[];
   min?: number;
   max?: number;
+  optional?: boolean;
 }
 
 export interface ConditionDef {
@@ -53,6 +55,8 @@ export interface ConditionDef {
   polarity: 'positive' | 'negative' | 'neutral';
   /** Comms keys that accept `|team=`. */
   teamScope?: boolean;
+  /** The key is invalid without `|team=` or `|role=`. */
+  requiresScope?: boolean;
   /** Legacy prefixes keep everything after the colon as one argument. */
   looseArgs?: boolean;
   deprecated?: { reason: string; use?: string };
@@ -468,6 +472,22 @@ const urgencyParam: ConditionParam = {
   enum: ['reminder', 'follow_up', 'urgent', 'final', 'escalated'],
 };
 const rungParam: ConditionParam = { name: 'rung', type: 'string' };
+const actionIdParam: ConditionParam = { name: 'action_id', type: 'string' };
+const silentMinutesParam: ConditionParam = { name: 'N', type: 'minutes', min: 5, max: 60 };
+const deadlineOverrideParam: ConditionParam = {
+  name: 'N',
+  type: 'minutes',
+  min: 1,
+  max: 240,
+  optional: true,
+};
+const gradeCountParam: ConditionParam = { name: 'n', type: 'int', min: 1, max: 100 };
+const gradeScoreParam: ConditionParam = { name: 'score', type: 'int', min: 0, max: 100 };
+const decisionCategoryParam: ConditionParam = {
+  name: 'category',
+  type: 'enum',
+  enum: [...DECISION_CATEGORIES],
+};
 
 function comms(
   id: string,
@@ -477,8 +497,13 @@ function comms(
   label: string,
   description: string,
   teamScope = false,
+  requiresScope = false,
 ): ConditionDef {
-  const scopeNote = teamScope ? ' Add |team=<slug> to limit this to one team.' : '';
+  const scopeNote = requiresScope
+    ? ' Requires |team=<slug> or |role=<role_id>.'
+    : teamScope
+      ? ' Add |team=<slug> to limit this to one team.'
+      : '';
   return {
     id,
     kind: 'prefix',
@@ -489,6 +514,7 @@ function comms(
     platform,
     polarity,
     ...(teamScope ? { teamScope: true } : {}),
+    ...(requiresScope ? { requiresScope: true } : {}),
   };
 }
 
@@ -1077,7 +1103,7 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'stakeholder',
     'neutral',
     '{stakeholder} is {rung}',
-    'The stakeholder\'s current mood rung in scope is this one.',
+    "The stakeholder's current mood rung in scope is this one.",
     true,
   ),
   comms(
@@ -1095,7 +1121,7 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'stakeholder',
     'neutral',
     '{stakeholder} has been {rung}',
-    'This rung appears in the stakeholder\'s mood history.',
+    "This rung appears in the stakeholder's mood history.",
     true,
   ),
   comms(
@@ -1123,6 +1149,66 @@ const COMMS_CONDITIONS: ConditionDef[] = [
     'neutral',
     'The first reply to {inject} arrived while the sender was {rung}',
     'The first in-scope response was recorded on this mood rung.',
+    true,
+  ),
+  comms(
+    'duty_missed',
+    [actionIdParam, deadlineOverrideParam],
+    'cross',
+    'negative',
+    'Duty {action_id} was not completed on time',
+    'The team did not complete this charter duty by its benchmark. An optional minute overrides that benchmark.',
+    true,
+    true,
+  ),
+  comms(
+    'duty_done',
+    [actionIdParam],
+    'cross',
+    'positive',
+    'Duty {action_id} was completed',
+    'The team completed this charter duty.',
+    true,
+    true,
+  ),
+  comms(
+    'duty_late',
+    [actionIdParam],
+    'cross',
+    'negative',
+    'Duty {action_id} was completed late',
+    'The team completed this charter duty after its benchmark.',
+    true,
+    true,
+  ),
+  comms(
+    'team_silent',
+    [silentMinutesParam],
+    'cross',
+    'negative',
+    'The team has been silent for {N} minutes',
+    'No player action or team-member message in the last {N} minutes, and only after minute {N}.',
+    true,
+    true,
+  ),
+  comms(
+    'content_failed',
+    [gradeCountParam, gradeScoreParam],
+    'cross',
+    'negative',
+    'At least {n} graded posts or emails scored below {score}',
+    "At least {n} of the team's AI-graded posts or emails have an overall score below {score}.",
+    true,
+    true,
+  ),
+  comms(
+    'decision_made',
+    [decisionCategoryParam],
+    'cross',
+    'neutral',
+    'The team made a {category} decision',
+    'The organic decision ledger has this category for the team. False when executive decisions are off.',
+    true,
     true,
   ),
 ];

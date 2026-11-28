@@ -313,6 +313,12 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
       detail: stats.first == null ? `None by T+${n}` : `First at T+${stats.first}`,
     };
   },
+  duty_missed: (input) => dutyResult('missed', input),
+  duty_done: (input) => dutyResult('done', input),
+  duty_late: (input) => dutyResult('late', input),
+  team_silent: (input) => teamSilentResult(input),
+  content_failed: (input) => contentFailedResult(input),
+  decision_made: (input) => decisionMadeResult(input),
   reply_passed: (input) => replyKey('passed', input),
   reply_failed: (input) => replyKey('failed', input),
   reply_best_passed: (input) => replyKey('best_passed', input),
@@ -332,7 +338,8 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
     lineMissCount(state, args[0] ?? '', null, numberArg(args, 1)),
   line_busy_missed_gte: ({ args, state }) =>
     lineMissCount(state, args[0] ?? '', 'line_busy', numberArg(args, 1)),
-  line_unattended: ({ args, state }) => lineFact(state, args[0] ?? '', (fact) => fact.online_holders === 0),
+  line_unattended: ({ args, state }) =>
+    lineFact(state, args[0] ?? '', (fact) => fact.online_holders === 0),
   line_unattended_minutes_gte: ({ args, state }) =>
     lineFact(state, args[0] ?? '', (fact) => (fact.unattended_minutes ?? -1) >= numberArg(args, 1)),
   line_reassigned: ({ args, state }) => lineFact(state, args[0] ?? '', (fact) => fact.reassigned),
@@ -344,7 +351,10 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   },
   role_unassigned: ({ args, state }) => {
     const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
-    return { met: fact != null && !fact.assigned, detail: fact?.assigned ? 'Assigned' : 'Unassigned' };
+    return {
+      met: fact != null && !fact.assigned,
+      detail: fact?.assigned ? 'Assigned' : 'Unassigned',
+    };
   },
   role_fallback_used: ({ args, state }) => {
     const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
@@ -357,7 +367,10 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   role_offline_minutes_gte: ({ args, state }) => {
     const fact = (state.role_runtime ?? []).find((row) => row.role_id === args[0]);
     const minutes = fact?.offline_minutes ?? -1;
-    return { met: minutes >= numberArg(args, 1), detail: `${Math.max(minutes, 0)} minutes offline` };
+    return {
+      met: minutes >= numberArg(args, 1),
+      detail: `${Math.max(minutes, 0)} minutes offline`,
+    };
   },
   chain_active: (input) => chainKey('chain_active', input),
   chain_stopped: (input) => chainKey('chain_stopped', input),
@@ -367,16 +380,26 @@ const RESOLVERS: Record<string, (input: KeyInput) => KeyResult> = {
   chain_stopped_by_step: (input) => chainKey('chain_stopped_by_step', input),
   urgency_reached: (input) => chainKey('urgency_reached', input),
   mood_is: ({ args, team, role, state }) => moodIs(state, args[0] ?? '', args[1] ?? '', team, role),
-  mood_at_least: ({ args, team, role, state }) => moodAtLeast(state, args[0] ?? '', args[1] ?? '', team, role),
-  mood_reached: ({ args, team, role, state }) => moodReached(state, args[0] ?? '', args[1] ?? '', team, role),
-  stakeholder_gave_up: ({ args, team, role, state }) => moodGaveUp(state, args[0] ?? '', team, role),
-  replied_late: ({ args, team, role, state }) => lateReply(state, args[0] ?? '', numberArg(args, 1), team, role),
-  mood_at_reply: ({ args, team, role, state }) => replyMood(state, args[0] ?? '', args[1] ?? '', team, role),
+  mood_at_least: ({ args, team, role, state }) =>
+    moodAtLeast(state, args[0] ?? '', args[1] ?? '', team, role),
+  mood_reached: ({ args, team, role, state }) =>
+    moodReached(state, args[0] ?? '', args[1] ?? '', team, role),
+  stakeholder_gave_up: ({ args, team, role, state }) =>
+    moodGaveUp(state, args[0] ?? '', team, role),
+  replied_late: ({ args, team, role, state }) =>
+    lateReply(state, args[0] ?? '', numberArg(args, 1), team, role),
+  mood_at_reply: ({ args, team, role, state }) =>
+    replyMood(state, args[0] ?? '', args[1] ?? '', team, role),
 };
 
 type MoodRow = NonNullable<CommsState['moods']>[number];
 
-function moodRows(state: CommsState, stakeholderId: string, team: string | undefined, role: string | undefined): MoodRow[] {
+function moodRows(
+  state: CommsState,
+  stakeholderId: string,
+  team: string | undefined,
+  role: string | undefined,
+): MoodRow[] {
   return (state.moods ?? []).filter((row) => {
     if (row.stakeholder_id !== stakeholderId) return false;
     if (role) return row.scope_team === `role:${role}`;
@@ -385,14 +408,26 @@ function moodRows(state: CommsState, stakeholderId: string, team: string | undef
   });
 }
 
-function moodIs(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+function moodIs(
+  state: CommsState,
+  stakeholderId: string,
+  rung: string,
+  team?: string,
+  role?: string,
+): KeyResult {
   if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
   const rows = moodRows(state, stakeholderId, team, role);
   const met = rows.some((row) => row.rung_id === rung);
   return { met, detail: met ? `${stakeholderId} is ${rung}` : `${stakeholderId} is not ${rung}` };
 }
 
-function moodAtLeast(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+function moodAtLeast(
+  state: CommsState,
+  stakeholderId: string,
+  rung: string,
+  team?: string,
+  role?: string,
+): KeyResult {
   if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
   const met = moodRows(state, stakeholderId, team, role).some((row) => {
     const target = row.ladder_ids.indexOf(rung);
@@ -400,18 +435,35 @@ function moodAtLeast(state: CommsState, stakeholderId: string, rung: string, tea
     const current = row.ladder_ids.indexOf(row.rung_id);
     return current >= target;
   });
-  return { met, detail: met ? `${stakeholderId} is at least ${rung}` : `${stakeholderId} is below ${rung}` };
+  return {
+    met,
+    detail: met ? `${stakeholderId} is at least ${rung}` : `${stakeholderId} is below ${rung}`,
+  };
 }
 
-function moodReached(state: CommsState, stakeholderId: string, rung: string, team?: string, role?: string): KeyResult {
+function moodReached(
+  state: CommsState,
+  stakeholderId: string,
+  rung: string,
+  team?: string,
+  role?: string,
+): KeyResult {
   if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
   const met = moodRows(state, stakeholderId, team, role).some(
     (row) => row.rung_id === rung || row.history.some((item) => item.rung === rung),
   );
-  return { met, detail: met ? `${stakeholderId} reached ${rung}` : `${stakeholderId} has not reached ${rung}` };
+  return {
+    met,
+    detail: met ? `${stakeholderId} reached ${rung}` : `${stakeholderId} has not reached ${rung}`,
+  };
 }
 
-function moodGaveUp(state: CommsState, stakeholderId: string, team?: string, role?: string): KeyResult {
+function moodGaveUp(
+  state: CommsState,
+  stakeholderId: string,
+  team?: string,
+  role?: string,
+): KeyResult {
   if (!state.moods) return { met: false, detail: 'Moods are not available yet' };
   const met = moodRows(state, stakeholderId, team, role).some((row) => row.terminal);
   return { met, detail: met ? `${stakeholderId} gave up` : `${stakeholderId} is still waiting` };
@@ -430,7 +482,11 @@ function firstScopedResponse(
       if (role && delivery.target_role_id !== role) continue;
       for (const response of delivery.responses) {
         if (team && slugifyTeamName(response.team ?? '') !== team) continue;
-        if (!best || response.minute < best.minute || (response.minute === best.minute && (response.id ?? '') < (best.id ?? ''))) {
+        if (
+          !best ||
+          response.minute < best.minute ||
+          (response.minute === best.minute && (response.id ?? '') < (best.id ?? ''))
+        ) {
           best = response;
         }
       }
@@ -439,17 +495,35 @@ function firstScopedResponse(
   return best;
 }
 
-function lateReply(state: CommsState, injectKey: string, minutes: number, team?: string, role?: string): KeyResult {
+function lateReply(
+  state: CommsState,
+  injectKey: string,
+  minutes: number,
+  team?: string,
+  role?: string,
+): KeyResult {
   const first = firstScopedResponse(state, injectKey, team, role);
   const wait = first?.wait_minutes;
   const met = first != null && wait != null && Number.isFinite(minutes) && wait >= minutes;
-  return { met, detail: wait == null ? 'No timed reply yet' : `First reply waited ${wait} minutes` };
+  return {
+    met,
+    detail: wait == null ? 'No timed reply yet' : `First reply waited ${wait} minutes`,
+  };
 }
 
-function replyMood(state: CommsState, injectKey: string, rung: string, team?: string, role?: string): KeyResult {
+function replyMood(
+  state: CommsState,
+  injectKey: string,
+  rung: string,
+  team?: string,
+  role?: string,
+): KeyResult {
   const first = firstScopedResponse(state, injectKey, team, role);
   const met = first?.mood_rung === rung;
-  return { met, detail: met ? `First reply on ${rung}` : `First reply was ${first?.mood_rung ?? 'unrecorded'}` };
+  return {
+    met,
+    detail: met ? `First reply on ${rung}` : `First reply was ${first?.mood_rung ?? 'unrecorded'}`,
+  };
 }
 
 function chainKey(id: string, input: KeyInput): KeyResult {
@@ -930,7 +1004,8 @@ function callAttempts(
   team: string | undefined,
 ): CommsDelivery[] {
   return (state.by_key[injectKey] ?? []).filter(
-    (delivery) => delivery.channel === 'call' && includesTeam(delivery, team) && includesRole(delivery),
+    (delivery) =>
+      delivery.channel === 'call' && includesTeam(delivery, team) && includesRole(delivery),
   );
 }
 
@@ -954,7 +1029,8 @@ function isMissedAttempt(delivery: CommsDelivery): boolean {
 function isRoleMiss(delivery: CommsDelivery): boolean {
   if (!isMissedAttempt(delivery) || !delivery.target_role_id) return false;
   if (delivery.fallback_reason) return false;
-  if (delivery.missed_reason === 'line_busy' || delivery.missed_reason === 'line_unattended') return false;
+  if (delivery.missed_reason === 'line_busy' || delivery.missed_reason === 'line_unattended')
+    return false;
   return true;
 }
 
@@ -967,7 +1043,8 @@ function lineMissCount(
   const count = allDeliveries(state).filter((delivery) => {
     if (!isMissedAttempt(delivery) || isRoleMiss(delivery)) return false;
     if (slugifyTeamName(delivery.line_team ?? '') !== teamSlug) return false;
-    if (delivery.missed_reason === 'role_busy' || delivery.missed_reason === 'role_offline') return false;
+    if (delivery.missed_reason === 'role_busy' || delivery.missed_reason === 'role_offline')
+      return false;
     if (reason && delivery.missed_reason !== reason) return false;
     return true;
   }).length;
@@ -1050,6 +1127,128 @@ function missedCallsForStakeholder(state: CommsState, stakeholderId: string): nu
 }
 
 /** A failed or truncated read must not look like "nothing happened". */
+function titleFromSlug(slug: string): string {
+  return slug
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function signalTeam(input: KeyInput): { slug: string; label: string } | { detail: string } {
+  if (input.role && !input.team) {
+    const slug = input.state.role_teams?.[input.role];
+    if (!slug) return { detail: `Role ${input.role} is not on a team` };
+    return { slug, label: input.state.team_labels?.[slug] ?? titleFromSlug(slug) };
+  }
+  if (!input.team) return { detail: 'MO-COND-010: a team or role scope is required' };
+  return {
+    slug: input.team,
+    label: input.state.team_labels?.[input.team] ?? titleFromSlug(input.team),
+  };
+}
+
+function signalUnavailable(kind: string): KeyResult {
+  return { met: false, detail: `${kind} is unavailable` };
+}
+
+function dutyResult(mode: 'missed' | 'done' | 'late', input: KeyInput): KeyResult {
+  const team = signalTeam(input);
+  if (!('slug' in team)) return { met: false, detail: team.detail };
+  if (input.state.duties_known === false || input.state.duties == null) {
+    return signalUnavailable('Duty history');
+  }
+  const actionId = input.args[0] ?? '';
+  const duty =
+    (input.state.duties[team.slug] ?? []).find((row) => row.action_id === actionId) ?? null;
+  if (!duty) return { met: false, detail: `${team.label} has no duty ${actionId}` };
+  const completed = duty.completed_minute;
+  if (mode === 'done') {
+    const met = completed != null && completed <= input.elapsed;
+    return {
+      met,
+      detail: met
+        ? `${team.label} completed ${actionId} at T+${completed}`
+        : `${team.label} has not completed ${actionId}`,
+    };
+  }
+  if (mode === 'late') {
+    const benchmark = duty.benchmark_minute;
+    const met =
+      completed != null && benchmark != null && completed > benchmark && completed <= input.elapsed;
+    return {
+      met,
+      detail: met
+        ? `${team.label} completed ${actionId} at T+${completed}, after T+${benchmark}`
+        : `${team.label} did not complete ${actionId} late`,
+    };
+  }
+  if (input.state.duties_truncated) return { met: false, detail: 'Duty history is incomplete' };
+  const override = input.args.length > 1 ? numberArg(input.args, 1) : null;
+  const deadline = override != null && Number.isFinite(override) ? override : duty.benchmark_minute;
+  if (deadline == null) return { met: false, detail: `${team.label}: ${actionId} has no deadline` };
+  const met = input.elapsed > deadline && (completed == null || completed > deadline);
+  return {
+    met,
+    detail: met
+      ? `${team.label} missed ${actionId} (due T+${deadline})`
+      : `${team.label}: ${actionId} due at T+${deadline}`,
+  };
+}
+
+function teamSilentResult(input: KeyInput): KeyResult {
+  const team = signalTeam(input);
+  if (!('slug' in team)) return { met: false, detail: team.detail };
+  if (input.state.team_activity_known === false || input.state.team_activity == null) {
+    return signalUnavailable('Team activity');
+  }
+  if (input.state.team_activity_truncated)
+    return { met: false, detail: 'Team activity is incomplete' };
+  const n = numberArg(input.args, 0);
+  const last = input.state.team_activity[team.slug]?.last_minute ?? null;
+  const quiet = last == null ? input.elapsed : input.elapsed - last;
+  const met = input.elapsed >= n && quiet >= n;
+  const since = last == null ? 'the start' : `T+${last}`;
+  return { met, detail: `${team.label}: no action since ${since} (${quiet} min)` };
+}
+
+function contentFailedResult(input: KeyInput): KeyResult {
+  const team = signalTeam(input);
+  if (!('slug' in team)) return { met: false, detail: team.detail };
+  if (input.state.content_grades_known === false || input.state.content_grades == null) {
+    return signalUnavailable('Content grades');
+  }
+  const n = numberArg(input.args, 0);
+  const score = numberArg(input.args, 1);
+  const grades = input.state.content_grades[team.slug] ?? [];
+  const below = grades.filter((grade) => grade < score).length;
+  return {
+    met: below >= n,
+    detail: `${team.label}: ${below} graded items scored below ${score}`,
+  };
+}
+
+function decisionMadeResult(input: KeyInput): KeyResult {
+  const team = signalTeam(input);
+  if (!('slug' in team)) return { met: false, detail: team.detail };
+  if (input.state.decisions_enabled === false) {
+    return { met: false, detail: 'Executive decisions are off' };
+  }
+  if (input.state.decisions_known === false) return signalUnavailable('Decision history');
+  const category = input.args[0] ?? '';
+  const hit = (input.state.decisions ?? []).find(
+    (row) =>
+      row.team_slug === team.slug && row.category === category && row.minute <= input.elapsed,
+  );
+  const label = category.replace(/_/g, ' ');
+  return {
+    met: hit != null,
+    detail: hit
+      ? `${team.label}: ${label} decision at T+${hit.minute}`
+      : `${team.label}: no ${label} decision`,
+  };
+}
+
 function factBlock(
   state: CommsState,
   source: 'actions' | 'email' | 'contacts',
@@ -1147,12 +1346,17 @@ export function summariseStakeholderContacts(
   rows: readonly StakeholderContactRow[],
   startTime: string | null,
 ): Record<string, { first_minute: number; latest_minute: number; channels: string[] }> {
-  const out: Record<string, { first_minute: number; latest_minute: number; channels: string[] }> = {};
+  const out: Record<string, { first_minute: number; latest_minute: number; channels: string[] }> =
+    {};
   for (const row of rows) {
     const minute = sessionMinuteAt(startTime, row.created_at);
     const current = out[row.stakeholder_id];
     if (!current) {
-      out[row.stakeholder_id] = { first_minute: minute, latest_minute: minute, channels: [row.channel] };
+      out[row.stakeholder_id] = {
+        first_minute: minute,
+        latest_minute: minute,
+        channels: [row.channel],
+      };
       continue;
     }
     if (minute < current.first_minute) current.first_minute = minute;

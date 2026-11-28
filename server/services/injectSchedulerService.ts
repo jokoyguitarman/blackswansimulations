@@ -37,6 +37,8 @@ import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEng
 import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
 import { isBoothJoinToken } from '../lib/boothLink.js';
+import { collectConditionKeys } from './conditions/conditionCatalog.js';
+import { needsTeamSignalFacts } from './conditions/teamSignalsCore.js';
 import { conditionsToAppearIsEmpty } from './conditions/injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/cancellationGate.js';
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
@@ -927,9 +929,47 @@ export class InjectSchedulerService {
       }
     }
 
+    let condInjectsRaw: Array<{
+      id: string;
+      title?: string | null;
+      content?: string | null;
+      severity?: string | null;
+      target_teams?: string[] | null;
+      inject_scope?: string | null;
+      conditions_to_appear?: unknown;
+      conditions_to_cancel?: unknown;
+      eligible_after_minutes?: number | null;
+      delivery_config?: { inject_key?: unknown } | null;
+    }> = [];
+    let teamSignals = true;
+    try {
+      const { data, error } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select(
+            'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
+          )
+          .eq('scenario_id', session.scenario_id)
+          .or(`session_id.is.null,session_id.eq.${session.id}`)
+          .not('conditions_to_appear', 'is', null)
+          .is('trigger_time_minutes', null),
+      );
+      if (error) throw error;
+      condInjectsRaw = data ?? [];
+      const signalKeys: string[] = [];
+      for (const inj of condInjectsRaw) {
+        signalKeys.push(
+          ...collectConditionKeys(inj.conditions_to_appear, inj.conditions_to_cancel),
+        );
+      }
+      teamSignals = needsTeamSignalFacts(signalKeys);
+    } catch (err) {
+      logger.warn({ err, sessionId: session.id }, 'conditional inject load failed');
+    }
+
     try {
       // Recomputed every tick for the evaluator. Not written to sessions.current_state.
-      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes);
+      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes, { teamSignals });
       const { attachCoverageFacts } = await import('./roles/roleService.js');
       nextState.comms_state = await attachCoverageFacts(
         session.id,
@@ -942,17 +982,6 @@ export class InjectSchedulerService {
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
     let conditionalPublished = 0;
     try {
-      const { data: condInjectsRaw } = await activeTemplateInjects(
-        supabaseAdmin
-          .from('scenario_injects')
-          .select(
-            'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
-          )
-          .eq('scenario_id', session.scenario_id)
-          .or(`session_id.is.null,session_id.eq.${session.id}`)
-          .not('conditions_to_appear', 'is', null)
-          .is('trigger_time_minutes', null),
-      );
 
       const condInjects = (condInjectsRaw ?? []).filter(
         (inj: { id: string; eligible_after_minutes?: number | null }) =>

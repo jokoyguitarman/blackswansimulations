@@ -26,7 +26,8 @@ const SUPPLIER_KEYS = [
 describe('condition key grammar', () => {
   test('every catalogue def round-trips through the builder model', () => {
     for (const def of CONDITION_CATALOG) {
-      const scopes: Array<'none' | 'team' | 'role'> = ['none'];
+      const scopes: Array<'none' | 'team' | 'role'> = [];
+      if (!def.requiresScope) scopes.push('none');
       if (def.teamScope) scopes.push('team');
       if (def.kind === 'prefix') scopes.push('role');
       for (const scope of scopes) {
