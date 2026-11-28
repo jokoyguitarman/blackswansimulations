@@ -5,6 +5,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
@@ -630,7 +631,8 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
   parts.steps = chains.steps;
   parts.moods = await loadMoods(sessionId);
   parts.directMessages = await loadDirectMessages(sessionId, started);
-  parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId);
+  const validAt = session?.start_time ?? new Date().toISOString();
+  parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId, validAt);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
   return parts;
@@ -845,14 +847,17 @@ async function loadDirectMessages(sessionId: string, startMs: number | null): Pr
     }));
 }
 
-async function loadInjects(scenarioId: string | null, sessionId: string): Promise<AarInject[]> {
+async function loadInjects(
+  scenarioId: string | null,
+  sessionId: string,
+  validAt: string,
+): Promise<AarInject[]> {
   if (!scenarioId) return [];
-  const result = (await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, title, requires_response, conditions_to_appear, conditions_to_cancel, delivery_config')
-    .eq('scenario_id', scenarioId)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
-    .limit(2000)) as QueryResult;
+  const result = (await templateInjectsValidAt(scenarioId, sessionId, validAt, {
+    select:
+      'id, title, requires_response, conditions_to_appear, conditions_to_cancel, delivery_config',
+    limit: 2000,
+  })) as QueryResult;
   if (result.error) {
     warnRead('scenario_injects', result.error);
     return [];

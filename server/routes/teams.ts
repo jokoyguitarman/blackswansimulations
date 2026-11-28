@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { normalizeSessionTeamName } from '../lib/sessionTeamName.js';
@@ -158,12 +159,14 @@ router.post(
       // team definitions. Rejecting here keeps unrecognised labels out of
       // session_teams entirely (scoring/routing key off these names).
       if (session.scenario_id) {
-        const { data: teamDef } = await supabaseAdmin
-          .from('scenario_teams')
-          .select('team_name')
-          .eq('scenario_id', session.scenario_id)
-          .eq('team_name', team_name)
-          .maybeSingle();
+        const { data: teamDef } = await activeTeams(
+          supabaseAdmin
+            .from('scenario_teams')
+            .select('team_name')
+            .eq('scenario_id', session.scenario_id)
+            .eq('team_name', team_name)
+            .maybeSingle(),
+        );
         if (!teamDef) {
           return res.status(400).json({ error: 'Unknown team for this scenario' });
         }
@@ -325,11 +328,13 @@ router.get('/scenario/:id', requireAuth, async (req: AuthenticatedRequest, res) 
       }
     }
 
-    const { data: teams, error } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('*')
-      .eq('scenario_id', id)
-      .order('team_name', { ascending: true });
+    const { data: teams, error } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('*')
+        .eq('scenario_id', id)
+        .order('team_name', { ascending: true }),
+    );
 
     if (error) {
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario teams');

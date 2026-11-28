@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -663,12 +664,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'scenario_id or session_id required' });
     }
 
-    let query = supabaseAdmin.from('scenario_injects').select('*');
-
-    if (scenario_id) {
-      query = query.eq('scenario_id', scenario_id as string);
-    }
-
     let finalScenarioId: string | undefined;
     if (session_id) {
       // Get scenario_id from session
@@ -683,7 +678,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       }
 
       finalScenarioId = session.scenario_id;
-      query = query.eq('scenario_id', finalScenarioId);
     }
 
     // When listing for a session: only premade injects + injects published to this session (no other sessions' AI injects)
@@ -691,12 +685,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     if (session_id && finalScenarioId) {
       // 1. Premade (template) injects only — session_id IS NULL
-      const { data: premadeInjects, error: premadeError } = await supabaseAdmin
-        .from('scenario_injects')
-        .select('*')
-        .eq('scenario_id', finalScenarioId)
-        .is('session_id', null)
-        .order('trigger_time_minutes', { ascending: true });
+      const { data: premadeInjects, error: premadeError } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select('*')
+          .eq('scenario_id', finalScenarioId)
+          .is('session_id', null)
+          .order('trigger_time_minutes', { ascending: true }),
+      );
 
       if (premadeError) {
         logger.error({ error: premadeError }, 'Failed to fetch premade injects');
@@ -750,10 +746,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       allInjects = combined;
     } else {
       // No session_id: template injects only (scenario editor / preview)
-      query = query.is('session_id', null);
-      const { data, error } = await query.order('trigger_time_minutes', {
-        ascending: true,
-      });
+      const { data, error } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select('*')
+          .eq('scenario_id', scenario_id as string)
+          .is('session_id', null)
+          .order('trigger_time_minutes', { ascending: true }),
+      );
       if (error) {
         logger.error({ error }, 'Failed to fetch injects');
         return res.status(500).json({ error: 'Failed to fetch injects' });

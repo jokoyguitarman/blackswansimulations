@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
@@ -2759,15 +2760,17 @@ router.get(
         : 0;
 
       // 2. Fetch all condition-driven injects for this scenario
-      const { data: condInjects } = await supabaseAdmin
-        .from('scenario_injects')
-        .select(
-          'id, title, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes',
-        )
-        .eq('scenario_id', session.scenario_id)
-        .or(`session_id.is.null,session_id.eq.${session.id}`)
-        .not('conditions_to_appear', 'is', null)
-        .is('trigger_time_minutes', null);
+      const { data: condInjects } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select(
+            'id, title, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes',
+          )
+          .eq('scenario_id', session.scenario_id)
+          .or(`session_id.is.null,session_id.eq.${session.id}`)
+          .not('conditions_to_appear', 'is', null)
+          .is('trigger_time_minutes', null),
+      );
 
       if (!condInjects || condInjects.length === 0) {
         return res.json({ data: [] });

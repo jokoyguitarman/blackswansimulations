@@ -8,6 +8,7 @@
  * latest stored verdict at fire time.
  */
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
@@ -123,12 +124,14 @@ export async function getPendingInjects(
   const scenarioId = await getSessionScenarioId(sessionId);
   if (!scenarioId) return [];
 
-  const { data, error } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, title, content, type, trigger_time_minutes, delivery_config, session_id')
-    .eq('scenario_id', scenarioId)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
-    .eq('delivery_config->>stakeholder_id', stakeholderId);
+  const { data, error } = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('id, title, content, type, trigger_time_minutes, delivery_config, session_id')
+      .eq('scenario_id', scenarioId)
+      .or(`session_id.is.null,session_id.eq.${sessionId}`)
+      .eq('delivery_config->>stakeholder_id', stakeholderId),
+  );
   if (error) {
     logger.warn({ error, sessionId, stakeholderId }, 'getPendingInjects: query failed');
     return [];

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
 import { assertSessionAccess, assertSessionOwner } from '../lib/access.js';
@@ -2893,10 +2894,12 @@ router.get(
       // Load investigative team info
       let investigativeTeams: string[] = [];
       if (session?.scenario_id) {
-        const { data: teams } = await supabaseAdmin
-          .from('scenario_teams')
-          .select('team_name, is_investigative')
-          .eq('scenario_id', session.scenario_id);
+        const { data: teams } = await activeTeams(
+          supabaseAdmin
+            .from('scenario_teams')
+            .select('team_name, is_investigative')
+            .eq('scenario_id', session.scenario_id),
+        );
 
         investigativeTeams = (teams ?? [])
           .filter((t) => (t as Record<string, unknown>).is_investigative === true)

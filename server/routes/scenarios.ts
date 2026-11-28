@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams, activeTemplateInjects, stampOrgIdentity } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
 import { env } from '../env.js';
@@ -408,11 +409,13 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const { data: injects, error: injectError } = await supabaseAdmin
-      .from('scenario_injects')
-      .select('id, title, delivery_config')
-      .eq('scenario_id', id)
-      .is('session_id', null);
+    const { data: injects, error: injectError } = await activeTemplateInjects(
+      supabaseAdmin
+        .from('scenario_injects')
+        .select('id, title, delivery_config')
+        .eq('scenario_id', id)
+        .is('session_id', null),
+    );
     if (injectError) {
       logger.error(
         { error: injectError, scenarioId: id },
@@ -421,11 +424,13 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
       return res.status(500).json({ error: 'Failed to load injects' });
     }
 
-    const { data: teams, error: teamError } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name')
-      .eq('scenario_id', id)
-      .order('team_name', { ascending: true });
+    const { data: teams, error: teamError } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name')
+        .eq('scenario_id', id)
+        .order('team_name', { ascending: true }),
+    );
     if (teamError) {
       logger.error(
         { error: teamError, scenarioId: id },
@@ -551,12 +556,14 @@ router.get('/:id/injects', requireAuth, async (req: AuthenticatedRequest, res) =
     if (user.role !== 'trainer' && user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
-    const { data, error } = await supabaseAdmin
-      .from('scenario_injects')
-      .select('*')
-      .eq('scenario_id', id)
-      .is('session_id', null)
-      .order('trigger_time_minutes', { ascending: true, nullsFirst: false });
+    const { data, error } = await activeTemplateInjects(
+      supabaseAdmin
+        .from('scenario_injects')
+        .select('*')
+        .eq('scenario_id', id)
+        .is('session_id', null)
+        .order('trigger_time_minutes', { ascending: true, nullsFirst: false }),
+    );
     if (error) {
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario injects');
       return res.status(500).json({ error: 'Failed to fetch injects' });
@@ -576,11 +583,13 @@ router.get('/:id/teams', requireAuth, async (req: AuthenticatedRequest, res) => 
     if (user.role !== 'trainer' && user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
-    const { data, error } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('*')
-      .eq('scenario_id', id)
-      .order('team_name', { ascending: true });
+    const { data, error } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('*')
+        .eq('scenario_id', id)
+        .order('team_name', { ascending: true }),
+    );
     if (error) {
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario teams');
       return res.status(500).json({ error: 'Failed to fetch teams' });
@@ -1060,10 +1069,9 @@ function rejectUnknownConditionKeys(
 
 /** Load the scenario's team names for inject targeting validation. */
 async function loadTeamNames(scenarioId: string): Promise<Set<string>> {
-  const { data, error } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name')
-    .eq('scenario_id', scenarioId);
+  const { data, error } = await activeTeams(
+    supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+  );
   if (error) throw new Error(`Failed to load scenario teams: ${error.message}`);
   return new Set((data ?? []).map((t) => t.team_name as string));
 }
@@ -1080,15 +1088,17 @@ router.patch(
       const { id, injectId } = req.params;
       if (!(await guardScenarioEdit(id, req, res))) return;
 
-      const { data: existing, error: fetchErr } = await supabaseAdmin
-        .from('scenario_injects')
-        .select(
-          'id, inject_scope, target_teams, title, trigger_time_minutes, trigger_condition, conditions_to_appear, conditions_to_cancel, delivery_config',
-        )
-        .eq('id', injectId)
-        .eq('scenario_id', id)
-        .is('session_id', null)
-        .maybeSingle();
+      const { data: existing, error: fetchErr } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select(
+            'id, inject_scope, target_teams, title, trigger_time_minutes, trigger_condition, conditions_to_appear, conditions_to_cancel, delivery_config',
+          )
+          .eq('id', injectId)
+          .eq('scenario_id', id)
+          .is('session_id', null)
+          .maybeSingle(),
+      );
       if (fetchErr) {
         logger.error({ error: fetchErr, injectId }, 'Failed to load inject for edit');
         return res.status(500).json({ error: 'Failed to load inject' });
@@ -1159,14 +1169,16 @@ router.patch(
 
       updates.generation_source = 'trainer';
 
-      const { data, error } = await supabaseAdmin
-        .from('scenario_injects')
-        .update(updates)
-        .eq('id', injectId)
-        .eq('scenario_id', id)
-        .is('session_id', null)
-        .select()
-        .single();
+      const { data, error } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .update(updates)
+          .eq('id', injectId)
+          .eq('scenario_id', id)
+          .is('session_id', null)
+          .select()
+          .single(),
+      );
 
       if (error) {
         logger.error({ error, injectId, scenarioId: id }, 'Failed to update inject');
@@ -1292,13 +1304,15 @@ router.delete('/:id/injects/:injectId', requireAuth, async (req: AuthenticatedRe
     const { id, injectId } = req.params;
     if (!(await guardScenarioEdit(id, req, res))) return;
 
-    const { data, error } = await supabaseAdmin
-      .from('scenario_injects')
-      .delete()
-      .eq('id', injectId)
-      .eq('scenario_id', id)
-      .is('session_id', null)
-      .select('id');
+    const { data, error } = await activeTemplateInjects(
+      supabaseAdmin
+        .from('scenario_injects')
+        .delete()
+        .eq('id', injectId)
+        .eq('scenario_id', id)
+        .is('session_id', null)
+        .select('id'),
+    );
 
     if (error) {
       logger.error({ error, injectId, scenarioId: id }, 'Failed to delete inject');
@@ -1329,13 +1343,15 @@ router.post(
 
       const [{ data: inject, error: injErr }, { data: scenario, error: scenErr }] =
         await Promise.all([
-          supabaseAdmin
-            .from('scenario_injects')
-            .select('id, title, content, delivery_config')
-            .eq('id', injectId)
-            .eq('scenario_id', id)
-            .is('session_id', null)
-            .maybeSingle(),
+          activeTemplateInjects(
+            supabaseAdmin
+              .from('scenario_injects')
+              .select('id, title, content, delivery_config')
+              .eq('id', injectId)
+              .eq('scenario_id', id)
+              .is('session_id', null)
+              .maybeSingle(),
+          ),
           supabaseAdmin.from('scenarios').select('initial_state').eq('id', id).maybeSingle(),
         ]);
 
@@ -1375,14 +1391,16 @@ router.post(
       }
 
       dc.media_urls = [imageUrl];
-      const { data, error } = await supabaseAdmin
-        .from('scenario_injects')
-        .update({ delivery_config: dc, generation_source: 'trainer' })
-        .eq('id', injectId)
-        .eq('scenario_id', id)
-        .is('session_id', null)
-        .select()
-        .single();
+      const { data, error } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .update({ delivery_config: dc, generation_source: 'trainer' })
+          .eq('id', injectId)
+          .eq('scenario_id', id)
+          .is('session_id', null)
+          .select()
+          .single(),
+      );
 
       if (error) {
         logger.error({ error, injectId }, 'Failed to save regenerated image');
@@ -1408,10 +1426,12 @@ router.post(
  * silently go stale.
  */
 async function recomputeStrategicBenchmarks(scenarioId: string): Promise<void> {
-  const { data: teamRows, error: teamsErr } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name, team_description, charter, expected_actions')
-    .eq('scenario_id', scenarioId);
+  const { data: teamRows, error: teamsErr } = await activeTeams(
+    supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name, team_description, charter, expected_actions')
+      .eq('scenario_id', scenarioId),
+  );
   if (teamsErr)
     throw new Error(`Failed to load teams for benchmark recompute: ${teamsErr.message}`);
 
@@ -1487,19 +1507,23 @@ router.patch(
       };
       let existing: ExistingTeamRow | null = null;
       {
-        const withOrg = await supabaseAdmin
-          .from('scenario_teams')
-          .select('id, team_name, charter, org_key')
-          .eq('id', teamId)
-          .eq('scenario_id', id)
-          .maybeSingle();
-        if (withOrg.error && /org_key/.test(withOrg.error.message)) {
-          const legacy = await supabaseAdmin
+        const withOrg = await activeTeams(
+          supabaseAdmin
             .from('scenario_teams')
-            .select('id, team_name, charter')
+            .select('id, team_name, charter, org_key')
             .eq('id', teamId)
             .eq('scenario_id', id)
-            .maybeSingle();
+            .maybeSingle(),
+        );
+        if (withOrg.error && /org_key/.test(withOrg.error.message)) {
+          const legacy = await activeTeams(
+            supabaseAdmin
+              .from('scenario_teams')
+              .select('id, team_name, charter')
+              .eq('id', teamId)
+              .eq('scenario_id', id)
+              .maybeSingle(),
+          );
           if (legacy.error) {
             logger.error({ error: legacy.error, teamId }, 'Failed to load team for edit');
             return res.status(500).json({ error: 'Failed to load team' });
@@ -1548,13 +1572,15 @@ router.patch(
         return res.status(400).json({ error: 'No editable fields provided' });
       }
 
-      const { data, error } = await supabaseAdmin
-        .from('scenario_teams')
-        .update(updates)
-        .eq('id', teamId)
-        .eq('scenario_id', id)
-        .select()
-        .single();
+      const { data, error } = await activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .update(updates)
+          .eq('id', teamId)
+          .eq('scenario_id', id)
+          .select()
+          .single(),
+      );
 
       if (error) {
         logger.error({ error, teamId, scenarioId: id }, 'Failed to update team');
@@ -1565,11 +1591,13 @@ router.patch(
       // team clears the flag on its sibling rows in the same org (all rows when single-org).
       if (req.body.can_post_publicly === true) {
         const orgKey = existing.org_key ?? null;
-        let sibQuery = supabaseAdmin
-          .from('scenario_teams')
-          .select('id, charter')
-          .eq('scenario_id', id)
-          .neq('id', teamId);
+        let sibQuery = activeTeams(
+          supabaseAdmin
+            .from('scenario_teams')
+            .select('id, charter')
+            .eq('scenario_id', id)
+            .neq('id', teamId),
+        );
         if (orgKey !== null) sibQuery = sibQuery.eq('org_key', orgKey);
         const { data: siblings, error: sibErr } = await sibQuery;
         if (sibErr) {
@@ -1581,10 +1609,12 @@ router.patch(
         for (const sib of siblings ?? []) {
           const cj = (sib.charter || {}) as Record<string, unknown>;
           if (cj.can_post_publicly === true) {
-            const { error: unsetErr } = await supabaseAdmin
-              .from('scenario_teams')
-              .update({ charter: { ...cj, can_post_publicly: false } })
-              .eq('id', sib.id);
+            const { error: unsetErr } = await activeTeams(
+              supabaseAdmin
+                .from('scenario_teams')
+                .update({ charter: { ...cj, can_post_publicly: false } })
+                .eq('id', sib.id),
+            );
             if (unsetErr) {
               logger.error({ error: unsetErr, teamId: sib.id }, 'Failed to unset public voice');
               return res.status(500).json({
@@ -2120,11 +2150,13 @@ router.post(
       }
 
       // Get template injects only (exclude session-scoped runtime injects)
-      const { data: originalInjects, error: injectsError } = await supabaseAdmin
-        .from('scenario_injects')
-        .select('*')
-        .eq('scenario_id', id)
-        .is('session_id', null);
+      const { data: originalInjects, error: injectsError } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select('*')
+          .eq('scenario_id', id)
+          .is('session_id', null),
+      );
 
       if (injectsError) {
         logger.error(
@@ -2145,7 +2177,7 @@ router.post(
           difficulty: originalScenario.difficulty,
           duration_minutes: originalScenario.duration_minutes,
           objectives: originalScenario.objectives,
-          initial_state: originalScenario.initial_state,
+          initial_state: stampOrgIdentity(originalScenario.initial_state),
           briefing: originalScenario.briefing,
           role_specific_briefs: originalScenario.role_specific_briefs,
           center_lat: originalScenario.center_lat ?? null,

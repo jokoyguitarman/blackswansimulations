@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import {
@@ -103,11 +104,13 @@ router.post(
               .select('label, location_type, description, conditions')
               .eq('scenario_id', session.scenario_id)
               .order('display_order', { ascending: true }),
-            supabaseAdmin
-              .from('scenario_teams')
-              .select('team_name, team_description')
-              .eq('scenario_id', session.scenario_id)
-              .order('team_name', { ascending: true }),
+            activeTeams(
+              supabaseAdmin
+                .from('scenario_teams')
+                .select('team_name, team_description')
+                .eq('scenario_id', session.scenario_id)
+                .order('team_name', { ascending: true }),
+            ),
             supabaseAdmin
               .from('session_teams')
               .select('team_name')

@@ -2,6 +2,7 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
+import { inferLayer } from '../lib/injectFingerprint.js';
 import { BLUEPRINT_HONOR_THRESHOLD } from './blueprint/blueprintConfig.js';
 import {
   TEAM_CATALOG,
@@ -179,6 +180,13 @@ export interface SocialInject {
   eligible_after_minutes?: number;
   state_effect?: Record<string, unknown>;
   trigger_condition?: string;
+  /**
+   * Generation layer this inject was assembled from (`backbone`, `team:<name>`,
+   * `shared`, `gate`, `strategy`, or a guessed stakeholder/pressure/branch layer).
+   * Persistence rewrites `team:<name>` to `team:<team_uid>` and stores it on
+   * `delivery_config.gen`. Not a database column.
+   */
+  gen_layer?: string;
 }
 
 export interface TeamBestPractice {
@@ -2286,32 +2294,42 @@ export function assemblePayload(
     decision_context?: SocialCrisisPayload['scenario']['initial_state']['decision_context'];
   },
 ): SocialCrisisPayload {
+  const layerOf = (inject: SocialInject, layer: string): SocialInject =>
+    inject.gen_layer ? inject : { ...inject, gen_layer: layer };
+  const teamRefs = teams.map((team) => ({ team_name: team.team_name }));
+
   // Merge the universal storyline backbone with any per-team storylines.
   // (Previously team storylines were ignored whenever storylineInjects was
   // provided; with fixed teams both layers coexist.)
-  const allStoryInjects: SocialInject[] = [...(storylineInjects || [])];
-  for (const injects of Object.values(teamStorylines)) {
-    allStoryInjects.push(...injects);
+  const allStoryInjects: SocialInject[] = (storylineInjects || []).map((inject) =>
+    layerOf(inject, 'backbone'),
+  );
+  for (const [teamName, injects] of Object.entries(teamStorylines)) {
+    for (const inject of injects) allStoryInjects.push(layerOf(inject, `team:${teamName}`));
   }
   // Stakeholder- and page-authored injects ride alongside; condition-gated ones
   // (trigger null + conditions) fall into the condition bucket below.
-  const extra = multiOrg?.extraInjects || [];
+  const extra = (multiOrg?.extraInjects || []).map((inject) =>
+    layerOf(inject, inferLayer(inject, teamRefs)),
+  );
 
   const strategyInjects: SocialInject[] = [];
   if (strategyWindows) {
     for (const window of strategyWindows) {
-      if (window.success_injects) strategyInjects.push(...window.success_injects);
-      if (window.backlash_injects) strategyInjects.push(...window.backlash_injects);
+      if (window.success_injects)
+        strategyInjects.push(...window.success_injects.map((inject) => layerOf(inject, 'strategy')));
+      if (window.backlash_injects)
+        strategyInjects.push(...window.backlash_injects.map((inject) => layerOf(inject, 'strategy')));
     }
   }
 
   const timeInjects = [
     ...allStoryInjects.filter((i) => i.trigger_time_minutes != null && !i.trigger_condition),
     ...extra.filter((i) => i.trigger_time_minutes != null && !i.trigger_condition),
-    ...sharedInjects,
+    ...sharedInjects.map((inject) => layerOf(inject, 'shared')),
   ];
   const conditionInjects = [
-    ...convergenceGates,
+    ...convergenceGates.map((inject) => layerOf(inject, 'gate')),
     ...strategyInjects,
     ...extra.filter((i) => i.trigger_time_minutes == null && !i.trigger_condition),
   ];

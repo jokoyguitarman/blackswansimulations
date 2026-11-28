@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 
@@ -757,12 +758,14 @@ export async function getPlayerTeamContext(
     }
 
     // '*' so the 197 columns (function_key / org_key) read as undefined → null before they exist.
-    const { data: teamRowRaw } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('*')
-      .eq('scenario_id', session.scenario_id)
-      .eq('team_name', teamName)
-      .maybeSingle();
+    const { data: teamRowRaw } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('*')
+        .eq('scenario_id', session.scenario_id)
+        .eq('team_name', teamName)
+        .maybeSingle(),
+    );
 
     if (!teamRowRaw) {
       logger.warn(

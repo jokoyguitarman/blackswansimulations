@@ -7,6 +7,7 @@
  * `*` so the code works before those columns exist.
  */
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import {
   cachedByScenario,
@@ -204,10 +205,9 @@ async function loadScenarioTeams(scenarioId: string): Promise<ScenarioTeamRow[]>
     scenarioId,
     async () => {
       // '*' on purpose: tolerates the 197 columns not existing yet (they read as undefined → null).
-      const { data, error } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('*')
-        .eq('scenario_id', scenarioId);
+      const { data, error } = await activeTeams(
+        supabaseAdmin.from('scenario_teams').select('*').eq('scenario_id', scenarioId),
+      );
       if (error) {
         logger.warn({ error, scenarioId }, 'orgRegistry: failed to load scenario_teams');
         return [];

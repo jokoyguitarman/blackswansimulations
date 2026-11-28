@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { assertScenarioOwner } from '../lib/access.js';
@@ -88,10 +89,12 @@ async function loadContext(scenarioId: string): Promise<ScenarioContext | null> 
     string,
     unknown
   >;
-  const { data: teamRows } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('id, team_name, org_key, function_key')
-    .eq('scenario_id', scenarioId);
+  const { data: teamRows } = await activeTeams(
+    supabaseAdmin
+      .from('scenario_teams')
+      .select('id, team_name, org_key, function_key')
+      .eq('scenario_id', scenarioId),
+  );
   return {
     initialState,
     stakeholders: Array.isArray(initialState.stakeholders)

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
@@ -175,10 +176,12 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
 
     const currentState = (session.current_state as Record<string, unknown>) || {};
 
-    const { data: scenarioTeams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name, counter_definitions')
-      .eq('scenario_id', scenarioId);
+    const { data: scenarioTeams } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name, counter_definitions')
+        .eq('scenario_id', scenarioId),
+    );
 
     interface ScenarioTeamRow {
       team_name: string;
