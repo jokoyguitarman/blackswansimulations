@@ -480,6 +480,36 @@ export function shouldWake(
   return { wake: false, log: false, reason: 'quiet', wakeReason: null };
 }
 
+/**
+ * Whether this tick still needs scenario, roster and delivery reads.
+ * Clock gates, the minimum gap, and a quiet interval between periodic ticks
+ * are decided from the history row and the signals already on the tick.
+ */
+export function wakeNeedsSessionData(input: {
+  minute: number;
+  duration: number | null;
+  paused: boolean;
+  /** Null when the session mode is not known yet. */
+  mode: 'off' | 'suggest' | 'auto' | null;
+  startMinute: number;
+  minGapMinutes: number;
+  tickMinutes: number;
+  lastWakeMinute: number | null;
+  notable: boolean;
+}): boolean {
+  if (input.paused || input.mode === 'off') return false;
+  if (input.minute < input.startMinute) return false;
+  if (input.duration != null && input.duration > 0 && input.minute >= input.duration - 5) {
+    return false;
+  }
+  const since = input.lastWakeMinute == null ? null : input.minute - input.lastWakeMinute;
+  const gapOk = since == null || since >= input.minGapMinutes;
+  const tickOk = since == null || since >= input.tickMinutes;
+  if (!gapOk) return false;
+  if (input.notable) return true;
+  return tickOk;
+}
+
 export function fairnessState(
   teams: readonly DirectorTeam[],
   history: readonly ExposureEvent[],

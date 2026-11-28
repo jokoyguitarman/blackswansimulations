@@ -20,6 +20,7 @@ import {
   capsFor,
   directorSeed,
   runDirectorTurn,
+  wakeNeedsSessionData,
   type DirectorClient,
   type DirectorDraft,
   type DirectorLimits,
@@ -31,7 +32,12 @@ import {
   type UpcomingInject,
 } from './directorCore.js';
 import { replayDirectorSession, type ReplayRow } from './directorReplay.js';
-import { type DependencySnapshot, type Signal, type SignalComms } from './directorSignals.js';
+import {
+  collectSignals,
+  type DependencySnapshot,
+  type Signal,
+  type SignalComms,
+} from './directorSignals.js';
 
 const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 const APPS = ['email', 'group_chat', 'phone_call', 'npc_dm', 'messenger_dm', 'social_feed', 'news'];
@@ -40,7 +46,14 @@ const RECEIVED_STATUSES = new Set(['approved', 'edited', 'auto_published']);
 
 let directorUnavailable = false;
 let directorWarned = false;
-const insertWarned = new Set<string>();
+const warnedKinds = new Set<string>();
+const scenarioCache = new Map<string, ScenarioRow>();
+const sessionCache = new Map<string, { mode: DirectorMode; seed: string | null }>();
+
+interface SessionDirectorRow {
+  director_mode: string | null;
+  director_seed: string | null;
+}
 
 export interface DirectorTickInput {
   sessionId: string;
@@ -51,33 +64,109 @@ export interface DirectorTickInput {
   comms: CommsState | null;
   /** Omitted when the tick has no dependency state. Present (even empty) once WP2 is merged. */
   dependencyState?: Record<string, DependencySnapshot> | null;
+  /** Known without a query when the caller already has the scenario row. */
+  durationMinutes?: number | null;
+  /** Session override. `off` skips every read. */
+  directorMode?: DirectorMode | null;
 }
 
-export async function runDirector(input: DirectorTickInput): Promise<void> {
-  if (!env.directorEnabled || !env.aiEnabled || directorUnavailable) return;
-  if (!(await proposalsReady(input.sessionId))) return;
+export interface DirectorRunOptions {
+  store?: DirectorStore;
+  enabled?: boolean;
+  aiEnabled?: boolean;
+}
 
-  const session = await loadSession(input.sessionId);
-  if (!session) return;
-  const scenario = await loadScenario(input.scenarioId);
+export interface DirectorStore {
+  loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'>;
+  loadSession(sessionId: string): Promise<SessionDirectorRow | 'missing' | null>;
+  loadScenario(scenarioId: string): Promise<ScenarioRow | null>;
+  loadTriggers(sessionId: string): Promise<TriggerRow[]>;
+  loadDeliveries(sessionId: string, minute: number): Promise<DeliveryFact[]>;
+  loadActivePlans(sessionId: string): Promise<Array<{ team_slug: string; category: string }>>;
+  loadTeams(scenarioId: string): Promise<Array<{ name: string }>>;
+  loadMemberships(sessionId: string): Promise<Array<{ user_id: string; team_name: string }>>;
+  loadUpcoming(scenarioId: string, minute: number): Promise<UpcomingInject[]>;
+  saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missing'>;
+  insertProposal(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'>;
+  insertEvent(row: Record<string, unknown>): Promise<void>;
+}
+
+/** Test hook. Process flags and caches must not leak between cases. */
+export function resetDirectorProcessState(): void {
+  directorUnavailable = false;
+  directorWarned = false;
+  warnedKinds.clear();
+  scenarioCache.clear();
+  sessionCache.clear();
+}
+
+export async function runDirector(
+  input: DirectorTickInput,
+  options: DirectorRunOptions = {},
+): Promise<void> {
+  const enabled = options.enabled ?? env.directorEnabled;
+  const aiEnabled = options.aiEnabled ?? env.aiEnabled;
+  if (!enabled || !aiEnabled || directorUnavailable) return;
+  if (input.directorMode === 'off' || sessionCache.get(input.sessionId)?.mode === 'off') return;
+
+  const store = options.store ?? defaultStore;
+  const history = await store.loadHistory(input.sessionId);
+  if (history === 'missing') {
+    noteUnavailable(new Error('director_proposals missing'));
+    return;
+  }
+
+  const last = history[history.length - 1];
+  const seen = history.flatMap((row) => row.signals.map((signal) => signal.id));
+  const signals = collectSignals(
+    {
+      minute: input.elapsedMinutes,
+      comms: (input.comms ?? undefined) as SignalComms | undefined,
+      ...(input.dependencyState != null ? { dependency_state: input.dependencyState } : {}),
+    },
+    last ? { minute: last.minute, signal_ids: seen } : null,
+  );
+  const cachedScenario = scenarioCache.get(input.scenarioId);
+  const duration = input.durationMinutes ?? cachedScenario?.duration ?? null;
+  const knownMode = input.directorMode ?? sessionCache.get(input.sessionId)?.mode ?? null;
+  if (
+    !wakeNeedsSessionData({
+      minute: input.elapsedMinutes,
+      duration,
+      paused: input.status === 'paused',
+      mode: knownMode,
+      startMinute: env.directorStartMinute,
+      minGapMinutes: env.directorMinGapMinutes,
+      tickMinutes: env.directorTickMinutes,
+      lastWakeMinute: last ? last.minute : null,
+      notable: signals.some((signal) => signal.notable),
+    })
+  ) {
+    return;
+  }
+
+  const session = await rememberSession(input.sessionId, store);
+  if (session == null) return;
+  const scenario = await rememberScenario(input.scenarioId, store);
   if (!scenario || scenario.category !== 'social_media_crisis') return;
-
   const settings = readDirectorSettings(scenario.initial);
   const mode = resolveMode(session.director_mode, settings.mode);
+  sessionCache.set(input.sessionId, { mode, seed: session.director_seed });
   if (mode === 'off') return;
-  const seed = await ensureSeed(input.sessionId, input.scenarioId, session.director_seed);
+  if (input.elapsedMinutes >= scenario.duration - 5) return;
+
+  const seed = await ensureSeed(store, input.sessionId, input.scenarioId, session.director_seed);
   if (seed == null) return;
 
-  const [proposals, triggers, deliveryRows, decisions, teams, memberships, upcoming] =
-    await Promise.all([
-      loadProposals(input.sessionId),
-      loadTriggers(input.sessionId),
-      loadDeliveries(input.sessionId, input.elapsedMinutes),
-      loadActivePlans(input.sessionId),
-      loadTeams(input.scenarioId),
-      loadMemberships(input.sessionId),
-      loadUpcoming(input.scenarioId, input.elapsedMinutes),
-    ]);
+  const [triggers, deliveryRows, decisions, teams, memberships, upcoming] = await Promise.all([
+    store.loadTriggers(input.sessionId),
+    store.loadDeliveries(input.sessionId, input.elapsedMinutes),
+    store.loadActivePlans(input.sessionId),
+    store.loadTeams(input.scenarioId),
+    store.loadMemberships(input.sessionId),
+    store.loadUpcoming(input.scenarioId, input.elapsedMinutes),
+  ]);
+  const proposals = history;
 
   const turn = buildTurn({
     input,
@@ -96,10 +185,10 @@ export async function runDirector(input: DirectorTickInput): Promise<void> {
   const draft = await runDirectorTurn(turn, defaultClient);
   if (!draft.log || !draft.status || !draft.wake_reason || !draft.mode) return;
   const seq = nextSeq(proposals);
-  const stored = await insertProposal(input.sessionId, seq, turn, draft);
+  const stored = await insertProposal(store, input.sessionId, seq, turn, draft);
   if (!stored) return;
   emitProposal(input.trainerId, input.sessionId, seq, draft);
-  void recordDirectorEvent(input.sessionId, seq, draft);
+  void recordDirectorEvent(store, input.sessionId, seq, draft);
 }
 
 export async function replayStoredSession(
@@ -306,7 +395,7 @@ function observationOf(
   const claims = readClaims(scenario.initial);
   const comms = input.comms;
   return {
-    title: scenario.title,
+    title: displayTitle(scenario),
     crisisType: readCrisis(scenario),
     minute: input.elapsedMinutes,
     duration: scenario.duration,
@@ -541,39 +630,42 @@ function deliveriesFor(comms: CommsState, team: string, _minute: number) {
   );
 }
 
-async function proposalsReady(sessionId: string): Promise<boolean> {
-  if (directorUnavailable) return false;
+async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'> {
   try {
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('director_proposals')
-      .select('id')
+      .select('seq, minute, status, signals, proposal, raw_output')
       .eq('session_id', sessionId)
-      .limit(1);
-    if (!error) return true;
-    if (SCHEMA_CODES.has(error.code ?? '')) {
-      noteUnavailable(error);
-      return false;
+      .order('seq', { ascending: true })
+      .limit(300);
+    if (error) {
+      if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+      warnOnce(`history:${error.code ?? 'unknown'}`, error, 'director history was not read', {
+        sessionId,
+      });
+      return [];
     }
-    logger.warn({ err: error, sessionId }, 'director history was not read');
-    return false;
+    return (data ?? []).map(proposalHistoryFrom);
   } catch (err) {
-    if (schemaError(err)) noteUnavailable(err);
-    else logger.warn({ err, sessionId }, 'director history was not read');
-    return false;
+    if (schemaError(err)) return 'missing';
+    warnOnce(`history:${codeOf(err) ?? 'throw'}`, err, 'director history was not read', {
+      sessionId,
+    });
+    return [];
   }
 }
 
-async function loadSession(
-  sessionId: string,
-): Promise<{ director_mode: string | null; director_seed: string | null } | null> {
+async function loadSession(sessionId: string): Promise<SessionDirectorRow | 'missing' | null> {
   const { data, error } = await supabaseAdmin
     .from('sessions')
     .select('director_mode, director_seed')
     .eq('id', sessionId)
     .maybeSingle();
   if (error) {
-    if (SCHEMA_CODES.has(error.code ?? '')) noteUnavailable(error);
-    else logger.warn({ err: error, sessionId }, 'director session settings were not read');
+    if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    warnOnce(`session:${error.code ?? 'unknown'}`, error, 'director session settings were not read', {
+      sessionId,
+    });
     return null;
   }
   return {
@@ -583,6 +675,7 @@ async function loadSession(
 }
 
 async function ensureSeed(
+  store: DirectorStore,
   sessionId: string,
   scenarioId: string,
   existing: string | null,
@@ -595,17 +688,27 @@ async function ensureSeed(
     }
   }
   const seed = directorSeed(sessionId, scenarioId, env.directorSeedSalt);
-  const { error } = await supabaseAdmin
-    .from('sessions')
-    .update({ director_seed: seed.toString() })
-    .eq('id', sessionId)
-    .is('director_seed', null);
-  if (error && SCHEMA_CODES.has(error.code ?? '')) {
-    noteUnavailable(error);
+  const saved = await store.saveSeed(sessionId, seed.toString());
+  if (saved === 'missing') {
+    noteUnavailable(new Error('director_seed missing'));
     return null;
   }
-  if (error) logger.warn({ err: error, sessionId }, 'director seed was not stored');
+  const cached = sessionCache.get(sessionId);
+  if (cached) cached.seed = seed.toString();
   return seed;
+}
+
+async function saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missing'> {
+  const { error } = await supabaseAdmin
+    .from('sessions')
+    .update({ director_seed: seed })
+    .eq('id', sessionId)
+    .is('director_seed', null);
+  if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+  if (error) {
+    warnOnce(`seed:${error.code ?? 'unknown'}`, error, 'director seed was not stored', { sessionId });
+  }
+  return 'ok';
 }
 
 interface ScenarioRow {
@@ -624,12 +727,16 @@ async function loadScenario(scenarioId: string): Promise<ScenarioRow | null> {
     .eq('id', scenarioId)
     .maybeSingle();
   if (error || !data) {
-    if (error) logger.warn({ err: error, scenarioId }, 'director scenario was not read');
+    if (error) {
+      warnOnce(`scenario:${error.code ?? 'unknown'}`, error, 'director scenario was not read', {
+        scenarioId,
+      });
+    }
     return null;
   }
   const duration = Number(data.duration_minutes);
   return {
-    title: String(data.title ?? 'Exercise'),
+    title: typeof data.title === 'string' ? data.title.trim() : '',
     category: (data.category as string | null) ?? null,
     description: String(data.description ?? ''),
     briefing: String(data.briefing ?? ''),
@@ -650,43 +757,37 @@ interface ProposalHistory {
   title: string | null;
 }
 
-async function loadProposals(sessionId: string): Promise<ProposalHistory[]> {
-  const { data, error } = await supabaseAdmin
-    .from('director_proposals')
-    .select('seq, minute, status, signals, proposal, raw_output')
-    .eq('session_id', sessionId)
-    .order('seq', { ascending: true })
-    .limit(300);
-  if (error || !data) return [];
-  return data.map((row) => {
-    const proposal = (row.proposal ?? null) as {
-      kind?: string;
-      severity?: string;
-      target_teams?: string[];
-      title?: string;
-    } | null;
-    const raw = (row.raw_output ?? null) as { reason?: string } | null;
-    const kind = proposal?.kind;
-    const severity = proposal?.severity;
-    return {
-      seq: Number(row.seq),
-      minute: Number(row.minute),
-      status: String(row.status),
-      reason: typeof raw?.reason === 'string' ? raw.reason : null,
-      signals: Array.isArray(row.signals) ? (row.signals as Signal[]) : [],
-      teams: Array.isArray(proposal?.target_teams) ? proposal.target_teams.map(String) : [],
-      kind:
-        kind === 'consequence' ||
-        kind === 'escalation' ||
-        kind === 'opportunity' ||
-        kind === 'relief'
-          ? kind
-          : null,
-      severity:
-        severity === 'low' || severity === 'medium' || severity === 'high' ? severity : null,
-      title: proposal?.title ?? null,
-    };
-  });
+function proposalHistoryFrom(row: {
+  seq: unknown;
+  minute: unknown;
+  status: unknown;
+  signals: unknown;
+  proposal: unknown;
+  raw_output: unknown;
+}): ProposalHistory {
+  const proposal = (row.proposal ?? null) as {
+    kind?: string;
+    severity?: string;
+    target_teams?: string[];
+    title?: string;
+  } | null;
+  const raw = (row.raw_output ?? null) as { reason?: string } | null;
+  const kind = proposal?.kind;
+  const severity = proposal?.severity;
+  return {
+    seq: Number(row.seq),
+    minute: Number(row.minute),
+    status: String(row.status),
+    reason: typeof raw?.reason === 'string' ? raw.reason : null,
+    signals: Array.isArray(row.signals) ? (row.signals as Signal[]) : [],
+    teams: Array.isArray(proposal?.target_teams) ? proposal.target_teams.map(String) : [],
+    kind:
+      kind === 'consequence' || kind === 'escalation' || kind === 'opportunity' || kind === 'relief'
+        ? kind
+        : null,
+    severity: severity === 'low' || severity === 'medium' || severity === 'high' ? severity : null,
+    title: proposal?.title ?? null,
+  };
 }
 
 interface TriggerRow {
@@ -835,6 +936,7 @@ async function loadUpcoming(scenarioId: string, minute: number): Promise<Upcomin
 }
 
 async function insertProposal(
+  store: DirectorStore,
   sessionId: string,
   seq: number,
   turn: DirectorTurnInput,
@@ -846,7 +948,7 @@ async function insertProposal(
     focus_id: draft.focus_id,
     decision_reason: draft.reason,
   };
-  const { error } = await supabaseAdmin.from('director_proposals').insert({
+  const saved = await store.insertProposal({
     session_id: sessionId,
     seq,
     minute: draft.minute,
@@ -872,17 +974,21 @@ async function insertProposal(
     tokens_in: draft.tokens_in,
     tokens_out: draft.tokens_out,
   });
-  if (!error) return true;
-  if (SCHEMA_CODES.has(error.code ?? '')) {
-    noteUnavailable(error);
+  if (saved === 'missing') {
+    noteUnavailable(new Error('director_proposals missing'));
     return false;
   }
-  const key = error.code ?? 'insert';
-  if (!insertWarned.has(key)) {
-    insertWarned.add(key);
-    logger.warn({ err: error, sessionId, seq }, 'director proposal was not stored');
-  }
-  return false;
+  return saved === 'ok';
+}
+
+async function insertProposalRow(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'> {
+  const { error } = await supabaseAdmin.from('director_proposals').insert(row);
+  if (!error) return 'ok';
+  if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+  warnOnce(`insert:${error.code ?? 'unknown'}`, error, 'director proposal was not stored', {
+    sessionId: row.session_id,
+  });
+  return 'error';
 }
 
 async function loadReplayRows(
@@ -901,7 +1007,9 @@ async function loadReplayRows(
       noteUnavailable(error);
       return null;
     }
-    logger.warn({ err: error, sessionId }, 'director replay was not loaded');
+    warnOnce(`replay:${error.code ?? 'unknown'}`, error, 'director replay was not loaded', {
+      sessionId,
+    });
     return [];
   }
   return (data ?? []).map((row) => {
@@ -990,21 +1098,83 @@ function emitProposal(
 }
 
 async function recordDirectorEvent(
+  store: DirectorStore,
   sessionId: string,
   seq: number,
   draft: DirectorDraft,
 ): Promise<void> {
-  const { error } = await supabaseAdmin.from('session_events').insert({
+  await store.insertEvent({
     session_id: sessionId,
     event_type: 'director_action',
     description: draft.proposal?.title || draft.reason || 'Director wake',
     metadata: { kind: 'consequence_proposal', seq, status: draft.status },
   });
-  if (error && !insertWarned.has(`event:${error.code ?? ''}`)) {
-    insertWarned.add(`event:${error.code ?? ''}`);
-    logger.warn({ err: error, sessionId }, 'director session event was not stored');
+}
+
+async function insertEvent(row: Record<string, unknown>): Promise<void> {
+  const { error } = await supabaseAdmin.from('session_events').insert(row);
+  if (error) {
+    warnOnce(`event:${error.code ?? 'unknown'}`, error, 'director session event was not stored', {
+      sessionId: row.session_id,
+    });
   }
 }
+
+function warnOnce(
+  kind: string,
+  err: unknown,
+  message: string,
+  extra?: Record<string, unknown>,
+): void {
+  if (warnedKinds.has(kind)) return;
+  warnedKinds.add(kind);
+  logger.warn({ err, ...extra }, message);
+}
+
+function displayTitle(scenario: ScenarioRow): string {
+  const title = scenario.title.trim();
+  if (title) return title;
+  const org = readOrgs(scenario.initial).find((item) => item.name.trim())?.name.trim();
+  return org || 'the crisis';
+}
+
+async function rememberSession(
+  sessionId: string,
+  store: DirectorStore,
+): Promise<SessionDirectorRow | null> {
+  const loaded = await store.loadSession(sessionId);
+  if (loaded === 'missing') {
+    noteUnavailable(new Error('director columns missing'));
+    return null;
+  }
+  return loaded;
+}
+
+async function rememberScenario(
+  scenarioId: string,
+  store: DirectorStore,
+): Promise<ScenarioRow | null> {
+  const cached = scenarioCache.get(scenarioId);
+  if (cached) return cached;
+  const loaded = await store.loadScenario(scenarioId);
+  if (loaded) scenarioCache.set(scenarioId, loaded);
+  return loaded;
+}
+
+const defaultStore: DirectorStore = {
+  loadHistory,
+  loadSession,
+  loadScenario,
+  loadTriggers,
+  loadDeliveries,
+  loadActivePlans,
+  loadTeams,
+  loadMemberships,
+  loadUpcoming,
+  saveSeed,
+  insertProposal: insertProposalRow,
+  insertEvent,
+};
 
 function noteUnavailable(err: unknown): void {
   directorUnavailable = true;

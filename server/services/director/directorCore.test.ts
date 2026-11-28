@@ -31,6 +31,12 @@ import {
 } from './directorCore.js';
 import { collectSignals, type Signal } from './directorSignals.js';
 import { replayDirectorSession, type ReplayRow } from './directorReplay.js';
+import {
+  resetDirectorProcessState,
+  runDirector,
+  type DirectorStore,
+  type DirectorTickInput,
+} from './directorService.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
@@ -909,4 +915,199 @@ test('the prompt keeps the trainer, scores and the word simulation out of the wo
   assert.ok(rulesAt > 0);
   assert.doesNotMatch(prompt.system.slice(0, rulesAt), /\bsimulation\b/i);
   assert.match(prompt.system.slice(rulesAt), /\bsimulation\b/);
+});
+
+test('a broken dependency on the tick becomes a director signal', () => {
+  const signals = collectSignals(
+    {
+      minute: 23,
+      dependency_state: {
+        dep_ops_headcount_comms: {
+          status: 'broken',
+          broken_minute: 18,
+          met_minute: null,
+          recovered_minute: null,
+          upstream: 'Operations',
+          downstream: ['Communications'],
+          deliverable: 'Confirmed headcount for Bay 3',
+        },
+      },
+    },
+    null,
+  );
+  const broken = signals.find((row) => row.kind === 'dependency_broken');
+  assert.ok(broken);
+  assert.equal(broken.team, 'Operations');
+  assert.match(broken.detail, /Confirmed headcount for Bay 3/);
+  assert.equal(broken.id, 'dependency_broken:dep_ops_headcount_comms');
+});
+
+test('repeating signals keep a stable id until a later onset', () => {
+  const firstSilence = collectSignals(
+    {
+      minute: 12,
+      silence_minutes: 10,
+      comms: { team_activity: { legal: { last_minute: null } }, team_activity_known: true },
+    },
+    null,
+  ).find((row) => row.kind === 'team_silent');
+  const laterSilence = collectSignals(
+    {
+      minute: 30,
+      silence_minutes: 10,
+      comms: { team_activity: { legal: { last_minute: 20 } }, team_activity_known: true },
+    },
+    { minute: 12, signal_ids: [firstSilence?.id ?? ''] },
+  ).find((row) => row.kind === 'team_silent');
+  assert.equal(firstSilence?.id, 'team_silent:legal:10');
+  assert.equal(laterSilence?.id, 'team_silent:legal:30');
+
+  const firstGrade = collectSignals(
+    { minute: 10, comms: { content_grades: { legal: [10] }, content_grades_known: true } },
+    null,
+  );
+  const sameGrade = collectSignals(
+    { minute: 14, comms: { content_grades: { legal: [10] }, content_grades_known: true } },
+    { minute: 10, signal_ids: firstGrade.map((row) => row.id) },
+  );
+  const extraGrade = collectSignals(
+    { minute: 16, comms: { content_grades: { legal: [10, 20] }, content_grades_known: true } },
+    { minute: 14, signal_ids: firstGrade.map((row) => row.id) },
+  );
+  assert.equal(sameGrade.some((row) => row.kind === 'content_failed'), false);
+  assert.equal(extraGrade.some((row) => row.kind === 'content_failed'), true);
+
+  const angry = collectSignals(
+    {
+      minute: 8,
+      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 }] },
+    },
+    null,
+  );
+  const stillAngry = collectSignals(
+    {
+      minute: 12,
+      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 8 }] },
+    },
+    { minute: 8, signal_ids: angry.map((row) => row.id) },
+  );
+  const angryAgain = collectSignals(
+    {
+      minute: 20,
+      comms: { moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 19 }] },
+    },
+    { minute: 12, signal_ids: angry.map((row) => row.id) },
+  );
+  assert.equal(stillAngry.some((row) => row.kind === 'mood'), false);
+  assert.equal(angryAgain.some((row) => row.kind === 'mood'), true);
+});
+
+test('a gated director tick reads history only, and a disabled director reads nothing', async () => {
+  resetDirectorProcessState();
+  const queries: string[] = [];
+  const boom = async (name: string) => {
+    queries.push(name);
+    throw new Error(name);
+  };
+  const store = {
+    async loadHistory() {
+      queries.push('history');
+      return [];
+    },
+    loadSession: () => boom('session'),
+    loadScenario: () => boom('scenario'),
+    loadTriggers: () => boom('triggers'),
+    loadDeliveries: () => boom('deliveries'),
+    loadActivePlans: () => boom('plans'),
+    loadTeams: () => boom('teams'),
+    loadMemberships: () => boom('memberships'),
+    loadUpcoming: () => boom('upcoming'),
+    saveSeed: () => boom('seed'),
+    insertProposal: () => boom('insert'),
+    insertEvent: () => boom('event'),
+  } as DirectorStore;
+
+  const tick = (overrides: Partial<DirectorTickInput> = {}): DirectorTickInput => ({
+    sessionId: '11111111-1111-1111-1111-111111111111',
+    scenarioId: '22222222-2222-2222-2222-222222222222',
+    trainerId: '33333333-3333-3333-3333-333333333333',
+    status: 'in_progress',
+    elapsedMinutes: 2,
+    durationMinutes: 60,
+    comms: null,
+    ...overrides,
+  });
+
+  const on = { store, enabled: true, aiEnabled: true };
+  await runDirector(tick({ directorMode: 'off' }), on);
+  await runDirector(tick(), { store, enabled: true, aiEnabled: false });
+  await runDirector(tick(), { store, enabled: false, aiEnabled: true });
+  assert.equal(queries.join(','), '');
+
+  await runDirector(tick(), on);
+  assert.equal(queries.join(','), 'history');
+
+  queries.length = 0;
+  await runDirector(tick({ elapsedMinutes: 56 }), on);
+  await runDirector(tick({ elapsedMinutes: 30, status: 'paused' }), on);
+  assert.equal(queries.join(','), 'history,history');
+
+  queries.length = 0;
+  store.loadHistory = async () => {
+    queries.push('history');
+    return [{ seq: 1, minute: 18, status: 'no_action', reason: 'signals', signals: [], teams: [], kind: null, severity: null, title: null }];
+  };
+  await runDirector(
+    tick({
+      elapsedMinutes: 20,
+      comms: {
+        team_activity: { legal: { last_minute: 2 } },
+        team_activity_known: true,
+        team_labels: { legal: 'Legal' },
+      } as unknown as DirectorTickInput['comms'],
+    }),
+    on,
+  );
+  assert.equal(queries.join(','), 'history');
+
+  queries.length = 0;
+  store.loadHistory = async () => {
+    queries.push('history');
+    return [
+      {
+        seq: 1,
+        minute: 16,
+        status: 'no_action',
+        reason: 'no_lull',
+        signals: [],
+        teams: [],
+        kind: null,
+        severity: null,
+        title: null,
+      },
+    ];
+  };
+  await runDirector(
+    tick({
+      elapsedMinutes: 20,
+      comms: {
+        team_activity: { legal: { last_minute: 19 } },
+        team_activity_known: true,
+      } as unknown as DirectorTickInput['comms'],
+    }),
+    on,
+  );
+  assert.equal(queries.join(','), 'history');
+
+  queries.length = 0;
+  store.loadHistory = async () => {
+    queries.push('history');
+    return 'missing';
+  };
+  await runDirector(tick({ elapsedMinutes: 20 }), on);
+  assert.equal(queries.join(','), 'history');
+  queries.length = 0;
+  await runDirector(tick({ elapsedMinutes: 21 }), on);
+  assert.equal(queries.join(','), '');
+  resetDirectorProcessState();
 });

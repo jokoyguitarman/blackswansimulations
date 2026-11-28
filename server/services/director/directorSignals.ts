@@ -47,7 +47,7 @@ export interface DependencySnapshot {
   broken_minute?: number | null;
   met_minute?: number | null;
   recovered_minute?: number | null;
-  upstream?: string;
+  upstream?: string | null;
   downstream?: string[];
   deliverable?: string;
   evidence?: Array<{ key?: string; detail?: string; minute?: number }>;
@@ -92,7 +92,13 @@ export interface SignalComms {
       stopped_minute: number | null;
     }>
   >;
-  moods?: Array<{ stakeholder_id: string; scope_team: string; rung_id: string }>;
+  moods?: Array<{
+    stakeholder_id: string;
+    scope_team: string;
+    rung_id: string;
+    entered_minute?: number;
+    history?: Array<{ rung: string }>;
+  }>;
   duties?: Record<
     string,
     Array<{ action_id: string; benchmark_minute: number | null; completed_minute: number | null }>
@@ -371,12 +377,13 @@ function collectSilence(
     const quiet = last == null ? state.minute : state.minute - last;
     if (state.minute < quietFor || quiet < quietFor) continue;
     const label = comms.team_labels?.[slug] ?? titleFromSlug(slug);
+    const onset = (last ?? 0) + quietFor;
     const keys = [`team_silent:${quietFor}|team=${slug}`];
     push({
-      id: `team_silent:${slug}`,
+      id: `team_silent:${slug}:${onset}`,
       kind: 'team_silent',
       team: label,
-      minute: (last ?? 0) + quietFor,
+      minute: onset,
       detail: `${label}: no action since ${last == null ? 'the start' : `T+${last}`} (${quiet} min)`,
       depth: causeDepth(keys, triggers),
       keys,
@@ -401,7 +408,7 @@ function collectContent(
     const label = comms.team_labels?.[slug] ?? titleFromSlug(slug);
     const keys = [`content_failed:${count}:${below}|team=${slug}`];
     push({
-      id: `content_failed:${slug}`,
+      id: `content_failed:${slug}:${failed}`,
       kind: 'content_failed',
       team: label,
       minute: state.minute,
@@ -485,8 +492,9 @@ function collectMoods(
   for (const mood of moods) {
     if (!BAD_MOODS.has(mood.rung_id)) continue;
     const team = mood.scope_team.trim() || mood.stakeholder_id;
+    const onset = mood.entered_minute ?? mood.history?.length ?? 0;
     push({
-      id: `mood:${mood.stakeholder_id}:${mood.scope_team}:${mood.rung_id}`,
+      id: `mood:${mood.stakeholder_id}:${mood.scope_team}:${mood.rung_id}:${onset}`,
       kind: 'mood',
       team,
       minute,
