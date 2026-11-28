@@ -16,7 +16,8 @@ export interface StancePersona {
   handle: string;
   type: string;
   personality: string;
-  bias: string;
+  /** Key personas are stored from model output and may omit bias. */
+  bias?: string | null;
   tier?: string;
 }
 
@@ -46,13 +47,17 @@ export function unitFromSeed(key: string): number {
   return (hash >>> 0) / 4294967296;
 }
 
+function biasText(bias: string | null | undefined): string {
+  return (bias ?? '').trim().toLowerCase();
+}
+
 function isBiasedPersona(persona: StancePersona): boolean {
-  const bias = persona.bias.trim().toLowerCase();
+  const bias = biasText(persona.bias);
   return bias !== '' && bias !== 'none' && !bias.includes('supportive');
 }
 
 function isSupportiveOrNone(persona: StancePersona): boolean {
-  const bias = persona.bias.trim().toLowerCase();
+  const bias = biasText(persona.bias);
   return bias === '' || bias === 'none' || bias.includes('supportive');
 }
 
@@ -83,7 +88,10 @@ export function assignBridgeStances(
     let probability = base;
     const media = persona.type === 'npc_media';
     const politician = persona.type === 'npc_politician';
-    const competitor = isCompetitorPersona(persona);
+    const competitor = isCompetitorPersona({
+      personality: persona.personality ?? '',
+      bias: persona.bias ?? '',
+    });
     if (media || politician || competitor || isBiasedPersona(persona)) probability += 0.25;
     if (persona.tier === 'background' || isSupportiveOrNone(persona)) probability -= 0.25;
     probability = Math.min(1, Math.max(0, probability));
@@ -182,8 +190,25 @@ function stanceFor(
  * that name leak terms when the label is not an engaging bridge (or the post is a
  * normal post and the label is unclassified).
  */
+export interface ParsedTopic {
+  label: TopicLabel;
+  bridgeTopic: string;
+  confidence: number | null;
+}
+
+/** Leak terms stored on `initial_state.peace_period`. Empty when the feed is absent. */
+export function leakTermsFromInitialState(initialState: unknown): string[] {
+  if (!initialState || typeof initialState !== 'object') return [];
+  const peace = (initialState as { peace_period?: { leak_terms?: unknown } }).peace_period;
+  const terms = peace?.leak_terms;
+  if (!Array.isArray(terms)) return [];
+  return terms.map((term) => String(term));
+}
+
 export function checkTopicReplies(input: {
-  classification: unknown;
+  classification?: unknown;
+  /** Already parsed. When set, `classification` is not read again. */
+  parsed?: ParsedTopic | null;
   reactions: readonly TopicReply[];
   stances: ReadonlyMap<string, BridgeStance> | Readonly<Record<string, BridgeStance>>;
   leakTerms: readonly string[];
@@ -191,7 +216,10 @@ export function checkTopicReplies(input: {
   isReply: boolean;
   minConfidence: number;
 }): TopicCheckResult {
-  const parsed = parseClassification(input.classification, input.isReply);
+  const parsed =
+    input.parsed !== undefined
+      ? input.parsed
+      : parseClassification(input.classification, input.isReply);
   let label: TopicLabel = parsed?.label ?? 'unclassified';
   let bridgeTopic = parsed?.bridgeTopic ?? '';
   let confidence = parsed?.confidence ?? null;

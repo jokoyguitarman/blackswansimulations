@@ -1371,14 +1371,14 @@ router.post(
 
       // Grade the outbound email against the case facts (non-blocking). Rewards using verified
       // facts in outgoing comms - e.g. a takedown/correction request that cites confirmed facts.
-      // Flag off, or AI off, or a player recipient: grade here, not awaited, before the
-      // decision detector. Flag on with an NPC recipient: the reply call classifies first
-      // and grades from there, so this does not start a second grade.
-      const gradeHere =
-        !env.enableTopicAwareReplies ||
-        !env.aiEnabled ||
-        resolveAddressesToPlayers([toList[0] || ''], directory).some((p) => p.user_id !== user.id);
-      if (gradeHere) {
+      // One recipient check. Flag off, AI off, or a player recipient: grade here, not awaited.
+      // Flag on with an NPC recipient: the reply wrapper grades after classification.
+      const primaryRecipientIsPlayer = resolveAddressesToPlayers([toList[0] || ''], directory).some(
+        (p) => p.user_id !== user.id,
+      );
+      const gradeFromReply =
+        env.enableTopicAwareReplies && env.aiEnabled && !primaryRecipientIsPlayer;
+      if (!gradeFromReply) {
         void gradeOutboundEmail({
           sessionId: session_id,
           emailId: String(email.id),
@@ -1416,32 +1416,38 @@ router.post(
       // Trigger NPC reply if the email is to an NPC (non-blocking). Skipped
       // when the primary recipient is a session player — player-to-player mail
       // must never spawn an invented NPC respondent.
-      const primaryRecipientIsPlayer = resolveAddressesToPlayers([toList[0] || ''], directory).some(
-        (p) => p.user_id !== user.id,
-      );
       if (!primaryRecipientIsPlayer) {
         void (async () => {
           try {
-            const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
+            const playerEmail = {
+              id: email.id,
+              to_addresses: toList,
+              cc_addresses: ccList,
+              player_recipients: playerRecipients.map((p) => ({
+                user_id: p.user_id,
+                address: p.address,
+              })),
+              subject,
+              body_text,
+              from_name: displayNameOf(user),
+              from_address: email.from_address,
+              replied_to_id: replied_to_id || null,
+              thread_id: resolvedThreadId,
+              sender_user_id: user.id,
+            };
             const delay = 2000 + Math.floor(Math.random() * 3000);
-            setTimeout(() => {
-              void triggerNPCEmailReply(session_id, {
-                id: email.id,
-                to_addresses: toList,
-                cc_addresses: ccList,
-                player_recipients: playerRecipients.map((p) => ({
-                  user_id: p.user_id,
-                  address: p.address,
-                })),
-                subject,
-                body_text,
-                from_name: displayNameOf(user),
-                from_address: email.from_address,
-                replied_to_id: replied_to_id || null,
-                thread_id: resolvedThreadId,
-                sender_user_id: user.id,
-              });
-            }, delay);
+            if (gradeFromReply) {
+              const { replyAndGradePlayerEmail } =
+                await import('../services/topic/playerTopicGrade.js');
+              setTimeout(() => {
+                replyAndGradePlayerEmail(session_id, playerEmail);
+              }, delay);
+            } else {
+              const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
+              setTimeout(() => {
+                void triggerNPCEmailReply(session_id, playerEmail);
+              }, delay);
+            }
           } catch {
             /* non-critical */
           }

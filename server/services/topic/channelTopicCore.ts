@@ -6,7 +6,7 @@
 import type { ChatOptions } from '../ai/chatClient.js';
 import { matchesLeakTerms } from '../generation/peaceFeedCore.js';
 import {
-  characterTopicBlock,
+  channelPhase,
   DM_REPLY_BODY,
   DM_REPLY_VOICE,
   EMAIL_RULES,
@@ -22,15 +22,39 @@ import type { LegacyDmInput, LegacyEmailInput } from './legacyChannelPrompts.js'
 import {
   assignBridgeStances,
   checkTopicReplies,
+  leakTermsFromInitialState,
   TOPIC_CLASSIFICATION_OBJECT,
   topicPeaceBlock,
   type AssignedStance,
   type BridgeStance,
+  type ParsedTopic,
   type StancePersona,
   type TopicLabel,
 } from './topicPromptCore.js';
 
 export type { ChannelPhase };
+export { channelPhase, leakTermsFromInitialState };
+
+export interface ChannelTopicResult {
+  label: TopicLabel;
+  confidence: number | null;
+  bridgeTopic: string;
+  rowId: string;
+}
+
+export function channelTopicResult(
+  enabled: boolean,
+  rowId: string,
+  screen: { label: TopicLabel; confidence: number | null; bridgeTopic: string } | null,
+): ChannelTopicResult | null {
+  if (!enabled || !rowId) return null;
+  return {
+    label: screen?.label ?? 'unclassified',
+    confidence: screen?.confidence ?? null,
+    bridgeTopic: screen?.bridgeTopic ?? '',
+    rowId,
+  };
+}
 
 export interface ChannelChatClient {
   chatJson(
@@ -44,18 +68,6 @@ export interface ChannelChatClient {
 export function asModelRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
-}
-
-export function channelPhase(phase: ChannelPhase | undefined): ChannelPhase {
-  return phase === 'peace' ? 'peace' : 'crisis';
-}
-
-export function leakTermsFromState(initialState: unknown): string[] {
-  if (!initialState || typeof initialState !== 'object') return [];
-  const peace = (initialState as { peace_period?: { leak_terms?: unknown } }).peace_period;
-  const terms = peace?.leak_terms;
-  if (!Array.isArray(terms)) return [];
-  return terms.map((term) => String(term));
 }
 
 export function singleResponderStance(
@@ -156,7 +168,9 @@ ${emailJsonBody(input.isMedia, true)}`;
 
 export interface ChannelScreenInput {
   phase?: ChannelPhase;
-  classification: unknown;
+  classification?: unknown;
+  /** Already parsed. When set, `classification` is not read again. */
+  parsed?: ParsedTopic | null;
   replyText: string;
   authorHandle: string;
   stance: BridgeStance;
@@ -182,6 +196,7 @@ export function screenChannelReply(input: ChannelScreenInput): ChannelScreenResu
   const phase = channelPhase(input.phase);
   const checked = checkTopicReplies({
     classification: input.classification,
+    parsed: input.parsed,
     reactions: [{ author_handle: input.authorHandle, content: input.replyText }],
     stances: { [input.authorHandle]: input.stance },
     leakTerms: input.leakTerms,
@@ -208,12 +223,28 @@ export function screenChannelReply(input: ChannelScreenInput): ChannelScreenResu
   };
 }
 
-export function stakeholderTopicBlock(
-  phase: ChannelPhase | undefined,
-  orgName: string,
-  thread: string,
-): string {
-  return characterTopicBlock(channelPhase(phase), orgName, thread);
+/** One stakeholder responder. The parsed classification is not turned back into model JSON. */
+export function screenStakeholderReply(input: {
+  phase?: ChannelPhase;
+  classification?: ParsedTopic;
+  replyText: string;
+  authorHandle: string;
+  leakTerms: readonly string[];
+  playerText: string;
+  isReply: boolean;
+  minConfidence: number;
+}): ChannelScreenResult {
+  return screenChannelReply({
+    phase: input.phase,
+    parsed: input.classification ?? { label: 'unclassified', bridgeTopic: '', confidence: null },
+    replyText: input.replyText,
+    authorHandle: input.authorHandle,
+    stance: 'engage',
+    leakTerms: input.leakTerms,
+    playerText: input.playerText,
+    isReply: input.isReply,
+    minConfidence: input.minConfidence,
+  });
 }
 
 export type { EmailUserInput };

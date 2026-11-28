@@ -9,7 +9,11 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { composeStakeholderCharacter, type ChannelPhase } from './topic/channelPromptShared.js';
+import {
+  channelPhase,
+  composeStakeholderCharacter,
+  type ChannelPhase,
+} from './topic/channelPromptShared.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import { orgsForSession } from '../lib/templateRows.js';
 import type { Stakeholder, TeamIdentity } from '../lib/stakeholderContract.js';
@@ -277,7 +281,7 @@ export function buildCharacterPrompt(
     context: extra?.context,
     mood: extra?.mood,
     topic: extra?.topic
-      ? { phase: extra.topic.phase === 'peace' ? 'peace' : 'crisis', thread: extra.topic.thread }
+      ? { phase: channelPhase(extra.topic.phase), thread: extra.topic.thread }
       : null,
   });
 }
@@ -427,10 +431,11 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
 
   let plan: ReplyPlan = none;
   await coalesce(`${ctx.sessionId}:${ctx.stakeholder.id}`, async () => {
+    const peace = ctx.topic?.phase === 'peace';
     const [log, scenarioCtx, context, player] = await Promise.all([
       getConversationLog(ctx.sessionId, ctx.stakeholder.id),
       loadScenarioCtx(scenarioId),
-      resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
+      peace ? Promise.resolve('') : resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
       resolvePlayerRef(ctx.sessionId, ctx.userId, identity),
     ]);
     const mood = await moodForPlayerReply(

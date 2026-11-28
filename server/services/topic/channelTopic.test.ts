@@ -7,7 +7,11 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { env } from '../../env.js';
 import { buildCharacterPrompt } from '../stakeholderReplyService.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
-import { JUDGE_JSON_TAIL, judgeResponseSchema } from './channelPromptShared.js';
+import {
+  emailFallbackRespondent,
+  JUDGE_JSON_TAIL,
+  judgeResponseSchema,
+} from './channelPromptShared.js';
 import {
   buildLegacyDmReplyMessages,
   buildLegacyEmailReplyMessages,
@@ -20,11 +24,13 @@ import {
 } from './channelTopicCore.js';
 import { triggerNPCDMReply } from '../npcMessengerService.js';
 import { triggerNPCEmailReply } from '../npcEmailReplyService.js';
+import { gradePlayerEmailFromReply, labelPlayerDmFromReply } from './playerTopicGrade.js';
 import {
-  gradeOutboundEmail,
-  setOutboundEmailGradeRuntimeForTests,
-  type OutboundEmailGradeRuntime,
-} from './gradeOutboundEmail.js';
+  keptVerdicts,
+  peaceStakeholderJudgeSystem,
+  type JudgeInput,
+} from '../stakeholderReconsiderationService.js';
+import { gradeOutboundEmail, type OutboundEmailGradeRuntime } from './gradeOutboundEmail.js';
 import {
   assignBridgeStances,
   readTopicClassification,
@@ -463,6 +469,7 @@ interface DbCapture {
 function installDb(handlers: {
   scenario: Record<string, unknown>;
   thread?: Array<Record<string, unknown>>;
+  emailThread?: Array<Record<string, unknown>>;
   updateError?: unknown;
 }): DbCapture {
   const inserts: DbCapture['inserts'] = [];
@@ -471,18 +478,24 @@ function installDb(handlers: {
   const original = supabaseAdmin.from;
   const chain = (table: string) => {
     let mode: 'read' | 'insert' | 'update' = 'read';
+    let ascending = true;
+    let lim: number | null = null;
+    let selectArg = '';
     const q = {
       select(cols?: string) {
-        selects.push(`${table}:${cols || ''}`);
+        selectArg = cols || '';
+        selects.push(`${table}:${selectArg}`);
         return q;
       },
       eq() {
         return q;
       },
-      order() {
+      order(_column?: string, opts?: { ascending?: boolean }) {
+        ascending = opts?.ascending !== false;
         return q;
       },
-      limit() {
+      limit(count: number) {
+        lim = count;
         return q;
       },
       or() {
@@ -518,12 +531,18 @@ function installDb(handlers: {
         return { data: null, error: null };
       },
       then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
+        const windowOf = (rows: Array<Record<string, unknown>>) => {
+          const ordered = ascending ? rows : [...rows].reverse();
+          return lim == null ? ordered : ordered.slice(0, lim);
+        };
         const value =
           mode === 'update'
             ? { data: null, error: handlers.updateError ?? null }
             : table === 'sim_direct_messages'
-              ? { data: handlers.thread ?? [], error: null }
-              : { data: [], count: 0, error: null };
+              ? { data: windowOf(handlers.thread ?? []), error: null }
+              : table === 'sim_emails' && selectArg.includes('body_text')
+                ? { data: windowOf(handlers.emailThread ?? []), error: null }
+                : { data: [], count: 0, error: null };
         return Promise.resolve(value).then(resolve, reject);
       },
     };
@@ -563,21 +582,23 @@ const sam = {
 };
 
 async function withFlags<T>(
-  flags: { topic?: boolean; stakeholder?: boolean },
+  flags: { topic?: boolean; stakeholder?: boolean; ai?: boolean },
   run: () => Promise<T>,
 ): Promise<T> {
   const topic = env.enableTopicAwareReplies;
   const stakeholder = env.enableStakeholderEngine;
+  const ai = env.aiEnabled;
   if (flags.topic !== undefined) env.enableTopicAwareReplies = flags.topic;
   if (flags.stakeholder !== undefined) env.enableStakeholderEngine = flags.stakeholder;
+  if (flags.ai !== undefined) env.aiEnabled = flags.ai;
   resetTopicSchemaForTests();
   try {
     return await run();
   } finally {
     env.enableTopicAwareReplies = topic;
     env.enableStakeholderEngine = stakeholder;
+    env.aiEnabled = ai;
     resetTopicSchemaForTests();
-    setOutboundEmailGradeRuntimeForTests(undefined);
   }
 }
 
@@ -596,7 +617,7 @@ test('flags off: a persona DM uses the master prompt and does not label', async 
     ],
   });
   try {
-    await withFlags({ stakeholder: false }, () =>
+    await withFlags({ stakeholder: false, ai: true }, () =>
       triggerNPCDMReply('sess-1', 'thread-1', '@sam', 'Nice breakfast deal', 'user-1', {
         client: {
           async chatJson(options) {
@@ -654,18 +675,26 @@ test('a topic DM stays on the thread, a bridge may engage, and a stay leak is dr
   const onTopic = installDb({ scenario: personaScenario(sam), thread });
   const seen: string[] = [];
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCDMReply('sess-1', 'thread-stay', '@sam', 'Nice breakfast deal', 'user-1', {
-        client: {
-          async chatJson(options) {
-            seen.push(String(options.messages[0]?.content || ''));
-            return {
-              classification: { label: 'on_topic', confidence: 0.9, bridge_topic: '' },
-              reply: 'Saturday plans sound good',
-            };
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      labelPlayerDmFromReply(
+        'sess-1',
+        'thread-stay',
+        '@sam',
+        'Nice breakfast deal',
+        'user-1',
+        'dm-1',
+        {
+          client: {
+            async chatJson(options) {
+              seen.push(String(options.messages[0]?.content || ''));
+              return {
+                classification: { label: 'on_topic', confidence: 0.9, bridge_topic: '' },
+                reply: 'Saturday plans sound good',
+              };
+            },
           },
         },
-      }),
+      ),
     );
   } finally {
     onTopic.restore();
@@ -687,6 +716,7 @@ test('a topic DM stays on the thread, a bridge may engage, and a stay leak is dr
     type: 'npc_media',
     bias: 'hostile',
     personality: 'rival reporter',
+    tier: 'key',
   };
   const bridgeDb = installDb({
     scenario: personaScenario(media),
@@ -700,17 +730,25 @@ test('a topic DM stays on the thread, a bridge may engage, and a stay leak is dr
     ],
   });
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCDMReply('sess-1', 'thread-bridge', '@maya', 'What about the recall?', 'user-1', {
-        client: {
-          async chatJson() {
-            return {
-              classification: { label: 'bridge', confidence: 0.95, bridge_topic: 'recall' },
-              reply: 'The recall is the story',
-            };
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      labelPlayerDmFromReply(
+        'sess-1',
+        'thread-bridge',
+        '@maya',
+        'What about the recall?',
+        'user-1',
+        'dm-2',
+        {
+          client: {
+            async chatJson() {
+              return {
+                classification: { label: 'bridge', confidence: 0.95, bridge_topic: 'recall' },
+                reply: 'The recall is the story',
+              };
+            },
           },
         },
-      }),
+      ),
     );
   } finally {
     bridgeDb.restore();
@@ -747,17 +785,25 @@ test('a topic DM stays on the thread, a bridge may engage, and a stay leak is dr
     ],
   });
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCDMReply('sess-1', staySeed || '', '@sam', 'Nice breakfast deal', 'user-1', {
-        client: {
-          async chatJson() {
-            return {
-              classification: { label: 'bridge', confidence: 0.9, bridge_topic: 'jab' },
-              reply: 'This recall changes the breakfast',
-            };
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      labelPlayerDmFromReply(
+        'sess-1',
+        'thread-stay-drop',
+        '@sam',
+        'Nice breakfast deal',
+        'user-1',
+        staySeed || '',
+        {
+          client: {
+            async chatJson() {
+              return {
+                classification: { label: 'bridge', confidence: 0.9, bridge_topic: 'jab' },
+                reply: 'This recall changes the breakfast',
+              };
+            },
           },
         },
-      }),
+      ),
     );
   } finally {
     stayDb.restore();
@@ -780,7 +826,7 @@ test('peace removes the crisis description from the DM prompt and drops a leaked
   });
   let system = '';
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
       triggerNPCDMReply('sess-1', 'thread-peace', '@sam', 'Nice breakfast deal', 'user-1', {
         phase: 'peace',
         client: {
@@ -884,11 +930,9 @@ test('flags off: an email reply uses the master prompt and does not grade or lab
     system: string;
     user: string;
   }> = [];
-  const grade = recordingGrade();
-  setOutboundEmailGradeRuntimeForTests(grade);
   const db = installDb({ scenario: personaScenario({ ...sam, tier: 'key' }) });
   try {
-    await withFlags({ stakeholder: false }, () =>
+    await withFlags({ stakeholder: false, ai: true }, () =>
       triggerNPCEmailReply(
         'sess-1',
         { ...playerEmail, to_addresses: ['sam.lee@contacts.sim'] },
@@ -933,27 +977,30 @@ test('flags off: an email reply uses the master prompt and does not grade or lab
   assert.equal(seen[0]?.system, original.system);
   assert.equal(seen[0]?.user, original.user);
   assert.equal(db.updates.length, 0);
-  assert.deepEqual(grade.calls, []);
 });
 
 test('email grading is skipped for off_topic and still runs for a bridge', async () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   const off = recordingGrade();
-  setOutboundEmailGradeRuntimeForTests(off);
   const offDb = installDb({ scenario: personaScenario(sam) });
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCEmailReply('sess-1', playerEmail, {
-        client: {
-          async chatJson() {
-            return {
-              should_reply: true,
-              body: 'Enjoy the weekend',
-              classification: { label: 'off_topic', confidence: 0.9 },
-            };
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      gradePlayerEmailFromReply(
+        'sess-1',
+        playerEmail,
+        {
+          client: {
+            async chatJson() {
+              return {
+                should_reply: true,
+                body: 'Enjoy the weekend',
+                classification: { label: 'off_topic', confidence: 0.9 },
+              };
+            },
           },
         },
-      }),
+        off,
+      ),
     );
   } finally {
     offDb.restore();
@@ -962,13 +1009,12 @@ test('email grading is skipped for off_topic and still runs for a bridge', async
   assert.deepEqual(offDb.updates[0]?.row, { topic_class: 'off_topic' });
 
   const bridge = recordingGrade();
-  setOutboundEmailGradeRuntimeForTests(bridge);
   const bridgeDb = installDb({
     scenario: personaScenario({ ...sam, type: 'npc_media', bias: 'hostile' }),
   });
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCEmailReply(
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      gradePlayerEmailFromReply(
         'sess-1',
         { ...playerEmail, id: 'email-2', body_text: 'What about the recall?' },
         {
@@ -982,6 +1028,7 @@ test('email grading is skipped for off_topic and still runs for a bridge', async
             },
           },
         },
+        bridge,
       ),
     );
   } finally {
@@ -1032,24 +1079,28 @@ test('a missing topic column warns once and email grading falls back to unclassi
   mock.timers.enable({ apis: ['setTimeout'] });
   resetTopicSchemaForTests();
   const grade = recordingGrade();
-  setOutboundEmailGradeRuntimeForTests(grade);
   const db = installDb({
     scenario: personaScenario(sam),
     updateError: { code: '42703', message: 'column topic_class does not exist' },
   });
   try {
-    await withFlags({ topic: true, stakeholder: false }, () =>
-      triggerNPCEmailReply('sess-1', playerEmail, {
-        client: {
-          async chatJson() {
-            return {
-              should_reply: true,
-              body: 'See you then',
-              classification: { label: 'off_topic', confidence: 0.9 },
-            };
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      gradePlayerEmailFromReply(
+        'sess-1',
+        playerEmail,
+        {
+          client: {
+            async chatJson() {
+              return {
+                should_reply: true,
+                body: 'See you then',
+                classification: { label: 'off_topic', confidence: 0.9 },
+              };
+            },
           },
         },
-      }),
+        grade,
+      ),
     );
   } finally {
     db.restore();
@@ -1091,6 +1142,174 @@ test('topic email peace prompt omits the crisis description and keeps the last t
   assert.equal(prompted.system.includes('Note 2'), true);
   assert.equal(prompted.system.indexOf('THREAD:') < prompted.system.indexOf('PEACE:'), true);
   assert.equal(prompted.system.includes('If bridge: stay'), true);
+});
+
+test('flags off: a persona with no bias still gets the master reply', async () => {
+  const seen: string[] = [];
+  const { bias: _bias, ...noBias } = sam;
+  const db = installDb({
+    scenario: personaScenario(noBias),
+    thread: [
+      { sender_handle: '@player', content: 'Nice breakfast deal', recipient_handle: '@sam' },
+    ],
+  });
+  try {
+    await withFlags({ stakeholder: false, ai: true }, () =>
+      triggerNPCDMReply('sess-1', 'thread-1', '@sam', 'Nice breakfast deal', 'user-1', {
+        client: {
+          async chatJson(options) {
+            seen.push(String(options.messages[0]?.content || ''));
+            return { reply: 12 };
+          },
+        },
+      }),
+    );
+  } finally {
+    db.restore();
+  }
+  assert.equal(seen.length, 1);
+  assert.match(seen[0] || '', /Your bias: undefined/);
+  assert.equal(seen[0]?.includes('If bridge:'), false);
+  assert.equal(db.inserts[0]?.row.content, '12');
+  assert.equal(db.updates.length, 0);
+});
+
+test('a reply client is not called when AI is disabled', async () => {
+  let called = false;
+  const db = installDb({ scenario: personaScenario(sam), thread: [] });
+  try {
+    await withFlags({ stakeholder: false, ai: false }, () =>
+      triggerNPCDMReply('sess-1', 'thread-1', '@sam', 'Hi', 'user-1', {
+        client: {
+          async chatJson() {
+            called = true;
+            return { reply: 'no' };
+          },
+        },
+      }),
+    );
+  } finally {
+    db.restore();
+  }
+  assert.equal(called, false);
+  assert.equal(db.inserts.length, 0);
+});
+
+test('a long DM thread is labelled by id and the prompt uses the latest messages', async () => {
+  const thread = Array.from({ length: 12 }, (_, index) => ({
+    id: `m-${index + 1}`,
+    sender_handle: index % 2 === 0 ? '@sam' : '@player',
+    recipient_handle: index % 2 === 0 ? '@player' : '@sam',
+    content: `message ${index + 1}`,
+    created_at: new Date(index).toISOString(),
+  }));
+  thread[11] = {
+    id: 'player-new',
+    sender_handle: '@player',
+    recipient_handle: '@sam',
+    content: 'Nice breakfast deal',
+    created_at: new Date(20).toISOString(),
+  };
+  let system = '';
+  const db = installDb({ scenario: personaScenario(sam), thread });
+  try {
+    await withFlags({ topic: true, stakeholder: false, ai: true }, () =>
+      labelPlayerDmFromReply(
+        'sess-1',
+        'thread-long',
+        '@sam',
+        'Nice breakfast deal',
+        'user-1',
+        'player-new',
+        {
+          client: {
+            async chatJson(options) {
+              system = String(options.messages[0]?.content || '');
+              return {
+                classification: { label: 'on_topic', confidence: 0.8 },
+                reply: 'Saturday it is',
+              };
+            },
+          },
+        },
+      ),
+    );
+  } finally {
+    db.restore();
+  }
+  assert.equal(system.includes('message 1\n') || system.includes('message 1"'), false);
+  assert.equal(system.includes('message 2'), false);
+  assert.equal(system.includes('Nice breakfast deal'), true);
+  assert.deepEqual(db.updates[0]?.row, { topic_class: 'on_topic' });
+  const topicSelect = db.selects.find((item) => item.startsWith('sim_direct_messages:'));
+  assert.equal(topicSelect?.includes('id,'), true);
+});
+
+test('peace stakeholder judge omits crisis injects and drops their verdicts', () => {
+  const system = peaceStakeholderJudgeSystem({
+    sessionId: 's',
+    stakeholder: { name: 'Officer Tan', relationship: 'regulator' },
+    effective: {
+      grievance: 'SECRET_GRIEVANCE',
+      resolution_criteria: ['CRITERION_ONE'],
+      persuadability: 'medium',
+      hard_constraints: ['HARD_CONSTRAINT'],
+      source: 'base',
+    },
+    pending: [
+      {
+        id: 'inj-1',
+        title: 'CRISIS_INJECT_TITLE',
+        content: 'The recall is underway',
+        type: 'email',
+        trigger_time_minutes: 4,
+        delivery_config: { app: 'email' },
+      },
+    ],
+    log: [],
+    characterPrompt: 'Ordinary day. Nothing unusual has happened to Acme.',
+    channel: 'email',
+    latestPlayerMessage: 'Saturday breakfast?',
+    topic: { phase: 'peace', thread: 'Saturday breakfast', isReply: false },
+  } as unknown as JudgeInput);
+  assert.equal(system.includes('SECRET_GRIEVANCE'), false);
+  assert.equal(system.includes('CRITERION_ONE'), false);
+  assert.equal(system.includes('HARD_CONSTRAINT'), false);
+  assert.equal(system.includes('CRISIS_INJECT_TITLE'), false);
+  assert.equal(system.includes('YOUR PLANNED ACTIONS'), false);
+  assert.equal(system.includes('"verdicts"'), false);
+  assert.match(system, /Ordinary day/);
+  assert.deepEqual(keptVerdicts(true, [{ inject_id: 'inj-1', verdict: 'cancel' }]), []);
+  assert.equal(keptVerdicts(false, [{ inject_id: 'inj-1', verdict: 'cancel' }]).length, 1);
+});
+
+test('peace AI-fallback email wording does not mention the crisis', () => {
+  const peace = emailFallbackRespondent('desk@acme.sim', 'peace');
+  const crisis = emailFallbackRespondent('desk@acme.sim', 'crisis');
+  assert.equal(peace.toLowerCase().includes('crisis'), false);
+  assert.match(crisis, /Based on the crisis context/);
+  assert.match(crisis, /given the crisis situation/);
+  const prompted = buildTopicEmailMessages({
+    phase: 'peace',
+    respondentInfo:
+      'The player is emailing "desk@acme.sim". Based on this email address, determine:\n3. How they would respond on an ordinary day',
+    stanceLine: '@desk (Desk): calm, bias: none, type: npc_public. If bridge: stay.',
+    crisisDescription: CRISIS,
+    orgName: 'Dyson',
+    factsContext: '',
+    threadContext: '',
+    isMedia: false,
+    history: [],
+    fromName: 'Player',
+    fromAddress: 'p@sim',
+    toAddress: 'desk@acme.sim',
+    subject: 'Saturday',
+    body: 'Breakfast?',
+  });
+  assert.equal(prompted.system.includes('crisis context'), false);
+  assert.equal(prompted.system.includes('crisis situation'), false);
+  assert.equal(prompted.system.includes(CRISIS), false);
+  assert.match(prompted.system, /ordinary day/);
 });
 
 test('NPC-initiated DMs are not labelled, and the player routes keep their call shape', () => {

@@ -12,7 +12,7 @@ import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
-import { judgeResponseSchema } from './topic/channelPromptShared.js';
+import { judgePeaceSchema, judgeResponseSchema } from './topic/channelPromptShared.js';
 import { readTopicClassification, type TopicLabel } from './topic/topicPromptCore.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import {
@@ -383,7 +383,7 @@ export interface PlayerRef {
   org_display: string | null;
 }
 
-interface JudgeInput {
+export interface JudgeInput {
   sessionId: string;
   stakeholder: Stakeholder;
   effective: EffectiveGrievance;
@@ -448,6 +448,29 @@ const REPLY_LENGTH: Record<string, string> = {
   phone: '1–3 sentences, spoken register',
 };
 
+/** Peace calls keep no inject verdicts, even if the model returns modify or cancel. */
+export function keptVerdicts(peace: boolean, raw: unknown): RawVerdict[] {
+  return peace || !Array.isArray(raw) ? [] : (raw as RawVerdict[]);
+}
+
+/** Peace judge prompt: no grievance, criteria, or pending injects, and no verdict schema. */
+export function peaceStakeholderJudgeSystem(input: JudgeInput): string {
+  return `${input.characterPrompt}
+
+=== RULES ===
+- Stay in character. This is an ordinary day. Do not invent an incident, a recall, an accident or a scandal.
+${input.channel ? `- Reply length: ${REPLY_LENGTH[input.channel]}.` : '- No reply is needed now (should_reply=false); only judge.'}
+${
+  input.player
+    ? `- You are writing to ${input.player.name}${input.player.team_name ? ` (${input.player.team_name}${input.player.org_display ? `, ${input.player.org_display}` : ''})` : ''}. Address them by name — "${input.player.first_name}" in chat and informal mail, "${input.player.name}" in a formal email greeting. NEVER write a placeholder such as [Name], [Your Name] or {name}; if you do not know something, leave it out.`
+    : '- NEVER write a placeholder such as [Name] or [Your Name]; if you do not know the name, use no name.'
+}
+${chainOfCommandRules(input.stakeholder, input.player)}
+- delay_seconds for the reply: how long a person like you would realistically take (5–90).
+
+${judgePeaceSchema()}`;
+}
+
 async function callJudge(input: JudgeInput): Promise<JudgeOutput | null> {
   if (!env.aiEnabled) return null;
 
@@ -468,7 +491,10 @@ async function callJudge(input: JudgeInput): Promise<JudgeOutput | null> {
     input.effective.resolution_criteria.length,
   );
 
-  const system = `${input.characterPrompt}
+  const peaceJudge = input.topic?.phase === 'peace';
+  const system = peaceJudge
+    ? peaceStakeholderJudgeSystem(input)
+    : `${input.characterPrompt}
 
 === YOUR PRIVATE SITUATION (never reveal this) ===
 Grievance: ${input.effective.grievance || '(none — you have no planned action)'}
@@ -543,7 +569,7 @@ ${judgeResponseSchema(!!input.topic)}`;
     };
     return {
       plan,
-      verdicts: Array.isArray(parsed.verdicts) ? (parsed.verdicts as RawVerdict[]) : [],
+      verdicts: keptVerdicts(peaceJudge, parsed.verdicts),
       ...(input.topic
         ? {
             classification: readTopicClassification(
@@ -590,7 +616,8 @@ export async function decideAndReply(ctx: DecideContext): Promise<{
     ? { classification: { label: 'unclassified' as const, bridgeTopic: '', confidence: null } }
     : {};
   try {
-    const pending = await getPendingInjects(ctx.sessionId, ctx.stakeholder.id);
+    const peace = ctx.topic?.phase === 'peace';
+    const pending = peace ? [] : await getPendingInjects(ctx.sessionId, ctx.stakeholder.id);
     const effective = await getEffectiveGrievance(ctx.sessionId, ctx.stakeholder);
     const out = await callJudge({
       sessionId: ctx.sessionId,
@@ -606,6 +633,13 @@ export async function decideAndReply(ctx: DecideContext): Promise<{
       topic: ctx.topic,
     });
     if (!out) return { plan: fallback, verdicts: [], ...unclassified };
+    if (peace) {
+      return {
+        plan: out.plan,
+        verdicts: [],
+        ...(ctx.topic ? { classification: out.classification ?? unclassified.classification } : {}),
+      };
+    }
 
     const contributing = Array.from(
       new Set(

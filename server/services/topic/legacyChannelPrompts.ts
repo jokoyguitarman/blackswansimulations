@@ -16,7 +16,7 @@ export interface LegacyDmInput {
   handle: string;
   name: string;
   personality: string;
-  bias: string;
+  bias?: string | null;
   type: string;
   /** Full scenario description. The template keeps the first 300 characters. */
   crisisDescription: string;

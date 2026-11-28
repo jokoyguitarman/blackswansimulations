@@ -13,13 +13,13 @@ export type ChannelTopicTable = 'sim_direct_messages' | 'sim_emails';
  * Stores the label on the player's DM or email. NPC inserts never carry the column.
  * A missing 282 column warns once and leaves the row unchanged.
  */
-export async function writePlayerChannelTopic(
-  table: ChannelTopicTable,
+export async function updateTopicRow(
+  table: ChannelTopicTable | 'social_posts',
   rowId: string,
-  label: TopicLabel,
+  patch: Record<string, unknown>,
 ): Promise<{ columnsAvailable: boolean }> {
   if (!rowId || topicSchemaMissing()) return { columnsAvailable: false };
-  const { error } = await supabaseAdmin.from(table).update({ topic_class: label }).eq('id', rowId);
+  const { error } = await supabaseAdmin.from(table).update(patch).eq('id', rowId);
   if (error && isTopicSchemaMissing(error)) {
     noteTopicSchemaMissing();
     return { columnsAvailable: false };
@@ -29,4 +29,12 @@ export async function writePlayerChannelTopic(
     return { columnsAvailable: true };
   }
   return { columnsAvailable: true };
+}
+
+export function writePlayerChannelTopic(
+  table: ChannelTopicTable,
+  rowId: string,
+  label: TopicLabel,
+): Promise<{ columnsAvailable: boolean }> {
+  return updateTopicRow(table, rowId, { topic_class: label });
 }

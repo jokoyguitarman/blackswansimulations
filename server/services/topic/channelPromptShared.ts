@@ -7,6 +7,10 @@ import { TOPIC_CLASSIFICATION_OBJECT, topicPeaceBlock } from './topicPromptCore.
 
 export type ChannelPhase = 'peace' | 'crisis';
 
+export function channelPhase(phase: ChannelPhase | undefined): ChannelPhase {
+  return phase === 'peace' ? 'peace' : 'crisis';
+}
+
 export const DM_REPLY_VOICE =
   'Reply in 1-3 sentences. Stay in character. Be authentic to your personality and bias.';
 
@@ -151,6 +155,26 @@ export function judgeResponseSchema(includeClassification: boolean): string {
   return `Return ONLY valid JSON:
 { "should_reply": true, "classification": ${TOPIC_CLASSIFICATION_OBJECT}, "reply": ${JUDGE_REPLY},
   "verdicts": ${JUDGE_VERDICTS} }`;
+}
+
+/** Peace replies are not asked to modify or cancel injects. */
+export function judgePeaceSchema(): string {
+  return `Return ONLY valid JSON:
+{ "should_reply": true, "classification": ${TOPIC_CLASSIFICATION_OBJECT}, "reply": ${JUDGE_REPLY} }`;
+}
+
+/** AI-fallback respondent text. Peace must not mention the crisis. The crisis wording is the master template. */
+export function emailFallbackRespondent(address: string, phase: ChannelPhase): string {
+  if (phase === 'peace') {
+    return `The player is emailing "${address}". Based on this email address, determine:
+1. Whether someone at this address would realistically respond (set should_reply to false if not)
+2. Who that person would be (invent a realistic name and title — if this is an internal/organisational address, the respondent is GROUND-LEVEL OPERATIONAL STAFF such as a duty manager, shift supervisor, or operations coordinator, never a C-suite executive)
+3. How they would respond on an ordinary day`;
+  }
+  return `The player is emailing "${address}". Based on the crisis context and this email address, determine:
+1. Whether someone at this address would realistically respond (set should_reply to false if not)
+2. Who that person would be (invent a realistic name and title — if this is an internal/organisational address, the respondent is GROUND-LEVEL OPERATIONAL STAFF such as a duty manager, shift supervisor, or operations coordinator, never a C-suite executive)
+3. How they would respond given the crisis situation`;
 }
 
 export function characterTopicBlock(phase: ChannelPhase, orgName: string, thread: string): string {

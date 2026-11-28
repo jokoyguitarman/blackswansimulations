@@ -10,21 +10,24 @@ import { buildLegacyDmReplyMessages } from './topic/legacyChannelPrompts.js';
 import {
   asModelRecord,
   buildTopicDmMessages,
-  leakTermsFromState,
+  channelPhase,
+  channelTopicResult,
   screenChannelReply,
+  screenStakeholderReply,
   singleResponderStance,
   type ChannelChatClient,
   type ChannelPhase,
+  type ChannelScreenResult,
+  type ChannelTopicResult,
 } from './topic/channelTopicCore.js';
-import { writePlayerChannelTopic } from './topic/channelTopicLabel.js';
-import type { TopicLabel } from './topic/topicPromptCore.js';
+import { leakTermsFromInitialState } from './topic/topicPromptCore.js';
 
 interface NPCPersona {
   handle: string;
   name: string;
   type: string;
   personality: string;
-  bias: string;
+  bias?: string | null;
   follower_count: number;
   specific_claims: string[];
   tier?: string;
@@ -342,9 +345,12 @@ interface DmThreadRow {
   recipient_user_id: string | null;
 }
 
-/** Flag off keeps the original column list. The id is only read when a label will be stored. */
-async function loadDmThread(threadId: string, withId: boolean): Promise<DmThreadRow[]> {
-  if (!withId) {
+/**
+ * Flag off is master's query: oldest 10, no id. Flag on loads the latest 10 and
+ * returns them oldest-first so the prompt reads in order and includes the new message.
+ */
+async function loadDmThread(threadId: string, topicAware: boolean): Promise<DmThreadRow[]> {
+  if (!topicAware) {
     const { data } = await supabaseAdmin
       .from('sim_direct_messages')
       .select('sender_handle, recipient_handle, content, recipient_user_id')
@@ -357,15 +363,16 @@ async function loadDmThread(threadId: string, withId: boolean): Promise<DmThread
     .from('sim_direct_messages')
     .select('id, sender_handle, recipient_handle, content, recipient_user_id')
     .eq('thread_id', threadId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(10);
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    sender_handle: row.sender_handle,
-    recipient_handle: row.recipient_handle,
-    content: row.content,
-    recipient_user_id: row.recipient_user_id,
-  }));
+  return [...(data ?? [])].reverse();
+}
+
+export interface NpcDmReplyOptions {
+  phase?: ChannelPhase;
+  client?: ChannelChatClient;
+  /** The player's message row. The topic path labels this id. */
+  playerMessageId?: string;
 }
 
 export async function triggerNPCDMReply(
@@ -374,14 +381,16 @@ export async function triggerNPCDMReply(
   recipientHandle: string,
   playerMessage: string,
   playerUserId?: string,
-  options?: { phase?: ChannelPhase; client?: ChannelChatClient },
-): Promise<void> {
-  if (!env.aiEnabled && !options?.client) return;
+  options?: NpcDmReplyOptions,
+): Promise<ChannelTopicResult | null> {
+  if (!env.aiEnabled) return null;
 
-  const phase: ChannelPhase = options?.phase === 'peace' ? 'peace' : 'crisis';
+  const phase = channelPhase(options?.phase);
   const topicAware = env.enableTopicAwareReplies;
-  let playerRowId: string | null = null;
-  let topicLabel: TopicLabel = 'unclassified';
+  const playerMessageId = options?.playerMessageId ?? '';
+  const finish = (screen: ChannelScreenResult | null = null) =>
+    channelTopicResult(topicAware, playerMessageId, screen);
+  let outcome: ChannelScreenResult | null = null;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -390,7 +399,7 @@ export async function triggerNPCDMReply(
       .eq('id', sessionId)
       .single();
 
-    if (!session?.scenario_id) return;
+    if (!session?.scenario_id) return finish();
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
@@ -398,22 +407,13 @@ export async function triggerNPCDMReply(
       .eq('id', session.scenario_id)
       .single();
 
-    if (!scenario) return;
+    if (!scenario) return finish();
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
 
     const threadRows = await loadDmThread(threadId, topicAware);
-    if (topicAware) {
-      const playerRows = threadRows.filter(
-        (row) => row.sender_handle !== recipientHandle && String(row.content) === playerMessage,
-      );
-      const last = playerRows[playerRows.length - 1] as { id?: string } | undefined;
-      playerRowId = last?.id ? String(last.id) : null;
-    }
-    const isReply = threadRows.some(
-      (row) => row.sender_handle === recipientHandle || String(row.content) !== playerMessage,
-    );
+    const isReply = topicAware ? threadRows.some((row) => row.id !== playerMessageId) : false;
     const conversation = formatDmConversation(threadRows);
     const topic = topicAware
       ? { phase, thread: conversation || playerMessage, isReply }
@@ -432,7 +432,7 @@ export async function triggerNPCDMReply(
           playerUserId ||
           threadRows.find((m) => m.recipient_user_id)?.recipient_user_id ||
           (await resolveRecipientUserId(sessionId, playerHandle));
-        if (!userId) return;
+        if (!userId) return finish();
 
         const { handlePlayerMessage, recordNpcReply } =
           await import('./stakeholderReplyService.js');
@@ -443,39 +443,33 @@ export async function triggerNPCDMReply(
           userId,
           content: playerMessage,
           refTable: 'sim_direct_messages',
-          refId: playerRowId,
+          refId: null,
           topic,
         });
         let replyText = plan.text;
+        let screened: ChannelScreenResult | null = null;
         if (topic) {
-          const screened = screenChannelReply({
+          screened = screenStakeholderReply({
             phase,
-            classification: plan.classification
-              ? {
-                  label: plan.classification.label,
-                  bridge_topic: plan.classification.bridgeTopic,
-                  confidence: plan.classification.confidence,
-                }
-              : undefined,
+            classification: plan.classification,
             replyText: plan.text,
             authorHandle: stakeholder.handle,
-            stance: 'engage',
-            leakTerms: leakTermsFromState(initialState),
+            leakTerms: leakTermsFromInitialState(initialState),
             playerText: playerMessage,
             isReply,
             minConfidence: env.topicBridgeMinConfidence,
           });
-          topicLabel = screened.label;
+          outcome = screened;
           replyText = screened.replyText;
           if (screened.dropped) {
             logger.info(
               { sessionId, threadId, handle: stakeholder.handle },
               'Dropped topic reply that matched leak terms',
             );
-            return;
+            return finish(screened);
           }
         }
-        if (!plan.should_reply || !replyText) return;
+        if (!plan.should_reply || !replyText) return finish(screened);
 
         const senderType =
           stakeholder.relationship === 'media'
@@ -517,12 +511,12 @@ export async function triggerNPCDMReply(
             'Stakeholder DM reply sent',
           );
         }
-        return;
+        return finish(screened);
       }
     }
 
     const npc = personas.find((p) => p.handle === recipientHandle);
-    if (!npc) return;
+    if (!npc) return finish();
 
     const orgName = String(initialState.org_name || '');
 
@@ -542,17 +536,19 @@ export async function triggerNPCDMReply(
       conversation,
       playerMessage,
     };
-    const dmStance = singleResponderStance(
-      {
-        handle: npc.handle,
-        type: npc.type,
-        personality: npc.personality,
-        bias: npc.bias,
-        tier: npc.tier,
-      },
-      threadId,
-      env.topicBridgeStayShare,
-    ).stance;
+    const dmStance = topicAware
+      ? singleResponderStance(
+          {
+            handle: npc.handle,
+            type: npc.type,
+            personality: npc.personality ?? '',
+            bias: npc.bias ?? '',
+            tier: npc.tier,
+          },
+          playerMessageId || threadId,
+          env.topicBridgeStayShare,
+        ).stance
+      : 'stay';
     const prompted = topicAware
       ? buildTopicDmMessages({ ...dmInput, phase, stance: dmStance })
       : buildLegacyDmReplyMessages(dmInput);
@@ -571,31 +567,32 @@ export async function triggerNPCDMReply(
       options?.client ? await options.client.chatJson(request) : await chatJson(request),
     );
 
-    if (!parsed) return;
-    let replyText = typeof parsed.reply === 'string' ? parsed.reply : '';
+    if (!parsed) return finish();
+    let replyText = String(parsed.reply || '');
+    let personaScreen: ChannelScreenResult | null = null;
     if (topicAware) {
-      const screened = screenChannelReply({
+      personaScreen = screenChannelReply({
         phase,
         classification: parsed.classification,
         replyText,
         authorHandle: npc.handle,
         stance: dmStance,
-        leakTerms: leakTermsFromState(initialState),
+        leakTerms: leakTermsFromInitialState(initialState),
         playerText: playerMessage,
         isReply,
         minConfidence: env.topicBridgeMinConfidence,
       });
-      topicLabel = screened.label;
-      replyText = screened.replyText;
-      if (screened.dropped) {
+      outcome = personaScreen;
+      replyText = personaScreen.replyText;
+      if (personaScreen.dropped) {
         logger.info(
           { sessionId, threadId, handle: npc.handle },
           'Dropped topic reply that matched leak terms',
         );
-        return;
+        return finish(personaScreen);
       }
     }
-    if (!replyText) return;
+    if (!replyText) return finish(personaScreen);
 
     const { data: inserted, error } = await supabaseAdmin
       .from('sim_direct_messages')
@@ -620,11 +617,9 @@ export async function triggerNPCDMReply(
       });
       logger.info({ sessionId, npcHandle: npc.handle, threadId }, 'NPC DM reply sent');
     }
+    return finish(outcome);
   } catch (err) {
     logger.warn({ err, sessionId, threadId }, 'NPC DM reply failed');
-  } finally {
-    if (topicAware && playerRowId) {
-      await writePlayerChannelTopic('sim_direct_messages', playerRowId, topicLabel);
-    }
+    return finish(outcome);
   }
 }

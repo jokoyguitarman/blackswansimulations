@@ -72,65 +72,61 @@ function emailGradeRequest(
   };
 }
 
-let runtimeForTests: OutboundEmailGradeRuntime | undefined;
-
-/** @internal Production leaves this unset. Tests set it and clear it in `finally`. */
-export function setOutboundEmailGradeRuntimeForTests(
-  runtime: OutboundEmailGradeRuntime | undefined,
-): void {
-  runtimeForTests = runtime;
-}
-
-/**
- * Grade one outbound player email. The route fires this without awaiting, in the
- * slot the inline block used. Flag off runs the same calls in the same order:
- * session, scenario, the two grader imports, team context, grade, awaited score
- * update, then an un-awaited score snapshot.
- */
-export async function gradeOutboundEmail(
-  input: OutboundEmailGradeInput,
-  runtime?: OutboundEmailGradeRuntime,
-): Promise<void> {
-  if (shouldSkipGrade(input)) return;
-  const active = runtime ?? runtimeForTests;
-  if (active) {
-    await gradeWithRuntime(input, active);
-    return;
-  }
-  try {
-    const { data: sessionData } = await supabaseAdmin
+const defaultRuntime: OutboundEmailGradeRuntime = {
+  async loadSession(sessionId) {
+    const { data } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id, start_time')
-      .eq('id', input.sessionId)
+      .eq('id', sessionId)
       .single();
-    if (!sessionData) return;
-    const { data: scenario } = await supabaseAdmin
+    if (!data?.scenario_id) return null;
+    return {
+      scenario_id: String(data.scenario_id),
+      start_time: data.start_time ? String(data.start_time) : null,
+    };
+  },
+  async loadScenario(scenarioId) {
+    const { data } = await supabaseAdmin
       .from('scenarios')
       .select('description, initial_state')
-      .eq('id', sessionData.scenario_id)
+      .eq('id', scenarioId)
       .single();
-    if (!scenario) return;
-    const elapsedMinutes = crisisElapsedMinutes(sessionData.start_time ?? null);
-    const { gradePlayerContent } = await import('../contentGraderService.js');
+    if (!data) return null;
+    return {
+      description: data.description == null ? null : String(data.description),
+      initial_state: data.initial_state,
+    };
+  },
+  async getPlayerTeamContext(sessionId, userId) {
     const { getPlayerTeamContext } = await import('../teamCharterService.js');
-    const teamCtx = await getPlayerTeamContext(input.sessionId, input.userId);
-    const request = emailGradeRequest(input, scenario, elapsedMinutes, teamCtx);
-    const grade = await gradePlayerContent(request.content, request.context);
+    return getPlayerTeamContext(sessionId, userId);
+  },
+  async gradePlayerContent(content, context) {
+    const { gradePlayerContent } = await import('../contentGraderService.js');
+    return gradePlayerContent(content, context);
+  },
+  async updateScore(emailId, grade) {
     await supabaseAdmin
       .from('sim_emails')
       .update({ sop_compliance_score: grade })
-      .eq('id', input.emailId);
+      .eq('id', emailId);
+  },
+  async startSnapshot(sessionId) {
     const { snapshotTeamScores } = await import('../teamScoreService.js');
-    void snapshotTeamScores(input.sessionId);
-  } catch (gradeErr) {
-    logger.warn({ err: gradeErr, emailId: input.emailId }, 'Outbound email grading failed');
-  }
-}
+    void snapshotTeamScores(sessionId);
+  },
+};
 
-async function gradeWithRuntime(
+/**
+ * Grade one outbound player email. The route fires this without awaiting, in the
+ * slot the inline block used. One runtime runs the sequence: session, scenario,
+ * team context, grade, awaited score update, then an un-awaited snapshot.
+ */
+export async function gradeOutboundEmail(
   input: OutboundEmailGradeInput,
-  runtime: OutboundEmailGradeRuntime,
+  runtime: OutboundEmailGradeRuntime = defaultRuntime,
 ): Promise<void> {
+  if (shouldSkipGrade(input)) return;
   try {
     const sessionData = await runtime.loadSession(input.sessionId);
     if (!sessionData) return;
