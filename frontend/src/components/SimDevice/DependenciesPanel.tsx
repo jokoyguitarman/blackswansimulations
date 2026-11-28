@@ -311,7 +311,7 @@ export default function DependenciesPanel({
   useEffect(() => {
     void load();
     if (readOnly) return;
-    const id = setInterval(() => void load(), 12000);
+    const id = setInterval(() => void load(), 30000);
     return () => clearInterval(id);
   }, [load, readOnly]);
 
@@ -337,7 +337,10 @@ export default function DependenciesPanel({
               broken_minute: data.broken_minute ?? edge.state.broken_minute,
               met_minute: data.met_minute ?? edge.state.met_minute,
               recovered_minute: data.recovered_minute ?? edge.state.recovered_minute,
-              hold_until_minute: data.hold_until_minute ?? edge.state.hold_until_minute,
+              hold_until_minute:
+                data.hold_until_minute === undefined
+                  ? edge.state.hold_until_minute
+                  : data.hold_until_minute,
               upstream: data.upstream === undefined ? edge.state.upstream : data.upstream,
               downstream: data.downstream ?? edge.state.downstream,
             },

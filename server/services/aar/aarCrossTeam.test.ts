@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   buildCrossTeamSection,
+  inferCrossTeamTriggers,
   type CrossTeamEdgeInput,
   type CrossTeamTriggerInput,
 } from '../../../shared/crossTeamAar.js';
@@ -262,30 +263,91 @@ describe('cross-team cause chains', () => {
     assert.match(section.chains[0]?.text ?? '', /Communications receives/);
   });
 
-  test('no trigger rows fall back to static links marked inferred', () => {
+  test('no trigger rows infer a chain only from published injects', () => {
+    const published = [
+      {
+        inject_key: 'bay3_headcount_request',
+        title: 'Bay 3 headcount',
+        target_teams: ['Operations'],
+        trigger_time_minutes: 8,
+        conditions_to_appear: null,
+      },
+      {
+        inject_key: 'comms_reporter_presses',
+        title: 'Reporter presses for numbers',
+        target_teams: ['Communications'],
+        trigger_time_minutes: null,
+        conditions_to_appear: {
+          all: ['unresponded:bay3_headcount_request:10|team=operations'],
+        },
+      },
+    ];
+    const inferred = inferCrossTeamTriggers(published, [edges[0]!]);
+    assert.deepEqual(
+      inferred.map((item) => item.inject_key),
+      ['comms_reporter_presses'],
+    );
+    assert.deepEqual(inferred[0]?.source_teams, ['Operations']);
+    assert.equal(inferred[0]?.dep_id, 'dep_ops_headcount_comms');
+    assert.deepEqual(inferred[0]?.parent_inject_keys, ['bay3_headcount_request']);
     const section = buildCrossTeamSection({
       triggers: [],
       edges: [edges[0]!],
       replies: [],
-      inferred: [
-        trigger({
-          inject_key: 'comms_reporter_presses',
-          title: 'Reporter presses for numbers',
-          minute: null,
-          origin: 'conditional',
-          source_teams: ['Operations'],
-          target_teams: ['Communications'],
-          dep_id: 'dep_ops_headcount_comms',
-          cause_depth: 1,
-          parent_inject_keys: ['bay3_headcount_request'],
-        }),
-      ],
+      inferred,
+      inject_keys: published.map((item) => item.inject_key),
     });
     assert.equal(section.provenance, 'inferred');
-    assert.equal(section.chains[0]?.provenance, 'inferred');
+    assert.equal(section.chains.length, 1);
+    assert.match(
+      section.chains[0]?.text ?? '',
+      /Communications receives "Reporter presses for numbers"/,
+    );
     assert.match(section.chains[0]?.text ?? '', /inferred$/);
-    assert.deepEqual(section.chains[0]?.missing_parents, ['bay3_headcount_request']);
+    assert.deepEqual(section.chains[0]?.missing_parents, []);
     assert.equal(section.edges[0]?.outcome, 'broken');
+    const operations = section.teams.find((team) => team.team === 'Operations');
+    const communications = section.teams.find((team) => team.team === 'Communications');
+    assert.equal(operations?.caused, 1);
+    assert.equal(operations?.pressure.authored, 0);
+    assert.equal(communications?.received, 1);
+    assert.equal(communications?.pressure.cross_team, 1);
+  });
+
+  test('a silence or missed duty in parent_inject_keys is a signal, not a missing inject', () => {
+    const section = buildCrossTeamSection({
+      triggers: [
+        trigger({
+          inject_key: 'comms_ceo_asks',
+          title: "CEO's office asks why there's still no statement",
+          minute: 27,
+          origin: 'dependency',
+          source_teams: ['Legal'],
+          target_teams: ['Communications'],
+          dep_id: 'dep_legal_statement_comms_cs',
+          cause_depth: 1,
+          parent_inject_keys: [
+            'duty_missed:legal_review_statement|team=legal',
+            'team_silent:12|team=legal',
+          ],
+        }),
+      ],
+      edges: [
+        {
+          ...edges[1]!,
+          evidence: [{ detail: 'Legal: was silent for 12 min' }],
+        },
+      ],
+      replies: [],
+      inject_keys: ['comms_ceo_asks', 'legal_approval_request'],
+    });
+    const text = section.chains[0]?.text ?? '';
+    assert.deepEqual(section.chains[0]?.missing_parents, []);
+    assert.doesNotMatch(text, /was not recorded/);
+    assert.match(text, /^T\+24 Legal was silent for 12 min/);
+    assert.doesNotMatch(text, /Legal Legal/);
+    assert.match(text, /missed duty legal review statement/);
+    assert.match(text, /T\+27 Communications receives/);
   });
 
   test('a null trigger list is the same inferred fallback', () => {

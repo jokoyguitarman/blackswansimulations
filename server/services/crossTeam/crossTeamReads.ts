@@ -7,6 +7,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
+import { templateInjectsValidAt } from '../../lib/templateRows.js';
 
 export const CROSS_TEAM_READ_LIMITS = {
   triggers: 2000,
@@ -20,6 +21,14 @@ export const CROSS_TEAM_READ_LIMITS = {
 
 const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 const warned = new Set<string>();
+
+export interface RecentTriggerRow {
+  inject_key: string;
+  minute: number;
+  origin: string;
+  source_teams: string[];
+  target_teams: string[];
+}
 
 export interface TriggerHistoryRow {
   inject_id: string;
@@ -100,6 +109,53 @@ function num(value: unknown): number | null {
 function strings(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+}
+
+/** Pressure strip: only the columns and the minutes the panel shows. */
+export async function readRecentTriggerPressure(
+  sessionId: string,
+  sinceMinute: number,
+): Promise<{ missing: boolean; rows: RecentTriggerRow[] }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inject_triggers')
+      .select('inject_key, minute, origin, source_teams, target_teams')
+      .eq('session_id', sessionId)
+      .gte('minute', sinceMinute)
+      .order('minute', { ascending: true })
+      .limit(CROSS_TEAM_READ_LIMITS.triggers);
+    if (error) {
+      if (isSchemaError(error)) {
+        warnOnce(
+          'inject_triggers_unavailable',
+          'Inject triggers are off because migration 278 is not applied',
+        );
+        return { missing: true, rows: [] };
+      }
+      warnOnce('inject_triggers_read_failed', 'Inject trigger history was not loaded');
+      return { missing: false, rows: [] };
+    }
+    return {
+      missing: false,
+      rows: asRecords(data).map((row) => ({
+        inject_key: text(row.inject_key) ?? '',
+        minute: num(row.minute) ?? 0,
+        origin: text(row.origin) ?? '',
+        source_teams: strings(row.source_teams),
+        target_teams: strings(row.target_teams),
+      })),
+    };
+  } catch (err) {
+    if (isSchemaError(err as QueryError)) {
+      warnOnce(
+        'inject_triggers_unavailable',
+        'Inject triggers are off because migration 278 is not applied',
+      );
+      return { missing: true, rows: [] };
+    }
+    warnOnce('inject_triggers_read_failed', 'Inject trigger history was not loaded');
+    return { missing: false, rows: [] };
+  }
 }
 
 export async function readInjectTriggers(
@@ -314,40 +370,91 @@ export async function readCrossTeamReplies(sessionId: string): Promise<ReplyHist
   }
 }
 
-export async function readInjectBriefs(
+/**
+ * Injects valid for this session, split into the whole current set (titles
+ * and parent keys) and the ones this session actually published.
+ */
+export async function readSessionInjects(
   scenarioId: string,
   sessionId: string,
-): Promise<InjectBriefRow[]> {
+  validAt: string,
+): Promise<{ catalog: InjectBriefRow[]; published: InjectBriefRow[] }> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('scenario_injects')
-      .select(
-        'id, title, target_teams, conditions_to_appear, conditions_to_cancel, trigger_time_minutes, delivery_config',
-      )
-      .or(`scenario_id.eq.${scenarioId},session_id.eq.${sessionId}`)
-      .limit(CROSS_TEAM_READ_LIMITS.injects);
-    if (error) {
+    const [catalogResult, publishedIds] = await Promise.all([
+      templateInjectsValidAt(scenarioId, sessionId, validAt, {
+        select:
+          'id, title, target_teams, conditions_to_appear, conditions_to_cancel, trigger_time_minutes, delivery_config',
+        limit: CROSS_TEAM_READ_LIMITS.injects,
+      }),
+      readPublishedInjectIds(sessionId),
+    ]);
+    if (catalogResult.error) {
       warnOnce('cross_team_injects_read_failed', 'Inject titles were not loaded');
-      return [];
+      return { catalog: [], published: [] };
     }
-    return asRecords(data).map((row) => {
-      const config =
-        row.delivery_config && typeof row.delivery_config === 'object'
-          ? (row.delivery_config as { inject_key?: unknown })
-          : null;
-      const id = text(row.id) ?? '';
-      return {
-        id,
-        inject_key: injectKeyOf({ id, delivery_config: config }),
-        title: text(row.title) ?? '',
-        target_teams: strings(row.target_teams),
-        conditions_to_appear: row.conditions_to_appear,
-        conditions_to_cancel: row.conditions_to_cancel,
-        trigger_time_minutes: num(row.trigger_time_minutes),
-      };
-    });
+    const catalog = asRecords(catalogResult.data).map(briefFrom);
+    const published = catalog.filter((brief) => publishedIds.has(brief.id));
+    return { catalog, published };
   } catch {
     warnOnce('cross_team_injects_read_failed', 'Inject titles were not loaded');
-    return [];
+    return { catalog: [], published: [] };
+  }
+}
+
+function briefFrom(row: Record<string, unknown>): InjectBriefRow {
+  const config =
+    row.delivery_config && typeof row.delivery_config === 'object'
+      ? (row.delivery_config as { inject_key?: unknown })
+      : null;
+  const id = text(row.id) ?? '';
+  return {
+    id,
+    inject_key: injectKeyOf({ id, delivery_config: config }),
+    title: text(row.title) ?? '',
+    target_teams: strings(row.target_teams),
+    conditions_to_appear: row.conditions_to_appear,
+    conditions_to_cancel: row.conditions_to_cancel,
+    trigger_time_minutes: num(row.trigger_time_minutes),
+  };
+}
+
+/**
+ * Ids this session published. Claims are the record; a delivery counts too,
+ * because a failed claim still lands the inject. Unpublished templates are absent.
+ */
+async function readPublishedInjectIds(sessionId: string): Promise<Set<string>> {
+  const [claimed, delivered] = await Promise.all([
+    readIdColumn('inject_publications', 'inject_id', sessionId),
+    readIdColumn('inject_deliveries', 'inject_id', sessionId),
+  ]);
+  return new Set([...claimed.ids, ...delivered.ids]);
+}
+
+async function readIdColumn(
+  table: string,
+  column: string,
+  sessionId: string,
+): Promise<{ missing: boolean; ids: Set<string> }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select(column)
+      .eq('session_id', sessionId)
+      .limit(CROSS_TEAM_READ_LIMITS.injects);
+    if (error) {
+      if (isSchemaError(error)) return { missing: true, ids: new Set() };
+      warnOnce(`cross_team_${table}_read_failed`, `${table} was not loaded`);
+      return { missing: false, ids: new Set() };
+    }
+    const ids = new Set<string>();
+    for (const row of asRecords(data)) {
+      const id = text(row[column]);
+      if (id) ids.add(id);
+    }
+    return { missing: false, ids };
+  } catch (err) {
+    if (isSchemaError(err as QueryError)) return { missing: true, ids: new Set() };
+    warnOnce(`cross_team_${table}_read_failed`, `${table} was not loaded`);
+    return { missing: false, ids: new Set() };
   }
 }

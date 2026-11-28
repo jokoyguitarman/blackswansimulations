@@ -5,11 +5,11 @@
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
-import { collectConditionKeys, parseConditionKey } from '../conditions/conditionCatalog.js';
 import { teamDependenciesSchema } from '../dependencies/dependencySchema.js';
 import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import {
   buildCrossTeamSection,
+  inferCrossTeamTriggers,
   type CrossTeamEdgeInput,
   type CrossTeamReplyInput,
   type CrossTeamSection,
@@ -18,9 +18,8 @@ import {
 import {
   readCrossTeamReplies,
   readDependencyStateRows,
-  readInjectBriefs,
   readInjectTriggers,
-  type InjectBriefRow,
+  readSessionInjects,
   type StoredStateRow,
   type TriggerHistoryRow,
 } from '../crossTeam/crossTeamReads.js';
@@ -33,23 +32,26 @@ export async function loadCrossTeamSection(sessionId: string): Promise<CrossTeam
   try {
     const session = await loadSession(sessionId);
     if (!session) return emptyCrossTeamSection();
-    const [triggers, states, briefs, replies] = await Promise.all([
+    const [triggers, states, injects, replies] = await Promise.all([
       readInjectTriggers(sessionId),
       readDependencyStateRows(sessionId),
-      readInjectBriefs(session.scenarioId, sessionId),
+      readSessionInjects(session.scenarioId, sessionId, session.validAt),
       readCrossTeamReplies(sessionId),
     ]);
     const titles = new Map(
-      briefs.map((brief) => [brief.inject_key, brief.title || brief.inject_key]),
+      injects.catalog.map((brief) => [brief.inject_key, brief.title || brief.inject_key]),
     );
     const recorded = triggers.missing
       ? null
       : triggers.rows.map((row) => triggerInput(row, titles));
+    const edgeList = edgeInputs(session.edges, states.missing ? [] : states.rows, triggers.rows);
+    const hasTriggers = recorded != null && recorded.length > 0;
     return buildCrossTeamSection({
       triggers: recorded,
-      edges: edgeInputs(session.edges, states.missing ? [] : states.rows, triggers.rows),
+      edges: edgeList,
       replies: replies.map(replyInput).filter((reply) => reply.inject_key !== ''),
-      inferred: recorded && recorded.length > 0 ? [] : inferredFrom(briefs),
+      inferred: hasTriggers ? [] : inferCrossTeamTriggers(injects.published, edgeList),
+      inject_keys: injects.catalog.map((brief) => brief.inject_key),
     });
   } catch (err) {
     logger.warn(
@@ -62,13 +64,17 @@ export async function loadCrossTeamSection(sessionId: string): Promise<CrossTeam
 
 async function loadSession(
   sessionId: string,
-): Promise<{ scenarioId: string; edges: TeamDependencyEdge[] } | null> {
+): Promise<{ scenarioId: string; validAt: string; edges: TeamDependencyEdge[] } | null> {
   const { data, error } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id')
+    .select('scenario_id, start_time, created_at')
     .eq('id', sessionId)
     .maybeSingle();
   if (error || !data || typeof data.scenario_id !== 'string') return null;
+  const validAt =
+    (typeof data.start_time === 'string' && data.start_time) ||
+    (typeof data.created_at === 'string' && data.created_at) ||
+    new Date().toISOString();
   const scenario = await supabaseAdmin
     .from('scenarios')
     .select('initial_state')
@@ -78,6 +84,7 @@ async function loadSession(
   const parsed = teamDependenciesSchema.safeParse(initial?.team_dependencies);
   return {
     scenarioId: data.scenario_id,
+    validAt,
     edges: parsed.success ? parsed.data.edges : [],
   };
 }
@@ -127,33 +134,6 @@ function edgeInputs(
       evidence: fallback.map((item) => ({ detail: item.detail })),
     };
   });
-}
-
-function inferredFrom(briefs: readonly InjectBriefRow[]): CrossTeamTriggerInput[] {
-  const known = new Set(briefs.map((brief) => brief.inject_key));
-  return briefs.map((brief) => ({
-    inject_key: brief.inject_key,
-    title: brief.title || brief.inject_key,
-    minute: brief.trigger_time_minutes,
-    origin: brief.trigger_time_minutes != null ? 'timed' : 'conditional',
-    source_teams: [],
-    target_teams: brief.target_teams,
-    dep_id: null,
-    cause_depth: 0,
-    parent_inject_keys: parentsOf(brief, known),
-  }));
-}
-
-function parentsOf(brief: InjectBriefRow, known: ReadonlySet<string>): string[] {
-  const parents = new Set<string>();
-  for (const key of collectConditionKeys(brief.conditions_to_appear, brief.conditions_to_cancel)) {
-    const parsed = parseConditionKey(key);
-    if ('error' in parsed) continue;
-    for (const arg of parsed.args) {
-      if (known.has(arg) && arg !== brief.inject_key) parents.add(arg);
-    }
-  }
-  return [...parents];
 }
 
 function replyInput(row: {

@@ -18,6 +18,13 @@ import {
 
 export const CROSS_TEAM_STORED_CAP = 200;
 
+/** Same shape `delivery_config.inject_key` uses. Condition keys contain `:` or `|`. */
+const INJECT_KEY = /^[a-z0-9_]{1,60}$/;
+
+export function isInjectKey(value: string): boolean {
+  return INJECT_KEY.test(value);
+}
+
 export type CrossTeamProvenance = 'recorded' | 'inferred';
 
 export type CrossTeamOutcome = 'pending' | 'broken' | 'met' | 'late' | 'waived';
@@ -104,6 +111,16 @@ export interface CrossTeamSection {
   teams: TeamCrossTeamCount[];
 }
 
+/** A published inject, the only fields the inferred fallback has. */
+export interface PublishedInjectInput {
+  inject_key: string;
+  title: string;
+  target_teams: string[];
+  conditions_to_appear?: unknown;
+  conditions_to_cancel?: unknown;
+  trigger_time_minutes: number | null;
+}
+
 export interface CrossTeamSectionInput {
   /** Null or empty: the session has no trigger rows, so chains are inferred. */
   triggers: readonly CrossTeamTriggerInput[] | null;
@@ -111,6 +128,8 @@ export interface CrossTeamSectionInput {
   replies: readonly CrossTeamReplyInput[];
   /** Static parent links used only when `triggers` is null or empty. */
   inferred?: readonly CrossTeamTriggerInput[];
+  /** Inject keys that exist for this session. A parent in this set is not "missing". */
+  inject_keys?: readonly string[];
 }
 
 interface Segment {
@@ -121,6 +140,8 @@ interface Segment {
   receives: string[];
   keys: string[];
   parents: string[];
+  /** Condition keys stored in parent_inject_keys. They are signals, not injects. */
+  signals: string[];
   missing: string[];
   parentId: string | null;
 }
@@ -131,7 +152,7 @@ export function buildCrossTeamSection(input: CrossTeamSectionInput): CrossTeamSe
   const triggers = provenance === 'recorded' ? recorded : [...(input.inferred ?? [])];
   const replies = repliesByKey(input.replies);
   const edges = edgeRows(input.edges, triggers, replies);
-  const chains = buildChains(triggers, input.edges, replies, provenance);
+  const chains = buildChains(triggers, input.edges, replies, provenance, input.inject_keys ?? []);
   const teams = teamCounts(triggers);
   return {
     provenance,
@@ -187,9 +208,11 @@ function buildChains(
   edges: readonly CrossTeamEdgeInput[],
   replies: ReadonlyMap<string, CrossTeamReplyInput[]>,
   provenance: CrossTeamProvenance,
+  injectKeys: readonly string[],
 ): CauseChain[] {
   const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
-  const known = new Set(triggers.map((trigger) => trigger.inject_key));
+  const known = new Set<string>(injectKeys);
+  for (const trigger of triggers) known.add(trigger.inject_key);
   const segments = segmentsOf(
     triggers.filter((trigger) => isChainTrigger(trigger)),
     edgeById,
@@ -230,18 +253,21 @@ function segmentsOf(
     const depId = ordered.find((trigger) => trigger.dep_id)?.dep_id ?? null;
     const edge = depId ? edges.get(depId) : undefined;
     const keys = ordered.map((trigger) => trigger.inject_key);
-    const parents = unique(
+    const listed = unique(
       ordered.flatMap((trigger) => trigger.parent_inject_keys).filter((key) => !keys.includes(key)),
     );
+    const parents = listed.filter((key) => isInjectKey(key));
+    const signals = listed.filter((key) => !isInjectKey(key));
     const depth = ordered.reduce((max, trigger) => Math.max(max, trigger.cause_depth), 0);
     segments.push({
       id,
       minute: segmentMinute(ordered, edge),
       depth,
-      opening: openingOf(edge),
+      opening: openingOf(edge, signals),
       receives: ordered.flatMap((trigger) => receiveClauses(trigger, replies)),
       keys,
       parents,
+      signals,
       missing: [],
       parentId: null,
     });
@@ -353,13 +379,17 @@ function isChainTrigger(trigger: CrossTeamTriggerInput): boolean {
   );
 }
 
-function openingOf(edge: CrossTeamEdgeInput | undefined): string {
+function openingOf(edge: CrossTeamEdgeInput | undefined, signals: readonly string[]): string {
   if (!edge) return '';
-  const detail =
-    edge.evidence?.map((item) => item.detail.trim()).find((item) => item !== '') ??
-    `missed "${edge.deliverable}"`;
+  const recorded = edge.evidence?.map((item) => item.detail.trim()).find((item) => item !== '');
+  const signalText = signalPhrases(signals, recorded ?? '');
+  const detail = withoutRepeatedTeam(
+    edge.upstream,
+    recorded || (signalText.length > 0 ? signalText.join('; ') : `missed "${edge.deliverable}"`),
+  );
+  const extra = recorded && signalText.length > 0 ? ` (${signalText.join('; ')})` : '';
   if (edge.broken_minute != null) {
-    return `T+${edge.broken_minute} ${edge.upstream} ${detail} → dependency broken`;
+    return `T+${edge.broken_minute} ${edge.upstream} ${detail}${extra} → dependency broken`;
   }
   if (edge.met_minute != null && edge.status === 'met') {
     return `T+${edge.met_minute} ${edge.upstream} delivered "${edge.deliverable}" on time → dependency met`;
@@ -509,6 +539,153 @@ function compareMinute(left: number | null, right: number | null): number {
 function percent(count: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((count / total) * 100);
+}
+
+function withoutRepeatedTeam(team: string, detail: string): string {
+  const trimmed = detail.trim();
+  const name = team.trim();
+  if (!name) return trimmed;
+  if (!trimmed.toLowerCase().startsWith(name.toLowerCase())) return trimmed;
+  const rest = trimmed
+    .slice(name.length)
+    .trim()
+    .replace(/^[:\-–—]\s*/, '');
+  return rest || trimmed;
+}
+
+function signalPhrases(signals: readonly string[], already: string): string[] {
+  const phrases: string[] = [];
+  const haystack = already.toLowerCase();
+  for (const key of signals) {
+    const phrase = signalPhrase(key);
+    if (!phrase || haystack.includes(phrase.toLowerCase()) || phrases.includes(phrase)) continue;
+    phrases.push(phrase);
+  }
+  return phrases;
+}
+
+function signalPhrase(key: string): string {
+  const body = (key.split('|')[0] ?? key).trim();
+  const [name, ...args] = body.split(':');
+  if (name === 'team_silent') {
+    return args[0] ? `silent for ${args[0]} min` : 'silent';
+  }
+  if (name === 'duty_missed') {
+    const duty = (args[0] ?? '').replace(/_/g, ' ');
+    return duty ? `missed duty ${duty}` : 'missed a duty';
+  }
+  if (name === 'duty_late') {
+    const duty = (args[0] ?? '').replace(/_/g, ' ');
+    return duty ? `completed duty ${duty} late` : 'completed a duty late';
+  }
+  return body.replace(/[_:]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Consequences that can be seen without trigger rows. Only published injects
+ * are passed in. A same-team timed inject is not a chain and is not pressure.
+ */
+export function inferCrossTeamTriggers(
+  injects: readonly PublishedInjectInput[],
+  edges: readonly CrossTeamEdgeInput[],
+): CrossTeamTriggerInput[] {
+  const known = new Set(
+    injects.map((inject) => inject.inject_key).filter((key) => isInjectKey(key)),
+  );
+  const byConsequence = new Map<string, CrossTeamEdgeInput>();
+  for (const edge of edges) {
+    for (const key of edge.consequence_keys) byConsequence.set(key, edge);
+  }
+  const triggers: CrossTeamTriggerInput[] = [];
+  for (const inject of injects) {
+    if (!isInjectKey(inject.inject_key)) continue;
+    const conditions = [inject.conditions_to_appear, inject.conditions_to_cancel];
+    const edge = byConsequence.get(inject.inject_key) ?? edgeFromConditions(conditions, edges);
+    const source = sourceTeams(conditions, edges, edge);
+    const cross = teamsDiffer(source, inject.target_teams);
+    if (!edge && !cross) continue;
+    triggers.push({
+      inject_key: inject.inject_key,
+      title: inject.title || inject.inject_key,
+      minute: inject.trigger_time_minutes,
+      origin: edge ? 'dependency' : 'conditional',
+      source_teams: source,
+      target_teams: inject.target_teams,
+      dep_id: edge?.id ?? null,
+      cause_depth: 1,
+      parent_inject_keys: referencedParents(conditions, known),
+    });
+  }
+  return triggers;
+}
+
+function sourceTeams(
+  conditions: readonly unknown[],
+  edges: readonly CrossTeamEdgeInput[],
+  edge: CrossTeamEdgeInput | undefined,
+): string[] {
+  const names = new Map<string, string>();
+  for (const item of edges) {
+    for (const name of [item.upstream, ...item.downstream]) {
+      const key = teamKey(name);
+      if (key && !names.has(key)) names.set(key, name);
+    }
+  }
+  const scoped: string[] = [];
+  for (const key of collectStrings(conditions)) {
+    const match = /\|team=([^|\s]+)/.exec(key);
+    const slug = match?.[1];
+    if (!slug || slug.startsWith('@')) continue;
+    const label = names.get(teamKey(slug)) ?? slug;
+    if (!scoped.includes(label)) scoped.push(label);
+  }
+  if (scoped.length > 0) return scoped;
+  return edge ? [edge.upstream] : [];
+}
+
+function edgeFromConditions(
+  conditions: readonly unknown[],
+  edges: readonly CrossTeamEdgeInput[],
+): CrossTeamEdgeInput | undefined {
+  const ids = new Set(edges.map((edge) => edge.id));
+  for (const key of collectStrings(conditions)) {
+    const body = key.split('|')[0] ?? key;
+    if (!body.startsWith('dependency_')) continue;
+    for (const token of body.split(':')) {
+      if (ids.has(token)) return edges.find((edge) => edge.id === token);
+    }
+  }
+  return undefined;
+}
+
+function referencedParents(conditions: readonly unknown[], known: ReadonlySet<string>): string[] {
+  const parents: string[] = [];
+  for (const key of collectStrings(conditions)) {
+    const body = key.split('|')[0] ?? key;
+    for (const token of body.split(':')) {
+      if (known.has(token) && isInjectKey(token) && !parents.includes(token)) parents.push(token);
+    }
+  }
+  return parents;
+}
+
+function collectStrings(values: readonly unknown[]): string[] {
+  const out: string[] = [];
+  const walk = (value: unknown) => {
+    if (typeof value === 'string') {
+      if (value.trim()) out.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      for (const item of Object.values(value)) walk(item);
+    }
+  };
+  for (const value of values) walk(value);
+  return out;
 }
 
 function unique(values: readonly string[]): string[] {

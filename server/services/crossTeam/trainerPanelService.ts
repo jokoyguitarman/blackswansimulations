@@ -4,13 +4,14 @@
  */
 
 import { env } from '../../env.js';
+import { PRESSURE_STRIP_MINUTES } from '../../../shared/crossTeamPanel.js';
 import {
-  listSessionDependencies,
+  loadSessionDependencyViews,
   sessionMinute,
   type DependencySession,
   type SessionDependencyView,
 } from '../dependencies/dependencyService.js';
-import { readDependencyStateRows, readGuardEvents, readInjectTriggers } from './crossTeamReads.js';
+import { readGuardEvents, readRecentTriggerPressure } from './crossTeamReads.js';
 
 export interface TrainerPanelPayload {
   available: boolean;
@@ -37,17 +38,21 @@ export async function loadTrainerPanel(session: DependencySession): Promise<Trai
     held: [],
   };
   if (!env.crossTeamDependencies) return empty;
-  const states = await readDependencyStateRows(session.id);
-  if (states.missing) return empty;
-  const [edges, triggers, guards] = await Promise.all([
-    listSessionDependencies(session),
-    readInjectTriggers(session.id),
+  const since = Math.max(0, elapsed - PRESSURE_STRIP_MINUTES);
+  const [views, triggers, guards] = await Promise.all([
+    loadSessionDependencyViews(session),
+    readRecentTriggerPressure(session.id, since),
     readGuardEvents(session.id),
   ]);
+  if (views.missing) return empty;
   const anchors: Record<string, number> = {};
   const events: TrainerPanelPayload['events'] = [];
+  const published = new Set<string>();
   for (const row of triggers.rows) {
-    if (row.inject_key && anchors[row.inject_key] == null) anchors[row.inject_key] = row.minute;
+    if (row.inject_key) {
+      published.add(row.inject_key);
+      if (anchors[row.inject_key] == null) anchors[row.inject_key] = row.minute;
+    }
     events.push({
       minute: row.minute,
       origin: row.origin,
@@ -58,11 +63,11 @@ export async function loadTrainerPanel(session: DependencySession): Promise<Trai
   return {
     available: true,
     elapsed_minute: elapsed,
-    edges,
+    edges: views.edges,
     anchors,
     events,
     held: guards
-      .filter((row) => row.reason !== '')
+      .filter((row) => row.reason !== '' && !published.has(row.inject_key))
       .map((row) => ({ inject_key: row.inject_key, reason: row.reason, minute: row.minute })),
   };
 }
