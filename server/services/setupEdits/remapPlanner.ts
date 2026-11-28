@@ -369,16 +369,30 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   if (!resolutions || plan.orphans.length === 0) return plan;
   const state = asRecord(input.initial_state) ?? {};
   const kept: Orphan[] = [];
+  const removedEdges = new Set<string>();
   for (const orphan of plan.orphans) {
     const resolution = resolutions[orphan.id];
+    if (
+      resolution?.choice === 'remove' &&
+      orphan.kind === 'team_dependency' &&
+      orphan.dependency_id &&
+      !orphan.condition_key &&
+      !orphan.target_key &&
+      resolutionApplies(orphan, resolution, input, plan)
+    ) {
+      removedEdges.add(orphan.dependency_id);
+    }
     if (!resolution || !resolutionApplies(orphan, resolution, input, plan)) {
       kept.push(orphan);
       continue;
     }
     if (resolution.choice !== 'keep') applyOneResolution(plan, input, state, orphan, resolution);
   }
-  plan.orphans = kept;
-  plan.applicable = kept.length === 0;
+  plan.orphans = kept.filter(
+    (orphan) =>
+      !(orphan.condition_key && orphan.dependency_id && removedEdges.has(orphan.dependency_id)),
+  );
+  plan.applicable = plan.orphans.length === 0;
   plan.initial_state.move_to_retired.sort(
     (a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key),
   );
@@ -424,7 +438,10 @@ function resolutionApplies(
   }
   if (orphan.kind === 'team_dependency') {
     if (orphan.condition_key) {
-      return choice === 'clear' || (choice === 'retarget' && !!resolution.team_name);
+      return (
+        choice === 'clear' ||
+        (choice === 'retarget' && !!reassignTeam(input, resolution.team_name ?? ''))
+      );
     }
     if (orphan.target_key) {
       return choice === 'clear' || (choice === 'retarget' && !!resolution.inject_key);
@@ -745,31 +762,44 @@ function applyDependencyResolution(
   upsertPatch(plan, '/team_dependencies', doc);
 }
 
-/** An active team the trainer can move an upstream dependency onto. */
-function reassignTeam(
-  input: RemapPlannerInput,
-  teamName: string,
-): { team_uid: string; team_name: string } | null {
-  const name = teamName.trim();
-  if (!name) return null;
+/** Active teams after this edit: the edited roster, then any current team it does not already list. */
+function activeRoster(input: RemapPlannerInput): ActiveTeam[] {
   const removedNames = new Set(input.delta.removed_teams.map((team) => team.team_name));
   const removedUids = new Set(input.delta.removed_teams.map((team) => team.team_uid));
   const removedOrgs = new Set(input.delta.removed_orgs);
+  const teams: ActiveTeam[] = [];
+  const seen = new Set<string>();
+  const push = (team: ActiveTeam) => {
+    const id = team.team_uid || team.team_name;
+    if (!id || seen.has(id)) return;
+    if (team.team_uid && removedUids.has(team.team_uid)) return;
+    if (removedNames.has(team.team_name)) return;
+    seen.add(id);
+    teams.push(team);
+  };
   for (const org of input.edited.organisations) {
     if (removedOrgs.has(org.org_key)) continue;
     for (const team of org.teams) {
-      if (team.team_name !== name || !team.team_uid) continue;
-      if (removedNames.has(team.team_name) || removedUids.has(team.team_uid)) continue;
-      return { team_uid: team.team_uid, team_name: team.team_name };
+      if (!team.team_uid || !team.team_name) continue;
+      push({
+        team_uid: team.team_uid,
+        team_name: team.team_name,
+        playable: org.operation !== 'ai',
+      });
     }
   }
   for (const team of input.teams) {
-    if (team.team_name !== name || !team.team_uid) continue;
-    if (removedNames.has(team.team_name) || removedUids.has(team.team_uid)) continue;
     if (team.org_key && removedOrgs.has(team.org_key)) continue;
-    return { team_uid: team.team_uid, team_name: team.team_name };
+    push({ team_uid: team.team_uid, team_name: team.team_name, playable: true });
   }
-  return null;
+  return teams;
+}
+
+/** An active team the trainer can move an upstream dependency onto. */
+function reassignTeam(input: RemapPlannerInput, teamName: string): ActiveTeam | null {
+  const name = teamName.trim();
+  if (!name) return null;
+  return activeRoster(input).find((team) => team.team_name === name) ?? null;
 }
 
 function retireDependencyConsequencesOf(
@@ -817,8 +847,24 @@ function reassignmentAccepted(
   const next = structuredClone(edge);
   const upstream = asRecord(next.upstream) ?? {};
   next.upstream = { ...upstream, team_uid: team.team_uid, team_name: team.team_name };
-  const checked = validateDependencies([next], validationTeams(input), [], null);
+  const checked = validateDependencies(
+    [next],
+    activeRoster(input),
+    survivingInjectKeys(plan, input),
+    null,
+  );
   return !checked.issues.some((issue) => issue.severity === 'error' && issue.code !== 'MO-DEP-001');
+}
+
+function survivingInjectKeys(plan: RemapPlan, input: RemapPlannerInput): string[] {
+  const retired = new Set(plan.injects.retire.map((row) => row.inject_id));
+  const keys: string[] = [];
+  for (const inject of input.injects) {
+    if (retired.has(inject.id)) continue;
+    const key = injectKeyOf(inject);
+    if (key) keys.push(key);
+  }
+  return keys;
 }
 
 function dependencyEdge(
@@ -845,38 +891,6 @@ function downstreamHas(edge: Record<string, unknown>, teamUid: string, teamName:
     if (teamUid && textOf(ref.team_uid) === teamUid) return true;
     return textOf(ref.team_name) === teamName;
   });
-}
-
-function validationTeams(input: RemapPlannerInput): ActiveTeam[] {
-  const removedNames = new Set(input.delta.removed_teams.map((team) => team.team_name));
-  const removedUids = new Set(input.delta.removed_teams.map((team) => team.team_uid));
-  const removedOrgs = new Set(input.delta.removed_orgs);
-  const teams: ActiveTeam[] = [];
-  const seen = new Set<string>();
-  const push = (team: ActiveTeam) => {
-    const id = team.team_uid || team.team_name;
-    if (!id || seen.has(id)) return;
-    if (team.team_uid && removedUids.has(team.team_uid)) return;
-    if (removedNames.has(team.team_name)) return;
-    seen.add(id);
-    teams.push(team);
-  };
-  for (const org of input.edited.organisations) {
-    if (removedOrgs.has(org.org_key)) continue;
-    for (const team of org.teams) {
-      if (!team.team_uid || !team.team_name) continue;
-      push({
-        team_uid: team.team_uid,
-        team_name: team.team_name,
-        playable: org.operation !== 'ai',
-      });
-    }
-  }
-  for (const team of input.teams) {
-    if (team.org_key && removedOrgs.has(team.org_key)) continue;
-    push({ team_uid: team.team_uid, team_name: team.team_name, playable: true });
-  }
-  return teams;
 }
 
 function dropConditionKey(value: unknown, key: string): unknown {

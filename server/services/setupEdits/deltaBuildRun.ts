@@ -1,3 +1,4 @@
+import { askDependencyId } from '../../../shared/teamDependencies.js';
 import { env } from '../../env.js';
 import { limitConcurrency } from '../../lib/limitConcurrency.js';
 import type { FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
@@ -745,11 +746,6 @@ function dependencyLayerOf(inject: SocialInject): string | null {
   const config = inject.delivery_config as { gen?: { layer?: unknown } };
   if (typeof config.gen?.layer === 'string' && config.gen.layer) return config.gen.layer;
   return inject.gen_layer || null;
-}
-
-function askDependencyId(ask: SocialInject): string {
-  const layer = dependencyLayerOf(ask) ?? '';
-  return layer.startsWith('dependency:') ? layer.slice('dependency:'.length) : '';
 }
 
 function stampDependencyInjects(

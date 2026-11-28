@@ -72,6 +72,13 @@ function reassignWorld(): RemapPlannerInput {
       team({ id: 'team-comms', team_uid: COMMS, team_name: 'Communications' }),
       team({ id: 'team-ops', team_uid: OPS, team_name: 'Operations' }),
     ],
+    injects: [
+      inject({
+        id: 'inj-brief',
+        inject_key: 'legal_brief',
+        target_teams: ['Communications'],
+      }),
+    ],
     initial_state: {
       team_dependencies: {
         v: 1,
@@ -84,7 +91,7 @@ function reassignWorld(): RemapPlannerInput {
             deliverable: 'Confirmed headcount',
             why: 'Communications cannot publish a figure without it',
             due: { by_minute: 20 },
-            broken_when: { all: ['team_silent:10|team=@upstream'] },
+            broken_when: { all: ['unresponded:legal_brief:10|team=@upstream'] },
             met_when: null,
             lag_minutes: 5,
             severity: 'medium',
@@ -1757,7 +1764,9 @@ describe('remap planner', () => {
       edges.edges[0]?.downstream.map((team) => team.team_name),
       ['Communications'],
     );
-    assert.deepEqual(edges.edges[0]?.broken_when.all, ['team_silent:10|team=@upstream']);
+    assert.deepEqual(edges.edges[0]?.broken_when.all, [
+      'unresponded:legal_brief:10|team=@upstream',
+    ]);
   });
 
   test('removing a downstream team drops it and retires only its consequence', () => {
@@ -1968,6 +1977,61 @@ describe('remap planner', () => {
     assert.ok(orphan);
     assert.deepEqual(orphan.choices, ['remove', 'reassign']);
     assert.equal(plan.applicable, false);
+  });
+
+  test('removing an edge drops its scope orphan, and retarget needs an active team', () => {
+    const source = input({
+      delta: delta({ removed_teams: [{ team_uid: 'uid-legal', team_name: 'Legal' }] }),
+      edited: snapshot([
+        snapshotOrg({
+          org_uid: 'uid-acme',
+          org_key: 'primary',
+          display_name: 'Acme',
+          short_name: 'ACME',
+          is_primary: true,
+          teams: [snapshotTeam({ team_uid: 'uid-comms', team_name: 'Communications' })],
+        }),
+      ]),
+      teams: [
+        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' }),
+        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications' }),
+      ],
+      initial_state: {
+        team_dependencies: {
+          v: 1,
+          edges: [
+            {
+              id: 'dep_brief',
+              upstream: { team_uid: 'uid-legal', team_name: 'Legal' },
+              downstream: [{ team_uid: 'uid-comms', team_name: 'Communications' }],
+              broken_when: { all: ['responded:brief|team=legal'] },
+              met_when: null,
+              consequence_keys: [],
+              due: { by_minute: 10 },
+            },
+          ],
+        },
+      },
+    });
+    const open = planRemap(source);
+    const scope = open.orphans.find((row) => row.condition_key === 'responded:brief|team=legal');
+    assert.ok(scope);
+    const bogus = planRemap({
+      ...source,
+      resolutions: { [scope.id]: { choice: 'retarget', team_name: 'Nobody' } },
+    });
+    assert.ok(bogus.orphans.some((row) => row.id === scope.id));
+    const removed = planRemap({
+      ...source,
+      resolutions: { 'dependency:dep_brief': { choice: 'remove' } },
+    });
+    assert.equal(
+      removed.orphans.some((row) => row.condition_key),
+      false,
+    );
+    assert.equal(removed.applicable, true);
+    const dependencies = replaced(removed, '/team_dependencies') as { edges: unknown[] };
+    assert.deepEqual(dependencies.edges, []);
   });
 
   test('a name-only dependency is stamped with team_uid on the first plan', () => {

@@ -607,6 +607,17 @@ const DEPENDENCY_KEY_DEFS: readonly ConditionDefSpec[] = [
   },
 ];
 
+/** The dependency id stamped on an ask or consequence as `dependency:<id>`, or ''. */
+export function askDependencyId(source: {
+  gen_layer?: string | null;
+  delivery_config?: { gen?: { layer?: string | null } | null } | null;
+}): string {
+  const layer = source.delivery_config?.gen?.layer ?? source.gen_layer ?? '';
+  if (!layer.startsWith('dependency:')) return '';
+  const id = layer.slice('dependency:'.length);
+  return DEPENDENCY_ID.test(id) ? id : '';
+}
+
 /** The dependency id named by a `dependency_*` condition key, or null. */
 export function dependencyIdInKey(key: string): string | null {
   const parsed = parseCatalogCondition(key, DEPENDENCY_KEY_DEFS);

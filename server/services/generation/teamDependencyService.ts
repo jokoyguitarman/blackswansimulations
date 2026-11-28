@@ -13,6 +13,7 @@ import type { SocialInject } from '../socialCrisisGeneratorService.js';
 import {
   matchTeamRef,
   sameTeam,
+  askDependencyId,
   takenDependencyIds,
   type DependencyIdSource,
   type TeamDependencies,
@@ -748,11 +749,6 @@ function focusNote(focus: DependencyFocus | undefined): string {
       ? `\nExisting dependencies, do not repeat them:\n${dependencyEdgeSummary(focus.existingEdges)}`
       : '';
   return `Only return dependencies that include at least one of these added teams: ${names}. Do not return a dependency that only connects the other teams.${existing}`;
-}
-
-function askDependencyId(ask: SocialInject): string {
-  const layer = ask.delivery_config.gen?.layer ?? ask.gen_layer ?? '';
-  return layer.startsWith('dependency:') ? layer.slice('dependency:'.length) : '';
 }
 
 function edgeTouchesAdded(edge: TeamDependencyEdge, added: readonly GenerationTeam[]): boolean {
