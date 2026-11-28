@@ -276,9 +276,10 @@ function isUnconditional(inject: CoverageInject): boolean {
 function hasConditions(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (!value || typeof value !== 'object') return false;
-  const record = value as { all?: unknown; conditions?: unknown };
+  const record = value as { all?: unknown; any?: unknown; conditions?: unknown };
   if (Array.isArray(record.all)) return record.all.length > 0;
   if (Array.isArray(record.conditions)) return record.conditions.length > 0;
+  if (Array.isArray(record.any)) return record.any.length > 0;
   return false;
 }
 

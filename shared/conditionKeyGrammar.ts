@@ -43,7 +43,14 @@ export interface ConditionDefSpec {
 export interface ConditionScope {
   team?: string;
   role?: string;
+  /** `|team=@upstream` or `|team=@downstream`, only inside a team dependency. */
+  team_placeholder?: '@upstream' | '@downstream';
   [name: string]: string | undefined;
+}
+
+export interface ParseCatalogOptions {
+  /** Accept `|team=@upstream` and `|team=@downstream` as `scope.team_placeholder`. */
+  allowPlaceholders?: boolean;
 }
 
 export type ParsedCatalogCondition<T extends ConditionDefSpec = ConditionDefSpec> =
@@ -99,12 +106,15 @@ export function applyLabelTokens(
 }
 
 function scopeName(scope: ConditionScope): string {
-  if (scope.team) return 'team';
+  if (scope.team || scope.team_placeholder) return 'team';
   if (scope.role) return 'role';
   return Object.keys(scope)[0] ?? 'unknown';
 }
 
-function parseScope(raw: string): { scope: ConditionScope } | { error: string } {
+function parseScope(
+  raw: string,
+  allowPlaceholders: boolean,
+): { scope: ConditionScope } | { error: string } {
   const eq = raw.indexOf('=');
   if (eq <= 0) return { error: 'A condition scope must be written as name=value' };
   const name = raw.slice(0, eq).trim();
@@ -120,6 +130,13 @@ function parseScope(raw: string): { scope: ConditionScope } | { error: string } 
   if (!value) return { error: `Condition scope ${name}= is missing its value` };
   const scope: ConditionScope = {};
   if (name === 'team') {
+    if (value === '@upstream' || value === '@downstream') {
+      if (!allowPlaceholders) {
+        return { error: 'Placeholder scopes are only valid inside team dependencies' };
+      }
+      scope.team_placeholder = value;
+      return { scope };
+    }
     const slug = slugifyTeamName(value);
     if (!slug) return { error: 'Condition scope team= is missing its value' };
     scope.team = slug;
@@ -183,7 +200,7 @@ function scopedPrefix<T extends ConditionDefSpec>(
   args: string[],
   scope?: ConditionScope,
 ): ParsedCatalogCondition<T> {
-  if (def.requiresScope && !scope?.team && !scope?.role) {
+  if (def.requiresScope && !scope?.team && !scope?.role && !scope?.team_placeholder) {
     return { error: `MO-COND-010: ${def.id} requires a team or role scope` };
   }
   return { def, args, ...(scope ? { scope } : {}) };
@@ -192,6 +209,7 @@ function scopedPrefix<T extends ConditionDefSpec>(
 export function parseCatalogCondition<T extends ConditionDefSpec>(
   key: string,
   catalog: readonly T[],
+  options?: ParseCatalogOptions,
 ): ParsedCatalogCondition<T> {
   const trimmed = key.trim();
   if (!trimmed) return { error: 'Condition key is empty' };
@@ -205,7 +223,7 @@ export function parseCatalogCondition<T extends ConditionDefSpec>(
     }
     body = trimmed.slice(0, pipe);
     if (!body) return { error: 'Condition key is empty' };
-    const parsedScope = parseScope(trimmed.slice(pipe + 1));
+    const parsedScope = parseScope(trimmed.slice(pipe + 1), options?.allowPlaceholders === true);
     if ('error' in parsedScope) return parsedScope;
     scope = parsedScope.scope;
   }
@@ -226,7 +244,7 @@ export function parseCatalogCondition<T extends ConditionDefSpec>(
   const rest = body.slice(match.prefix.length);
   if (rest.trim() === '') return { error: `Condition key ${body} is missing its argument` };
 
-  if (scope?.team && !match.teamScope) {
+  if ((scope?.team || scope?.team_placeholder) && !match.teamScope) {
     return { error: `Condition key ${match.id} does not accept a team scope` };
   }
 
@@ -245,6 +263,9 @@ function formatScope(scope: ConditionScope | undefined): { suffix: string } | { 
     const slug = slugifyTeamName(scope.team);
     if (!slug) return { error: 'Condition scope team= is missing its value' };
     return { suffix: `|team=${slug}` };
+  }
+  if (scope.team_placeholder) {
+    return { suffix: `|team=${scope.team_placeholder}` };
   }
   if (scope.role) {
     if (!/^[a-z0-9_]{2,40}$/.test(scope.role)) {
@@ -275,10 +296,10 @@ export function formatConditionKey(
     }
     return { key: def.id };
   }
-  if (scope?.team && !def.teamScope) {
+  if ((scope?.team || scope?.team_placeholder) && !def.teamScope) {
     return { error: `Condition key ${def.id} does not accept a team scope` };
   }
-  if (def.requiresScope && !scope?.team && !scope?.role) {
+  if (def.requiresScope && !scope?.team && !scope?.role && !scope?.team_placeholder) {
     return { error: `MO-COND-010: ${def.id} requires a team or role scope` };
   }
   if (def.looseArgs) {

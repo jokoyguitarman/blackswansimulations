@@ -237,8 +237,9 @@ function keysOf(appear: unknown, cancel: unknown): string[] {
   };
   if (Array.isArray(appear)) pushAll(appear);
   else if (appear && typeof appear === 'object') {
-    const record = appear as { all?: unknown; conditions?: unknown };
+    const record = appear as { all?: unknown; any?: unknown; conditions?: unknown };
     pushAll(record.all);
+    pushAll(record.any);
     pushAll(record.conditions);
   }
   pushAll(cancel);
