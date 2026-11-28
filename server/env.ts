@@ -26,6 +26,14 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Fraction in [0, 1], or the fallback when unset or invalid. */
+function envUnit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+}
+
 /** Non-negative integer from the environment, or the fallback when unset or invalid. */
 function envNonNegativeInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -45,6 +53,15 @@ function envUnitFloat(name: string, fallback: number): number {
 function envSeverity(name: string, fallback: 'low' | 'medium' | 'high'): 'low' | 'medium' | 'high' {
   const raw = process.env[name]?.trim().toLowerCase();
   if (raw === 'low' || raw === 'medium' || raw === 'high') return raw;
+  return fallback;
+}
+
+function envDirectorMode(
+  name: string,
+  fallback: 'off' | 'suggest' | 'auto',
+): 'off' | 'suggest' | 'auto' {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === 'off' || raw === 'suggest' || raw === 'auto') return raw;
   return fallback;
 }
 
@@ -216,8 +233,12 @@ export const env = {
   crossTeamLoopWindowMinutes: envInt('CROSS_TEAM_LOOP_WINDOW_MINUTES', 20),
   crossTeamMaxCascadeDepth: envInt('CROSS_TEAM_MAX_CASCADE_DEPTH', 3),
   // AI director (consequence director). Dormant until migration 279 is applied and AI is enabled.
-  // Mode ceiling and the default-mode env vars belong to the publishing work.
   directorEnabled: process.env.DIRECTOR_ENABLED !== 'false',
+  directorModeMax: envDirectorMode('DIRECTOR_MODE_MAX', 'auto'),
+  directorDefaultMode: envDirectorMode('DIRECTOR_DEFAULT_MODE', 'auto'),
+  directorAutoMaxSeverity: envSeverity('DIRECTOR_AUTO_MAX_SEVERITY', 'medium'),
+  directorAutoGraceSeconds: envInt('DIRECTOR_AUTO_GRACE_SECONDS', 60),
+  directorSuggestionTtlMinutes: envInt('DIRECTOR_SUGGESTION_TTL_MINUTES', 5),
   directorTemperature: envUnitFloat('DIRECTOR_TEMPERATURE', 0.4),
   directorSeedSalt: process.env.DIRECTOR_SEED_SALT ?? '',
   directorFairnessTolerance: envNonNegativeInt('DIRECTOR_FAIRNESS_TOLERANCE', 2),
@@ -325,4 +346,9 @@ export const env = {
   peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', 900),
   // Durable `peace` stage, its estimate lines, and the legacy compile call.
   enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
+  // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
+  // When off, reaction prompts, grading and post inserts match today.
+  enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',
+  topicBridgeStayShare: envUnit('TOPIC_BRIDGE_STAY_SHARE', 0.4),
+  topicBridgeMinConfidence: envUnit('TOPIC_BRIDGE_MIN_CONFIDENCE', 0.6),
 };

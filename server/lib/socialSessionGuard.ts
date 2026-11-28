@@ -17,8 +17,9 @@ export interface SocialSession {
 
 const SESSION_COLUMNS = 'id, trainer_id, status';
 
-function asSession(
-  row: { id?: unknown; trainer_id?: unknown; status?: unknown } | undefined,
+/** The id, trainer and status fields a session row is allowed to be read as. */
+export function normaliseSocialSession(
+  row: { id?: unknown; trainer_id?: unknown; status?: unknown } | null | undefined,
 ): SocialSession | null {
   if (!row || typeof row.id !== 'string') return null;
   return {
@@ -26,6 +27,30 @@ function asSession(
     trainer_id: typeof row.trainer_id === 'string' ? row.trainer_id : null,
     status: typeof row.status === 'string' ? row.status : null,
   };
+}
+
+export type LoadedSocialSession =
+  | { kind: 'ok'; session: SocialSession }
+  | { kind: 'missing' }
+  | { kind: 'error' };
+
+/** Load one session row. A database error is not reported as "missing". */
+export async function loadSocialSession(sessionId: string): Promise<LoadedSocialSession> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('sessions')
+      .select(SESSION_COLUMNS)
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (error) return { kind: 'error' };
+    const session = normaliseSocialSession(
+      data as { id?: unknown; trainer_id?: unknown; status?: unknown } | null,
+    );
+    if (!session) return { kind: 'missing' };
+    return { kind: 'ok', session };
+  } catch {
+    return { kind: 'error' };
+  }
 }
 
 /** Admin, the trainer who ran the session, or a participant. */
@@ -39,7 +64,7 @@ export async function requireSocialRead(
     res.status(access.status).json({ error: access.error });
     return null;
   }
-  const session = asSession(access.session);
+  const session = normaliseSocialSession(access.session);
   if (!session) {
     res.status(404).json({ error: 'Session not found' });
     return null;

@@ -1,17 +1,21 @@
 /**
- * One director wake per scheduler tick. Proposals are stored and shown to the
- * trainer. Publishing is a later step. Migration 279 missing, or AI disabled,
- * turns the director off.
+ * One director wake per scheduler tick. The wake is started off the tick's
+ * await path. Publishing, the countdown sweep and trainer controls live in
+ * directorConsole. Migration 279 missing, or AI disabled, turns the director off.
  */
 
 import { env } from '../../env.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTeams, activeTemplateInjects } from '../../lib/templateRows.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
-import { AiCallError, chat, systemUser } from '../ai/chatClient.js';
+import { resolveDirectorMode } from '../../../shared/directorModes.js';
+import { AiCallError, budgetStatus, chat, systemUser } from '../ai/chatClient.js';
 import { parseJsonLoose } from '../ai/chatCore.js';
-import { isCrossTeam, type DepthTrigger } from '../conditions/crossTeamCore.js';
+import { isCrossTeam, type DepthTrigger, type TeamDelivery } from '../conditions/crossTeamCore.js';
+import { loadCrossTeamFacts, recordInjectTrigger } from '../conditions/injectTriggerService.js';
+import { publishInjectToSession } from '../../routes/injects.js';
 import type { CommsState } from '../ledger/injectLedgerCore.js';
 import { inBootGrace, sessionUserOnline } from '../presence/sessionPresenceService.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
@@ -19,9 +23,11 @@ import { getWebSocketService } from '../websocketService.js';
 import {
   capsFor,
   directorSeed,
+  fairnessState,
   runDirectorTurn,
   wakeNeedsSessionData,
   type DirectorClient,
+  type GuardContext,
   type DirectorDraft,
   type DirectorLimits,
   type DirectorMode,
@@ -31,7 +37,29 @@ import {
   type ExposureEvent,
   type UpcomingInject,
 } from './directorCore.js';
+import {
+  createDirectorCommands,
+  proposalNeedsCountdown,
+  type ConsoleProposal,
+  type CommandResult,
+  type DirectorCommands,
+  type ProposalPatch,
+  type PublishFacts,
+  type SessionDirector,
+} from './directorConsole.js';
+import { applyLiveMode, publishedCapEvents, type DirectorPerson } from './directorPublish.js';
 import { replayDirectorSession, type ReplayRow } from './directorReplay.js';
+import {
+  DIRECTOR_WAKE_LOCK_MS,
+  beginWake,
+  directorIsPaused,
+  endWake,
+  noteProposalPending,
+  replacePendingCounts,
+  resetDirectorRuntime,
+  snoozedTeams,
+  wakeOwns,
+} from './directorRuntime.js';
 import {
   collectSignals,
   type DependencySnapshot,
@@ -43,11 +71,13 @@ const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 const APPS = ['email', 'group_chat', 'phone_call', 'npc_dm', 'messenger_dm', 'social_feed', 'news'];
 const LIVE_STATUSES = new Set(['proposed', 'approved', 'edited', 'auto_published']);
 const RECEIVED_STATUSES = new Set(['approved', 'edited', 'auto_published']);
+/** Scenario text is cached only briefly, and dropped again when a session starts. */
+export const DIRECTOR_SCENARIO_CACHE_MS = 60_000;
 
 let directorUnavailable = false;
 let directorWarned = false;
 const warnedKinds = new Set<string>();
-const scenarioCache = new Map<string, ScenarioRow>();
+const scenarioCache = new Map<string, { row: ScenarioRow; at: number }>();
 const sessionCache = new Map<string, { mode: DirectorMode; seed: string | null }>();
 
 interface SessionDirectorRow {
@@ -68,16 +98,27 @@ export interface DirectorTickInput {
   durationMinutes?: number | null;
   /** Session override. `off` skips every read. */
   directorMode?: DirectorMode | null;
+  /** Trainer "ask the director". Forces one wake when the mode is not off. */
+  trainerRequest?: { team?: string; hint?: string };
 }
 
 export interface DirectorRunOptions {
   store?: DirectorStore;
   enabled?: boolean;
   aiEnabled?: boolean;
+  /** Test hook. Production uses the chat client. */
+  client?: DirectorClient;
+  /** Test hook for the scenario-cache clock. */
+  now?: () => number;
+  /** Set by the scheduler. A retired token must not insert. */
+  wakeToken?: number;
+  /** Test hook. Production uses {@link DIRECTOR_WAKE_LOCK_MS}. */
+  wakeLockMs?: number;
 }
 
 export interface DirectorStore {
-  loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'>;
+  /** `null` is a failed read: skip this tick. `'missing'` means migration 279 is absent. */
+  loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing' | null>;
   loadSession(sessionId: string): Promise<SessionDirectorRow | 'missing' | null>;
   loadScenario(scenarioId: string): Promise<ScenarioRow | null>;
   loadTriggers(sessionId: string): Promise<TriggerRow[]>;
@@ -86,6 +127,8 @@ export interface DirectorStore {
   loadTeams(scenarioId: string): Promise<Array<{ name: string }>>;
   loadMemberships(sessionId: string): Promise<Array<{ user_id: string; team_name: string }>>;
   loadUpcoming(scenarioId: string, minute: number): Promise<UpcomingInject[]>;
+  /** Validated cast. Production uses `getStakeholders`. */
+  loadStakeholders?(scenarioId: string): Promise<DirectorPerson[]>;
   saveSeed(sessionId: string, seed: string): Promise<'ok' | 'missing'>;
   insertProposal(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'>;
   insertEvent(row: Record<string, unknown>): Promise<void>;
@@ -98,6 +141,7 @@ export function resetDirectorProcessState(): void {
   warnedKinds.clear();
   scenarioCache.clear();
   sessionCache.clear();
+  resetDirectorRuntime();
 }
 
 export async function runDirector(
@@ -107,10 +151,18 @@ export async function runDirector(
   const enabled = options.enabled ?? env.directorEnabled;
   const aiEnabled = options.aiEnabled ?? env.aiEnabled;
   if (!enabled || !aiEnabled || directorUnavailable) return;
-  if (input.directorMode === 'off' || sessionCache.get(input.sessionId)?.mode === 'off') return;
+  if (
+    !input.trainerRequest &&
+    (input.directorMode === 'off' || sessionCache.get(input.sessionId)?.mode === 'off')
+  ) {
+    return;
+  }
+  if (directorIsPaused(input.sessionId)) return;
 
   const store = options.store ?? defaultStore;
+  const now = options.now?.() ?? Date.now();
   const history = await store.loadHistory(input.sessionId);
+  if (history == null) return;
   if (history === 'missing') {
     noteUnavailable(new Error('director_proposals missing'));
     return;
@@ -126,10 +178,11 @@ export async function runDirector(
     },
     last ? { minute: last.minute, signal_ids: seen } : null,
   );
-  const cachedScenario = scenarioCache.get(input.scenarioId);
+  const cachedScenario = freshScenario(input.scenarioId, now);
   const duration = input.durationMinutes ?? cachedScenario?.duration ?? null;
   const knownMode = input.directorMode ?? sessionCache.get(input.sessionId)?.mode ?? null;
   if (
+    !input.trainerRequest &&
     !wakeNeedsSessionData({
       minute: input.elapsedMinutes,
       duration,
@@ -147,7 +200,7 @@ export async function runDirector(
 
   const session = await rememberSession(input.sessionId, store);
   if (session == null) return;
-  const scenario = await rememberScenario(input.scenarioId, store);
+  const scenario = await rememberScenario(input.scenarioId, store, now);
   if (!scenario || scenario.category !== 'social_media_crisis') return;
   const settings = readDirectorSettings(scenario.initial);
   const mode = resolveMode(session.director_mode, settings.mode);
@@ -167,6 +220,9 @@ export async function runDirector(
     store.loadUpcoming(input.scenarioId, input.elapsedMinutes),
   ]);
   const proposals = history;
+  const people = store.loadStakeholders
+    ? await store.loadStakeholders(input.scenarioId)
+    : await loadPublishPeople(input.scenarioId);
 
   const turn = buildTurn({
     input,
@@ -181,14 +237,22 @@ export async function runDirector(
     teams,
     memberships,
     upcoming,
+    people,
   });
-  const draft = await runDirectorTurn(turn, defaultClient);
+  const draft = await runDirectorTurn(turn, options.client ?? defaultClient);
   if (!draft.log || !draft.status || !draft.wake_reason || !draft.mode) return;
+  if (options.wakeToken != null && !wakeOwns(input.sessionId, options.wakeToken)) return;
+  const latest = await store.loadSession(input.sessionId);
+  const modeNow =
+    latest == null || latest === 'missing'
+      ? 'off'
+      : resolveMode(latest.director_mode, settings.mode);
+  const shaped = applyLiveMode(draft, modeNow);
   const seq = nextSeq(proposals);
-  const stored = await insertProposal(store, input.sessionId, seq, turn, draft);
+  const stored = await insertProposal(store, input.sessionId, seq, turn, shaped);
   if (!stored) return;
-  emitProposal(input.trainerId, input.sessionId, seq, draft);
-  void recordDirectorEvent(store, input.sessionId, seq, draft);
+  emitProposal(input.trainerId, input.sessionId, seq, shaped);
+  void recordDirectorEvent(store, input.sessionId, seq, shaped);
 }
 
 export async function replayStoredSession(sessionId: string): Promise<
@@ -293,6 +357,7 @@ function buildTurn(parts: {
   teams: Array<{ name: string }>;
   memberships: Array<{ user_id: string; team_name: string }>;
   upcoming: UpcomingInject[];
+  people: DirectorPerson[];
 }): DirectorTurnInput {
   const { input, scenario, settings } = parts;
   const roster = rosterOf(parts.teams, scenario.initial, parts.memberships);
@@ -343,7 +408,7 @@ function buildTurn(parts: {
       protectedTeams: settings.protected,
       allowedApps: settings.apps,
       roleIds: parsePlayerRoles(scenario.initial.player_roles).map((role) => role.role_id),
-      stakeholders: readPeople(scenario.initial),
+      stakeholders: parts.people.map((person) => ({ id: person.id, name: person.name })),
       npcs: readNpcs(scenario.initial),
       orgs: readOrgs(scenario.initial).map((org) => org.name),
       brief: readBrief(scenario),
@@ -370,6 +435,7 @@ function buildTurn(parts: {
     seed: parts.seed,
     wakeSeq: nextSeq(parts.proposals),
     budgetKey: `director:${input.sessionId}`,
+    request: input.trainerRequest ?? null,
     lastQuiet:
       last && last.status === 'no_action'
         ? { minute: last.minute, reason: last.reason ?? '' }
@@ -387,6 +453,7 @@ function observationOf(
     deliveryRows: DeliveryFact[];
     upcoming: UpcomingInject[];
     settings: DirectorSettings;
+    people: DirectorPerson[];
   },
 ): DirectorTurnInput['observation'] {
   const facts = readFacts(scenario.initial);
@@ -429,9 +496,12 @@ function observationOf(
       ).length,
     })),
     signals: [],
-    cast: readPeople(scenario.initial),
+    cast: parts.people.map((person) => ({ id: person.id, name: person.name })),
     npcs: readNpcs(scenario.initial).map((npc) => ({ handle: npc.handle })),
-    protectedTeams: parts.settings.protected,
+      protectedTeams: [
+        ...parts.settings.protected,
+        ...snoozedTeams(input.sessionId, Date.now()),
+      ],
     busyTeams: roster
       .filter(
         (team) => (unansweredByTeam(parts.deliveryRows)[slugifyTeamName(team.name)] ?? 0) >= 3,
@@ -502,9 +572,15 @@ function limitsFor(settings: DirectorSettings): DirectorLimits {
 }
 
 function resolveMode(sessionMode: string | null, scenarioMode: string | null): DirectorMode {
-  const raw = sessionMode || scenarioMode || 'auto';
-  if (raw === 'off' || raw === 'suggest' || raw === 'auto') return raw;
-  return 'auto';
+  return resolveDirectorMode(
+    {
+      enabled: env.directorEnabled,
+      modeMax: env.directorModeMax,
+      defaultMode: env.directorDefaultMode,
+    },
+    { mode: sessionMode },
+    { mode: scenarioMode },
+  );
 }
 
 function exposureFrom(rows: ProposalHistory[], statuses: Set<string>): ExposureEvent[] {
@@ -628,7 +704,7 @@ function deliveriesFor(comms: CommsState, team: string, _minute: number) {
   );
 }
 
-async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'> {
+async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing' | null> {
   try {
     const { data, error } = await supabaseAdmin
       .from('director_proposals')
@@ -641,7 +717,7 @@ async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'miss
       warnOnce(`history:${error.code ?? 'unknown'}`, error, 'director history was not read', {
         sessionId,
       });
-      return [];
+      return null;
     }
     return (data ?? []).map(proposalHistoryFrom);
   } catch (err) {
@@ -649,7 +725,7 @@ async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'miss
     warnOnce(`history:${codeOf(err) ?? 'throw'}`, err, 'director history was not read', {
       sessionId,
     });
-    return [];
+    return null;
   }
 }
 
@@ -801,12 +877,13 @@ interface TriggerRow {
   source_teams: string[];
   target_teams: string[];
   origin: string;
+  minute?: number;
 }
 
 async function loadTriggers(sessionId: string): Promise<TriggerRow[]> {
   const { data, error } = await supabaseAdmin
     .from('inject_triggers')
-    .select('inject_key, cause_depth, source_teams, target_teams, origin')
+    .select('inject_key, cause_depth, source_teams, target_teams, origin, minute')
     .eq('session_id', sessionId)
     .limit(500);
   if (error || !data) return [];
@@ -816,6 +893,7 @@ async function loadTriggers(sessionId: string): Promise<TriggerRow[]> {
     source_teams: asStrings(row.source_teams),
     target_teams: asStrings(row.target_teams),
     origin: String(row.origin ?? ''),
+    minute: Number(row.minute ?? 0),
   }));
 }
 
@@ -978,20 +1056,44 @@ async function insertProposal(
     inject_id: null,
     tokens_in: draft.tokens_in,
     tokens_out: draft.tokens_out,
+    auto_publish_at: countdownFor(draft),
   });
   if (saved === 'missing') {
     noteUnavailable(new Error('director_proposals missing'));
     return false;
   }
+  if (saved === 'ok' && draft.status === 'proposed') noteProposalPending(sessionId);
   return saved === 'ok';
 }
 
-async function insertProposalRow(
-  row: Record<string, unknown>,
-): Promise<'ok' | 'missing' | 'error'> {
+function countdownFor(draft: DirectorDraft): string | null {
+  if (draft.status !== 'proposed' || !draft.proposal || !draft.mode) return null;
+  if (!proposalNeedsCountdown(draft.mode, draft.proposal.severity, env.directorAutoMaxSeverity)) {
+    return null;
+  }
+  return new Date(Date.now() + env.directorAutoGraceSeconds * 1000).toISOString();
+}
+
+async function insertProposalRow(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'> {
+  const first = await insertProposalOnce(row);
+  if (first !== 'column') return first;
+  if (!('auto_publish_at' in row)) return 'error';
+  warnOnce('auto_publish_at', new Error('auto_publish_at'), 'director countdown column is missing', {
+    sessionId: row.session_id,
+  });
+  const { auto_publish_at: _dropped, ...rest } = row;
+  const second = await insertProposalOnce(rest);
+  return second === 'column' ? 'error' : second;
+}
+
+async function insertProposalOnce(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error' | 'column'> {
   const { error } = await supabaseAdmin.from('director_proposals').insert(row);
   if (!error) return 'ok';
-  if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+  if (SCHEMA_CODES.has(error.code ?? '')) {
+    const message = `${error.message ?? ''} ${error.details ?? ''}`;
+    if (/auto_publish_at/i.test(message)) return 'column';
+    return 'missing';
+  }
   warnOnce(`insert:${error.code ?? 'unknown'}`, error, 'director proposal was not stored', {
     sessionId: row.session_id,
   });
@@ -1159,14 +1261,35 @@ async function rememberSession(
   return loaded;
 }
 
+function freshScenario(scenarioId: string, now: number): ScenarioRow | null {
+  const entry = scenarioCache.get(scenarioId);
+  if (!entry) return null;
+  if (now - entry.at >= DIRECTOR_SCENARIO_CACHE_MS) {
+    scenarioCache.delete(scenarioId);
+    return null;
+  }
+  return entry.row;
+}
+
+/** Drop one scenario. Session start calls this so an edit is visible to the new run. */
+export function invalidateDirectorScenario(scenarioId: string): void {
+  scenarioCache.delete(scenarioId);
+}
+
+/** Drop the resolved mode. A mode switch must not leave `off` stuck until restart. */
+export function invalidateDirectorSession(sessionId: string): void {
+  sessionCache.delete(sessionId);
+}
+
 async function rememberScenario(
   scenarioId: string,
   store: DirectorStore,
+  now: number,
 ): Promise<ScenarioRow | null> {
-  const cached = scenarioCache.get(scenarioId);
+  const cached = freshScenario(scenarioId, now);
   if (cached) return cached;
   const loaded = await store.loadScenario(scenarioId);
-  if (loaded) scenarioCache.set(scenarioId, loaded);
+  if (loaded) scenarioCache.set(scenarioId, { row: loaded, at: now });
   return loaded;
 }
 
@@ -1180,6 +1303,7 @@ const defaultStore: DirectorStore = {
   loadTeams,
   loadMemberships,
   loadUpcoming,
+  loadStakeholders: loadPublishPeople,
   saveSeed,
   insertProposal: insertProposalRow,
   insertEvent,
@@ -1291,17 +1415,6 @@ function readClaims(initial: Record<string, unknown>): string[] {
     .slice(0, 5);
 }
 
-function readPeople(initial: Record<string, unknown>): Array<{ id: string; name: string }> {
-  const rows = Array.isArray(initial.stakeholders) ? initial.stakeholders : [];
-  const people: Array<{ id: string; name: string }> = [];
-  for (const item of rows) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { id?: string; name?: string };
-    if (row.id && row.name) people.push({ id: row.id, name: row.name });
-  }
-  return people;
-}
-
 function readNpcs(initial: Record<string, unknown>): Array<{ handle: string; name?: string }> {
   const raw = initial.personas ?? initial.npc_personas ?? initial.social_personas;
   if (!Array.isArray(raw)) return [];
@@ -1363,4 +1476,457 @@ function same(a: string, b: string): boolean {
 
 function rank(severity: 'low' | 'medium' | 'high'): number {
   return severity === 'high' ? 3 : severity === 'medium' ? 2 : 1;
+}
+
+export function scheduleDirectorWake(
+  input: DirectorTickInput,
+  options: DirectorRunOptions = {},
+): boolean {
+  const token = beginWake(input.sessionId);
+  if (token == null) return false;
+  let released = false;
+  const clock: { timer?: ReturnType<typeof setTimeout> } = {};
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (clock.timer) clearTimeout(clock.timer);
+    endWake(input.sessionId, token);
+  };
+  clock.timer = setTimeout(release, options.wakeLockMs ?? DIRECTOR_WAKE_LOCK_MS);
+  clock.timer.unref?.();
+  void runDirector(input, { ...options, wakeToken: token })
+    .catch((err) => {
+      logger.warn({ err, sessionId: input.sessionId }, 'AI director wake failed');
+    })
+    .finally(release);
+  return true;
+}
+
+/**
+ * One read at scheduler start. Later ticks query only sessions this found pending,
+ * plus any proposal inserted afterwards.
+ */
+export async function discoverPendingDirectorProposals(): Promise<void> {
+  if (directorUnavailable || !env.directorEnabled) return;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('director_proposals')
+      .select('session_id')
+      .eq('status', 'proposed')
+      .limit(500);
+    if (error) {
+      if (SCHEMA_CODES.has(error.code ?? '')) noteUnavailable(error);
+      else {
+        warnOnce(`discover:${error.code ?? 'unknown'}`, error, 'director pending rows were not discovered');
+      }
+      return;
+    }
+    const counts = new Map<string, number>();
+    for (const row of data ?? []) {
+      const id = String(row.session_id ?? '');
+      if (!id) continue;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    replacePendingCounts(counts);
+  } catch (err) {
+    if (schemaError(err)) noteUnavailable(err);
+    else warnOnce('discover:throw', err, 'director pending rows were not discovered');
+  }
+}
+
+/** Cheap write at session start. The first director tick still fills a missing seed. */
+export async function ensureDirectorSeed(sessionId: string, scenarioId: string): Promise<void> {
+  invalidateDirectorScenario(scenarioId);
+  if (!env.directorEnabled || directorUnavailable) return;
+  const seed = directorSeed(sessionId, scenarioId, env.directorSeedSalt);
+  const saved = await saveSeed(sessionId, seed.toString());
+  if (saved === 'missing') noteUnavailable(new Error('director_seed missing'));
+}
+
+export async function sweepDirectorSession(input: {
+  sessionId: string;
+  elapsedMinutes: number;
+  trainerId: string | null;
+  remainingCap: number;
+}): Promise<void> {
+  if (directorUnavailable || !env.directorEnabled) return;
+  try {
+    await directorCommands.sweep(input);
+  } catch (err) {
+    logger.warn({ err, sessionId: input.sessionId }, 'AI director sweep failed');
+  }
+}
+
+const PROPOSAL_COLUMNS =
+  'id, session_id, seq, minute, status, mode, proposal, signals, guardrails, consistency, fairness, auto_publish_at, created_at, fairness_override, inject_id, raw_output';
+
+export const directorCommands: DirectorCommands = createDirectorCommands({
+  now: () => new Date(),
+  settings: () => ({
+    enabled: env.directorEnabled,
+    modeMax: env.directorModeMax,
+    defaultMode: env.directorDefaultMode,
+    autoMaxSeverity: env.directorAutoMaxSeverity,
+    graceSeconds: env.directorAutoGraceSeconds,
+    ttlMinutes: env.directorSuggestionTtlMinutes,
+    tolerance: env.directorFairnessTolerance,
+    budgetLimit: env.directorAiBudgetPerSessionHour,
+    crossTeam: {
+      maxPerTeamWindow: env.crossTeamMaxPerTeamWindow,
+      windowMinutes: env.crossTeamWindowMinutes,
+      pressureMaxDeliveries10Min: env.teamPressureMaxDeliveries10Min,
+      loopWindowMinutes: env.crossTeamLoopWindowMinutes,
+      maxCascadeDepth: env.crossTeamMaxCascadeDepth,
+    },
+  }),
+  budgetUsed(sessionId) {
+    return budgetStatus(`director:${sessionId}`, env.directorAiBudgetPerSessionHour).used;
+  },
+  loadSession: loadSessionDirector,
+  scenarioMode: loadScenarioMode,
+  listProposals: (sessionId) => loadConsoleProposals(sessionId, null),
+  dueProposals: async (sessionId, nowIso, createdBeforeIso) => {
+    const rows = await loadConsoleProposals(sessionId, { nowIso, createdBeforeIso });
+    if (rows === 'missing') noteUnavailable(new Error('director_proposals missing'));
+    return rows;
+  },
+  resolvedMode: resolveLiveMode,
+  stakeholderNames: loadStakeholderNames,
+  updateProposal: updateConsoleProposal,
+  setSessionMode: async (sessionId, mode) => {
+    const { error } = await supabaseAdmin
+      .from('sessions')
+      .update({ director_mode: mode })
+      .eq('id', sessionId);
+    if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    if (error) {
+      warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', { sessionId });
+      return 'error';
+    }
+    invalidateDirectorSession(sessionId);
+    return 'ok';
+  },
+  expirePending: async (sessionId) => {
+    const { data, error } = await supabaseAdmin
+      .from('director_proposals')
+      .update({ status: 'expired', auto_publish_at: null, updated_at: new Date().toISOString() })
+      .eq('session_id', sessionId)
+      .eq('status', 'proposed')
+      .select('id');
+    if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    if (error) return [];
+    return (data ?? []).map((row) => String(row.id));
+  },
+  convertCountdowns: async (sessionId) => {
+    const { data, error } = await supabaseAdmin
+      .from('director_proposals')
+      .update({ auto_publish_at: null, updated_at: new Date().toISOString() })
+      .eq('session_id', sessionId)
+      .eq('status', 'proposed')
+      .not('auto_publish_at', 'is', null)
+      .select('id');
+    if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    if (error) return [];
+    return (data ?? []).map((row) => String(row.id));
+  },
+  publishFacts: factsForPublish,
+  insertInject: async (row) => {
+    const { data, error } = await supabaseAdmin.from('scenario_injects').insert(row).select('id').maybeSingle();
+    if (error || !data) {
+      logger.warn({ err: error }, 'director inject was not created');
+      return null;
+    }
+    return { id: String(data.id) };
+  },
+  publishInject: async (injectId, sessionId, userId) => {
+    const { io } = await import('../../index.js');
+    await publishInjectToSession(injectId, sessionId, userId, io, { awaitDelivery: true });
+  },
+  recordTrigger: (input) => recordInjectTrigger(input),
+  emit: (trainerId, type, data) => {
+    if (!trainerId) return;
+    try {
+      getWebSocketService().emitToUser(trainerId, {
+        type,
+        data,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      /* websocket is optional */
+    }
+  },
+  requestWake: requestDirectorWake,
+});
+
+async function requestDirectorWake(
+  sessionId: string,
+  actorId: string,
+  body: { team?: string; hint?: string },
+): Promise<CommandResult> {
+  if (directorIsPaused(sessionId)) return { ok: false, status: 409, error: 'AI director is paused' };
+  const session = await loadSessionDirector(sessionId);
+  if (session === 'missing') return { ok: false, status: 503, error: 'AI director is not available' };
+  if (!session) return { ok: false, status: 404, error: 'Session not found' };
+  const scenarioMode = await loadScenarioMode(session.scenarioId);
+  const mode = resolveDirectorMode(
+    {
+      enabled: env.directorEnabled,
+      modeMax: env.directorModeMax,
+      defaultMode: env.directorDefaultMode,
+    },
+    { mode: session.directorMode },
+    { mode: scenarioMode },
+  );
+  if (mode === 'off') return { ok: false, status: 409, error: 'AI director is off' };
+  const token = beginWake(sessionId);
+  if (token == null) {
+    return { ok: false, status: 409, error: 'AI director is already working' };
+  }
+  try {
+    await runDirector(
+      {
+        sessionId,
+        scenarioId: session.scenarioId,
+        trainerId: session.trainerId ?? actorId,
+        status: 'in_progress',
+        elapsedMinutes: session.elapsedMinutes,
+        comms: null,
+        trainerRequest: body,
+      },
+      { wakeToken: token },
+    );
+    return { ok: true, status: 200, body: { data: { requested: true } } };
+  } finally {
+    endWake(sessionId, token);
+  }
+}
+
+async function resolveLiveMode(sessionId: string): Promise<DirectorMode | 'missing'> {
+  if (!env.directorEnabled || directorUnavailable) return 'off';
+  const session = await loadSessionDirector(sessionId);
+  if (session === 'missing') return 'missing';
+  if (!session) return 'off';
+  const scenarioMode = await loadScenarioMode(session.scenarioId);
+  return resolveDirectorMode(
+    {
+      enabled: env.directorEnabled,
+      modeMax: env.directorModeMax,
+      defaultMode: env.directorDefaultMode,
+    },
+    { mode: session.directorMode },
+    { mode: scenarioMode },
+  );
+}
+
+async function loadStakeholderNames(scenarioId: string): Promise<Record<string, string>> {
+  const { getStakeholders } = await import('../stakeholderService.js');
+  const people = await getStakeholders(scenarioId);
+  return Object.fromEntries(people.map((person) => [person.id, person.name]));
+}
+
+async function loadSessionDirector(sessionId: string): Promise<SessionDirector | 'missing' | null> {
+  const { data, error } = await supabaseAdmin
+    .from('sessions')
+    .select('id, scenario_id, trainer_id, director_mode, start_time')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error) {
+    if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    return null;
+  }
+  if (!data || typeof data.scenario_id !== 'string') return null;
+  return {
+    id: sessionId,
+    scenarioId: data.scenario_id,
+    trainerId: typeof data.trainer_id === 'string' ? data.trainer_id : null,
+    directorMode: (data.director_mode as string | null) ?? null,
+    elapsedMinutes: crisisElapsedMinutes(
+      typeof data.start_time === 'string' ? data.start_time : null,
+    ),
+  };
+}
+
+async function loadScenarioMode(scenarioId: string): Promise<string | null> {
+  const scenario = await rememberScenario(scenarioId, defaultStore, Date.now());
+  return scenario ? readDirectorSettings(scenario.initial).mode : null;
+}
+
+async function loadConsoleProposals(
+  sessionId: string,
+  due: { nowIso: string; createdBeforeIso: string } | null,
+): Promise<ConsoleProposal[] | 'missing'> {
+  let query = supabaseAdmin
+    .from('director_proposals')
+    .select(PROPOSAL_COLUMNS)
+    .eq('session_id', sessionId)
+    .order('seq', { ascending: true })
+    .limit(due ? 20 : 200);
+  if (due) query = query.eq('status', 'proposed');
+  const { data, error } = await query;
+  if (error) {
+    if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    warnOnce(`console:${error.code ?? 'unknown'}`, error, 'director proposals were not read', {
+      sessionId,
+    });
+    return [];
+  }
+  const mapped = (data ?? []).map(consoleProposalFrom);
+  if (!due) return mapped;
+  const dueAt = Date.parse(due.nowIso);
+  const createdBefore = Date.parse(due.createdBeforeIso);
+  return mapped.filter((item) => {
+    if (item.autoPublishAt) return Date.parse(item.autoPublishAt) <= dueAt;
+    return Date.parse(item.createdAt) <= createdBefore;
+  });
+}
+
+async function updateConsoleProposal(
+  id: string,
+  expectStatus: string,
+  patch: ProposalPatch,
+): Promise<'updated' | 'lost' | 'missing'> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.status != null) row.status = patch.status;
+  if (patch.proposal !== undefined) row.proposal = patch.proposal;
+  if (patch.guardrails != null) row.guardrails = patch.guardrails;
+  if (patch.reason !== undefined) row.veto_reason = patch.reason;
+  if (patch.decidedBy !== undefined) row.decided_by = patch.decidedBy;
+  if (patch.decidedAt !== undefined) row.decided_at = patch.decidedAt;
+  if (patch.vetoReason !== undefined) row.veto_reason = patch.vetoReason;
+  if (patch.fairnessOverride != null) row.fairness_override = patch.fairnessOverride;
+  if (patch.injectId !== undefined) row.inject_id = patch.injectId;
+  if (patch.editBefore !== undefined) row.edit_before = patch.editBefore;
+  if (patch.editAfter !== undefined) row.edit_after = patch.editAfter;
+  if (patch.autoPublishAt !== undefined) row.auto_publish_at = patch.autoPublishAt;
+  const { data, error } = await supabaseAdmin
+    .from('director_proposals')
+    .update(row)
+    .eq('id', id)
+    .eq('status', expectStatus)
+    .select('id');
+  if (error) {
+    if (SCHEMA_CODES.has(error.code ?? '')) return 'missing';
+    logger.warn({ err: error, id }, 'director proposal was not updated');
+    return 'lost';
+  }
+  return (data?.length ?? 0) > 0 ? 'updated' : 'lost';
+}
+
+function consoleProposalFrom(row: Record<string, unknown>): ConsoleProposal {
+  const consistency = (row.consistency ?? null) as { status?: string } | null;
+  const raw = (row.raw_output ?? null) as { reason?: string } | null;
+  const mode = row.mode === 'auto' || row.mode === 'suggest' ? row.mode : null;
+  return {
+    id: String(row.id),
+    sessionId: String(row.session_id),
+    seq: Number(row.seq),
+    minute: Number(row.minute),
+    status: String(row.status),
+    mode,
+    reason: typeof raw?.reason === 'string' ? raw.reason : null,
+    proposal: (row.proposal as ConsoleProposal['proposal']) ?? null,
+    signals: Array.isArray(row.signals) ? (row.signals as ConsoleProposal['signals']) : [],
+    guardrails: Array.isArray(row.guardrails) ? (row.guardrails as ConsoleProposal['guardrails']) : [],
+    consistencyStatus: typeof consistency?.status === 'string' ? consistency.status : null,
+    fairness: (row.fairness as ConsoleProposal['fairness']) ?? null,
+    autoPublishAt: row.auto_publish_at ? String(row.auto_publish_at) : null,
+    createdAt: String(row.created_at ?? new Date(0).toISOString()),
+    fairnessOverride: row.fairness_override === true,
+    injectId: row.inject_id ? String(row.inject_id) : null,
+  };
+}
+
+async function factsForPublish(sessionId: string, minute: number): Promise<PublishFacts | null> {
+  const session = await loadSessionDirector(sessionId);
+  if (session === 'missing' || session == null) return null;
+  const scenario = await rememberScenario(session.scenarioId, defaultStore, Date.now());
+  if (!scenario) return null;
+  const [crossTeam, deliveryRows, teams, memberships, history, people] = await Promise.all([
+    loadCrossTeamFacts({
+      sessionId,
+      scenarioId: session.scenarioId,
+      elapsedMinutes: minute,
+    }),
+    loadDeliveries(sessionId, minute),
+    loadTeams(session.scenarioId),
+    loadMemberships(sessionId),
+    loadHistory(sessionId),
+    loadPublishPeople(session.scenarioId),
+  ]);
+  if (history == null || history === 'missing') return null;
+  const settings = readDirectorSettings(scenario.initial);
+  const roster = rosterOf(teams, scenario.initial, memberships);
+  const limits = limitsFor(settings);
+  const scaled = capsFor(limits.intensity, { per15: limits.per15, perTeam30: limits.perTeam30 });
+  const deliveries: TeamDelivery[] = crossTeam.deliveries;
+  const mode = resolveMode(session.directorMode, settings.mode);
+  const guardMode = mode === 'off' ? 'suggest' : mode;
+  const guard: GuardContext = {
+    minute,
+    duration: scenario.duration,
+    mode: guardMode,
+    intensity: limits.intensity,
+    per15: scaled.per15,
+    perTeam30: scaled.perTeam30,
+    maxSeverity: limits.maxSeverity,
+    pressureMax: limits.pressureMax,
+    teams: roster,
+    protectedTeams: [...settings.protected, ...snoozedTeams(sessionId, Date.now())],
+    allowedApps: settings.apps,
+    roleIds: parsePlayerRoles(scenario.initial.player_roles).map((role) => role.role_id),
+    stakeholders: people.map((person) => ({ id: person.id, name: person.name })),
+    npcs: readNpcs(scenario.initial),
+    orgs: readOrgs(scenario.initial).map((org) => org.name),
+    brief: readBrief(scenario),
+    facts: readFacts(scenario.initial),
+    recentTexts: deliveryRows
+      .filter((row) => minute - row.minute <= 30)
+      .flatMap((row) => row.teams.map((team) => ({ team, minute: row.minute, title: row.title, content: row.content }))),
+    upcoming: [],
+    capEvents: publishedCapEvents(
+      history.map((row) => ({
+        status: row.status,
+        minute: row.minute,
+        proposal:
+          row.kind && row.severity
+            ? { kind: row.kind, severity: row.severity, target_teams: row.teams }
+            : null,
+      })),
+    ),
+    deliveries,
+    unansweredByTeam: unansweredByTeam(deliveryRows),
+    priorLowMediumTeams: priorLightTeams(exposureFrom(history, RECEIVED_STATUSES)),
+    authoredKeysByTeam: authoredKeys(deliveryRows),
+    signals: [],
+    fairness: fairnessState(roster, exposureFrom(history, RECEIVED_STATUSES), {
+      tolerance: limits.tolerance,
+      minute,
+      duration: scenario.duration,
+    }),
+    consistencyEnabled: limits.consistencyEnabled,
+    consistency: null,
+  };
+  return {
+    scenarioId: session.scenarioId,
+    guard,
+    recent: crossTeam.recent,
+    deliveries,
+    triggersByKey: crossTeam.triggersByKey,
+    people,
+    npcs: readNpcs(scenario.initial),
+    stakeholderNames: Object.fromEntries(people.map((person) => [person.id, person.name])),
+  };
+}
+
+async function loadPublishPeople(scenarioId: string): Promise<DirectorPerson[]> {
+  const { getStakeholders } = await import('../stakeholderService.js');
+  const people = await getStakeholders(scenarioId);
+  return people.map((person) => ({
+    id: person.id,
+    name: person.name,
+    email: person.email,
+    phone: person.phone,
+    handle: person.handle,
+    organisation: person.organisation,
+  }));
 }

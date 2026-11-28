@@ -20,8 +20,7 @@ export interface AccessUser {
 }
 
 export type AccessResult =
-  | { ok: true; session?: SessionRow }
-  | { ok: false; status: number; error: string };
+  { ok: true; session?: SessionRow } | { ok: false; status: number; error: string };
 
 interface SessionRow {
   id: string;
@@ -63,14 +62,7 @@ export async function assertSessionAccess(
   }
 
   // Otherwise the caller must be a participant of this session.
-  const { data: participant } = await supabaseAdmin
-    .from('session_participants')
-    .select('user_id')
-    .eq('session_id', sessionId)
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (!participant) {
+  if ((await findSessionParticipant(sessionId, user.id)) !== 'yes') {
     return { ok: false, status: 403, error: 'Access denied' };
   }
 
@@ -252,6 +244,25 @@ export async function canTranscribe(user: AccessUser): Promise<boolean> {
     .select('user_id', { count: 'exact', head: true })
     .eq('user_id', user.id);
   return (count ?? 0) > 0;
+}
+
+/**
+ * Whether `userId` has a session_participants row.
+ * A PostgREST error is `'error'`, not "not a participant". Callers that only
+ * need a boolean treat `'error'` the same way they used to treat a failed read.
+ */
+export async function findSessionParticipant(
+  sessionId: string,
+  userId: string,
+): Promise<'yes' | 'no' | 'error'> {
+  const { data, error } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return 'error';
+  return data ? 'yes' : 'no';
 }
 
 /** Ensure the select string always includes the columns the helpers rely on. */

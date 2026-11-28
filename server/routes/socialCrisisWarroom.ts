@@ -79,7 +79,10 @@ import { runWithAbortSignal } from '../services/ai/abortContext.js';
 import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 import { beginCompileCharge, failCompileCharge } from '../services/warroomBuild/compileCharge.js';
 import { SupabaseBuildStore } from '../services/warroomBuild/buildStore.js';
-import { applyCompiledPeaceFeed, crisisBriefForLeakTerms } from '../services/generation/peaceFeedService.js';
+import {
+  applyCompiledPeaceFeed,
+  crisisBriefForLeakTerms,
+} from '../services/generation/peaceFeedService.js';
 import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1117,6 +1120,13 @@ router.post(
     let compileHeartbeatAt: string | null = null;
     if (durableBuildId) {
       try {
+        const existingBuild = await compileBuilds.get(durableBuildId);
+        if (existingBuild?.request.mode === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
+          });
+        }
         const begun = await beginCompileCharge({
           store: compileBuilds,
           buildId: durableBuildId,
@@ -1160,6 +1170,12 @@ router.post(
           return res.status(503).json({
             error: 'Compile could not be claimed. Try again.',
             code: 'COMPILE_UNAVAILABLE',
+          });
+        }
+        if (begun.outcome === 'setup_edit') {
+          return res.status(400).json({
+            error: 'A setup edit build is applied to the existing scenario and is not compiled.',
+            code: 'SETUP_EDIT_BUILD',
           });
         }
         creditLedgerId = begun.ledgerId;
@@ -1462,6 +1478,8 @@ router.post(
           org_name: body.org_name,
           duration: body.duration,
           auto_antagonist: body.auto_antagonist,
+          fact_sheet: initialState.fact_sheet,
+          briefing: typeof payload.scenario.briefing === 'string' ? payload.scenario.briefing : null,
         });
 
         // Charter-derived benchmarks keyed to the four fixed teams (consumed
@@ -1478,7 +1496,10 @@ router.post(
             try {
               storedFeed = (await compileBuilds.getOutputs(durableBuildId)).pages?.peace_period;
             } catch (peaceErr) {
-              logger.warn({ err: peaceErr, buildId: durableBuildId }, 'peace feed output unreadable');
+              logger.warn(
+                { err: peaceErr, buildId: durableBuildId },
+                'peace feed output unreadable',
+              );
             }
           }
           const personas = multiArtifacts ? multiArtifacts.personas : body.personas;

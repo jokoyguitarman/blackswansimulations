@@ -10,6 +10,8 @@ import {
   SocialExecutiveSectionData,
   socialSectionsPresent,
 } from './SocialAARCharts';
+import { AAR_STORED_CAP } from '@shared/crossTeamAar';
+import { CrossTeamSection } from './CrossTeamSection';
 
 const AAR_SECTION_KEYS = [
   'executive',
@@ -30,6 +32,7 @@ const AAR_SECTION_KEYS = [
   'social_executive',
   'social_timeline',
   'comms_responses',
+  'cross_team',
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
@@ -65,6 +68,7 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
   comms_responses: 'Response timeline',
+  cross_team: 'Cross-team cause and effect',
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
@@ -143,6 +147,13 @@ const SECTION_HEADING_STYLES: Array<{
   {
     pattern: /information flow|communications review/i,
     icon: '🔁',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /cause and effect|dependenc/i,
+    icon: '🔗',
     tile: 'bg-accent',
     title: 'text-accent',
     border: 'border-accent/25',
@@ -607,6 +618,42 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
   );
 }
 
+function CommsTimelineTable({ rows }: { rows: unknown[] }) {
+  const shown = rows
+    .filter(
+      (row): row is Record<string, unknown> =>
+        !!row && typeof row === 'object' && !Array.isArray(row),
+    )
+    .slice(0, AAR_STORED_CAP);
+  const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'detail'] as const;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs terminal-text">
+        <thead>
+          <tr className="text-muted border-b border-border">
+            {columns.map((column) => (
+              <th key={column} className="text-left py-1 pr-2">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row, index) => (
+            <tr key={index} className="border-b border-border">
+              {columns.map((column) => (
+                <td key={column} className="py-1 pr-2 max-w-[240px] align-top">
+                  {formatCellValue(row[column])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown }) {
   if (data == null) return null;
   // Social crisis sections get designed renderers (charts, team cards, intel strips)
@@ -624,6 +671,9 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   }
   if (keyName === 'social_recommendations') {
     return null; // the analysis text is the whole section; no raw data panel
+  }
+  if (keyName === 'cross_team') {
+    return <CrossTeamSection data={data} />;
   }
   if (keyName === 'comms_responses' && typeof data === 'object' && !Array.isArray(data)) {
     const obj = data as { response_injects?: unknown; timeline?: unknown; moods?: unknown };
@@ -644,7 +694,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
         {timeline.length > 0 && (
           <div>
             <div className="text-xs terminal-text text-muted mb-1">Timeline</div>
-            <SectionDataDisplay keyName="comms_timeline" data={timeline} />
+            <CommsTimelineTable rows={timeline} />
           </div>
         )}
         {moods.length > 0 && (
@@ -912,8 +962,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       .get(sessionId)
       .then((res) => {
         const cs = (res.data as Record<string, unknown>)?.current_state as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (cs?.heat_meter) setHeatMeter(cs.heat_meter as typeof heatMeter);
       })
       .catch(() => {});

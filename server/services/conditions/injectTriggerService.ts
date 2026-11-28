@@ -335,7 +335,7 @@ function parentKeysOf(metKeys: readonly string[]): string[] {
   return out;
 }
 
-interface GuardFacts {
+export interface GuardFacts {
   roster: CrossTeamTeam[];
   recent: RecentCrossTeamTrigger[];
   triggersByKey: Record<string, DepthTrigger>;
@@ -391,10 +391,22 @@ async function loadGuardFacts(input: {
   elapsedMinutes: number;
   ordered: readonly ConditionalGuardItem[];
 }): Promise<GuardFacts> {
-  const needsRoles = input.ordered.some((item) =>
-    item.met_keys.some((key) => key.includes('|role=')),
-  );
-  const roster = await loadRoster(input.scenarioId, needsRoles);
+  return loadCrossTeamFacts({
+    sessionId: input.sessionId,
+    scenarioId: input.scenarioId,
+    elapsedMinutes: input.elapsedMinutes,
+    needsRoles: input.ordered.some((item) => item.met_keys.some((key) => key.includes('|role='))),
+  });
+}
+
+/** Trigger history and pressure deliveries, shared by the scheduler and the director. */
+export async function loadCrossTeamFacts(input: {
+  sessionId: string;
+  scenarioId: string;
+  elapsedMinutes: number;
+  needsRoles?: boolean;
+}): Promise<GuardFacts> {
+  const roster = await loadRoster(input.scenarioId, input.needsRoles === true);
   const triggers = await loadTriggers(input.sessionId);
   const triggersByKey: Record<string, DepthTrigger> = {};
   const recent: RecentCrossTeamTrigger[] = [];
@@ -425,33 +437,51 @@ async function loadGuardFacts(input: {
   return { roster, recent, triggersByKey, deliveries };
 }
 
-async function loadRoster(scenarioId: string, needsRoles: boolean): Promise<CrossTeamTeam[]> {
-  const { data, error } = await activeTeams(
-    supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
-  );
-  if (error || !data) return [];
+/** Team names plus the role ids that belong to each team. The only place role ids are attached. */
+export function rosterWithRoles(
+  teamNames: readonly string[],
+  roles: readonly { team_name: string; role_id: string }[],
+): CrossTeamTeam[] {
   const teams: CrossTeamTeam[] = [];
-  for (const row of data) {
-    const name = String(row.team_name ?? '').trim();
-    if (name) teams.push({ name });
+  for (const name of teamNames) {
+    const trimmed = name.trim();
+    if (trimmed && !teams.some((team) => team.name === trimmed)) teams.push({ name: trimmed });
   }
-  if (!needsRoles) return teams;
-  const { data: scenario, error: scenarioError } = await supabaseAdmin
-    .from('scenarios')
-    .select('initial_state')
-    .eq('id', scenarioId)
-    .maybeSingle();
-  if (scenarioError || !scenario) return teams;
-  const initial = scenario.initial_state as { player_roles?: unknown } | null;
-  for (const role of parsePlayerRoles(initial?.player_roles)) {
+  for (const role of roles) {
     const team = teams.find((item) => item.name === role.team_name);
     if (!team) {
       teams.push({ name: role.team_name, role_ids: [role.role_id] });
       continue;
     }
-    team.role_ids = [...(team.role_ids ?? []), role.role_id];
+    if (!(team.role_ids ?? []).includes(role.role_id)) {
+      team.role_ids = [...(team.role_ids ?? []), role.role_id];
+    }
   }
   return teams;
+}
+
+export async function loadRoster(
+  scenarioId: string,
+  needsRoles: boolean,
+): Promise<CrossTeamTeam[]> {
+  const { data, error } = await activeTeams(
+    supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+  );
+  if (error || !data) return [];
+  const names: string[] = [];
+  for (const row of data) {
+    const name = String(row.team_name ?? '').trim();
+    if (name) names.push(name);
+  }
+  if (!needsRoles) return rosterWithRoles(names, []);
+  const { data: scenario, error: scenarioError } = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state')
+    .eq('id', scenarioId)
+    .maybeSingle();
+  if (scenarioError || !scenario) return rosterWithRoles(names, []);
+  const initial = scenario.initial_state as { player_roles?: unknown } | null;
+  return rosterWithRoles(names, parsePlayerRoles(initial?.player_roles));
 }
 
 interface TriggerHistoryRow {

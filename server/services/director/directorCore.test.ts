@@ -1051,6 +1051,7 @@ test('a gated director tick reads history only, and a disabled director reads no
     loadTeams: () => boom('teams'),
     loadMemberships: () => boom('memberships'),
     loadUpcoming: () => boom('upcoming'),
+    loadStakeholders: () => boom('stakeholders'),
     saveSeed: () => boom('seed'),
     insertProposal: () => boom('insert'),
     insertEvent: () => boom('event'),
