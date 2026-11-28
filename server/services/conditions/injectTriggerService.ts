@@ -9,6 +9,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { injectKeyOf } from '../../lib/injectKey.js';
+import { activeTeams } from '../../lib/templateRows.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
 import {
   isLedgerSchemaMissing,
@@ -371,10 +372,9 @@ async function loadGuardFacts(input: {
 }
 
 async function loadRoster(scenarioId: string, needsRoles: boolean): Promise<CrossTeamTeam[]> {
-  const { data, error } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name')
-    .eq('scenario_id', scenarioId);
+  const { data, error } = await activeTeams(
+    supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+  );
   if (error || !data) return [];
   const teams: CrossTeamTeam[] = [];
   for (const row of data) {
