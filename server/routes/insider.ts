@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { validate } from '../lib/validation.js';
 import {
   classifyInsiderQuestionWithAI,
@@ -140,9 +141,7 @@ router.post(
           | undefined;
 
         const startTime = (session as Record<string, unknown>).start_time as string | undefined;
-        const elapsedMinutes = startTime
-          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-          : undefined;
+        const elapsedMinutes = startTime ? crisisElapsedMinutes(startTime) : undefined;
 
         const scenarioFull = await supabaseAdmin
           .from('scenarios')
@@ -152,16 +151,13 @@ router.post(
 
         const ctx: InsiderContext = {
           scenarioTitle: (scenarioFull.data as Record<string, unknown> | null)?.title as
-            | string
-            | undefined,
+            string | undefined,
           scenarioDescription: (scenarioFull.data as Record<string, unknown> | null)
             ?.description as string | undefined,
           scenarioBriefing: (scenarioFull.data as Record<string, unknown> | null)?.briefing as
-            | string
-            | undefined,
+            string | undefined,
           scenarioType: (scenarioFull.data as Record<string, unknown> | null)?.category as
-            | string
-            | undefined,
+            string | undefined,
           durationMinutes: (scenarioFull.data as Record<string, unknown> | null)
             ?.duration_minutes as number | undefined,
           knowledge,

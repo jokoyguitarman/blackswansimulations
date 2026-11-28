@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
+import { playerClockHidden } from '../lib/crisisClock';
 import { PAGES_UNASSIGNED } from '@shared/sessionPageCoverage';
 import { ChatInterface } from '../components/Chat/ChatInterface';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
@@ -581,6 +582,8 @@ interface Session {
   scenario_id: string;
   sim_mode?: string | null;
   start_time?: string | null;
+  /** Set only when ENABLE_PEACE_PERIOD is on. Equal to start_time (crisis start). */
+  crisis_starts_at?: string | null;
   current_state?: {
     [key: string]: unknown;
   };
@@ -1165,6 +1168,7 @@ export const SessionView = () => {
     if (!session?.start_time || session.status !== 'in_progress') {
       return null;
     }
+    if (playerClockHidden(session, currentTime.getTime())) return null;
 
     const start = new Date(session.start_time);
     const elapsed = currentTime.getTime() - start.getTime();
@@ -1179,7 +1183,7 @@ export const SessionView = () => {
       seconds,
       totalSeconds: Math.floor(elapsed / 1000),
     };
-  }, [session?.start_time, session?.status, currentTime]);
+  }, [session?.start_time, session?.crisis_starts_at, session?.status, currentTime]);
 
   const loadIncidents = async (sessionId: string) => {
     try {
