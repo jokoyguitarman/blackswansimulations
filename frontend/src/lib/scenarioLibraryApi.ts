@@ -2,6 +2,7 @@
  * Scenario library data — kept out of lib/api.ts on purpose (another agent has that file in
  * flight). Same auth + base-URL conventions as api.ts.
  */
+import type { FrozenBaselineIdentity } from './editModeFlags';
 import { supabase } from './supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -134,11 +135,29 @@ export interface PeekTeam {
   charter?: Record<string, unknown> | null;
 }
 
+export interface SetupEditHistoryEntry {
+  id: string;
+  status: 'open' | 'applying' | 'applied' | 'abandoned' | 'failed' | string;
+  opened_by: string | null;
+  opened_by_admin: boolean;
+  opened_by_name: string | null;
+  edit_number: number | null;
+  counted: boolean;
+  error: string | null;
+  created_at: string;
+  applied_at: string | null;
+  draft_id: string | null;
+  applied_summary: unknown;
+  baseline_identity: FrozenBaselineIdentity | null;
+}
+
 export interface SetupEditAllowance {
   enabled: boolean;
   limit: number;
   used: number;
   remaining: number | null;
+  open_edit: SetupEditHistoryEntry | null;
+  history: SetupEditHistoryEntry[];
 }
 
 /**
@@ -146,17 +165,61 @@ export interface SetupEditAllowance {
  * (migration 274 absent) means the library shows no button. Failures are
  * swallowed so a missing migration does not surface an error.
  */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function parseBaselineIdentity(value: unknown): FrozenBaselineIdentity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const primary = typeof row.primary_org_key === 'string' ? row.primary_org_key.trim() : '';
+  const orgKeys = stringList(row.org_keys);
+  if (!primary || orgKeys.length === 0) return null;
+  return { primary_org_key: primary, org_keys: orgKeys, team_uids: stringList(row.team_uids) };
+}
+
+function parseEditEntry(value: unknown): SetupEditHistoryEntry | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== 'string') return null;
+  return {
+    id: row.id,
+    status: typeof row.status === 'string' ? row.status : 'open',
+    opened_by: typeof row.opened_by === 'string' ? row.opened_by : null,
+    opened_by_admin: row.opened_by_admin === true,
+    opened_by_name: typeof row.opened_by_name === 'string' ? row.opened_by_name : null,
+    edit_number: typeof row.edit_number === 'number' ? row.edit_number : null,
+    counted: row.counted === true,
+    error: typeof row.error === 'string' ? row.error : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : '',
+    applied_at: typeof row.applied_at === 'string' ? row.applied_at : null,
+    draft_id: typeof row.draft_id === 'string' ? row.draft_id : null,
+    applied_summary: row.applied_summary ?? null,
+    baseline_identity: parseBaselineIdentity(row.baseline_identity),
+  };
+}
+
+function parseEditHistory(value: unknown): SetupEditHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(parseEditEntry).filter((row): row is SetupEditHistoryEntry => row != null);
+}
+
 export async function getSetupEditAllowance(id: string): Promise<SetupEditAllowance | null> {
   try {
     const res = await fetch(url(`/api/scenarios/${id}/setup-edits`), { headers: await headers() });
     if (!res.ok) return null;
     const json = (await res.json()) as Partial<SetupEditAllowance>;
+    const history = parseEditHistory(json.history);
+    const open = parseEditEntry(json.open_edit);
     if (json.enabled !== true) {
       return {
         enabled: false,
         limit: typeof json.limit === 'number' ? json.limit : 0,
         used: 0,
         remaining: null,
+        open_edit: null,
+        history: [],
       };
     }
     return {
@@ -164,6 +227,8 @@ export async function getSetupEditAllowance(id: string): Promise<SetupEditAllowa
       limit: typeof json.limit === 'number' ? json.limit : 0,
       used: typeof json.used === 'number' ? json.used : 0,
       remaining: typeof json.remaining === 'number' ? json.remaining : null,
+      open_edit: open,
+      history,
     };
   } catch {
     return null;

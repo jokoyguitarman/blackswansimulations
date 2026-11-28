@@ -9,6 +9,7 @@ import {
 } from '@shared/sessionPageCoverage';
 import { CALL_COVERAGE_INCOMPLETE, type CallCoverage } from '@shared/sessionCallCoverage';
 import { CallCoveragePanel } from './CallCoveragePanel';
+import { LobbySetupNotice } from '../Scenario/SetupEditPanels';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
 import { JoinLinkPanel } from './JoinLinkPanel';
@@ -632,6 +633,8 @@ export const SessionLobby = ({
             </div>
           )}
       </div>
+
+      {isTrainer && <LobbySetupNotice sessionId={sessionId} />}
 
       {isTrainer && (
         <CallCoveragePanel sessionId={sessionId} userId={user?.id} onCoverage={setCallCoverage} />

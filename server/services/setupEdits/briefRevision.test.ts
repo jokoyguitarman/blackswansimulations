@@ -5,6 +5,7 @@ import { emptyBriefDiff, type BriefDiff } from './affectedLayers.js';
 import {
   TRIGGER_CLAMP_MINUTES,
   applyRevisionDecision,
+  rejectSetupRevisions,
   clampTriggerTime,
   filterConditions,
   substituteText,
@@ -283,6 +284,27 @@ describe('brief revision guards', () => {
     );
     assert.equal(rejected.retired, false);
     assert.deepEqual(rejected.active, original);
+  });
+
+  test('rejected revision ids are marked through applyRevisionDecision', () => {
+    const original = { id: 'row-1', title: 'Old', content: 'Old text' };
+    const revision = {
+      inject_id: 'row-1',
+      inject_key: 'leak',
+      layer: 'backbone',
+      decision: 'retire' as const,
+      reason: 'The brief dropped it.',
+      accepted: true,
+      write: 'retire' as const,
+      carried: { escalation: true as const },
+    };
+    const [output] = rejectSetupRevisions([{ revisions: [revision] }], ['row-1']);
+    assert.equal(output.revisions[0].accepted, false);
+    const kept = applyRevisionDecision(original, output.revisions[0]);
+    assert.equal(kept.retired, false);
+    assert.deepEqual(kept.active, original);
+    const untouched = rejectSetupRevisions([{ revisions: [revision] }], ['other']);
+    assert.equal(untouched[0].revisions[0].accepted, true);
   });
 });
 

@@ -3,6 +3,7 @@ import { usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import type { CrisisContext } from '../multiOrgGenerationService.js';
 import { crisisContextFrom, type DecisionContext } from '../multiOrgPipeline.js';
 import type { NPCPersona, SocialInject } from '../socialCrisisGeneratorService.js';
+import { stageOutputFromUnknown } from '../setupEdits/deltaBuildTypes.js';
 import type {
   BuildRequest,
   BuildStage,
@@ -242,9 +243,6 @@ function dimensionLabels(
 
 /** Review payload in the same shape the wizard stores on the draft (§4.4). */
 export function assembleReview(request: BuildRequest, outputs: StageOutputs): ReviewPayload {
-  // The review is assembled from stage outputs. `request` is part of the signature so every
-  // caller passes the frozen build request alongside those outputs.
-  void request;
   const characters = outputs.characters;
   const storyline = outputs.storyline;
   const convergence = outputs.convergence;
@@ -288,5 +286,20 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
     ...(convergence?.team_dependencies
       ? { team_dependencies: convergence.team_dependencies }
       : {}),
+    ...(request.mode === 'setup_edit' ? { setup_edit_review: setupEditReview(outputs) } : {}),
   };
+}
+
+function setupEditReview(outputs: StageOutputs): NonNullable<ReviewPayload['setup_edit_review']> {
+  const stages = (['characters', 'storyline', 'convergence', 'pages'] as const).map((stage) => {
+    const parsed = stageOutputFromUnknown(outputs[stage], stage);
+    return {
+      stage,
+      skipped: parsed.skipped,
+      revisions: parsed.revisions,
+      flags: parsed.flags,
+      generated: parsed.generated,
+    };
+  });
+  return { stages };
 }

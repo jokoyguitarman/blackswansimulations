@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
 import type { BuildRequest } from '../warroomBuild/buildTypes.js';
-import { planRemap, type RemapPlan } from './remapPlanner.js';
+import { planRemap, type OrphanResolution, type RemapPlan } from './remapPlanner.js';
 import type { RemapState } from './remapPlanLoader.js';
 import { computeDelta, type SetupDelta } from './setupDeltaCore.js';
 import {
@@ -11,6 +11,55 @@ import {
 
 export function hashPlan(plan: RemapPlan): string {
   return createHash('sha256').update(canonicalJson(plan)).digest('hex');
+}
+
+export type RecomputedSetupEdit =
+  | { ok: true; baseline: SetupSnapshot; edited: SetupSnapshot; delta: SetupDelta; plan: RemapPlan }
+  | { ok: false; status: number; code: string; error: string };
+
+/**
+ * The delta and remap plan for one open edit. Build start, the dry-run route
+ * and apply all use this. `initial_state` overrides the loaded scenario state
+ * when apply must plan against the row it is about to write.
+ * `draft_input` overrides the saved draft for a dry-run preview and is not stored.
+ */
+export function recomputeSetupEdit(
+  source: SetupEditBuildSource,
+  options?: {
+    resolutions?: Readonly<Record<string, OrphanResolution>>;
+    initial_state?: unknown;
+    draft_input?: unknown;
+  },
+): RecomputedSetupEdit {
+  const baseline = asSnapshot(source.edit.baseline);
+  if (!baseline) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'SETUP_EDIT_NOT_READY',
+      error: 'This edit has no baseline yet.',
+    };
+  }
+  const edited = snapshotFromDraftInput(options?.draft_input ?? source.draft_input, baseline);
+  const delta = computeDelta(baseline, edited);
+  if (delta.empty) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'SETUP_EDIT_EMPTY',
+      error: 'This edit does not change the setup.',
+    };
+  }
+  const plan = planRemap({
+    delta,
+    edited,
+    initial_state: options?.initial_state ?? source.remap.initial_state,
+    teams: source.remap.teams,
+    injects: source.remap.injects,
+    sessions: source.remap.sessions,
+    ...(options?.resolutions ? { resolutions: options.resolutions } : {}),
+  });
+  return { ok: true, baseline, edited, delta, plan };
 }
 
 export interface SetupEditBuildSource {
@@ -38,33 +87,9 @@ export function prepareSetupEditRequest(
   source: SetupEditBuildSource,
   request: BuildRequest,
 ): PreparedSetupEdit {
-  const baseline = asSnapshot(source.edit.baseline);
-  if (!baseline) {
-    return {
-      ok: false,
-      status: 409,
-      code: 'SETUP_EDIT_NOT_READY',
-      error: 'This edit has no baseline yet.',
-    };
-  }
-  const edited = snapshotFromDraftInput(source.draft_input, baseline);
-  const delta = computeDelta(baseline, edited);
-  if (delta.empty) {
-    return {
-      ok: false,
-      status: 400,
-      code: 'SETUP_EDIT_EMPTY',
-      error: 'This edit does not change the setup.',
-    };
-  }
-  const plan = planRemap({
-    delta,
-    edited,
-    initial_state: source.remap.initial_state,
-    teams: source.remap.teams,
-    injects: source.remap.injects,
-    sessions: source.remap.sessions,
-  });
+  const recomputed = recomputeSetupEdit(source);
+  if (!recomputed.ok) return recomputed;
+  const { edited, delta, plan } = recomputed;
   const overlay = requestFromSnapshot(request, edited);
   return {
     ok: true,

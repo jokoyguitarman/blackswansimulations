@@ -16,6 +16,8 @@ export interface BuildRequestDraft {
   pressure_organisations?: unknown[];
   auto_antagonist?: boolean;
   duration?: number;
+  mode?: 'create' | 'setup_edit';
+  setup_edit_id?: string;
 }
 
 export function makeBuildRequest(input: BuildRequestDraft): Record<string, unknown> {
@@ -32,6 +34,8 @@ export function makeBuildRequest(input: BuildRequestDraft): Record<string, unkno
   if (input.org_name) request.org_name = input.org_name;
   if (input.brand_logo_url) request.brand_logo_url = input.brand_logo_url;
   if (input.blueprint != null) request.blueprint = input.blueprint;
+  if (input.mode) request.mode = input.mode;
+  if (input.setup_edit_id) request.setup_edit_id = input.setup_edit_id;
   return request;
 }
 
