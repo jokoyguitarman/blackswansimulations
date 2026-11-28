@@ -20,6 +20,8 @@ export interface ConditionParamSpec {
   enum?: readonly string[];
   min?: number;
   max?: number;
+  /** Trailing parameters may be omitted. */
+  optional?: boolean;
 }
 
 export interface ConditionDefSpec {
@@ -30,6 +32,8 @@ export interface ConditionDefSpec {
   platform: string;
   /** Set on comms keys that accept `|team=`. Role scope is accepted on every prefix. */
   teamScope?: boolean;
+  /** The key is invalid without `|team=` or `|role=`. */
+  requiresScope?: boolean;
   /** Legacy prefixes keep the remainder as one argument, including colons. */
   looseArgs?: boolean;
   label?: string;
@@ -67,7 +71,11 @@ export function placeholderTokens(param: { name: string; type: string }): string
   if (param.type === 'inject_key') return ['inject'];
   if (param.type === 'minutes') return ['N'];
   if (param.type === 'seconds') return ['S'];
-  if (param.type === 'int') return param.name === 'N' ? ['N'] : ['n'];
+  if (param.type === 'int') {
+    if (param.name === 'N') return ['N'];
+    if (param.name === 'n') return ['n'];
+    return [param.name];
+  }
   if (param.type === 'stakeholder') return ['stakeholder'];
   if (param.name === 'channel') return ['channel'];
   if (param.name === 'verdict') return ['verdict'];
@@ -148,19 +156,37 @@ function validateTypedArg(param: ConditionParamSpec, raw: string): string | null
   return raw.trim() === '' ? 'Argument is empty' : null;
 }
 
+function argCountError(params: readonly ConditionParamSpec[], count: number): string | null {
+  if (count > params.length) return `Expected ${params.length} argument(s)`;
+  if (count < params.length && params.slice(count).some((param) => !param.optional)) {
+    return `Expected ${params.length} argument(s)`;
+  }
+  return null;
+}
+
 function splitTypedArgs(
   rest: string,
   params: readonly ConditionParamSpec[],
 ): { args: string[] } | { error: string } {
   const args = rest.split(':');
-  if (args.length !== params.length) {
-    return { error: `Expected ${params.length} argument(s)` };
-  }
-  for (let i = 0; i < params.length; i++) {
+  const countError = argCountError(params, args.length);
+  if (countError) return { error: countError };
+  for (let i = 0; i < args.length; i++) {
     const problem = validateTypedArg(params[i], args[i] ?? '');
     if (problem) return { error: problem };
   }
   return { args };
+}
+
+function scopedPrefix<T extends ConditionDefSpec>(
+  def: T,
+  args: string[],
+  scope?: ConditionScope,
+): ParsedCatalogCondition<T> {
+  if (def.requiresScope && !scope?.team && !scope?.role) {
+    return { error: `MO-COND-010: ${def.id} requires a team or role scope` };
+  }
+  return { def, args, ...(scope ? { scope } : {}) };
 }
 
 export function parseCatalogCondition<T extends ConditionDefSpec>(
@@ -204,13 +230,11 @@ export function parseCatalogCondition<T extends ConditionDefSpec>(
     return { error: `Condition key ${match.id} does not accept a team scope` };
   }
 
-  if (match.looseArgs) {
-    return { def: match, args: [rest], ...(scope ? { scope } : {}) };
-  }
+  if (match.looseArgs) return scopedPrefix(match, [rest], scope);
 
   const split = splitTypedArgs(rest, match.params ?? []);
   if ('error' in split) return { error: split.error };
-  return { def: match, args: split.args, ...(scope ? { scope } : {}) };
+  return scopedPrefix(match, split.args, scope);
 }
 
 function formatScope(scope: ConditionScope | undefined): { suffix: string } | { error: string } {
@@ -254,6 +278,9 @@ export function formatConditionKey(
   if (scope?.team && !def.teamScope) {
     return { error: `Condition key ${def.id} does not accept a team scope` };
   }
+  if (def.requiresScope && !scope?.team && !scope?.role) {
+    return { error: `MO-COND-010: ${def.id} requires a team or role scope` };
+  }
   if (def.looseArgs) {
     const rest = args[0] ?? '';
     if (args.length !== 1 || rest.trim() === '') {
@@ -262,8 +289,9 @@ export function formatConditionKey(
     return { key: `${def.prefix ?? `${def.id}:`}${rest}${formattedScope.suffix}` };
   }
   const params = def.params ?? [];
-  if (args.length !== params.length) return { error: `Expected ${params.length} argument(s)` };
-  for (let i = 0; i < params.length; i++) {
+  const countError = argCountError(params, args.length);
+  if (countError) return { error: countError };
+  for (let i = 0; i < args.length; i++) {
     const problem = validateTypedArg(params[i], args[i] ?? '');
     if (problem) return { error: problem };
   }
