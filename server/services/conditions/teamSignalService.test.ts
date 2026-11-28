@@ -3,7 +3,11 @@ import { after, describe, test } from 'node:test';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { dutiesByTeam, type ObservedAction } from '../teamTasksCore.js';
 import { gradesByTeam, latestActivity, type GradeHit } from './teamSignalsCore.js';
-import { loadTeamSignalFacts, resetTeamSignalAggregatesForTests } from './teamSignalService.js';
+import {
+  ACTIVITY_SCAN_CAP,
+  loadTeamSignalFacts,
+  resetTeamSignalAggregatesForTests,
+} from './teamSignalService.js';
 import { activityMinute } from '../../lib/peaceGate.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 
@@ -85,10 +89,44 @@ const gradeCounts = [
 ];
 
 const chatRows = [
-  { sender_id: COMMS, created_at: '2026-11-28T12:03:00.000Z', type: 'text' },
-  { sender_id: TRAINER, created_at: '2026-11-28T12:40:00.000Z', type: 'text' },
-  { sender_id: PLAYER, created_at: '2026-11-28T12:50:00.000Z', type: 'system' },
+  { session_id: SESSION, sender_id: COMMS, created_at: '2026-11-28T12:03:00.000Z', type: 'text' },
+  { session_id: SESSION, sender_id: TRAINER, created_at: '2026-11-28T12:40:00.000Z', type: 'text' },
+  {
+    session_id: SESSION,
+    sender_id: PLAYER,
+    created_at: '2026-11-28T12:50:00.000Z',
+    type: 'system',
+  },
 ];
+
+interface BuiltQuery {
+  eqs: Array<[string, unknown]>;
+  ins: Array<[string, unknown[]]>;
+  neqs: Array<[string, unknown]>;
+  order?: { column: string; ascending: boolean };
+  limit?: number;
+}
+
+function applyQuery(
+  rows: Array<Record<string, unknown>>,
+  query: BuiltQuery,
+): Array<Record<string, unknown>> {
+  let out = rows.filter((row) => {
+    if (query.eqs.some(([column, value]) => row[column] !== value)) return false;
+    if (query.neqs.some(([column, value]) => row[column] === value)) return false;
+    if (query.ins.some(([column, values]) => !values.includes(row[column]))) return false;
+    return true;
+  });
+  if (query.order) {
+    const { column, ascending } = query.order;
+    out = [...out].sort((a, b) => {
+      const compared = String(a[column] ?? '').localeCompare(String(b[column] ?? ''));
+      return ascending ? compared : -compared;
+    });
+  }
+  if (query.limit != null) out = out.slice(0, query.limit);
+  return out;
+}
 
 const chatMax = [
   { sender_id: COMMS, last_at: '2026-11-28T12:03:00.000Z' },
@@ -121,6 +159,8 @@ function sortedGrades(grades: Record<string, number[]>): Record<string, number[]
 describe('narrowed team-signal queries', () => {
   const selects: string[] = [];
   let aggregates = true;
+  let aggregateCode = 'PGRST123';
+  let chatSource = chatRows;
 
   after(() => {
     supabaseAdmin.from = originalFrom;
@@ -130,31 +170,41 @@ describe('narrowed team-signal queries', () => {
     selects.length = 0;
     (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
       let select = '';
+      const query: BuiltQuery = { eqs: [], ins: [], neqs: [] };
       const builder: Record<string, unknown> = {};
       const self = () => builder;
-      for (const method of [
-        'eq',
-        'neq',
-        'in',
-        'is',
-        'not',
-        'or',
-        'order',
-        'limit',
-        'gte',
-        'lte',
-        'gt',
-        'lt',
-        'filter',
-      ]) {
+      for (const method of ['is', 'not', 'or', 'gte', 'lte', 'gt', 'lt', 'filter']) {
         builder[method] = self;
       }
+      builder.eq = (column: string, value: unknown) => {
+        query.eqs.push([column, value]);
+        return builder;
+      };
+      builder.neq = (column: string, value: unknown) => {
+        query.neqs.push([column, value]);
+        return builder;
+      };
+      builder.in = (column: string, values: unknown[]) => {
+        query.ins.push([column, values]);
+        return builder;
+      };
+      builder.order = (column: string, opts?: { ascending?: boolean }) => {
+        query.order = { column, ascending: opts?.ascending !== false };
+        return builder;
+      };
+      builder.limit = (n: number) => {
+        query.limit = n;
+        return builder;
+      };
       builder.select = (cols: string) => {
         select = cols;
         selects.push(`${table} ${cols}`);
         return builder;
       };
-      const payload = () => ({ data: rowsFor(table, select), error: errorFor(table, select) });
+      const payload = () => ({
+        data: rowsFor(table, select, query),
+        error: errorFor(table, select),
+      });
       builder.maybeSingle = async () => payload();
       builder.then = (resolve: (value: unknown) => unknown, reject?: (err: unknown) => unknown) =>
         Promise.resolve(payload()).then(resolve, reject);
@@ -165,12 +215,12 @@ describe('narrowed team-signal queries', () => {
   function errorFor(table: string, select: string): { code: string; message: string } | null {
     if (aggregates) return null;
     if (select.includes('.min()') || select.includes('.max()') || select.includes('.count()')) {
-      return { code: 'PGRST123', message: `${table} aggregates disabled` };
+      return { code: aggregateCode, message: `${table} aggregates disabled` };
     }
     return null;
   }
 
-  function rowsFor(table: string, select: string): unknown {
+  function rowsFor(table: string, select: string, query: BuiltQuery): unknown {
     if (table === 'sessions') return { scenario_id: SCENARIO };
     if (table === 'scenarios') {
       return { initial_state: { player_roles: [{ role_id: 'legal_head', team_name: 'Legal' }] } };
@@ -204,7 +254,7 @@ describe('narrowed team-signal queries', () => {
     if (table === 'player_actions' && select.includes('created_at.max()')) return actionMax;
     if (table === 'player_actions') return rawActions;
     if (table === 'chat_messages' && select.includes('created_at.max()')) return chatMax;
-    if (table === 'chat_messages') return chatRows;
+    if (table === 'chat_messages') return applyQuery(chatSource, query);
     if (table === 'social_posts' && select.includes('id.count()')) return gradeCounts;
     if (table === 'social_posts' && select.includes('->>overall')) {
       return gradeRows.map((row) => ({
@@ -307,7 +357,57 @@ describe('narrowed team-signal queries', () => {
       ),
       false,
     );
+    assert.equal(selects.filter((line) => line.startsWith('chat_messages')).length, 1);
+    assert.ok(selects.some((line) => line.includes('chat_messages sender_id, created_at')));
     assert.deepEqual(again.duties, expectedDuties);
     assert.deepEqual(again.team_activity, expectedActivity);
+    assert.equal(again.team_activity_truncated, false);
+  });
+
+  test('a transient aggregate error is retried, and PGRST123 is not', async () => {
+    resetTeamSignalAggregatesForTests();
+    install();
+    aggregates = false;
+    aggregateCode = 'XX000';
+    await loadTeamSignalFacts(SESSION, START);
+    selects.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    assert.equal(
+      selects.some((line) => line.includes('.max()') || line.includes('.count()')),
+      true,
+    );
+
+    resetTeamSignalAggregatesForTests();
+    aggregates = false;
+    aggregateCode = 'PGRST123';
+    await loadTeamSignalFacts(SESSION, START);
+    selects.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    assert.equal(
+      selects.some(
+        (line) => line.includes('.min()') || line.includes('.max()') || line.includes('.count()'),
+      ),
+      false,
+    );
+  });
+
+  test('one chat scan past the cap is truncated so silence stays unproved', async () => {
+    resetTeamSignalAggregatesForTests();
+    chatSource = Array.from({ length: ACTIVITY_SCAN_CAP + 1 }, (_, index) => ({
+      session_id: SESSION,
+      sender_id: COMMS,
+      created_at: new Date(Date.parse('2026-11-28T12:00:00.000Z') + index * 1000).toISOString(),
+      type: 'text',
+    }));
+    install();
+    aggregates = false;
+    aggregateCode = 'PGRST123';
+    const facts = await loadTeamSignalFacts(SESSION, START);
+    assert.equal(facts.team_activity_truncated, true);
+    assert.equal(facts.team_activity_known, true);
+    selects.length = 0;
+    await loadTeamSignalFacts(SESSION, START);
+    assert.equal(selects.filter((line) => line.startsWith('chat_messages')).length, 1);
+    chatSource = chatRows;
   });
 });

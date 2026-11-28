@@ -33,7 +33,11 @@ import {
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
 import { enqueueJudgement } from '../judging/judgeService.js';
 import { slugifyTeamName } from '../conditions/conditionCatalog.js';
-import { loadTeamSignalFacts } from '../conditions/teamSignalService.js';
+import {
+  loadTeamSignalFacts,
+  notePostgrestAggregateFailure,
+  postgrestAggregatesUnavailable,
+} from '../conditions/teamSignalService.js';
 import {
   firstEmailMinuteByStakeholder,
   summariseActionCounts,
@@ -800,6 +804,7 @@ async function loadActionCounts(
   sessionId: string,
   startTime: string | null,
 ): Promise<ActionCountLoad> {
+  if (postgrestAggregatesUnavailable()) return scanActionRows(sessionId, startTime);
   try {
     const { data, error } = await supabaseAdmin
       .from('player_actions')
@@ -828,12 +833,14 @@ async function loadActionCounts(
         email: { rows: [], known: false, truncated: false },
       };
     }
+    notePostgrestAggregateFailure(error);
     warnFactOnce(
       'action_count_aggregate_failed',
       error,
       'Grouped action counts failed; scanning player_actions instead',
     );
   } catch (err) {
+    notePostgrestAggregateFailure(err);
     warnFactOnce(
       'action_count_aggregate_failed',
       err,

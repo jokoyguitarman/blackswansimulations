@@ -31,12 +31,18 @@ import type { DutySnapshot } from '../teamTasksCore.js';
 const DUTY_ACTION_CAP = 8000;
 const GRADE_CAP = 2000;
 const DECISION_CAP = 500;
-/** Residual rows when a team or sender is not known. Not the old 8,001-row scan. */
-const ACTIVITY_TIGHT_LIMIT = 64;
+/**
+ * Newest chat rows (and unstamped actions) kept when aggregates are off.
+ * One row past the cap means the scan is incomplete, so team_silent stays false.
+ */
+export const ACTIVITY_SCAN_CAP = 8000;
+
+/** PostgREST rejects aggregates with these codes. Other errors are transient. */
+const AGGREGATE_DISABLED = new Set(['PGRST123', 'PGRST100']);
 
 /**
- * Supabase leaves PostgREST aggregates off (`PGRST123`). Remember the first
- * failure so later ticks do not send the grouped reads at all.
+ * Supabase leaves PostgREST aggregates off (`PGRST123`). Remember that so later
+ * ticks skip the grouped reads. A network error does not latch the flag.
  */
 let aggregatesUnavailable = false;
 
@@ -44,7 +50,19 @@ export function resetTeamSignalAggregatesForTests(): void {
   aggregatesUnavailable = false;
 }
 
-function markAggregatesUnavailable(err: unknown): void {
+export function postgrestAggregatesUnavailable(): boolean {
+  return aggregatesUnavailable;
+}
+
+function aggregateDisabledCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && AGGREGATE_DISABLED.has(code) ? code : null;
+}
+
+/** Latch aggregates off only for PGRST123 / PGRST100. Other errors retry next tick. */
+export function notePostgrestAggregateFailure(err: unknown): void {
+  if (!aggregateDisabledCode(err) || aggregatesUnavailable) return;
   aggregatesUnavailable = true;
   warnOnce(
     'postgrest_aggregates_unavailable',
@@ -385,7 +403,7 @@ async function loadDutyCompletions(
         );
         return { rows: [], known: false, truncated: false };
       }
-      markAggregatesUnavailable(error);
+      notePostgrestAggregateFailure(error);
       return null;
     }
     const raw = (data ?? []) as Array<Record<string, unknown>>;
@@ -400,7 +418,7 @@ async function loadDutyCompletions(
     const kept = truncated ? raw.slice(0, DUTY_ACTION_CAP) : raw;
     return { rows: actionsFromEarliest(kept), known: true, truncated };
   } catch (err) {
-    markAggregatesUnavailable(err);
+    notePostgrestAggregateFailure(err);
     return null;
   }
 }
@@ -517,9 +535,9 @@ async function loadActionActivity(
         );
         return { rows: [], known: false, truncated: false };
       }
-      markAggregatesUnavailable(error);
+      notePostgrestAggregateFailure(error);
     } catch (err) {
-      markAggregatesUnavailable(err);
+      notePostgrestAggregateFailure(err);
     }
   }
   return latestActionPerTeam(sessionId, teamNames);
@@ -547,20 +565,13 @@ async function latestActionPerTeam(
         .eq('session_id', sessionId)
         .is('team_at_action', null)
         .order('created_at', { ascending: false })
-        .limit(ACTIVITY_TIGHT_LIMIT),
+        .limit(ACTIVITY_SCAN_CAP + 1),
     );
     const results = await Promise.all(queries);
     const rows: ActivityRow[] = [];
-    for (const result of results) {
+    let truncated = false;
+    for (const [index, result] of results.entries()) {
       if (result.error) {
-        if (schemaMissing(result.error)) {
-          warnOnce(
-            'team_activity_unavailable',
-            result.error,
-            'Team activity conditions are off for this process',
-          );
-          return { rows: [], known: false, truncated: false };
-        }
         warnOnce(
           'team_activity_unavailable',
           result.error,
@@ -568,9 +579,21 @@ async function latestActionPerTeam(
         );
         return { rows: [], known: false, truncated: false };
       }
-      rows.push(...((result.data ?? []) as ActivityRow[]));
+      const batch = (result.data ?? []) as ActivityRow[];
+      const unstamped = index === results.length - 1;
+      if (unstamped && batch.length > ACTIVITY_SCAN_CAP) {
+        truncated = true;
+        warnOnce(
+          'team_activity_truncated',
+          null,
+          'Unstamped actions exceeded the activity cap; silence keys stay false',
+        );
+        rows.push(...batch.slice(0, ACTIVITY_SCAN_CAP));
+      } else {
+        rows.push(...batch);
+      }
     }
-    return { rows, known: true, truncated: false };
+    return { rows, known: true, truncated };
   } catch (err) {
     warnOnce('team_activity_unavailable', err, 'Team activity conditions are off for this process');
     return { rows: [], known: false, truncated: false };
@@ -602,63 +625,52 @@ async function loadChatActivity(
         );
         return { rows: [], known: false, truncated: false };
       }
-      markAggregatesUnavailable(error);
+      notePostgrestAggregateFailure(error);
     } catch (err) {
-      markAggregatesUnavailable(err);
+      notePostgrestAggregateFailure(err);
     }
   }
-  return latestChatPerPlayer(sessionId, playerIds);
+  return latestChat(sessionId, playerIds);
 }
 
-async function latestChatPerPlayer(
+/** One ordered read. chat_messages is indexed on session_id, not on sender. */
+async function latestChat(
   sessionId: string,
   playerIds: readonly string[],
 ): Promise<{ rows: ActivityRow[]; known: boolean; truncated: boolean }> {
-  const ids = [...new Set(playerIds.filter(Boolean))].slice(0, 80);
+  const ids = [...new Set(playerIds.filter(Boolean))];
+  if (ids.length === 0) return { rows: [], known: true, truncated: false };
   try {
-    if (ids.length === 0) {
-      const { data, error } = await supabaseAdmin
-        .from('chat_messages')
-        .select('sender_id, created_at, type')
-        .eq('session_id', sessionId)
-        .neq('type', 'system')
-        .order('created_at', { ascending: false })
-        .limit(ACTIVITY_TIGHT_LIMIT);
-      if (error) {
-        warnOnce(
-          'team_activity_unavailable',
-          error,
-          'Team activity conditions are off for this process',
-        );
-        return { rows: [], known: false, truncated: false };
-      }
-      return { rows: (data ?? []) as ActivityRow[], known: true, truncated: false };
+    const { data, error } = await supabaseAdmin
+      .from('chat_messages')
+      .select('sender_id, created_at')
+      .eq('session_id', sessionId)
+      .in('sender_id', ids)
+      .neq('type', 'system')
+      .order('created_at', { ascending: false })
+      .limit(ACTIVITY_SCAN_CAP + 1);
+    if (error) {
+      warnOnce(
+        'team_activity_unavailable',
+        error,
+        'Team activity conditions are off for this process',
+      );
+      return { rows: [], known: false, truncated: false };
     }
-    const results = await Promise.all(
-      ids.map((id) =>
-        supabaseAdmin
-          .from('chat_messages')
-          .select('sender_id, created_at')
-          .eq('session_id', sessionId)
-          .eq('sender_id', id)
-          .neq('type', 'system')
-          .order('created_at', { ascending: false })
-          .limit(1),
-      ),
-    );
-    const rows: ActivityRow[] = [];
-    for (const result of results) {
-      if (result.error) {
-        warnOnce(
-          'team_activity_unavailable',
-          result.error,
-          'Team activity conditions are off for this process',
-        );
-        return { rows: [], known: false, truncated: false };
-      }
-      rows.push(...((result.data ?? []) as ActivityRow[]));
+    const raw = (data ?? []) as ActivityRow[];
+    const truncated = raw.length > ACTIVITY_SCAN_CAP;
+    if (truncated) {
+      warnOnce(
+        'team_activity_truncated',
+        null,
+        'Chat activity exceeded the condition-key cap; silence keys stay false',
+      );
     }
-    return { rows, known: true, truncated: false };
+    return {
+      rows: truncated ? raw.slice(0, ACTIVITY_SCAN_CAP) : raw,
+      known: true,
+      truncated,
+    };
   } catch (err) {
     warnOnce('team_activity_unavailable', err, 'Team activity conditions are off for this process');
     return { rows: [], known: false, truncated: false };
@@ -751,12 +763,12 @@ async function loadGradeCounts(
         );
         return { rows: [], known: false, truncated: false };
       }
-      markAggregatesUnavailable(error);
+      notePostgrestAggregateFailure(error);
       return null;
     }
     return rowsFromGradeCounts(userColumn, (data ?? []) as Array<Record<string, unknown>>);
   } catch (err) {
-    markAggregatesUnavailable(err);
+    notePostgrestAggregateFailure(err);
     return null;
   }
 }

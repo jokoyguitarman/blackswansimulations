@@ -89,21 +89,19 @@ export function directorNeedsTeamSignals(input: {
   modeMax: DirectorMode;
   defaultMode: DirectorMode;
   sessionMode?: string | null;
-  initialState?: unknown;
+  /** From `scenarioDirectorMode` (`readDirectorSettings`). Null when the scenario was not loaded. */
+  scenarioMode?: string | null;
   initialStateKnown: boolean;
 }): boolean {
   if (!input.enabled) return false;
-  const state = input.initialState;
-  const hasState =
-    input.initialStateKnown && state != null && typeof state === 'object' && !Array.isArray(state);
-  if (!hasState && (input.sessionMode == null || input.sessionMode === '')) return false;
-  const director = hasState ? (state as { director?: { mode?: unknown } }).director : null;
-  const scenarioMode = typeof director?.mode === 'string' ? director.mode : null;
+  if (!input.initialStateKnown && (input.sessionMode == null || input.sessionMode === '')) {
+    return false;
+  }
   return (
     resolveDirectorMode(
       { enabled: true, modeMax: input.modeMax, defaultMode: input.defaultMode },
       { mode: input.sessionMode },
-      { mode: scenarioMode },
+      { mode: input.scenarioMode },
     ) !== 'off'
   );
 }

@@ -497,10 +497,7 @@ function observationOf(
     signals: [],
     cast: parts.people.map((person) => ({ id: person.id, name: person.name })),
     npcs: readNpcs(scenario.initial).map((npc) => ({ handle: npc.handle })),
-      protectedTeams: [
-        ...parts.settings.protected,
-        ...snoozedTeams(input.sessionId, Date.now()),
-      ],
+    protectedTeams: [...parts.settings.protected, ...snoozedTeams(input.sessionId, Date.now())],
     busyTeams: roster
       .filter(
         (team) => (unansweredByTeam(parts.deliveryRows)[slugifyTeamName(team.name)] ?? 0) >= 3,
@@ -1073,19 +1070,28 @@ function countdownFor(draft: DirectorDraft): string | null {
   return new Date(Date.now() + env.directorAutoGraceSeconds * 1000).toISOString();
 }
 
-async function insertProposalRow(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error'> {
+async function insertProposalRow(
+  row: Record<string, unknown>,
+): Promise<'ok' | 'missing' | 'error'> {
   const first = await insertProposalOnce(row);
   if (first !== 'column') return first;
   if (!('auto_publish_at' in row)) return 'error';
-  warnOnce('auto_publish_at', new Error('auto_publish_at'), 'director countdown column is missing', {
-    sessionId: row.session_id,
-  });
+  warnOnce(
+    'auto_publish_at',
+    new Error('auto_publish_at'),
+    'director countdown column is missing',
+    {
+      sessionId: row.session_id,
+    },
+  );
   const { auto_publish_at: _dropped, ...rest } = row;
   const second = await insertProposalOnce(rest);
   return second === 'column' ? 'error' : second;
 }
 
-async function insertProposalOnce(row: Record<string, unknown>): Promise<'ok' | 'missing' | 'error' | 'column'> {
+async function insertProposalOnce(
+  row: Record<string, unknown>,
+): Promise<'ok' | 'missing' | 'error' | 'column'> {
   const { error } = await supabaseAdmin.from('director_proposals').insert(row);
   if (!error) return 'ok';
   if (SCHEMA_CODES.has(error.code ?? '')) {
@@ -1340,6 +1346,13 @@ interface DirectorSettings {
   maxSeverity: 'low' | 'medium' | 'high';
 }
 
+/** Scenario default mode. Shared with the team-signal gate so the two readers cannot drift. */
+export function scenarioDirectorMode(initialState: unknown): string | null {
+  if (!initialState || typeof initialState !== 'object' || Array.isArray(initialState)) return null;
+  const mode = readDirectorSettings(initialState as Record<string, unknown>).mode;
+  return typeof mode === 'string' ? mode : null;
+}
+
 function readDirectorSettings(initial: Record<string, unknown>): DirectorSettings {
   const director = (initial.director ?? null) as {
     mode?: string;
@@ -1351,7 +1364,7 @@ function readDirectorSettings(initial: Record<string, unknown>): DirectorSetting
   const intensity = director?.intensity;
   const severity = director?.max_severity;
   return {
-    mode: director?.mode ?? null,
+    mode: typeof director?.mode === 'string' ? director.mode : null,
     intensity: intensity === 'low' || intensity === 'high' ? intensity : 'medium',
     protected: teamRefs(director?.protected_teams),
     apps: asStrings(director?.allowed_apps).filter((app) => APPS.includes(app)).length
@@ -1414,7 +1427,9 @@ function readClaims(initial: Record<string, unknown>): string[] {
     .slice(0, 5);
 }
 
-export function readNpcs(initial: Record<string, unknown>): Array<{ handle: string; name?: string }> {
+export function readNpcs(
+  initial: Record<string, unknown>,
+): Array<{ handle: string; name?: string }> {
   const raw = initial.personas ?? initial.npc_personas ?? initial.social_personas;
   if (!Array.isArray(raw)) return [];
   const npcs: Array<{ handle: string; name?: string }> = [];
@@ -1520,7 +1535,11 @@ export async function discoverPendingDirectorProposals(): Promise<boolean> {
         noteUnavailable(error);
         return true;
       }
-      warnOnce(`discover:${error.code ?? 'unknown'}`, error, 'director pending rows were not discovered');
+      warnOnce(
+        `discover:${error.code ?? 'unknown'}`,
+        error,
+        'director pending rows were not discovered',
+      );
       return false;
     }
     const counts = new Map<string, number>();
@@ -1616,7 +1635,9 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
       .eq('id', sessionId);
     if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
     if (error) {
-      warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', { sessionId });
+      warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', {
+        sessionId,
+      });
       return 'error';
     }
     invalidateDirectorSession(sessionId);
@@ -1647,7 +1668,11 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
   },
   publishFacts: factsForPublish,
   insertInject: async (row) => {
-    const { data, error } = await supabaseAdmin.from('scenario_injects').insert(row).select('id').maybeSingle();
+    const { data, error } = await supabaseAdmin
+      .from('scenario_injects')
+      .insert(row)
+      .select('id')
+      .maybeSingle();
     if (error || !data) {
       logger.warn({ err: error }, 'director inject was not created');
       return null;
@@ -1679,9 +1704,11 @@ async function requestDirectorWake(
   actorId: string,
   body: { team?: string; hint?: string },
 ): Promise<CommandResult> {
-  if (directorIsPaused(sessionId)) return { ok: false, status: 409, error: 'AI director is paused' };
+  if (directorIsPaused(sessionId))
+    return { ok: false, status: 409, error: 'AI director is paused' };
   const session = await loadSessionDirector(sessionId);
-  if (session === 'missing') return { ok: false, status: 503, error: 'AI director is not available' };
+  if (session === 'missing')
+    return { ok: false, status: 503, error: 'AI director is not available' };
   if (!session) return { ok: false, status: 404, error: 'Session not found' };
   const scenarioMode = await loadScenarioMode(session.scenarioId);
   const mode = resolveDirectorMode(
@@ -1842,7 +1869,9 @@ function consoleProposalFrom(row: Record<string, unknown>): ConsoleProposal {
     reason: typeof raw?.reason === 'string' ? raw.reason : null,
     proposal: (row.proposal as ConsoleProposal['proposal']) ?? null,
     signals: Array.isArray(row.signals) ? (row.signals as ConsoleProposal['signals']) : [],
-    guardrails: Array.isArray(row.guardrails) ? (row.guardrails as ConsoleProposal['guardrails']) : [],
+    guardrails: Array.isArray(row.guardrails)
+      ? (row.guardrails as ConsoleProposal['guardrails'])
+      : [],
     consistencyStatus: typeof consistency?.status === 'string' ? consistency.status : null,
     fairness: (row.fairness as ConsoleProposal['fairness']) ?? null,
     autoPublishAt: row.auto_publish_at ? String(row.auto_publish_at) : null,
@@ -1897,7 +1926,14 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
     facts: readFacts(scenario.initial),
     recentTexts: deliveryRows
       .filter((row) => minute - row.minute <= 30)
-      .flatMap((row) => row.teams.map((team) => ({ team, minute: row.minute, title: row.title, content: row.content }))),
+      .flatMap((row) =>
+        row.teams.map((team) => ({
+          team,
+          minute: row.minute,
+          title: row.title,
+          content: row.content,
+        })),
+      ),
     upcoming: [],
     capEvents: publishedCapEvents(
       history.map((row) => ({

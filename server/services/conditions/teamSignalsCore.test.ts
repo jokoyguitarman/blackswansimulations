@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { scenarioDirectorMode } from '../director/directorService.js';
 import {
   decisionFacts,
   dependencySignalKeys,
@@ -94,7 +95,7 @@ describe('team signal facts', () => {
         enabled: true,
         modeMax: 'auto',
         defaultMode: 'auto',
-        initialState: {},
+        scenarioMode: null,
         initialStateKnown: true,
       }),
       true,
@@ -104,7 +105,7 @@ describe('team signal facts', () => {
         enabled: true,
         modeMax: 'auto',
         defaultMode: 'auto',
-        initialState: { director: { mode: 'off' } },
+        scenarioMode: 'off',
         initialStateKnown: true,
       }),
       false,
@@ -117,6 +118,18 @@ describe('team signal facts', () => {
         initialStateKnown: false,
       }),
       false,
+    );
+    assert.equal(scenarioDirectorMode({ director: { mode: 'off' } }), 'off');
+    assert.equal(scenarioDirectorMode({}), null);
+    assert.equal(
+      directorNeedsTeamSignals({
+        enabled: true,
+        modeMax: 'auto',
+        defaultMode: 'auto',
+        scenarioMode: scenarioDirectorMode({ director: { mode: 'suggest' } }),
+        initialStateKnown: true,
+      }),
+      true,
     );
   });
 

@@ -67,6 +67,7 @@ import {
   withDependencySession,
   type DependencyTickLoad,
 } from './dependencies/dependencyService.js';
+import { scenarioDirectorMode } from './director/directorService.js';
 import { directorDiscoveryDue } from './director/directorRuntime.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -1117,7 +1118,7 @@ export class InjectSchedulerService {
             modeMax: env.directorModeMax,
             defaultMode: env.directorDefaultMode,
             sessionMode: carried.directorMode,
-            initialState: carried.state,
+            scenarioMode: carried.known ? scenarioDirectorMode(carried.state) : null,
             initialStateKnown: carried.known,
           }),
         },
