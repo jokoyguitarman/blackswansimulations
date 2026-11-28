@@ -317,4 +317,6 @@ export const env = {
   enablePeacePeriod: process.env.ENABLE_PEACE_PERIOD === 'true',
   peacePeriodDefaultSeconds: envInt('PEACE_PERIOD_DEFAULT_SECONDS', 300),
   peacePeriodMaxSeconds: envInt('PEACE_PERIOD_MAX_SECONDS', 900),
+  // Durable `peace` stage, its estimate lines, and the legacy compile call.
+  enablePeaceFeedBuildStage: process.env.ENABLE_PEACE_FEED_BUILD_STAGE === 'true',
 };
