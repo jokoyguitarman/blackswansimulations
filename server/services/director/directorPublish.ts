@@ -3,7 +3,11 @@
  * `causeDepth` (inherited hops + 1) over the causing signals' condition keys.
  */
 
+import { applyInjectGenStamp } from '../../lib/injectFingerprint.js';
+import { allocateInjectKey } from '../../lib/injectKey.js';
 import { causeDepth, referencedInjectKeys, type DepthTrigger } from '../conditions/crossTeamCore.js';
+import { isKnownConditionKey } from '../conditions/conditionCatalog.js';
+import { promotionConditions } from './directorAarCore.js';
 import type { DirectorDraft, DirectorMode, ExposureEvent, ParsedProposal } from './directorCore.js';
 import type { Signal } from './directorSignals.js';
 
@@ -234,5 +238,86 @@ function senderFields(
     sender_name: name,
     author_display_name: name,
     ...(proposal.app === 'social_feed' ? { author_type: 'npc_public', platform: 'x_twitter' } : {}),
+  };
+}
+
+/**
+ * Template inject for the next session. generation_source is trainer.
+ * gen.layer is promoted. The fingerprint is AI-owned only when the proposal
+ * was not edited.
+ */
+export function buildPromotedTemplate(input: {
+  scenarioId: string;
+  proposalId: string;
+  minute: number;
+  proposal: ParsedProposal;
+  signals: readonly Signal[];
+  edited: boolean;
+  people: readonly DirectorPerson[];
+  npcs: readonly DirectorNpc[];
+  takenKeys: ReadonlySet<string>;
+}): Record<string, unknown> {
+  const proposal = input.proposal;
+  const schedule = promotionConditions(
+    input.signals,
+    proposal.cause.signal_ids,
+    input.minute,
+    isKnownConditionKey,
+    input.takenKeys,
+  );
+  const injectKey = allocateInjectKey(null, proposal.title, new Set(input.takenKeys));
+  const sender = senderFields(proposal, input.people, input.npcs);
+  const follow = followUpChain(proposal);
+  const publicApp = PUBLIC_APPS.has(proposal.app);
+  const teams = [...proposal.target_teams];
+  const scope = teams.length > 0 && !publicApp ? 'team_specific' : 'universal';
+  const delivery: Record<string, unknown> = {
+    app: proposal.app,
+    inject_key: injectKey,
+    ...sender,
+    ...(proposal.response_rubric ? { response_rubric: proposal.response_rubric } : {}),
+    ...(follow ? { escalation: follow } : {}),
+    promoted_from: input.proposalId,
+  };
+  const type = APP_TYPE[proposal.app] ?? proposal.app;
+  const stamped = applyInjectGenStamp(
+    {
+      title: proposal.title,
+      content: proposal.content,
+      type,
+      severity: proposal.severity,
+      trigger_time_minutes: schedule.trigger_time_minutes,
+      eligible_after_minutes: null,
+      target_teams: teams,
+      inject_scope: scope,
+      requires_response: proposal.requires_response,
+      conditions_to_appear: schedule.conditions_to_appear,
+      conditions_to_cancel: null,
+      delivery_config: delivery,
+      generation_source: 'trainer' as const,
+      gen_layer: 'promoted',
+    },
+    { teamUidByName: new Map(), persistTeamUid: false },
+  );
+  const stampedGen = { ...(stamped.delivery_config.gen as Record<string, unknown>) };
+  const { hash: _hash, ...withoutHash } = stampedGen;
+  const gen = input.edited ? { ...withoutHash, edit: 1 } : stampedGen;
+  return {
+    scenario_id: input.scenarioId,
+    session_id: null,
+    type,
+    title: proposal.title,
+    content: proposal.content,
+    severity: proposal.severity,
+    inject_scope: scope,
+    target_teams: teams,
+    trigger_time_minutes: schedule.trigger_time_minutes,
+    conditions_to_appear: schedule.conditions_to_appear,
+    conditions_to_cancel: null,
+    requires_response: proposal.requires_response,
+    requires_coordination: false,
+    ai_generated: false,
+    generation_source: 'trainer',
+    delivery_config: { ...stamped.delivery_config, gen },
   };
 }

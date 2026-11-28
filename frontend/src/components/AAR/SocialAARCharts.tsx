@@ -735,6 +735,24 @@ function GroupedTeamSection({ data, blocks }: { data: Dict; blocks: Dict[] }) {
   );
 }
 
+function contentBreakdownLine(scores: Dict): string | null {
+  const raw = scores.content_breakdown;
+  if (!raw || typeof raw !== 'object') return null;
+  const box = raw as {
+    authored?: { items?: number; avg?: number | null };
+    unscripted?: { items?: number; avg?: number | null };
+  };
+  const authored = box.authored?.items ?? 0;
+  const unscripted = box.unscripted?.items ?? 0;
+  if (authored === 0 && unscripted === 0) return null;
+  const part = (label: string, bucket?: { items?: number; avg?: number | null }) => {
+    const items = bucket?.items ?? 0;
+    const avg = bucket?.avg;
+    return `${label} ${items}${avg == null ? '' : ` (avg ${avg})`}`;
+  };
+  return `Content breakdown: ${part('authored', box.authored)} · ${part('unscripted', box.unscripted)}. The composite includes both.`;
+}
+
 function SingleTeamBlock({ data }: { data: Dict }) {
   const color = teamColor(data.team_name, data.function_key);
   if (data.unstaffed === true) {
@@ -752,6 +770,7 @@ function SingleTeamBlock({ data }: { data: Dict }) {
   const outOfLane = arr(data.out_of_lane);
   const best = data.best_artifact as Dict | null;
   const worst = data.worst_artifact as Dict | null;
+  const breakdownText = contentBreakdownLine(scores);
   const scoreParts: Array<[string, number | null]> = [
     ['Composite', num(scores.composite)],
     ['Quality', num(scores.content_quality)],
@@ -786,6 +805,11 @@ function SingleTeamBlock({ data }: { data: Dict }) {
             ))}
         </div>
       </div>
+      {breakdownText && (
+        <p className="text-[11px] text-muted" data-testid="content-breakdown">
+          {breakdownText}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
