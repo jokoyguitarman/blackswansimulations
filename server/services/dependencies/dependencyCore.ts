@@ -4,7 +4,6 @@
  */
 
 import {
-  dependencyEdgeSchema,
   matchTeamRef,
   type ActiveTeam,
   type NormalizedConditions,
@@ -12,6 +11,7 @@ import {
   type TeamDependencyEdge,
   type TeamRef,
 } from '../../../shared/teamDependencies.js';
+import { dependencyEdgeSchema } from './dependencySchema.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { parseConditionKey, type ConditionDef } from '../conditions/conditionCatalog.js';
 

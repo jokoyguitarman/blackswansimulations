@@ -3,11 +3,11 @@ import { describe, test } from 'node:test';
 import { CONDITION_CATALOG } from '../server/services/conditions/conditionCatalog.js';
 import { formatConditionKey, parseCatalogCondition } from './conditionKeyGrammar.js';
 import {
+  applyAnySugar,
   crossTeamTeamsOf,
   dependencyCatalogEntries,
   expandPlaceholders,
   resolveTeamRef,
-  teamDependenciesSchema,
   type ActiveTeam,
   type TeamRef,
 } from './teamDependencies.js';
@@ -49,30 +49,30 @@ const TEAMS: ActiveTeam[] = [
 ];
 
 describe('team dependency schema', () => {
-  test('the section 6.1 example round-trips and any normalises to threshold 1', () => {
-    const parsed = teamDependenciesSchema.parse(EXAMPLE);
-    assert.deepEqual(parsed.edges[0]?.broken_when, {
+  test('the section 6.1 example normalises any to threshold 1', () => {
+    const edge = EXAMPLE.edges[0]!;
+    assert.deepEqual(applyAnySugar(edge.broken_when), {
       threshold: 1,
       conditions: [
         'unresponded:bay3_headcount_request:10|team=@upstream',
         'reply_failed:bay3_headcount_request|team=@upstream',
       ],
     });
-    assert.deepEqual(parsed.edges[0]?.met_when, {
+    assert.deepEqual(applyAnySugar(edge.met_when), {
       threshold: 1,
       conditions: ['responded_relevant:bay3_headcount_request|team=@upstream'],
     });
-    assert.equal(parsed.edges[0]?.upstream.team_name, 'Operations');
-    assert.equal(parsed.edges[0]?.lag_minutes, 5);
-    assert.deepEqual(teamDependenciesSchema.parse(parsed), parsed);
-    assert.deepEqual(crossTeamTeamsOf(parsed.edges[0]!), {
+    assert.deepEqual(applyAnySugar(applyAnySugar(edge.broken_when)), applyAnySugar(edge.broken_when));
+    assert.equal(edge.upstream.team_name, 'Operations');
+    assert.equal(edge.lag_minutes, 5);
+    assert.deepEqual(crossTeamTeamsOf(edge), {
       upstream: 'Operations',
       downstream: ['Communications'],
     });
   });
 
   test('catalog rows expose the dependency state keys', () => {
-    const [row] = dependencyCatalogEntries(EXAMPLE);
+    const [row] = dependencyCatalogEntries(EXAMPLE.edges);
     assert.equal(row?.id, 'dep_ops_headcount_comms');
     assert.equal(row?.upstream, 'Operations');
     assert.deepEqual(row?.downstream, ['Communications']);
@@ -85,7 +85,6 @@ describe('team dependency schema', () => {
       'dependency_resolved:dep_ops_headcount_comms',
       'dependency_waived:dep_ops_headcount_comms',
     ]);
-    assert.deepEqual(dependencyCatalogEntries({ v: 2, edges: [] }), []);
   });
 });
 

@@ -1,10 +1,9 @@
 /**
  * Team-dependency document stored on scenarios.initial_state.
  * Shared by the scenario API, the generator and the editor. No database access.
+ * The zod schema lives in the server module so the editor build does not depend on zod.
  */
 
-import { z } from 'zod';
-import { isInjectKey } from './injectKeySlug.js';
 import { slugifyTeamName } from './conditionKeyGrammar.js';
 
 export const DEPENDENCY_KINDS = [
@@ -68,75 +67,18 @@ export interface TeamDependencies {
   edges: TeamDependencyEdge[];
 }
 
-const conditionKeySchema = z.string().trim().min(1);
-
-const allGroupSchema = z.object({
-  all: z.array(conditionKeySchema),
-});
-
-const thresholdGroupSchema = z.object({
-  threshold: z.number().int().min(1),
-  conditions: z.array(conditionKeySchema),
-});
-
-/** `{ any: [...] }` is stored as threshold 1. */
-export const conditionGroupSchema = z.preprocess((value) => {
+/**
+ * `{ any: [...] }` is threshold 1. A group that already uses `all` or `conditions`
+ * is left unchanged for the schema to accept or reject.
+ */
+export function applyAnySugar(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const record = value as { all?: unknown; any?: unknown; conditions?: unknown; threshold?: unknown };
+  const record = value as { all?: unknown; any?: unknown; conditions?: unknown };
   if (Array.isArray(record.any) && !Array.isArray(record.all) && !Array.isArray(record.conditions)) {
     return { threshold: 1, conditions: record.any };
   }
   return value;
-}, z.union([allGroupSchema, thresholdGroupSchema]));
-
-const brokenWhenSchema = conditionGroupSchema.superRefine((group, ctx) => {
-  const keys = 'all' in group ? group.all : group.conditions;
-  if (keys.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'broken_when needs at least one condition',
-    });
-  }
-});
-
-const teamRefSchema = z.object({
-  team_uid: z
-    .union([z.string().uuid(), z.null()])
-    .optional()
-    .transform((value) => value ?? null),
-  team_name: z.string().trim().max(200),
-});
-
-const dueSchema = z.union([
-  z.object({
-    by_minute: z.number().int().min(0),
-  }),
-  z.object({
-    after_inject_key: z.string().refine(isInjectKey, 'must be an inject key'),
-    within_minutes: z.number().int().min(0),
-  }),
-]);
-
-export const dependencyEdgeSchema = z.object({
-  id: z.string().regex(DEPENDENCY_ID, 'id must match ^dep_[a-z0-9_]{1,56}$'),
-  kind: z.enum(DEPENDENCY_KINDS),
-  upstream: teamRefSchema,
-  downstream: z.array(teamRefSchema).min(1),
-  deliverable: z.string().trim().min(1).max(500),
-  why: z.string().trim().max(2000).optional().default(''),
-  due: dueSchema,
-  broken_when: brokenWhenSchema,
-  met_when: conditionGroupSchema.nullable().optional().transform((value) => value ?? null),
-  lag_minutes: z.number().int().min(0).max(30),
-  severity: z.enum(DEPENDENCY_SEVERITIES),
-  consequence_keys: z.array(z.string().refine(isInjectKey, 'must be an inject key')).optional().default([]),
-  source: z.enum(DEPENDENCY_SOURCES),
-});
-
-export const teamDependenciesSchema = z.object({
-  v: z.literal(1),
-  edges: z.array(dependencyEdgeSchema),
-});
+}
 
 /**
  * Match `team_uid` when it is set, and do not fall through to the name:
@@ -202,11 +144,17 @@ export function dependencyStateKeys(edge: { id: string; lag_minutes: number }): 
   ];
 }
 
-/** Picker rows. An unreadable document yields an empty list. */
-export function dependencyCatalogEntries(document: unknown): DependencyCatalogEntry[] {
-  const parsed = teamDependenciesSchema.safeParse(document);
-  if (!parsed.success) return [];
-  return parsed.data.edges.map((edge) => {
+/** Picker rows for edges that have already been parsed. */
+export function dependencyCatalogEntries(
+  edges: readonly {
+    id: string;
+    deliverable: string;
+    lag_minutes: number;
+    upstream: TeamRef;
+    downstream: readonly TeamRef[];
+  }[],
+): DependencyCatalogEntry[] {
+  return edges.map((edge) => {
     const teams = crossTeamTeamsOf(edge);
     return {
       id: edge.id,

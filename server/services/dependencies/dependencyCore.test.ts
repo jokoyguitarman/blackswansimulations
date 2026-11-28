@@ -14,6 +14,7 @@ import {
   type DependencyInjectRef,
   type TeamDependencyEdge,
 } from './dependencyCore.js';
+import { catalogDependencies, teamDependenciesSchema } from './dependencySchema.js';
 
 const OPS = '6f1c0000-0000-4000-8000-000000000001';
 const COMMS = 'a93e0000-0000-4000-8000-000000000002';
@@ -78,6 +79,29 @@ const INJECTS: DependencyInjectRef[] = [
 function codes(issues: { code: string }[]): string[] {
   return issues.map((item) => item.code);
 }
+
+describe('team dependency schema', () => {
+  test('the section 6.1 shape round-trips and any normalises to threshold 1', () => {
+    const document = { v: 1 as const, edges: [edge()] };
+    const parsed = teamDependenciesSchema.parse(document);
+    assert.deepEqual(parsed.edges[0]?.broken_when, {
+      threshold: 1,
+      conditions: [
+        'unresponded:bay3_headcount_request:10|team=@upstream',
+        'reply_failed:bay3_headcount_request|team=@upstream',
+      ],
+    });
+    assert.deepEqual(parsed.edges[0]?.met_when, {
+      threshold: 1,
+      conditions: ['responded_relevant:bay3_headcount_request|team=@upstream'],
+    });
+    assert.deepEqual(teamDependenciesSchema.parse(parsed), parsed);
+    const [row] = catalogDependencies(document);
+    assert.equal(row?.id, 'dep_ops_headcount_comms');
+    assert.deepEqual(row?.state_keys[1], 'dependency_broken_for:dep_ops_headcount_comms:5');
+    assert.deepEqual(catalogDependencies({ v: 2, edges: [] }), []);
+  });
+});
 
 describe('validateDependencies', () => {
   test('a complete edge has no issues and a renamed team refreshes the name cache', () => {

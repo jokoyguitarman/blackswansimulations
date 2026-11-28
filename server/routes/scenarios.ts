@@ -4,7 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
 import { cloneScenarioSchema, handleCloneScenario } from './scenarioClone.js';
-import { dependencyCatalogEntries } from '../../shared/teamDependencies.js';
+import { catalogDependencies } from '../services/dependencies/dependencySchema.js';
 import { normalizeScenarioDependencies } from '../services/dependencies/dependencyContext.js';
 import { logger } from '../lib/logger.js';
 import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
@@ -476,7 +476,7 @@ router.get('/:id/condition-catalog', requireAuth, async (req: AuthenticatedReque
           if (!name) return [];
           return [{ name, slug: slugifyTeamName(name) }];
         }),
-        dependencies: dependencyCatalogEntries(
+        dependencies: catalogDependencies(
           (initial as { team_dependencies?: unknown } | null)?.team_dependencies,
         ),
       },
