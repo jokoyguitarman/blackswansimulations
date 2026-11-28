@@ -319,6 +319,79 @@ describe('setup edit identities', () => {
     assert.equal(renamed?.team_name, 'Archive Desk');
   });
 
+  test('renaming teams after a short-name change keeps the preset function', () => {
+    const identities: OrganisationIdentityOptions = {
+      baseline_org_keys: ['primary'],
+      baseline_primary_org_key: 'primary',
+      teams: [
+        {
+          team_uid: 'uid-comms',
+          team_name: 'Communications — SIG',
+          org_key: 'primary',
+          function_key: 'Communications',
+          is_custom: false,
+        },
+        {
+          team_uid: 'uid-legal',
+          team_name: 'Legal — SIG',
+          org_key: 'primary',
+          function_key: 'Legal',
+          is_custom: false,
+        },
+      ],
+    };
+    const edited = mustOk(
+      validateOrganisations(
+        [
+          {
+            ...primary,
+            short_name: 'SIX',
+            team_roster: [
+              { team_name: 'Communications — SIX', is_public_voice: true, team_uid: 'uid-comms' },
+              { team_name: 'Legal — SIX', team_uid: 'uid-legal' },
+            ],
+          },
+        ],
+        [],
+        [],
+        identities,
+      ),
+    );
+    const teams = edited.orgs[0].teams;
+    assert.deepEqual(
+      teams.map((team) => ({
+        team_uid: team.team_uid,
+        team_name: team.team_name,
+        function_key: team.function_key,
+        is_custom: team.is_custom,
+      })),
+      [
+        {
+          team_uid: 'uid-comms',
+          team_name: 'Communications — SIX',
+          function_key: 'Communications',
+          is_custom: false,
+        },
+        {
+          team_uid: 'uid-legal',
+          team_name: 'Legal — SIX',
+          function_key: 'Legal',
+          is_custom: false,
+        },
+      ],
+    );
+  });
+
+  test('make_primary that names a missing organisation fails MO-ORG-002', () => {
+    const result = validateOrganisations([primary, second], [], [], {
+      ...multiIdentity,
+      make_primary: 'org_does_not_exist',
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.code, 'MO-ORG-002');
+  });
+
   test('a new organisation key avoids baseline and retired keys', () => {
     const added: OrganisationInput = {
       display_name: 'Fresh Office',

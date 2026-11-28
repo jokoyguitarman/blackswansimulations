@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { canonicalJson } from '../../../shared/canonicalJson.js';
+import { stampOrgIdentity } from '../../lib/templateRows.js';
 import {
   baselineHash,
   draftInputFromSnapshot,
   hashUploadedDocument,
+  materializeLegacyPrimary,
   setupSourceFromCompile,
   snapshotFromScenario,
+  stableOrgUid,
   type ScenarioSnapshotSource,
   type SetupSnapshot,
 } from './setupSnapshotCore.js';
@@ -389,6 +393,37 @@ describe('setup snapshot', () => {
     assert.equal(source.uploaded_doc_text_hash, hashUploadedDocument(text));
     assert.equal(JSON.stringify(source).includes(text), false);
     assert.equal(setupSourceFromCompile({ uploaded_doc_text: '   ' }).uploaded_doc_text_hash, null);
+  });
+
+  test('a legacy page-only scenario gets a stable primary org_uid', () => {
+    const legacy = {
+      org_name: 'Legacy Co',
+      country: 'Singapore',
+      org_page: {
+        facebook: { page_name: 'Legacy', page_handle: '@legacy', page_bio: '', follower_count: 1 },
+        x_twitter: { page_name: 'Legacy', page_handle: '@legacy_x', page_bio: '', follower_count: 1 },
+      },
+    };
+    const prepared = stampOrgIdentity(materializeLegacyPrimary(legacy, 'scenario-legacy'));
+    const again = stampOrgIdentity(materializeLegacyPrimary(legacy, 'scenario-legacy'));
+    assert.equal(canonicalJson(prepared), canonicalJson(again));
+    const orgs = (prepared as unknown as { orgs: Array<{ org_uid: string; org_key: string }> }).orgs;
+    assert.equal(orgs[0].org_key, 'primary');
+    assert.equal(orgs[0].org_uid, stableOrgUid('scenario-legacy', 'primary'));
+    const snapshot = snapshotFromScenario(
+      {
+        scenario: { description: 'Old brief', briefing: '', initial_state: prepared },
+        teams: [],
+        injects: [],
+      },
+      { assignOrgUid: () => stableOrgUid('scenario-legacy', 'primary') },
+    );
+    assert.equal(snapshot.organisations[0].org_uid, orgs[0].org_uid);
+    assert.equal(snapshot.organisations[0].facebook_handle, '@legacy');
+    assert.notEqual(
+      stableOrgUid('scenario-legacy', 'primary'),
+      stableOrgUid('scenario-other', 'primary'),
+    );
   });
 
   test('the edit draft uses wizard input keys and pins identities', () => {

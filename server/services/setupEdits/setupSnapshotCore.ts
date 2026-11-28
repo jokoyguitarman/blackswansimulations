@@ -128,9 +128,52 @@ export interface CompileSetupSourceInput {
   auto_antagonist?: boolean;
 }
 
+/**
+ * Stable org_uid for a legacy scenario that has no registry row yet.
+ * The same scenario and key always produce the same id, so a failed write-back
+ * still hashes the same way on the next open.
+ */
+export function stableOrgUid(scenarioId: string, orgKey: string): string {
+  const hex = createHash('sha256').update(`org_uid:${scenarioId}:${orgKey}`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Oldest scenarios store only org_page.facebook / x_twitter and no orgs[].
+ * Add the primary registry row, with a stable org_uid, so the snapshot and the
+ * write-back share one id.
+ */
+export function materializeLegacyPrimary<T>(initialState: T, scenarioId: string): T {
+  const state = asRecord(initialState);
+  if (!state) return initialState;
+  const orgs = Array.isArray(state.orgs) ? state.orgs : [];
+  const hasProtagonist = orgs.some((raw) => {
+    const org = asRecord(raw);
+    if (!org || typeof org.org_key !== 'string' || !org.org_key.trim()) return false;
+    return org.side !== 'antagonist' && org.side !== 'pressure' && org.role !== 'antagonist' && org.role !== 'pressure';
+  });
+  if (hasProtagonist) return initialState;
+  const copy = structuredClone(state);
+  const existing = Array.isArray(copy.orgs) ? copy.orgs : [];
+  copy.orgs = [
+    ...existing,
+    {
+      org_uid: stableOrgUid(scenarioId, 'primary'),
+      org_key: 'primary',
+      display_name: text(copy.org_name) || 'Organisation',
+      country: text(copy.country),
+      side: 'protagonist',
+      is_primary: true,
+      operation: 'players',
+      kind: 'company',
+    },
+  ];
+  return copy as T;
+}
+
 /** SHA-256 of the uploaded document. Empty text has no hash. The text itself is not returned. */
-export function hashUploadedDocument(text: string | null | undefined): string | null {
-  const trimmed = typeof text === 'string' ? text.trim() : '';
+export function hashUploadedDocument(textBody: string | null | undefined): string | null {
+  const trimmed = typeof textBody === 'string' ? textBody.trim() : '';
   if (!trimmed) return null;
   return createHash('sha256').update(trimmed).digest('hex');
 }

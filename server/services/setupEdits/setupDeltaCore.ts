@@ -237,6 +237,14 @@ function diffPressure(
     pushText(out, org.org_key, 'display_name', org.display_name, editedOrg.display_name);
     pushText(out, org.org_key, 'wants', org.wants, editedOrg.wants);
     pushText(out, org.org_key, 'register', org.register, editedOrg.register);
+    pushText(out, org.org_key, 'country', org.country, editedOrg.country);
+    pushText(out, org.org_key, 'city', org.city, editedOrg.city);
+    pushText(out, org.org_key, 'kind', org.kind, editedOrg.kind);
+    pushText(out, org.org_key, 'facebook_handle', org.facebook_handle, editedOrg.facebook_handle);
+    pushText(out, org.org_key, 'x_handle', org.x_handle, editedOrg.x_handle);
+    if (!sameList(org.targets_org_keys, editedOrg.targets_org_keys)) {
+      out.push({ key: org.org_key, field: 'targets_org_keys' });
+    }
   }
 }
 
@@ -251,7 +259,16 @@ function diffRivals(
     if (!editedOrg) continue;
     pushText(out, org.org_key, 'name', org.name, editedOrg.name);
     pushText(out, org.org_key, 'description', org.description, editedOrg.description);
+    pushText(out, org.org_key, 'country', org.country, editedOrg.country);
+    pushText(out, org.org_key, 'facebook_handle', org.facebook_handle, editedOrg.facebook_handle);
+    pushText(out, org.org_key, 'x_handle', org.x_handle, editedOrg.x_handle);
   }
+}
+
+function sameList(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+  const a = [...(left ?? [])].sort();
+  const b = [...(right ?? [])].sort();
+  return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
 function countrySet(orgs: readonly SnapshotOrg[]): Set<string> {

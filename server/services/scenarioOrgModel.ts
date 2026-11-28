@@ -380,6 +380,8 @@ export interface StoredTeamIdentity {
   team_name: string;
   org_key: string;
   function_key?: string;
+  /** Kept across a display rename. Defaults from whether function_key is a preset. */
+  is_custom?: boolean;
 }
 
 /**
@@ -422,6 +424,15 @@ function claimProvidedKey(
   if (taken.has(key)) return null;
   taken.add(key);
   return key;
+}
+
+/** A stored team's function stays put when the trainer only renames the display name. */
+function storedFunctionKey(stored: StoredTeamIdentity): string {
+  const explicit = stored.function_key?.trim();
+  if (explicit) return explicit;
+  const head = stored.team_name.split(' \u2014 ')[0]?.trim() || stored.team_name;
+  if (isPresetFunction(head)) return head;
+  return functionKeyFor({ team_name: stored.team_name, is_custom: true });
 }
 
 function baselinePrimaryKey(identities: OrganisationIdentityOptions): string {
@@ -559,18 +570,37 @@ export function validateOrganisations(
         identities && entry.team_uid
           ? identities.teams?.find((team) => team.team_uid === entry.team_uid)
           : undefined;
-      const requestedName = String(entry.team_name || '').trim();
-      const unchangedExisting =
-        !!storedTeam &&
-        (requestedName === storedTeam.team_name || requestedName === (storedTeam.function_key ?? ''));
-      const parsedEntry =
-        unchangedExisting && storedTeam?.function_key
-          ? {
-              ...entry,
-              team_name: storedTeam.function_key,
-              is_custom: !isPresetFunction(storedTeam.function_key),
-            }
-          : entry;
+      if (storedTeam) {
+        const functionKey = storedFunctionKey(storedTeam);
+        const isCustom = storedTeam.is_custom ?? !isPresetFunction(functionKey);
+        if (isCustom && String(entry.description || '').trim().length < 10) {
+          fail(
+            'MO-TEAM-005',
+            `${path}.team_roster.${functionKey}`,
+            `Describe what "${functionKey}" does (min 10 characters)`,
+          );
+        }
+        if (seenFunctions.has(functionKey.toLowerCase())) {
+          fail(
+            'MO-TEAM-001',
+            `${path}.team_roster.${functionKey}`,
+            `${displayName}: teams must have distinct functions ("${functionKey}" repeated)`,
+          );
+        }
+        seenFunctions.add(functionKey.toLowerCase());
+        if (functionKey === EXECUTIVE_FUNCTION) executiveCount++;
+        const named = teamNameForEdit(entry, functionKey, shortName, multiOrg, identities);
+        teams.push({
+          team_name: named.team_name,
+          team_uid: storedTeam.team_uid,
+          function_key: functionKey,
+          description: String(entry.description || '').trim(),
+          is_custom: isCustom,
+          is_public_voice: !!entry.is_public_voice,
+        });
+        continue;
+      }
+      const parsedEntry = entry;
       const rawName = String(parsedEntry.team_name || '').trim();
       if (!rawName) {
         fail('MO-TEAM-001', `${path}.team_roster`, 'Every team needs a name');
@@ -656,10 +686,12 @@ export function validateOrganisations(
     const namedIndex = named
       ? ordered.findIndex((raw) => (raw.org_key?.trim() ?? '') === named)
       : -1;
-    const baselineIndex =
-      namedIndex >= 0
-        ? -1
-        : orgs.findIndex((org) => org.org_key === baselinePrimaryKey(identities));
+    if (named && namedIndex < 0 && !details.some((detail) => detail.code === 'MO-EDIT-001')) {
+      fail('MO-ORG-002', 'organisations', 'Exactly one organisation must be marked primary');
+    }
+    const baselineIndex = named
+      ? -1
+      : orgs.findIndex((org) => org.org_key === baselinePrimaryKey(identities));
     const primaryIndex = namedIndex >= 0 ? namedIndex : baselineIndex;
     if (primaryIndex >= 0) {
       orgs.forEach((org, index) => {
@@ -668,7 +700,7 @@ export function validateOrganisations(
     }
     if (
       orgs.filter((org) => org.is_primary).length !== 1 &&
-      !details.some((detail) => detail.code === 'MO-EDIT-001')
+      !details.some((detail) => detail.code === 'MO-EDIT-001' || detail.code === 'MO-ORG-002')
     ) {
       fail('MO-ORG-002', 'organisations', 'Exactly one organisation must be marked primary');
     }

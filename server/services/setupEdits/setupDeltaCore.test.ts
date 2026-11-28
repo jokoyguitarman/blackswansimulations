@@ -348,6 +348,86 @@ describe('setup delta', () => {
     assert.equal(computeDelta(base, countryOnly).brief_changed, false);
   });
 
+  test('pressure target and country changes are not an empty delta', () => {
+    const base = snapshot({
+      pressure_organisations: [
+        pressure({
+          org_key: 'org_pressure_union_sg',
+          country: 'Singapore',
+          city: 'Jurong',
+          kind: 'union',
+          wants: 'A hearing',
+          targets_org_keys: ['primary'],
+          facebook_handle: '@union',
+        }),
+      ],
+    });
+    const edited = snapshot({
+      pressure_organisations: [
+        pressure({
+          org_key: 'org_pressure_union_sg',
+          country: 'Malaysia',
+          city: 'Jurong',
+          kind: 'union',
+          wants: 'A hearing',
+          targets_org_keys: ['org_acme_my'],
+          facebook_handle: '@union',
+        }),
+      ],
+    });
+    const delta = computeDelta(base, edited);
+    assert.equal(delta.empty, false);
+    assert.deepEqual(delta.changed_text, [
+      { key: 'org_pressure_union_sg', field: 'country' },
+      { key: 'org_pressure_union_sg', field: 'targets_org_keys' },
+    ]);
+  });
+
+  test('pressure city, kind and handles, and rival country and handles, are changed text', () => {
+    const base = snapshot({
+      pressure_organisations: [
+        pressure({
+          org_key: 'org_pressure_union_sg',
+          city: 'Jurong',
+          kind: 'union',
+          x_handle: '@union_x',
+        }),
+      ],
+      competitors: [
+        rival({
+          org_key: 'org_antagonist_rival_0',
+          name: 'Rival Co',
+          country: 'Singapore',
+          facebook_handle: '@rival',
+        }),
+      ],
+    });
+    const edited = snapshot({
+      pressure_organisations: [
+        pressure({
+          org_key: 'org_pressure_union_sg',
+          city: 'Woodlands',
+          kind: 'ngo',
+          x_handle: '@union_new',
+        }),
+      ],
+      competitors: [
+        rival({
+          org_key: 'org_antagonist_rival_0',
+          name: 'Rival Co',
+          country: 'Malaysia',
+          facebook_handle: '@rival_my',
+        }),
+      ],
+    });
+    const delta = computeDelta(base, edited);
+    assert.equal(delta.empty, false);
+    assert.deepEqual(
+      delta.changed_text.map((change) => change.field),
+      ['city', 'kind', 'x_handle', 'country', 'facebook_handle'],
+    );
+  });
+
   test('a combined add, remove, rename and brief change', () => {
     const base = snapshot({
       organisations: [

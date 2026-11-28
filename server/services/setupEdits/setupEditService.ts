@@ -16,7 +16,9 @@ import {
 import {
   baselineHash,
   draftInputFromSnapshot,
+  materializeLegacyPrimary,
   snapshotFromScenario,
+  stableOrgUid,
   type ScenarioSnapshotSource,
   type SnapshotInjectRow,
   type SnapshotTeamRow,
@@ -44,6 +46,50 @@ let unavailableLogged = false;
 let buildsUnavailableLogged = false;
 
 class SnapshotUnavailable extends Error {}
+
+/**
+ * Write org_uid stamps only when the scenario row is still the one we read.
+ * A concurrent save wins: re-read once, stamp that version, and if it moved
+ * again keep the fresh state in memory without overwriting it.
+ */
+async function persistOrgIdentity(
+  scenarioId: string,
+  updatedAt: string | null,
+  initialState: unknown,
+): Promise<unknown> {
+  const next = stampOrgIdentity(materializeLegacyPrimary(initialState, scenarioId));
+  if (canonicalJson(next) === canonicalJson(initialState)) return initialState;
+  const wrote = await writeIdentity(scenarioId, updatedAt, next);
+  if (wrote) return next;
+
+  const again = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state, updated_at')
+    .eq('id', scenarioId)
+    .maybeSingle<{ initial_state: unknown; updated_at: string | null }>();
+  if (again.error || !again.data) return next;
+  const restamped = stampOrgIdentity(materializeLegacyPrimary(again.data.initial_state, scenarioId));
+  if (canonicalJson(restamped) === canonicalJson(again.data.initial_state)) {
+    return again.data.initial_state;
+  }
+  await writeIdentity(scenarioId, again.data.updated_at, restamped);
+  return restamped;
+}
+
+async function writeIdentity(
+  scenarioId: string,
+  updatedAt: string | null,
+  initialState: unknown,
+): Promise<boolean> {
+  let query = supabaseAdmin.from('scenarios').update({ initial_state: initialState }).eq('id', scenarioId);
+  if (typeof updatedAt === 'string' && updatedAt) query = query.eq('updated_at', updatedAt);
+  const written = await query.select('id');
+  if (written.error) {
+    logger.error({ error: written.error, scenarioId }, 'Failed to stamp organisation identity');
+    throw new Error(`Organisation identity stamp failed: ${written.error.message}`);
+  }
+  return Array.isArray(written.data) && written.data.length > 0;
+}
 
 export interface AttachDraftContext {
   userId: string;
@@ -207,7 +253,7 @@ export async function attachOpenedDraft(
 ): Promise<AttachDraftResult> {
   const scenario = await supabaseAdmin
     .from('scenarios')
-    .select('id, title, description, briefing, duration_minutes, initial_state')
+    .select('id, title, description, briefing, duration_minutes, initial_state, updated_at')
     .eq('id', scenarioId)
     .maybeSingle<{
       id: string;
@@ -216,6 +262,7 @@ export async function attachOpenedDraft(
       briefing: string | null;
       duration_minutes: number | null;
       initial_state: unknown;
+      updated_at: string | null;
     }>();
   if (scenario.error) {
     if (isSetupEditSchemaMissing(scenario.error)) {
@@ -227,17 +274,11 @@ export async function attachOpenedDraft(
   }
   if (!scenario.data) return { available: true, ok: false, reason: 'not_found' };
 
-  const stamped = stampOrgIdentity(scenario.data.initial_state);
-  if (canonicalJson(stamped) !== canonicalJson(scenario.data.initial_state)) {
-    const written = await supabaseAdmin
-      .from('scenarios')
-      .update({ initial_state: stamped })
-      .eq('id', scenarioId);
-    if (written.error) {
-      logger.error({ error: written.error, scenarioId }, 'Failed to stamp organisation identity');
-      throw new Error(`Organisation identity stamp failed: ${written.error.message}`);
-    }
-  }
+  const stamped = await persistOrgIdentity(
+    scenarioId,
+    scenario.data.updated_at,
+    scenario.data.initial_state,
+  );
 
   let teams: SnapshotTeamRow[];
   let injects: SnapshotInjectRow[];
@@ -261,7 +302,9 @@ export async function attachOpenedDraft(
     injects,
     build_request: buildRequest,
   };
-  const snapshot = snapshotFromScenario(source);
+  const snapshot = snapshotFromScenario(source, {
+    assignOrgUid: () => stableOrgUid(scenarioId, 'primary'),
+  });
   const hash = baselineHash(snapshot);
   const input = draftInputFromSnapshot(snapshot, {
     edit_id: editId,
