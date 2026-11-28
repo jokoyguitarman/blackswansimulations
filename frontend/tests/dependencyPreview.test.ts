@@ -5,6 +5,7 @@ import {
   compileDraft,
   draftFromStored,
   emptyConditionNames,
+  withDependencyTeamScope,
 } from '../src/components/Scenario/conditionDraft.ts';
 import {
   causeChipText,
@@ -202,5 +203,34 @@ describe('dependency condition builder', () => {
         'reply_failed:bay3_headcount_request|team=@upstream',
       ],
     });
+  });
+
+  test('a stored downstream scope stays downstream', () => {
+    const draft = draftFromStored(
+      { all: ['unresponded:bay3_headcount_request:10|team=@downstream'] },
+      [],
+      null,
+      CONDITION_CATALOG,
+      { allowPlaceholders: true },
+    );
+    const row = draft.appear[0];
+    assert.ok(row);
+    assert.equal(row.team, '@downstream');
+    const def = CONDITION_CATALOG.find((item) => item.id === 'unresponded');
+    const kept = withDependencyTeamScope(row, def, '@upstream');
+    assert.equal(kept.team, '@downstream');
+    const compiled = compileDraft(
+      { ...draft, appear: [kept] },
+      CONDITION_CATALOG,
+      emptyConditionNames(),
+      [],
+      [],
+      { allowPlaceholders: true },
+    );
+    assert.deepEqual(compiled.errors, []);
+    assert.deepEqual(compiled.conditions_to_appear, {
+      all: ['unresponded:bay3_headcount_request:10|team=@downstream'],
+    });
+    assert.equal(withDependencyTeamScope({ ...row, team: '' }, def, '@upstream').team, '@upstream');
   });
 });

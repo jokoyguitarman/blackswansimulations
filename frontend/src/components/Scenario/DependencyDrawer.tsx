@@ -10,6 +10,7 @@ import {
   consequenceCancelKeys,
   displayRef,
   fromEditorModel,
+  matchTeamRef,
   toEditorModel,
   uniqueDependencyId,
   type ActiveTeam,
@@ -20,6 +21,7 @@ import {
   type TeamRef,
 } from '@shared/teamDependencies';
 import { api } from '../../lib/api';
+import { formatSaveError } from './dependencyDocument';
 import { ConditionBuilder, type InjectChoice } from './ConditionBuilder';
 import {
   compileDraft,
@@ -40,6 +42,8 @@ export interface DrawerInject {
   id: string;
   title: string;
   trigger_time_minutes: number | null;
+  conditions_to_appear?: unknown;
+  conditions_to_cancel?: unknown;
   delivery_config?: Record<string, unknown> | null;
 }
 
@@ -53,11 +57,8 @@ function teamValue(team: ActiveTeam): string {
 }
 
 function refValue(ref: TeamRef, teams: readonly ActiveTeam[]): string {
-  const match = teams.find((team) => {
-    if (ref.team_uid && team.team_uid === ref.team_uid) return true;
-    return !ref.team_uid && team.team_name === ref.team_name;
-  });
-  return match ? teamValue(match) : '';
+  const match = matchTeamRef(ref, teams);
+  return match && match.playable !== false ? teamValue(match) : '';
 }
 
 function refFromValue(value: string, teams: readonly ActiveTeam[]): TeamRef | null {
@@ -334,7 +335,7 @@ export function DependencyDrawer({
       setError(false);
       return true;
     } catch (err) {
-      setMessage((err as Error).message);
+      setMessage(formatSaveError(err));
       setError(true);
       return false;
     } finally {
@@ -397,7 +398,7 @@ export function DependencyDrawer({
       };
       await save(withKey);
     } catch (err) {
-      setMessage((err as Error).message);
+      setMessage(formatSaveError(err));
       setError(true);
       setSaving(false);
     }

@@ -17,6 +17,7 @@ import {
   readTeamDependencies,
   refreshEdgeTeamNames,
   resolveTeamRef,
+  takenDependencyIds,
   toEditorModel,
   uniqueDependencyId,
   type ActiveTeam,
@@ -256,6 +257,28 @@ describe('dependency editor model', () => {
     assert.equal(readDependencyCause({ cause: { kind: 'dependency', dep_id: edge.id } }), edge.id);
     const taken = new Set([edge.id]);
     assert.equal(uniqueDependencyId('Bay 3 headcount', taken), 'dep_bay_3_headcount');
+    const retired = takenDependencyIds(
+      [{ id: 'dep_still_here' }],
+      [
+        {
+          conditions_to_appear: {
+            any: ['dependency_broken_for:dep_bay_3_headcount:5'],
+          },
+          conditions_to_cancel: [
+            'dependency_resolved:dep_bay_3_headcount',
+            'dependency_waived:dep_bay_3_headcount',
+          ],
+          delivery_config: {
+            app: 'email',
+            cause: { kind: 'dependency', dep_id: 'dep_bay_3_headcount' },
+          },
+        },
+      ],
+    );
+    assert.equal(retired.has('dep_bay_3_headcount'), true);
+    assert.equal(retired.has('dep_still_here'), true);
+    assert.equal(retired.has('dependency_broken_for'), false);
+    assert.equal(uniqueDependencyId('Bay 3 headcount', retired), 'dep_bay_3_headcount_2');
     assert.equal(
       uniqueDependencyId('dep_ops_bay3_headcount', new Set(['dep_dep_ops_bay3_headcount'])),
       'dep_dep_ops_bay3_headcount_2',

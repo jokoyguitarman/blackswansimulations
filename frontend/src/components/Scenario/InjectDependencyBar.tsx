@@ -5,13 +5,14 @@ import {
   editorCrossTeamProfile,
   quickDependencyEdge,
   readDependencyCause,
+  takenDependencyIds,
   uniqueDependencyId,
   type TeamDependencyEdge,
   type TeamRef,
 } from '@shared/teamDependencies';
 import { api } from '../../lib/api';
 import { causeChipText, dependencyPreviewSentence } from './dependencyPreview';
-import type { DependencyDocument } from './dependencyDocument';
+import { formatSaveError, type DependencyDocument } from './dependencyDocument';
 
 const inputCls =
   'w-full text-xs bg-surface border border-border rounded px-2 py-1.5 text-ink disabled:opacity-60';
@@ -19,6 +20,8 @@ const inputCls =
 interface InjectRef {
   id: string;
   title: string;
+  conditions_to_appear?: unknown;
+  conditions_to_cancel?: unknown;
   delivery_config?: Record<string, unknown> | null;
 }
 
@@ -141,6 +144,12 @@ export function DependencyQuickAction({
 
   const create = async () => {
     if (!injectId) return;
+    if (document.error) {
+      setMessage(
+        `These dependencies could not be read, so a new one was not added. ${document.error}`,
+      );
+      return;
+    }
     if (!upstream || !downstream) {
       setMessage('Choose the team that fails this and the team that feels it.');
       return;
@@ -173,7 +182,7 @@ export function DependencyQuickAction({
       }
       const depId = uniqueDependencyId(
         injectTitle || downstream.team_name,
-        new Set(document.edges.map((edge) => edge.id)),
+        takenDependencyIds(document.edges, injects),
       );
       const consKey = uniqueInjectKey(title, takenKeys(injects, key));
       const edge = quickDependencyEdge({
@@ -195,29 +204,37 @@ export function DependencyQuickAction({
         consequences: [{ team: downstream.team_name, title }],
         injectTitles: { [key]: injectTitle || key },
       });
-      const created = await api.scenarios.createInject(scenarioId, {
-        title,
-        content: sentence,
-        type: 'email',
-        severity: 'medium',
-        requires_response: true,
-        inject_scope: 'team_specific',
-        target_teams: [downstream.team_name],
-        trigger_time_minutes: null,
-        conditions_to_appear: { all: [`dependency_broken_for:${edge.id}:${edge.lag_minutes}`] },
-        conditions_to_cancel: [`dependency_resolved:${edge.id}`, `dependency_waived:${edge.id}`],
-        delivery_config: {
-          app: 'email',
-          inject_key: consKey,
-          cause: { kind: 'dependency', dep_id: edge.id },
-        },
-      });
       await document.commit((current) => [...current, edge]);
-      onInjectCreated(created.data);
+      try {
+        const created = await api.scenarios.createInject(scenarioId, {
+          title,
+          content: sentence,
+          type: 'email',
+          severity: 'medium',
+          requires_response: true,
+          inject_scope: 'team_specific',
+          target_teams: [downstream.team_name],
+          trigger_time_minutes: null,
+          conditions_to_appear: { all: [`dependency_broken_for:${edge.id}:${edge.lag_minutes}`] },
+          conditions_to_cancel: [`dependency_resolved:${edge.id}`, `dependency_waived:${edge.id}`],
+          delivery_config: {
+            app: 'email',
+            inject_key: consKey,
+            cause: { kind: 'dependency', dep_id: edge.id },
+          },
+        });
+        onInjectCreated(created.data);
+      } catch (err) {
+        setMessage(
+          `The dependency was saved, but the consequence inject was not. ${formatSaveError(err)}`,
+        );
+        setSaving(false);
+        return;
+      }
       setOpen(false);
       setMessage(null);
     } catch (err) {
-      setMessage((err as Error).message);
+      setMessage(formatSaveError(err));
     } finally {
       setSaving(false);
     }

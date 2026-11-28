@@ -10,6 +10,7 @@ import {
   platformLabel,
   platformsIn,
   retargetRow,
+  withDependencyTeamScope,
   type ConditionDraft,
   type ConditionNames,
   type ConditionRow,
@@ -87,9 +88,7 @@ export function ConditionBuilder({
   );
   const scopedRow = (row: ConditionRow): ConditionRow => {
     if (!fixedTeamScope) return row;
-    const def = defById(defs, row.event);
-    if (!def?.teamScope) return { ...row, team: '', role: '' };
-    return { ...row, team: fixedTeamScope, role: '' };
+    return withDependencyTeamScope(row, defById(defs, row.event), fixedTeamScope);
   };
   const platforms = platformsIn(defs);
 
@@ -406,7 +405,7 @@ function ConditionRowEditor({
       ))}
       {def?.teamScope && fixedTeamScope && (
         <span className="text-[11px] text-muted px-1" data-section="fixed-team-scope">
-          {fixedTeamScope === '@upstream' ? 'upstream team' : 'downstream team'}
+          {row.team === '@downstream' ? 'downstream team' : 'upstream team'}
         </span>
       )}
       {def?.teamScope && !fixedTeamScope && (

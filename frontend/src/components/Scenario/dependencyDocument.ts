@@ -5,6 +5,7 @@ import {
   type ActiveTeam,
   type TeamDependencyEdge,
 } from '@shared/teamDependencies';
+import { ApiError } from '../../lib/api';
 
 export interface EditorTeam {
   team_name: string;
@@ -60,6 +61,19 @@ export function readOrgs(initialState: Record<string, unknown>): EditorOrg[] {
   return orgs;
 }
 
+/** Every issue on a 400, not only the first message. */
+export function formatSaveError(err: unknown): string {
+  if (err instanceof ApiError && Array.isArray(err.body.issues)) {
+    const lines = err.body.issues.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const message = (item as { message?: unknown }).message;
+      return typeof message === 'string' && message.trim() ? [message.trim()] : [];
+    });
+    if (lines.length > 0) return lines.join(' ');
+  }
+  return err instanceof Error ? err.message : 'Save failed';
+}
+
 export interface DependencyDocument {
   edges: TeamDependencyEdge[];
   error: string | null;
@@ -85,6 +99,8 @@ export function useDependencyDocument(
   const read = readTeamDependencies(stored);
   const serverEdges = 'error' in read ? [] : read.dependencies.edges;
   const error = 'error' in read ? read.error : null;
+  const errorRef = useRef<string | null>(error);
+  errorRef.current = error;
   const edgesRef = useRef<TeamDependencyEdge[]>(serverEdges);
   const [edges, setEdges] = useState<TeamDependencyEdge[]>(serverEdges);
   const saveRef = useRef(saveInitialState);
@@ -100,6 +116,11 @@ export function useDependencyDocument(
 
   const commit = (update: (current: readonly TeamDependencyEdge[]) => TeamDependencyEdge[]) => {
     const run = queue.current.then(async () => {
+      if (errorRef.current) {
+        throw new Error(
+          `These dependencies could not be read, so nothing was added. ${errorRef.current}`,
+        );
+      }
       const next = update(edgesRef.current).map((edge) =>
         refreshEdgeTeamNames(edge, activeRef.current),
       );

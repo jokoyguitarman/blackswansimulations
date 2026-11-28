@@ -290,6 +290,21 @@ export function draftFromStored(
   return base;
 }
 
+/**
+ * A dependency row keeps a placeholder it already has. A new row, or one
+ * whose event lost its team, takes the fixed scope. `@downstream` is not
+ * rewritten to `@upstream`.
+ */
+export function withDependencyTeamScope(
+  row: ConditionRow,
+  def: ConditionDefSpec | undefined,
+  fixed: '@upstream' | '@downstream',
+): ConditionRow {
+  if (!def?.teamScope) return { ...row, team: '', role: '' };
+  if (row.team === '@upstream' || row.team === '@downstream') return { ...row, role: '' };
+  return { ...row, team: fixed, role: '' };
+}
+
 export function rowToModel(row: ConditionRow): BuilderModel {
   const scope: BuilderModel['scope'] = {};
   if (row.team === '@upstream' || row.team === '@downstream') scope.team_placeholder = row.team;

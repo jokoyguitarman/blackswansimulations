@@ -1,9 +1,19 @@
 import { Fragment, useState } from 'react';
-import { matchTeamRef, displayRef, type TeamDependencyEdge } from '@shared/teamDependencies';
+import {
+  displayRef,
+  matchTeamRef,
+  takenDependencyIds,
+  type TeamDependencyEdge,
+} from '@shared/teamDependencies';
 import { WrIcon } from '../UI/WarRoomIcon';
 import { WrSection } from '../UI/Collapsible';
-import { LANE_PAGE_SIZE, filterLane, laneShowsSearch, takeLanePages } from './lanePaging';
-import { readOrgs, type DependencyDocument, type EditorTeam } from './dependencyDocument';
+import { filterLane, laneShowsSearch, takeLanePages } from './lanePaging';
+import {
+  formatSaveError,
+  readOrgs,
+  type DependencyDocument,
+  type EditorTeam,
+} from './dependencyDocument';
 import { DependencyDrawer, type DrawerInject } from './DependencyDrawer';
 import { dependencyPreviewSentence, dependencyTableCells } from './dependencyPreview';
 
@@ -127,7 +137,7 @@ export function TeamDependenciesSection({
       await commit((current) => current.filter((item) => item.id !== edge.id));
       if (editing && editing !== 'new' && editing.id === edge.id) setEditing(null);
     } catch (err) {
-      setRowError((err as Error).message);
+      setRowError(formatSaveError(err));
     }
   };
 
@@ -344,8 +354,7 @@ export function TeamDependenciesSection({
             )}
             {showSearch && (
               <p className="text-[11px] text-muted mt-1">
-                Showing {visible.length} of {searched.length}
-                {query.trim() ? ' matches' : ''}. Pages of {LANE_PAGE_SIZE}.
+                Showing {visible.length} of {searched.length} dependencies
               </p>
             )}
           </div>
@@ -361,7 +370,7 @@ export function TeamDependenciesSection({
           injects={injects}
           stakeholders={readStakeholders(initialState)}
           durationMinutes={durationMinutes}
-          takenDependencyIds={new Set(edges.map((edge) => edge.id))}
+          takenDependencyIds={takenDependencyIds(edges, injects)}
           locked={locked}
           onClose={() => setEditing(null)}
           onCommit={async (next) => {

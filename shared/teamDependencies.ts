@@ -455,6 +455,64 @@ export function fromEditorModel(model: DependencyEditorModel): TeamDependencyEdg
   };
 }
 
+function addDependencyId(taken: Set<string>, value: string): void {
+  if (DEPENDENCY_ID.test(value)) taken.add(value);
+}
+
+function addDependencyIdsInText(taken: Set<string>, text: string): void {
+  addDependencyId(taken, text);
+  const keys =
+    /dependency_(?:broken_for|broken|met|recovered|resolved|waived):(dep_[a-z0-9_]{1,56})(?::|$)/g;
+  for (const match of text.matchAll(keys)) {
+    const id = match[1];
+    if (id) addDependencyId(taken, id);
+  }
+}
+
+function addDependencyIds(taken: Set<string>, value: unknown): void {
+  if (typeof value === 'string') {
+    addDependencyIdsInText(taken, value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) addDependencyIds(taken, item);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) addDependencyIds(taken, item);
+  }
+}
+
+export interface DependencyIdSource {
+  conditions_to_appear?: unknown;
+  conditions_to_cancel?: unknown;
+  delivery_config?: unknown;
+}
+
+function causeOf(config: unknown): unknown {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return undefined;
+  return (config as { cause?: unknown }).cause;
+}
+
+/**
+ * Ids that must not be issued again. A retired edge's id stays taken while any
+ * inject still names it in appear or cancel conditions, or in `cause.dep_id`.
+ * Current edges are taken too.
+ */
+export function takenDependencyIds(
+  edges: readonly { id: string }[],
+  injects: readonly DependencyIdSource[],
+): Set<string> {
+  const taken = new Set<string>();
+  for (const edge of edges) addDependencyId(taken, edge.id);
+  for (const inject of injects) {
+    addDependencyIds(taken, inject.conditions_to_appear);
+    addDependencyIds(taken, inject.conditions_to_cancel);
+    addDependencyIds(taken, causeOf(inject.delivery_config));
+  }
+  return taken;
+}
+
 /** First free `dep_` id. The slug is the deliverable, capped at 56 characters. */
 export function uniqueDependencyId(label: string, taken: ReadonlySet<string>): string {
   const slug = label
