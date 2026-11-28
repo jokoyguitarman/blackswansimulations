@@ -1,4 +1,6 @@
+import { env } from '../env.js';
 import { logger } from '../lib/logger.js';
+import { limitConcurrency } from '../lib/limitConcurrency.js';
 import {
   callSocialCrisisAI,
   type NPCPersona,
@@ -106,10 +108,8 @@ export async function generateStakeholdersForOrg(
   // Two teams per call keeps each response well inside the token budget (each stakeholder
   // carries nested inject content); a truncated response would otherwise parse to nothing.
   const groups = chunk(orgCharters, 2);
-  const results = await Promise.all(
-    groups.map((group) =>
-      generateForTeams(org, group, charters, personasInCountry, factSheet, crisis, taken, multiOrg),
-    ),
+  const results = await limitConcurrency(groups, env.warroomGenConcurrency, (group) =>
+    generateForTeams(org, group, charters, personasInCountry, factSheet, crisis, taken, multiOrg),
   );
   return mergeResults(results);
 }

@@ -13,6 +13,7 @@
  */
 
 import { env } from '../../env.js';
+import { noteAiCall } from '../../lib/aiCallScope.js';
 import { logger } from '../../lib/logger.js';
 import { currentAbortSignal, runWithAbortSignal } from './abortContext.js';
 import {
@@ -335,6 +336,7 @@ async function execute(opts: ChatOptions): Promise<ChatResult | null> {
   let grewOnce = false;
 
   bump(opts.label, 'calls');
+  noteAiCall();
   const startedAt = Date.now();
 
   for (let attempt = 1; ; attempt++) {

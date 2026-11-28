@@ -1,5 +1,11 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import {
+  currentConcurrencyLimiter,
+  limitConcurrency,
+  withConcurrencyLimit,
+} from '../lib/limitConcurrency.js';
+import { personasForCountryCount } from './personaBudget.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import {
   generateConvergenceLayer,
@@ -196,9 +202,18 @@ export function unscopePersonasForCountriesWithoutPlayers(
   });
 }
 
-function personasPerCountryTarget(): number {
-  const raw = Number(process.env.SOCIAL_PERSONAS_PER_COUNTRY);
-  return Number.isFinite(raw) && raw >= 20 ? Math.min(400, Math.round(raw)) : 200;
+function personasPerCountryTarget(countryCount: number): number {
+  // Explicit override kept for deployments that already sized the crowd this way.
+  const raw = process.env.SOCIAL_PERSONAS_PER_COUNTRY;
+  if (raw != null && raw.trim() !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 20) return Math.min(400, Math.round(n));
+  }
+  return personasForCountryCount(countryCount, env.socialPersonasTotalMax);
+}
+
+function enterBuildLimit<T>(fn: () => Promise<T>): Promise<T> {
+  return withConcurrencyLimit(env.warroomGenConcurrency, fn);
 }
 
 // ─── generate-npcs ───────────────────────────────────────────────────────────
@@ -222,20 +237,28 @@ export async function runNpcsPipeline(
   crisis: CrisisContext,
   opts: { footprint?: CrisisFootprint | null } = {},
 ): Promise<NpcsPipelineResult> {
+  if (!currentConcurrencyLimiter()) {
+    return enterBuildLimit(() => runNpcsPipeline(orgsResult, crisis, opts));
+  }
   const { orgs, competitors, pressureOrgs } = orgsResult;
   const crisisText = `${crisis.crisisType}. ${crisis.context}`;
-  const [{ factSheet, communities }, footprint] = await Promise.all([
-    generateFactSheetAndCommunities(crisis, orgs),
-    opts.footprint
-      ? Promise.resolve(opts.footprint)
-      : inferCrisisFootprint(crisisText, orgs).catch((err) => {
-          logger.warn({ err }, 'crisis_footprint_failed');
-          return null;
-        }),
+  const [factAndCommunities, footprint] = await Promise.all([
+    limitConcurrency([0], env.warroomGenConcurrency, () =>
+      generateFactSheetAndCommunities(crisis, orgs),
+    ).then((rows) => rows[0]),
+    limitConcurrency([0], env.warroomGenConcurrency, () =>
+      opts.footprint
+        ? Promise.resolve(opts.footprint)
+        : inferCrisisFootprint(crisisText, orgs).catch((err) => {
+            logger.warn({ err }, 'crisis_footprint_failed');
+            return null;
+          }),
+    ).then((rows) => rows[0]),
   ]);
+  const { factSheet, communities } = factAndCommunities;
   const taken = newTakenIdentifiers();
-  const target = personasPerCountryTarget();
   const countries = countriesOf(orgs);
+  const target = personasPerCountryTarget(countries.length);
 
   // Footprint countries without a protagonist org (incident / regulatory) still get a crowd —
   // emitted UNSCOPED (no persona.country) so the players present see it as regional spillover.
@@ -250,29 +273,25 @@ export async function runNpcsPipeline(
     .slice(0, MAX_SPILLOVER_COUNTRIES);
 
   const [perCountry, spillover] = await Promise.all([
-    Promise.all(
-      countries.map((country) =>
-        generatePersonasForCountry(
-          crisis,
-          country,
-          orgs.filter((o) => o.country === country),
-          factSheet,
-          taken,
-          target,
-        ),
+    limitConcurrency(countries, env.warroomGenConcurrency, (country) =>
+      generatePersonasForCountry(
+        crisis,
+        country,
+        orgs.filter((o) => o.country === country),
+        factSheet,
+        taken,
+        target,
       ),
     ),
-    Promise.all(
-      spilloverCountries.map((country) =>
-        generatePersonasForCountry(crisis, country, [], factSheet, taken, SPILLOVER_PERSONAS).then(
-          (list) =>
-            list.map((p) => {
-              const copy = { ...p } as NPCPersona & { country?: string };
-              delete copy.country; // unscoped: visible in every country's feed
-              copy.backstory = `${copy.backstory || ''} (Based in ${country}.)`.trim();
-              return copy as NPCPersona;
-            }),
-        ),
+    limitConcurrency(spilloverCountries, env.warroomGenConcurrency, (country) =>
+      generatePersonasForCountry(crisis, country, [], factSheet, taken, SPILLOVER_PERSONAS).then(
+        (list) =>
+          list.map((p) => {
+            const copy = { ...p } as NPCPersona & { country?: string };
+            delete copy.country; // unscoped: visible in every country's feed
+            copy.backstory = `${copy.backstory || ''} (Based in ${country}.)`.trim();
+            return copy as NPCPersona;
+          }),
       ),
     ),
   ]);
@@ -343,56 +362,65 @@ export async function runStorylinePipeline(
   blueprint: ScenarioBlueprint | null,
   write: StreamWriter,
 ): Promise<StorylinePipelineResult> {
+  if (!currentConcurrencyLimiter()) {
+    return enterBuildLimit(() =>
+      runStorylinePipeline(orgsResult, crisis, personas, factSheet, blueprint, write),
+    );
+  }
   const { orgs, competitors, pressureOrgs, multiOrg } = orgsResult;
   const taken: TakenIdentifiers = newTakenIdentifiers();
   for (const p of personas) taken.handles.add(p.handle);
 
-  // 1. Charters per organisation (parallel).
+  // 1. Charters per organisation (parallel, sharing the build's call cap).
   write({ type: 'progress', message: `Preparing charters for ${orgs.length} organisation(s)...` });
-  const chartersByOrg = await Promise.all(
-    orgs.map(async (org) => {
-      const charters = await buildOrgCharters(org, orgs, crisis);
-      write({
-        type: 'org_progress',
-        org_key: org.org_key,
-        stage: 'charters',
-        detail: `${charters.length} teams`,
-      });
-      return charters;
-    }),
-  );
+  const chartersByOrg = await limitConcurrency(orgs, env.warroomGenConcurrency, async (org) => {
+    const charters = await buildOrgCharters(org, orgs, crisis);
+    write({
+      type: 'org_progress',
+      org_key: org.org_key,
+      stage: 'charters',
+      detail: `${charters.length} teams`,
+    });
+    return charters;
+  });
   const allCharters = chartersByOrg.flat();
 
   // 2. Team storylines per organisation (parallel) with that country's crowd.
-  const storylineMaps = await Promise.all(
-    orgs.map((org, i) =>
-      generateOrgTeamStorylines(
-        org,
-        orgs,
-        chartersByOrg[i],
-        crisis,
-        personas.filter((p) => !p.country || p.country === org.country),
-        factSheet,
-        (teamName, injectCount) =>
-          write({
-            type: 'team_complete',
-            team: teamName,
-            org_key: org.org_key,
-            inject_count: injectCount,
-          }),
-      ),
+  const storylineMaps = await limitConcurrency(orgs, env.warroomGenConcurrency, (org, i) =>
+    generateOrgTeamStorylines(
+      org,
+      orgs,
+      chartersByOrg[i],
+      crisis,
+      personas.filter((p) => !p.country || p.country === org.country),
+      factSheet,
+      (teamName, injectCount) =>
+        write({
+          type: 'team_complete',
+          team: teamName,
+          org_key: org.org_key,
+          inject_count: injectCount,
+        }),
     ),
   );
   const teamStorylines: Record<string, SocialInject[]> = Object.assign({}, ...storylineMaps);
 
   // 3. Stakeholders per organisation + common (parallel).
   const keyPersonas = personas.filter((p) => p.tier === 'key');
-  const stakeholderResults = await Promise.all([
-    ...orgs.map(async (org, i) => {
+  const stakeholderResults = await limitConcurrency(
+    [
+      ...orgs.map((org, i) => ({ kind: 'org' as const, org, index: i })),
+      { kind: 'common' as const, org: orgs[0], index: -1 },
+    ],
+    env.warroomGenConcurrency,
+    async (job) => {
+      if (job.kind === 'common') {
+        return generateCommonStakeholders(orgs, allCharters, keyPersonas, factSheet, crisis, taken);
+      }
       const r = await generateStakeholdersForOrg(
-        org,
-        chartersByOrg[i],
-        personas.filter((p) => !p.country || p.country === org.country),
+        job.org,
+        chartersByOrg[job.index],
+        personas.filter((p) => !p.country || p.country === job.org.country),
         factSheet,
         crisis,
         taken,
@@ -400,14 +428,13 @@ export async function runStorylinePipeline(
       );
       write({
         type: 'org_progress',
-        org_key: org.org_key,
+        org_key: job.org.org_key,
         stage: 'stakeholders',
         detail: `${r.stakeholders.length} contacts`,
       });
       return r;
-    }),
-    generateCommonStakeholders(orgs, allCharters, keyPersonas, factSheet, crisis, taken),
-  ]);
+    },
+  );
   const stakeholders = stakeholderResults.flatMap((r) => r.stakeholders);
   const stakeholderInjects = stakeholderResults.flatMap((r) => r.injects);
   const personaTwins = stakeholderResults.flatMap((r) => r.personaTwins);
@@ -477,9 +504,12 @@ export async function runStorylinePipeline(
 
   // 4. Universal backbone once (primary country; orgs by country in the prompt).
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
+  const oneLinePerTeam = allCharters.length > 20;
   const teamDefs: TeamDef[] = allCharters.map((c) => ({
     team_name: c.team_name,
-    team_description: `${c.mission} Responsibilities: ${c.responsibilities.join('; ')}`,
+    team_description: oneLinePerTeam
+      ? c.mission
+      : `${c.mission} Responsibilities: ${c.responsibilities.join('; ')}`,
     min_participants: c.min_participants,
     max_participants: c.max_participants,
   }));
@@ -652,6 +682,20 @@ export async function runConvergencePipeline(
   jobId?: string,
   branchInput?: ConvergenceBranchInput,
 ): Promise<ConvergencePipelineResult> {
+  if (!currentConcurrencyLimiter()) {
+    return enterBuildLimit(() =>
+      runConvergencePipeline(
+        orgsResult,
+        crisisContext,
+        teamStorylines,
+        personas,
+        factSheet,
+        blueprint,
+        jobId,
+        branchInput,
+      ),
+    );
+  }
   // Explicit valid team names (never the wizard's synthetic "Shared" key) and the
   // org grouping that lets dependencies cross agencies and borders.
   const orgSummary =
@@ -668,24 +712,28 @@ export async function runConvergencePipeline(
     : Object.keys(teamStorylines).filter((k) => k !== 'Shared');
 
   const [result, intelResult] = await Promise.all([
-    generateConvergenceLayer(teamStorylines, personas, factSheet, crisisContext, blueprint),
-    generateIntelDependencies(
-      teamStorylines,
-      personas,
-      factSheet,
-      crisisContext,
-      validTeamNames,
-      orgSummary,
-    ).catch((err: unknown) => {
-      logger.warn(
-        jobId ? { err, jobId } : { err },
-        'Intel dependency generation failed (non-critical)',
-      );
-      return {
-        intelInjects: {} as Record<string, SocialInject[]>,
-        intelGates: [] as SocialInject[],
-      };
-    }),
+    limitConcurrency([0], env.warroomGenConcurrency, () =>
+      generateConvergenceLayer(teamStorylines, personas, factSheet, crisisContext, blueprint),
+    ).then((rows) => rows[0]),
+    limitConcurrency([0], env.warroomGenConcurrency, () =>
+      generateIntelDependencies(
+        teamStorylines,
+        personas,
+        factSheet,
+        crisisContext,
+        validTeamNames,
+        orgSummary,
+      ).catch((err: unknown) => {
+        logger.warn(
+          jobId ? { err, jobId } : { err },
+          'Intel dependency generation failed (non-critical)',
+        );
+        return {
+          intelInjects: {} as Record<string, SocialInject[]>,
+          intelGates: [] as SocialInject[],
+        };
+      }),
+    ).then((rows) => rows[0]),
   ]);
 
   // Paired intel gates ride the convergence-gate bucket; intel emails are
@@ -755,6 +803,18 @@ export async function runOrgPagePipeline(
     crisis?: CrisisContext | null;
   } = {},
 ): Promise<OrgPagePipelineResult> {
+  if (!currentConcurrencyLimiter()) {
+    return enterBuildLimit(() =>
+      runOrgPagePipeline(
+        orgsResult,
+        crisisDescription,
+        logoUrl,
+        autoAntagonist,
+        onProgress,
+        extras,
+      ),
+    );
+  }
   const { orgs, competitors, pressureOrgs } = orgsResult;
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
   const allies = orgs
