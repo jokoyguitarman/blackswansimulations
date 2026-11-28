@@ -225,6 +225,14 @@ export function shouldClearIdempotencyKey(status: number): boolean {
   return status > 0 && !isDeployGap(status);
 }
 
+/**
+ * Keep polling only while the build can still change on its own.
+ * A terminal status stops the loop, including a later wake tick.
+ */
+export function continuePolling(status: BuildStatusName): boolean {
+  return status === 'queued' || status === 'running';
+}
+
 /** Polling stops on these. A deploy gap does not. */
 export function classifyPollStop(status: number): 'lost' | 'denied' | 'unavailable' | null {
   if (status === 404) return 'lost';
@@ -258,6 +266,38 @@ export function classifyReview(status: number, ok: boolean): 'retry' | 'apply' |
   if (ok) return 'apply';
   if (isDeployGap(status)) return 'retry';
   return 'failed';
+}
+
+/**
+ * The Building card when a finished build's review did not load.
+ * A setup edit whose review was swept (404) asks for a new build.
+ * Every other failure keeps the retry card, including new scenarios.
+ */
+export function reviewOpenFailureCard(status: number, setupEdit: boolean): BuildCard {
+  if (status === 404 && setupEdit) {
+    return {
+      heading: 'This review expired',
+      body: 'This review expired. Build again.',
+      actions: ['build_again'],
+      primaryLabel: 'Build again',
+    };
+  }
+  return {
+    heading: "Couldn't open the finished build",
+    body: 'The build finished, but the review did not load. Retry opens it without starting again.',
+    actions: ['open_review'],
+    primaryLabel: 'Retry',
+  };
+}
+
+/** Building card after Back from a finished setup-edit review. */
+export function finishedEditBuildCard(): BuildCard {
+  return {
+    heading: 'This build finished',
+    body: 'Open the review, or rebuild from the setup saved on this draft.',
+    actions: ['open_review', 'build_again'],
+    primaryLabel: 'Open review',
+  };
 }
 
 /** A visibility or online event must not start a second poll while one is in flight. */

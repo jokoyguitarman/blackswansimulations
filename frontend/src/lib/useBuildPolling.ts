@@ -3,6 +3,7 @@ import { getBuild, type HeaderSource } from './buildClient';
 import {
   claimPollTick,
   classifyPollStop,
+  continuePolling,
   emptyPollState,
   isDeployGap,
   nextPollDelayMs,
@@ -88,9 +89,8 @@ export function useBuildPolling(
         });
         setReconnecting(false);
         onUpdateRef.current(payload.build, state);
-        if (payload.build.status === 'queued' || payload.build.status === 'running') {
-          schedule(delay());
-        }
+        if (continuePolling(payload.build.status)) schedule(delay());
+        else stopped = true;
       } finally {
         inFlight = false;
         if (wakeAgain && !stopped) {

@@ -116,9 +116,11 @@ import {
   classifyLatestFetch,
   classifyMutation,
   classifyReview,
+  finishedEditBuildCard,
   mapToWizardStage,
   nextPollDelayMs,
   previousFinishedStage,
+  reviewOpenFailureCard,
   shouldClearIdempotencyKey,
   stageMark,
   type BuildCard,
@@ -126,6 +128,21 @@ import {
   type BuildView,
   type PollState,
 } from '../lib/buildStatus';
+import {
+  EDIT_BUILD_NOT_STARTED,
+  abandonReviewFetch,
+  alwaysSaveBuildingStep,
+  attachOnBuildingStep,
+  buildingFallbackKind,
+  isTransientPlanError,
+  latestBuildMissAction,
+  planFailureText,
+  planRetryDelayMs,
+  resumeAttachesLatestBuild,
+  shouldOpenAppliedReview,
+  succeededAttachAction,
+  type EditBuildLookup,
+} from '../lib/setupEditResume';
 import { useBuildPolling } from '../lib/useBuildPolling';
 import { STAGE_LABEL, legacyErrorCardBody, legacyTransportBody } from '../lib/legacyBuildCopy';
 import { useWakeLock } from '../lib/useWakeLock';
@@ -468,6 +485,9 @@ export const SocialCrisisWizard = () => {
   const [orphanDecisions, setOrphanDecisions] = useState<Record<string, OrphanChoiceInput>>({});
   const [rejectedRevisions, setRejectedRevisions] = useState<string[]>([]);
   const [planningEdit, setPlanningEdit] = useState(false);
+  const [planRetryNonce, setPlanRetryNonce] = useState(0);
+  /** True once a setup-edit review payload has been applied. An empty list still counts. */
+  const [editReviewLoaded, setEditReviewLoaded] = useState(false);
   const [applyResult, setApplyResult] = useState<{
     summary: Record<string, unknown>;
     remaining: number | null;
@@ -1077,8 +1097,23 @@ export const SocialCrisisWizard = () => {
   const [durableCard, setDurableCard] = useState<BuildCard | null>(null);
   const [conflictBuildId, setConflictBuildId] = useState<string | null>(null);
   const [lastBuildId, setLastBuildId] = useState<string | null>(null);
+  const [editBuildLookup, setEditBuildLookup] = useState<EditBuildLookup>('idle');
+  /** True from the start of generateAll until it settles, so Building does not look idle. */
+  const [buildKickoff, setBuildKickoff] = useState(false);
   const [gatewayReconnecting, setGatewayReconnecting] = useState(false);
   const appliedBuildRef = useRef<string | null>(null);
+  /** Set only after that build's review payload has been applied. */
+  const reviewAppliedRef = useRef<string | null>(null);
+  const lastBuildIdRef = useRef<string | null>(null);
+  /** Set while attachLatestBuild is in flight, so entering Building does not start a second lookup. */
+  const attachingRef = useRef(false);
+  /** Draft whose Building step already looked up a build. Cleared on leaving Building. */
+  const buildingLookupFor = useRef<string | null>(null);
+  /** Bumped when a build starts, so an in-flight lookup does not overwrite it. */
+  const buildEpochRef = useRef(0);
+  /** Bumped when the trainer leaves Building, so a lookup does not pull them back. */
+  const lookupEpochRef = useRef(0);
+  const wasOnBuildingRef = useRef(false);
   /** Survives a reload that never set activeBuildId, so Retry can reopen the review. */
   const reviewBuildIdRef = useRef<string | null>(null);
   const startingRef = useRef(false);
@@ -1375,33 +1410,64 @@ export const SocialCrisisWizard = () => {
 
     if (typeof input.last_build_id === 'string' && input.last_build_id) {
       setLastBuildId(input.last_build_id);
+      lastBuildIdRef.current = input.last_build_id;
+      reviewBuildIdRef.current = input.last_build_id;
     }
   }, []);
 
   const finishSucceeded = useCallback(
     async (buildId: string) => {
       reviewBuildIdRef.current = buildId;
-      if (appliedBuildRef.current === buildId) return;
+      const editing = setupEditRef.current != null;
+      if (appliedBuildRef.current === buildId) {
+        // Open review after Back only once this build's stages are applied.
+        // A second succeeded poll while the fetch is in flight just returns.
+        if (
+          shouldOpenAppliedReview({
+            isSetupEdit: editing,
+            claimedBuildId: appliedBuildRef.current,
+            reviewAppliedBuildId: reviewAppliedRef.current,
+            buildId,
+          })
+        ) {
+          setStep(7);
+        }
+        return;
+      }
       appliedBuildRef.current = buildId;
+      const epoch = buildEpochRef.current;
+      const lookupEpoch = lookupEpochRef.current;
+      const stop = () =>
+        abandonReviewFetch({
+          isSetupEdit: editing,
+          closed: closedRef.current,
+          epochChanged: buildEpochRef.current !== epoch || lookupEpochRef.current !== lookupEpoch,
+        });
+      const releaseClaim = () => {
+        if (editing && appliedBuildRef.current === buildId) appliedBuildRef.current = null;
+      };
       let misses = 0;
       let review = await getReview(buildId, authHeaders);
       while (classifyReview(review.status, review.ok && review.data != null) === 'retry') {
-        if (closedRef.current) return;
+        if (stop()) {
+          releaseClaim();
+          return;
+        }
         misses += 1;
         setGatewayReconnecting(true);
         await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
-        if (closedRef.current) return;
+        if (stop()) {
+          releaseClaim();
+          return;
+        }
         review = await getReview(buildId, authHeaders);
       }
       setGatewayReconnecting(false);
       if (!review.ok || !review.data) {
         appliedBuildRef.current = null;
-        setDurableCard({
-          heading: "Couldn't open the finished build",
-          body: 'The build finished, but the review did not load. Retry opens it without starting again.',
-          actions: ['open_review'],
-          primaryLabel: 'Retry',
-        });
+        setDurableCard(reviewOpenFailureCard(review.status, editing));
+        // The retry card renders on Building. A new scenario is already there.
+        if (editing) setStep(2);
         return;
       }
       applyGenerated(review.data);
@@ -1419,11 +1485,17 @@ export const SocialCrisisWizard = () => {
         );
       }
       setLastBuildId(buildId);
+      lastBuildIdRef.current = buildId;
+      if (editing) {
+        reviewAppliedRef.current = buildId;
+        setEditReviewLoaded(true);
+      }
       setActiveBuildId(null);
       setDurableView(null);
       const draftId = wizardDraftIdRef.current;
       if (draftId) writeSession(durableBuildKey(draftId), null);
       pendingBuildSave.current = true;
+      setDurableCard(null);
       setStep(7);
     },
     [applyGenerated],
@@ -1520,56 +1592,104 @@ export const SocialCrisisWizard = () => {
   ]);
 
   const attachLatestBuild = useCallback(
-    async (draftId: string, savedStep: number) => {
-      let misses = 0;
-      let latest = await getLatestBuild(draftId, authHeaders);
-      while (classifyLatestFetch(latest.status, latest.data?.build != null) === 'retry') {
-        if (closedRef.current) return;
-        misses += 1;
+    async (draftId: string, savedStep: number, opts?: { onSucceeded?: 'review' | 'stay' }) => {
+      const editing = setupEditRef.current != null;
+      if (editing) buildingLookupFor.current = draftId;
+      attachingRef.current = true;
+      const epoch = buildEpochRef.current;
+      const lookupEpoch = lookupEpochRef.current;
+      const stale = () =>
+        closedRef.current ||
+        buildEpochRef.current !== epoch ||
+        lookupEpochRef.current !== lookupEpoch;
+      try {
+        let misses = 0;
+        let latest = await getLatestBuild(draftId, authHeaders);
+        while (classifyLatestFetch(latest.status, latest.data?.build != null) === 'retry') {
+          if (stale()) return;
+          misses += 1;
+          setStep(2);
+          setGatewayReconnecting(true);
+          const stored = readSession(durableBuildKey(draftId));
+          if (stored) setActiveBuildId((current) => current ?? stored);
+          await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
+          if (stale()) return;
+          latest = await getLatestBuild(draftId, authHeaders);
+        }
+        if (stale()) return;
+        setGatewayReconnecting(false);
+        const outcome = classifyLatestFetch(latest.status, latest.data?.build != null);
+        if (outcome === 'unavailable' || outcome === 'missing') {
+          const miss = latestBuildMissAction({
+            isSetupEdit: editing,
+            lastBuildId: lastBuildIdRef.current,
+            outcome,
+          });
+          if (miss === 'open_remembered_review' && lastBuildIdRef.current) {
+            await finishSucceeded(lastBuildIdRef.current);
+            return;
+          }
+          if (editing) {
+            setEditBuildLookup(outcome === 'unavailable' ? 'unavailable' : 'missing');
+            setDurableCard(null);
+          }
+          setStep(2);
+          return;
+        }
+        if (outcome === 'denied') {
+          onPollHalt('denied');
+          setStep(2);
+          return;
+        }
+        const row = latest.data?.build;
+        if (!row) {
+          if (editing) {
+            setEditBuildLookup('missing');
+            setDurableCard(null);
+          }
+          setStep(2);
+          return;
+        }
+        if (editing) setEditBuildLookup('ready');
+        const keep = () => {
+          setActiveBuildId(row.id);
+          writeSession(durableBuildKey(draftId), row.id);
+          setPollNonce((n) => n + 1);
+        };
+        if (row.status === 'queued' || row.status === 'running') {
+          if (editing) {
+            setDurableCard(null);
+            setBuildError(null);
+          }
+          setStep(2);
+          keep();
+          return;
+        }
+        if (row.status === 'succeeded' && savedStep === 2) {
+          if (succeededAttachAction(opts?.onSucceeded, editing) === 'stay') {
+            reviewBuildIdRef.current = row.id;
+            setLastBuildId(row.id);
+            lastBuildIdRef.current = row.id;
+            setActiveBuildId(null);
+            setDurableView(null);
+            setBuildStage('done');
+            setBuildError(null);
+            setDurableCard(finishedEditBuildCard());
+            setStep(2);
+            return;
+          }
+          await finishSucceeded(row.id);
+          return;
+        }
+        if (row.status === 'failed' || row.status === 'paused' || row.status === 'cancelled') {
+          setStep(2);
+          keep();
+          return;
+        }
         setStep(2);
-        setGatewayReconnecting(true);
-        const stored = readSession(durableBuildKey(draftId));
-        if (stored) setActiveBuildId((current) => current ?? stored);
-        await pause(nextPollDelayMs(misses, document.visibilityState === 'hidden'));
-        if (closedRef.current) return;
-        latest = await getLatestBuild(draftId, authHeaders);
+      } finally {
+        attachingRef.current = false;
       }
-      setGatewayReconnecting(false);
-      const outcome = classifyLatestFetch(latest.status, latest.data?.build != null);
-      if (outcome === 'unavailable' || outcome === 'missing') {
-        setStep(2);
-        return;
-      }
-      if (outcome === 'denied') {
-        onPollHalt('denied');
-        setStep(2);
-        return;
-      }
-      const row = latest.data?.build;
-      if (!row) {
-        setStep(2);
-        return;
-      }
-      const keep = () => {
-        setActiveBuildId(row.id);
-        writeSession(durableBuildKey(draftId), row.id);
-        setPollNonce((n) => n + 1);
-      };
-      if (row.status === 'queued' || row.status === 'running') {
-        setStep(2);
-        keep();
-        return;
-      }
-      if (row.status === 'succeeded' && savedStep === 2) {
-        await finishSucceeded(row.id);
-        return;
-      }
-      if (row.status === 'failed' || row.status === 'paused' || row.status === 'cancelled') {
-        setStep(2);
-        keep();
-        return;
-      }
-      setStep(2);
     },
     [finishSucceeded, onPollHalt],
   );
@@ -1602,6 +1722,17 @@ export const SocialCrisisWizard = () => {
           await attachLatestBuild(draftParam, savedStep);
           return;
         }
+        // A setup edit saved on Review still has a durable build. Reattach it
+        // so the review stages load, or so a later rebuild is resumed.
+        if (
+          resumeAttachesLatestBuild({
+            validStep,
+            isSetupEdit: readSetupEditLink(input) != null,
+          })
+        ) {
+          await attachLatestBuild(draftParam, 2);
+          return;
+        }
         setStep(validStep);
       } catch (err) {
         console.error('Failed to resume social crisis draft', err);
@@ -1609,6 +1740,51 @@ export const SocialCrisisWizard = () => {
     };
     resume();
   }, [searchParams]);
+
+  // Setup edits that land on Building with no live build look up the durable
+  // build. Back from Review stays on Building when that build already finished.
+  useEffect(() => {
+    if (step !== 2) {
+      if (wasOnBuildingRef.current) {
+        wasOnBuildingRef.current = false;
+        lookupEpochRef.current += 1;
+        buildingLookupFor.current = null;
+        if (editBuildLookup !== 'idle') setEditBuildLookup('idle');
+      } else if (!attachingRef.current) {
+        buildingLookupFor.current = null;
+      }
+      return;
+    }
+    wasOnBuildingRef.current = true;
+    const draftId = wizardDraftIdRef.current;
+    if (
+      !draftId ||
+      !attachOnBuildingStep({
+        isSetupEdit: setupEdit != null,
+        step,
+        activeBuildId,
+        starting: buildKickoff || startingRef.current,
+        buildFailed: buildError != null,
+        conflict: conflictBuildId != null,
+      })
+    ) {
+      return;
+    }
+    if (attachingRef.current || buildingLookupFor.current === draftId) return;
+    if (editBuildLookup === 'missing' || editBuildLookup === 'unavailable') return;
+    buildingLookupFor.current = draftId;
+    setEditBuildLookup('checking');
+    void attachLatestBuild(draftId, 2, { onSucceeded: 'stay' });
+  }, [
+    step,
+    setupEdit,
+    activeBuildId,
+    attachLatestBuild,
+    editBuildLookup,
+    buildKickoff,
+    buildError,
+    conflictBuildId,
+  ]);
 
   /* ─── Validation ───────────────────────────────────────────────────── */
 
@@ -2393,20 +2569,27 @@ export const SocialCrisisWizard = () => {
     async (opts?: { replaceActive?: boolean }) => {
       if (startingRef.current) return;
       startingRef.current = true;
+      buildEpochRef.current += 1;
+      setBuildKickoff(true);
       try {
         setConflictBuildId(null);
         setDurableCard(null);
         setBuildError(null);
-        const draftId = wizardDraftIdRef.current ?? (await saveDraftState(2));
+        const editing = setupEditRef.current;
+        // Show the stage strip while the edit build is starting.
+        if (editing) setBuildStage('characters');
+        const draftId = alwaysSaveBuildingStep(editing != null)
+          ? await saveDraftState(2)
+          : (wizardDraftIdRef.current ?? (await saveDraftState(2)));
         if (!draftId) {
-          if (setupEditRef.current) {
+          if (editing) {
+            setBuildStage(null);
             setEditNotice('The edit draft could not be saved, so the build did not start.');
             return;
           }
           await legacyGenerateAll();
           return;
         }
-        const editing = setupEditRef.current;
         const request = makeBuildRequest({
           crisis_type: editing ? editCrisisType || crisisDescription : crisisDescription,
           context: crisisDescription,
@@ -2459,6 +2642,8 @@ export const SocialCrisisWizard = () => {
         if (shouldClearIdempotencyKey(result.status)) writeSession(storageKey, null);
         if (result.status === 501) {
           if (setupEditRef.current) {
+            setBuildStage(null);
+            setEditBuildLookup('unavailable');
             setEditNotice('Setup edits need durable builds, which are off on this server.');
             return;
           }
@@ -2512,6 +2697,7 @@ export const SocialCrisisWizard = () => {
         showStartError(result.error || 'The build could not be started.');
       } finally {
         startingRef.current = false;
+        setBuildKickoff(false);
       }
     },
     [
@@ -3444,29 +3630,49 @@ export const SocialCrisisWizard = () => {
     if (!setupEdit || step !== 7 || applyResult) return;
     let cancelled = false;
     setPlanningEdit(true);
-    void api.scenarios
-      .planSetupEdit(setupEdit.scenario_id, setupEdit.edit_id, { resolutions: orphanDecisions })
-      .then((res) => {
-        if (cancelled) return;
-        setEditPlan(res.plan);
-        setEditTargets({
-          teams: res.targets?.teams ?? [],
-          injectKeys: res.targets?.inject_keys ?? [],
-          orgKeys: res.targets?.org_keys ?? [],
-        });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.code === 'SETUP_EDIT_NO_DRAFT') setDraftMissing(true);
-        setEditNotice(err instanceof Error ? err.message : 'Could not load the plan.');
-      })
-      .finally(() => {
-        if (!cancelled) setPlanningEdit(false);
-      });
+    setEditNotice(null);
+    const loadPlan = async () => {
+      let failures = 0;
+      while (!cancelled) {
+        try {
+          const res = await api.scenarios.planSetupEdit(setupEdit.scenario_id, setupEdit.edit_id, {
+            resolutions: orphanDecisions,
+          });
+          if (cancelled) return;
+          setEditPlan(res.plan);
+          setEditTargets({
+            teams: res.targets?.teams ?? [],
+            injectKeys: res.targets?.inject_keys ?? [],
+            orgKeys: res.targets?.org_keys ?? [],
+          });
+          setPlanningEdit(false);
+          return;
+        } catch (err: unknown) {
+          if (cancelled) return;
+          if (err instanceof ApiError && err.code === 'SETUP_EDIT_NO_DRAFT') {
+            setDraftMissing(true);
+            setEditNotice(planFailureText(err));
+            setPlanningEdit(false);
+            return;
+          }
+          failures += 1;
+          const delay = isTransientPlanError(err)
+            ? planRetryDelayMs(failures, document.visibilityState === 'hidden')
+            : null;
+          if (delay == null) {
+            setEditNotice(planFailureText(err));
+            setPlanningEdit(false);
+            return;
+          }
+          await pause(delay);
+        }
+      }
+    };
+    void loadPlan();
     return () => {
       cancelled = true;
     };
-  }, [setupEdit, step, orphanDecisions, applyResult]);
+  }, [setupEdit, step, orphanDecisions, applyResult, planRetryNonce]);
 
   useEffect(() => {
     if (!scenarioId) return;
@@ -4345,6 +4551,12 @@ export const SocialCrisisWizard = () => {
       pages: buildStage === 'pages',
     };
     const errorMsg = step2Error || step3Error || step4Error;
+    const idleKind = buildingFallbackKind({
+      isSetupEdit: setupEdit != null,
+      lookup: editBuildLookup,
+      lastBuildId,
+      starting: buildKickoff,
+    });
     const markOf = (key: (typeof stages)[number]['key']) =>
       durableView ? stageMark(durableView, key) : null;
     const doneCount = durableView
@@ -4546,7 +4758,10 @@ export const SocialCrisisWizard = () => {
                 onClick={() => {
                   const action = durableCard.actions[0];
                   if (action === 'open_review') {
-                    const id = reviewBuildIdRef.current ?? activeBuildId;
+                    const id =
+                      reviewBuildIdRef.current ??
+                      activeBuildId ??
+                      (setupEditRef.current ? lastBuildId : null);
                     if (id) void finishSucceeded(id);
                     return;
                   }
@@ -4569,6 +4784,15 @@ export const SocialCrisisWizard = () => {
                 Start over
               </button>
             )}
+            {durableCard.actions.includes('build_again') &&
+              durableCard.actions[0] !== 'build_again' && (
+                <button
+                  onClick={() => void generateAll({ replaceActive: true })}
+                  className="wr-btn ghost"
+                >
+                  Rebuild
+                </button>
+              )}
           </div>
         ) : buildError ? (
           <div className="wr-empty mt-4" style={{ '--g': 'var(--danger)' } as CSSProperties}>
@@ -4589,22 +4813,66 @@ export const SocialCrisisWizard = () => {
           !step2Loading &&
           !step3Loading &&
           !step4Loading ? (
-          <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
-            <div className="wr-tile">
-              <WrIcon name="bolt" size={24} />
+          idleKind === 'start' ? (
+            <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+              <div className="wr-tile">
+                <WrIcon name="bolt" size={24} />
+              </div>
+              <div>
+                <h4>{EDIT_BUILD_NOT_STARTED.heading}</h4>
+                <p>{EDIT_BUILD_NOT_STARTED.body}</p>
+              </div>
+              <button onClick={() => void generateAll()} className="wr-btn accent lg">
+                <WrIcon name="bolt" /> {EDIT_BUILD_NOT_STARTED.button}
+              </button>
             </div>
-            <div>
-              <h4>The build has not started</h4>
-              <p>
-                This draft was saved at the Building step. Generation runs in your browser, so a
-                resumed draft needs a fresh start — it reads everything from the Setup page as
-                saved.
-              </p>
+          ) : idleKind === 'finished' ? (
+            <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+              <div className="wr-tile">
+                <WrIcon name="check" size={24} />
+              </div>
+              <div>
+                <h4>{finishedEditBuildCard().heading}</h4>
+                <p>{finishedEditBuildCard().body}</p>
+              </div>
+              <button
+                onClick={() => {
+                  const id = reviewBuildIdRef.current ?? lastBuildId;
+                  if (id) void finishSucceeded(id);
+                }}
+                className="wr-btn accent"
+              >
+                Open review
+              </button>
+              <button
+                onClick={() => void generateAll({ replaceActive: true })}
+                className="wr-btn ghost"
+              >
+                Rebuild
+              </button>
             </div>
-            <button onClick={() => void generateAll()} className="wr-btn accent lg">
-              <WrIcon name="bolt" /> Build the scenario
-            </button>
-          </div>
+          ) : idleKind === 'checking' ? (
+            <div className="mt-4">
+              <Spinner text="Checking for a build on the server…" />
+            </div>
+          ) : (
+            <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+              <div className="wr-tile">
+                <WrIcon name="bolt" size={24} />
+              </div>
+              <div>
+                <h4>The build has not started</h4>
+                <p>
+                  This draft was saved at the Building step. Generation runs in your browser, so a
+                  resumed draft needs a fresh start — it reads everything from the Setup page as
+                  saved.
+                </p>
+              </div>
+              <button onClick={() => void generateAll()} className="wr-btn accent lg">
+                <WrIcon name="bolt" /> Build the scenario
+              </button>
+            </div>
+          )
         ) : (
           <div className="mt-4">
             <Spinner
@@ -4657,6 +4925,9 @@ export const SocialCrisisWizard = () => {
           applying={applyingEdit}
           remaining={setupEdit.remaining}
           error={editNotice}
+          hasBuild={lastBuildId != null}
+          outputsLoaded={editReviewLoaded}
+          onRetry={() => setPlanRetryNonce((nonce) => nonce + 1)}
           onToggleRow={(injectId) =>
             setRejectedRevisions((prev) =>
               prev.includes(injectId) ? prev.filter((id) => id !== injectId) : [...prev, injectId],
