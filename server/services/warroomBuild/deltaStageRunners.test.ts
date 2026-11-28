@@ -63,6 +63,7 @@ function loaded(status = 'open'): DeltaBuildContext {
     taken_stakeholder_ids: [],
     active_keys: [],
     page_batch_size: 4,
+    team_dependencies: [],
   };
 }
 
@@ -87,6 +88,7 @@ function generators(calls: string[]): DeltaGenerators {
     convergenceDelta: unused,
     reviseNarrative: unused,
     regenerateBranches: unused,
+    dependencyDelta: unused,
     generatePages: unused,
     revisePageHistory: unused,
   };
@@ -139,7 +141,10 @@ describe('edit-mode stage runners', () => {
     await runners.storyline(storylineInput, ctx);
     assert.deepEqual(calls, ['briefDiff']);
     status = 'abandoned';
-    await assert.rejects(() => runners.characters({ stage: 'characters', request }, ctx), /SETUP_EDIT_NOT_OPEN/);
+    await assert.rejects(
+      () => runners.characters({ stage: 'characters', request }, ctx),
+      /SETUP_EDIT_NOT_OPEN/,
+    );
     assert.deepEqual(calls, ['briefDiff']);
   });
 });

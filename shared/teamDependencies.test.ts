@@ -10,6 +10,7 @@ import {
   dependencyIdInKey,
   crossTeamTeamsOf,
   dependencyCatalogEntries,
+  backfillDependencyTeamUids,
   displayRef,
   editorCrossTeamProfile,
   expandPlaceholders,
@@ -259,7 +260,10 @@ describe('dependency editor model', () => {
     assert.equal(readDependencyCause({ cause: { kind: 'dependency', dep_id: edge.id } }), edge.id);
     const taken = new Set([edge.id]);
     assert.equal(uniqueDependencyId('Bay 3 headcount', taken), 'dep_bay_3_headcount');
-    assert.equal(dependencyIdInKey('dependency_broken_for:dep_bay_3_headcount:5'), 'dep_bay_3_headcount');
+    assert.equal(
+      dependencyIdInKey('dependency_broken_for:dep_bay_3_headcount:5'),
+      'dep_bay_3_headcount',
+    );
     assert.equal(dependencyIdInKey('dependency_waived:dep_bay_3_headcount'), 'dep_bay_3_headcount');
     assert.equal(dependencyIdInKey('unresponded:bay3_headcount_request:10|team=@upstream'), null);
     const draft = consequenceInjectDraft({
@@ -296,9 +300,10 @@ describe('dependency editor model', () => {
     assert.equal(
       uniqueDependencyId(
         'Bay 3 headcount',
-        takenDependencyIds([], [
-          { conditions_to_appear: { any: ['dependency_broken_for:dep_bay_3_headcount:5'] } },
-        ]),
+        takenDependencyIds(
+          [],
+          [{ conditions_to_appear: { any: ['dependency_broken_for:dep_bay_3_headcount:5'] } }],
+        ),
       ),
       'dep_bay_3_headcount_2',
     );
@@ -374,5 +379,33 @@ describe('dependency editor model', () => {
       teams: [{ team_uid: OPS, team_name: 'Operations' }],
     });
     assert.equal(same.is_cross_team, false);
+  });
+});
+
+describe('backfillDependencyTeamUids', () => {
+  test('stamps a missing uid from the roster and leaves an existing uid alone', () => {
+    const state = {
+      team_dependencies: {
+        v: 1,
+        edges: [
+          {
+            id: 'dep_names',
+            upstream: { team_name: 'Legal' },
+            downstream: [{ team_uid: 'uid-kept', team_name: 'Communications' }],
+          },
+        ],
+      },
+    };
+    const teams = [
+      { team_uid: 'uid-legal', team_name: 'Legal' },
+      { team_uid: 'uid-comms', team_name: 'Communications' },
+    ];
+    const stamped = backfillDependencyTeamUids(state, teams);
+    const upstream = stamped.team_dependencies.edges[0]?.upstream as { team_uid?: string };
+    const downstream = stamped.team_dependencies.edges[0]?.downstream[0] as { team_uid?: string };
+    assert.equal(upstream.team_uid, 'uid-legal');
+    assert.equal(downstream.team_uid, 'uid-kept');
+    const again = backfillDependencyTeamUids(stamped, teams);
+    assert.equal(again, stamped);
   });
 });

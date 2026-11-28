@@ -402,4 +402,43 @@ describe('cloned social-crisis rows', () => {
     assert.equal(casualties[0].parent_pin_id, plan.idMap.get('h1'));
     assert.equal(casualties[1].parent_pin_id, null);
   });
+
+  test('a clone stamps team_uid onto dependency edges that have only names', () => {
+    const copied = cloneScenarioInsert(
+      {
+        title: 'Harbour',
+        initial_state: {
+          orgs: [{ org_key: 'primary', display_name: 'Acme' }],
+          team_dependencies: {
+            v: 1,
+            edges: [
+              {
+                id: 'dep_names',
+                upstream: { team_name: 'Press Desk' },
+                downstream: [{ team_uid: 'uid-kept', team_name: 'Legal' }],
+              },
+            ],
+          },
+        },
+      },
+      {
+        title: 'Harbour (Copy)',
+        createdBy: 'trainer-1',
+        teams: [
+          { team_uid: 'uid-press', team_name: 'Press Desk' },
+          { team_uid: 'uid-legal', team_name: 'Legal' },
+        ],
+      },
+    );
+    const state = copied.initial_state as {
+      team_dependencies: {
+        edges: Array<{
+          upstream: { team_uid?: string };
+          downstream: Array<{ team_uid?: string }>;
+        }>;
+      };
+    };
+    assert.equal(state.team_dependencies.edges[0]?.upstream.team_uid, 'uid-press');
+    assert.equal(state.team_dependencies.edges[0]?.downstream[0]?.team_uid, 'uid-kept');
+  });
 });

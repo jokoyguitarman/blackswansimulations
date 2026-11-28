@@ -481,17 +481,34 @@ describe('inject revision fields', () => {
 
 describe('dependency rows on apply', () => {
   test('a renamed team and an added team keep a valid edge and insert its inject', () => {
-    const baseline = acmeSnapshot();
-    const edited = acmeSnapshot([
+    const comms = '11111111-1111-4111-8111-111111111111';
+    const legal = '22222222-2222-4222-8222-222222222222';
+    const ops = '33333333-3333-4333-8333-333333333333';
+    const baseline = acmeSnapshot([
       snapshotTeam({
-        team_uid: 'uid-comms',
+        team_uid: comms,
         team_name: 'Communications',
         function_key: 'Communications',
         description: 'Night desk',
         is_public_voice: true,
       }),
-      snapshotTeam({ team_uid: 'uid-legal', team_name: 'Counsel', function_key: 'Legal', description: 'Counsel' }),
-      snapshotTeam({ team_uid: 'uid-ops', team_name: 'Operations', function_key: 'Operations' }),
+      snapshotTeam({
+        team_uid: legal,
+        team_name: 'Legal',
+        function_key: 'Legal',
+        description: 'Counsel',
+      }),
+    ]);
+    const edited = acmeSnapshot([
+      snapshotTeam({
+        team_uid: comms,
+        team_name: 'Communications',
+        function_key: 'Communications',
+        description: 'Night desk',
+        is_public_voice: true,
+      }),
+      snapshotTeam({ team_uid: legal, team_name: 'Counsel', function_key: 'Legal', description: 'Counsel' }),
+      snapshotTeam({ team_uid: ops, team_name: 'Operations', function_key: 'Operations' }),
     ]);
     const source = input({
       delta: computeDelta(baseline, edited),
@@ -503,8 +520,8 @@ describe('dependency rows on apply', () => {
         },
       }),
       teams: [
-        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications', function_key: 'Communications' }),
-        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal', function_key: 'Legal', team_description: 'Counsel' }),
+        team({ id: 'team-comms', team_uid: comms, team_name: 'Communications', function_key: 'Communications' }),
+        team({ id: 'team-legal', team_uid: legal, team_name: 'Legal', function_key: 'Legal', team_description: 'Counsel' }),
       ],
       injects: [
         inject({
@@ -529,8 +546,13 @@ describe('dependency rows on apply', () => {
     });
     const plan = planRemap(source);
     const outputs = emptyOutputs();
-    outputs[1].generated.dependency_edges = [dependencyEdge('dep_counsel_ops', 'Counsel', 'Operations')];
-    outputs[1].generated.dependency_injects = [{
+    const storyline = outputs.find((output) => output.stage === 'storyline');
+    assert.ok(storyline);
+    const addedEdge = dependencyEdge('dep_counsel_ops', 'Counsel', 'Operations');
+    addedEdge.upstream = { team_uid: legal, team_name: 'Counsel' };
+    addedEdge.downstream = [{ team_uid: ops, team_name: 'Operations' }];
+    storyline.generated.dependency_edges = [addedEdge];
+    storyline.generated.dependency_injects = [{
       title: 'Counsel missed the handoff',
       content: 'Operations is waiting on the night report.',
       type: 'social_post',
@@ -582,9 +604,13 @@ describe('dependency rows on apply', () => {
     const state = bundle.scenario.initial_state as { team_dependencies: { v: number; edges: TeamDependencyEdge[] } };
     const [kept, added] = state.team_dependencies.edges;
     assert.equal(kept?.id, 'dep_comms_legal');
+    assert.equal(kept?.upstream.team_uid, comms);
+    assert.equal(kept?.downstream[0]?.team_uid, legal);
     assert.equal(kept?.downstream[0]?.team_name, 'Counsel');
     assert.equal(added?.id, 'dep_counsel_ops');
+    assert.equal(added?.upstream.team_uid, legal);
     assert.equal(added?.upstream.team_name, 'Counsel');
+    assert.equal(added?.downstream[0]?.team_uid, ops);
     assert.equal(added?.downstream[0]?.team_name, 'Operations');
     const created = bundle.injects.insert.find((row) => row.title === 'Counsel missed the handoff');
     assert.ok(created);

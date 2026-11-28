@@ -1277,6 +1277,7 @@ function charterFor(outputs: readonly SetupEditStageOutput[], teamName: string):
 
 function charterOf(team: {
   team_name: string;
+  team_uid?: string | null;
   org_key: string | null;
   function_key: string | null;
   charter: unknown;
@@ -1284,6 +1285,7 @@ function charterOf(team: {
   const charter = asRecord(team.charter) ?? {};
   return {
     team_name: team.team_name,
+    ...(team.team_uid ? { team_uid: team.team_uid } : {}),
     org_key: team.org_key,
     function_key: textOf(charter.function_key) || team.function_key,
     mission: textOf(charter.mission),
