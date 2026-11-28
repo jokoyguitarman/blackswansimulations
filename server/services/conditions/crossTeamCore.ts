@@ -31,13 +31,21 @@ export type SourceTeamResolver = (key: string) => readonly string[] | string | n
 
 export interface DepthTrigger {
   cause_depth?: number;
+  source_teams?: readonly string[];
+  target_teams?: readonly string[];
+  origin?: string;
+  is_cross_team?: boolean;
 }
 
 export interface CrossTeamCandidate {
   id?: string;
   inject_key?: string;
   severity?: string | null;
-  /** Minutes the cause has already been waiting. Older candidates publish first after severity. */
+  /**
+   * Minutes the cause has already been waiting. Among cross-team candidates of
+   * equal severity, the older one takes the throttle slot. The publish list
+   * itself stays in the order the scheduler handed in.
+   */
   dependency_age?: number | null;
   minute: number;
   source_teams?: readonly string[];
@@ -156,8 +164,20 @@ export function referencedInjectKeys(key: string): string[] {
 }
 
 /**
- * 1 + the deepest trigger the met keys reference. A missing row counts as an
- * authored root (depth 0), so the first consequence is depth 1.
+ * A hop is a referenced inject that was itself cross-team: its source and
+ * target teams differ, or its origin is a dependency or director event.
+ * A same-team `inject_published:` parent does not add a level.
+ */
+export function isCrossTeamHop(trigger: DepthTrigger | undefined): boolean {
+  if (!trigger) return false;
+  if (trigger.origin === 'dependency' || trigger.origin === 'director') return true;
+  if (trigger.is_cross_team === true) return true;
+  return isCrossTeam(trigger.source_teams ?? [], trigger.target_teams ?? []);
+}
+
+/**
+ * 1 + the deepest cross-team hop the met keys reference. A same-team or missing
+ * row counts as an authored root (depth 0), so the first consequence is depth 1.
  */
 export function causeDepth(
   metKeys: readonly string[],
@@ -166,7 +186,9 @@ export function causeDepth(
   let max = 0;
   for (const key of metKeys) {
     for (const ref of referencedInjectKeys(key)) {
-      const depth = triggersByKey[ref]?.cause_depth ?? 0;
+      const trigger = triggersByKey[ref];
+      if (!isCrossTeamHop(trigger)) continue;
+      const depth = trigger?.cause_depth ?? 0;
       if (depth > max) max = depth;
     }
   }
@@ -179,8 +201,10 @@ export function applyCrossTeamGuards<T extends CrossTeamCandidate>(
   deliveriesByTeam: readonly TeamDelivery[],
   env: CrossTeamGuardEnv,
 ): CrossTeamGuardResult<T> {
-  const ordered = candidates.map((candidate, index) => ({ candidate, index }));
-  ordered.sort((a, b) => {
+  const ranked = candidates.map((candidate, index) => ({ candidate, index }));
+  // Slot choice only. The lists returned below follow the input order so a
+  // same-team inject keeps the place orderPublishCandidates gave it.
+  ranked.sort((a, b) => {
     const severity = severityRank(b.candidate.severity) - severityRank(a.candidate.severity);
     if (severity !== 0) return severity;
     const age = (b.candidate.dependency_age ?? 0) - (a.candidate.dependency_age ?? 0);
@@ -188,37 +212,31 @@ export function applyCrossTeamGuards<T extends CrossTeamCandidate>(
     return a.index - b.index;
   });
 
-  const publish: T[] = [];
-  const defer: Array<{ candidate: T; reason: CrossTeamDeferReason }> = [];
-  const hold: T[] = [];
-  const cancel: Array<{ candidate: T; reason: 'cascade_cap' }> = [];
+  const chosen: GuardChoice[] = candidates.map(() => ({ kind: 'publish' }));
   const pendingThrottle = new Map<string, number>();
   const pendingPressure = new Map<string, number>();
 
-  for (const { candidate } of ordered) {
-    if (isTimed(candidate)) {
-      publish.push(candidate);
-      continue;
-    }
+  for (const { candidate, index } of ranked) {
+    if (isTimed(candidate)) continue;
+    const capped = subjectToTeamCaps(candidate);
     const depth = candidate.cause_depth ?? 1;
-    if (depth > env.maxCascadeDepth) {
-      cancel.push({ candidate, reason: 'cascade_cap' });
+    if (capped && depth > env.maxCascadeDepth) {
+      chosen[index] = { kind: 'cancel' };
       continue;
     }
     if (loopHolds(candidate, recentTriggers, env)) {
-      hold.push(candidate);
+      chosen[index] = { kind: 'hold' };
       continue;
     }
     const targets = candidate.target_teams ?? [];
-    const capped = subjectToTeamCaps(candidate) && targets.length > 0;
-    if (capped) {
+    if (capped && targets.length > 0) {
       const throttled = targets.some(
         (team) =>
           throttleCount(team, candidate.minute, recentTriggers, pendingThrottle, env) >=
           env.maxPerTeamWindow,
       );
       if (throttled) {
-        defer.push({ candidate, reason: 'throttle' });
+        chosen[index] = { kind: 'defer', reason: 'throttle' };
         continue;
       }
       const pressured = targets.some(
@@ -227,11 +245,10 @@ export function applyCrossTeamGuards<T extends CrossTeamCandidate>(
           env.pressureMaxDeliveries10Min,
       );
       if (pressured) {
-        defer.push({ candidate, reason: 'pressure' });
+        chosen[index] = { kind: 'defer', reason: 'pressure' };
         continue;
       }
     }
-    publish.push(candidate);
     for (const team of targets) {
       const key = teamKey(team);
       pendingPressure.set(key, (pendingPressure.get(key) ?? 0) + 1);
@@ -239,8 +256,26 @@ export function applyCrossTeamGuards<T extends CrossTeamCandidate>(
     }
   }
 
+  const publish: T[] = [];
+  const defer: Array<{ candidate: T; reason: CrossTeamDeferReason }> = [];
+  const hold: T[] = [];
+  const cancel: Array<{ candidate: T; reason: 'cascade_cap' }> = [];
+  candidates.forEach((candidate, index) => {
+    const choice = chosen[index] ?? { kind: 'publish' };
+    if (choice.kind === 'defer') defer.push({ candidate, reason: choice.reason });
+    else if (choice.kind === 'hold') hold.push(candidate);
+    else if (choice.kind === 'cancel') cancel.push({ candidate, reason: 'cascade_cap' });
+    else publish.push(candidate);
+  });
+
   return { publish, defer, hold, cancel };
 }
+
+type GuardChoice =
+  | { kind: 'publish' }
+  | { kind: 'defer'; reason: CrossTeamDeferReason }
+  | { kind: 'hold' }
+  | { kind: 'cancel' };
 
 function isTimed(candidate: CrossTeamCandidate): boolean {
   return candidate.timed === true || candidate.origin === 'timed';

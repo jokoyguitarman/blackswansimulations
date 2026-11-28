@@ -22,8 +22,10 @@ import {
   causeDepth,
   crossTeamProfile,
   isCrossTeam,
+  isCrossTeamHop,
   PRESSURE_WINDOW_MINUTES,
   referencedInjectKeys,
+  type DepthTrigger,
   type CrossTeamGuardEnv,
   type CrossTeamTeam,
   type RecentCrossTeamTrigger,
@@ -189,6 +191,7 @@ export async function applySessionCrossTeamGuards<T extends ConditionalGuardItem
 
   const cancelledIds: string[] = [];
   for (const row of decision.defer) {
+    if (!claimGuardState(input.sessionId, row.candidate.id, 'deferred')) continue;
     logger.info(
       {
         event: 'cross_team_deferred',
@@ -208,6 +211,7 @@ export async function applySessionCrossTeamGuards<T extends ConditionalGuardItem
     });
   }
   for (const row of decision.hold) {
+    if (!claimGuardState(input.sessionId, row.id, 'held')) continue;
     logger.info(
       {
         event: 'cross_team_loop_held',
@@ -329,8 +333,26 @@ function parentKeysOf(metKeys: readonly string[]): string[] {
 interface GuardFacts {
   roster: CrossTeamTeam[];
   recent: RecentCrossTeamTrigger[];
-  triggersByKey: Record<string, { cause_depth: number }>;
+  triggersByKey: Record<string, DepthTrigger>;
   deliveries: TeamDelivery[];
+}
+
+function hopRank(trigger: DepthTrigger): number {
+  return isCrossTeamHop(trigger) ? (trigger.cause_depth ?? 0) + 1 : 0;
+}
+
+const notedGuardStates = new Set<string>();
+
+/** One session event per inject the first time it is deferred or held in this process. */
+function claimGuardState(
+  sessionId: string,
+  injectId: string | undefined,
+  state: 'deferred' | 'held',
+): boolean {
+  const key = `${sessionId}:${injectId ?? ''}:${state}`;
+  if (notedGuardStates.has(key)) return false;
+  notedGuardStates.add(key);
+  return true;
 }
 
 function emptyFacts(): GuardFacts {
@@ -348,15 +370,21 @@ async function loadGuardFacts(input: {
   );
   const roster = await loadRoster(input.scenarioId, needsRoles);
   const triggers = await loadTriggers(input.sessionId);
-  const triggersByKey: Record<string, { cause_depth: number }> = {};
+  const triggersByKey: Record<string, DepthTrigger> = {};
   const recent: RecentCrossTeamTrigger[] = [];
   for (const row of triggers) {
     const depth = row.cause_depth ?? 0;
-    const current = triggersByKey[row.inject_key];
-    if (!current || depth > current.cause_depth)
-      triggersByKey[row.inject_key] = { cause_depth: depth };
     const source = row.source_teams ?? [];
     const target = row.target_teams ?? [];
+    const next: DepthTrigger = {
+      cause_depth: depth,
+      source_teams: source,
+      target_teams: target,
+      origin: row.origin,
+      is_cross_team: isCrossTeam(source, target),
+    };
+    const current = triggersByKey[row.inject_key];
+    if (!current || hopRank(next) > hopRank(current)) triggersByKey[row.inject_key] = next;
     recent.push({
       inject_key: row.inject_key,
       minute: row.minute,

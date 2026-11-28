@@ -287,23 +287,34 @@ describe('cross-team guards', () => {
     assert.equal(independent.publish[0]?.id, 'cons_ba');
   });
 
-  test('cascade depths 1 to 3 publish and depth 4 is cancelled', () => {
+  test('cascade cap cancels a cross-team depth of 4 and leaves a same-team chain', () => {
+    const hop = (depth: number) => ({
+      cause_depth: depth,
+      source_teams: ['A'],
+      target_teams: ['B'],
+      is_cross_team: true,
+      origin: 'conditional' as const,
+    });
     const triggers = {
-      root: { cause_depth: 0 },
-      c1: { cause_depth: 1 },
-      c2: { cause_depth: 2 },
-      c3: { cause_depth: 3 },
+      root: { cause_depth: 0, source_teams: ['A'], target_teams: ['A'], origin: 'timed' },
+      same: { cause_depth: 4, source_teams: ['A'], target_teams: ['A'], origin: 'conditional' },
+      c1: hop(1),
+      c2: hop(2),
+      c3: hop(3),
+      dep: { cause_depth: 1, source_teams: ['A'], target_teams: ['A'], origin: 'dependency' },
     };
     assert.equal(causeDepth(['unresponded:root:5|team=a'], triggers), 1);
+    assert.equal(causeDepth(['inject_published:same'], triggers), 1);
     assert.equal(causeDepth(['unresponded:c1:5|team=a'], triggers), 2);
     assert.equal(causeDepth(['unresponded:c2:5|team=a'], triggers), 3);
     assert.equal(causeDepth(['unresponded:c3:5|team=a'], triggers), 4);
     assert.equal(causeDepth(['unresponded:c1:5|team=a', 'unresponded:c3:5|team=a'], triggers), 4);
+    assert.equal(causeDepth(['inject_published:dep'], triggers), 2);
     assert.equal(causeDepth(['duty_missed:legal_review|team=a'], triggers), 1);
 
-    const candidates = [1, 2, 3, 4].map((depth) => ({
-      id: `d${depth}`,
-      inject_key: `d${depth}`,
+    const sameTeam = [1, 2, 3, 4].map((depth) => ({
+      id: `s${depth}`,
+      inject_key: `s${depth}`,
       minute: 10,
       severity: 'medium',
       cause_depth: depth,
@@ -312,14 +323,86 @@ describe('cross-team guards', () => {
       target_teams: ['A'],
       origin: 'conditional' as const,
     }));
-    const result = applyCrossTeamGuards(candidates, [], [], env);
+    const crossFour = {
+      id: 'x4',
+      inject_key: 'x4',
+      minute: 10,
+      severity: 'high',
+      cause_depth: 4,
+      is_cross_team: true,
+      source_teams: ['A'],
+      target_teams: ['B'],
+      origin: 'conditional' as const,
+    };
+    const result = applyCrossTeamGuards([...sameTeam, crossFour], [], [], env);
     assert.deepEqual(
       result.publish.map((item) => item.id),
-      ['d1', 'd2', 'd3'],
+      ['s1', 's2', 's3', 's4'],
     );
     assert.equal(result.cancel.length, 1);
     assert.equal(result.cancel[0]?.reason, 'cascade_cap');
-    assert.equal(result.cancel[0]?.candidate.id, 'd4');
+    assert.equal(result.cancel[0]?.candidate.id, 'x4');
+
+    const director = applyCrossTeamGuards(
+      [
+        {
+          id: 'dir',
+          inject_key: 'dir',
+          minute: 10,
+          severity: 'medium',
+          cause_depth: 4,
+          is_cross_team: false,
+          source_teams: [],
+          target_teams: ['B'],
+          origin: 'director',
+        },
+      ],
+      [],
+      [],
+      env,
+    );
+    assert.equal(director.publish.length, 0);
+    assert.equal(director.cancel[0]?.candidate.id, 'dir');
+  });
+
+  test('same-team candidates keep the order the scheduler handed in', () => {
+    const result = applyCrossTeamGuards(
+      [
+        {
+          id: 'first',
+          inject_key: 'first',
+          minute: 20,
+          severity: 'medium',
+          dependency_age: 0,
+          is_cross_team: false,
+          source_teams: ['A'],
+          target_teams: ['A'],
+          origin: 'conditional',
+          cause_depth: 1,
+        },
+        {
+          id: 'second',
+          inject_key: 'second',
+          minute: 20,
+          severity: 'medium',
+          dependency_age: 12,
+          is_cross_team: false,
+          source_teams: ['A'],
+          target_teams: ['A'],
+          origin: 'conditional',
+          cause_depth: 1,
+        },
+      ],
+      [],
+      [],
+      env,
+    );
+    assert.deepEqual(
+      result.publish.map((item) => item.id),
+      ['first', 'second'],
+    );
+    assert.equal(result.defer.length, 0);
+    assert.equal(result.cancel.length, 0);
   });
 
   test('an authored timed inject is never deferred', () => {
