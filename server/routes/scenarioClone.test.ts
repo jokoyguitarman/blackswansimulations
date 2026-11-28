@@ -254,6 +254,8 @@ function seed(db: MemoryDb): void {
       conditions_to_cancel: ['inject_fired:correction'],
       eligible_after_minutes: 12,
       generation_source: 'war_room',
+      required_gate_id: 'gate-source',
+      required_gate_not_met_id: 'gate-source-not-met',
       state_effect: { social_state: { sentiment: -1 } },
       delivery_config: {
         app: 'social_feed',
@@ -485,6 +487,8 @@ describe('POST /api/scenarios/:id/clone', { concurrency: false }, () => {
       assert.equal(injects[0].retired_by_edit, null);
       assert.equal(injects[0].superseded_by, null);
       assert.equal(injects[0].retired_at, null);
+      assert.equal(injects[0].required_gate_id, null);
+      assert.equal(injects[0].required_gate_not_met_id, null);
 
       assert.deepEqual(
         clones('scenario_objectives').map((row) => row.objective_id),

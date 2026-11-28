@@ -123,6 +123,8 @@ function socialFixture() {
       eligible_after_minutes: 12,
       state_effect: { social_state: { sentiment: -1 } },
       generation_source: 'war_room',
+      required_gate_id: 'gate-source',
+      required_gate_not_met_id: 'gate-source-not-met',
       delivery_config: {
         app: 'social_feed',
         inject_key: 'harbour_post',
@@ -265,6 +267,8 @@ describe('clone column lists', () => {
     );
     assert.match(injectSql, /now\(\)/);
     assert.doesNotMatch(injectSql, /i\.valid_from/);
+    assert.doesNotMatch(injectSql, /i\.required_gate_id/);
+    assert.doesNotMatch(injectSql, /i\.required_gate_not_met_id/);
     assert.match(injectSql, /i\.session_id IS NULL/);
     assert.match(injectSql, /i\.retired_at IS NULL/);
     assert.match(sql, /o\.retired_at IS NULL/);
@@ -348,6 +352,8 @@ describe('cloned social-crisis rows', () => {
     assert.equal(copiedInjects[0].retired_by_edit, null);
     assert.equal(copiedInjects[0].superseded_by, null);
     assert.equal(copiedInjects[0].retired_at, null);
+    assert.equal(copiedInjects[0].required_gate_id, null);
+    assert.equal(copiedInjects[0].required_gate_not_met_id, null);
   });
 
   test('drops retired rows and remaps hazard parent pins onto the clone', () => {

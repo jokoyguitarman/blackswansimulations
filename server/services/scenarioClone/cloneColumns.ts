@@ -12,6 +12,8 @@ import { stampOrgIdentity } from '../../lib/templateRows.js';
  *
  * A new column is copied only when it is added here and in 276. valid_from is
  * the clone's current time. retired_by_edit and superseded_by are cleared.
+ * required_gate_id and required_gate_not_met_id are set null: scenario_gates
+ * are not copied, and the scheduler only sees the clone's own gates.
  * created_at and updated_at are left to the column default.
  */
 
@@ -311,6 +313,10 @@ export function cloneInjectRows(
       ...pick(row, INJECT_CLONE_COLUMNS),
       scenario_id: scenarioId,
       session_id: null,
+      // Gates belong to the source scenario and are not copied. Leaving the
+      // ids set would stop these injects from firing on the clone.
+      required_gate_id: null,
+      required_gate_not_met_id: null,
       ...versionResets(nowIso),
     });
   }

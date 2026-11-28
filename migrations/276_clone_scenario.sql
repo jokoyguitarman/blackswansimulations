@@ -175,8 +175,10 @@ BEGIN
     i.target_teams,
     i.requires_coordination,
     i.triggered_by_user_id,
-    i.required_gate_id,
-    i.required_gate_not_met_id,
+    -- scenario_gates are not copied. A source gate id never matches this
+    -- scenario, and the scheduler would then skip the inject.
+    NULL,
+    NULL,
     i.conditions_to_appear,
     i.conditions_to_cancel,
     i.eligible_after_minutes,
