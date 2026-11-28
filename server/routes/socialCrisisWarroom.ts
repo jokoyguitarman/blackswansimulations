@@ -67,6 +67,7 @@ import { inferCrisisFootprint } from '../services/crisisFootprintService.js';
 import type { Stakeholder } from '../lib/stakeholderContract.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { env } from '../env.js';
+import { RIVAL_DESCRIPTION_MAX } from '../services/rivalDescription.js';
 import { extractBlueprint } from '../services/blueprint/blueprintExtractionService.js';
 import { emptyBlueprint, coerceBlueprint } from '../services/blueprint/blueprintTypes.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
@@ -1672,6 +1673,7 @@ router.post(
               name: z.string(),
               facebook_handle: z.string().optional(),
               x_handle: z.string().optional(),
+              description: z.string().max(RIVAL_DESCRIPTION_MAX).optional(),
             }),
           )
           .optional(),
