@@ -408,7 +408,16 @@ describe('cross-team guards', () => {
       previous = step.key;
     }
     // Same-team rows store inherited hops + 1 (bb 2, cc 3, dd 4) so the next hop keeps them.
-    assert.deepEqual(depths, { ab: 1, bb: 2, bc: 2, cc: 3, cd: 3, dd: 4, da: 4 });
+    const expectedDepths: Record<string, number> = {
+      ab: 1,
+      bb: 2,
+      bc: 2,
+      cc: 3,
+      cd: 3,
+      dd: 4,
+      da: 4,
+    };
+    assert.deepEqual(depths, expectedDepths);
     const result = applyCrossTeamGuards(
       steps.map((step) => ({
         id: step.key,
