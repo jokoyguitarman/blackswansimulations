@@ -149,7 +149,11 @@ export async function generatePersonasForCountry(
   taken: TakenIdentifiers,
   targetCount = 200,
   onProgress?: (msg: string) => void,
+  options?: { groups?: readonly string[] },
 ): Promise<NPCPersona[]> {
+  if (options?.groups && options.groups.length > 0) {
+    return personasForNamedGroups(crisis, country, factSheet, taken, targetCount, options.groups);
+  }
   const orgList =
     orgsInCountry.map((o) => `${o.display_name} (${o.kind})`).join(', ') || 'none named';
   const factsContext = `Confirmed: ${factSheet.confirmed_facts.join('; ')}\nFalse claims: ${factSheet.unconfirmed_claims.map((c) => `"${c.claim}" (${c.status})`).join('; ')}`;
@@ -220,6 +224,32 @@ Return ONLY valid JSON: { "personas": [ { "handle": "@user", "name": "Name", "ty
 
   if (personas.length < 50) {
     logger.warn({ country, count: personas.length }, 'crowd_shortfall');
+  }
+  return personas;
+}
+
+async function personasForNamedGroups(
+  crisis: CrisisContext,
+  country: string,
+  factSheet: FactSheet,
+  taken: TakenIdentifiers,
+  targetCount: number,
+  groups: readonly string[],
+): Promise<NPCPersona[]> {
+  const count = Math.max(1, Math.min(targetCount, groups.length > 0 ? targetCount : 1));
+  const raw = await callSocialCrisisAI(
+    `Create at most ${count} social-media personas for these newly named groups. Do not reuse handles already in use. Return JSON { "personas": [ { "handle": "@name", "name": "...", "type": "npc_public|npc_media|npc_politician|npc_influencer", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": [] } ] }.`,
+    `Groups: ${groups.join('; ')}\nCrisis: ${crisis.crisisType}\nCountry: ${country}\nFacts: ${factSheet.confirmed_facts.slice(0, 6).join('; ')}\nTaken handles: ${[...taken.handles].slice(0, 40).join(' ')}`,
+    4000,
+    0.7,
+  );
+  const personas: NPCPersona[] = [];
+  for (const row of (raw?.personas as Array<Record<string, unknown>>) || []) {
+    const persona = toPersona(row, country, 'key');
+    if (!persona.handle || persona.handle === '@' || persona.handle === 'user') continue;
+    persona.handle = claimHandle(taken, persona.handle, countrySuffix(country));
+    personas.push(persona);
+    if (personas.length >= count) break;
   }
   return personas;
 }
