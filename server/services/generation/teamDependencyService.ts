@@ -12,10 +12,9 @@ import { CONVERGENCE_SUMMARY_MAX_CHARS } from '../convergenceSummary.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
 import type { TeamDependencies, TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import { matchTeamRef } from '../../../shared/teamDependencies.js';
-import { readDependencyEdges } from '../dependencies/dependencyCore.js';
+import { readDependencyEdges, validateDependencies } from '../dependencies/dependencyCore.js';
 import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import {
-  asRecord,
   buildConsequenceInjects,
   checkTeamNaming,
   dependencyEdgeSummary,
@@ -23,7 +22,6 @@ import {
   postProcessDependencies,
   registerIntelEdges,
   signalTemplatePrompt,
-  text,
   type GenerationTeam,
   type IntelRegistrationItem,
   type KnownInject,
@@ -201,7 +199,8 @@ function intelDeadline(key: string, gates: readonly SocialInject[]): number | nu
       const parsed = parseConditionKey(condition);
       return !('error' in parsed) && parsed.def.id === 'intel_missing' && parsed.args[0] === key;
     });
-    if (matches && typeof gate.eligible_after_minutes === 'number') return gate.eligible_after_minutes;
+    if (matches && typeof gate.eligible_after_minutes === 'number')
+      return gate.eligible_after_minutes;
   }
   return null;
 }
@@ -250,6 +249,7 @@ export async function generateTeamDependencies(
     known,
     duration,
     { upstreamPerTeam: cap },
+    input.stakeholders,
   );
   if (processed.dropped.length > 0) {
     logger.warn(
@@ -286,13 +286,14 @@ export async function generateTeamDependencies(
     const consequences: SocialInject[] = [];
     const positives: SocialInject[] = [];
     for (const edge of batch) {
-      const rows = buildConsequenceInjects(edge, raw, taken);
+      const rows = buildConsequenceInjects(edge, raw, taken, input.stakeholders);
       edge.consequence_keys = [];
       for (const inject of rows.consequences) {
         const kept = await repairNaming(inject, teamNames, client);
         if (!kept) continue;
         consequences.push(kept);
-        if (kept.delivery_config.inject_key) edge.consequence_keys.push(kept.delivery_config.inject_key);
+        if (kept.delivery_config.inject_key)
+          edge.consequence_keys.push(kept.delivery_config.inject_key);
       }
       for (const inject of rows.positives) {
         const kept = await repairNaming(inject, teamNames, client);
@@ -333,15 +334,19 @@ export async function resolveTeamDependencies(
 ): Promise<GenerateTeamDependenciesResult | null> {
   const read = readDependencyEdges(existing);
   if (!('error' in read)) {
-    return {
-      team_dependencies: { v: 1, edges: read.edges as TeamDependencies['edges'] },
-      consequences: [],
-      positives: [],
-      asks: [],
-      summary: dependencyEdgeSummary(read.edges as TeamDependencies['edges']),
-      mapCalls: 0,
-      consequenceCalls: 0,
-    };
+    const validated = validateDependencies(read.edges, [], [], null);
+    const schemaError = validated.issues.some((issue) => issue.code === 'MO-DEP-001');
+    if (!schemaError) {
+      return {
+        team_dependencies: { v: 1, edges: validated.edges },
+        consequences: [],
+        positives: [],
+        asks: [],
+        summary: dependencyEdgeSummary(validated.edges),
+        mapCalls: 0,
+        consequenceCalls: 0,
+      };
+    }
   }
   const playable = input.teams.filter((team) => team.playable !== false);
   if (playable.length < 2) return null;
@@ -357,26 +362,33 @@ export interface CompileDependencyInput {
   facts: readonly string[];
   stakeholders?: readonly DependencyStakeholder[];
   gates?: readonly SocialInject[];
+  client?: DependencyClient;
 }
 
 /** Persist a dependency document already produced, or generate one at compile. */
-export async function resolveCompileDependencies(
-  input: CompileDependencyInput,
-): Promise<{ document: TeamDependencies; storylines: Record<string, SocialInject[]>; added: SocialInject[] } | null> {
+export async function resolveCompileDependencies(input: CompileDependencyInput): Promise<{
+  document: TeamDependencies;
+  storylines: Record<string, SocialInject[]>;
+  added: SocialInject[];
+} | null> {
   const storylines = input.storylines;
   const teams = dependencyTeamsFrom({
     orgs: input.orgs ?? undefined,
     storylineTeams: Object.keys(storylines).filter((name) => name !== 'Shared'),
     charters: input.charters,
   });
-  const resolved = await resolveTeamDependencies(input.existing, {
-    teams,
-    crisis: input.crisis,
-    facts: input.facts,
-    storylines,
-    intelItems: intelItemsFromInjects(storylines, input.gates ?? []),
-    stakeholders: input.stakeholders,
-  });
+  const resolved = await resolveTeamDependencies(
+    input.existing,
+    {
+      teams,
+      crisis: input.crisis,
+      facts: input.facts,
+      storylines,
+      intelItems: intelItemsFromInjects(storylines, input.gates ?? []),
+      stakeholders: input.stakeholders,
+    },
+    input.client ? { client: input.client } : {},
+  );
   if (!resolved) return null;
   const next = { ...storylines };
   for (const ask of resolved.asks) {
@@ -667,3 +679,11 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return batches;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}

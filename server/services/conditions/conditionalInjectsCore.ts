@@ -125,7 +125,13 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
     reportPhone(inject, path, issues);
     reportNpcDm(inject, path, issues);
   });
-  const dependencyEdges = reportDependencies(scenario.team_dependencies, scenario.teams, withParents, scenario.duration_minutes, issues);
+  const dependencyEdges = reportDependencies(
+    scenario.team_dependencies,
+    scenario.teams,
+    withParents,
+    scenario.duration_minutes,
+    issues,
+  );
   reportUnknownTeamSlugs(withParents, scenario.teams, issues);
   reportCycles(withParents, apps, issues, dependencyEdges);
   reportChainsAndLadders(withParents, scenario.stakeholders, scenario.duration_minutes, issues);
@@ -151,14 +157,22 @@ function reportDependencies(
         inject_key: key,
         trigger_time_minutes: inject.trigger_time_minutes ?? null,
         conditional: inject.trigger_time_minutes == null,
-        condition_keys: collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel),
+        condition_keys: collectConditionKeys(
+          inject.conditions_to_appear,
+          inject.conditions_to_cancel,
+        ),
       },
     ];
   });
   const durationArg = typeof duration === 'number' && Number.isFinite(duration) ? duration : null;
   const result = validateDependencies(edges, teams ?? [], refs, durationArg);
   for (const item of result.issues) {
-    issues.push({ code: item.code, path: item.path, message: item.message, severity: item.severity });
+    issues.push({
+      code: item.code,
+      path: item.path,
+      message: item.message,
+      severity: item.severity,
+    });
   }
   return result.edges;
 }
@@ -169,11 +183,16 @@ function reportUnknownTeamSlugs(
   issues: ConditionalInjectIssue[],
 ): void {
   if (!teams) return;
-  const slugs = new Set(teams.map((team) => slugifyTeamName(team.team_name)).filter((slug) => slug));
+  const slugs = new Set(
+    teams.map((team) => slugifyTeamName(team.team_name)).filter((slug) => slug),
+  );
   injects.forEach((inject, index) => {
     const path = injectPath(inject, index);
     const seen = new Set<string>();
-    for (const key of collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel)) {
+    for (const key of collectConditionKeys(
+      inject.conditions_to_appear,
+      inject.conditions_to_cancel,
+    )) {
       if (seen.has(key)) continue;
       seen.add(key);
       const parsed = parseConditionKey(key);
@@ -298,10 +317,17 @@ function repairPhoneConfig(config: Record<string, unknown>): void {
       if (typeof body.closing === 'string') body.closing = body.closing.slice(0, 200);
       if (Array.isArray(body.beats)) {
         body.beats = body.beats.map((beat) => {
-          if (!beat || typeof beat !== 'object' || typeof (beat as { say?: unknown }).say !== 'string') {
+          if (
+            !beat ||
+            typeof beat !== 'object' ||
+            typeof (beat as { say?: unknown }).say !== 'string'
+          ) {
             return beat;
           }
-          return { ...(beat as Record<string, unknown>), say: (beat as { say: string }).say.slice(0, 200) };
+          return {
+            ...(beat as Record<string, unknown>),
+            say: (beat as { say: string }).say.slice(0, 200),
+          };
         });
       }
       if (Array.isArray(body.redial_openings)) {
@@ -418,7 +444,10 @@ function reportDanglingAndApps(
   issues: ConditionalInjectIssue[],
 ): void {
   const seen = new Set<string>();
-  for (const key of collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel)) {
+  for (const key of collectConditionKeys(
+    inject.conditions_to_appear,
+    inject.conditions_to_cancel,
+  )) {
     if (seen.has(key)) continue;
     seen.add(key);
     const parsed = parseConditionKey(key);
@@ -480,7 +509,10 @@ function reportWindow(
       message: `Inject "${inject.title ?? ''}" is eligible after ${inject.eligible_after_minutes} min, past the ${duration}-minute scenario`,
     });
   }
-  for (const key of collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel)) {
+  for (const key of collectConditionKeys(
+    inject.conditions_to_appear,
+    inject.conditions_to_cancel,
+  )) {
     const parsed = parseConditionKey(key);
     if ('error' in parsed) continue;
     (parsed.def.params ?? []).forEach((param, index) => {
@@ -544,7 +576,10 @@ function reportChainsAndLadders(
         key,
         trigger_time_minutes: inject.trigger_time_minutes ?? null,
         conditional: inject.trigger_time_minutes == null,
-        condition_keys: collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel),
+        condition_keys: collectConditionKeys(
+          inject.conditions_to_appear,
+          inject.conditions_to_cancel,
+        ),
       };
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
@@ -556,10 +591,14 @@ function reportChainsAndLadders(
     const path = injectPath(inject, index);
     const escalation = inject.delivery_config?.escalation;
     if (escalation != null) {
-      const rootKey = typeof inject.delivery_config?.inject_key === 'string' ? inject.delivery_config.inject_key : null;
+      const rootKey =
+        typeof inject.delivery_config?.inject_key === 'string'
+          ? inject.delivery_config.inject_key
+          : null;
       for (const issue of validateEscalation({
         escalation,
-        rootApp: typeof inject.delivery_config?.app === 'string' ? inject.delivery_config.app : null,
+        rootApp:
+          typeof inject.delivery_config?.app === 'string' ? inject.delivery_config.app : null,
         rootStakeholderId:
           typeof inject.delivery_config?.stakeholder_id === 'string'
             ? inject.delivery_config.stakeholder_id
@@ -585,7 +624,13 @@ function reportChainsAndLadders(
 
   for (const stakeholder of listed) {
     if (stakeholder.mood_ladder == null) continue;
-    reportLadder(stakeholder.mood_ladder, `stakeholders.${stakeholder.id}`, known, durationArg, issues);
+    reportLadder(
+      stakeholder.mood_ladder,
+      `stakeholders.${stakeholder.id}`,
+      known,
+      durationArg,
+      issues,
+    );
   }
 }
 
@@ -607,10 +652,13 @@ function reportLadder(
       message: issue.message,
     });
   }
-  const record = ladder && typeof ladder === 'object' ? (ladder as { gave_up_after_minutes?: unknown }) : null;
+  const record =
+    ladder && typeof ladder === 'object' ? (ladder as { gave_up_after_minutes?: unknown }) : null;
   const explicit = record?.gave_up_after_minutes;
   const effective =
-    typeof explicit === 'number' && Number.isFinite(explicit) ? explicit : env.callbackWindowMinutes;
+    typeof explicit === 'number' && Number.isFinite(explicit)
+      ? explicit
+      : env.callbackWindowMinutes;
   if (duration != null && duration > 0 && effective >= duration) {
     issues.push({
       code: 'MO-MOOD-002',
@@ -627,8 +675,7 @@ function reportLadder(
 function dependencyIdFromKey(key: string): string | null {
   const parsed = parseConditionKey(key);
   if ('error' in parsed || !parsed.def.id.startsWith('dependency_')) return null;
-  const id = parsed.args[0] ?? '';
-  return /^dep_[a-z0-9_]+$/.test(id) ? id : null;
+  return parsed.args[0] || null;
 }
 
 function brokenWhenKeys(edge: TeamDependencyEdge): string[] {

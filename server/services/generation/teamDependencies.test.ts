@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { validateConditionalInjects } from '../conditions/conditionalInjectsCore.js';
 import { dependencyCallsFor } from '../../../shared/buildEstimate.js';
 import {
+  buildConsequenceInjects,
   checkTeamNaming,
   postProcessDependencies,
   registerIntelEdges,
@@ -11,9 +12,13 @@ import {
 } from './teamDependenciesCore.js';
 import {
   generateTeamDependencies,
+  intelItemsFromInjects,
+  resolveCompileDependencies,
   type DependencyChatRequest,
   type DependencyClient,
 } from './teamDependencyService.js';
+import type { SocialInject } from '../socialCrisisGeneratorService.js';
+import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import { postProcessResponseBranches, type BranchParent } from './responseBranchesCore.js';
 
 const SUPERMARKET: GenerationTeam[] = [
@@ -1028,5 +1033,162 @@ describe('response branch targets', () => {
       ['Operations', 'Communications'],
     );
     assert.deepEqual(known.branches[0]?.target_teams, ['Communications']);
+  });
+});
+
+const COMMS_EDGE: TeamDependencyEdge = {
+  id: 'dep_ops_comms',
+  kind: 'information',
+  upstream: { team_uid: null, team_name: 'Operations' },
+  downstream: [{ team_uid: null, team_name: 'Communications' }],
+  deliverable: 'Headcount',
+  why: 'Communications needs the figure',
+  due: { by_minute: 20 },
+  broken_when: { all: ['team_silent:10|team=@upstream'] },
+  met_when: null,
+  lag_minutes: 5,
+  severity: 'medium',
+  consequence_keys: [],
+  source: 'war_room',
+};
+
+describe('npc_dm consequences', () => {
+  test('keeps npc_dm only when the sender is a known stakeholder', () => {
+    const stakeholders = [{ id: 'stk_maria', name: 'Maria Tan' }];
+    const row = {
+      edge_id: 'dep_ops_comms',
+      downstream: 'Communications',
+      title: 'A private nudge',
+      content: 'Please send the headcount.',
+      response_rubric: {
+        asks: ['confirm the headcount'],
+        criteria: ['names the figure'],
+        expected_tone: ['professional'],
+        pass_threshold: 1,
+      },
+    };
+    const kept = buildConsequenceInjects(
+      COMMS_EDGE,
+      { consequences: [{ ...row, app: 'npc_dm', sender: 'stk_maria' }] },
+      new Set(),
+      stakeholders,
+    );
+    assert.equal(kept.consequences[0]?.delivery_config.app, 'npc_dm');
+    assert.equal(kept.consequences[0]?.delivery_config.stakeholder_id, 'stk_maria');
+    assert.equal(
+      kept.consequences[0]?.delivery_config.response_rubric?.criteria[0],
+      'names the figure',
+    );
+
+    const plain = buildConsequenceInjects(
+      COMMS_EDGE,
+      { consequences: [{ ...row, app: 'npc_dm', sender: 'Maria Tan' }] },
+      new Set(),
+      stakeholders,
+    );
+    assert.equal(plain.consequences[0]?.delivery_config.app, 'email');
+    assert.equal(plain.consequences[0]?.delivery_config.stakeholder_id, undefined);
+  });
+});
+
+describe('intel deadlines and compile resolution', () => {
+  test('reads the deadline from the intel gate eligible minute', () => {
+    const email = {
+      type: 'email_inbound',
+      title: 'Manifest',
+      content: 'Subject: K7',
+      severity: 'high',
+      inject_scope: 'team_specific',
+      target_teams: ['Operations'],
+      trigger_time_minutes: 8,
+      delivery_config: { app: 'email' as const, intel_key: 'batch_k7', intel_needed_by: ['Legal'] },
+    } satisfies SocialInject;
+    const gate = {
+      type: 'email_inbound',
+      title: 'Missing manifest',
+      content: 'We still do not have it.',
+      severity: 'high',
+      inject_scope: 'team_specific',
+      target_teams: ['Legal'],
+      eligible_after_minutes: 25,
+      conditions_to_appear: { threshold: 1, conditions: ['intel_missing:batch_k7'] },
+      delivery_config: { app: 'email' as const },
+    } satisfies SocialInject;
+    const items = intelItemsFromInjects({ Operations: [email] }, [gate]);
+    assert.equal(items[0]?.deadline_minutes, 25);
+    assert.equal(items[0]?.trigger_time_minutes, 8);
+  });
+
+  test('reuses a stored document, and generates and merges an ask when there is none', async () => {
+    const storylines = { Operations: [] as SocialInject[], Communications: [] as SocialInject[] };
+    let calls = 0;
+    const client: DependencyClient = {
+      async complete() {
+        calls += 1;
+        return { edges: [] };
+      },
+    };
+    const reused = await resolveCompileDependencies({
+      existing: { v: 1, edges: [COMMS_EDGE] },
+      storylines,
+      crisis: { crisisType: 'recall', duration: 60 },
+      facts: [],
+      client,
+    });
+    assert.equal(calls, 0);
+    assert.equal(reused?.document.edges[0]?.id, 'dep_ops_comms');
+    assert.deepEqual(reused?.added, []);
+    assert.equal(reused?.storylines.Operations.length, 0);
+
+    const generated = await resolveCompileDependencies({
+      existing: null,
+      storylines,
+      crisis: { crisisType: 'recall', duration: 60 },
+      facts: [],
+      client: {
+        async complete(request) {
+          if (request.label === 'generator.dependencyMap') {
+            return {
+              edges: [
+                {
+                  id: 'dep_ops_ask',
+                  kind: 'information',
+                  upstream: 'Operations',
+                  downstream: ['Communications'],
+                  deliverable: 'Headcount',
+                  why: 'Communications needs it',
+                  signals: [{ template: 'no_reply', minutes: 10 }],
+                  met_signal: null,
+                  needs_ask: {
+                    title: 'Send the headcount',
+                    content: 'Please confirm the headcount.',
+                    app: 'email',
+                    trigger_time_minutes: 8,
+                  },
+                  lag_minutes: 5,
+                  severity: 'medium',
+                },
+              ],
+            };
+          }
+          return {
+            consequences: [
+              {
+                edge_id: 'dep_ops_ask',
+                downstream: 'Communications',
+                title: 'Reporter asks',
+                content: 'Where is the number?',
+                app: 'email',
+              },
+            ],
+            positives: [],
+          };
+        },
+      },
+    });
+    assert.equal(generated?.document.edges[0]?.id, 'dep_ops_ask');
+    assert.equal(generated?.storylines.Operations[0]?.title, 'Send the headcount');
+    assert.equal(generated?.added[0]?.title, 'Reporter asks');
+    assert.equal(storylines.Operations.length, 0);
   });
 });

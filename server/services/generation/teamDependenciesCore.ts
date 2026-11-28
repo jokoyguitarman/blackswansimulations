@@ -9,6 +9,7 @@ import { allocateInjectKey, isValidInjectKey } from '../../lib/injectKey.js';
 import { CATALOG_ACTION_TYPES, parseConditionKey } from '../conditions/conditionCatalog.js';
 import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
 import { isDeliveryApp, typeForApp, type DeliveryApp } from './responseBranchesCore.js';
+import { readAuthoredRubric } from '../judging/judgeCore.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { dependencyEdgeBudget, dependencyMapCallCount } from '../../../shared/buildEstimate.js';
 import {
@@ -155,7 +156,8 @@ export function planDependencyMapCalls(
   const playable = teams.filter((team) => team.playable !== false && team.team_name.trim());
   if (playable.length < 2) return [];
   const batch = Math.max(1, Math.floor(batchTeams));
-  const orgCount = new Set(playable.map((team) => team.org_key || team.org_name || '_scenario')).size;
+  const orgCount = new Set(playable.map((team) => team.org_key || team.org_name || '_scenario'))
+    .size;
   if (dependencyMapCallCount(playable.length, orgCount, batch) <= 1) {
     return [{ kind: 'all', orgKey: null, orgName: null, teams: [...playable] }];
   }
@@ -217,6 +219,7 @@ export function postProcessDependencies(
   injects: readonly KnownInject[],
   durationMinutes: number,
   budget: Partial<DependencyBudget> = {},
+  stakeholders?: readonly ConsequenceStakeholder[],
 ): PostProcessDependenciesResult {
   const duration = finiteMinutes(durationMinutes, 60);
   const playable = teams.filter((team) => team.playable !== false && team.team_name.trim());
@@ -247,7 +250,7 @@ export function postProcessDependencies(
   const consequences: SocialInject[] = [];
   const positives: SocialInject[] = [];
   for (const item of selected) {
-    const built = buildConsequenceInjects(item.edge, model, takenInjectKeys);
+    const built = buildConsequenceInjects(item.edge, model, takenInjectKeys, stakeholders);
     item.edge.consequence_keys = built.consequences.flatMap((inject) => {
       const key = inject.delivery_config.inject_key;
       return key ? [key] : [];
@@ -258,10 +261,16 @@ export function postProcessDependencies(
   return { edges: selected.map((item) => item.edge), asks, consequences, positives, dropped };
 }
 
+export interface ConsequenceStakeholder {
+  id: string;
+  name?: string | null;
+}
+
 export function buildConsequenceInjects(
   edge: TeamDependencyEdge,
   model: unknown,
   taken: Set<string> = new Set(),
+  stakeholders?: readonly ConsequenceStakeholder[],
 ): { consequences: SocialInject[]; positives: SocialInject[] } {
   const record = asRecord(model);
   const rows = Array.isArray(record?.consequences) ? record.consequences : [];
@@ -278,8 +287,9 @@ export function buildConsequenceInjects(
     if (!content) continue;
     seenDown.add(downstream.team_name);
     const title = text(row.title) || `${edge.deliverable} (${downstream.team_name})`;
-    const app = consequenceApp(row.app);
+    const app = consequenceApp(row.app, row.sender, stakeholders);
     const injectKey = allocateInjectKey(text(row.inject_key), title, taken);
+    const rubric = readAuthoredRubric(row.response_rubric);
     consequences.push({
       type: typeForApp(app),
       title,
@@ -296,7 +306,8 @@ export function buildConsequenceInjects(
         inject_key: injectKey,
         cause: { kind: 'dependency', dep_id: edge.id },
         gen: { layer },
-        ...senderFields(row.sender),
+        ...senderFields(row.sender, stakeholders),
+        ...(rubric ? { response_rubric: rubric } : {}),
       },
     });
   }
@@ -309,7 +320,7 @@ export function buildConsequenceInjects(
     const downstream = matchRef(text(row.downstream) ?? '', edge.downstream) ?? edge.downstream[0];
     if (!downstream) continue;
     const title = text(row.title) || `${edge.deliverable} delivered`;
-    const app = consequenceApp(row.app);
+    const app = consequenceApp(row.app, row.sender, stakeholders);
     const injectKey = allocateInjectKey(text(row.inject_key), title, taken);
     positives.push({
       type: typeForApp(app),
@@ -326,7 +337,7 @@ export function buildConsequenceInjects(
         inject_key: injectKey,
         cause: { kind: 'dependency', dep_id: edge.id },
         gen: { layer },
-        ...senderFields(row.sender),
+        ...senderFields(row.sender, stakeholders),
       },
     });
     break;
@@ -576,10 +587,15 @@ function signalToKey(
   const scope = row.scope === '@downstream' ? '@downstream' : '@upstream';
   const suffix = template === 'intel' ? '' : `|team=${scope}`;
   const injectKey = boundInjectKey(row, template, pole, askKey, known);
-    if (template === 'no_reply') {
+  if (template === 'no_reply') {
     if (!injectKey) return null;
     if (pole === 'met') return `responded_relevant:${injectKey}${suffix}`;
-    const minutes = clampInt(row.minutes, REPLY_MINUTES_MIN, REPLY_MINUTES_MAX, REPLY_MINUTES_DEFAULT);
+    const minutes = clampInt(
+      row.minutes,
+      REPLY_MINUTES_MIN,
+      REPLY_MINUTES_MAX,
+      REPLY_MINUTES_DEFAULT,
+    );
     return `unresponded:${injectKey}:${minutes}${suffix}`;
   }
   if (template === 'poor_reply') {
@@ -682,7 +698,8 @@ function buildAsk(
   const title = text(row.title);
   if (!content || !title) return null;
   const requested = text(row.app);
-  const app: DeliveryApp = requested && ASK_APPS.has(requested as DeliveryApp) ? (requested as DeliveryApp) : 'email';
+  const app: DeliveryApp =
+    requested && isDeliveryApp(requested) && ASK_APPS.has(requested) ? requested : 'email';
   const injectKey = allocateInjectKey(null, title, taken);
   const trigger = clampInt(
     row.trigger_time_minutes,
@@ -795,15 +812,35 @@ function severityOf(raw: unknown, fallback: DependencySeverity): DependencySever
   return fallback;
 }
 
-function consequenceApp(raw: unknown): DeliveryApp {
+function consequenceApp(
+  raw: unknown,
+  sender: unknown,
+  stakeholders?: readonly ConsequenceStakeholder[],
+): DeliveryApp {
   const value = text(raw);
-  return value && isDeliveryApp(value) ? value : 'email';
+  if (!value || !isDeliveryApp(value)) return 'email';
+  if (value === 'npc_dm' && !stakeholderId(sender, stakeholders)) return 'email';
+  return value;
 }
 
-function senderFields(raw: unknown): { stakeholder_id?: string; from_name?: string } {
+function stakeholderId(
+  sender: unknown,
+  stakeholders?: readonly ConsequenceStakeholder[],
+): string | null {
+  const value = text(sender);
+  if (!value || !stakeholders) return null;
+  return stakeholders.find((stakeholder) => stakeholder.id === value)?.id ?? null;
+}
+
+function senderFields(
+  raw: unknown,
+  stakeholders?: readonly ConsequenceStakeholder[],
+): { stakeholder_id?: string; from_name?: string } {
   const sender = text(raw);
   if (!sender) return {};
-  if (/^stk_[a-z0-9_]{1,76}$/.test(sender)) return { stakeholder_id: sender };
+  const id = stakeholderId(sender, stakeholders);
+  if (id) return { stakeholder_id: id };
+  if (!stakeholders && /^stk_[a-z0-9_]{1,76}$/.test(sender)) return { stakeholder_id: sender };
   return { from_name: sender };
 }
 
@@ -920,8 +957,14 @@ function genericTeamMention(haystack: string, name: string): boolean {
   const gap = '[^A-Za-z0-9]+';
   const possessive = new RegExp(`(?:^|[^A-Za-z0-9])${token}(?:'s|')(?![A-Za-z0-9])`, 'i');
   const role = 'team|department|unit|desk|staff|office|division|function';
-  const named = new RegExp(`(?:^|[^A-Za-z0-9])(?:the${gap})?${token}${gap}(?:${role})(?![A-Za-z0-9])`, 'i');
-  const ofTeam = new RegExp(`(?:^|[^A-Za-z0-9])(?:${role})${gap}of${gap}${token}(?![A-Za-z0-9])`, 'i');
+  const named = new RegExp(
+    `(?:^|[^A-Za-z0-9])(?:the${gap})?${token}${gap}(?:${role})(?![A-Za-z0-9])`,
+    'i',
+  );
+  const ofTeam = new RegExp(
+    `(?:^|[^A-Za-z0-9])(?:${role})${gap}of${gap}${token}(?![A-Za-z0-9])`,
+    'i',
+  );
   return possessive.test(haystack) || named.test(haystack) || ofTeam.test(haystack);
 }
 
@@ -954,11 +997,11 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
-export function text(value: unknown): string | null {
+function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-export function asRecord(value: unknown): Record<string, unknown> | null {
+function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
