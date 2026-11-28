@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
 import { isBoothJoinToken, openingParagraph } from '../lib/boothLink.js';
+import { env } from '../env.js';
 
 const router = Router();
 
@@ -18,11 +19,10 @@ router.get(
       const user = req.user!;
 
       // Get session and verify access
-      const { data: session } = await supabaseAdmin
-        .from('sessions')
-        .select('scenario_id, trainer_id, join_token')
-        .eq('id', id)
-        .single();
+      const sessionQuery = env.enablePeacePeriod
+        ? supabaseAdmin.from('sessions').select('scenario_id, trainer_id, join_token, start_time')
+        : supabaseAdmin.from('sessions').select('scenario_id, trainer_id, join_token');
+      const { data: session } = await sessionQuery.eq('id', id).single();
 
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
@@ -92,18 +92,31 @@ router.get(
         ? openingParagraph(scenario.description)
         : null;
 
-      res.json({
-        data: {
-          general_briefing: scenario.briefing || scenario.description,
-          role_specific_briefing: roleSpecificBrief,
-          scenario_title: scenario.title,
-          user_role: userRole,
-          team_name: teamName,
-          vicinity_map_url: null,
-          layout_image_url: null,
-          booth: situation ? { situation, goals: scenario.briefing || null } : null,
-        },
-      });
+      const body: {
+        general_briefing: string;
+        role_specific_briefing: string | null;
+        scenario_title: string;
+        user_role: string | null;
+        team_name: string | null;
+        vicinity_map_url: null;
+        layout_image_url: null;
+        booth: { situation: string; goals: string | null } | null;
+        crisis_starts_at?: string | null;
+      } = {
+        general_briefing: scenario.briefing || scenario.description || '',
+        role_specific_briefing: roleSpecificBrief,
+        scenario_title: scenario.title,
+        user_role: userRole,
+        team_name: teamName,
+        vicinity_map_url: null,
+        layout_image_url: null,
+        booth: situation ? { situation, goals: scenario.briefing || null } : null,
+      };
+      if (env.enablePeacePeriod && session && 'start_time' in session) {
+        const start = session.start_time;
+        body.crisis_starts_at = typeof start === 'string' ? start : null;
+      }
+      res.json({ data: body });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /briefing/session/:id');
       res.status(500).json({ error: 'Internal server error' });

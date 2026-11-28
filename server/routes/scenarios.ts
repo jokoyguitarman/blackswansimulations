@@ -9,6 +9,7 @@ import { normalizeScenarioDependencies } from '../services/dependencies/dependen
 import { logger } from '../lib/logger.js';
 import { injectRoleTargetError, parsePlayerRoles } from '../services/roles/roleCore.js';
 import { env } from '../env.js';
+import { withoutPeaceLeakTerms } from '../lib/peacePayload.js';
 import { chat, chatJson } from '../services/ai/chatClient.js';
 import { validate } from '../lib/validation.js';
 import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
@@ -519,6 +520,9 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const payload = playsThisScenario ? redactScenarioForPlayer(data) : data;
+    if (playsThisScenario && env.enablePeacePeriod && payload.initial_state) {
+      payload.initial_state = withoutPeaceLeakTerms(payload.initial_state);
+    }
     res.json({ data: payload });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id');

@@ -7,6 +7,7 @@ import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import {
+  attachGeneratedPostMedia,
   generatePostImage,
   generateVideo,
   generateVideoThumbnail,
@@ -438,30 +439,12 @@ async function seedBrandedHistory(
 
     const mediaDesc = String(post.media_description || '');
     if (mediaDesc && inserted?.id) {
-      void (async () => {
-        try {
-          const postFormat = String(post.post_format || 'text');
-          const isVideo =
-            /video|clip|footage|recording/i.test(mediaDesc) || postFormat === 'video_concept';
-          let url: string | null = null;
-
-          if (isVideo) {
-            url = await generateVideoThumbnail(mediaDesc);
-          } else {
-            const style = postFormat === 'infographic' ? 'infographic' : 'social_media_photo';
-            url = await generatePostImage(mediaDesc, style);
-          }
-
-          if (url) {
-            await supabaseAdmin
-              .from('social_posts')
-              .update({ media_urls: [url] })
-              .eq('id', inserted.id);
-          }
-        } catch (err) {
-          logger.warn({ err, postId: inserted.id }, 'Branded history media generation failed');
-        }
-      })();
+      attachGeneratedPostMedia(
+        String(inserted.id),
+        mediaDesc,
+        String(post.post_format || 'text'),
+        'Branded history media generation failed',
+      );
     }
   }
 

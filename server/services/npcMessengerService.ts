@@ -1,8 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson } from './ai/chatClient.js';
+import { loadSessionTopicPhase } from './peace/sessionTopicPhase.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
 
@@ -65,13 +65,8 @@ async function resolveRecipientUserId(
 }
 
 async function npcMessagesSkipPeace(sessionId: string): Promise<boolean> {
-  if (!env.enablePeacePeriod) return false;
-  const { data } = await supabaseAdmin
-    .from('sessions')
-    .select('start_time')
-    .eq('id', sessionId)
-    .maybeSingle();
-  return skipForPeace({ start_time: data?.start_time ?? null });
+  const phase = await loadSessionTopicPhase(sessionId);
+  return phase === 'peace';
 }
 
 export async function triggerNPCMessages(sessionId: string): Promise<void> {

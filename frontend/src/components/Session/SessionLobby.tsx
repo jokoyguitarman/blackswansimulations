@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { PeaceLobbyControl } from './PeaceLobbyControl';
 import { api, ApiError } from '../../lib/api';
 import {
   PAGES_UNASSIGNED,
@@ -46,8 +47,9 @@ interface SessionLobbyProps {
       };
     }>;
   };
-  onStartSession?: (override?: boolean) => Promise<void> | void;
+  onStartSession?: (override?: boolean, peaceSeconds?: number) => Promise<void> | void;
   onSessionUpdate?: () => void;
+  peace?: { seconds: number } | null;
 }
 
 export const SessionLobby = ({
@@ -55,6 +57,7 @@ export const SessionLobby = ({
   session,
   onStartSession,
   onSessionUpdate,
+  peace,
 }: SessionLobbyProps) => {
   const { isTrainer } = useRoleVisibility();
   const { user } = useAuth();
@@ -79,6 +82,10 @@ export const SessionLobby = ({
   const pagesSectionRef = useRef<HTMLDivElement>(null);
   const pagesHeadingRef = useRef<HTMLHeadingElement>(null);
   const isSocialSim = session.sim_mode === 'social_media';
+  const peaceSecondsRef = useRef<number | undefined>(undefined);
+  const setPeaceSeconds = useCallback((seconds: number | undefined) => {
+    peaceSecondsRef.current = seconds;
+  }, []);
   const loadCoverageRef = useRef<() => void>(() => {});
   const [wsConnected, setWsConnected] = useState(false);
   const botIds = new Set(
@@ -346,7 +353,7 @@ export const SessionLobby = ({
     if (!onStartSession) return;
     setStarting(true);
     try {
-      await onStartSession();
+      await onStartSession(undefined, peaceSecondsRef.current);
     } catch (error) {
       if (error instanceof ApiError && error.code === CALL_COVERAGE_INCOMPLETE) {
         const body = error.body as { coverage?: CallCoverage };
@@ -503,6 +510,12 @@ export const SessionLobby = ({
                 </button>
               </div>
             )}
+            <PeaceLobbyControl
+              social={isSocialSim}
+              trainer={isTrainer}
+              peace={peace}
+              onSeconds={setPeaceSeconds}
+            />
             <button
               onClick={handleStartSession}
               disabled={starting || !readyStatus.all_ready}
@@ -529,7 +542,7 @@ export const SessionLobby = ({
                 onClick={() => {
                   if (!onStartSession) return;
                   setStarting(true);
-                  void Promise.resolve(onStartSession(true))
+                  void Promise.resolve(onStartSession(true, peaceSecondsRef.current))
                     .catch((error) => {
                       if (error instanceof ApiError && error.code === CALL_COVERAGE_INCOMPLETE) {
                         const body = error.body as { coverage?: CallCoverage };
