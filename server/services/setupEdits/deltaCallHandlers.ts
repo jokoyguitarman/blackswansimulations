@@ -39,13 +39,16 @@ interface CallEnv {
   state: RunState;
 }
 
-type CallHandler = (call: DeltaCall, env: CallEnv) => Promise<void>;
+type CallHandlers = {
+  [K in DeltaCall['op']]: (call: Extract<DeltaCall, { op: K }>, env: CallEnv) => Promise<void>;
+};
 
 /**
  * One handler per call kind. `brief_diff` is run by the characters stage before
  * this table; a call that still arrives here does nothing, as the old chain did.
+ * A missing or mis-typed handler is a compile error.
  */
-const callHandlers = {
+const callHandlers: CallHandlers = {
   brief_diff: async () => {},
   personas: runPersonas,
   persona_groups: runPersonaGroups,
@@ -61,7 +64,7 @@ const callHandlers = {
   narrative: runNarrative,
   pages: runPages,
   page_history: runPageHistory,
-} satisfies Record<DeltaCall['op'], CallHandler>;
+};
 
 export async function executeCall(
   call: DeltaCall,
@@ -70,24 +73,57 @@ export async function executeCall(
   diff: BriefDiff | null,
   state: RunState,
 ): Promise<void> {
-  await callHandlers[call.op](call, { ctx, generators, diff, state });
+  const env = { ctx, generators, diff, state };
+  switch (call.op) {
+    case 'brief_diff':
+      return callHandlers.brief_diff(call, env);
+    case 'personas':
+      return callHandlers.personas(call, env);
+    case 'persona_groups':
+      return callHandlers.persona_groups(call, env);
+    case 'fact_sheet':
+      return callHandlers.fact_sheet(call, env);
+    case 'charter':
+      return callHandlers.charter(call, env);
+    case 'team_storyline':
+      return callHandlers.team_storyline(call, env);
+    case 'stakeholders':
+      return callHandlers.stakeholders(call, env);
+    case 'spokesperson':
+      return callHandlers.spokesperson(call, env);
+    case 'revise_layer':
+      return callHandlers.revise_layer(call, env);
+    case 'stakeholder_text':
+      return callHandlers.stakeholder_text(call, env);
+    case 'dependency_delta':
+      return callHandlers.dependency_delta(call, env);
+    case 'convergence_delta':
+      return callHandlers.convergence_delta(call, env);
+    case 'narrative':
+      return callHandlers.narrative(call, env);
+    case 'pages':
+      return callHandlers.pages(call, env);
+    case 'page_history':
+      return callHandlers.page_history(call, env);
+    default: {
+      const unreachable: never = call;
+      return unreachable;
+    }
+  }
 }
 
-async function runPersonas(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'personas') return;
+async function runPersonas(call: Extract<DeltaCall, { op: 'personas' }>, env: CallEnv): Promise<void> {
   const personas = await env.generators.generatePersonas({ ctx: env.ctx, country: call.country });
   env.state.generated.personas.push(...personas);
 }
 
-async function runPersonaGroups(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'persona_groups') return;
+async function runPersonaGroups(call: Extract<DeltaCall, { op: 'persona_groups' }>, env: CallEnv): Promise<void> {
   const groups = (env.diff?.new_groups ?? []).slice(0, MAX_NEW_GROUP_PERSONAS);
   const personas = await env.generators.generatePersonaGroups({ ctx: env.ctx, groups });
   env.state.generated.personas.push(...personas.slice(0, MAX_NEW_GROUP_PERSONAS));
 }
 
-async function runFactSheet(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'fact_sheet') return;
+async function runFactSheet(call: Extract<DeltaCall, { op: 'fact_sheet' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, diff, state } = env;
   if (!diff) return;
   const revised = await generators.reviseFactSheet({
@@ -98,8 +134,7 @@ async function runFactSheet(call: DeltaCall, env: CallEnv): Promise<void> {
   state.factSheet = mergeFactSheet(ctx.fact_sheet, revised, diff, ctx.fact_sheet_trainer_edited);
 }
 
-async function runCharter(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'charter') return;
+async function runCharter(call: Extract<DeltaCall, { op: 'charter' }>, env: CallEnv): Promise<void> {
   const charter = await env.generators.generateCharter({
     ctx: env.ctx,
     teamName: call.team_name,
@@ -112,8 +147,7 @@ async function runCharter(call: DeltaCall, env: CallEnv): Promise<void> {
   });
 }
 
-async function runTeamStoryline(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'team_storyline') return;
+async function runTeamStoryline(call: Extract<DeltaCall, { op: 'team_storyline' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, state } = env;
   const injects = await generators.generateTeamStoryline({
     ctx,
@@ -125,8 +159,7 @@ async function runTeamStoryline(call: DeltaCall, env: CallEnv): Promise<void> {
   state.generated.team_storylines[call.team_name] = stampNew(ctx, injects, layer, state);
 }
 
-async function runStakeholders(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'stakeholders') return;
+async function runStakeholders(call: Extract<DeltaCall, { op: 'stakeholders' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, state } = env;
   const result = await generators.generateStakeholders({ ctx, orgKey: call.org_key });
   state.generated.stakeholders.push(...result.stakeholders);
@@ -135,8 +168,7 @@ async function runStakeholders(call: DeltaCall, env: CallEnv): Promise<void> {
   );
 }
 
-async function runSpokesperson(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'spokesperson') return;
+async function runSpokesperson(call: Extract<DeltaCall, { op: 'spokesperson' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, state } = env;
   const result = await generators.generateSpokesperson({ ctx, orgKey: call.org_key });
   if (result.stakeholder) state.generated.stakeholders.push(result.stakeholder);
@@ -149,8 +181,7 @@ async function runSpokesperson(call: DeltaCall, env: CallEnv): Promise<void> {
   );
 }
 
-async function runReviseLayer(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'revise_layer') return;
+async function runReviseLayer(call: Extract<DeltaCall, { op: 'revise_layer' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, diff, state } = env;
   if (!diff && !ctx.plan.primary_swap && !call.country) return;
   const brief = storyDiff(diff, ctx, call.layer === 'backbone' && !!ctx.plan.primary_swap);
@@ -169,8 +200,7 @@ async function runReviseLayer(call: DeltaCall, env: CallEnv): Promise<void> {
   );
 }
 
-async function runStakeholderText(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'stakeholder_text') return;
+async function runStakeholderText(call: Extract<DeltaCall, { op: 'stakeholder_text' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, diff, state } = env;
   if (!diff) return;
   const updated = await generators.reviseStakeholderText({
@@ -184,8 +214,7 @@ async function runStakeholderText(call: DeltaCall, env: CallEnv): Promise<void> 
   state.stakeholder_updates.push(...updated);
 }
 
-async function runDependencyDelta(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'dependency_delta') return;
+async function runDependencyDelta(call: Extract<DeltaCall, { op: 'dependency_delta' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, state } = env;
   const result = await generators.dependencyDelta({
     ctx,
@@ -232,8 +261,7 @@ async function runDependencyDelta(call: DeltaCall, env: CallEnv): Promise<void> 
   state.generated.dependency_edges.push(...syncConsequenceKeys(rebound, consequences));
 }
 
-async function runConvergenceDelta(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'convergence_delta') return;
+async function runConvergenceDelta(call: Extract<DeltaCall, { op: 'convergence_delta' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, state } = env;
   const result = await generators.convergenceDelta({
     newTeams: ctx.delta.added_teams.map((team) => team.team_name),
@@ -246,8 +274,7 @@ async function runConvergenceDelta(call: DeltaCall, env: CallEnv): Promise<void>
   state.generated.gates.push(...stampNew(ctx, result.gates.slice(0, MAX_GATES), 'gate', state));
 }
 
-async function runNarrative(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'narrative') return;
+async function runNarrative(call: Extract<DeltaCall, { op: 'narrative' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, diff, state } = env;
   const brief = storyDiff(diff, ctx, !!ctx.plan.primary_swap);
   const result = await generators.reviseNarrative({
@@ -269,15 +296,13 @@ async function runNarrative(call: DeltaCall, env: CallEnv): Promise<void> {
   state.objective_updates.push(...objectiveUpdates(ctx, result.objectives));
 }
 
-async function runPages(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'pages') return;
+async function runPages(call: Extract<DeltaCall, { op: 'pages' }>, env: CallEnv): Promise<void> {
   const orgs = call.org_keys.map((orgKey) => pageSubject(env.ctx, orgKey));
   const pages = await env.generators.generatePages({ ctx: env.ctx, orgs });
   env.state.generated.pages.push(...pages);
 }
 
-async function runPageHistory(call: DeltaCall, env: CallEnv): Promise<void> {
-  if (call.op !== 'page_history') return;
+async function runPageHistory(call: Extract<DeltaCall, { op: 'page_history' }>, env: CallEnv): Promise<void> {
   const { ctx, generators, diff, state } = env;
   const page = ctx.pages.find((item) => item.org_key === call.org_key);
   const brief = storyDiff(

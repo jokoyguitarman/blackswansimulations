@@ -32,14 +32,14 @@ import {
   MAX_NEW_GROUP_PERSONAS,
   MAX_SHARED_INJECTS,
 } from './briefRevisionCore.js';
+import type { DeltaBuildContext, DeltaGenerators, LayerRevisionResult } from './deltaBuildTypes.js';
+import type { SetupSnapshot, SnapshotOrg } from './setupSnapshotCore.js';
 
 /** Custom-charter fallback, matching synthesizeTeamCharter when the catalogue has no row. */
 const DEFAULT_MIN_PARTICIPANTS = 1;
 const DEFAULT_MAX_PARTICIPANTS = 4;
 /** Build-request default when the edited crisis stores no duration. */
 const DEFAULT_CRISIS_DURATION_MINUTES = 60;
-import type { DeltaBuildContext, DeltaGenerators, LayerRevisionResult } from './deltaBuildTypes.js';
-import type { SetupSnapshot, SnapshotOrg } from './setupSnapshotCore.js';
 
 const briefDiffSchema = z.object({
   severity: z.enum(['cosmetic', 'facts', 'story']).catch('facts'),

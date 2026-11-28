@@ -25,6 +25,13 @@ import type { SetupSnapshot, SnapshotOrg, SnapshotTeam } from './setupSnapshotCo
 
 export const EDIT_TOKEN = '$edit';
 
+/**
+ * Hard stop for applying resolutions and then detecting knock-on orphans.
+ * A real chain retires each inject at most once, so the loop also stops at
+ * the inject count. This ceiling is only for a detection bug.
+ */
+export const MAX_ORPHAN_RESOLUTION_PASSES = 64;
+
 export const CALL_LINE_STEPS = ['insert_line', 'move_takers', 'delete_old_line'] as const;
 
 export interface PlannerTeam {
@@ -397,7 +404,34 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   const resolutions = input.resolutions;
   if (!resolutions || plan.orphans.length === 0) return plan;
   const state = asRecord(input.initial_state) ?? {};
-  const active = activeTargets(input, plan);
+  const resolvedIds = new Set<string>();
+  const limit = Math.min(
+    MAX_ORPHAN_RESOLUTION_PASSES,
+    Math.max(1, input.injects.length + 1),
+  );
+  for (let pass = 0; pass < limit; pass++) {
+    const before = resolutionFingerprint(plan);
+    applyOpenResolutions(plan, input, state, resolutions, resolvedIds);
+    refreshOrphansAfterResolutions(plan, input, state, resolvedIds);
+    if (resolutionFingerprint(plan) === before) break;
+  }
+  return plan;
+}
+
+function resolutionFingerprint(plan: RemapPlan): string {
+  const orphans = plan.orphans.map((orphan) => orphan.id).sort();
+  const retired = plan.injects.retire.map((row) => `${row.inject_id}:${row.reason}`).sort();
+  return `${orphans.join('\n')}|${retired.join('\n')}`;
+}
+
+function applyOpenResolutions(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+  resolutions: Readonly<Record<string, OrphanResolution>>,
+  resolvedIds: Set<string>,
+): void {
+  const active = activeResolutionTargets(input, plan);
   const kept: Orphan[] = [];
   const removedEdges = new Set<string>();
   for (const orphan of plan.orphans) {
@@ -420,6 +454,7 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
       kept.push(reason ? { ...orphan, unresolved_reason: reason } : orphan);
       continue;
     }
+    resolvedIds.add(orphan.id);
     if (resolution.choice !== 'keep') applyOneResolution(plan, input, state, orphan, resolution);
   }
   plan.orphans = kept.filter(
@@ -430,18 +465,19 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
     (a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key),
   );
   plan.scheduled_sessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
-  refreshOrphansAfterResolutions(plan, input, state);
-  return plan;
 }
 
-interface ActiveTargets {
-  teams: Set<string>;
-  injectKeys: Set<string>;
-  orgKeys: Set<string>;
+/** Teams, surviving inject keys, and post-swap protagonist org keys a resolution may name. */
+export interface ActiveResolutionTargets {
+  teams: ReadonlySet<string>;
+  injectKeys: ReadonlySet<string>;
+  orgKeys: ReadonlySet<string>;
 }
 
-/** Teams, inject keys and organisations that survive the edit, before resolutions retire anything further. */
-function activeTargets(input: RemapPlannerInput, plan: RemapPlan): ActiveTargets {
+export function activeResolutionTargets(
+  input: RemapPlannerInput,
+  plan: RemapPlan,
+): ActiveResolutionTargets {
   return {
     teams: new Set(activeRoster(input).map((team) => team.team_name)),
     injectKeys: new Set(survivingInjectKeys(plan, input)),
@@ -473,7 +509,7 @@ function inactiveTargetReason(
   resolution: OrphanResolution,
   input: RemapPlannerInput,
   plan: RemapPlan,
-  active: ActiveTargets,
+  active: ActiveResolutionTargets,
 ): string | null {
   const choice = resolution.choice;
   if (choice !== 'retarget' && choice !== 'reassign') return null;
@@ -521,6 +557,7 @@ function refreshOrphansAfterResolutions(
   plan: RemapPlan,
   input: RemapPlannerInput,
   state: Record<string, unknown>,
+  resolvedIds: ReadonlySet<string>,
 ): void {
   const retiredInjectIds = new Set(plan.injects.retire.map((row) => row.inject_id));
   const retiredStakeholderIds = new Set(
@@ -569,7 +606,7 @@ function refreshOrphansAfterResolutions(
     }
     const seen = new Set(plan.orphans.map((orphan) => orphan.id));
     for (const orphan of incoming) {
-      if (seen.has(orphan.id)) continue;
+      if (seen.has(orphan.id) || resolvedIds.has(orphan.id)) continue;
       seen.add(orphan.id);
       plan.orphans.push(orphan);
     }
@@ -1885,7 +1922,7 @@ function noteInjectOrphans(
   }
   pushConditionRefOrphans(working.orphans, inject, conditions, retiredKeys);
   noteChainOrphans(working, inject, config, retiredKeys);
-  noteMoodOrphans(working, inject.id, injectKey, config?.mood_ladder, retiredKeys, 'inject');
+  pushMoodOrphans(working.orphans, inject.id, injectKey, config?.mood_ladder, retiredKeys, 'inject');
   const roleId = typeof config?.target_role_id === 'string' ? config.target_role_id : '';
   if (roleId && retiredRoleIds(working).has(roleId)) {
     working.warnings.push({
@@ -2040,17 +2077,6 @@ function noteChainOrphans(
       });
     }
   });
-}
-
-function noteMoodOrphans(
-  working: Working,
-  ownerId: string,
-  ownerKey: string,
-  ladder: unknown,
-  retiredKeys: Set<string>,
-  owner: 'inject' | 'stakeholder',
-): void {
-  pushMoodOrphans(working.orphans, ownerId, ownerKey, ladder, retiredKeys, owner);
 }
 
 function retiredRoleIds(working: Working): Set<string> {
@@ -2424,8 +2450,8 @@ function planStakeholders(
     next.push(row);
   }
   for (const row of next) {
-    noteMoodOrphans(
-      working,
+    pushMoodOrphans(
+      working.orphans,
       textOf(row.id),
       '',
       row.mood_ladder,

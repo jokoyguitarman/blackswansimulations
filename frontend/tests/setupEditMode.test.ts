@@ -153,7 +153,13 @@ describe('review sections and orphan gating', () => {
       successors: [{ team_uid: 'renamed', team_name: 'Press', from_name: 'Media', reason: 'renamed' }],
     },
     injects: { retire: [{ inject_id: 'i1', inject_key: 'old_note', reason: 'team_layer' }] },
-    orphans: [{ id: 'role:cs', kind: 'player_role', message: 'Move the role', choices: ['reassign', 'move_to_retired'] }],
+    orphans: [{
+      id: 'role:cs',
+      kind: 'player_role',
+      message: 'Move the role',
+      choices: ['reassign', 'move_to_retired'],
+      unresolved_reason: 'Team "Ghost" is not active after this edit.',
+    }],
     scheduled_sessions: [{ session_id: 'sess', unassigned_players: [{ user_id: 'u', team_name: 'Old desk' }] }],
   };
   const outputs = [
@@ -196,6 +202,8 @@ describe('review sections and orphan gating', () => {
     const flagged = sections.find((section) => section.id === 'flagged');
     assert.equal(flagged?.rows[0]?.reason, 'Names the old company.');
     assert.equal(flagged?.keepAllOriginals, false);
+    const orphans = sections.find((section) => section.id === 'orphans');
+    assert.equal(orphans?.rows[0]?.reason, 'Team "Ghost" is not active after this edit.');
     const removed = sections.find((section) => section.id === 'removed');
     assert.equal(removed?.rows.some((row) => row.title === 'Press'), false);
     assert.equal(removed?.rows.some((row) => row.title === 'Old desk'), true);

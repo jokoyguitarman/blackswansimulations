@@ -13,6 +13,7 @@ import {
   type RemapPlan,
   type RemapPlannerInput,
 } from './remapPlanner.js';
+import { orphanTargetLists } from './planSetupEdit.js';
 import { collectInjectsWithHistory, isRemapTableMissing } from './remapPlanLoader.js';
 import {
   delta,
@@ -2624,4 +2625,228 @@ describe('remap planner', () => {
     );
     assert.ok(plan.initial_state.move_to_retired.some((row) => row.key === 'org_bravo_my'));
   });
+
+  test('a knock-on orphan can be answered and the plan becomes applicable', () => {
+    const source = input({
+      delta: delta({ removed_teams: [{ team_uid: 'uid-legal', team_name: 'Legal' }] }),
+      edited: snapshot([
+        snapshotOrg({
+          org_uid: 'uid-acme',
+          org_key: 'primary',
+          display_name: 'Acme',
+          short_name: 'ACME',
+          is_primary: true,
+          teams: [snapshotTeam({ team_uid: 'uid-comms', team_name: 'Communications' })],
+        }),
+      ]),
+      teams: [
+        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' }),
+        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications' }),
+      ],
+      injects: [
+        inject({ id: 'inj-only', inject_key: 'only_legal', target_teams: ['Legal'] }),
+        inject({
+          id: 'inj-bridge',
+          inject_key: 'bridge_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:only_legal'],
+        }),
+        inject({
+          id: 'inj-watch',
+          inject_key: 'watch_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:bridge_mail'],
+        }),
+        inject({
+          id: 'inj-tail',
+          inject_key: 'tail_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:watch_mail'],
+        }),
+      ],
+    });
+    const open = planRemap(source);
+    const bridge = open.orphans.find((row) => row.inject_id === 'inj-bridge');
+    assert.ok(bridge);
+    assert.equal(open.orphans.some((row) => row.inject_id === 'inj-watch'), false);
+    const halfway = planRemap({
+      ...source,
+      resolutions: { [bridge.id]: { choice: 'retire' } },
+    });
+    const watch = halfway.orphans.find((row) => row.target_key === 'bridge_mail');
+    assert.ok(watch);
+    assert.equal(halfway.applicable, false);
+    const kept = planRemap({
+      ...source,
+      resolutions: {
+        [bridge.id]: { choice: 'retire' },
+        [watch.id]: { choice: 'keep' },
+      },
+    });
+    assert.equal(kept.orphans.some((row) => row.id === watch.id), false);
+    assert.equal(kept.applicable, true);
+    const chain = planRemap({
+      ...source,
+      resolutions: {
+        [bridge.id]: { choice: 'retire' },
+        'condition:inj-watch:inject_fired:bridge_mail:ref:bridge_mail': { choice: 'retire' },
+        'condition:inj-tail:inject_fired:watch_mail:ref:watch_mail': { choice: 'keep' },
+      },
+    });
+    assert.equal(chain.applicable, true);
+    assert.ok(chain.injects.retire.some((row) => row.inject_id === 'inj-watch' && row.reason === 'dependent'));
+    assert.equal(chain.injects.retire.some((row) => row.inject_id === 'inj-tail'), false);
+  });
+
+  test('every target the picker offers is accepted, with and without a swap', () => {
+    assertOfferedTargetsAccepted(pressureRemovalWorld(), false);
+    assertOfferedTargetsAccepted(swapDecisionWorld(), true);
+  });
 });
+
+function pressureRemovalWorld(): RemapPlannerInput {
+  const source = removalWorld();
+  const state = structuredClone(source.initial_state) as Record<string, unknown>;
+  state.org_page = {
+    orgs: [
+      {
+        org_key: 'org_pressure_page_sg',
+        display_name: 'Page Press',
+        role: 'pressure',
+        targets_org_keys: ['org_gone'],
+      },
+    ],
+  };
+  return {
+    ...source,
+    delta: delta({ ...source.delta, removed_orgs: ['org_gone'] }),
+    edited: snapshot(source.edited.organisations, {
+      pressure_organisations: [
+        {
+          org_uid: 'uid-press',
+          org_key: 'org_pressure_page_sg',
+          display_name: 'Page Press',
+          country: 'Singapore',
+          targets_org_keys: ['org_gone'],
+        },
+      ],
+      competitors: [
+        {
+          org_uid: 'uid-rival',
+          org_key: 'org_antagonist_rival_sg',
+          name: 'Rival',
+          country: 'Singapore',
+          auto_generated: false,
+        },
+      ],
+    }),
+    initial_state: state,
+  };
+}
+
+function swapDecisionWorld(): RemapPlannerInput {
+  const base = swapInput();
+  const state = structuredClone(base.initial_state) as Record<string, unknown>;
+  state.player_roles = [{ role_id: 'cs_head', title: 'Head', team_name: 'Legal', max_per_session: 1 }];
+  const page = (state.org_page as { orgs?: unknown[] } | undefined) ?? {};
+  state.org_page = {
+    ...page,
+    orgs: [
+      ...(Array.isArray(page.orgs) ? page.orgs : []),
+      {
+        org_key: 'org_pressure_page_sg',
+        display_name: 'Page Press',
+        role: 'pressure',
+        targets_org_keys: ['org_gone'],
+      },
+    ],
+  };
+  return {
+    ...base,
+    delta: delta({
+      ...base.delta,
+      removed_teams: [{ team_uid: 'uid-legal', team_name: 'Legal' }],
+      removed_orgs: ['org_gone'],
+    }),
+    edited: snapshot(base.edited.organisations, {
+      pressure_organisations: [
+        ...base.edited.pressure_organisations,
+        {
+          org_uid: 'uid-press',
+          org_key: 'org_pressure_page_sg',
+          display_name: 'Page Press',
+          country: 'Singapore',
+          targets_org_keys: ['org_gone'],
+        },
+      ],
+      competitors: [
+        ...base.edited.competitors,
+        {
+          org_uid: 'uid-rival',
+          org_key: 'org_antagonist_rival_sg',
+          name: 'Rival',
+          country: 'Singapore',
+          auto_generated: false,
+        },
+      ],
+    }),
+    teams: [
+      ...base.teams,
+      team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal', org_key: 'primary' }),
+    ],
+    injects: [
+      ...base.injects,
+      inject({ id: 'inj-only', inject_key: 'only_legal', target_teams: ['Legal'] }),
+      inject({
+        id: 'inj-live',
+        inject_key: 'live_mail',
+        target_teams: ['Communications'],
+        conditions_to_appear: ['inject_fired:only_legal'],
+      }),
+    ],
+    initial_state: state,
+  };
+}
+
+function assertOfferedTargetsAccepted(source: RemapPlannerInput, swapped: boolean): void {
+  const open = planRemap(source);
+  const lists = orphanTargetLists(source, open);
+  const role = open.orphans.find((row) => row.kind === 'player_role');
+  const condition = open.orphans.find((row) => row.kind === 'condition' && row.target_key);
+  const pressure = open.orphans.find((row) => row.kind === 'pressure_targets');
+  assert.ok(role && condition && pressure);
+  assert.ok(lists.teams.length > 0);
+  assert.ok(lists.inject_keys.length > 0);
+  assert.ok(lists.org_keys.length > 0);
+  assert.equal(lists.teams.includes('Legal'), false);
+  assert.equal(lists.inject_keys.includes('only_legal'), false);
+  assert.equal(lists.org_keys.includes('org_gone'), false);
+  assert.equal(lists.org_keys.includes('org_pressure_page_sg'), false);
+  assert.equal(lists.org_keys.includes('org_antagonist_rival_sg'), false);
+  if (swapped) {
+    assert.equal(lists.org_keys.includes('org_bravo_my'), false);
+    assert.ok(lists.org_keys.includes('primary'));
+    assert.equal(open.primary_swap == null, false);
+  }
+  for (const teamName of lists.teams) {
+    const plan = planRemap({
+      ...source,
+      resolutions: { [role.id]: { choice: 'reassign', team_name: teamName } },
+    });
+    assert.equal(plan.orphans.some((row) => row.id === role.id), false, teamName);
+  }
+  for (const key of lists.inject_keys) {
+    const plan = planRemap({
+      ...source,
+      resolutions: { [condition.id]: { choice: 'retarget', inject_key: key } },
+    });
+    assert.equal(plan.orphans.some((row) => row.id === condition.id), false, key);
+  }
+  for (const key of lists.org_keys) {
+    const plan = planRemap({
+      ...source,
+      resolutions: { [pressure.id]: { choice: 'retarget', org_keys: [key] } },
+    });
+    assert.equal(plan.orphans.some((row) => row.id === pressure.id), false, key);
+  }
+}
