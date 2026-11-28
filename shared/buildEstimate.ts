@@ -98,11 +98,30 @@ function estimateOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOpt
   };
 }
 
+/** At most this many edges per playable team, and at most `upstreamPerTeam` each. */
+export function dependencyEdgeBudget(teamCount: number, upstreamPerTeam: number): number {
+  const teams = nonNegative(teamCount);
+  const upstream = nonNegative(upstreamPerTeam);
+  if (teams < 2 || upstream < 1) return 0;
+  return Math.min(Math.ceil(teams * 1.5), upstream * teams);
+}
+
 /**
- * Map calls: 1 when the cast fits in one batch or there is a single organisation,
- * otherwise one intra-org call per organisation plus one cross-org call
- * (every organisation is assumed to have at least two teams).
- * Edges are capped at ceil(1.5 × teams) and at upstream-per-team × teams.
+ * Map calls for a cast. One call when the teams fit in a batch or there is a
+ * single organisation; otherwise one call per organisation plus one cross-org
+ * call. The estimate assumes every organisation has at least two teams.
+ */
+export function dependencyMapCallCount(teamCount: number, orgCount: number, batchTeams: number): number {
+  const teams = nonNegative(teamCount);
+  if (teams < 2) return 0;
+  const batch = Math.max(1, nonNegative(batchTeams) || 1);
+  const orgs = nonNegative(orgCount);
+  if (teams <= batch || orgs <= 1) return 1;
+  return orgs + 1;
+}
+
+/**
+ * Map calls: {@link dependencyMapCallCount}. Edges: {@link dependencyEdgeBudget}.
  * Consequence calls are batches of those edges.
  */
 export function dependencyCallsFor(
@@ -120,9 +139,8 @@ export function dependencyCallsFor(
   const batch = Math.max(1, nonNegative(options?.dependencyMapBatchTeams ?? DEPENDENCY_MAP_BATCH_DEFAULT) || 1);
   const upstream = Math.max(1, nonNegative(options?.dependencyUpstreamPerTeam ?? DEPENDENCY_UPSTREAM_DEFAULT) || 1);
   const size = Math.max(1, nonNegative(options?.dependencyConsequenceBatch ?? DEPENDENCY_CONSEQUENCE_BATCH_DEFAULT) || 1);
-  const orgCount = nonNegative(orgs);
-  const map = teamCount <= batch || orgCount <= 1 ? 1 : orgCount + 1;
-  const edges = Math.min(Math.ceil(teamCount * 1.5), upstream * teamCount);
+  const map = dependencyMapCallCount(teamCount, nonNegative(orgs), batch);
+  const edges = dependencyEdgeBudget(teamCount, upstream);
   return { map, consequences: edges > 0 ? Math.ceil(edges / size) : 0 };
 }
 

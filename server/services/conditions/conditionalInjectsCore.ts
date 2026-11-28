@@ -625,12 +625,9 @@ function reportLadder(
 }
 
 function dependencyIdFromKey(key: string): string | null {
-  const body = key.split('|')[0]?.trim() ?? '';
-  if (!body.startsWith('dependency_')) return null;
-  const rest = body.slice('dependency_'.length);
-  const colon = rest.indexOf(':');
-  if (colon < 0) return null;
-  const id = (rest.slice(colon + 1).split(':')[0] ?? '').trim();
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed || !parsed.def.id.startsWith('dependency_')) return null;
+  const id = parsed.args[0] ?? '';
   return /^dep_[a-z0-9_]+$/.test(id) ? id : null;
 }
 

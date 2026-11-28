@@ -127,6 +127,10 @@ export interface SocialInjectDeliveryConfig {
   country?: string;
   /** Stable cross-reference for chaining (inject_published:<key> / inject_cancelled:<key>). */
   inject_key?: string;
+  /** Why a generated consequence exists. */
+  cause?: { kind: 'dependency'; dep_id: string };
+  /** Generation stamp. Persistence fills edit and hash. */
+  gen?: { layer: string; edit?: number; hash?: string };
   /** Second-order chaining: the inject_key this one follows (runtime cascade, organic decisions). */
   parent_inject_key?: string;
   /** Response-branch kind. Set on generated conditional follow-ups. */

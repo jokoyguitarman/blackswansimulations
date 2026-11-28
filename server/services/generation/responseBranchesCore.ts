@@ -5,7 +5,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { isValidInjectKey, slugifyInjectTitle } from '../../lib/injectKey.js';
+import { allocateInjectKey, isValidInjectKey } from '../../lib/injectKey.js';
 import {
   deriveGenericRubric,
   readAuthoredRubric,
@@ -247,7 +247,7 @@ export function coverageReport(
     if (appear.some((key) => (key.split('|')[0] ?? '').startsWith('stakeholder_gave_up:'))) {
       gave_up_consequences += 1;
     }
-    if (appear.some((key) => (key.split('|')[0] ?? '').startsWith('dependency_broken'))) {
+    if (appear.some((key) => isDependencyBreakKey(key))) {
       cross_team_consequences += 1;
     }
   }
@@ -274,6 +274,12 @@ export function coverageReport(
     gave_up_consequences,
     ...dependency,
   };
+}
+
+function isDependencyBreakKey(key: string): boolean {
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed) return false;
+  return parsed.def.id === 'dependency_broken' || parsed.def.id === 'dependency_broken_for';
 }
 
 function dependencyCoverage(
@@ -566,26 +572,7 @@ function clampCallScript(config: Record<string, unknown>): void {
 }
 
 function allocateKey(requested: string | null, title: string, taken: Set<string>): string {
-  if (requested && isValidInjectKey(requested) && !taken.has(requested)) {
-    taken.add(requested);
-    return requested;
-  }
-  const base = slugifyInjectTitle(title);
-  if (!taken.has(base)) {
-    taken.add(base);
-    return base;
-  }
-  for (let n = 2; n < 1000; n++) {
-    const suffix = `_${n}`;
-    const candidate = `${base.slice(0, 60 - suffix.length)}${suffix}`;
-    if (isValidInjectKey(candidate) && !taken.has(candidate)) {
-      taken.add(candidate);
-      return candidate;
-    }
-  }
-  const fallback = `branch_${taken.size}`;
-  taken.add(fallback);
-  return fallback;
+  return allocateInjectKey(requested, title, taken);
 }
 
 function findParent(
@@ -645,7 +632,7 @@ function swapKey(key: string, from: string, to: string): string {
   return rebuildConditionKey(parsed, args);
 }
 
-function typeForApp(app: DeliveryApp): string {
+export function typeForApp(app: DeliveryApp): string {
   if (app === 'email') return 'email_inbound';
   if (app === 'phone_call') return 'phone_call';
   if (app === 'group_chat') return 'chat_message';

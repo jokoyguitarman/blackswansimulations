@@ -62,6 +62,35 @@ function keysOf(group: { all?: string[]; conditions?: string[] } | null): string
 }
 
 describe('postProcessDependencies', () => {
+  test('a team uid wins over a stale display name', () => {
+    const processed = postProcessDependencies(
+      {
+        edges: [
+          {
+            id: 'dep_uid_ops',
+            kind: 'information',
+            upstream: { team_uid: 'uid-ops', team_name: 'Old Ops' },
+            downstream: ['Communications'],
+            deliverable: 'Headcount',
+            why: 'Comms needs it',
+            signals: [{ template: 'silent', minutes: 10 }],
+            met_signal: null,
+            lag_minutes: 5,
+            severity: 'medium',
+          },
+        ],
+      },
+      [
+        { team_uid: 'uid-ops', team_name: 'Operations', playable: true },
+        { team_name: 'Communications', playable: true },
+      ],
+      [],
+      60,
+    );
+    assert.equal(processed.edges[0]?.upstream.team_name, 'Operations');
+    assert.equal(processed.edges[0]?.upstream.team_uid, 'uid-ops');
+  });
+
   test('drops an unknown team, caps upstream edges at 3, and adds the default cancel keys', () => {
     const downstream = 'Communications';
     const edges = [0, 1, 2, 3].map((n) => ({
@@ -234,7 +263,7 @@ describe('postProcessDependencies', () => {
         all: ['dependency_broken_for:dep_legal_statement_comms_cs:3'],
       });
       assert.equal(inject?.gen_layer, 'dependency:dep_legal_statement_comms_cs');
-      assert.equal(inject?.delivery_config.gen.layer, 'dependency:dep_legal_statement_comms_cs');
+      assert.equal(inject?.delivery_config.gen?.layer, 'dependency:dep_legal_statement_comms_cs');
       assert.deepEqual(inject?.delivery_config.cause, {
         kind: 'dependency',
         dep_id: 'dep_legal_statement_comms_cs',

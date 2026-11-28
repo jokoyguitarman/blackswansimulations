@@ -9,6 +9,7 @@ import type {
 import type { CountryEntry, OrgRegistryEntry, Stakeholder } from '../../lib/stakeholderContract.js';
 import type { DecisionContext } from '../multiOrgPipeline.js';
 import type { PeaceFeed } from '../../../shared/peaceFeed.js';
+import type { TeamDependencies } from '../../../shared/teamDependencies.js';
 import {
   competitorsSchema,
   organisationsSchema,
@@ -161,7 +162,7 @@ export interface ConvergenceOutput {
   dimensionLabels?: Record<string, string> | null;
   dimension_labels?: Record<string, string> | null;
   intel_injects?: Record<string, SocialInject[]>;
-  team_dependencies?: { v: 1; edges: unknown[] } | null;
+  team_dependencies?: TeamDependencies | null;
 }
 
 export interface PagesOutput {
@@ -213,5 +214,5 @@ export interface ReviewPayload {
   org_page: Record<string, unknown> | null;
   /** Present only when the pages stage stored a peace feed. */
   peace_period?: PeaceFeed;
-  team_dependencies?: { v: 1; edges: unknown[] } | null;
+  team_dependencies?: TeamDependencies | null;
 }

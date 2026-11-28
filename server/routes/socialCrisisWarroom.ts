@@ -48,11 +48,8 @@ import {
   logCompileSummary,
   attachResponseBranches,
 } from '../services/multiOrgPipeline.js';
-import {
-  dependencyTeamsFrom,
-  intelItemsFromInjects,
-  resolveTeamDependencies,
-} from '../services/generation/teamDependencyService.js';
+import { resolveCompileDependencies } from '../services/generation/teamDependencyService.js';
+import type { TeamDependencies } from '../../shared/teamDependencies.js';
 import {
   organisationsSchema,
   competitorsSchema,
@@ -1335,26 +1332,13 @@ router.post(
         const convergenceGates = (body.convergence_gates as SocialInject[]) ?? [];
         body.convergence_gates = convergenceGates;
         const dependencyStorylines = (body.team_storylines || {}) as Record<string, SocialInject[]>;
+        let dependencyDocument: TeamDependencies | null = null;
         try {
-          const dependencyTeams = dependencyTeamsFrom({
+          const resolved = await resolveCompileDependencies({
+            existing: body.team_dependencies,
             orgs: compileOrgs && compileOrgs.ok ? compileOrgs.orgs : undefined,
-            storylineTeams: Object.keys(dependencyStorylines).filter((name) => name !== 'Shared'),
-            charters: teamCharters.map((charter) => {
-              const row = charter as TeamCharter & {
-                function_key?: string | null;
-                org_key?: string | null;
-              };
-              return {
-                team_name: row.team_name,
-                mission: row.mission,
-                function_key: row.function_key ?? null,
-                org_key: row.org_key ?? null,
-                expected_actions: row.expected_actions,
-              };
-            }),
-          });
-          const resolved = await resolveTeamDependencies(body.team_dependencies, {
-            teams: dependencyTeams,
+            storylines: dependencyStorylines,
+            charters: teamCharters,
             crisis: {
               crisisType: body.crisis_type || '',
               duration: body.duration,
@@ -1363,23 +1347,18 @@ router.post(
               orgName: body.org_name,
             },
             facts: ((body.fact_sheet as FactSheet | undefined)?.confirmed_facts ?? []) as string[],
-            storylines: dependencyStorylines,
-            intelItems: intelItemsFromInjects(dependencyStorylines),
             stakeholders: (
               multiArtifacts?.stakeholders ??
               (body.stakeholders as Stakeholder[] | undefined) ??
               []
             ).map((stakeholder) => ({ id: stakeholder.id, name: stakeholder.name })),
+            gates: convergenceGates,
           });
           if (resolved) {
-            body.team_dependencies = resolved.team_dependencies;
-            for (const ask of resolved.asks) {
-              const team = ask.target_teams[0];
-              if (!team) continue;
-              dependencyStorylines[team] = [...(dependencyStorylines[team] ?? []), ask];
-            }
-            body.team_storylines = dependencyStorylines;
-            convergenceGates.push(...resolved.consequences, ...resolved.positives);
+            dependencyDocument = resolved.document;
+            body.team_dependencies = resolved.document;
+            body.team_storylines = resolved.storylines;
+            convergenceGates.push(...resolved.added);
           }
         } catch (dependencyErr) {
           logger.warn({ dependencyErr }, 'Team dependency generation failed (non-critical)');
@@ -1415,17 +1394,9 @@ router.post(
             branchSink: convergenceGates,
             stripCarry: true,
             roster: teamCharters.map((charter) => charter.team_name),
-            dependencies: body.team_dependencies
+            dependencies: dependencyDocument
               ? {
-                  edges:
-                    (
-                      body.team_dependencies as {
-                        edges?: Array<{
-                          upstream: { team_name: string };
-                          downstream: { team_name: string }[];
-                        }>;
-                      }
-                    ).edges ?? [],
+                  edges: dependencyDocument.edges,
                   teams: teamCharters.map((charter) => charter.team_name),
                 }
               : null,

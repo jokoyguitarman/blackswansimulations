@@ -10,17 +10,20 @@ import { stampGeneratedInjectKeys } from '../../lib/injectKey.js';
 import { chatJson, systemUser } from '../ai/chatClient.js';
 import { CONVERGENCE_SUMMARY_MAX_CHARS } from '../convergenceSummary.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
-import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import type { TeamDependencies, TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import { matchTeamRef } from '../../../shared/teamDependencies.js';
+import { readDependencyEdges } from '../dependencies/dependencyCore.js';
+import { parseConditionKey } from '../conditions/conditionCatalog.js';
 import {
+  asRecord,
   buildConsequenceInjects,
   checkTeamNaming,
   dependencyEdgeSummary,
-  fitText,
   planDependencyMapCalls,
   postProcessDependencies,
   registerIntelEdges,
   signalTemplatePrompt,
-  type GeneratedDependencyInject,
+  text,
   type GenerationTeam,
   type IntelRegistrationItem,
   type KnownInject,
@@ -73,7 +76,7 @@ export interface GenerateTeamDependenciesOptions {
 }
 
 export interface GenerateTeamDependenciesResult {
-  team_dependencies: { v: 1; edges: TeamDependencyEdge[] };
+  team_dependencies: TeamDependencies;
   consequences: SocialInject[];
   positives: SocialInject[];
   asks: SocialInject[];
@@ -160,6 +163,7 @@ export function dependencyTeamsFrom(input: {
 
 export function intelItemsFromInjects(
   intelInjects: Record<string, SocialInject[]>,
+  intelGates: readonly SocialInject[] = [],
 ): IntelRegistrationItem[] {
   const items: IntelRegistrationItem[] = [];
   for (const [holder, injects] of Object.entries(intelInjects)) {
@@ -175,6 +179,7 @@ export function intelItemsFromInjects(
         holder_team: holder,
         needed_by: needed,
         trigger_time_minutes: inject.trigger_time_minutes ?? null,
+        deadline_minutes: intelDeadline(key, intelGates),
         summary: typeof config.intel_summary === 'string' ? config.intel_summary : inject.title,
       });
     }
@@ -182,12 +187,23 @@ export function intelItemsFromInjects(
   return items;
 }
 
-export function isTeamDependenciesDocument(
-  value: unknown,
-): value is { v: 1; edges: TeamDependencyEdge[] } {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as { v?: unknown; edges?: unknown };
-  return record.v === 1 && Array.isArray(record.edges);
+function intelDeadline(key: string, gates: readonly SocialInject[]): number | null {
+  for (const gate of gates) {
+    const appear = [
+      ...(gate.conditions_to_appear && 'all' in gate.conditions_to_appear
+        ? gate.conditions_to_appear.all
+        : []),
+      ...(gate.conditions_to_appear && 'conditions' in gate.conditions_to_appear
+        ? (gate.conditions_to_appear.conditions ?? [])
+        : []),
+    ];
+    const matches = appear.some((condition) => {
+      const parsed = parseConditionKey(condition);
+      return !('error' in parsed) && parsed.def.id === 'intel_missing' && parsed.args[0] === key;
+    });
+    if (matches && typeof gate.eligible_after_minutes === 'number') return gate.eligible_after_minutes;
+  }
+  return null;
 }
 
 export async function generateTeamDependencies(
@@ -246,7 +262,9 @@ export async function generateTeamDependencies(
   const teamNames = input.teams.map((team) => team.team_name);
   const taken = new Set<string>([
     ...known.map((inject) => inject.inject_key).filter((key): key is string => !!key),
-    ...processed.asks.map((inject) => inject.delivery_config.inject_key),
+    ...processed.asks.flatMap((inject) =>
+      inject.delivery_config.inject_key ? [inject.delivery_config.inject_key] : [],
+    ),
   ]);
   const built = await limitConcurrency(batches, concurrency, async (batch) => {
     const request: DependencyChatRequest = {
@@ -265,8 +283,8 @@ export async function generateTeamDependencies(
         'Dependency consequence call failed',
       );
     }
-    const consequences: GeneratedDependencyInject[] = [];
-    const positives: GeneratedDependencyInject[] = [];
+    const consequences: SocialInject[] = [];
+    const positives: SocialInject[] = [];
     for (const edge of batch) {
       const rows = buildConsequenceInjects(edge, raw, taken);
       edge.consequence_keys = [];
@@ -274,7 +292,7 @@ export async function generateTeamDependencies(
         const kept = await repairNaming(inject, teamNames, client);
         if (!kept) continue;
         consequences.push(kept);
-        edge.consequence_keys.push(kept.delivery_config.inject_key);
+        if (kept.delivery_config.inject_key) edge.consequence_keys.push(kept.delivery_config.inject_key);
       }
       for (const inject of rows.positives) {
         const kept = await repairNaming(inject, teamNames, client);
@@ -295,9 +313,9 @@ export async function generateTeamDependencies(
   const positives = built.flatMap((batch) => batch.positives);
   return {
     team_dependencies: { v: 1, edges },
-    consequences: consequences.map(asSocialInject),
-    positives: positives.map(asSocialInject),
-    asks: processed.asks.map(asSocialInject),
+    consequences,
+    positives,
+    asks: processed.asks,
     summary: dependencyEdgeSummary(edges),
     mapCalls: plans.length,
     consequenceCalls: batches.length,
@@ -313,13 +331,14 @@ export async function resolveTeamDependencies(
   input: GenerateTeamDependenciesInput,
   options: GenerateTeamDependenciesOptions = {},
 ): Promise<GenerateTeamDependenciesResult | null> {
-  if (isTeamDependenciesDocument(existing)) {
+  const read = readDependencyEdges(existing);
+  if (!('error' in read)) {
     return {
-      team_dependencies: { v: 1, edges: existing.edges },
+      team_dependencies: { v: 1, edges: read.edges as TeamDependencies['edges'] },
       consequences: [],
       positives: [],
       asks: [],
-      summary: dependencyEdgeSummary(existing.edges),
+      summary: dependencyEdgeSummary(read.edges as TeamDependencies['edges']),
       mapCalls: 0,
       consequenceCalls: 0,
     };
@@ -327,6 +346,49 @@ export async function resolveTeamDependencies(
   const playable = input.teams.filter((team) => team.playable !== false);
   if (playable.length < 2) return null;
   return generateTeamDependencies(input, options);
+}
+
+export interface CompileDependencyInput {
+  existing: unknown;
+  orgs?: readonly DependencyOrgSource[] | null;
+  storylines: Record<string, SocialInject[]>;
+  charters?: readonly DependencyCharterSource[];
+  crisis: DependencyCrisis;
+  facts: readonly string[];
+  stakeholders?: readonly DependencyStakeholder[];
+  gates?: readonly SocialInject[];
+}
+
+/** Persist a dependency document already produced, or generate one at compile. */
+export async function resolveCompileDependencies(
+  input: CompileDependencyInput,
+): Promise<{ document: TeamDependencies; storylines: Record<string, SocialInject[]>; added: SocialInject[] } | null> {
+  const storylines = input.storylines;
+  const teams = dependencyTeamsFrom({
+    orgs: input.orgs ?? undefined,
+    storylineTeams: Object.keys(storylines).filter((name) => name !== 'Shared'),
+    charters: input.charters,
+  });
+  const resolved = await resolveTeamDependencies(input.existing, {
+    teams,
+    crisis: input.crisis,
+    facts: input.facts,
+    storylines,
+    intelItems: intelItemsFromInjects(storylines, input.gates ?? []),
+    stakeholders: input.stakeholders,
+  });
+  if (!resolved) return null;
+  const next = { ...storylines };
+  for (const ask of resolved.asks) {
+    const team = ask.target_teams[0];
+    if (!team) continue;
+    next[team] = [...(next[team] ?? []), ask];
+  }
+  return {
+    document: resolved.team_dependencies,
+    storylines: next,
+    added: [...resolved.consequences, ...resolved.positives],
+  };
 }
 
 function mapSystemPrompt(cap: number): string {
@@ -364,7 +426,9 @@ function mapUserPrompt(
   ]
     .filter(Boolean)
     .join('\n');
-  return plan.kind === 'cross' ? fitText(body, summaryBudget) : body;
+  if (plan.kind !== 'cross' || body.length <= summaryBudget) return body;
+  const cap = Math.max(0, Math.floor(summaryBudget));
+  return body.slice(0, cap);
 }
 
 function consequenceSystemPrompt(): string {
@@ -406,10 +470,10 @@ function consequenceUserPrompt(
 }
 
 async function repairNaming(
-  inject: GeneratedDependencyInject,
+  inject: SocialInject,
   teamNames: readonly string[],
   client: DependencyClient,
-): Promise<GeneratedDependencyInject | null> {
+): Promise<SocialInject | null> {
   const hit = checkTeamNaming(inject, teamNames);
   if (!hit.namesTeam) return inject;
   let raw: unknown = null;
@@ -481,7 +545,7 @@ function capCrossOrgEdges(edges: readonly unknown[], teams: readonly GenerationT
     const filtered = dropSameOrgEdge(raw, teams);
     if (!filtered) continue;
     const row = asRecord(filtered);
-    const upstream = teamByName(upstreamName(row), teams);
+    const upstream = matchTeamRef({ team_uid: null, team_name: upstreamName(row) }, teams);
     const org = upstream ? orgId(upstream) : '';
     const used = counts.get(org) ?? 0;
     if (org && used >= CROSS_ORG_EDGES_PER_ORG) continue;
@@ -495,12 +559,12 @@ function capCrossOrgEdges(edges: readonly unknown[], teams: readonly GenerationT
 function dropSameOrgEdge(raw: unknown, teams: readonly GenerationTeam[]): unknown | null {
   const row = asRecord(raw);
   if (!row) return raw;
-  const upstream = teamByName(upstreamName(row), teams);
+  const upstream = matchTeamRef({ team_uid: null, team_name: upstreamName(row) }, teams);
   const upOrg = upstream ? orgId(upstream) : '';
   const names = downstreamNames(row.downstream);
   if (!upOrg || names.length === 0) return raw;
   const cross = names.filter((name) => {
-    const team = teamByName(name, teams);
+    const team = matchTeamRef({ team_uid: null, team_name: name }, teams);
     if (!team) return true;
     const org = orgId(team);
     return !org || org !== upOrg;
@@ -523,16 +587,6 @@ function downstreamNames(raw: unknown): string[] {
     const name = text(asRecord(item)?.team_name) ?? text(asRecord(item)?.name);
     return name ? [name] : [];
   });
-}
-
-function teamByName(name: string, teams: readonly GenerationTeam[]): GenerationTeam | undefined {
-  const trimmed = name.trim();
-  if (!trimmed) return undefined;
-  const exact = teams.find((team) => team.team_name === trimmed);
-  if (exact) return exact;
-  const lower = trimmed.toLowerCase();
-  const matches = teams.filter((team) => team.team_name.toLowerCase() === lower);
-  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function orgId(team: GenerationTeam): string {
@@ -613,15 +667,3 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return batches;
 }
 
-function asSocialInject(inject: GeneratedDependencyInject): SocialInject {
-  return inject as unknown as SocialInject;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}

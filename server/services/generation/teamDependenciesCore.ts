@@ -5,19 +5,38 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { isValidInjectKey, slugifyInjectTitle } from '../../lib/injectKey.js';
-import { CATALOG_ACTION_TYPES } from '../conditions/conditionCatalog.js';
+import { allocateInjectKey, isValidInjectKey } from '../../lib/injectKey.js';
+import { CATALOG_ACTION_TYPES, parseConditionKey } from '../conditions/conditionCatalog.js';
 import { DECISION_CATEGORIES } from '../decisions/decisionTypes.js';
+import { isDeliveryApp, typeForApp, type DeliveryApp } from './responseBranchesCore.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
+import { dependencyEdgeBudget, dependencyMapCallCount } from '../../../shared/buildEstimate.js';
 import {
   DEPENDENCY_ID,
   DEPENDENCY_KINDS,
   DEPENDENCY_SEVERITIES,
+  matchTeamRef,
   type DependencyKind,
   type DependencySeverity,
   type TeamDependencyEdge,
   type TeamRef,
 } from '../../../shared/teamDependencies.js';
+import type { SocialInject } from '../socialCrisisGeneratorService.js';
+
+/** Generated lag is clamped to this range (authored edges may use 0–30). */
+const LAG_MIN = 2;
+const LAG_MAX = 15;
+const LAG_DEFAULT = 5;
+const REPLY_MINUTES_MIN = 1;
+const REPLY_MINUTES_MAX = 240;
+const REPLY_MINUTES_DEFAULT = 10;
+const SILENT_MINUTES_MIN = 5;
+const SILENT_MINUTES_MAX = 60;
+const SILENT_MINUTES_DEFAULT = 10;
+const CONTENT_SCORE_DEFAULT = 45;
+const ASK_MINUTE_DEFAULT = 12;
+const INTEL_TRIGGER_DEFAULT = 8;
+const INTEL_WINDOW_DEFAULT = 10;
 
 export const SIGNAL_TEMPLATES = [
   'no_reply',
@@ -33,15 +52,7 @@ export const SIGNAL_TEMPLATES = [
 export type SignalTemplateName = (typeof SIGNAL_TEMPLATES)[number];
 
 const PUBLIC_APPS = new Set(['social_feed', 'news']);
-const CONSEQUENCE_APPS = new Set([
-  'email',
-  'group_chat',
-  'phone_call',
-  'social_feed',
-  'news',
-  'messenger_dm',
-]);
-const ASK_APPS = new Set(['email', 'group_chat', 'phone_call']);
+const ASK_APPS = new Set<DeliveryApp>(['email', 'group_chat', 'phone_call']);
 const INJECT_KEY_TEMPLATES = new Set<SignalTemplateName>(['no_reply', 'poor_reply']);
 
 const ACTION_TYPES = new Set<string>(CATALOG_ACTION_TYPES);
@@ -81,34 +92,11 @@ export interface DependencyBudget {
   maxEdges?: number;
 }
 
-export interface GeneratedDependencyInject {
-  trigger_time_minutes?: number;
-  type: string;
-  title: string;
-  content: string;
-  severity: string;
-  inject_scope: string;
-  target_teams: string[];
-  requires_response?: boolean;
-  conditions_to_appear?: { all: string[] };
-  conditions_to_cancel?: string[];
-  gen_layer: string;
-  delivery_config: {
-    app: string;
-    inject_key: string;
-    cause?: { kind: 'dependency'; dep_id: string };
-    gen: { layer: string };
-    stakeholder_id?: string;
-    from_name?: string;
-    response_rubric?: unknown;
-  };
-}
-
 export interface PostProcessDependenciesResult {
   edges: TeamDependencyEdge[];
-  asks: GeneratedDependencyInject[];
-  consequences: GeneratedDependencyInject[];
-  positives: GeneratedDependencyInject[];
+  asks: SocialInject[];
+  consequences: SocialInject[];
+  positives: SocialInject[];
   dropped: Array<{ id?: string; reason: string }>;
 }
 
@@ -148,11 +136,6 @@ export function signalTemplatePrompt(): string {
   ].join('\n');
 }
 
-export function dependencyEdgeBudget(teamCount: number, upstreamPerTeam: number): number {
-  if (teamCount < 2 || upstreamPerTeam < 1) return 0;
-  return Math.min(Math.ceil(teamCount * 1.5), upstreamPerTeam * teamCount);
-}
-
 export function defaultCancelKeys(depId: string): string[] {
   return [`dependency_resolved:${depId}`, `dependency_waived:${depId}`];
 }
@@ -172,7 +155,8 @@ export function planDependencyMapCalls(
   const playable = teams.filter((team) => team.playable !== false && team.team_name.trim());
   if (playable.length < 2) return [];
   const batch = Math.max(1, Math.floor(batchTeams));
-  if (playable.length <= batch) {
+  const orgCount = new Set(playable.map((team) => team.org_key || team.org_name || '_scenario')).size;
+  if (dependencyMapCallCount(playable.length, orgCount, batch) <= 1) {
     return [{ kind: 'all', orgKey: null, orgName: null, teams: [...playable] }];
   }
   const groups = new Map<string, GenerationTeam[]>();
@@ -203,12 +187,6 @@ export function dependencyEdgeSummary(edges: readonly TeamDependencyEdge[]): str
       return `${edge.upstream.team_name} → ${down}: ${edge.deliverable} (${edge.kind}, lag ${edge.lag_minutes})`;
     })
     .join('\n');
-}
-
-export function fitText(text: string, maxChars: number): string {
-  const cap = Math.max(0, Math.floor(maxChars));
-  if (text.length <= cap) return text;
-  return text.slice(0, cap);
 }
 
 /**
@@ -257,7 +235,7 @@ export function postProcessDependencies(
   const dropped: PostProcessDependenciesResult['dropped'] = [];
   const record = asRecord(model);
   const rawEdges = Array.isArray(record?.edges) ? record.edges : [];
-  const drafted: Array<{ edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null }> = [];
+  const drafted: Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }> = [];
 
   for (const raw of rawEdges) {
     const built = buildEdge(raw, playable, known, takenIds, takenInjectKeys, duration, dropped);
@@ -266,13 +244,14 @@ export function postProcessDependencies(
 
   const selected = selectEdges(drafted, playable, upstreamCap, maxEdges, dropped);
   const asks = selected.flatMap((item) => (item.ask ? [item.ask] : []));
-  const consequences: GeneratedDependencyInject[] = [];
-  const positives: GeneratedDependencyInject[] = [];
+  const consequences: SocialInject[] = [];
+  const positives: SocialInject[] = [];
   for (const item of selected) {
     const built = buildConsequenceInjects(item.edge, model, takenInjectKeys);
-    item.edge.consequence_keys = built.consequences.map(
-      (inject) => inject.delivery_config.inject_key,
-    );
+    item.edge.consequence_keys = built.consequences.flatMap((inject) => {
+      const key = inject.delivery_config.inject_key;
+      return key ? [key] : [];
+    });
     consequences.push(...built.consequences);
     positives.push(...built.positives);
   }
@@ -283,12 +262,12 @@ export function buildConsequenceInjects(
   edge: TeamDependencyEdge,
   model: unknown,
   taken: Set<string> = new Set(),
-): { consequences: GeneratedDependencyInject[]; positives: GeneratedDependencyInject[] } {
+): { consequences: SocialInject[]; positives: SocialInject[] } {
   const record = asRecord(model);
   const rows = Array.isArray(record?.consequences) ? record.consequences : [];
   const positiveRows = Array.isArray(record?.positives) ? record.positives : [];
   const layer = `dependency:${edge.id}`;
-  const consequences: GeneratedDependencyInject[] = [];
+  const consequences: SocialInject[] = [];
   const seenDown = new Set<string>();
   for (const raw of rows) {
     const row = asRecord(raw);
@@ -318,13 +297,10 @@ export function buildConsequenceInjects(
         cause: { kind: 'dependency', dep_id: edge.id },
         gen: { layer },
         ...senderFields(row.sender),
-        ...(row.response_rubric && typeof row.response_rubric === 'object'
-          ? { response_rubric: row.response_rubric }
-          : {}),
       },
     });
   }
-  const positives: GeneratedDependencyInject[] = [];
+  const positives: SocialInject[] = [];
   for (const raw of positiveRows) {
     const row = asRecord(raw);
     if (!row || !sameEdge(row.edge_id, edge.id)) continue;
@@ -415,9 +391,9 @@ export function registerIntelEdges(
     }
     const id = allocateDependencyId(`dep_intel_${key}`, `intel ${key}`, taken);
     if (!id) continue;
-    const trigger = finiteMinutes(item.trigger_time_minutes, 8);
-    const deadline = finiteMinutes(item.deadline_minutes, trigger + 10);
-    const lag = clampInt(deadline - trigger, 2, 15, 5);
+    const trigger = finiteMinutes(item.trigger_time_minutes, INTEL_TRIGGER_DEFAULT);
+    const deadline = finiteMinutes(item.deadline_minutes, trigger + INTEL_WINDOW_DEFAULT);
+    const lag = clampInt(deadline - trigger, LAG_MIN, LAG_MAX, LAG_DEFAULT);
     const summary = text(item.summary) || `Fact ${key} reaches the teams that need it`;
     const dueMinute =
       duration == null ? Math.max(0, deadline) : clampInt(deadline, 0, duration, deadline);
@@ -448,7 +424,7 @@ function buildEdge(
   takenInjectKeys: Set<string>,
   duration: number,
   dropped: PostProcessDependenciesResult['dropped'],
-): { edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null } | null {
+): { edge: TeamDependencyEdge; ask: SocialInject | null } | null {
   const row = asRecord(raw);
   if (!row) {
     dropped.push({ reason: 'edge was not an object' });
@@ -488,14 +464,14 @@ function buildEdge(
   }
   const ask = buildAsk(row.needs_ask, upstream, id, duration, takenInjectKeys);
   const knownWithAsk = new Map(known);
-  if (ask) {
-    knownWithAsk.set(ask.delivery_config.inject_key, {
-      inject_key: ask.delivery_config.inject_key,
+  const askKey = ask?.delivery_config.inject_key ?? null;
+  if (ask && askKey) {
+    knownWithAsk.set(askKey, {
+      inject_key: askKey,
       title: ask.title,
       trigger_time_minutes: ask.trigger_time_minutes ?? null,
     });
   }
-  const askKey = ask?.delivery_config.inject_key ?? null;
   const duties = upstream.duties;
   const signals = Array.isArray(row.signals) ? row.signals : [];
   const broken: string[] = [];
@@ -506,7 +482,7 @@ function buildEdge(
   if (broken.length === 0) {
     dropped.push({ id, reason: 'no usable break signal' });
     takenIds.delete(id);
-    if (ask) takenInjectKeys.delete(ask.delivery_config.inject_key);
+    if (askKey) takenInjectKeys.delete(askKey);
     return null;
   }
   const metKey =
@@ -527,8 +503,8 @@ function buildEdge(
     due,
     broken_when: broken.length === 1 ? { all: broken } : { threshold: 1, conditions: broken },
     met_when: metKey ? { all: [metKey] } : null,
-    lag_minutes: clampInt(row.lag_minutes, 2, 15, 5),
-    severity: severityOf(row.severity, 'medium') as DependencySeverity,
+    lag_minutes: clampInt(row.lag_minutes, LAG_MIN, LAG_MAX, LAG_DEFAULT),
+    severity: severityOf(row.severity, 'medium'),
     consequence_keys: [],
     source: 'war_room',
   };
@@ -536,20 +512,20 @@ function buildEdge(
 }
 
 function selectEdges(
-  drafted: Array<{ edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null }>,
+  drafted: Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }>,
   teams: readonly GenerationTeam[],
   upstreamCap: number,
   maxEdges: number,
   dropped: PostProcessDependenciesResult['dropped'],
-): Array<{ edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null }> {
-  const kept: Array<{ edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null }> = [];
+): Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }> {
+  const kept: Array<{ edge: TeamDependencyEdge; ask: SocialInject | null }> = [];
   const downCount = new Map<string, number>();
   const covered = new Set<string>();
   const canTake = (edge: TeamDependencyEdge): boolean => {
     if (kept.length >= maxEdges) return false;
     return edge.downstream.every((team) => (downCount.get(teamIdentity(team)) ?? 0) < upstreamCap);
   };
-  const take = (item: { edge: TeamDependencyEdge; ask: GeneratedDependencyInject | null }) => {
+  const take = (item: { edge: TeamDependencyEdge; ask: SocialInject | null }) => {
     kept.push(item);
     for (const team of item.edge.downstream) {
       const id = teamIdentity(team);
@@ -600,10 +576,10 @@ function signalToKey(
   const scope = row.scope === '@downstream' ? '@downstream' : '@upstream';
   const suffix = template === 'intel' ? '' : `|team=${scope}`;
   const injectKey = boundInjectKey(row, template, pole, askKey, known);
-  if (template === 'no_reply') {
+    if (template === 'no_reply') {
     if (!injectKey) return null;
     if (pole === 'met') return `responded_relevant:${injectKey}${suffix}`;
-    const minutes = clampInt(row.minutes, 1, 240, 10);
+    const minutes = clampInt(row.minutes, REPLY_MINUTES_MIN, REPLY_MINUTES_MAX, REPLY_MINUTES_DEFAULT);
     return `unresponded:${injectKey}:${minutes}${suffix}`;
   }
   if (template === 'poor_reply') {
@@ -622,12 +598,12 @@ function signalToKey(
   }
   if (template === 'silent') {
     if (pole === 'met') return null;
-    return `team_silent:${clampInt(row.minutes, 5, 60, 10)}${suffix}`;
+    return `team_silent:${clampInt(row.minutes, SILENT_MINUTES_MIN, SILENT_MINUTES_MAX, SILENT_MINUTES_DEFAULT)}${suffix}`;
   }
   if (template === 'content_failed') {
     if (pole === 'met') return null;
     const count = clampInt(row.n ?? row.count, 1, 100, 1);
-    const score = clampInt(row.score, 0, 100, 45);
+    const score = clampInt(row.score, 0, 100, CONTENT_SCORE_DEFAULT);
     return `content_failed:${count}:${score}${suffix}`;
   }
   if (template === 'decision') {
@@ -698,20 +674,21 @@ function buildAsk(
   depId: string,
   duration: number,
   taken: Set<string>,
-): GeneratedDependencyInject | null {
+): SocialInject | null {
   if (raw == null) return null;
   const row = asRecord(raw);
   if (!row) return null;
   const content = text(row.content);
   const title = text(row.title);
   if (!content || !title) return null;
-  const app = ASK_APPS.has(text(row.app) ?? '') ? (text(row.app) as string) : 'email';
+  const requested = text(row.app);
+  const app: DeliveryApp = requested && ASK_APPS.has(requested as DeliveryApp) ? (requested as DeliveryApp) : 'email';
   const injectKey = allocateInjectKey(null, title, taken);
   const trigger = clampInt(
     row.trigger_time_minutes,
     1,
     Math.max(1, duration),
-    Math.min(12, duration),
+    Math.min(ASK_MINUTE_DEFAULT, duration),
   );
   const layer = `dependency:${depId}`;
   return {
@@ -776,18 +753,11 @@ function downstreamTeams(
 }
 
 function resolveTeam(raw: unknown, teams: readonly GenerationTeam[]): GenerationTeam | null {
-  const name =
-    typeof raw === 'string'
-      ? raw
-      : (text(asRecord(raw)?.team_name) ?? text(asRecord(raw)?.name) ?? '');
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const exact = teams.find((team) => team.team_name === trimmed);
-  if (exact) return exact;
-  const slug = slugifyTeamName(trimmed);
-  if (!slug) return null;
-  const matches = teams.filter((team) => slugifyTeamName(team.team_name) === slug);
-  return matches.length === 1 ? matches[0] : null;
+  if (typeof raw === 'string') return matchTeamRef({ team_uid: null, team_name: raw }, teams);
+  const row = asRecord(raw);
+  const name = text(row?.team_name) ?? text(row?.name);
+  if (!name) return null;
+  return matchTeamRef({ team_uid: text(row?.team_uid), team_name: name }, teams);
 }
 
 function teamRef(team: GenerationTeam): TeamRef {
@@ -807,13 +777,8 @@ function teamIdentity(ref: TeamRef): string {
 }
 
 function matchRef(name: string, refs: readonly TeamRef[]): TeamRef | null {
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const exact = refs.find((ref) => ref.team_name === trimmed);
-  if (exact) return exact;
-  const slug = slugifyTeamName(trimmed);
-  const matches = refs.filter((ref) => slugifyTeamName(ref.team_name) === slug);
-  return matches.length === 1 ? matches[0] : null;
+  if (!name.trim()) return null;
+  return matchTeamRef({ team_uid: null, team_name: name }, refs);
 }
 
 function kindOf(raw: unknown): DependencyKind | null {
@@ -822,24 +787,17 @@ function kindOf(raw: unknown): DependencyKind | null {
   return (DEPENDENCY_KINDS as readonly string[]).includes(value) ? (value as DependencyKind) : null;
 }
 
-function severityOf(raw: unknown, fallback: string): string {
+function severityOf(raw: unknown, fallback: DependencySeverity): DependencySeverity {
   const value = text(raw);
-  if (value && (DEPENDENCY_SEVERITIES as readonly string[]).includes(value)) return value;
+  if (value && (DEPENDENCY_SEVERITIES as readonly string[]).includes(value)) {
+    return value as DependencySeverity;
+  }
   return fallback;
 }
 
-function consequenceApp(raw: unknown): string {
+function consequenceApp(raw: unknown): DeliveryApp {
   const value = text(raw);
-  return value && CONSEQUENCE_APPS.has(value) ? value : 'email';
-}
-
-function typeForApp(app: string): string {
-  if (app === 'email') return 'email_inbound';
-  if (app === 'phone_call') return 'phone_call';
-  if (app === 'group_chat') return 'chat_message';
-  if (app === 'news') return 'news_article';
-  if (app === 'messenger_dm' || app === 'npc_dm') return 'dm';
-  return 'social_post';
+  return value && isDeliveryApp(value) ? value : 'email';
 }
 
 function senderFields(raw: unknown): { stakeholder_id?: string; from_name?: string } {
@@ -876,37 +834,14 @@ function allocateDependencyId(raw: unknown, fallback: string, taken: Set<string>
   return null;
 }
 
-function allocateInjectKey(preferred: string | null, title: string, taken: Set<string>): string {
-  if (preferred && isValidInjectKey(preferred) && !taken.has(preferred)) {
-    taken.add(preferred);
-    return preferred;
-  }
-  const base = slugifyInjectTitle(title);
-  if (!taken.has(base)) {
-    taken.add(base);
-    return base;
-  }
-  for (let n = 2; n < 10000; n++) {
-    const suffix = `_${n}`;
-    const stem = base.slice(0, 60 - suffix.length).replace(/_+$/g, '') || 'inject';
-    const candidate = `${stem}${suffix}`;
-    if (isValidInjectKey(candidate) && !taken.has(candidate)) {
-      taken.add(candidate);
-      return candidate;
-    }
-  }
-  const fallback = `inj_${taken.size.toString(16).padStart(8, '0')}`.slice(0, 60);
-  taken.add(fallback);
-  return fallback;
-}
-
 function firstInjectKey(keys: readonly string[]): string | null {
   for (const key of keys) {
-    const body = key.split('|')[0] ?? '';
-    const parts = body.split(':');
-    if (parts[0] === 'unresponded' || parts[0] === 'reply_failed') {
-      const injectKey = parts[1];
-      if (injectKey && isValidInjectKey(injectKey)) return injectKey;
+    const parsed = parseConditionKey(key, { allowPlaceholders: true });
+    if ('error' in parsed) continue;
+    const params = parsed.def.params ?? [];
+    for (let index = 0; index < params.length; index++) {
+      const arg = parsed.args[index];
+      if (params[index]?.type === 'inject_key' && arg && isValidInjectKey(arg)) return arg;
     }
   }
   return null;
@@ -925,6 +860,12 @@ function sameEdge(raw: unknown, id: string): boolean {
   return text(raw) === id;
 }
 
+/**
+ * One-word team names that are ordinary English. A public post matches them only
+ * in a possessive ("Operations'") or as "the Operations team".
+ * Single-word entries of GENERATOR_PRESET_FUNCTIONS belong here (Communications,
+ * Legal, Executive). Add a word when a new one-word function is introduced.
+ */
 const GENERIC_TEAM_WORDS = new Set([
   'operations',
   'operation',
@@ -976,13 +917,11 @@ function nameMentions(haystack: string, teamName: string): boolean {
 
 function genericTeamMention(haystack: string, name: string): boolean {
   const token = escapeRegExp(name);
-  const possessive = new RegExp(`(^|[^A-Za-z0-9])${token}(?:'s|')(?![A-Za-z0-9])`, 'i');
+  const gap = '[^A-Za-z0-9]+';
+  const possessive = new RegExp(`(?:^|[^A-Za-z0-9])${token}(?:'s|')(?![A-Za-z0-9])`, 'i');
   const role = 'team|department|unit|desk|staff|office|division|function';
-  const named = new RegExp(
-    `(^|[^A-Za-z0-9])(?:the\\s+)?${token}\\s+(?:${role})(?![A-Za-z0-9])`,
-    'i',
-  );
-  const ofTeam = new RegExp(`(^|[^A-Za-z0-9])(?:${role})\\s+of\\s+${token}(?![A-Za-z0-9])`, 'i');
+  const named = new RegExp(`(?:^|[^A-Za-z0-9])(?:the${gap})?${token}${gap}(?:${role})(?![A-Za-z0-9])`, 'i');
+  const ofTeam = new RegExp(`(?:^|[^A-Za-z0-9])(?:${role})${gap}of${gap}${token}(?![A-Za-z0-9])`, 'i');
   return possessive.test(haystack) || named.test(haystack) || ofTeam.test(haystack);
 }
 
@@ -1015,11 +954,11 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
-function text(value: unknown): string | null {
+export function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
+export function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }

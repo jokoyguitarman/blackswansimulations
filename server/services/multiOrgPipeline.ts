@@ -1,3 +1,4 @@
+import type { TeamDependencies } from '../../shared/teamDependencies.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import {
@@ -665,7 +666,7 @@ export interface ConvergencePipelineResult {
     escalation_risk: string;
   };
   intel_injects: Record<string, SocialInject[]>;
-  team_dependencies?: { v: 1; edges: unknown[] } | null;
+  team_dependencies?: TeamDependencies | null;
 }
 
 /**
@@ -757,7 +758,7 @@ export async function runConvergencePipeline(
         },
         facts: factSheet.confirmed_facts ?? [],
         storylines: teamStorylines,
-        intelItems: intelItemsFromInjects(intelResult.intelInjects),
+        intelItems: intelItemsFromInjects(intelResult.intelInjects, intelResult.intelGates),
         stakeholders: (branchInput?.stakeholders ?? []).map((stakeholder) => ({
           id: stakeholder.id,
           name: stakeholder.name,
