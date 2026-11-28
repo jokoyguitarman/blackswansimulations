@@ -67,11 +67,13 @@ const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 const APPS = ['email', 'group_chat', 'phone_call', 'npc_dm', 'messenger_dm', 'social_feed', 'news'];
 const LIVE_STATUSES = new Set(['proposed', 'approved', 'edited', 'auto_published']);
 const RECEIVED_STATUSES = new Set(['approved', 'edited', 'auto_published']);
+/** Scenario text is cached only briefly, and dropped again when a session starts. */
+export const DIRECTOR_SCENARIO_CACHE_MS = 60_000;
 
 let directorUnavailable = false;
 let directorWarned = false;
 const warnedKinds = new Set<string>();
-const scenarioCache = new Map<string, ScenarioRow>();
+const scenarioCache = new Map<string, { row: ScenarioRow; at: number }>();
 const sessionCache = new Map<string, { mode: DirectorMode; seed: string | null }>();
 
 interface SessionDirectorRow {
@@ -102,10 +104,13 @@ export interface DirectorRunOptions {
   aiEnabled?: boolean;
   /** Test hook. Production uses the chat client. */
   client?: DirectorClient;
+  /** Test hook for the scenario-cache clock. */
+  now?: () => number;
 }
 
 export interface DirectorStore {
-  loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'>;
+  /** `null` is a failed read: skip this tick. `'missing'` means migration 279 is absent. */
+  loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing' | null>;
   loadSession(sessionId: string): Promise<SessionDirectorRow | 'missing' | null>;
   loadScenario(scenarioId: string): Promise<ScenarioRow | null>;
   loadTriggers(sessionId: string): Promise<TriggerRow[]>;
@@ -145,7 +150,9 @@ export async function runDirector(
   if (directorIsPaused(input.sessionId)) return;
 
   const store = options.store ?? defaultStore;
+  const now = options.now?.() ?? Date.now();
   const history = await store.loadHistory(input.sessionId);
+  if (history == null) return;
   if (history === 'missing') {
     noteUnavailable(new Error('director_proposals missing'));
     return;
@@ -161,7 +168,7 @@ export async function runDirector(
     },
     last ? { minute: last.minute, signal_ids: seen } : null,
   );
-  const cachedScenario = scenarioCache.get(input.scenarioId);
+  const cachedScenario = freshScenario(input.scenarioId, now);
   const duration = input.durationMinutes ?? cachedScenario?.duration ?? null;
   const knownMode = input.directorMode ?? sessionCache.get(input.sessionId)?.mode ?? null;
   if (
@@ -183,7 +190,7 @@ export async function runDirector(
 
   const session = await rememberSession(input.sessionId, store);
   if (session == null) return;
-  const scenario = await rememberScenario(input.scenarioId, store);
+  const scenario = await rememberScenario(input.scenarioId, store, now);
   if (!scenario || scenario.category !== 'social_media_crisis') return;
   const settings = readDirectorSettings(scenario.initial);
   const mode = resolveMode(session.director_mode, settings.mode);
@@ -674,7 +681,7 @@ function deliveriesFor(comms: CommsState, team: string, _minute: number) {
   );
 }
 
-async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing'> {
+async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'missing' | null> {
   try {
     const { data, error } = await supabaseAdmin
       .from('director_proposals')
@@ -687,7 +694,7 @@ async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'miss
       warnOnce(`history:${error.code ?? 'unknown'}`, error, 'director history was not read', {
         sessionId,
       });
-      return [];
+      return null;
     }
     return (data ?? []).map(proposalHistoryFrom);
   } catch (err) {
@@ -695,7 +702,7 @@ async function loadHistory(sessionId: string): Promise<ProposalHistory[] | 'miss
     warnOnce(`history:${codeOf(err) ?? 'throw'}`, err, 'director history was not read', {
       sessionId,
     });
-    return [];
+    return null;
   }
 }
 
@@ -1231,14 +1238,35 @@ async function rememberSession(
   return loaded;
 }
 
+function freshScenario(scenarioId: string, now: number): ScenarioRow | null {
+  const entry = scenarioCache.get(scenarioId);
+  if (!entry) return null;
+  if (now - entry.at >= DIRECTOR_SCENARIO_CACHE_MS) {
+    scenarioCache.delete(scenarioId);
+    return null;
+  }
+  return entry.row;
+}
+
+/** Drop one scenario. Session start calls this so an edit is visible to the new run. */
+export function invalidateDirectorScenario(scenarioId: string): void {
+  scenarioCache.delete(scenarioId);
+}
+
+/** Drop the resolved mode. A mode switch must not leave `off` stuck until restart. */
+export function invalidateDirectorSession(sessionId: string): void {
+  sessionCache.delete(sessionId);
+}
+
 async function rememberScenario(
   scenarioId: string,
   store: DirectorStore,
+  now: number,
 ): Promise<ScenarioRow | null> {
-  const cached = scenarioCache.get(scenarioId);
+  const cached = freshScenario(scenarioId, now);
   if (cached) return cached;
   const loaded = await store.loadScenario(scenarioId);
-  if (loaded) scenarioCache.set(scenarioId, loaded);
+  if (loaded) scenarioCache.set(scenarioId, { row: loaded, at: now });
   return loaded;
 }
 
@@ -1452,6 +1480,7 @@ export function scheduleDirectorWake(
 
 /** Cheap write at session start. The first director tick still fills a missing seed. */
 export async function ensureDirectorSeed(sessionId: string, scenarioId: string): Promise<void> {
+  invalidateDirectorScenario(scenarioId);
   if (!env.directorEnabled || directorUnavailable) return;
   const seed = directorSeed(sessionId, scenarioId, env.directorSeedSalt);
   const saved = await saveSeed(sessionId, seed.toString());
@@ -1503,12 +1532,16 @@ export const directorCommands: DirectorCommands = createDirectorCommands({
     loadConsoleProposals(sessionId, { nowIso, createdBeforeIso }),
   updateProposal: updateConsoleProposal,
   setSessionMode: async (sessionId, mode) => {
-    const { error } = await supabaseAdmin.from('sessions').update({ director_mode: mode }).eq('id', sessionId);
+    const { error } = await supabaseAdmin
+      .from('sessions')
+      .update({ director_mode: mode })
+      .eq('id', sessionId);
     if (error && SCHEMA_CODES.has(error.code ?? '')) return 'missing';
     if (error) {
       warnOnce(`mode:${error.code ?? 'unknown'}`, error, 'director mode was not saved', { sessionId });
+      return 'ok';
     }
-    sessionCache.delete(sessionId);
+    invalidateDirectorSession(sessionId);
     return 'ok';
   },
   expirePending: async (sessionId) => {
@@ -1626,7 +1659,7 @@ async function loadSessionDirector(sessionId: string): Promise<SessionDirector |
 }
 
 async function loadScenarioMode(scenarioId: string): Promise<string | null> {
-  const scenario = await rememberScenario(scenarioId, defaultStore);
+  const scenario = await rememberScenario(scenarioId, defaultStore, Date.now());
   return scenario ? readDirectorSettings(scenario.initial).mode : null;
 }
 
@@ -1718,7 +1751,7 @@ function consoleProposalFrom(row: Record<string, unknown>): ConsoleProposal {
 async function factsForPublish(sessionId: string, minute: number): Promise<PublishFacts | null> {
   const session = await loadSessionDirector(sessionId);
   if (session === 'missing' || session == null) return null;
-  const scenario = await rememberScenario(session.scenarioId, defaultStore);
+  const scenario = await rememberScenario(session.scenarioId, defaultStore, Date.now());
   if (!scenario) return null;
   const [triggerRows, deliveryRows, teams, memberships, history] = await Promise.all([
     loadTriggers(sessionId),
@@ -1727,7 +1760,7 @@ async function factsForPublish(sessionId: string, minute: number): Promise<Publi
     loadMemberships(sessionId),
     loadHistory(sessionId),
   ]);
-  if (history === 'missing') return null;
+  if (history == null || history === 'missing') return null;
   const settings = readDirectorSettings(scenario.initial);
   const roster = rosterOf(teams, scenario.initial, memberships);
   const limits = limitsFor(settings);

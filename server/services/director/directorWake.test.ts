@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  DIRECTOR_SCENARIO_CACHE_MS,
+  ensureDirectorSeed,
+  invalidateDirectorSession,
   resetDirectorProcessState,
+  runDirector,
   scheduleDirectorWake,
   type DirectorStore,
   type DirectorTickInput,
@@ -103,4 +107,92 @@ test('a slow director wake does not delay the tick or run twice', async () => {
   assert.equal(calls, 1);
   release();
   await new Promise((resolve) => setTimeout(resolve, 40));
+});
+
+function quietClient(calls: { n: number }): DirectorClient {
+  return {
+    async propose() {
+      calls.n += 1;
+      return { parsed: { act: false, reason: 'quiet', proposal: null } };
+    },
+    async consistency() {
+      return { parsed: { verdict: 'consistent', reason: 'ok' } };
+    },
+  };
+}
+
+test('a failed history read skips the wake instead of calling the model', async () => {
+  resetDirectorProcessState();
+  const calls = { n: 0 };
+  let readable = false;
+  let scenarios = 0;
+  const backing = store();
+  backing.loadHistory = async () => (readable ? [] : null);
+  const scenario = await store().loadScenario(scenarioId);
+  backing.loadScenario = async () => {
+    scenarios += 1;
+    return scenario;
+  };
+  const options = { store: backing, client: quietClient(calls), enabled: true, aiEnabled: true };
+  await runDirector(tick(), options);
+  await runDirector(tick(), options);
+  assert.equal(calls.n, 0);
+  assert.equal(scenarios, 0);
+  readable = true;
+  await runDirector(tick(), options);
+  assert.equal(calls.n, 1);
+  assert.equal(scenarios, 1);
+});
+
+test('scenario text stays cached until it expires or a session starts', async () => {
+  resetDirectorProcessState();
+  let loads = 0;
+  let now = 1_000;
+  const backing = store();
+  const scenario = await store().loadScenario(scenarioId);
+  backing.loadScenario = async () => {
+    loads += 1;
+    return scenario && { ...scenario, title: `Brief ${loads}` };
+  };
+  const options = {
+    store: backing,
+    client: quietClient({ n: 0 }),
+    enabled: true,
+    aiEnabled: true,
+    now: () => now,
+  };
+  await runDirector(tick(), options);
+  await runDirector(tick(), options);
+  assert.equal(loads, 1);
+  now += DIRECTOR_SCENARIO_CACHE_MS;
+  await runDirector(tick(), options);
+  assert.equal(loads, 2);
+  await ensureDirectorSeed(sessionId, scenarioId);
+  await runDirector(tick(), options);
+  assert.equal(loads, 3);
+});
+
+test('switching a cached off session to auto wakes on the next tick', async () => {
+  resetDirectorProcessState();
+  const calls = { n: 0 };
+  let mode: string | null = 'off';
+  let historyReads = 0;
+  const backing = store();
+  backing.loadHistory = async () => {
+    historyReads += 1;
+    return [];
+  };
+  backing.loadSession = async () => ({ director_mode: mode, director_seed: '1' });
+  const options = { store: backing, client: quietClient(calls), enabled: true, aiEnabled: true };
+  await runDirector(tick(), options);
+  assert.equal(calls.n, 0);
+  assert.equal(historyReads, 1);
+  mode = 'auto';
+  await runDirector(tick(), options);
+  assert.equal(calls.n, 0);
+  assert.equal(historyReads, 1);
+  invalidateDirectorSession(sessionId);
+  await runDirector(tick(), options);
+  assert.equal(calls.n, 1);
+  assert.equal(historyReads, 2);
 });
