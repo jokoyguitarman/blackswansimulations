@@ -115,6 +115,7 @@ function install(
   const calls: Array<{ table: string; op: string }> = [];
   const originalFrom = supabaseAdmin.from;
   const originalGetUser = supabaseAdmin.auth.getUser.bind(supabaseAdmin.auth);
+  const originalGetUserById = supabaseAdmin.auth.admin.getUserById.bind(supabaseAdmin.auth.admin);
   const users = options?.users ?? new Map<string, Record<string, unknown>>();
 
   const from = (table: string) => {
@@ -250,12 +251,20 @@ function install(
       if (!user) return { data: { user: null }, error: { message: 'bad token' } };
       return { data: { user }, error: null };
     };
+  (
+    supabaseAdmin.auth.admin as unknown as { getUserById: (id: string) => Promise<unknown> }
+  ).getUserById = async (id: string) => {
+    const user = [...users.values()].find((row) => row.id === id);
+    if (!user) return { data: { user: null }, error: { message: 'missing' } };
+    return { data: { user }, error: null };
+  };
 
   return {
     calls,
     restore() {
       supabaseAdmin.from = originalFrom;
       supabaseAdmin.auth.getUser = originalGetUser;
+      supabaseAdmin.auth.admin.getUserById = originalGetUserById;
     },
   };
 }
@@ -1128,6 +1137,75 @@ describe('player-surface route wiring', { concurrency: false }, () => {
     }
   });
 
+  test('an empty profile name still opens that player’s messenger threads', async () => {
+    const routers = await loadRouters();
+    const users = new Map<string, Record<string, unknown>>([
+      ['admin-token', tokenUser(ADMIN_ID, 'admin')],
+      [
+        'subject-record',
+        {
+          id: SUBJECT_ID,
+          email: 'ken.yeo@example.com',
+          app_metadata: { role: 'participant' },
+          user_metadata: {},
+        },
+      ],
+    ]);
+    const tables = baseTables();
+    (tables.user_profiles as Row[]).forEach((row) => {
+      if (row.id === SUBJECT_ID) row.full_name = '   ';
+    });
+    tables.sim_direct_messages = [
+      {
+        id: 'm-email',
+        thread_id: 't-email',
+        session_id: SESSION,
+        sender_handle: '@fan',
+        recipient_handle: '@ken_yeo',
+        sender_display_name: 'Fan',
+        platform: 'facebook',
+        is_read: false,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'm-player',
+        thread_id: 't-player',
+        session_id: SESSION,
+        sender_handle: '@fan',
+        recipient_handle: '@player',
+        sender_display_name: 'Fan',
+        platform: 'facebook',
+        is_read: false,
+        created_at: '2026-01-01T00:00:01Z',
+      },
+    ];
+    tables.session_page_controllers = [];
+    tables.sim_org_pages = [];
+    const db = install(tables, { users });
+    try {
+      setFlags(true, false);
+      const app = express();
+      app.use(express.json());
+      app.use('/api/social/messenger', routers.messenger);
+      await withApp(app, async (base) => {
+        const res = await hit(base, 'GET', `/api/social/messenger/threads/${SESSION}`, {
+          authorization: 'Bearer admin-token',
+          'x-sim-session': SESSION,
+          'x-sim-view-as': SUBJECT_ID,
+        });
+        assert.equal(res.status, 200);
+        const ids = ((res.json as { data: Array<{ thread_id: string }> }).data ?? []).map(
+          (thread) => thread.thread_id,
+        );
+        assert.ok(ids.includes('t-email'));
+        assert.equal(ids.includes('t-player'), false);
+      });
+    } finally {
+      db.restore();
+      setFlags(false, false);
+    }
+  });
+
   test('concluded-session freeze still returns 409 with the viewer mounted', async () => {
     const routers = await loadRouters();
     const users = new Map<string, Record<string, unknown>>([
@@ -1168,7 +1246,9 @@ describe('player-surface route wiring', { concurrency: false }, () => {
 
   test('view-as notification reads are limited to the header session', async () => {
     const otherSession = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-    const users = new Map<string, Record<string, unknown>>([['admin-token', tokenUser(ADMIN_ID, 'admin')]]);
+    const users = new Map<string, Record<string, unknown>>([
+      ['admin-token', tokenUser(ADMIN_ID, 'admin')],
+    ]);
     const tables = baseTables();
     tables.notifications = [
       {
@@ -1211,14 +1291,13 @@ describe('player-surface route wiring', { concurrency: false }, () => {
         assert.equal(missing.status, 400);
         assert.equal(missing.json.code, VIEW_AS_SESSION_MISMATCH);
         assert.equal(missingCount.status, 400);
-        assert.equal(
-          db.calls.filter((call) => call.table === 'notifications').length,
-          before,
-        );
+        assert.equal(db.calls.filter((call) => call.table === 'notifications').length, before);
 
         const scoped = await hit(base, 'GET', `/api/notifications?session_id=${SESSION}`, headers);
         assert.equal(scoped.status, 200);
-        const ids = ((scoped.json as { data: Array<{ id: string }> }).data ?? []).map((row) => row.id);
+        const ids = ((scoped.json as { data: Array<{ id: string }> }).data ?? []).map(
+          (row) => row.id,
+        );
         assert.deepEqual(ids, ['n-this']);
 
         const count = await hit(
@@ -1233,7 +1312,9 @@ describe('player-surface route wiring', { concurrency: false }, () => {
         setFlags(false, false);
         const own = await hit(base, 'GET', '/api/notifications', headers);
         assert.equal(own.status, 200);
-        const ownIds = ((own.json as { data: Array<{ id: string }> }).data ?? []).map((row) => row.id);
+        const ownIds = ((own.json as { data: Array<{ id: string }> }).data ?? []).map(
+          (row) => row.id,
+        );
         assert.deepEqual(ownIds, ['n-staff']);
       });
     } finally {

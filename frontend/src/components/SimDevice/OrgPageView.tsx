@@ -1,10 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { getAuthHeaders as spectatorHeaders } from '../../lib/api';
+import { withViewAsHeaders } from '../../lib/viewAsFrame';
+import { useSurfaceReadOnly } from './surfaceReadOnly';
 import { CommentActions, CommentComposer, PagePostComposer } from './surfaceComposers';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+// The node test runner compiles JSX to React.createElement.
+void React;
+
+const API_BASE = import.meta.env?.VITE_API_URL || '';
 function apiUrl(path: string) {
   const clean = path.startsWith('/') ? path : `/${path}`;
   return API_BASE ? `${API_BASE}${clean}` : clean;
@@ -13,7 +18,10 @@ function apiUrl(path: string) {
 async function playerAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../../lib/supabase')).supabase.auth.getSession();
   const token = data.session?.access_token || '';
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  return withViewAsHeaders({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  });
 }
 
 interface OrgPage {
@@ -114,7 +122,8 @@ export default function OrgPageView({
   const [composeText, setComposeText] = useState('');
   // Viewing a page the player does not control (e.g. a rival brand) hides composers.
   const [viewOnly, setViewOnly] = useState(false);
-  const readOnly = forceReadOnly || viewOnly;
+  const shellReadOnly = useSurfaceReadOnly();
+  const readOnly = forceReadOnly || viewOnly || shellReadOnly;
 
   async function authHeaders(): Promise<Record<string, string>> {
     if (forceReadOnly && sessionId) {

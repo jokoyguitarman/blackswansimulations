@@ -9,9 +9,10 @@ import { VoiceCallPanel } from './VoiceCallPanel';
 import { IncomingCallToast } from './IncomingCallToast';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { LinkPreviewCard } from '../SimDevice/LinkPreviewCard';
+import { useSurfaceReadOnly, WhenWritable } from '../SimDevice/surfaceReadOnly';
 
 // Several lines per message received; production consoles retain every logged object.
-const debugLog: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+const debugLog: typeof console.log = import.meta.env?.DEV ? console.log.bind(console) : () => {};
 
 interface Channel {
   id: string;
@@ -203,6 +204,7 @@ export const ChatInterface = ({
   };
 
   const { user } = useAuth();
+  const surfaceReadOnly = useSurfaceReadOnly();
   const webrtc = useWebRTC(user?.id);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
@@ -420,8 +422,7 @@ export const ChatInterface = ({
 
         // Get sender info from participants list or current user
         let senderInfo:
-          | { id: string; full_name: string; role: string; team_name?: string }
-          | undefined;
+          { id: string; full_name: string; role: string; team_name?: string } | undefined;
 
         if (payload.sender_id === user?.id && user) {
           const selfParticipant = participants.find((p) => p.id === user.id);
@@ -557,8 +558,7 @@ export const ChatInterface = ({
       // Helper function to create message object
       const createMessage = async (): Promise<Message> => {
         let senderInfo:
-          | { id: string; full_name: string; role: string; team_name?: string }
-          | undefined;
+          { id: string; full_name: string; role: string; team_name?: string } | undefined;
 
         if (payload.sender_id === user?.id && user) {
           const selfParticipant = participants.find((p) => p.id === user.id);
@@ -1420,6 +1420,7 @@ export const ChatInterface = ({
   };
 
   const handleSendMessage = async (e?: React.FormEvent, directMessage?: string) => {
+    if (surfaceReadOnly) return;
     e?.preventDefault();
     const channelId = selectedChannel || selectedDM;
     const raw = directMessage ?? messageInput;
@@ -2022,39 +2023,41 @@ export const ChatInterface = ({
 
       {/* Message Input (hidden in voice mode) */}
       {currentChannelId && viewMode !== 'voice' && (
-        <form
-          onSubmit={(e) => handleSendMessage(e)}
-          className={`flex gap-2 ${isWA ? 'items-center' : ''}`}
-        >
-          <input
-            type="text"
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            placeholder={isWA ? 'Type a message' : 'Type or speak a message...'}
-            className={s.input}
-          />
-          <VoiceMicButton
-            autoSend
-            onTranscript={(text) => handleSendMessage(undefined, text)}
-            variant={variant}
-          />
-          <button type="submit" className={s.sendButton} aria-label="Send">
-            {isWA ? (
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="white"
-                className="shrink-0"
-                aria-hidden="true"
-              >
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-            ) : (
-              'Send'
-            )}
-          </button>
-        </form>
+        <WhenWritable>
+          <form
+            onSubmit={(e) => handleSendMessage(e)}
+            className={`flex gap-2 ${isWA ? 'items-center' : ''}`}
+          >
+            <input
+              type="text"
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              placeholder={isWA ? 'Type a message' : 'Type or speak a message...'}
+              className={s.input}
+            />
+            <VoiceMicButton
+              autoSend
+              onTranscript={(text) => handleSendMessage(undefined, text)}
+              variant={variant}
+            />
+            <button type="submit" className={s.sendButton} aria-label="Send">
+              {isWA ? (
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="white"
+                  className="shrink-0"
+                  aria-hidden="true"
+                >
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              ) : (
+                'Send'
+              )}
+            </button>
+          </form>
+        </WhenWritable>
       )}
     </div>
   );

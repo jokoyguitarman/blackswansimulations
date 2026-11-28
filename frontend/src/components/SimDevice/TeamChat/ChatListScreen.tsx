@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type ContactSearchResult } from '../../../lib/api';
 import { useRealtime } from '../../../hooks/useRealtime';
 import { useWebSocket, type WebSocketEvent } from '../../../hooks/useWebSocket';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ChatListItem, ChatVariant } from './types';
 import { colorFor, groupIcon, initials, relativeTime } from './avatars';
+
+void React;
 
 interface ChatListScreenProps {
   sessionId: string;

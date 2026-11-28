@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { getAuthHeaders as spectatorHeaders } from '../../lib/api';
+import { currentViewAsFrame, withViewAsHeaders } from '../../lib/viewAsFrame';
+import { useSurfaceReadOnly } from './surfaceReadOnly';
 import {
   MessengerComposePanel,
   MessengerNewMessageButton,
   MessengerReplyBar,
 } from './surfaceComposers';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 function apiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -20,10 +22,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface Thread {
@@ -93,6 +95,10 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+function playerHandleFromName(name: string): string {
+  return `@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+}
+
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -109,11 +115,13 @@ function timeAgo(dateStr: string): string {
 
 function FacebookMessengerView({
   sessionId,
-  readOnly = false,
+  readOnly: readOnlyProp = false,
   pageHandle,
   orgKey,
   platform = 'facebook',
 }: FacebookMessengerViewProps) {
+  const shellReadOnly = useSurfaceReadOnly();
+  const readOnly = readOnlyProp || shellReadOnly;
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -175,6 +183,11 @@ function FacebookMessengerView({
         const {
           data: { session },
         } = await supabase.auth.getSession();
+        const viewedName = currentViewAsFrame()?.name;
+        if (viewedName) {
+          setPlayerHandle(playerHandleFromName(viewedName));
+          return;
+        }
         const metaName = session?.user?.user_metadata?.full_name as string | undefined;
         let name = metaName || '';
         if (!name && session?.user?.id) {
@@ -186,7 +199,7 @@ function FacebookMessengerView({
           name = data?.full_name || session?.user?.email || '';
         }
         if (!name) name = session?.user?.email || 'Player';
-        setPlayerHandle(`@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`);
+        setPlayerHandle(playerHandleFromName(name));
       } catch {
         /* ignore */
       }

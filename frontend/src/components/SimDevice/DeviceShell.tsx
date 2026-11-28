@@ -13,6 +13,13 @@ import {
 import '../../styles/device-sim.css';
 import { SessionIdleNotice } from '../Session/SessionIdleNotice';
 import IncomingCallOverlay from './PhoneApp/IncomingCallOverlay';
+import {
+  messengerEventForUser,
+  shellFilterUserId,
+  viewAsSubjectId,
+  withViewAsHeaders,
+} from '../../lib/viewAsFrame';
+import { WhenWritable } from './surfaceReadOnly';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -26,10 +33,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface WSEvent {
@@ -282,17 +289,23 @@ function DeviceShellInner() {
       (event: WSEvent) => {
         if (!sessionId) return;
 
+        const filterUserId = shellFilterUserId(viewAsSubjectId(), user?.id);
         if (event.type === 'sim_email.received' || event.type === 'sim_email.sent') {
           const email = (event.data?.email || {}) as Record<string, unknown>;
           const recipients = email.recipient_user_ids as string[] | null | undefined;
-          if (user?.id && email.sent_by_player_id === user.id) return;
+          if (filterUserId && email.sent_by_player_id === filterUserId) return;
           if (
             event.type === 'sim_email.sent' &&
-            !(recipients && user?.id && recipients.includes(user.id))
+            !(recipients && filterUserId && recipients.includes(filterUserId))
           ) {
             return;
           }
-          if (recipients && recipients.length > 0 && user?.id && !recipients.includes(user.id)) {
+          if (
+            recipients &&
+            recipients.length > 0 &&
+            filterUserId &&
+            !recipients.includes(filterUserId)
+          ) {
             return;
           }
         }
@@ -301,7 +314,7 @@ function DeviceShellInner() {
         if (event.type === 'notification.created') {
           const notif = (event.data?.notification || event.data || {}) as Record<string, unknown>;
           const targetUserId = String(notif.user_id || '');
-          if (targetUserId && user?.id && targetUserId !== user.id) return;
+          if (targetUserId && filterUserId && targetUserId !== filterUserId) return;
 
           const dbId = String(notif.id || '');
           if (dbId && processedIdsRef.current.has(dbId)) return;
@@ -311,8 +324,7 @@ function DeviceShellInner() {
         // For messenger.received: only show DMs targeted at THIS user
         if (event.type === 'messenger.received') {
           const targetUserId = String(event.data?.user_id || '');
-          if (!targetUserId) return; // player's own outbound DM (no target) -> skip
-          if (user?.id && targetUserId !== user.id) return;
+          if (!messengerEventForUser(targetUserId, filterUserId)) return;
         }
 
         const item = mapEventToNotification(event, sessionId);
@@ -412,7 +424,9 @@ function DeviceShellInner() {
           >
             <Outlet />
           </div>
-          <IncomingCallOverlay />
+          <WhenWritable>
+            <IncomingCallOverlay />
+          </WhenWritable>
 
           <NotificationCenter
             notifications={notifications}
@@ -598,7 +612,9 @@ function DeviceShellInner() {
             >
               <Outlet />
             </div>
-            <IncomingCallOverlay />
+            <WhenWritable>
+              <IncomingCallOverlay />
+            </WhenWritable>
 
             {/* Notification pill + expandable preview list (the only notification surface) */}
             <NotificationCenter
