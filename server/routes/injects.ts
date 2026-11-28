@@ -20,11 +20,18 @@ import {
 } from '../services/feedEngineService.js';
 import type { Server as SocketServer } from 'socket.io';
 import { urgencyEffects, type Urgency } from '../services/escalation/escalationCore.js';
+import { recordInjectTrigger } from '../services/conditions/injectTriggerService.js';
 
 const router = Router();
 
 function isChainUrgency(value: string): value is Urgency {
-  return value === 'reminder' || value === 'follow_up' || value === 'urgent' || value === 'final' || value === 'escalated';
+  return (
+    value === 'reminder' ||
+    value === 'follow_up' ||
+    value === 'urgent' ||
+    value === 'final' ||
+    value === 'escalated'
+  );
 }
 
 function dmNotificationSender(config: DeliveryConfig): string {
@@ -1003,7 +1010,7 @@ router.post(
       // Verify session exists and user has access
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('id, status, trainer_id')
+        .select('id, status, trainer_id, start_time')
         .eq('id', session_id)
         .single();
 
@@ -1032,6 +1039,17 @@ router.post(
       // bypasses the once-per-session claim (re-publishing an inject is a legitimate trainer move).
       try {
         await publishInjectToSession(id, session_id, user.id, io, { force: true });
+        const started = session.start_time ? Date.parse(String(session.start_time)) : Number.NaN;
+        const minute = Number.isFinite(started)
+          ? Math.max(0, Math.floor((Date.now() - started) / 60000))
+          : 0;
+        void recordInjectTrigger({
+          sessionId: session_id,
+          injectId: id,
+          origin: 'trainer',
+          minute,
+          causeDepth: 0,
+        });
         logger.info(
           { injectId: id, sessionId: session_id, userId: user.id },
           'Inject published successfully',

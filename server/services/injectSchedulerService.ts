@@ -46,6 +46,10 @@ import { loadCommsState } from './ledger/injectLedgerService.js';
 import { sweepCalls } from './calls/callService.js';
 import { sweepPendingJudgements } from './judging/judgeService.js';
 import { orderPublishCandidates } from './conditions/commsConditionsCore.js';
+import {
+  applySessionCrossTeamGuards,
+  recordInjectTrigger,
+} from './conditions/injectTriggerService.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -655,7 +659,7 @@ export class InjectSchedulerService {
       supabaseAdmin
         .from('scenario_injects')
         .select(
-          'id, trigger_time_minutes, title, content, type, severity, required_gate_id, required_gate_not_met_id, target_teams, inject_scope, delivery_config, conditions_to_appear',
+          'id, trigger_time_minutes, title, content, type, severity, required_gate_id, required_gate_not_met_id, target_teams, inject_scope, delivery_config, conditions_to_appear, generation_source',
         )
         .eq('scenario_id', session.scenario_id)
         .or(`session_id.is.null,session_id.eq.${session.id}`)
@@ -696,6 +700,7 @@ export class InjectSchedulerService {
       target_teams?: string[] | null;
       inject_scope?: string | null;
       delivery_config?: Record<string, unknown> | null;
+      generation_source?: string | null;
     };
     const injects = (injectsRaw ?? []).filter((inj: InjectRow) => {
       if (inj.required_gate_id != null) {
@@ -902,6 +907,19 @@ export class InjectSchedulerService {
           await publishInjectToSession(inject.id, session.id, session.trainer_id, this.io);
           publishedInjectIds.add(inject.id);
           timing.published++;
+          const published = inject as InjectRow;
+          void recordInjectTrigger({
+            sessionId: session.id,
+            injectId: published.id,
+            origin: published.generation_source === 'decision_response' ? 'decision' : 'timed',
+            minute: elapsedMinutes,
+            injectKey: injectKeyOf({
+              id: published.id,
+              delivery_config: published.delivery_config ?? null,
+            }),
+            targetTeams: published.target_teams ?? [],
+            causeDepth: 0,
+          });
           logger.info(
             { sessionId: session.id, injectId: inject.id },
             'Inject auto-published successfully',
@@ -939,7 +957,8 @@ export class InjectSchedulerService {
       conditions_to_appear?: unknown;
       conditions_to_cancel?: unknown;
       eligible_after_minutes?: number | null;
-      delivery_config?: { inject_key?: unknown } | null;
+      delivery_config?: { inject_key?: unknown; cause?: { kind?: unknown; dep_id?: unknown } | null } | null;
+      generation_source?: string | null;
     }> = [];
     let teamSignals = true;
     try {
@@ -947,7 +966,7 @@ export class InjectSchedulerService {
         supabaseAdmin
           .from('scenario_injects')
           .select(
-            'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
+            'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config, generation_source',
           )
           .eq('scenario_id', session.scenario_id)
           .or(`session_id.is.null,session_id.eq.${session.id}`)
@@ -982,7 +1001,6 @@ export class InjectSchedulerService {
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
     let conditionalPublished = 0;
     try {
-
       const condInjects = (condInjectsRaw ?? []).filter(
         (inj: { id: string; eligible_after_minutes?: number | null }) =>
           !publishedInjectIds.has(inj.id) &&
@@ -1032,6 +1050,11 @@ export class InjectSchedulerService {
           severity: string | null;
           eligible_after_minutes: number | null;
           inject_key: string;
+          target_teams: string[] | null;
+          met_keys: string[];
+          generation_source: string | null;
+          cause_kind: string | null;
+          dep_id: string | null;
         }> = [];
 
         for (const condInject of condInjects) {
@@ -1039,6 +1062,7 @@ export class InjectSchedulerService {
             condInject.conditions_to_appear as ConditionsToAppear | null,
             condInject.conditions_to_cancel as ConditionsToCancel | null,
             evalContext,
+            { explain: true },
           );
 
           if (result.status === 'cancel_met') {
@@ -1057,8 +1081,15 @@ export class InjectSchedulerService {
 
           if (result.status === 'appear_met') {
             const deliveryConfig =
-              (condInject as { delivery_config?: { inject_key?: unknown } | null })
-                .delivery_config ?? null;
+              (
+                condInject as {
+                  delivery_config?: {
+                    inject_key?: unknown;
+                    cause?: { kind?: unknown; dep_id?: unknown } | null;
+                  } | null;
+                }
+              ).delivery_config ?? null;
+            const cause = deliveryConfig?.cause ?? null;
             ready.push({
               condInject,
               id: condInject.id,
@@ -1067,14 +1098,28 @@ export class InjectSchedulerService {
                 (condInject as { eligible_after_minutes?: number | null }).eligible_after_minutes ??
                 null,
               inject_key: injectKeyOf({ id: condInject.id, delivery_config: deliveryConfig }),
+              target_teams: (condInject.target_teams as string[] | null) ?? null,
+              met_keys: result.met_keys,
+              generation_source:
+                (condInject as { generation_source?: string | null }).generation_source ?? null,
+              cause_kind: typeof cause?.kind === 'string' ? cause.kind : null,
+              dep_id: typeof cause?.dep_id === 'string' ? cause.dep_id : null,
             });
           }
         }
 
         const ordered = orderPublishCandidates(ready);
+        const guarded = await applySessionCrossTeamGuards({
+          sessionId: session.id,
+          scenarioId: session.scenario_id,
+          elapsedMinutes,
+          ordered,
+          context: evalContext,
+        });
+        for (const injectId of guarded.cancelledIds) cancelledInjectIds.add(injectId);
         const cap = env.conditionPublishMaxPerTick;
         let publishedCount = 0;
-        for (const item of ordered) {
+        for (const item of guarded.publish) {
           if (publishedCount >= cap) {
             logger.info(
               {
@@ -1197,6 +1242,7 @@ export class InjectSchedulerService {
           timing.published++;
           publishedCount++;
           conditionalPublished = publishedCount;
+          void recordInjectTrigger(item.trigger);
         }
       }
     } catch (condErr) {
@@ -1223,7 +1269,8 @@ export class InjectSchedulerService {
         status: session.status,
         startTime: session.start_time,
         elapsedMinutes,
-        comms: (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
+        comms:
+          (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
         remainingCap: capLeft,
         io: ioForChains,
       });
@@ -1236,7 +1283,8 @@ export class InjectSchedulerService {
       await updateMoods({
         sessionId: session.id,
         elapsedMinutes,
-        comms: (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
+        comms:
+          (nextState.comms_state as Awaited<ReturnType<typeof loadCommsState>> | undefined) ?? null,
       });
     } catch (moodErr) {
       logger.warn({ err: moodErr, sessionId: session.id }, 'stakeholder mood tick failed');

@@ -18,7 +18,8 @@ import { emptyCommsState, type CommsState } from './ledger/injectLedgerCore.js';
 // Types (contract with inject engine)
 // ---------------------------------------------------------------------------
 
-export type ConditionsToAppear = { threshold: number; conditions: string[] } | { all: string[] };
+export type ConditionsToAppear =
+  { threshold: number; conditions: string[] } | { all: string[] } | { any: string[] };
 
 export type ConditionsToCancel = string[];
 
@@ -59,6 +60,12 @@ export interface EvaluationContext {
 
 export type EvaluatorResult =
   { status: 'appear_met' } | { status: 'cancel_met' } | { status: 'not_eligible' };
+
+export interface ExplainedEvaluatorResult {
+  status: EvaluatorResult['status'];
+  met_keys: string[];
+  failed_keys: string[];
+}
 
 type ConditionFn = (ctx: EvaluationContext) => boolean;
 
@@ -750,38 +757,115 @@ export function callerSeesJudgements(
   return user.role === 'admin' || (!!user.id && session.trainer_id === user.id);
 }
 
+type AppearPlan =
+  | { kind: 'empty' }
+  | { kind: 'all'; keys: string[] }
+  | { kind: 'any'; keys: string[] }
+  | { kind: 'threshold'; keys: string[]; threshold: number };
+
+/** `{ any }` is threshold 1. Threshold 0 stays 1 so an empty requirement cannot always appear. */
+function appearPlan(appear: ConditionsToAppear): AppearPlan {
+  if ('all' in appear) {
+    return Array.isArray(appear.all) && appear.all.length > 0
+      ? { kind: 'all', keys: appear.all }
+      : { kind: 'empty' };
+  }
+  if ('any' in appear) {
+    return Array.isArray(appear.any) && appear.any.length > 0
+      ? { kind: 'any', keys: appear.any }
+      : { kind: 'empty' };
+  }
+  const keys = Array.isArray(appear.conditions) ? appear.conditions : [];
+  if (keys.length === 0) return { kind: 'empty' };
+  const raw = appear.threshold ?? 0;
+  return { kind: 'threshold', keys, threshold: Math.max(1, raw) };
+}
+
+function appearStatus(
+  plan: AppearPlan,
+  metCount: number,
+  failedCount: number,
+): EvaluatorResult['status'] {
+  if (plan.kind === 'empty') return 'not_eligible';
+  if (plan.kind === 'all') return failedCount === 0 ? 'appear_met' : 'not_eligible';
+  if (plan.kind === 'any') return metCount > 0 ? 'appear_met' : 'not_eligible';
+  return metCount >= plan.threshold ? 'appear_met' : 'not_eligible';
+}
+
 /**
  * Evaluate conditions_to_appear and conditions_to_cancel; return appear_met | cancel_met | not_eligible.
  * Cancel is evaluated first. No DB or API calls.
+ * `explain: true` also returns the keys that held and the keys that did not. Callers that omit it
+ * still receive only `{ status }`.
  */
 export function evaluateInjectConditions(
   conditionsToAppear: ConditionsToAppear | null | undefined,
   conditionsToCancel: ConditionsToCancel | null | undefined,
   context: EvaluationContext,
-): EvaluatorResult {
-  // 1) Cancel first
+): EvaluatorResult;
+export function evaluateInjectConditions(
+  conditionsToAppear: ConditionsToAppear | null | undefined,
+  conditionsToCancel: ConditionsToCancel | null | undefined,
+  context: EvaluationContext,
+  options: { explain: true },
+): ExplainedEvaluatorResult;
+export function evaluateInjectConditions(
+  conditionsToAppear: ConditionsToAppear | null | undefined,
+  conditionsToCancel: ConditionsToCancel | null | undefined,
+  context: EvaluationContext,
+  options?: { explain?: boolean },
+): EvaluatorResult | ExplainedEvaluatorResult {
+  const explain = options?.explain === true;
   const cancelList = Array.isArray(conditionsToCancel) ? conditionsToCancel : [];
-  for (const key of cancelList) {
-    if (evaluateKey(key, context)) return { status: 'cancel_met' };
+  if (!explain) {
+    for (const key of cancelList) {
+      if (evaluateKey(key, context)) return { status: 'cancel_met' };
+    }
+  } else {
+    const met: string[] = [];
+    const failed: string[] = [];
+    for (const key of cancelList) {
+      if (evaluateKey(key, context)) met.push(key);
+      else failed.push(key);
+    }
+    if (met.length > 0) return { status: 'cancel_met', met_keys: met, failed_keys: failed };
   }
 
-  // 2) Empty appear -> not_eligible
-  if (conditionsToAppear == null) return { status: 'not_eligible' };
-  if (typeof conditionsToAppear !== 'object') return { status: 'not_eligible' };
-
-  const allKeys =
-    'all' in conditionsToAppear ? conditionsToAppear.all : conditionsToAppear.conditions;
-  if (!Array.isArray(allKeys) || allKeys.length === 0) return { status: 'not_eligible' };
-
-  // 3) Appear: all or N-of-M
-  if ('all' in conditionsToAppear) {
-    const allMet = allKeys.every((k) => evaluateKey(k, context));
-    return allMet ? { status: 'appear_met' } : { status: 'not_eligible' };
+  if (conditionsToAppear == null || typeof conditionsToAppear !== 'object') {
+    return explain
+      ? { status: 'not_eligible', met_keys: [], failed_keys: [] }
+      : { status: 'not_eligible' };
   }
 
-  // N-of-M: require at least threshold conditions true; threshold 0 is treated as 1 to avoid "always appear"
-  const rawThreshold = (conditionsToAppear as { threshold: number }).threshold ?? 0;
-  const threshold = Math.max(1, rawThreshold);
-  const metCount = allKeys.filter((k) => evaluateKey(k, context)).length;
-  return metCount >= threshold ? { status: 'appear_met' } : { status: 'not_eligible' };
+  const plan = appearPlan(conditionsToAppear);
+  if (plan.kind === 'empty') {
+    return explain
+      ? { status: 'not_eligible', met_keys: [], failed_keys: [] }
+      : { status: 'not_eligible' };
+  }
+
+  if (!explain) {
+    if (plan.kind === 'all') {
+      const allMet = plan.keys.every((key) => evaluateKey(key, context));
+      return allMet ? { status: 'appear_met' } : { status: 'not_eligible' };
+    }
+    if (plan.kind === 'any') {
+      const anyMet = plan.keys.some((key) => evaluateKey(key, context));
+      return anyMet ? { status: 'appear_met' } : { status: 'not_eligible' };
+    }
+    const metCount = plan.keys.filter((key) => evaluateKey(key, context)).length;
+    return metCount >= plan.threshold ? { status: 'appear_met' } : { status: 'not_eligible' };
+  }
+
+  const met: string[] = [];
+  const failed: string[] = [];
+  for (const key of plan.keys) {
+    if (evaluateKey(key, context)) met.push(key);
+    else failed.push(key);
+  }
+  return {
+    status: appearStatus(plan, met.length, failed.length),
+    met_keys: met,
+    failed_keys: failed,
+  };
 }
