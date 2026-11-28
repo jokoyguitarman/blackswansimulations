@@ -1,7 +1,23 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
-import type { ContentGrade } from '../contentGraderService.js';
-import { isCrisisActivity, type PostKind, type TopicLabel, type TopicPhase } from './topicPromptCore.js';
+import {
+  isCrisisActivity,
+  type PostKind,
+  type TopicLabel,
+  type TopicPhase,
+} from './topicPromptCore.js';
+
+type GradePlayerContent = typeof import('../contentGraderService.js').gradePlayerContent;
+type GetPlayerTeamContext = typeof import('../teamCharterService.js').getPlayerTeamContext;
+type GradeContext = Parameters<GradePlayerContent>[1];
+type ContentGrade = Awaited<ReturnType<GradePlayerContent>>;
+type FullTeam = NonNullable<Awaited<ReturnType<GetPlayerTeamContext>>>;
+type TeamCharter = NonNullable<FullTeam['charter']>;
+/** The fields this grader reads. The real team-context return is assignable to it. */
+type TeamContext = {
+  team_name: FullTeam['team_name'];
+  charter: Pick<TeamCharter, 'mission' | 'scoring_rubric' | 'out_of_lane'> | null;
+} | null;
 
 export interface GradeActivityInput {
   sessionId: string;
@@ -31,38 +47,8 @@ export interface GradeRuntime {
     scenarioId: string,
   ): Promise<{ description: string | null; initial_state: unknown } | null>;
   loadParentContent(postId: string): Promise<string | undefined>;
-  getPlayerTeamContext(
-    sessionId: string,
-    userId: string,
-  ): Promise<{
-    team_name: string;
-    charter: {
-      mission: string;
-      scoring_rubric: string;
-      out_of_lane: string[];
-    } | null;
-  } | null>;
-  gradePlayerContent(
-    content: string,
-    context: {
-      crisis_description: string;
-      confirmed_facts: string[];
-      hateful_post_being_addressed: string | undefined;
-      research_guidelines: Array<{ best_practice: string; source_basis: string }>;
-      post_format: string;
-      is_official_page_post: boolean;
-      elapsed_minutes: number | undefined;
-      image_prompt: string | undefined;
-      team_charter:
-        | {
-            team_name: string;
-            mission: string;
-            scoring_rubric: string;
-            out_of_lane: string[];
-          }
-        | undefined;
-    },
-  ): Promise<ContentGrade>;
+  getPlayerTeamContext(sessionId: string, userId: string): Promise<TeamContext>;
+  gradePlayerContent(content: string, context: GradeContext): Promise<ContentGrade>;
   updateScore(postId: string, grade: ContentGrade): Promise<void>;
   /** Await the module import, then start the snapshot without waiting for it. */
   startSnapshot(sessionId: string): Promise<void>;
@@ -81,7 +67,9 @@ export function routeGradesPlayerPost(topicAware: boolean, aiEnabled: boolean): 
   return !topicAware || !aiEnabled;
 }
 
-export function gradingLabel(input: Pick<GradeActivityInput, 'topicAware' | 'label' | 'columnsAvailable'>): TopicLabel {
+export function gradingLabel(
+  input: Pick<GradeActivityInput, 'topicAware' | 'label' | 'columnsAvailable'>,
+): TopicLabel {
   if (!input.topicAware) return input.label;
   if (!input.columnsAvailable) return 'unclassified';
   return input.label;
@@ -138,7 +126,10 @@ const defaultRuntime: GradeRuntime = {
     return gradePlayerContent(content, context);
   },
   async updateScore(postId, grade) {
-    await supabaseAdmin.from('social_posts').update({ sop_compliance_score: grade }).eq('id', postId);
+    await supabaseAdmin
+      .from('social_posts')
+      .update({ sop_compliance_score: grade })
+      .eq('id', postId);
   },
   async startSnapshot(sessionId) {
     const { snapshotTeamScores } = await import('../teamScoreService.js');

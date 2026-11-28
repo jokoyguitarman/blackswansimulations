@@ -1,4 +1,11 @@
 import { matchesLeakTerms } from './leakTerms.js';
+import {
+  formatPersonaStanceLine,
+  isCompetitorPersona,
+  MEDIA_REACT_LINE,
+  reactionTypesAndRules,
+  REACTION_ITEM_SCHEMA,
+} from './reactionPromptShared.js';
 
 export type TopicLabel = 'on_topic' | 'bridge' | 'off_topic' | 'crisis' | 'unclassified';
 export type TopicPhase = 'not_started' | 'peace' | 'crisis';
@@ -21,7 +28,13 @@ export interface AssignedStance {
   forcedEngage: boolean;
 }
 
-const LABEL_SET = new Set<TopicLabel>(['on_topic', 'bridge', 'off_topic', 'crisis', 'unclassified']);
+const LABEL_SET = new Set<TopicLabel>([
+  'on_topic',
+  'bridge',
+  'off_topic',
+  'crisis',
+  'unclassified',
+]);
 
 /** FNV-1a mapped onto [0, 1). Stable across processes. */
 export function unitFromSeed(key: string): number {
@@ -31,13 +44,6 @@ export function unitFromSeed(key: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0) / 4294967296;
-}
-
-function isCompetitorPersona(persona: StancePersona): boolean {
-  return (
-    /competitor|rival|competing|alternative/i.test(persona.personality) ||
-    /competitive/i.test(persona.bias)
-  );
 }
 
 function isBiasedPersona(persona: StancePersona): boolean {
@@ -55,7 +61,8 @@ function isSupportiveOrNone(persona: StancePersona): boolean {
  * Media, politicians, competitors and biased personas gain 0.25.
  * Background-tier personas, and supportive or none-bias personas, lose 0.25.
  * A page author forces media and competitors to engage.
- * Three or more personas always include one stay, chosen from whoever was not forced.
+ * Three or more personas include one stay unless every persona was forced to engage.
+ * In that case the page force wins and there is no stay.
  */
 export function assignBridgeStances(
   selected: ReadonlyArray<{ persona: StancePersona }>,
@@ -195,7 +202,9 @@ export function checkTopicReplies(input: {
   }
 
   const leakCheck =
-    label === 'unclassified' ? input.postKind === 'normal' : label !== 'bridge' && label !== 'crisis';
+    label === 'unclassified'
+      ? input.postKind === 'normal'
+      : label !== 'bridge' && label !== 'crisis';
 
   const reactions: TopicReply[] = [];
   const dropped: Array<{ handle: string; content: string }> = [];
@@ -253,6 +262,8 @@ export interface TopicPromptInput {
   crisisDescription: string;
   /** Included only outside peace. The caller omits crisis facts during peace. */
   officialScrutinyBlock: string;
+  /** Official-statement format or a page post. Drives attack/cover wording, same as the legacy prompt. */
+  isOfficialComms: boolean;
   isReply: boolean;
 }
 
@@ -299,10 +310,7 @@ export function buildTopicAwareReactionPrompt(input: TopicPromptInput): {
     .join('\n');
 
   const personaLines = input.personas
-    .map(
-      (persona) =>
-        `${persona.handle} (${persona.name}): ${persona.personality}, bias: ${persona.bias}, type: ${persona.type}. React with: ${persona.reactionType}. If bridge: ${persona.stance}.`,
-    )
+    .map((persona) => formatPersonaStanceLine(persona, persona.reactionType, persona.stance))
     .join('\n');
 
   const postContext = `Your replies are about THIS post and THIS exchange.
@@ -339,15 +347,10 @@ ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` :
     ? 'This is a reply. classification.label must be on_topic, bridge, or off_topic. Do not use crisis.'
     : 'This is a top-level post. Use classification.label crisis when the post is about the crisis, otherwise on_topic, bridge, or off_topic.';
 
-  const attack = input.authorIsPage
-    ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
-    : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias';
-  const cover = input.authorIsPage
-    ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
-    : "neutral to positive news angle about the response team's communication";
-
   const scrutiny =
-    input.phase === 'peace' || !input.officialScrutinyBlock ? '' : `\n${input.officialScrutinyBlock.trim()}\n`;
+    input.phase === 'peace' || !input.officialScrutinyBlock
+      ? ''
+      : `\n${input.officialScrutinyBlock.trim()}\n`;
 
   const system = `${postContext}
 
@@ -357,22 +360,13 @@ ${crisisOrPeace}
 
 ${author}
 ${scrutiny}
-Reaction types:
-- "attack": ${attack}
-- "cover": media-style coverage -- ${cover}
-- "support": endorsing reply or repost with supportive commentary, OR just "like" the post
-- "neutral": ambiguous reaction that could go either way
-- "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
-
-IMPORTANT RULES:
-- When replying, START the reply by tagging the player: "${input.playerHandle} ..." so they get notified
-- Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
-- Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
+${reactionTypesAndRules(input.playerHandle, input.isOfficialComms)}
 - ${labelRule}
 Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${input.isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}
+${MEDIA_REACT_LINE}
 
 Return ONLY valid JSON:
-{ "classification": { "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }, "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`;
+{ "classification": { "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }, "reactions": [${REACTION_ITEM_SCHEMA}] }`;
 
   const user = `Player post by ${input.playerHandle}:\n"${input.playerContent}"${input.imagePrompt ? `\n\n[Attached media: ${input.imagePrompt}]` : ''}`;
   return { system, user };

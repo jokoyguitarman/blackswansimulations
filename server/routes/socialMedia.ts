@@ -17,6 +17,7 @@ import {
   gradeIfCrisisActivity,
   routeGradesPlayerPost,
 } from '../services/topic/gradeIfCrisisActivity.js';
+import { reactAndGradePlayerPost } from '../services/topic/playerTopicGrade.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
@@ -472,6 +473,25 @@ router.post(
         return res.status(500).json({ error: 'Failed to create post' });
       }
 
+      const startPlayerReactions = (failure: string) => {
+        if (env.enableTopicAwareReplies && env.aiEnabled) {
+          reactAndGradePlayerPost({
+            sessionId: session_id,
+            post,
+            userId: user.id,
+            content,
+            postFormat: post_format,
+            imagePrompt: image_prompt || undefined,
+            replyToPostId: reply_to_post_id || undefined,
+            postAsPage: post_as_page || false,
+          });
+          return;
+        }
+        void triggerNPCReactions(session_id, post).catch((err) =>
+          logger.warn({ err, postId: post.id }, failure),
+        );
+      };
+
       if (reply_to_post_id) {
         const { data: parentPost } = await supabaseAdmin
           .from('social_posts')
@@ -556,10 +576,9 @@ router.post(
           );
         }
 
-        // Trigger NPC reactions to player replies on NPC posts (non-blocking)
-        void triggerNPCReactions(session_id, post).catch((err) =>
-          logger.warn({ err, postId: post.id }, 'NPC reply reaction failed (non-critical)'),
-        );
+        // Trigger NPC reactions to player replies (non-blocking). Flag off keeps this
+        // call, then the grade below, then the broadcast.
+        startPlayerReactions('NPC reply reaction failed (non-critical)');
       } else {
         const publishStep = post_format === 'official_statement' ? 'publish' : null;
         await recordPlayerAction(
@@ -575,9 +594,8 @@ router.post(
         );
       }
 
-      // Auto-grade player posts. With topic replies off (the default) this is the
-      // same fire-and-forget grade as before, started before the response. With
-      // the flag on and AI on, triggerNPCReactions grades after classification.
+      // Flag off, or AI off: grade here, not awaited, before the broadcast and the 201.
+      // Flag on with AI on: startPlayerReactions grades after the reaction call.
       if (routeGradesPlayerPost(env.enableTopicAwareReplies, env.aiEnabled)) {
         void gradeIfCrisisActivity({
           sessionId: session_id,
@@ -602,11 +620,9 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
-      // Trigger NPC reactions to player top-level posts (non-blocking)
+      // Top-level reactions start after the broadcast, as before.
       if (!reply_to_post_id) {
-        void triggerNPCReactions(session_id, post).catch((err) =>
-          logger.warn({ err, postId: post.id }, 'NPC reaction trigger failed (non-critical)'),
-        );
+        startPlayerReactions('NPC reaction trigger failed (non-critical)');
       }
 
       // Generate media for creative format posts or when player provides an image prompt

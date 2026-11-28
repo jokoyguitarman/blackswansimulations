@@ -5,6 +5,7 @@ import { logger } from '../../lib/logger.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { env } from '../../env.js';
 import { buildPlayerBubbleSystemPrompt } from './bubblePrompt.js';
+import { ATTACK_HOSTILE, ATTACK_OFFICIAL, MEDIA_REACT_LINE } from './reactionPromptShared.js';
 import { buildLegacyReactionMessages } from './legacyReactionPrompt.js';
 import { matchesLeakTerms } from './leakTerms.js';
 import {
@@ -15,6 +16,8 @@ import {
   topicSchemaMissing,
 } from './topicColumns.js';
 import { triggerNPCReactions, type ReactionChatClient } from '../npcReactionService.js';
+import { gradePlayerPostFromReactions } from './playerTopicGrade.js';
+import type { GradeRuntime } from './gradeIfCrisisActivity.js';
 import {
   assignBridgeStances,
   buildTopicAwareReactionPrompt,
@@ -67,7 +70,10 @@ test('bridge stances are deterministic, keep one stay, and a page forces media a
   const first = assignBridgeStances(cast, 'post-9', { stayShare: 0.4, unit: () => 0 });
   const second = assignBridgeStances(cast, 'post-9', { stayShare: 0.4, unit: () => 0 });
   assert.deepEqual(first, second);
-  assert.equal(first.some((row) => row.stance === 'stay'), true);
+  assert.equal(
+    first.some((row) => row.stance === 'stay'),
+    true,
+  );
 
   const page = assignBridgeStances(
     [
@@ -81,7 +87,10 @@ test('bridge stances are deterministic, keep one stay, and a page forces media a
   assert.equal(page.find((row) => row.handle === '@maya')?.stance, 'engage');
   assert.equal(page.find((row) => row.handle === '@rival')?.stance, 'engage');
   assert.equal(page.find((row) => row.handle === '@rival')?.forcedEngage, true);
-  assert.equal(page.some((row) => row.stance === 'stay'), true);
+  assert.equal(
+    page.some((row) => row.stance === 'stay'),
+    true,
+  );
 
   const allMedia = assignBridgeStances(
     [
@@ -163,6 +172,7 @@ test('topic prompt leads with the post, fences the crisis, and swaps in the peac
     ],
     crisisDescription: CRISIS,
     officialScrutinyBlock: 'CONFIRMED FACT: two people were burned.',
+    isOfficialComms: false,
     isReply: true,
   };
   const crisis = buildTopicAwareReactionPrompt({ ...shared, phase: 'crisis' });
@@ -182,10 +192,7 @@ test('topic prompt leads with the post, fences the crisis, and swaps in the peac
   assert.equal(peace.system.includes('CRISIS CONTEXT:'), false);
   assert.equal(peace.system.includes(CRISIS), false);
   assert.equal(peace.system.includes('CONFIRMED FACT'), false);
-  assert.match(
-    peace.system,
-    /Ordinary day\. Nothing unusual has happened to McDonald's/,
-  );
+  assert.match(peace.system, /Ordinary day\. Nothing unusual has happened to McDonald's/);
   assert.match(peace.system, /Never invent details/);
   assert.ok(peace.system.indexOf('POST CONTEXT:') < peace.system.indexOf('PEACE:'));
   assert.ok(peace.system.indexOf('PEACE:') < peace.system.indexOf('AUTHOR:'));
@@ -199,7 +206,46 @@ test('topic prompt leads with the post, fences the crisis, and swaps in the peac
   assert.match(page.system, /This is McDonald's speaking officially/);
 });
 
-test("a promo jab classifies as a bridge, keeps both stances, and drops a stay reply that leaks", () => {
+test('a personal official statement uses official wording and the media instruction', () => {
+  const prompt = buildTopicAwareReactionPrompt({
+    phase: 'crisis',
+    postFormat: 'official_statement',
+    playerHandle: '@sam_player',
+    playerContent: 'We have confirmed two injuries and will update at noon.',
+    imagePrompt: 'photo of the holding statement on a phone',
+    authorIsPage: false,
+    orgName: 'Dyson',
+    topicKind: 'crisis',
+    parent: null,
+    threadReplies: [],
+    addressedComment: null,
+    personas: [
+      {
+        handle: '@maya',
+        name: 'Maya',
+        personality: 'reporter',
+        bias: 'none',
+        type: 'npc_media',
+        reactionType: 'cover',
+        stance: 'engage',
+      },
+    ],
+    crisisDescription: CRISIS,
+    officialScrutinyBlock:
+      'OFFICIAL STATEMENT SCRUTINY: never sarcastic or mocking. Cite the two injuries.',
+    isOfficialComms: true,
+    isReply: false,
+  });
+  assert.ok(prompt.system.includes(ATTACK_OFFICIAL));
+  assert.equal(prompt.system.includes(ATTACK_HOSTILE), false);
+  assert.equal(prompt.system.includes('mock them'), false);
+  assert.ok(prompt.system.includes(MEDIA_REACT_LINE));
+  assert.ok(prompt.system.includes('never sarcastic or mocking'));
+  assert.ok(prompt.system.includes(PERSONAL_AUTHOR_BLOCK));
+  assert.ok(prompt.user.includes('[Attached media: photo of the holding statement on a phone]'));
+});
+
+test('a promo jab classifies as a bridge, keeps both stances, and drops a stay reply that leaks', () => {
   const checked = checkTopicReplies({
     classification: { label: 'bridge', bridge_topic: 'Dyson recall', confidence: 0.91 },
     reactions: [
@@ -362,11 +408,14 @@ test('topic columns warn once and a missing column is stripped on insert', async
   resetTopicSchemaForTests();
 
   const attempts: Array<Record<string, unknown>> = [];
-  const result = await insertSocialPost({ content: 'hi', topic_kind: 'normal' }, async (payload) => {
-    attempts.push(payload);
-    if (attempts.length === 1) return { data: null, error: { code: '42703', message: 'column' } };
-    return { data: { id: 'p1' }, error: null };
-  });
+  const result = await insertSocialPost(
+    { content: 'hi', topic_kind: 'normal' },
+    async (payload) => {
+      attempts.push(payload);
+      if (attempts.length === 1) return { data: null, error: { code: '42703', message: 'column' } };
+      return { data: { id: 'p1' }, error: null };
+    },
+  );
   assert.equal(topicSchemaMissing(), true);
   assert.deepEqual(attempts[0], { content: 'hi', topic_kind: 'normal' });
   assert.deepEqual(attempts[1], { content: 'hi' });
@@ -452,33 +501,99 @@ const playerPost = {
   post_format: 'text',
   platform: 'x_twitter',
   user_id: 'user-1',
+  reply_to_post_id: 'parent-1',
 };
+
+const npcPost = {
+  id: 'npc-1',
+  country: 'SG',
+  author_handle: '@rival_page',
+  author_type: 'official_account',
+  content: 'Their statement is a joke',
+  post_format: 'text',
+  platform: 'x_twitter',
+  reply_to_post_id: 'parent-1',
+};
+
+function recordingGradeRuntime(): GradeRuntime & { graded: number } {
+  const runtime = {
+    graded: 0,
+    async loadSession() {
+      return { scenario_id: 'sc-1', start_time: null };
+    },
+    async loadScenario() {
+      return { description: 'Battery recall', initial_state: {} };
+    },
+    async loadParentContent() {
+      return 'parent text';
+    },
+    async getPlayerTeamContext() {
+      return null;
+    },
+    async gradePlayerContent() {
+      runtime.graded += 1;
+      return {
+        format: 'text',
+        accuracy: 55,
+        tone: 55,
+        cultural_sensitivity: 55,
+        persuasiveness: 55,
+        completeness: 55,
+        clarity: 55,
+        overall: 55,
+        feedback: 'ok',
+        strengths: [],
+        improvements: [],
+        dimensions: {},
+        signals: {},
+      };
+    },
+    async updateScore() {},
+    async startSnapshot() {},
+    async startConsequence() {},
+  };
+  return runtime;
+}
+
+async function withTopicReplies<T>(run: () => Promise<T>): Promise<T> {
+  const previous = env.enableTopicAwareReplies;
+  env.enableTopicAwareReplies = true;
+  resetTopicSchemaForTests();
+  try {
+    return await run();
+  } finally {
+    env.enableTopicAwareReplies = previous;
+    resetTopicSchemaForTests();
+  }
+}
 
 test('flags off: one legacy prompt is sent and the service does not grade or label', async () => {
   assert.equal(env.enableTopicAwareReplies, false);
-  const seen: Array<{ messages: Array<{ content: string }>; label: string; temperature: number; maxTokens: number; tier: string }> = [];
+  const seen: Array<{
+    messages: Array<{ content: string }>;
+    label: string;
+    temperature: number;
+    maxTokens: number;
+    tier: string;
+  }> = [];
   const client: ReactionChatClient = {
     async chatJson(options) {
       seen.push({
-        messages: options.messages,
-        label: options.label,
-        temperature: options.temperature,
-        maxTokens: options.maxTokens,
+        messages: options.messages.map((message) => ({
+          content: typeof message.content === 'string' ? message.content : '',
+        })),
+        label: options.label ?? '',
+        temperature: options.temperature ?? 0,
+        maxTokens: options.maxTokens ?? 0,
         tier: options.tier,
       });
       return { reactions: [] };
     },
   };
-  const grades: string[] = [];
   const db = installSupabase({ data: null, error: null });
   try {
-    await triggerNPCReactions('sess-1', playerPost, {
-      client,
-      random: () => 0,
-      grade: async () => {
-        grades.push('graded');
-      },
-    });
+    const topic = await triggerNPCReactions('sess-1', playerPost, { client });
+    assert.equal(topic, null);
   } finally {
     db.restore();
   }
@@ -497,54 +612,16 @@ test('flags off: one legacy prompt is sent and the service does not grade or lab
     crisisDescription: 'A battery recall after units overheated in the warehouse.',
     orgName: 'Dyson',
     threadContext: '',
-    isReply: false,
+    isReply: true,
     playerContent: 'Nice breakfast deal',
     userHandle: '@player',
   });
   assert.equal(seen[0]?.messages[0]?.content, expected.system);
   assert.equal(seen[0]?.messages[1]?.content, expected.user);
-  assert.equal(grades.length, 0);
   assert.equal(db.updates.length, 0);
 });
 
-test('flag on: one call classifies, stores the label, and grades from it', async () => {
-  resetTopicSchemaForTests();
-  const seen: string[] = [];
-  const client: ReactionChatClient = {
-    async chatJson(options) {
-      seen.push(options.messages[0]?.content || '');
-      return {
-        classification: { label: 'bridge', bridge_topic: 'breakfast jab', confidence: 0.8 },
-        reactions: [],
-      };
-    },
-  };
-  const grades: Array<{ label: string; topicAware: boolean }> = [];
-  const db = installSupabase({ data: null, error: null });
-  try {
-    await triggerNPCReactions('sess-1', playerPost, {
-      topicAware: true,
-      client,
-      random: () => 0,
-      grade: async (input) => {
-        grades.push({ label: input.label, topicAware: input.topicAware });
-      },
-    });
-  } finally {
-    db.restore();
-    resetTopicSchemaForTests();
-  }
-  assert.equal(seen.length, 1);
-  assert.match(seen[0] || '', /POST CONTEXT:/);
-  assert.ok((seen[0] || '').indexOf('POST CONTEXT:') < (seen[0] || '').indexOf('CRISIS CONTEXT:'));
-  assert.deepEqual(db.updates, [
-    { topic_class: 'bridge', topic_confidence: 0.8, topic_bridge: 'breakfast jab' },
-  ]);
-  assert.deepEqual(grades, [{ label: 'bridge', topicAware: true }]);
-});
-
-test('flag on with migration 282 missing stores nothing and grades as unclassified', async () => {
-  resetTopicSchemaForTests();
+test('flag on: an NPC post is classified in the return value and is not labelled or graded', async () => {
   const client: ReactionChatClient = {
     async chatJson() {
       return {
@@ -553,32 +630,116 @@ test('flag on with migration 282 missing stores nothing and grades as unclassifi
       };
     },
   };
-  const grades: string[] = [];
-  const db = installSupabase({ data: null, error: { code: '42703', message: 'column topic_class' } });
+  const db = installSupabase({ data: null, error: null });
   try {
-    await triggerNPCReactions('sess-1', playerPost, {
-      topicAware: true,
-      client,
-      random: () => 0,
-      grade: async (input) => {
-        grades.push(input.label);
-      },
+    await withTopicReplies(async () => {
+      const topic = await triggerNPCReactions('sess-1', npcPost, { client });
+      assert.equal(topic?.label, 'off_topic');
+      assert.equal(topic?.postKind, 'crisis');
     });
-    assert.equal(grades[0], 'unclassified');
-    assert.equal(topicSchemaMissing(), true);
-    const before = db.updates.length;
-    await triggerNPCReactions('sess-1', { ...playerPost, id: 'post-2' }, {
-      topicAware: true,
-      client,
-      random: () => 0,
-      grade: async (input) => {
-        grades.push(input.label);
-      },
-    });
-    assert.equal(db.updates.length, before);
-    assert.deepEqual(grades, ['unclassified', 'unclassified']);
   } finally {
     db.restore();
-    resetTopicSchemaForTests();
   }
+  assert.equal(db.updates.length, 0);
+});
+
+test('flag on: the player path stores the label and grades a bridge', async () => {
+  const seen: string[] = [];
+  const client: ReactionChatClient = {
+    async chatJson(options) {
+      const content = options.messages[0]?.content;
+      seen.push(typeof content === 'string' ? content : '');
+      return {
+        classification: { label: 'bridge', bridge_topic: 'breakfast jab', confidence: 0.8 },
+        reactions: [],
+      };
+    },
+  };
+  const runtime = recordingGradeRuntime();
+  const db = installSupabase({ data: null, error: null });
+  try {
+    await withTopicReplies(() =>
+      gradePlayerPostFromReactions(
+        {
+          sessionId: 'sess-1',
+          post: playerPost,
+          userId: 'user-1',
+          content: playerPost.content,
+          postFormat: 'text',
+          imagePrompt: undefined,
+          replyToPostId: 'parent-1',
+          postAsPage: false,
+        },
+        { client },
+        runtime,
+      ),
+    );
+  } finally {
+    db.restore();
+  }
+  assert.equal(seen.length, 1);
+  assert.ok((seen[0] || '').indexOf('POST CONTEXT:') < (seen[0] || '').indexOf('CRISIS CONTEXT:'));
+  assert.equal((seen[0] || '').includes(ATTACK_HOSTILE), true);
+  assert.deepEqual(db.updates, [
+    { topic_class: 'bridge', topic_confidence: 0.8, topic_bridge: 'breakfast jab' },
+  ]);
+  assert.equal(runtime.graded, 1);
+});
+
+test('flag on with migration 282 missing stores nothing and grades as unclassified', async () => {
+  const client: ReactionChatClient = {
+    async chatJson() {
+      return {
+        classification: { label: 'off_topic', bridge_topic: '', confidence: 0.9 },
+        reactions: [],
+      };
+    },
+  };
+  const runtime = recordingGradeRuntime();
+  const db = installSupabase({
+    data: null,
+    error: { code: '42703', message: 'column topic_class' },
+  });
+  try {
+    await withTopicReplies(async () => {
+      await gradePlayerPostFromReactions(
+        {
+          sessionId: 'sess-1',
+          post: playerPost,
+          userId: 'user-1',
+          content: playerPost.content,
+          postFormat: 'text',
+          imagePrompt: undefined,
+          replyToPostId: 'parent-1',
+          postAsPage: false,
+        },
+        { client },
+        runtime,
+      );
+      assert.equal(topicSchemaMissing(), true);
+      const before = db.updates.length;
+      await gradePlayerPostFromReactions(
+        {
+          sessionId: 'sess-1',
+          post: { ...playerPost, id: 'post-2' },
+          userId: 'user-1',
+          content: playerPost.content,
+          postFormat: 'text',
+          imagePrompt: undefined,
+          replyToPostId: 'parent-1',
+          postAsPage: false,
+        },
+        { client },
+        runtime,
+      );
+      assert.equal(db.updates.length, before);
+    });
+  } finally {
+    db.restore();
+  }
+  assert.equal(runtime.graded, 2);
+  assert.equal(
+    db.updates.some((row) => JSON.stringify(row).includes('topic_class')),
+    false,
+  );
 });

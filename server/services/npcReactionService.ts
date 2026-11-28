@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { chatJson } from './ai/chatClient.js';
+import { chatJson, type ChatOptions } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import {
   notifyPostReply,
@@ -9,8 +9,8 @@ import {
   notifyMention,
   extractMentions,
 } from './socialNotificationService.js';
-import { gradeIfCrisisActivity, type GradeActivityInput } from './topic/gradeIfCrisisActivity.js';
 import { buildLegacyReactionMessages } from './topic/legacyReactionPrompt.js';
+import { formatPersonaReactionLine, isCompetitorPersona } from './topic/reactionPromptShared.js';
 import {
   assignBridgeStances,
   buildTopicAwareReactionPrompt,
@@ -32,25 +32,26 @@ export interface ReactionChatResult {
 }
 
 export interface ReactionChatClient {
-  chatJson(options: {
-    tier: 'standard';
-    json: true;
-    temperature: number;
-    maxTokens: number;
-    label: string;
-    messages: Array<{ role: 'system' | 'user'; content: string }>;
-  }): Promise<ReactionChatResult | null>;
+  chatJson(
+    options: Pick<
+      ChatOptions,
+      'tier' | 'json' | 'temperature' | 'maxTokens' | 'label' | 'messages'
+    >,
+  ): Promise<ReactionChatResult | null>;
 }
 
 export interface NpcReactionOptions {
   /** WP3 passes `peace`. Until then every caller leaves this unset, which is crisis. */
   phase?: TopicPhase;
   client?: ReactionChatClient;
-  /** Test override. Callers omit it and the env flag decides. */
-  topicAware?: boolean;
-  grade?: (input: GradeActivityInput) => Promise<void>;
-  /** Test override for persona selection. Callers omit it and Math.random is used. */
-  random?: () => number;
+}
+
+/** What the reaction call decided. Null when topic replies are off, or the call threw. */
+export interface TopicReactionResult {
+  label: TopicLabel;
+  confidence: number | null;
+  bridgeTopic: string;
+  postKind: PostKind;
 }
 
 interface NPCPersona {
@@ -65,6 +66,8 @@ interface NPCPersona {
 }
 
 const PARENT_COLUMNS = 'content, author_handle, author_display_name, author_type' as const;
+const PARENT_WITH_KIND =
+  'content, author_handle, author_display_name, author_type, topic_kind' as const;
 
 interface ParentPostRow {
   content: string;
@@ -86,7 +89,7 @@ async function loadParentPost(id: string, withTopicKind: boolean): Promise<Paren
   }
   const wide = await supabaseAdmin
     .from('social_posts')
-    .select(`${PARENT_COLUMNS}, topic_kind` as typeof PARENT_COLUMNS)
+    .select(PARENT_WITH_KIND)
     .eq('id', id)
     .single();
   if (wide.error && isTopicSchemaMissing(wide.error)) {
@@ -102,57 +105,36 @@ async function loadParentPost(id: string, withTopicKind: boolean): Promise<Paren
   return wide.data as ParentPostRow;
 }
 
-async function writePlayerTopic(
-  postId: string,
-  checked: { label: TopicLabel; confidence: number | null; bridgeTopic: string },
-): Promise<{ columnsAvailable: boolean }> {
-  if (!postId || topicSchemaMissing()) return { columnsAvailable: false };
-  const { error } = await supabaseAdmin
-    .from('social_posts')
-    .update({
-      topic_class: checked.label,
-      topic_confidence: checked.confidence,
-      topic_bridge: checked.bridgeTopic || null,
-    })
-    .eq('id', postId);
-  if (error && isTopicSchemaMissing(error)) {
-    noteTopicSchemaMissing();
-    return { columnsAvailable: false };
-  }
-  if (error) {
-    logger.warn({ error, postId }, 'Failed to store topic class');
-    return { columnsAvailable: true };
-  }
-  return { columnsAvailable: true };
+function unclassifiedTopic(postKind: PostKind): TopicReactionResult {
+  return { label: 'unclassified', confidence: null, bridgeTopic: '', postKind };
 }
 
 export async function triggerNPCReactions(
   sessionId: string,
   playerPost: Record<string, unknown>,
   options?: NpcReactionOptions,
-): Promise<void> {
+): Promise<TopicReactionResult | null> {
   const client = options?.client;
-  const random = options?.random ?? Math.random;
-  if (!env.aiEnabled && !client) return;
+  if (!env.aiEnabled && !client) return null;
 
-  const topicAware = options?.topicAware ?? env.enableTopicAwareReplies;
+  const topicAware = env.enableTopicAwareReplies;
   const phase: TopicPhase = options?.phase ?? 'crisis';
-  let topicLabel: TopicLabel = 'unclassified';
-  let topicClassified = false;
-  let topicColumnsAvailable = true;
-  let topicPostKind: PostKind = 'crisis';
-  let parentForPrompt: ParentPostRow | null = null;
-  let threadReplyRows: Array<{ authorHandle: string; content: string }> = [];
-  let addressedComment: { handle: string; content: string } | null = null;
 
   try {
+    let topicPostKind: PostKind = 'crisis';
+    let parentForPrompt: ParentPostRow | null = null;
+    let threadReplyRows: Array<{ authorHandle: string; content: string }> = [];
+    let addressedComment: { handle: string; content: string } | null = null;
+    const bail = (postKind: PostKind = topicPostKind): TopicReactionResult | null =>
+      topicAware ? unclassifiedTopic(postKind) : null;
+
     const { data: session } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id')
       .eq('id', sessionId)
       .single();
 
-    if (!session?.scenario_id) return;
+    if (!session?.scenario_id) return bail();
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
@@ -160,13 +142,13 @@ export async function triggerNPCReactions(
       .eq('id', session.scenario_id)
       .single();
 
-    if (!scenario) return;
+    if (!scenario) return bail();
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const allPersonas = (initialState.npc_personas || []) as Array<
       NPCPersona & { country?: string | null }
     >;
-    if (allPersonas.length === 0) return;
+    if (allPersonas.length === 0) return bail();
     // Contract §5.3: reactions come from personas in the post's country (the player's org
     // country for top-level posts; the row's own country when already stamped).
     const postCountry =
@@ -240,13 +222,10 @@ export async function triggerNPCReactions(
 
     const probabilityBoost = isReply ? 2.0 : 1.0;
     const isOfficialPagePost = String(playerPost.author_type) === 'official_account';
-    const isCompetitor = (p: NPCPersona) =>
-      /competitor|rival|competing|alternative/i.test(p.personality) || /competitive/i.test(p.bias);
-
     const reactingNPCs: Array<{ persona: NPCPersona; reactionType: string }> = [];
 
     for (const persona of personas) {
-      const roll = random();
+      const roll = Math.random();
 
       if (!isOfficialPagePost && !isReply) {
         // Personal profile post: only public NPCs and biased NPCs react
@@ -260,7 +239,7 @@ export async function triggerNPCReactions(
         }
       }
 
-      if (isCompetitor(persona)) {
+      if (isCompetitorPersona(persona)) {
         const threshold = isOfficialPagePost ? 0.9 : 0.5;
         if (roll < Math.min(threshold * probabilityBoost, 0.95)) {
           reactingNPCs.push({ persona, reactionType: 'position' });
@@ -308,7 +287,7 @@ export async function triggerNPCReactions(
     }
 
     if (isReply && reactingNPCs.length === 0 && personas.length > 0) {
-      const randomPersona = personas[Math.floor(random() * personas.length)];
+      const randomPersona = personas[Math.floor(Math.random() * personas.length)];
       reactingNPCs.push({
         persona: randomPersona,
         reactionType: randomPersona.bias && randomPersona.bias !== 'none' ? 'attack' : 'neutral',
@@ -317,14 +296,7 @@ export async function triggerNPCReactions(
 
     const maxReactions = isOfficialPagePost ? 8 : isReply ? 5 : 6;
     const selected = reactingNPCs.slice(0, Math.min(maxReactions, reactingNPCs.length));
-    if (selected.length === 0) return;
-
-    const npcContext = selected
-      .map(
-        (s) =>
-          `${s.persona.handle} (${s.persona.name}): ${s.persona.personality}, bias: ${s.persona.bias}, type: ${s.persona.type}. React with: ${s.reactionType}`,
-      )
-      .join('\n');
+    if (selected.length === 0) return bail();
 
     // Official crisis communication (a holding statement or any post published
     // as the org page) draws substantive scrutiny, not sarcasm: NPCs must
@@ -359,20 +331,8 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
 
     const playerHandleForPrompt = String(playerPost.author_handle || '@player');
     const crisisDescription = String(scenario.description || '').substring(0, 300);
-    const legacy = buildLegacyReactionMessages({
-      postFormat,
-      playerHandle: playerHandleForPrompt,
-      npcContext,
-      isOfficialComms,
-      officialScrutinyBlock,
-      crisisDescription,
-      orgName,
-      threadContext,
-      isReply,
-      playerContent: String(playerPost.content || ''),
-      imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
-      userHandle: String(playerPost.author_handle),
-    });
+    const playerContent = String(playerPost.content || '');
+    const imagePrompt = playerPost.image_prompt ? String(playerPost.image_prompt) : undefined;
     const stances = topicAware
       ? assignBridgeStances(selected, String(playerPost.id || ''), {
           authorIsPage: isOfficialPagePost,
@@ -387,8 +347,8 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
           phase,
           postFormat,
           playerHandle: playerHandleForPrompt,
-          playerContent: String(playerPost.content || ''),
-          imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
+          playerContent,
+          imagePrompt,
           authorIsPage: isOfficialPagePost,
           orgName,
           topicKind: topicPostKind,
@@ -414,9 +374,25 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
           })),
           crisisDescription,
           officialScrutinyBlock,
+          isOfficialComms,
           isReply,
         })
-      : legacy;
+      : buildLegacyReactionMessages({
+          postFormat,
+          playerHandle: playerHandleForPrompt,
+          npcContext: selected
+            .map((entry) => formatPersonaReactionLine(entry.persona, entry.reactionType))
+            .join('\n'),
+          isOfficialComms,
+          officialScrutinyBlock,
+          crisisDescription,
+          orgName,
+          threadContext,
+          isReply,
+          playerContent,
+          imagePrompt,
+          userHandle: String(playerPost.author_handle),
+        });
 
     const request = {
       tier: 'standard' as const,
@@ -429,10 +405,13 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
         { role: 'user' as const, content: prompted.user },
       ],
     };
-    const parsed = client ? await client.chatJson(request) : await chatJson<ReactionChatResult>(request);
+    const parsed = client
+      ? await client.chatJson(request)
+      : await chatJson<ReactionChatResult>(request);
 
-    if (!parsed) return;
+    if (!parsed) return bail();
     let reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
+    let topic: TopicReactionResult | null = null;
 
     if (topicAware) {
       const peacePeriod = (initialState.peace_period || {}) as { leak_terms?: unknown };
@@ -449,10 +428,12 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
         minConfidence: env.topicBridgeMinConfidence,
       });
       reactions = checked.reactions;
-      const wrote = await writePlayerTopic(String(playerPost.id || ''), checked);
-      topicColumnsAvailable = wrote.columnsAvailable && !topicSchemaMissing();
-      topicLabel = topicColumnsAvailable ? checked.label : 'unclassified';
-      topicClassified = true;
+      topic = {
+        label: checked.label,
+        confidence: checked.confidence,
+        bridgeTopic: checked.bridgeTopic,
+        postKind: topicPostKind,
+      };
       const logged = new Set<string>();
       for (const drop of checked.dropped) {
         if (logged.has(drop.handle)) continue;
@@ -625,33 +606,9 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
       { sessionId, playerPostId: playerPost.id, reactionCount: reactions.length },
       'NPC reactions scheduled',
     );
+    return topic;
   } catch (err) {
     logger.error({ err, sessionId }, 'NPC reaction trigger failed');
-    if (!topicClassified) topicLabel = 'unclassified';
-  } finally {
-    if (topicAware) {
-      const columnsAvailable = topicColumnsAvailable && !topicSchemaMissing();
-      const label = columnsAvailable ? topicLabel : 'unclassified';
-      const grader = options?.grade ?? gradeIfCrisisActivity;
-      try {
-        await grader({
-          sessionId,
-          postId: String(playerPost.id || ''),
-          userId: String(playerPost.user_id || ''),
-          content: String(playerPost.content || ''),
-          postFormat: typeof playerPost.post_format === 'string' ? playerPost.post_format : undefined,
-          imagePrompt: playerPost.image_prompt ? String(playerPost.image_prompt) : undefined,
-          replyToPostId: playerPost.reply_to_post_id ? String(playerPost.reply_to_post_id) : undefined,
-          postAsPage: String(playerPost.author_type) === 'official_account',
-          topicAware: true,
-          label,
-          phase,
-          postKind: topicPostKind,
-          columnsAvailable,
-        });
-      } catch (gradeErr) {
-        logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
-      }
-    }
+    return null;
   }
 }
