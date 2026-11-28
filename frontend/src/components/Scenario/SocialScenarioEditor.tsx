@@ -46,6 +46,7 @@ import {
 } from './chainEditorModel';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { DirectorSettingsBlock, type DirectorSettings } from './DirectorSettingsBlock';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
 import { PeacePeriodCard } from './PeacePeriodCard';
 import { WrSection, WrFold, useSectionIndex, countryCode } from '../UI/Collapsible';
@@ -630,6 +631,14 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               setScen={setScen}
               scenarioId={scenarioId}
               locked={locked}
+            />
+            <DirectorSettingsBlock
+              value={(initialState.director as DirectorSettings | undefined) ?? null}
+              teams={teamList.map((team) => team.team_name).filter(Boolean)}
+              locked={locked}
+              onSave={async (next) => {
+                await saveInitialState((state) => ({ ...state, director: next }));
+              }}
             />
             <OrganisationsSection initialState={initialState} teams={teamList} />
             <StakeholdersSection

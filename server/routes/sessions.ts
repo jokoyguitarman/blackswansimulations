@@ -1570,6 +1570,14 @@ router.patch(
       }
 
       if (claimingStart && data) {
+        const seedScenarioId =
+          (data as { scenario_id?: string }).scenario_id ??
+          (session as { scenario_id?: string }).scenario_id;
+        if (seedScenarioId) {
+          void import('../services/director/directorService.js')
+            .then(({ ensureDirectorSeed }) => ensureDirectorSeed(id, seedScenarioId))
+            .catch((err) => logger.warn({ err, sessionId: id }, 'director seed was not set at start'));
+        }
         void ensureCallLines(id).catch((err) => {
           logger.warn({ err, sessionId: id }, 'call lines were not ensured at start');
         });

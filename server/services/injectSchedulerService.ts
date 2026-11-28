@@ -1299,6 +1299,7 @@ export class InjectSchedulerService {
     }
     timing.conditions = Date.now();
 
+    let chainPublished = 0;
     try {
       const { runEscalationChains } = await import('./escalation/escalationService.js');
       const capLeft = Math.max(0, env.conditionPublishMaxPerTick - conditionalPublished);
@@ -1308,7 +1309,7 @@ export class InjectSchedulerService {
         ioForChains = io;
         this.io = io;
       }
-      await runEscalationChains({
+      chainPublished = await runEscalationChains({
         sessionId: session.id,
         scenarioId: session.scenario_id,
         trainerId: session.trainer_id,
@@ -1337,9 +1338,11 @@ export class InjectSchedulerService {
     }
 
     try {
-      const { runDirector } = await import('./director/directorService.js');
+      const { scheduleDirectorWake, sweepDirectorSession } = await import(
+        './director/directorService.js'
+      );
       const stateRecord = nextState as Record<string, unknown>;
-      await runDirector({
+      const directorInput = {
         sessionId: session.id,
         scenarioId: session.scenario_id,
         trainerId: session.trainer_id,
@@ -1350,7 +1353,19 @@ export class InjectSchedulerService {
         dependencyState: Object.prototype.hasOwnProperty.call(stateRecord, 'dependency_state')
           ? (stateRecord.dependency_state as Record<string, { status: string }> | null)
           : undefined,
+      };
+      const remainingCap = Math.max(
+        0,
+        env.conditionPublishMaxPerTick - conditionalPublished - chainPublished,
+      );
+      await sweepDirectorSession({
+        sessionId: session.id,
+        elapsedMinutes,
+        trainerId: session.trainer_id,
+        remainingCap,
       });
+      // The wake may call the model for up to 40s. It must not stall this tick.
+      scheduleDirectorWake(directorInput);
     } catch (directorErr) {
       logger.warn({ err: directorErr, sessionId: session.id }, 'AI director tick failed');
     }
