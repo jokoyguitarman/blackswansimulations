@@ -2383,4 +2383,245 @@ describe('remap planner', () => {
     assert.equal(peace.posts[2]?.author.org_key, 'primary');
     assert.equal(peace.posts[2]?.content, 'Acme breakfast.');
   });
+
+  test('a rename retires the source team without a remove phase', () => {
+    const plan = planRemap(renameWorld());
+    assert.ok(plan.teams.retire.length > 0);
+    assert.ok(plan.teams.retire.every((row) => row.reason !== 'removed'));
+    assert.equal(plan.phases.includes('remove'), false);
+    assert.ok(plan.phases.includes('rename'));
+    const removed = planRemap(removalWorld());
+    assert.ok(removed.teams.retire.some((row) => row.reason === 'removed'));
+    assert.ok(removed.phases.includes('remove'));
+  });
+
+  test('retiring a dependent inject raises knock-on orphans and drops decisions on that inject', () => {
+    const source = input({
+      delta: delta({ removed_teams: [{ team_uid: 'uid-legal', team_name: 'Legal' }] }),
+      edited: snapshot([
+        snapshotOrg({
+          org_uid: 'uid-acme',
+          org_key: 'primary',
+          display_name: 'Acme',
+          short_name: 'ACME',
+          is_primary: true,
+          teams: [snapshotTeam({ team_uid: 'uid-comms', team_name: 'Communications' })],
+        }),
+      ]),
+      teams: [
+        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' }),
+        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications' }),
+      ],
+      injects: [
+        inject({ id: 'inj-only', inject_key: 'only_legal', target_teams: ['Legal'] }),
+        inject({
+          id: 'inj-bridge',
+          inject_key: 'bridge_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:only_legal'],
+          delivery_config: {
+            escalation: { on_exhausted: { publish_inject_key: 'only_legal' } },
+            mood_ladder: {
+              rungs: [
+                { id: 'angry', consequences: [{ type: 'publish_inject', inject_key: 'only_legal' }] },
+              ],
+            },
+          },
+        }),
+        inject({
+          id: 'inj-watch',
+          inject_key: 'watch_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:bridge_mail'],
+          delivery_config: {
+            escalation: { on_exhausted: { publish_inject_key: 'bridge_mail' } },
+          },
+        }),
+      ],
+    });
+    const open = planRemap(source);
+    const bridge = open.orphans.find(
+      (row) => row.inject_id === 'inj-bridge' && row.kind === 'condition',
+    );
+    assert.ok(bridge);
+    assert.ok(open.orphans.some((row) => row.id === 'chain:inj-bridge:only_legal'));
+    assert.equal(
+      open.orphans.some((row) => row.inject_id === 'inj-watch'),
+      false,
+    );
+    const plan = planRemap({
+      ...source,
+      resolutions: {
+        [bridge.id]: { choice: 'retire' },
+        'chain:inj-bridge:only_legal': { choice: 'clear' },
+      },
+    });
+    assert.ok(
+      plan.injects.retire.some((row) => row.inject_id === 'inj-bridge' && row.reason === 'dependent'),
+    );
+    assert.equal(
+      plan.orphans.some((row) => row.inject_id === 'inj-bridge'),
+      false,
+    );
+    assert.ok(
+      plan.orphans.some(
+        (row) =>
+          row.inject_id === 'inj-watch' &&
+          row.kind === 'condition' &&
+          row.target_key === 'bridge_mail',
+      ),
+    );
+    assert.ok(
+      plan.orphans.some(
+        (row) =>
+          row.inject_id === 'inj-watch' &&
+          row.kind === 'chain_target' &&
+          row.target_key === 'bridge_mail',
+      ),
+    );
+    assert.equal(plan.applicable, false);
+  });
+
+  test('retargeting onto an inject this pass retires becomes a new orphan', () => {
+    const source = input({
+      delta: delta({ removed_teams: [{ team_uid: 'uid-legal', team_name: 'Legal' }] }),
+      edited: snapshot([
+        snapshotOrg({
+          org_uid: 'uid-acme',
+          org_key: 'primary',
+          display_name: 'Acme',
+          short_name: 'ACME',
+          is_primary: true,
+          teams: [snapshotTeam({ team_uid: 'uid-comms', team_name: 'Communications' })],
+        }),
+      ]),
+      teams: [
+        team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' }),
+        team({ id: 'team-comms', team_uid: 'uid-comms', team_name: 'Communications' }),
+      ],
+      injects: [
+        inject({ id: 'inj-only', inject_key: 'only_legal', target_teams: ['Legal'] }),
+        inject({
+          id: 'inj-bridge',
+          inject_key: 'bridge_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:only_legal'],
+        }),
+        inject({
+          id: 'inj-watch',
+          inject_key: 'watch_mail',
+          target_teams: ['Communications'],
+          conditions_to_appear: ['inject_fired:only_legal'],
+        }),
+      ],
+    });
+    const open = planRemap(source);
+    const bridge = open.orphans.find((row) => row.inject_id === 'inj-bridge');
+    const watch = open.orphans.find((row) => row.inject_id === 'inj-watch');
+    assert.ok(bridge && watch);
+    const plan = planRemap({
+      ...source,
+      resolutions: {
+        [bridge.id]: { choice: 'retarget', inject_key: 'watch_mail' },
+        [watch.id]: { choice: 'retire' },
+      },
+    });
+    assert.ok(plan.injects.retire.some((row) => row.inject_id === 'inj-watch' && row.reason === 'dependent'));
+    assert.equal(plan.orphans.some((row) => row.inject_id === 'inj-watch'), false);
+    const knock = plan.orphans.find((row) => row.inject_id === 'inj-bridge');
+    assert.ok(knock);
+    assert.equal(knock.target_key, 'watch_mail');
+    assert.equal(knock.condition_key, 'inject_fired:watch_mail');
+    assert.equal(plan.applicable, false);
+  });
+
+  test('a resolution aimed at an inactive team, inject key, or organisation stays unresolved', () => {
+    const source = removalWorld();
+    const state = source.initial_state as Record<string, unknown>;
+    state.org_page = {
+      orgs: [
+        {
+          org_key: 'org_pressure_page_sg',
+          display_name: 'Page Press',
+          role: 'pressure',
+          targets_org_keys: ['org_gone'],
+        },
+      ],
+    };
+    source.delta = delta({ ...source.delta, removed_orgs: ['org_gone'] });
+    const open = planRemap(source);
+    const role = open.orphans.find((row) => row.kind === 'player_role');
+    const condition = open.orphans.find((row) => row.kind === 'condition' && row.target_key);
+    const pressure = open.orphans.find((row) => row.kind === 'pressure_targets');
+    assert.ok(role && condition && pressure);
+
+    const badTeam = planRemap({
+      ...source,
+      resolutions: { [role.id]: { choice: 'reassign', team_name: 'Ghost' } },
+    });
+    const roleOrphan = badTeam.orphans.find((row) => row.id === role.id);
+    assert.match(roleOrphan?.unresolved_reason ?? '', /Ghost/);
+    const session = badTeam.scheduled_sessions.find((row) => row.session_id === 'sess-scheduled');
+    assert.equal(session?.reassign_roles.some((row) => row.role_id === 'cs_head') ?? false, false);
+
+    const badKey = planRemap({
+      ...source,
+      resolutions: { [condition.id]: { choice: 'retarget', inject_key: 'not_generated_yet' } },
+    });
+    assert.match(
+      badKey.orphans.find((row) => row.id === condition.id)?.unresolved_reason ?? '',
+      /not_generated_yet/,
+    );
+
+    const retiredKey = planRemap({
+      ...source,
+      resolutions: { [condition.id]: { choice: 'retarget', inject_key: 'only_legal' } },
+    });
+    assert.match(
+      retiredKey.orphans.find((row) => row.id === condition.id)?.unresolved_reason ?? '',
+      /only_legal/,
+    );
+
+    const badOrg = planRemap({
+      ...source,
+      resolutions: { [pressure.id]: { choice: 'retarget', org_keys: ['org_gone', 'primary'] } },
+    });
+    assert.match(
+      badOrg.orphans.find((row) => row.id === pressure.id)?.unresolved_reason ?? '',
+      /org_gone/,
+    );
+    assert.equal(badOrg.applicable, false);
+  });
+
+  test('a registry row without an org key is kept and warned', () => {
+    const plan = planRemap(
+      input({
+        delta: delta({ removed_orgs: ['org_bravo_my'] }),
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            short_name: 'ACME',
+            is_primary: true,
+          }),
+        ]),
+        initial_state: {
+          orgs: [acme(), bravo(), { org_uid: 'uid-loose', display_name: 'Loose office' }],
+        },
+      }),
+    );
+    const warning = plan.warnings.find((row) => row.code === 'registry_missing_org_key');
+    assert.ok(warning);
+    assert.match(warning.message, /Loose office/);
+    const orgs = replaced(plan, '/orgs') as Array<{ org_uid?: string; org_key?: string }>;
+    const loose = orgs.find((org) => org.org_uid === 'uid-loose');
+    assert.ok(loose);
+    assert.equal(loose.org_key, undefined);
+    assert.equal(
+      orgs.some((org) => org.org_key === 'org_bravo_my'),
+      false,
+    );
+    assert.ok(plan.initial_state.move_to_retired.some((row) => row.key === 'org_bravo_my'));
+  });
 });

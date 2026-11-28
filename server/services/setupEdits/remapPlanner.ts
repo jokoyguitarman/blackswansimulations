@@ -98,7 +98,11 @@ export interface RemapPlannerInput {
   teams: readonly PlannerTeam[];
   injects: readonly PlannerInject[];
   sessions: readonly LobbySession[];
-  /** Trainer decisions for orphan ids. Applied before `applicable` is set. */
+  /**
+   * Trainer decisions for orphan ids. Applied before `applicable` is set.
+   * A target that is not active after the edit leaves the orphan unresolved.
+   * Knock-on references are detected again on the resolved plan.
+   */
   resolutions?: Readonly<Record<string, OrphanResolution>>;
 }
 
@@ -255,6 +259,8 @@ export interface Orphan {
   org_key?: string;
   dependency_id?: string;
   target_key?: string;
+  /** Why a supplied resolution was refused. The orphan still needs a decision. */
+  unresolved_reason?: string;
 }
 
 export interface Warning {
@@ -263,7 +269,8 @@ export interface Warning {
     | 'hand_edit_names_former_primary'
     | 'retired_role_fallback'
     | 'hand_edit_relocation'
-    | 'swap_unresolved';
+    | 'swap_unresolved'
+    | 'registry_missing_org_key';
   message: string;
   inject_id?: string;
   inject_key?: string;
@@ -390,22 +397,27 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
   const resolutions = input.resolutions;
   if (!resolutions || plan.orphans.length === 0) return plan;
   const state = asRecord(input.initial_state) ?? {};
+  const active = activeTargets(input, plan);
   const kept: Orphan[] = [];
   const removedEdges = new Set<string>();
   for (const orphan of plan.orphans) {
     const resolution = resolutions[orphan.id];
+    const reason = resolution
+      ? inactiveTargetReason(orphan, resolution, input, plan, active)
+      : null;
     if (
       resolution?.choice === 'remove' &&
       orphan.kind === 'team_dependency' &&
       orphan.dependency_id &&
       !orphan.condition_key &&
       !orphan.target_key &&
+      !reason &&
       resolutionApplies(orphan, resolution, input, plan)
     ) {
       removedEdges.add(orphan.dependency_id);
     }
-    if (!resolution || !resolutionApplies(orphan, resolution, input, plan)) {
-      kept.push(orphan);
+    if (!resolution || reason || !resolutionApplies(orphan, resolution, input, plan)) {
+      kept.push(reason ? { ...orphan, unresolved_reason: reason } : orphan);
       continue;
     }
     if (resolution.choice !== 'keep') applyOneResolution(plan, input, state, orphan, resolution);
@@ -414,12 +426,176 @@ function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan 
     (orphan) =>
       !(orphan.condition_key && orphan.dependency_id && removedEdges.has(orphan.dependency_id)),
   );
-  plan.applicable = plan.orphans.length === 0;
   plan.initial_state.move_to_retired.sort(
     (a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key),
   );
   plan.scheduled_sessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
+  refreshOrphansAfterResolutions(plan, input, state);
   return plan;
+}
+
+interface ActiveTargets {
+  teams: Set<string>;
+  injectKeys: Set<string>;
+  orgKeys: Set<string>;
+}
+
+/** Teams, inject keys and organisations that survive the edit, before resolutions retire anything further. */
+function activeTargets(input: RemapPlannerInput, plan: RemapPlan): ActiveTargets {
+  return {
+    teams: new Set(activeRoster(input).map((team) => team.team_name)),
+    injectKeys: new Set(survivingInjectKeys(plan, input)),
+    orgKeys: activeOrgKeys(input, plan),
+  };
+}
+
+function activeOrgKeys(input: RemapPlannerInput, plan: RemapPlan): Set<string> {
+  const removed = new Set(input.delta.removed_orgs);
+  const map = plan.primary_swap?.map ?? {};
+  const keys = new Set<string>();
+  for (const org of input.edited.organisations) {
+    const key = org.org_key;
+    if (!key || removed.has(key)) continue;
+    const mapped = Object.prototype.hasOwnProperty.call(map, key) ? map[key] : key;
+    if (!mapped || removed.has(mapped)) continue;
+    keys.add(mapped);
+  }
+  return keys;
+}
+
+/**
+ * A retarget or reassignment whose team, inject key or organisation is not active.
+ * Checked against the plan from before this pass, so a key retired by another
+ * decision in the same pass is a knock-on orphan rather than a rejected target.
+ */
+function inactiveTargetReason(
+  orphan: Orphan,
+  resolution: OrphanResolution,
+  input: RemapPlannerInput,
+  plan: RemapPlan,
+  active: ActiveTargets,
+): string | null {
+  const choice = resolution.choice;
+  if (choice !== 'retarget' && choice !== 'reassign') return null;
+  const teamReason = (name: string | undefined): string | null => {
+    const team = name?.trim() ?? '';
+    if (!team || active.teams.has(team)) return null;
+    return `Team "${team}" is not active after this edit.`;
+  };
+  const keyReason = (key: string | undefined): string | null => {
+    const injectKey = key?.trim() ?? '';
+    if (!injectKey || active.injectKeys.has(injectKey)) return null;
+    return `Inject key "${injectKey}" is not active after this edit.`;
+  };
+  if (choice === 'reassign') {
+    const reason = teamReason(resolution.team_name);
+    if (reason) return reason;
+    if (
+      orphan.kind === 'team_dependency' &&
+      !orphan.condition_key &&
+      !orphan.target_key &&
+      resolution.team_name?.trim() &&
+      !reassignmentAccepted(plan, input, orphan, resolution.team_name)
+    ) {
+      return `Team "${resolution.team_name.trim()}" cannot take over this dependency.`;
+    }
+    return null;
+  }
+  if (orphan.kind === 'pressure_targets') {
+    const missing = (resolution.org_keys ?? [])
+      .map((key) => key.trim())
+      .filter((key) => key.length > 0 && !active.orgKeys.has(key));
+    if (missing.length === 0) return null;
+    if (missing.length === 1) return `Organisation "${missing[0]}" is not active after this edit.`;
+    return `Organisations ${missing.map((key) => `"${key}"`).join(', ')} are not active after this edit.`;
+  }
+  return teamReason(resolution.team_name) ?? keyReason(resolution.inject_key);
+}
+
+/**
+ * Resolutions can retire an inject, or point a surviving reference at an inject
+ * this same pass retires. Detect those knock-ons, and drop decisions whose
+ * owner inject or stakeholder is now being retired.
+ */
+function refreshOrphansAfterResolutions(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+): void {
+  const retiredInjectIds = new Set(plan.injects.retire.map((row) => row.inject_id));
+  const retiredStakeholderIds = new Set(
+    plan.initial_state.move_to_retired
+      .filter((row) => row.bucket === 'stakeholders')
+      .map((row) => row.key),
+  );
+  plan.orphans = plan.orphans.filter((orphan) => {
+    if (orphan.inject_id && retiredInjectIds.has(orphan.inject_id)) return false;
+    if (orphan.stakeholder_id && retiredStakeholderIds.has(orphan.stakeholder_id)) return false;
+    return true;
+  });
+  const dependentKeys = new Set(
+    plan.injects.retire
+      .filter((row) => row.reason === 'dependent' && row.inject_key)
+      .map((row) => row.inject_key),
+  );
+  if (dependentKeys.size > 0) {
+    const incoming: Orphan[] = [];
+    for (const inject of input.injects) {
+      if (retiredInjectIds.has(inject.id)) continue;
+      const view = effectiveInjectFields(plan, inject);
+      pushConditionRefOrphans(
+        incoming,
+        inject,
+        conditionKeysOf(view.appear, view.cancel),
+        dependentKeys,
+      );
+      pushChainPublishOrphan(incoming, inject, view.config, dependentKeys);
+      pushMoodOrphans(
+        incoming,
+        inject.id,
+        injectKeyOf(inject),
+        view.config?.mood_ladder,
+        dependentKeys,
+        'inject',
+      );
+    }
+    const stakeholders = objectList(patchValue(plan, '/stakeholders', state.stakeholders));
+    for (const row of stakeholders) {
+      pushMoodOrphans(incoming, textOf(row.id), '', row.mood_ladder, dependentKeys, 'stakeholder');
+    }
+    const dependencies = asRecord(patchValue(plan, '/team_dependencies', state.team_dependencies));
+    if (dependencies && Array.isArray(dependencies.edges)) {
+      pushDependencyInjectOrphans(incoming, dependencies.edges, dependentKeys);
+    }
+    const seen = new Set(plan.orphans.map((orphan) => orphan.id));
+    for (const orphan of incoming) {
+      if (seen.has(orphan.id)) continue;
+      seen.add(orphan.id);
+      plan.orphans.push(orphan);
+    }
+  }
+  sortOrphans(plan.orphans);
+  plan.applicable = plan.orphans.length === 0;
+}
+
+function effectiveInjectFields(
+  plan: RemapPlan,
+  inject: PlannerInject,
+): { appear: unknown; cancel: unknown; config: Record<string, unknown> | null } {
+  const live = plan.injects.rewrite_in_place.find((row) => row.inject_id === inject.id);
+  const cow = plan.injects.cow.find((row) => row.source_id === inject.id);
+  const changes = live?.changes ?? cow?.changes;
+  return {
+    appear:
+      changes && 'conditions_to_appear' in changes
+        ? changes.conditions_to_appear
+        : inject.conditions_to_appear,
+    cancel:
+      changes && 'conditions_to_cancel' in changes
+        ? changes.conditions_to_cancel
+        : inject.conditions_to_cancel,
+    config: changes?.delivery_config ?? asRecord(inject.delivery_config),
+  };
 }
 
 function resolutionApplies(
@@ -1706,21 +1882,8 @@ function noteInjectOrphans(
         ),
       });
     }
-    if ('error' in parsed) continue;
-    for (const target of referencedInjectKeys(parsed)) {
-      if (!retiredKeys.has(target)) continue;
-      working.orphans.push({
-        id: `condition:${inject.id}:${key}:ref:${target}`,
-        kind: 'condition',
-        message: `Condition ${key} references retired inject ${target}.`,
-        choices: ['keep', 'retire_inject', 'retarget'],
-        inject_id: inject.id,
-        inject_key: injectKey,
-        condition_key: key,
-        target_key: target,
-      });
-    }
   }
+  pushConditionRefOrphans(working.orphans, inject, conditions, retiredKeys);
   noteChainOrphans(working, inject, config, retiredKeys);
   noteMoodOrphans(working, inject.id, injectKey, config?.mood_ladder, retiredKeys, 'inject');
   const roleId = typeof config?.target_role_id === 'string' ? config.target_role_id : '';
@@ -1742,28 +1905,123 @@ function referencedInjectKeys(parsed: {
   return injectKeysInParsedCondition(parsed);
 }
 
+function pushConditionRefOrphans(
+  orphans: Orphan[],
+  inject: PlannerInject,
+  conditions: string[],
+  retiredKeys: Set<string>,
+): void {
+  const injectKey = injectKeyOf(inject);
+  for (const key of conditions) {
+    const parsed = parseConditionKey(key, { allowPlaceholders: true });
+    if ('error' in parsed) continue;
+    for (const target of referencedInjectKeys(parsed)) {
+      if (!retiredKeys.has(target)) continue;
+      orphans.push({
+        id: `condition:${inject.id}:${key}:ref:${target}`,
+        kind: 'condition',
+        message: `Condition ${key} references retired inject ${target}.`,
+        choices: ['keep', 'retire_inject', 'retarget'],
+        inject_id: inject.id,
+        inject_key: injectKey,
+        condition_key: key,
+        target_key: target,
+      });
+    }
+  }
+}
+
+function pushChainPublishOrphan(
+  orphans: Orphan[],
+  inject: PlannerInject,
+  config: Record<string, unknown> | null,
+  retiredKeys: Set<string>,
+): void {
+  const escalation = asRecord(config?.escalation);
+  const exhausted = asRecord(escalation?.on_exhausted);
+  const publish =
+    typeof exhausted?.publish_inject_key === 'string' ? exhausted.publish_inject_key : '';
+  if (!publish || !retiredKeys.has(publish)) return;
+  orphans.push({
+    id: `chain:${inject.id}:${publish}`,
+    kind: 'chain_target',
+    message: `Escalation on ${injectKeyOf(inject)} publishes retired inject ${publish} when it is exhausted.`,
+    choices: ['keep', 'clear', 'retarget'],
+    inject_id: inject.id,
+    inject_key: injectKeyOf(inject),
+    target_key: publish,
+  });
+}
+
+function pushMoodOrphans(
+  orphans: Orphan[],
+  ownerId: string,
+  ownerKey: string,
+  ladder: unknown,
+  retiredKeys: Set<string>,
+  owner: 'inject' | 'stakeholder',
+): void {
+  const record = asRecord(ladder);
+  if (!record || !Array.isArray(record.rungs)) return;
+  for (const rung of record.rungs) {
+    const rungRecord = asRecord(rung);
+    const consequences = Array.isArray(rungRecord?.consequences) ? rungRecord.consequences : [];
+    for (const consequence of consequences) {
+      const item = asRecord(consequence);
+      if (!item || item.type !== 'publish_inject') continue;
+      const key = typeof item.inject_key === 'string' ? item.inject_key : '';
+      if (!key || !retiredKeys.has(key)) continue;
+      orphans.push({
+        id: `mood:${owner}:${ownerId}:${key}`,
+        kind: 'mood_consequence',
+        message: `A mood rung publishes retired inject ${key}.`,
+        choices: ['keep', 'clear', 'retarget'],
+        ...(owner === 'inject'
+          ? { inject_id: ownerId, inject_key: ownerKey }
+          : { stakeholder_id: ownerId }),
+        target_key: key,
+      });
+    }
+  }
+}
+
+function pushDependencyInjectOrphans(
+  orphans: Orphan[],
+  edges: unknown[],
+  retiredKeys: Set<string>,
+): void {
+  for (const raw of edges) {
+    const edge = asRecord(raw);
+    if (!edge) continue;
+    const id = textOf(edge.id) || 'edge';
+    const due = asRecord(edge.due);
+    const keys = [
+      ...stringList(edge.consequence_keys),
+      ...(due?.after_inject_key ? [textOf(due.after_inject_key)] : []),
+    ];
+    for (const key of keys) {
+      if (!key || !retiredKeys.has(key)) continue;
+      orphans.push({
+        id: `dependency:${id}:inject:${key}`,
+        kind: 'team_dependency',
+        message: `Team dependency ${id} references retired inject ${key}.`,
+        choices: ['keep', 'clear', 'retarget'],
+        dependency_id: id,
+        target_key: key,
+      });
+    }
+  }
+}
+
 function noteChainOrphans(
   working: Working,
   inject: PlannerInject,
   config: Record<string, unknown> | null,
   retiredKeys: Set<string>,
 ): void {
+  pushChainPublishOrphan(working.orphans, inject, config, retiredKeys);
   const escalation = asRecord(config?.escalation);
   if (!escalation) return;
-  const exhausted = asRecord(escalation.on_exhausted);
-  const publish =
-    typeof exhausted?.publish_inject_key === 'string' ? exhausted.publish_inject_key : '';
-  if (publish && retiredKeys.has(publish)) {
-    working.orphans.push({
-      id: `chain:${inject.id}:${publish}`,
-      kind: 'chain_target',
-      message: `Escalation on ${injectKeyOf(inject)} publishes retired inject ${publish} when it is exhausted.`,
-      choices: ['keep', 'clear', 'retarget'],
-      inject_id: inject.id,
-      inject_key: injectKeyOf(inject),
-      target_key: publish,
-    });
-  }
   const steps = Array.isArray(escalation.steps) ? escalation.steps : [];
   steps.forEach((step, index) => {
     const record = asRecord(step);
@@ -1792,28 +2050,7 @@ function noteMoodOrphans(
   retiredKeys: Set<string>,
   owner: 'inject' | 'stakeholder',
 ): void {
-  const record = asRecord(ladder);
-  if (!record || !Array.isArray(record.rungs)) return;
-  for (const rung of record.rungs) {
-    const rungRecord = asRecord(rung);
-    const consequences = Array.isArray(rungRecord?.consequences) ? rungRecord.consequences : [];
-    for (const consequence of consequences) {
-      const item = asRecord(consequence);
-      if (!item || item.type !== 'publish_inject') continue;
-      const key = typeof item.inject_key === 'string' ? item.inject_key : '';
-      if (!key || !retiredKeys.has(key)) continue;
-      working.orphans.push({
-        id: `mood:${owner}:${ownerId}:${key}`,
-        kind: 'mood_consequence',
-        message: `A mood rung publishes retired inject ${key}.`,
-        choices: ['keep', 'clear', 'retarget'],
-        ...(owner === 'inject'
-          ? { inject_id: ownerId, inject_key: ownerKey }
-          : { stakeholder_id: ownerId }),
-        target_key: key,
-      });
-    }
-  }
+  pushMoodOrphans(working.orphans, ownerId, ownerKey, ladder, retiredKeys, owner);
 }
 
 function retiredRoleIds(working: Working): Set<string> {
@@ -1894,6 +2131,11 @@ function planOrgs(
   for (const org of orgs) {
     const key = textOf(org.org_key);
     if (!key) {
+      const label = textOf(org.display_name) || textOf(org.org_uid) || 'entry';
+      working.warnings.push({
+        code: 'registry_missing_org_key',
+        message: `Organisation ${label} has no org_key, so this edit left it unchanged.`,
+      });
       next.push(org);
       continue;
     }
@@ -2454,27 +2696,7 @@ function noteRetiredDependencyKeys(working: Working, document: DependencyDocumen
   if (!doc || !Array.isArray(doc.edges)) return;
   const retired = retiredInjectKeys(working);
   if (retired.size === 0) return;
-  for (const raw of doc.edges) {
-    const edge = asRecord(raw);
-    if (!edge) continue;
-    const id = textOf(edge.id) || 'edge';
-    const due = asRecord(edge.due);
-    const keys = [
-      ...stringList(edge.consequence_keys),
-      ...(due?.after_inject_key ? [textOf(due.after_inject_key)] : []),
-    ];
-    for (const key of keys) {
-      if (!key || !retired.has(key)) continue;
-      working.orphans.push({
-        id: `dependency:${id}:inject:${key}`,
-        kind: 'team_dependency',
-        message: `Team dependency ${id} references retired inject ${key}.`,
-        choices: ['keep', 'clear', 'retarget'],
-        dependency_id: id,
-        target_key: key,
-      });
-    }
-  }
+  pushDependencyInjectOrphans(working.orphans, doc.edges, retired);
 }
 
 function rewriteTeamRef(value: unknown, working: Working): unknown {
@@ -2837,7 +3059,7 @@ function phasesOf(
     phases.push('rename');
   }
   if (
-    teams.retire.length > 0 ||
+    teams.retire.some((row) => row.reason === 'removed') ||
     injects.retire.length > 0 ||
     working.removedOrgKeys.size > 0 ||
     working.removedPressure.size > 0 ||
