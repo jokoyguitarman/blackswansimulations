@@ -33,7 +33,11 @@ import {
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
 import { enqueueJudgement } from '../judging/judgeService.js';
 import { slugifyTeamName } from '../conditions/conditionCatalog.js';
-import { loadTeamSignalFacts } from '../conditions/teamSignalService.js';
+import {
+  loadTeamSignalFacts,
+  notePostgrestAggregateFailure,
+  postgrestAggregatesUnavailable,
+} from '../conditions/teamSignalService.js';
 import {
   firstEmailMinuteByStakeholder,
   summariseActionCounts,
@@ -400,9 +404,18 @@ export async function setDeliveryCallState(input: {
 export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,
-  options?: { teamSignals?: boolean },
+  options?: {
+    teamSignals?: boolean;
+    /** Scenario initial_state the tick already loaded. */
+    initialState?: unknown;
+    initialStateKnown?: boolean;
+  },
 ): Promise<CommsState> {
   const teamSignals = options?.teamSignals !== false;
+  const scenarioState = {
+    initialState: options?.initialState,
+    initialStateKnown: options?.initialStateKnown === true,
+  };
   if (ledgerTablesMissing()) {
     return attachCommsFacts(
       sessionId,
@@ -410,6 +423,8 @@ export async function loadCommsState(
       null,
       emptyCommsState(elapsedMinutes),
       teamSignals,
+      undefined,
+      scenarioState,
     );
   }
   try {
@@ -438,6 +453,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
+        scenarioState,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -448,6 +464,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
+        scenarioState,
       );
     }
     const built = buildCommsState({
@@ -465,6 +482,7 @@ export async function loadCommsState(
       built,
       teamSignals,
       clock.openedAt,
+      scenarioState,
     );
   } catch (err) {
     failLedger(err, 'loadCommsState');
@@ -474,6 +492,8 @@ export async function loadCommsState(
       null,
       emptyCommsState(elapsedMinutes),
       teamSignals,
+      undefined,
+      scenarioState,
     );
   }
 }
@@ -640,6 +660,7 @@ async function attachCommsFacts(
   state: CommsState,
   teamSignals = true,
   openedAt?: string | null,
+  scenarioState?: { initialState?: unknown; initialStateKnown?: boolean },
 ): Promise<CommsState> {
   try {
     const needClock = startTime == null || (env.enablePeacePeriod && openedAt === undefined);
@@ -650,10 +671,14 @@ async function attachCommsFacts(
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
       loadActionCounts(sessionId, clockStart),
-      loadScenarioStakeholders(sessionId),
+      loadScenarioStakeholders(sessionId, scenarioState),
       simCallsAvailable(),
       teamSignals
-        ? loadTeamSignalFacts(sessionId, clockStart, { openedAt: opened })
+        ? loadTeamSignalFacts(sessionId, clockStart, {
+            openedAt: opened,
+            initialState: scenarioState?.initialState,
+            initialStateKnown: scenarioState?.initialStateKnown,
+          })
         : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
@@ -779,6 +804,7 @@ async function loadActionCounts(
   sessionId: string,
   startTime: string | null,
 ): Promise<ActionCountLoad> {
+  if (postgrestAggregatesUnavailable()) return scanActionRows(sessionId, startTime);
   try {
     const { data, error } = await supabaseAdmin
       .from('player_actions')
@@ -807,12 +833,14 @@ async function loadActionCounts(
         email: { rows: [], known: false, truncated: false },
       };
     }
+    notePostgrestAggregateFailure(error);
     warnFactOnce(
       'action_count_aggregate_failed',
       error,
       'Grouped action counts failed; scanning player_actions instead',
     );
   } catch (err) {
+    notePostgrestAggregateFailure(err);
     warnFactOnce(
       'action_count_aggregate_failed',
       err,
@@ -937,10 +965,30 @@ async function loadEmailSentFacts(
   }
 }
 
-async function loadScenarioStakeholders(sessionId: string): Promise<{
+function stakeholdersFromInitial(initialState: unknown): {
+  stakeholders: Array<{ id: string; email?: string | null }>;
+  known: boolean;
+} {
+  const initial = initialState as { stakeholders?: unknown } | null;
+  if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
+  const stakeholders: Array<{ id: string; email?: string | null }> = [];
+  for (const raw of initial.stakeholders) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as { id?: unknown; email?: unknown };
+    if (typeof row.id !== 'string') continue;
+    stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
+  }
+  return { stakeholders, known: true };
+}
+
+async function loadScenarioStakeholders(
+  sessionId: string,
+  scenarioState?: { initialState?: unknown; initialStateKnown?: boolean },
+): Promise<{
   stakeholders: Array<{ id: string; email?: string | null }>;
   known: boolean;
 }> {
+  if (scenarioState?.initialStateKnown) return stakeholdersFromInitial(scenarioState.initialState);
   try {
     const { data: session, error } = await supabaseAdmin
       .from('sessions')
@@ -956,16 +1004,7 @@ async function loadScenarioStakeholders(sessionId: string): Promise<{
       .maybeSingle();
     if (scenarioError) return { stakeholders: [], known: false };
     if (!scenario) return { stakeholders: [], known: true };
-    const initial = scenario.initial_state as { stakeholders?: unknown } | null;
-    if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
-    const stakeholders: Array<{ id: string; email?: string | null }> = [];
-    for (const raw of initial.stakeholders) {
-      if (!raw || typeof raw !== 'object') continue;
-      const row = raw as { id?: unknown; email?: unknown };
-      if (typeof row.id !== 'string') continue;
-      stakeholders.push({ id: row.id, email: typeof row.email === 'string' ? row.email : null });
-    }
-    return { stakeholders, known: true };
+    return stakeholdersFromInitial(scenario.initial_state);
   } catch (err) {
     warnFactOnce(
       'stakeholder_roster_unavailable',
