@@ -8,13 +8,18 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
-import { sessionMinuteAt, type CommsDelivery, type CommsState } from '../ledger/injectLedgerCore.js';
+import {
+  sessionMinuteAt,
+  type CommsDelivery,
+  type CommsState,
+} from '../ledger/injectLedgerCore.js';
 import { loadCommsState } from '../ledger/injectLedgerService.js';
 import { getSessionScenarioId } from '../../lib/scenarioCache.js';
 import { inBootGrace, sessionUserOnline } from '../presence/sessionPresenceService.js';
 import { rolePlayersById } from '../roles/roleService.js';
 import { createNotificationsForUsers } from '../notificationService.js';
 import { getWebSocketService } from '../websocketService.js';
+import { recordInjectTrigger } from '../conditions/injectTriggerService.js';
 import {
   activeRungs,
   buildMoodBlock,
@@ -214,11 +219,17 @@ async function loadStakeholderLadder(
   }
 }
 
-async function readRow(sessionId: string, stakeholderId: string, scope: string): Promise<MoodRow | null> {
+async function readRow(
+  sessionId: string,
+  stakeholderId: string,
+  scope: string,
+): Promise<MoodRow | null> {
   if (tablesMissing) return null;
   const { data, error } = await supabaseAdmin
     .from('stakeholder_moods')
-    .select('rung_id, episode_anchor_minute, entered_minute, profile, history, consequences_fired, locks')
+    .select(
+      'rung_id, episode_anchor_minute, entered_minute, profile, history, consequences_fired, locks',
+    )
     .eq('session_id', sessionId)
     .eq('stakeholder_id', stakeholderId)
     .eq('scope_team', scope)
@@ -235,12 +246,19 @@ async function readRow(sessionId: string, stakeholderId: string, scope: string):
     entered_minute: Number(data.entered_minute ?? 0),
     profile: (data.profile ?? {}) as MoodRow['profile'],
     history: Array.isArray(data.history) ? (data.history as MoodRow['history']) : [],
-    consequences_fired: Array.isArray(data.consequences_fired) ? (data.consequences_fired as string[]) : [],
+    consequences_fired: Array.isArray(data.consequences_fired)
+      ? (data.consequences_fired as string[])
+      : [],
     locks: (data.locks ?? {}) as MoodLocks,
   };
 }
 
-async function heldForRole(sessionId: string, scope: string, minute: number, stored: HeldInterval[]): Promise<HeldInterval[]> {
+async function heldForRole(
+  sessionId: string,
+  scope: string,
+  minute: number,
+  stored: HeldInterval[],
+): Promise<HeldInterval[]> {
   if (!scope.startsWith('role:')) return stored;
   if (!env.runBackgroundEngines || inBootGrace()) return stored;
   try {
@@ -255,12 +273,22 @@ async function heldForRole(sessionId: string, scope: string, minute: number, sto
   }
 }
 
-function snapshotOf(ladder: MoodLadder, rung: MoodRung, profile: WaitProfile, name: string): MoodNow {
+function snapshotOf(
+  ladder: MoodLadder,
+  rung: MoodRung,
+  profile: WaitProfile,
+  name: string,
+): MoodNow {
   const base = isBaseRung(ladder, rung.id);
   const opening = rung.script.opening ? renderMoodPlaceholders(rung.script.opening, profile) : null;
   const block = base
     ? null
-    : buildMoodBlock(rung, profile, { name }, { includeScript: true, recovery: ladder.recovery, channel: 'call' });
+    : buildMoodBlock(
+        rung,
+        profile,
+        { name },
+        { includeScript: true, recovery: ladder.recovery, channel: 'call' },
+      );
   return { rung, ladder, profile, scope: '', isBase: base, opening: base ? null : opening, block };
 }
 
@@ -277,12 +305,15 @@ export async function getMoodNow(input: {
   if (!input.stakeholderId) return null;
   try {
     const session = await sessionFacts(input.sessionId);
-    const atMinute =
-      input.atMinute ??
-      sessionMinuteAt(session.startTime, new Date().toISOString());
+    const atMinute = input.atMinute ?? sessionMinuteAt(session.startTime, new Date().toISOString());
     const scenarioId = session.scenarioId ?? (await getSessionScenarioId(input.sessionId));
-    const { ladder, name } = await loadStakeholderLadder(scenarioId, input.stakeholderId, input.injectLadder);
-    const comms = input.comms === undefined ? await loadCommsState(input.sessionId, atMinute) : input.comms;
+    const { ladder, name } = await loadStakeholderLadder(
+      scenarioId,
+      input.stakeholderId,
+      input.injectLadder,
+    );
+    const comms =
+      input.comms === undefined ? await loadCommsState(input.sessionId, atMinute) : input.comms;
     const stored = await readRow(input.sessionId, input.stakeholderId, input.scope);
     const held = await heldForRole(
       input.sessionId,
@@ -369,7 +400,15 @@ async function persistSelection(input: {
     : input.selectionClearHold
       ? null
       : (input.stored?.profile.hold_profile ?? null);
-  if (!entered && due.length === 0 && !heldChanged && pending === 0 && !input.selectionHold && !input.selectionClearHold) return;
+  if (
+    !entered &&
+    due.length === 0 &&
+    !heldChanged &&
+    pending === 0 &&
+    !input.selectionHold &&
+    !input.selectionClearHold
+  )
+    return;
 
   inMoodWrite = true;
   try {
@@ -425,7 +464,8 @@ async function fireConsequence(
   id: string,
   consequence: MoodConsequence,
 ): Promise<void> {
-  const patch = consequence.type === 'publish_inject' ? {} : lockPatch(consequence, input.selectionRung.id);
+  const patch =
+    consequence.type === 'publish_inject' ? {} : lockPatch(consequence, input.selectionRung.id);
   const claimed = await claim(input, id, patch);
   if (!claimed) return;
   if (consequence.type === 'publish_inject') {
@@ -551,7 +591,11 @@ async function releaseClaim(
   else if (error) logger.warn({ err: error, id }, 'mood publish claim was not released');
 }
 
-async function consumeRecovery(sessionId: string, stakeholderId: string, scope: string): Promise<void> {
+async function consumeRecovery(
+  sessionId: string,
+  stakeholderId: string,
+  scope: string,
+): Promise<void> {
   const { error } = await supabaseAdmin.rpc('consume_mood_recovery', {
     p_session_id: sessionId,
     p_stakeholder_id: stakeholderId,
@@ -561,7 +605,12 @@ async function consumeRecovery(sessionId: string, stakeholderId: string, scope: 
 }
 
 async function publishConditional(
-  input: { sessionId: string; scenarioId: string | null; trainerId: string | null },
+  input: {
+    sessionId: string;
+    scenarioId: string | null;
+    trainerId: string | null;
+    atMinute: number;
+  },
   key: string,
 ): Promise<boolean> {
   if (!input.scenarioId) return false;
@@ -585,6 +634,14 @@ async function publishConditional(
       input.trainerId ?? String(data.id),
       io as SocketServer,
     );
+    void recordInjectTrigger({
+      sessionId: input.sessionId,
+      injectId: String(data.id),
+      injectKey: key,
+      origin: 'mood',
+      minute: input.atMinute,
+      causeDepth: 1,
+    });
     return true;
   } catch (err) {
     logger.warn({ err, sessionId: input.sessionId, key }, 'mood publish_inject failed');
@@ -613,7 +670,11 @@ async function notifyTrainer(
 function emitTrainer(trainerId: string | null, type: string, data: Record<string, unknown>): void {
   if (!trainerId) return;
   try {
-    getWebSocketService().emitToUser(trainerId, { type, data, timestamp: new Date().toISOString() });
+    getWebSocketService().emitToUser(trainerId, {
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+    });
   } catch {
     /* websocket is optional in tests */
   }
@@ -689,7 +750,9 @@ export async function loadMoodIndex(sessionId: string): Promise<{
         ? profile.ladder_ids.map((item) => String(item))
         : activeRungs(defaultLadderFor(null)).map((item) => item.id);
     const rungId = String(row.rung_id);
-    const historyRungs = history.map((item) => ({ rung: String(item.rung ?? '') })).filter((item) => item.rung);
+    const historyRungs = history
+      .map((item) => ({ rung: String(item.rung ?? '') }))
+      .filter((item) => item.rung);
     moods.push({
       stakeholder_id: stakeholderId,
       scope_team: scope,
@@ -705,7 +768,10 @@ export async function loadMoodIndex(sessionId: string): Promise<{
   return { moods, mood_stops };
 }
 
-export async function locksForStakeholder(sessionId: string, stakeholderId: string): Promise<MoodLocks | null> {
+export async function locksForStakeholder(
+  sessionId: string,
+  stakeholderId: string,
+): Promise<MoodLocks | null> {
   if (tablesMissing) return null;
   const { data, error } = await supabaseAdmin
     .from('stakeholder_moods')
@@ -749,7 +815,11 @@ export async function noteGoodReply(sessionId: string, deliveryId: string): Prom
     const delivery = await deliveryScope(deliveryId);
     if (!delivery?.stakeholderId) return;
     const session = await sessionFacts(sessionId);
-    const { ladder } = await loadStakeholderLadder(session.scenarioId, delivery.stakeholderId, null);
+    const { ladder } = await loadStakeholderLadder(
+      session.scenarioId,
+      delivery.stakeholderId,
+      null,
+    );
     if (ladder.recovery === 'none') return;
     const stored = await readRow(sessionId, delivery.stakeholderId, delivery.scope);
     if (!stored) return;
@@ -766,7 +836,9 @@ export async function noteGoodReply(sessionId: string, deliveryId: string): Prom
   }
 }
 
-async function deliveryScope(deliveryId: string): Promise<{ stakeholderId: string | null; scope: string } | null> {
+async function deliveryScope(
+  deliveryId: string,
+): Promise<{ stakeholderId: string | null; scope: string } | null> {
   const { data, error } = await supabaseAdmin
     .from('inject_deliveries')
     .select('stakeholder_id, target_role_id, line_team, recipient_teams')
@@ -836,11 +908,16 @@ export async function moodBlockForReply(input: {
     persist: true,
   });
   if (!mood || mood.isBase) return null;
-  return buildMoodBlock(mood.rung, mood.profile, { name: input.stakeholderId }, {
-    includeScript: false,
-    recovery: mood.ladder.recovery,
-    channel: 'message',
-  });
+  return buildMoodBlock(
+    mood.rung,
+    mood.profile,
+    { name: input.stakeholderId },
+    {
+      includeScript: false,
+      recovery: mood.ladder.recovery,
+      channel: 'message',
+    },
+  );
 }
 
 async function replyScope(
@@ -859,7 +936,8 @@ async function replyScope(
     const comms = await loadCommsState(sessionId, 0);
     const open = deliveriesOf(comms).filter(
       (delivery) =>
-        (delivery.stakeholder_id === stakeholderId || delivery.step_stakeholder_id === stakeholderId) &&
+        (delivery.stakeholder_id === stakeholderId ||
+          delivery.step_stakeholder_id === stakeholderId) &&
         !(delivery.responses ?? []).some((response) => response.user_id === userId),
     );
     const roleId = held.find((id) => open.some((delivery) => delivery.target_role_id === id));
@@ -891,11 +969,16 @@ export async function moodForChain(input: {
     line: moodLineFor(mood.ladder, mood.rung, mood.profile),
     block: mood.isBase
       ? null
-      : buildMoodBlock(mood.rung, mood.profile, { name: input.stakeholderId }, {
-          includeScript: false,
-          recovery: mood.ladder.recovery,
-          channel: 'followup',
-        }),
+      : buildMoodBlock(
+          mood.rung,
+          mood.profile,
+          { name: input.stakeholderId },
+          {
+            includeScript: false,
+            recovery: mood.ladder.recovery,
+            channel: 'followup',
+          },
+        ),
   };
 }
 

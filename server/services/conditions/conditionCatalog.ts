@@ -1224,8 +1224,11 @@ export type ParsedCondition =
 
 export type ParsedConditionKey = ParsedCondition;
 
-export function parseConditionKey(key: string): ParsedConditionKey {
-  return parseCatalogCondition(key, CONDITION_CATALOG);
+export function parseConditionKey(
+  key: string,
+  options?: { allowPlaceholders?: boolean },
+): ParsedConditionKey {
+  return parseCatalogCondition(key, CONDITION_CATALOG, options);
 }
 
 /** Fill a catalogue label from the parsed arguments. A team or role scope is appended. */
@@ -1298,8 +1301,9 @@ export function collectConditionKeys(appear: unknown, cancel: unknown): string[]
   if (Array.isArray(appear)) {
     for (const key of appear) push(key);
   } else if (appear && typeof appear === 'object') {
-    const record = appear as { all?: unknown; conditions?: unknown };
+    const record = appear as { all?: unknown; any?: unknown; conditions?: unknown };
     if (Array.isArray(record.all)) for (const key of record.all) push(key);
+    if (Array.isArray(record.any)) for (const key of record.any) push(key);
     if (Array.isArray(record.conditions)) for (const key of record.conditions) push(key);
   }
   if (Array.isArray(cancel)) {
@@ -1342,12 +1346,17 @@ export function retainKnownConditions(
     keptAppear = kept.length;
     conditions_to_appear = kept;
   } else if (appear && typeof appear === 'object') {
-    const record = appear as { all?: unknown; conditions?: unknown; threshold?: unknown };
+    const record = appear as { all?: unknown; any?: unknown; conditions?: unknown; threshold?: unknown };
     if (Array.isArray(record.all)) {
       hadAppearKeys = record.all.some((key) => typeof key === 'string' && key.trim() !== '');
       const kept = record.all.filter(keep);
       keptAppear = kept.length;
       conditions_to_appear = { ...record, all: kept };
+    } else if (Array.isArray(record.any)) {
+      hadAppearKeys = record.any.some((key) => typeof key === 'string' && key.trim() !== '');
+      const kept = record.any.filter(keep);
+      keptAppear = kept.length;
+      conditions_to_appear = { threshold: 1, conditions: kept };
     } else if (Array.isArray(record.conditions)) {
       hadAppearKeys = record.conditions.some((key) => typeof key === 'string' && key.trim() !== '');
       const kept = record.conditions.filter(keep);
