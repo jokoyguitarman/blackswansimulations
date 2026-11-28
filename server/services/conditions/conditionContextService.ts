@@ -10,7 +10,11 @@ import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
-import { loadContextDependencyState } from '../dependencies/dependencyService.js';
+import {
+  dependencyStateFromTick,
+  loadContextDependencyState,
+  type DependencyTickLoad,
+} from '../dependencies/dependencyService.js';
 
 export interface ConditionContextSession {
   id: string;
@@ -26,6 +30,11 @@ export interface ConditionContextOptions {
     conditions_to_appear?: unknown;
     conditions_to_cancel?: unknown;
   }>;
+  /**
+   * Set when this tick already loaded dependency rows. The context then does
+   * not read scenarios, session_dependency_states, or teams again.
+   */
+  dependencyTick?: DependencyTickLoad | null;
 }
 
 interface DecisionRow {
@@ -152,11 +161,19 @@ export async function buildConditionEvaluationContext(
     env.crossTeamDependencies &&
     (currentState.dependency_state == null || typeof currentState.dependency_state !== 'object')
   ) {
-    try {
-      const dependencyState = await loadContextDependencyState(session.id, session.scenario_id);
+    if (opts.dependencyTick) {
+      const dependencyState = dependencyStateFromTick(opts.dependencyTick);
       if (dependencyState) currentState.dependency_state = dependencyState;
-    } catch (err) {
-      logger.warn({ err, sessionId: session.id }, 'dependency state was not added to the evaluation context');
+    } else {
+      try {
+        const dependencyState = await loadContextDependencyState(session.id, session.scenario_id);
+        if (dependencyState) currentState.dependency_state = dependencyState;
+      } catch (err) {
+        logger.warn(
+          { err, sessionId: session.id },
+          'dependency state was not added to the evaluation context',
+        );
+      }
     }
   }
 

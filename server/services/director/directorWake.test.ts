@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { applyLiveMode } from './directorPublish.js';
 import {
   DIRECTOR_SCENARIO_CACHE_MS,
@@ -26,7 +27,9 @@ function tick(): DirectorTickInput {
     elapsedMinutes: 20,
     durationMinutes: 60,
     comms: {
-      moods: [{ stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 18 }],
+      moods: [
+        { stakeholder_id: 'stk_maria', scope_team: 'Legal', rung_id: 'angry', entered_minute: 18 },
+      ],
     } as unknown as DirectorTickInput['comms'],
   };
 }
@@ -226,7 +229,12 @@ test('a hung or failed wake releases the session lock', async () => {
   });
   assert.equal(first, true);
   assert.equal(
-    scheduleDirectorWake(tick(), { store: store(), client: quietClient({ n: 0 }), enabled: true, aiEnabled: true }),
+    scheduleDirectorWake(tick(), {
+      store: store(),
+      client: quietClient({ n: 0 }),
+      enabled: true,
+      aiEnabled: true,
+    }),
     false,
   );
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -250,12 +258,22 @@ test('a hung or failed wake releases the session lock', async () => {
     },
   };
   assert.equal(
-    scheduleDirectorWake(tick(), { store: store(), client: failing, enabled: true, aiEnabled: true }),
+    scheduleDirectorWake(tick(), {
+      store: store(),
+      client: failing,
+      enabled: true,
+      aiEnabled: true,
+    }),
     true,
   );
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(
-    scheduleDirectorWake(tick(), { store: store(), client: quietClient({ n: 0 }), enabled: true, aiEnabled: true }),
+    scheduleDirectorWake(tick(), {
+      store: store(),
+      client: quietClient({ n: 0 }),
+      enabled: true,
+      aiEnabled: true,
+    }),
     true,
   );
 });
@@ -310,4 +328,43 @@ test('a wake that started in auto does not store a countdown after the mode turn
   await runDirector(tick(), { store: backing, client, enabled: true, aiEnabled: true });
   assert.equal(stored.row?.status, 'expired');
   assert.equal(stored.row?.auto_publish_at, null);
+});
+
+test('a wake voices the store cast and does not load stakeholders from the database', async () => {
+  resetDirectorProcessState();
+  const tables: string[] = [];
+  const original = supabaseAdmin.from.bind(supabaseAdmin);
+  const builder: Record<string, unknown> = {};
+  const self = () => builder;
+  for (const method of ['select', 'eq', 'order', 'limit', 'maybeSingle']) builder[method] = self;
+  builder.then = (resolve: (value: unknown) => unknown) =>
+    Promise.resolve({ data: [], error: null }).then(resolve);
+  (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
+    tables.push(table);
+    return builder;
+  };
+  try {
+    let loads = 0;
+    const backing = store();
+    backing.loadStakeholders = async () => {
+      loads += 1;
+      return [{ id: 'stk_store_only', name: 'Store Only Person', email: 'store@example.com' }];
+    };
+    let prompt = '';
+    const client: DirectorClient = {
+      async propose(request) {
+        prompt = request.user;
+        return { parsed: { act: false, reason: 'quiet', proposal: null } };
+      },
+      async consistency() {
+        return { parsed: { verdict: 'consistent', reason: 'ok' } };
+      },
+    };
+    await runDirector(tick(), { store: backing, client, enabled: true, aiEnabled: true });
+    assert.equal(loads, 1);
+    assert.match(prompt, /stk_store_only Store Only Person/);
+    assert.equal(tables.includes('scenarios'), false);
+  } finally {
+    supabaseAdmin.from = original;
+  }
 });

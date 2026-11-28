@@ -119,7 +119,15 @@ function guard(): GuardContext {
     pressureMax: 6,
     teams: [{ name: 'Legal', staffed: true, playable: true, active: true, size: 4 }],
     protectedTeams: [],
-    allowedApps: ['email', 'group_chat', 'phone_call', 'npc_dm', 'messenger_dm', 'social_feed', 'news'],
+    allowedApps: [
+      'email',
+      'group_chat',
+      'phone_call',
+      'npc_dm',
+      'messenger_dm',
+      'social_feed',
+      'news',
+    ],
     roleIds: [],
     stakeholders: [{ id: 'stk_maria', name: 'Maria Tan' }],
     npcs: [],
@@ -228,7 +236,10 @@ function deps(): DirectorCommandDeps {
       return scenarioMode;
     },
     async listProposals() {
-      return rows.map((item) => ({ ...item, proposal: item.proposal ? { ...item.proposal } : null }));
+      return rows.map((item) => ({
+        ...item,
+        proposal: item.proposal ? { ...item.proposal } : null,
+      }));
     },
     async dueProposals(_sessionId, nowIso, createdBeforeIso) {
       const dueAt = Date.parse(nowIso);
@@ -337,7 +348,11 @@ before(async () => {
       async access(sessionId, user) {
         if (sessionId !== SESSION) return { ok: false, status: 404, error: 'Session not found' };
         if (user.role === 'admin' || user.id === TRAINER) return { ok: true };
-        return { ok: false, status: 403, error: 'Only the session trainer can perform this action' };
+        return {
+          ok: false,
+          status: 403,
+          error: 'Only the session trainer can perform this action',
+        };
       },
       commands: createDirectorCommands(deps()),
       async replay() {
@@ -379,6 +394,58 @@ test('DIRECTOR_MODE_MAX=suggest turns a scenario auto into suggest and refuses a
   assert.equal(sessionMode, null);
 });
 
+test('approve refuses a suggestion older than the TTL before the sweep expires it', async () => {
+  reset();
+  rows = [
+    row({
+      autoPublishAt: null,
+      mode: 'suggest',
+      createdAt: new Date(now.getTime() - 5 * 60_000).toISOString(),
+    }),
+  ];
+  const expired = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(expired.status, 409);
+  assert.match(expired.json.error ?? '', /expired/i);
+  assert.equal(rows[0]?.status, 'proposed');
+  assert.equal(published.length, 0);
+
+  reset();
+  rows = [
+    row({
+      autoPublishAt: null,
+      mode: 'suggest',
+      createdAt: new Date(now.getTime() - 5 * 60_000 + 1).toISOString(),
+    }),
+  ];
+  const fresh = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(fresh.status, 200);
+  assert.equal(published.length, 1);
+
+  reset();
+  rows = [
+    row({
+      mode: 'auto',
+      createdAt: new Date(now.getTime() - 6 * 60_000).toISOString(),
+      autoPublishAt: new Date(now.getTime() + 30_000).toISOString(),
+    }),
+  ];
+  const countdown = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(countdown.status, 200);
+
+  reset();
+  rows = [
+    row({
+      mode: 'auto',
+      createdAt: now.toISOString(),
+      autoPublishAt: new Date(now.getTime() - (60 + 5 * 60) * 1000 - 1000).toISOString(),
+    }),
+  ];
+  const stale = await call('POST', `/${SESSION}/director/proposals/${PROPOSAL}/approve`, {});
+  assert.equal(stale.status, 409);
+  assert.match(stale.json.error ?? '', /expired/i);
+  assert.equal(published.length, 0);
+});
+
 test('approve twice publishes once, and a meta-word edit is rejected', async () => {
   reset();
   rows = [row({ autoPublishAt: null, mode: 'suggest' })];
@@ -388,8 +455,11 @@ test('approve twice publishes once, and a meta-word edit is rejected', async () 
   assert.equal(second.status, 409);
   assert.equal(published.length, 1);
   assert.equal(injects[0]?.generation_source, 'ai_director');
-  const escalation = (injects[0]?.delivery_config as { escalation?: { max_steps: number; steps: Array<{ content_mode: string }> } })
-    .escalation;
+  const escalation = (
+    injects[0]?.delivery_config as {
+      escalation?: { max_steps: number; steps: Array<{ content_mode: string }> };
+    }
+  ).escalation;
   assert.equal(escalation?.max_steps, 1);
   assert.equal(escalation?.steps[0]?.content_mode, 'template');
   assert.equal(
@@ -570,7 +640,12 @@ test('a tick with nothing pending does not query, and a failed publish leaves th
       return [];
     },
   });
-  await quiet.sweep({ sessionId: SESSION, elapsedMinutes: 27, trainerId: TRAINER, remainingCap: 3 });
+  await quiet.sweep({
+    sessionId: SESSION,
+    elapsedMinutes: 27,
+    trainerId: TRAINER,
+    remainingCap: 3,
+  });
   assert.equal(queries, 0);
 
   rows = [row({ autoPublishAt: new Date(now.getTime() - 1000).toISOString() })];

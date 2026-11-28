@@ -41,7 +41,11 @@ import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.j
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
 import { isBoothJoinToken } from '../lib/boothLink.js';
 import { collectConditionKeys } from './conditions/conditionCatalog.js';
-import { needsTeamSignalFacts } from './conditions/teamSignalsCore.js';
+import {
+  dependencySignalKeys,
+  directorNeedsTeamSignals,
+  teamSignalReadsNeeded,
+} from './conditions/teamSignalsCore.js';
 import { conditionsToAppearIsEmpty } from './conditions/injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/cancellationGate.js';
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
@@ -56,11 +60,15 @@ import {
 } from './conditions/injectTriggerService.js';
 import { dependencyTriggerCause } from './dependencies/dependencyConditionsCore.js';
 import {
-  loadScenarioDependencyEdges,
+  edgesFromInitialState,
+  loadDependencyTick,
   rememberDependencySources,
   updateDependencyStates,
   withDependencySession,
+  type DependencyTickLoad,
 } from './dependencies/dependencyService.js';
+import { scenarioDirectorMode } from './director/directorService.js';
+import { directorDiscoveryDue } from './director/directorRuntime.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -251,15 +259,59 @@ const sessionsInProgress = new Set<string>();
  */
 const socialEnginesInProgress = new Set<string>();
 
+interface CarriedScenario {
+  known: boolean;
+  state: unknown;
+  directorMode: string | null;
+}
+
+/** Scenario state already on the session row, including a join from the scheduler loop. */
+function carriedScenario(session: {
+  director_mode?: string | null;
+  initial_state?: unknown;
+  initial_state_known?: boolean;
+  scenario?: { initial_state?: unknown } | Array<{ initial_state?: unknown }> | null;
+}): CarriedScenario {
+  const directorMode = session.director_mode ?? null;
+  if (session.initial_state_known) {
+    return { known: true, state: session.initial_state ?? null, directorMode };
+  }
+  const embedded = Array.isArray(session.scenario) ? session.scenario[0] : session.scenario;
+  if (embedded && typeof embedded === 'object' && 'initial_state' in embedded) {
+    return { known: true, state: embedded.initial_state ?? null, directorMode };
+  }
+  return { known: false, state: undefined, directorMode };
+}
+
+/** False once `sessions.director_mode` is known to be absent (migration 279). */
+let directorModeColumn = true;
+
+interface LiveSession {
+  id: string;
+  scenario_id: string;
+  start_time: string;
+  trainer_id: string;
+  status: string;
+  current_state?: Record<string, unknown> | null;
+  inject_state_effects?: Record<string, unknown> | null;
+  sim_mode?: string | null;
+  join_token?: string | null;
+  director_mode?: string | null;
+  scenario?: { initial_state?: unknown } | null;
+}
+
 export class InjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private readonly checkIntervalMs: number;
   private readonly enabled: boolean;
   private io: SocketServer | null = null;
+  private lastDirectorDiscoveryMs = 0;
+  private readonly now: () => number;
 
-  constructor(io?: SocketServer) {
+  constructor(io?: SocketServer, now?: () => number) {
     this.io = io || null;
+    this.now = now ?? Date.now;
     // Get configuration from environment
     this.checkIntervalMs = env.injectSchedulerIntervalMs;
     this.enabled = env.enableAutoInjects;
@@ -294,14 +346,8 @@ export class InjectSchedulerService {
     void this.boot();
   }
 
-  /** Discover pending director rows once, then tick. A tick itself does not discover. */
+  /** Start the loop. Pending-proposal discovery runs inside the loop, not per session. */
   private async boot(): Promise<void> {
-    try {
-      const { discoverPendingDirectorProposals } = await import('./director/directorService.js');
-      await discoverPendingDirectorProposals();
-    } catch (err) {
-      logger.warn({ err }, 'director pending proposals were not discovered');
-    }
     if (!this.isRunning) return;
     this.checkAndPublishInjects().catch((err) => {
       logger.error({ error: err }, 'Error in initial inject check');
@@ -328,16 +374,60 @@ export class InjectSchedulerService {
   /**
    * Check active sessions and publish injects that should be triggered
    */
-  private async checkAndPublishInjects(): Promise<void> {
+  /**
+   * Re-read pending director proposals on a fixed interval. This stays outside
+   * processSession so a session tick's query list does not change.
+   */
+  private async discoverDirectorPendingIfDue(): Promise<void> {
+    const now = this.now();
+    if (!directorDiscoveryDue(this.lastDirectorDiscoveryMs, now)) return;
     try {
-      // Get all active sessions with start_time (current_state for condition evaluator context)
-      const { data: sessions, error: sessionsError } = await supabaseAdmin
+      const { discoverPendingDirectorProposals } = await import('./director/directorService.js');
+      await discoverPendingDirectorProposals();
+      // A failed read waits for the interval too, so a down database is not polled every loop.
+      this.lastDirectorDiscoveryMs = now;
+    } catch (err) {
+      logger.warn({ err }, 'director pending proposals were not discovered');
+    }
+  }
+
+  /** One scheduler loop, including director rediscovery. Not one session. */
+  async runLoopForTests(): Promise<void> {
+    await this.checkAndPublishInjects();
+  }
+
+  private async loadLiveSessions(): Promise<{
+    data: LiveSession[] | null;
+    error: { message?: string } | null;
+  }> {
+    const filtered = (withMode: boolean) => {
+      const query = supabaseAdmin
         .from('sessions')
         .select(
-          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode, join_token',
+          withMode
+            ? 'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode, join_token, director_mode, scenario:scenarios(initial_state)'
+            : 'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode, join_token, scenario:scenarios(initial_state)',
         )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
+      return query;
+    };
+    const first = await filtered(directorModeColumn);
+    const missingMode =
+      first.error != null &&
+      (first.error.code === '42703' || first.error.code === 'PGRST204') &&
+      /director_mode/i.test(first.error.message ?? '');
+    const result = missingMode ? await filtered(false) : first;
+    if (missingMode) directorModeColumn = false;
+    if (result.error || !result.data) return { data: null, error: result.error };
+    return { data: result.data as unknown as LiveSession[], error: null };
+  }
+
+  private async checkAndPublishInjects(): Promise<void> {
+    await this.discoverDirectorPendingIfDue();
+    try {
+      // Get all active sessions with start_time (current_state for condition evaluator context)
+      const { data: sessions, error: sessionsError } = await this.loadLiveSessions();
 
       if (sessionsError) {
         logger.error({ error: sessionsError }, 'Failed to fetch active sessions');
@@ -465,6 +555,11 @@ export class InjectSchedulerService {
     inject_state_effects?: Record<string, unknown> | null;
     sim_mode?: string | null;
     join_token?: string | null;
+    director_mode?: string | null;
+    /** Set when this tick already loaded `scenarios.initial_state`. */
+    initial_state?: unknown;
+    initial_state_known?: boolean;
+    scenario?: { initial_state?: unknown } | Array<{ initial_state?: unknown }> | null;
   }): Promise<void> {
     // Peace is a future start_time. The flag check is first so a tick with the
     // flag off does not parse the clock or query anything extra. The lane publishes
@@ -993,6 +1088,7 @@ export class InjectSchedulerService {
       generation_source?: string | null;
     }> = [];
     let teamSignals = true;
+    let sessionInitial: ReturnType<typeof carriedScenario> | null = null;
     try {
       const { data, error } = await activeTemplateInjects(
         supabaseAdmin
@@ -1007,20 +1103,39 @@ export class InjectSchedulerService {
       );
       if (error) throw error;
       condInjectsRaw = data ?? [];
-      const signalKeys: string[] = [];
-      for (const inj of condInjectsRaw) {
-        signalKeys.push(
-          ...collectConditionKeys(inj.conditions_to_appear, inj.conditions_to_cancel),
-        );
-      }
-      teamSignals = needsTeamSignalFacts(signalKeys);
+      const carried = carriedScenario(session);
+      teamSignals = teamSignalReadsNeeded(
+        condInjectsRaw.map((inj) => ({
+          id: inj.id,
+          keys: collectConditionKeys(inj.conditions_to_appear, inj.conditions_to_cancel),
+        })),
+        publishedInjectIds,
+        cancelledInjectIds,
+        {
+          extraKeys: dependencySignalKeys(edgesFromInitialState(carried.state)),
+          directorOn: directorNeedsTeamSignals({
+            enabled: env.directorEnabled,
+            modeMax: env.directorModeMax,
+            defaultMode: env.directorDefaultMode,
+            sessionMode: carried.directorMode,
+            scenarioMode: carried.known ? scenarioDirectorMode(carried.state) : null,
+            initialStateKnown: carried.known,
+          }),
+        },
+      );
+      sessionInitial = carried;
     } catch (err) {
       logger.warn({ err, sessionId: session.id }, 'conditional inject load failed');
     }
 
+    const carriedState = sessionInitial ?? carriedScenario(session);
     try {
       // Recomputed every tick for the evaluator. Not written to sessions.current_state.
-      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes, { teamSignals });
+      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes, {
+        teamSignals,
+        initialState: carriedState.state,
+        initialStateKnown: carriedState.known,
+      });
       const { attachCoverageFacts } = await import('./roles/roleService.js');
       nextState.comms_state = await attachCoverageFacts(
         session.id,
@@ -1030,10 +1145,17 @@ export class InjectSchedulerService {
       logger.warn({ err, sessionId: session.id }, 'comms_state load failed');
     }
 
-    let dependencyEdges: Awaited<ReturnType<typeof loadScenarioDependencyEdges>> = [];
+    let dependencyTick: DependencyTickLoad | null = null;
     if (env.crossTeamDependencies) {
-      dependencyEdges = await loadScenarioDependencyEdges(session.scenario_id);
-      if (dependencyEdges.length === 0) rememberDependencySources(session.id, new Map());
+      dependencyTick = await loadDependencyTick({
+        sessionId: session.id,
+        scenarioId: session.scenario_id,
+        initialState: carriedState.state,
+        initialStateKnown: carriedState.known,
+      });
+      if (!dependencyTick || dependencyTick.edges.length === 0) {
+        rememberDependencySources(session.id, new Map());
+      }
     }
     let sharedEvalContext: ReturnType<typeof buildConditionEvaluationContext> | null = null;
     const evaluationContext = (): ReturnType<typeof buildConditionEvaluationContext> => {
@@ -1049,12 +1171,13 @@ export class InjectSchedulerService {
             elapsedMinutes,
             currentState: nextState,
             conditionSources: condInjectsRaw ?? [],
+            ...(dependencyTick ? { dependencyTick } : {}),
           },
         );
       }
       return sharedEvalContext;
     };
-    if (dependencyEdges.length > 0) {
+    if (dependencyTick && dependencyTick.edges.length > 0) {
       try {
         const dependencyState = await updateDependencyStates(
           {
@@ -1065,7 +1188,7 @@ export class InjectSchedulerService {
           },
           await evaluationContext(),
           elapsedMinutes,
-          dependencyEdges,
+          dependencyTick,
         );
         if (dependencyState) nextState.dependency_state = dependencyState;
       } catch (err) {

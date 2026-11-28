@@ -113,8 +113,7 @@ export interface ApproveEdits {
 }
 
 export type CommandResult =
-  | { ok: true; status: number; body: unknown }
-  | { ok: false; status: number; error: string };
+  { ok: true; status: number; body: unknown } | { ok: false; status: number; error: string };
 
 export interface DirectorSettings {
   enabled: boolean;
@@ -324,7 +323,10 @@ async function patchConsole(
       if (ids === 'missing') return fail(503, 'AI director is not available');
       for (const id of ids) {
         noteProposalSettled(sessionId);
-        deps.emit(session.trainerId, 'director.expired', { session_id: sessionId, proposal_id: id });
+        deps.emit(session.trainerId, 'director.expired', {
+          session_id: sessionId,
+          proposal_id: id,
+        });
       }
     } else if (effect === 'convert_countdowns') {
       const ids = await deps.convertCountdowns(sessionId);
@@ -346,6 +348,12 @@ async function approveProposal(
   const row = rows.find((item) => item.id === proposalId);
   if (!row || !row.proposal) return fail(404, 'Proposal not found');
   if (row.status !== 'proposed') return fail(409, 'Proposal is no longer pending');
+  const settings = deps.settings();
+  const nowMs = deps.now().getTime();
+  const expired = row.autoPublishAt
+    ? countdownIsStale(row.autoPublishAt, nowMs, settings.graceSeconds, settings.ttlMinutes)
+    : suggestionExpiresAt(row.createdAt, settings.ttlMinutes) <= nowMs;
+  if (expired) return fail(409, 'This suggestion has expired');
   const live = await deps.resolvedMode(sessionId);
   if (live === 'missing') return fail(503, 'AI director is not available');
   if (live === 'off') return fail(409, 'AI director is off');
@@ -479,7 +487,12 @@ async function snoozeTeam(
 
 async function sweepSession(
   deps: DirectorCommandDeps,
-  input: { sessionId: string; elapsedMinutes: number; trainerId: string | null; remainingCap: number },
+  input: {
+    sessionId: string;
+    elapsedMinutes: number;
+    trainerId: string | null;
+    remainingCap: number;
+  },
 ): Promise<void> {
   if (!sweepThisTick(input.sessionId)) return;
   const mode = await deps.resolvedMode(input.sessionId);
@@ -544,9 +557,20 @@ async function sweepOne(
   const settings = deps.settings();
   if (
     row.autoPublishAt &&
-    countdownIsStale(row.autoPublishAt, input.now.getTime(), settings.graceSeconds, settings.ttlMinutes)
+    countdownIsStale(
+      row.autoPublishAt,
+      input.now.getTime(),
+      settings.graceSeconds,
+      settings.ttlMinutes,
+    )
   ) {
-    await settle(deps, row, input.trainerId, 'expired', 'Countdown expired before it could publish');
+    await settle(
+      deps,
+      row,
+      input.trainerId,
+      'expired',
+      'Countdown expired before it could publish',
+    );
     return;
   }
   if (kind === 'expire' || input.mode === 'suggest') {
@@ -556,7 +580,13 @@ async function sweepOne(
     return;
   }
   if (directorIsPaused(input.sessionId)) {
-    await settle(deps, row, input.trainerId, 'expired', 'Countdown ended while the director was paused');
+    await settle(
+      deps,
+      row,
+      input.trainerId,
+      'expired',
+      'Countdown ended while the director was paused',
+    );
     return;
   }
   const guard: GuardContext = { ...input.facts.guard, mode: 'auto', minute: input.elapsedMinutes };
@@ -752,7 +782,11 @@ function crossTeamBlock(
     : 'The team is at the cross-team limit';
 }
 
-function dueKind(row: ConsoleProposal, nowMs: number, ttlMinutes: number): 'publish' | 'expire' | 'wait' {
+function dueKind(
+  row: ConsoleProposal,
+  nowMs: number,
+  ttlMinutes: number,
+): 'publish' | 'expire' | 'wait' {
   if (row.status !== 'proposed') return 'wait';
   if (row.autoPublishAt) {
     const at = Date.parse(row.autoPublishAt);
