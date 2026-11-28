@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { logger } from '../lib/logger.js';
 import { recordPlayerAction } from './sopCheckerService.js';
 import type { PlayerDirectoryEntry } from './playerDirectoryService.js';
@@ -317,7 +318,8 @@ export async function getIntelStatus(
 
   const startMs = session.start_time ? new Date(session.start_time as string).getTime() : null;
   const elapsed =
-    elapsedMinutes ?? (startMs != null ? Math.floor((Date.now() - startMs) / 60000) : 0);
+    elapsedMinutes ??
+    crisisElapsedMinutes(typeof session.start_time === 'string' ? session.start_time : null);
 
   const { data: shareActions } = await supabaseAdmin
     .from('player_actions')

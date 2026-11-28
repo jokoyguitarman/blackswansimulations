@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { assertSessionAccess } from '../lib/access.js';
 import { canSeeSessionAnswerKey } from '../lib/participantProjections.js';
 
@@ -33,9 +34,7 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
       current_state: unknown;
     };
 
-    const elapsedMinutes = session.start_time
-      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-      : 0;
+    const elapsedMinutes = crisisElapsedMinutes(session.start_time);
 
     // Fetch hazards: scenario-level (session_id IS NULL) + session-level
     const { data: hazards, error } = await supabaseAdmin

@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { crisisElapsedMinutes } from '../lib/sessionPhase.js';
 import { validate } from '../lib/validation.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -607,7 +608,7 @@ router.post(
           }
 
           const elapsedMinutes = sessionData.start_time
-            ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
+            ? crisisElapsedMinutes(sessionData.start_time)
             : undefined;
 
           const { gradePlayerContent } = await import('../services/contentGraderService.js');
@@ -1444,9 +1445,7 @@ router.post(
           const is = (scenario.initial_state || {}) as Record<string, unknown>;
           const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
           const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
-          const elapsedMinutes = sessionData.start_time
-            ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
-            : 0;
+          const elapsedMinutes = crisisElapsedMinutes(sessionData.start_time ?? null);
           const { gradePlayerContent } = await import('../services/contentGraderService.js');
           const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
           const teamCtx = await getPlayerTeamContext(session_id, user.id);
@@ -2822,9 +2821,7 @@ router.get(
         trainer_id: (session.trainer_id as string | null) ?? null,
       });
 
-      const elapsedMinutes = session.start_time
-        ? Math.floor((Date.now() - new Date(session.start_time as string).getTime()) / 60000)
-        : 0;
+      const elapsedMinutes = crisisElapsedMinutes((session.start_time as string | null) ?? null);
 
       // 2. Fetch all condition-driven injects for this scenario
       const { data: condInjects } = await activeTemplateInjects(

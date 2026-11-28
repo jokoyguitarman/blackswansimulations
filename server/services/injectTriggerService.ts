@@ -11,6 +11,7 @@ import {
   type ThemeUsageEntry,
 } from './aiService.js';
 import { env } from '../env.js';
+import { crisisElapsedRoundedMinutes } from '../lib/sessionPhase.js';
 
 /**
  * Trigger Condition Format
@@ -450,9 +451,7 @@ export async function generateAndPublishInjectFromDecision(
     }
 
     // Calculate session duration
-    const sessionDurationMinutes = session.start_time
-      ? Math.round((new Date().getTime() - new Date(session.start_time).getTime()) / 60000)
-      : 0;
+    const sessionDurationMinutes = crisisElapsedRoundedMinutes(session.start_time);
 
     // Gather all context in parallel for efficiency
     const [

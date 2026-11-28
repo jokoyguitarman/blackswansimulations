@@ -7,6 +7,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { templateInjectsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
+import { openedAtOf, selectSession as selectSessionClock, type SessionClockFields } from '../lib/peaceSchema.js';
+import { rosterValidAt } from '../lib/peaceGate.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
@@ -595,6 +597,12 @@ const CALL_BASE =
   'id, inject_id, call_group_id, attempt_no, max_attempts, status, ring_started_at, answered_by, declined_by, stakeholder_id';
 const CALL_ROLE = `${CALL_BASE}, line_team, target_role_id, missed_reason`;
 
+interface AarSessionClock extends SessionClockFields {
+  start_time?: string | null;
+  created_at?: string | null;
+  scenario_id?: string | null;
+}
+
 async function loadParts(sessionId: string): Promise<LoadedParts> {
   const parts: LoadedParts = {
     deliveries: [],
@@ -609,16 +617,11 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
     names: {},
   };
 
-  const sessionResult = await supabaseAdmin
-    .from('sessions')
-    .select('start_time, created_at, scenario_id')
-    .eq('id', sessionId)
-    .maybeSingle();
-  const session = (sessionResult.data ?? null) as {
-    start_time?: string | null;
-    created_at?: string | null;
-    scenario_id?: string | null;
-  } | null;
+  const sessionResult = await selectSessionClock<AarSessionClock>(
+    'start_time, created_at, scenario_id',
+    (query) => query.eq('id', sessionId).maybeSingle(),
+  );
+  const session = sessionResult.data;
   const startIso = session?.start_time || session?.created_at || null;
   const startMs = startIso ? Date.parse(startIso) : null;
   const started = startMs != null && Number.isFinite(startMs) ? startMs : null;
@@ -631,7 +634,11 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
   parts.steps = chains.steps;
   parts.moods = await loadMoods(sessionId);
   parts.directMessages = await loadDirectMessages(sessionId, started);
-  const validAt = session?.start_time ?? new Date().toISOString();
+  const validAtRaw = rosterValidAt({
+    start_time: session?.start_time ?? null,
+    opened_at: openedAtOf(session),
+  });
+  const validAt = validAtRaw instanceof Date ? validAtRaw.toISOString() : validAtRaw;
   parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId, validAt);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
