@@ -15,6 +15,7 @@ import {
   assignBridgeStances,
   buildTopicAwareReactionPrompt,
   checkTopicReplies,
+  leakTermsFromInitialState,
   type BridgeStance,
   type PostKind,
   type TopicLabel,
@@ -416,10 +417,7 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
     let topic: TopicReactionResult | null = null;
 
     if (topicAware || phase === 'peace') {
-      const peacePeriod = (initialState.peace_period || {}) as { leak_terms?: unknown };
-      const leakTerms = Array.isArray(peacePeriod.leak_terms)
-        ? peacePeriod.leak_terms.map((term) => String(term))
-        : [];
+      const leakTerms = leakTermsFromInitialState(initialState);
       const checked = checkTopicReplies({
         classification: parsed.classification,
         reactions,

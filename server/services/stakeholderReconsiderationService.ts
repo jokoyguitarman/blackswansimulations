@@ -11,7 +11,9 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
-import { chatJson, systemUser } from './ai/chatClient.js';
+import { chatJson, systemUser, type ChatOptions } from './ai/chatClient.js';
+import { judgePeaceSchema, judgeResponseSchema } from './topic/channelPromptShared.js';
+import { readTopicClassification, type TopicLabel } from './topic/topicPromptCore.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import {
   ALLOWED_VERDICTS,
@@ -22,7 +24,7 @@ import {
   type TeamIdentity,
 } from '../lib/stakeholderContract.js';
 import { findById } from './stakeholderService.js';
-import type { ConversationRow } from './stakeholderReplyService.js';
+import type { CharacterTopicInput, ConversationRow } from './stakeholderReplyService.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +55,12 @@ export interface ReplyPlan {
   text: string;
   subject?: string;
   delay_seconds: number;
+  /** Present only when the caller asked for a topic label. Missing model output is unclassified. */
+  classification?: {
+    label: TopicLabel;
+    bridgeTopic: string;
+    confidence: number | null;
+  };
 }
 
 interface RawVerdict {
@@ -275,7 +283,8 @@ async function applyMoodLocks(
     const persuadability = (locks.persuadability as EffectiveGrievance['persuadability'] | undefined) ?? base.persuadability;
     return {
       ...base,
-      grievance: appended.length > 0 ? `${base.grievance}\n${appended.join('\n')}`.trim() : base.grievance,
+      grievance:
+        appended.length > 0 ? `${base.grievance}\n${appended.join('\n')}`.trim() : base.grievance,
       persuadability,
       verdict_lock: locks.verdict === 'keep' ? { rung: locks.verdict_rung || 'locked' } : null,
       source: locks.persuadability || appended.length > 0 ? 'override:mood' : base.source,
@@ -372,7 +381,7 @@ export interface PlayerRef {
   org_display: string | null;
 }
 
-interface JudgeInput {
+export interface JudgeInput {
   sessionId: string;
   stakeholder: Stakeholder;
   effective: EffectiveGrievance;
@@ -383,6 +392,14 @@ interface JudgeInput {
   latestPlayerMessage: string | null;
   latestSubject?: string;
   player?: PlayerRef | null;
+  /** Set for player DM and email replies when topic-aware replies are on. */
+  topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: {
+    chatJson(
+      options: Pick<ChatOptions, 'tier' | 'messages' | 'json' | 'maxTokens' | 'label'>,
+    ): Promise<unknown>;
+  };
 }
 
 /** Functions whose instructions an internal stakeholder carries out rather than debates. */
@@ -425,6 +442,7 @@ export function scrubPlaceholders(
 interface JudgeOutput {
   plan: ReplyPlan;
   verdicts: RawVerdict[];
+  classification?: ReplyPlan['classification'];
 }
 
 const REPLY_LENGTH: Record<string, string> = {
@@ -433,6 +451,29 @@ const REPLY_LENGTH: Record<string, string> = {
   messenger: '1–3 sentences, casual DM register',
   phone: '1–3 sentences, spoken register',
 };
+
+/** Peace calls keep no inject verdicts, even if the model returns modify or cancel. */
+export function keptVerdicts(peace: boolean, raw: unknown): RawVerdict[] {
+  return peace || !Array.isArray(raw) ? [] : (raw as RawVerdict[]);
+}
+
+/** Peace judge prompt: no grievance, criteria, or pending injects, and no verdict schema. */
+export function peaceStakeholderJudgeSystem(input: JudgeInput): string {
+  return `${input.characterPrompt}
+
+=== RULES ===
+- Stay in character. This is an ordinary day. Do not invent an incident, a recall, an accident or a scandal.
+${input.channel ? `- Reply length: ${REPLY_LENGTH[input.channel]}.` : '- No reply is needed now (should_reply=false); only judge.'}
+${
+  input.player
+    ? `- You are writing to ${input.player.name}${input.player.team_name ? ` (${input.player.team_name}${input.player.org_display ? `, ${input.player.org_display}` : ''})` : ''}. Address them by name — "${input.player.first_name}" in chat and informal mail, "${input.player.name}" in a formal email greeting. NEVER write a placeholder such as [Name], [Your Name] or {name}; if you do not know something, leave it out.`
+    : '- NEVER write a placeholder such as [Name] or [Your Name]; if you do not know the name, use no name.'
+}
+${chainOfCommandRules(input.stakeholder, input.player)}
+- delay_seconds for the reply: how long a person like you would realistically take (5–90).
+
+${judgePeaceSchema()}`;
+}
 
 async function callJudge(input: JudgeInput): Promise<JudgeOutput | null> {
   if (!env.aiEnabled) return null;
@@ -454,7 +495,10 @@ async function callJudge(input: JudgeInput): Promise<JudgeOutput | null> {
     input.effective.resolution_criteria.length,
   );
 
-  const system = `${input.characterPrompt}
+  const peaceJudge = input.topic?.phase === 'peace';
+  const system = peaceJudge
+    ? peaceStakeholderJudgeSystem(input)
+    : `${input.characterPrompt}
 
 === YOUR PRIVATE SITUATION (never reveal this) ===
 Grievance: ${input.effective.grievance || '(none — you have no planned action)'}
@@ -480,9 +524,7 @@ ${
 ${chainOfCommandRules(input.stakeholder, input.player)}
 - delay_seconds for the reply: how long a person like you would realistically take (5–90).
 
-Return ONLY valid JSON:
-{ "should_reply": true, "reply": { "text": "...", "subject": "RE: ...", "delay_seconds": 30 },
-  "verdicts": [ { "inject_id": "...", "verdict": "keep|modify|delay|cancel", "reason": "...", "criteria_met": [1,3], "modified_content": "...", "delay_minutes": 10 } ] }`;
+${judgeResponseSchema(!!input.topic)}`;
 
   const logText = input.log
     .slice(-20)
@@ -504,17 +546,21 @@ Return ONLY valid JSON:
   }`;
 
   try {
-    const parsed = await chatJson<{
+    const request = {
+      tier: 'standard' as const,
+      messages: systemUser(system, user),
+      json: true as const,
+      maxTokens: 1800,
+      label: 'stakeholder.judge',
+    };
+    const parsed = (
+      input.client ? await input.client.chatJson(request) : await chatJson(request)
+    ) as {
       should_reply?: unknown;
       reply?: { text?: unknown; subject?: unknown; delay_seconds?: unknown };
       verdicts?: unknown;
-    }>({
-      tier: 'standard',
-      messages: systemUser(system, user),
-      json: true,
-      maxTokens: 1800,
-      label: 'stakeholder.judge',
-    });
+      classification?: unknown;
+    } | null;
     if (!parsed) {
       logger.warn({ sessionId: input.sessionId }, 'Stakeholder judge request failed');
       return null;
@@ -522,14 +568,23 @@ Return ONLY valid JSON:
     const rawText = typeof parsed.reply?.text === 'string' ? parsed.reply.text.trim() : '';
     const text = rawText ? scrubPlaceholders(rawText, input.player, input.stakeholder.name) : '';
     const delay = Math.round(Number(parsed.reply?.delay_seconds));
+    const plan: ReplyPlan = {
+      should_reply: !!input.channel && parsed.should_reply !== false && text.length > 0,
+      text,
+      subject: typeof parsed.reply?.subject === 'string' ? parsed.reply.subject : undefined,
+      delay_seconds: Number.isFinite(delay) ? Math.min(90, Math.max(5, delay)) : 30,
+    };
     return {
-      plan: {
-        should_reply: !!input.channel && parsed.should_reply !== false && text.length > 0,
-        text,
-        subject: typeof parsed.reply?.subject === 'string' ? parsed.reply.subject : undefined,
-        delay_seconds: Number.isFinite(delay) ? Math.min(90, Math.max(5, delay)) : 30,
-      },
-      verdicts: Array.isArray(parsed.verdicts) ? (parsed.verdicts as RawVerdict[]) : [],
+      plan,
+      verdicts: keptVerdicts(peaceJudge, parsed.verdicts),
+      ...(input.topic
+        ? {
+            classification: readTopicClassification(
+              parsed.classification,
+              input.topic.isReply === true,
+            ),
+          }
+        : {}),
     };
   } catch (err) {
     logger.warn({ err, sessionId: input.sessionId }, 'Stakeholder judge call failed');
@@ -550,18 +605,28 @@ export interface DecideContext {
   teamIdentity: TeamIdentity | null;
   /** Who wrote the latest message (name, team, function, org) — §10.4. */
   player?: PlayerRef | null;
+  /** Player DM and email only, and only when topic-aware replies are on. */
+  topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: JudgeInput['client'];
 }
 
 /**
  * One call → reply + verdicts. Verdicts are enforced and stored; the reply plan is returned for
  * the channel adapter to persist. Never throws.
  */
-export async function decideAndReply(
-  ctx: DecideContext,
-): Promise<{ plan: ReplyPlan; verdicts: StoredVerdict[] }> {
+export async function decideAndReply(ctx: DecideContext): Promise<{
+  plan: ReplyPlan;
+  verdicts: StoredVerdict[];
+  classification?: ReplyPlan['classification'];
+}> {
   const fallback: ReplyPlan = { should_reply: false, text: '', delay_seconds: 30 };
+  const unclassified = ctx.topic
+    ? { classification: { label: 'unclassified' as const, bridgeTopic: '', confidence: null } }
+    : {};
   try {
-    const pending = await getPendingInjects(ctx.sessionId, ctx.stakeholder.id);
+    const peace = ctx.topic?.phase === 'peace';
+    const pending = peace ? [] : await getPendingInjects(ctx.sessionId, ctx.stakeholder.id);
     const effective = await getEffectiveGrievance(ctx.sessionId, ctx.stakeholder);
     const out = await callJudge({
       sessionId: ctx.sessionId,
@@ -574,8 +639,17 @@ export async function decideAndReply(
       latestPlayerMessage: ctx.latestPlayerMessage,
       latestSubject: ctx.latestSubject,
       player: ctx.player ?? null,
+      topic: ctx.topic,
+      client: ctx.client,
     });
-    if (!out) return { plan: fallback, verdicts: [] };
+    if (!out) return { plan: fallback, verdicts: [], ...unclassified };
+    if (peace) {
+      return {
+        plan: out.plan,
+        verdicts: [],
+        ...(ctx.topic ? { classification: out.classification ?? unclassified.classification } : {}),
+      };
+    }
 
     const contributing = Array.from(
       new Set(
@@ -595,13 +669,18 @@ export async function decideAndReply(
       .filter((v): v is NonNullable<typeof v> => v !== null);
 
     const stored = await storeVerdicts(ctx.sessionId, ctx.stakeholder.id, enforced);
-    return { plan: out.plan, verdicts: stored };
+    if (!ctx.topic) return { plan: out.plan, verdicts: stored };
+    return {
+      plan: out.plan,
+      verdicts: stored,
+      classification: out.classification ?? unclassified.classification,
+    };
   } catch (err) {
     logger.warn(
       { err, sessionId: ctx.sessionId, stakeholderId: ctx.stakeholder.id },
       'decideAndReply failed',
     );
-    return { plan: fallback, verdicts: [] };
+    return { plan: fallback, verdicts: [], ...unclassified };
   }
 }
 

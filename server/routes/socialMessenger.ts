@@ -3,6 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
@@ -13,7 +14,6 @@ import {
   getOrgPage,
 } from '../services/orgPageService.js';
 import { randomUUID } from 'crypto';
-import { env } from '../env.js';
 import {
   canSpectate,
   directThreadVisible,
@@ -305,7 +305,21 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
           if (isNPC) {
             const delay = 3000 + Math.floor(Math.random() * 7000);
             setTimeout(() => {
-              void triggerNPCDMReply(session_id, threadId, recipient_handle, content, user.id);
+              if (env.enableTopicAwareReplies && env.aiEnabled) {
+                void import('../services/topic/playerTopicGrade.js').then(
+                  ({ replyAndLabelPlayerDm }) =>
+                    replyAndLabelPlayerDm(
+                      session_id,
+                      threadId,
+                      recipient_handle,
+                      content,
+                      user.id,
+                      String(message.id),
+                    ),
+                );
+              } else {
+                void triggerNPCDMReply(session_id, threadId, recipient_handle, content, user.id);
+              }
             }, delay);
           }
         }

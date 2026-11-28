@@ -16,7 +16,8 @@ export interface StancePersona {
   handle: string;
   type: string;
   personality: string;
-  bias: string;
+  /** Key personas are stored from model output and may omit bias. */
+  bias?: string | null;
   tier?: string;
 }
 
@@ -46,13 +47,17 @@ export function unitFromSeed(key: string): number {
   return (hash >>> 0) / 4294967296;
 }
 
+function biasText(bias: string | null | undefined): string {
+  return (bias ?? '').trim().toLowerCase();
+}
+
 function isBiasedPersona(persona: StancePersona): boolean {
-  const bias = persona.bias.trim().toLowerCase();
+  const bias = biasText(persona.bias);
   return bias !== '' && bias !== 'none' && !bias.includes('supportive');
 }
 
 function isSupportiveOrNone(persona: StancePersona): boolean {
-  const bias = persona.bias.trim().toLowerCase();
+  const bias = biasText(persona.bias);
   return bias === '' || bias === 'none' || bias.includes('supportive');
 }
 
@@ -83,7 +88,10 @@ export function assignBridgeStances(
     let probability = base;
     const media = persona.type === 'npc_media';
     const politician = persona.type === 'npc_politician';
-    const competitor = isCompetitorPersona(persona);
+    const competitor = isCompetitorPersona({
+      personality: persona.personality ?? '',
+      bias: persona.bias ?? '',
+    });
     if (media || politician || competitor || isBiasedPersona(persona)) probability += 0.25;
     if (persona.tier === 'background' || isSupportiveOrNone(persona)) probability -= 0.25;
     probability = Math.min(1, Math.max(0, probability));
@@ -182,8 +190,25 @@ function stanceFor(
  * that name leak terms when the label is not an engaging bridge (or the post is a
  * normal post and the label is unclassified).
  */
+export interface ParsedTopic {
+  label: TopicLabel;
+  bridgeTopic: string;
+  confidence: number | null;
+}
+
+/** Leak terms stored on `initial_state.peace_period`. Empty when the feed is absent. */
+export function leakTermsFromInitialState(initialState: unknown): string[] {
+  if (!initialState || typeof initialState !== 'object') return [];
+  const peace = (initialState as { peace_period?: { leak_terms?: unknown } }).peace_period;
+  const terms = peace?.leak_terms;
+  if (!Array.isArray(terms)) return [];
+  return terms.map((term) => String(term));
+}
+
 export function checkTopicReplies(input: {
-  classification: unknown;
+  classification?: unknown;
+  /** Already parsed. When set, `classification` is not read again. */
+  parsed?: ParsedTopic | null;
   reactions: readonly TopicReply[];
   stances: ReadonlyMap<string, BridgeStance> | Readonly<Record<string, BridgeStance>>;
   leakTerms: readonly string[];
@@ -194,7 +219,10 @@ export function checkTopicReplies(input: {
   phase?: TopicPhase;
   playerText?: string;
 }): TopicCheckResult {
-  const parsed = parseClassification(input.classification, input.isReply);
+  const parsed =
+    input.parsed !== undefined
+      ? input.parsed
+      : parseClassification(input.classification, input.isReply);
   let label: TopicLabel = parsed?.label ?? 'unclassified';
   let bridgeTopic = parsed?.bridgeTopic ?? '';
   let confidence = parsed?.confidence ?? null;
@@ -289,6 +317,23 @@ export function peacePromptSection(orgName: string): string {
   return `PEACE:\n${peaceContextBlock(orgName)}`;
 }
 
+export const TOPIC_CLASSIFICATION_OBJECT =
+  '{ "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }';
+
+/** Missing or invalid classification, including `crisis` on a reply. */
+export function readTopicClassification(
+  raw: unknown,
+  isReply: boolean,
+): { label: TopicLabel; bridgeTopic: string; confidence: number | null } {
+  return (
+    parseClassification(raw, isReply) ?? {
+      label: 'unclassified',
+      bridgeTopic: '',
+      confidence: null,
+    }
+  );
+}
+
 function authorBlock(authorIsPage: boolean, orgName: string): string {
   if (!authorIsPage) return PERSONAL_AUTHOR_BLOCK;
   const org = orgName.trim() || 'the organisation';
@@ -380,7 +425,7 @@ Each reaction should be 1-3 sentences, feel like a real social media reply/post.
 ${MEDIA_REACT_LINE}
 
 Return ONLY valid JSON:
-{ "classification": { "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }, "reactions": [${REACTION_ITEM_SCHEMA}] }`;
+{ "classification": ${TOPIC_CLASSIFICATION_OBJECT}, "reactions": [${REACTION_ITEM_SCHEMA}] }`;
 
   const user = `Player post by ${input.playerHandle}:\n"${input.playerContent}"${input.imagePrompt ? `\n\n[Attached media: ${input.imagePrompt}]` : ''}`;
   return { system, user };
