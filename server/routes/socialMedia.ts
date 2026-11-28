@@ -41,6 +41,12 @@ import {
 } from '../services/playerDirectoryService.js';
 import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSharingService.js';
 import { normalizeRecipients } from '../../shared/emailRecipients.js';
+import { isSessionStaff } from '../lib/socialAccess.js';
+import {
+  requirePlayerWrite,
+  requireSocialRead,
+  requireSocialStaff,
+} from '../lib/socialSessionGuard.js';
 
 const router = Router();
 
@@ -53,11 +59,12 @@ async function resolveCountryScope(
   sessionId: string,
   user: { id: string; role?: string },
   requested: unknown,
+  asStaff?: boolean,
 ): Promise<string | null> {
   try {
     const { getUserCountry, getCountries } = await import('../services/orgRegistryService.js');
     const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
-    const isStaff = user.role === 'trainer' || user.role === 'admin';
+    const isStaff = asStaff ?? (user.role === 'trainer' || user.role === 'admin');
     if (isStaff) {
       if (typeof requested !== 'string' || !requested) return null;
       const scenarioId = await getSessionScenarioId(sessionId);
@@ -149,6 +156,9 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    const staff = isSessionStaff(user, session);
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const offset = (page - 1) * limit;
@@ -169,7 +179,7 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     // Country scoping (contract §4.1): players see their own country's content plus global
     // content; trainers see everything, optionally narrowed with ?country=.
-    const countryScope = await resolveCountryScope(sessionId, user, req.query.country);
+    const countryScope = await resolveCountryScope(sessionId, user, req.query.country, staff);
     if (countryScope && (await sessionHasCountryPosts(sessionId))) {
       postsQuery = postsQuery.or(`country.is.null,country.eq.${countryScope}`);
     }
@@ -232,10 +242,8 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
       string
     > | null;
 
-    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
-
     const filteredData = (data || []).filter((post) => {
-      if (isTrainerOrAdmin) return true;
+      if (staff) return true;
       if (post.is_surfaced_to_session) return true;
       if (post.target_player_ids) {
         return (post.target_player_ids as string[]).includes(user.id);
@@ -303,6 +311,9 @@ router.get('/posts/:postId', requireAuth, async (req: AuthenticatedRequest, res)
       return res.status(404).json({ error: 'Post not found' });
     }
 
+    const user = req.user!;
+    if (!(await requireSocialRead(res, post.session_id as string, user))) return;
+
     const { data: replies } = await supabaseAdmin
       .from('social_posts')
       .select('*')
@@ -363,6 +374,9 @@ router.post(
         content_flags,
         share_stance,
       } = req.body;
+
+      const session = await requirePlayerWrite(res, session_id, user);
+      if (!session) return;
 
       const hashtags = content.match(/#\w+/g) || [];
 
@@ -747,14 +761,16 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
     const postAsPage = req.body?.post_as_page || false;
     const reactedAs = postAsPage ? 'page' : 'personal';
 
+    const { data: targetPost } = await supabaseAdmin
+      .from('social_posts')
+      .select('session_id')
+      .eq('id', postId)
+      .maybeSingle();
+    if (!targetPost?.session_id) return res.status(404).json({ error: 'Post not found' });
+    if (!(await requirePlayerWrite(res, targetPost.session_id as string, user))) return;
+
     if (postAsPage) {
-      const post = await supabaseAdmin
-        .from('social_posts')
-        .select('session_id')
-        .eq('id', postId)
-        .single();
-      const sid = post.data?.session_id as string | undefined;
-      const orgKey = sid ? await getControlledOrgKey(sid, user.id) : null;
+      const orgKey = await getControlledOrgKey(targetPost.session_id as string, user.id);
       if (!orgKey) {
         return res.status(403).json({ error: 'You do not control a page in this session' });
       }
@@ -854,6 +870,14 @@ router.delete('/posts/:postId/like', requireAuth, async (req: AuthenticatedReque
     const postAsPage = req.body?.post_as_page || false;
     const reactedAs = postAsPage ? 'page' : 'personal';
 
+    const { data: likedPost } = await supabaseAdmin
+      .from('social_posts')
+      .select('session_id')
+      .eq('id', postId)
+      .maybeSingle();
+    if (!likedPost?.session_id) return res.status(404).json({ error: 'Post not found' });
+    if (!(await requirePlayerWrite(res, likedPost.session_id as string, user))) return;
+
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
       .select('id')
@@ -891,6 +915,14 @@ router.delete('/posts/:postId/like', requireAuth, async (req: AuthenticatedReque
 router.get('/posts/:postId/reactions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { postId } = req.params;
+    const user = req.user!;
+    const { data: post } = await supabaseAdmin
+      .from('social_posts')
+      .select('session_id')
+      .eq('id', postId)
+      .maybeSingle();
+    if (!post?.session_id) return res.status(404).json({ error: 'Post not found' });
+    if (!(await requireSocialRead(res, post.session_id as string, user))) return;
 
     const { data, error } = await supabaseAdmin
       .from('social_post_likes')
@@ -935,6 +967,7 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
       .single();
 
     if (!post) return res.status(404).json({ error: 'Post not found' });
+    if (!(await requirePlayerWrite(res, post.session_id as string, user))) return;
 
     await supabaseAdmin.from('social_post_flags').insert({ post_id: postId, player_id: user.id });
 
@@ -1011,6 +1044,7 @@ router.post(
         .single();
 
       if (!post) return res.status(404).json({ error: 'Post not found' });
+      if (!(await requirePlayerWrite(res, post.session_id as string, user))) return;
 
       const flags = (post.content_flags || {}) as Record<string, unknown>;
       const anyHarmful = !!(
@@ -1091,11 +1125,15 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .single();
 
     if (!original) return res.status(404).json({ error: 'Post not found' });
+    if (session_id && session_id !== original.session_id) {
+      return res.status(400).json({ error: 'Post is not in that session' });
+    }
+    if (!(await requirePlayerWrite(res, original.session_id as string, user))) return;
 
     const { data: repost, error } = await supabaseAdmin
       .from('social_posts')
       .insert({
-        session_id: session_id || original.session_id,
+        session_id: original.session_id,
         platform: original.platform,
         author_handle: handleFor(displayNameOf(user)),
         author_display_name: displayNameOf(user),
@@ -1139,6 +1177,9 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    const staff = isSessionStaff(user, session);
 
     const { data, error } = await supabaseAdmin
       .from('sim_emails')
@@ -1152,9 +1193,8 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
     // recipient_user_ids; null means visible to the whole session (legacy).
     // Players always see their own outbound emails. Another player's outbound
     // mail is only visible when it is addressed to you (player-to-player
-    // delivery) — never session-wide. Trainers see all.
-    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
-    const filtered = isTrainerOrAdmin
+    // delivery) — never session-wide. The trainer who ran the session, and admins, see all.
+    const filtered = staff
       ? data
       : (data || []).filter((email) => {
           if (email.sent_by_player_id === user.id) return true;
@@ -1167,7 +1207,7 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
         });
 
     let selfAddresses: string[] = [];
-    if (!isTrainerOrAdmin) {
+    if (!staff) {
       try {
         const directory = await getSessionPlayerDirectory(sessionId);
         const me = directory.find((d) => d.user_id === user.id);
@@ -1196,6 +1236,7 @@ router.post('/emails/:emailId/read', requireAuth, async (req: AuthenticatedReque
       .single();
 
     if (!email) return res.status(404).json({ error: 'Email not found' });
+    if (!(await requirePlayerWrite(res, email.session_id as string, user))) return;
 
     await supabaseAdmin.from('sim_emails').update({ is_read: true }).eq('id', emailId);
 
@@ -1259,6 +1300,8 @@ router.post(
         replied_to_id,
         forwarded_email_id,
       } = req.body;
+
+      if (!(await requirePlayerWrite(res, session_id, user))) return;
 
       // Resolve root thread_id: look up the parent's thread_id so
       // multi-reply chains all share the same root thread_id.
@@ -1767,6 +1810,7 @@ router.get(
     try {
       const { sessionId } = req.params;
       const user = req.user!;
+      if (!(await requireSocialRead(res, sessionId, user))) return;
 
       const contacts: Array<{
         address: string;
@@ -1914,6 +1958,9 @@ router.get('/news/session/:sessionId', requireAuth, async (req: AuthenticatedReq
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    const staff = isSessionStaff(user, session);
 
     let newsQuery = supabaseAdmin
       .from('sim_news_articles')
@@ -1922,7 +1969,7 @@ router.get('/news/session/:sessionId', requireAuth, async (req: AuthenticatedReq
       .order('published_at', { ascending: false });
 
     // Country scoping (contract §4.1), same rule as the feed.
-    const countryScope = await resolveCountryScope(sessionId, user, req.query.country);
+    const countryScope = await resolveCountryScope(sessionId, user, req.query.country, staff);
     if (countryScope) newsQuery = newsQuery.or(`country.is.null,country.eq.${countryScope}`);
 
     const { data, error } = await newsQuery;
@@ -1947,6 +1994,7 @@ router.post('/news/:articleId/read', requireAuth, async (req: AuthenticatedReque
       .single();
 
     if (!article) return res.status(404).json({ error: 'Article not found' });
+    if (!(await requirePlayerWrite(res, article.session_id as string, user))) return;
 
     await recordPlayerAction(
       article.session_id,
@@ -1997,6 +2045,8 @@ router.post(
     try {
       const user = req.user!;
       const { session_id, target_type, target_id, claimed_falsehood, submitted_facts } = req.body;
+
+      if (!(await requirePlayerWrite(res, session_id, user))) return;
 
       // Verify the target exists and belongs to this session.
       const table = target_type === 'article' ? 'sim_news_articles' : 'social_posts';
@@ -2082,11 +2132,15 @@ router.post(
 router.get('/disputes/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
-    const { data, error } = await supabaseAdmin
+    const user = req.user!;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    let disputesQuery = supabaseAdmin
       .from('content_dispute_requests')
       .select('*')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false });
+      .eq('session_id', sessionId);
+    if (!isSessionStaff(user, session)) disputesQuery = disputesQuery.eq('requested_by', user.id);
+    const { data, error } = await disputesQuery.order('created_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: 'Failed to fetch disputes' });
     res.json({ data });
@@ -2103,10 +2157,8 @@ router.get('/disputes/session/:sessionId', requireAuth, async (req: Authenticate
 router.get('/ledger/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    if (user.role !== 'trainer' && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
     const { sessionId } = req.params;
+    if (!(await requireSocialStaff(res, sessionId, user))) return;
     const ledger = await buildPlayerLedger(sessionId);
     return res.json({ data: ledger });
   } catch (err) {
@@ -2125,10 +2177,8 @@ router.get(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      if (user.role !== 'trainer' && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Access denied' });
-      }
       const { sessionId } = req.params;
+      if (!(await requireSocialStaff(res, sessionId, user))) return;
       const { computeTeamScores } = await import('../services/teamScoreService.js');
       const report = await computeTeamScores(sessionId);
       return res.json({ data: report });
@@ -2147,10 +2197,8 @@ router.get(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      if (user.role !== 'trainer' && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Access denied' });
-      }
       const { sessionId } = req.params;
+      if (!(await requireSocialStaff(res, sessionId, user))) return;
       const status = await getIntelStatus(sessionId);
       return res.json({ data: status });
     } catch (err) {
@@ -2167,6 +2215,7 @@ router.get('/my-team/session/:sessionId', requireAuth, async (req: Authenticated
   try {
     const user = req.user!;
     const { sessionId } = req.params;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     const { data: participant } = await supabaseAdmin
       .from('session_participants')
@@ -2224,6 +2273,8 @@ router.get('/my-team/session/:sessionId', requireAuth, async (req: Authenticated
 router.get('/sop/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     const { data: session } = await supabaseAdmin
       .from('sessions')
@@ -2244,6 +2295,8 @@ router.get('/sop/session/:sessionId', requireAuth, async (req: AuthenticatedRequ
 router.get('/sentiment/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const sentiment = await computeSessionSentiment(sessionId);
     res.json({ data: sentiment });
   } catch (err) {
@@ -2257,13 +2310,13 @@ router.get('/sentiment/session/:sessionId', requireAuth, async (req: Authenticat
 router.get('/actions/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
 
-    const { data, error } = await supabaseAdmin
-      .from('player_actions')
-      .select('*')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(200);
+    let actionsQuery = supabaseAdmin.from('player_actions').select('*').eq('session_id', sessionId);
+    if (!isSessionStaff(user, session)) actionsQuery = actionsQuery.eq('player_id', user.id);
+    const { data, error } = await actionsQuery.order('created_at', { ascending: false }).limit(200);
 
     if (error) return res.status(500).json({ error: 'Failed to fetch actions' });
     res.json({ data });
@@ -2292,6 +2345,8 @@ router.post(
     try {
       const user = req.user!;
       const { session_id, content, post_id, hateful_post_content } = req.body;
+
+      if (!(await requirePlayerWrite(res, session_id, user))) return;
 
       // Record draft SOP step when player grades content
       void recordPlayerAction(
@@ -2354,6 +2409,8 @@ router.post(
 router.get('/state/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const { data: session } = await supabaseAdmin
       .from('sessions')
       .select('current_state')
@@ -2405,6 +2462,8 @@ router.post(
       const user = req.user!;
       const { session_id, demographics } = req.body;
 
+      if (!(await requirePlayerWrite(res, session_id, user))) return;
+
       const { error } = await supabaseAdmin
         .from('session_participants')
         .update({ demographics })
@@ -2431,6 +2490,7 @@ router.get(
     try {
       const user = req.user!;
       const { sessionId } = req.params;
+      if (!(await requireSocialRead(res, sessionId, user))) return;
 
       const { data, error } = await supabaseAdmin
         .from('session_participants')
@@ -2454,6 +2514,8 @@ router.get(
 router.get('/handles/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     const { data: posts } = await supabaseAdmin
       .from('social_posts')
@@ -2501,9 +2563,7 @@ router.post(
     try {
       const user = req.user!;
       const { session_id, action_type, target_id, content, sop_step } = req.body;
-      const { assertSessionAccess } = await import('../lib/access.js');
-      const access = await assertSessionAccess(session_id, user);
-      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      if (!(await requirePlayerWrite(res, session_id, user))) return;
       if (
         !CLIENT_REPORTABLE_ACTIONS.includes(
           action_type as (typeof CLIENT_REPORTABLE_ACTIONS)[number],
@@ -2533,6 +2593,8 @@ router.post(
 router.get('/trending/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     const { data: posts } = await supabaseAdmin
       .from('social_posts')
@@ -2598,6 +2660,8 @@ router.get('/trending/session/:sessionId', requireAuth, async (req: Authenticate
 router.get('/suggested/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     // Get scenario from session
     const { data: session } = await supabaseAdmin
@@ -2751,6 +2815,9 @@ router.get(
       }
 
       const user = req.user!;
+      if (!isSessionStaff(user, { trainer_id: (session.trainer_id as string | null) ?? null })) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
       const revealJudgement = callerSeesJudgements(user, {
         trainer_id: (session.trainer_id as string | null) ?? null,
       });
@@ -2836,9 +2903,7 @@ router.get(
         let threshold: number | undefined;
 
         const anyKeys =
-          condAppear && 'any' in condAppear
-            ? (condAppear as { any?: unknown }).any
-            : undefined;
+          condAppear && 'any' in condAppear ? (condAppear as { any?: unknown }).any : undefined;
         if (condAppear && 'all' in condAppear) {
           keys = condAppear.all || [];
           mode = 'all';
@@ -2908,6 +2973,8 @@ router.get(
 router.get('/org-page/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const { data, error } = await supabaseAdmin
       .from('sim_org_pages')
       .select('*')
@@ -2960,6 +3027,8 @@ function groupOrgPages(rows: Array<Record<string, unknown>>) {
 router.get('/pages/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
     const [pagesResult, controllersResult] = await Promise.all([
       supabaseAdmin.from('sim_org_pages').select('*').eq('session_id', sessionId),
       supabaseAdmin
@@ -2993,6 +3062,7 @@ router.get('/my-page/session/:sessionId', requireAuth, async (req: Authenticated
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+    if (!(await requireSocialRead(res, sessionId, user))) return;
 
     const { data: controller } = await supabaseAdmin
       .from('session_page_controllers')
@@ -3316,6 +3386,7 @@ router.get(
     try {
       const { sessionId } = req.params;
       const user = req.user!;
+      if (!(await requireSocialRead(res, sessionId, user))) return;
 
       const [postsResult, actionsResult] = await Promise.all([
         supabaseAdmin
