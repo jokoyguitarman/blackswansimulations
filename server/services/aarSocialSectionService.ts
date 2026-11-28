@@ -7,6 +7,7 @@ import { buildPlayerLedger } from './playerLedgerService.js';
 import { getIntelStatus, type IntelStatusEntry } from './intelSharingService.js';
 import type { SectionEntry } from './aarSectionService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
+import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -175,6 +176,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   let scenarioTitle = '';
   let scenarioDescription = '';
   let orgName = '';
+  let liveInitial: Record<string, unknown> | undefined;
   let dimensionLabels: Record<string, string> = {
     public_trust: 'Public Trust',
     community_safety: 'Stakeholder Confidence',
@@ -190,6 +192,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     scenarioTitle = String(scenario?.title || '');
     scenarioDescription = trunc(scenario?.description, 700);
     const is = (scenario?.initial_state || {}) as Record<string, unknown>;
+    liveInitial = is;
     orgName = String(is.org_name || '');
     const dl = is.dimension_labels as Record<string, string> | undefined;
     if (dl) dimensionLabels = { ...dimensionLabels, ...dl };
@@ -273,18 +276,26 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     is_primary?: boolean;
   }> = [];
   try {
-    const { getSessionTeams, getOrgRegistry } = await import('./orgRegistryService.js');
-    const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
-    const scenarioId = await getSessionScenarioId(sessionId);
-    orgRegistry = scenarioId ? await getOrgRegistry(scenarioId) : [];
-    for (const t of await getSessionTeams(sessionId)) {
-      const org = t.org_key ? orgRegistry.find((o) => o.org_key === t.org_key) : undefined;
-      identityByTeamName.set(t.team_name, {
-        function_key: t.function_key,
-        org_key: t.org_key,
-        org_display: org?.display_name ?? null,
-        country: t.country,
-      });
+    const startedAt = (session?.start_time as string | null) ?? null;
+    orgRegistry = orgsForSession({
+      start_time: startedAt,
+      current_state: session?.current_state,
+      initial_state: startedAt ? undefined : liveInitial,
+    });
+    if (session?.scenario_id) {
+      const loaded = await teamsValidAt(String(session.scenario_id), startedAt ?? new Date());
+      for (const raw of loaded.data ?? []) {
+        const teamName = typeof raw.team_name === 'string' ? raw.team_name : '';
+        if (!teamName) continue;
+        const orgKey = typeof raw.org_key === 'string' ? raw.org_key : null;
+        const org = orgKey ? orgRegistry.find((o) => o.org_key === orgKey) : undefined;
+        identityByTeamName.set(teamName, {
+          function_key: typeof raw.function_key === 'string' ? raw.function_key : null,
+          org_key: orgKey,
+          org_display: org?.display_name ?? null,
+          country: org?.country ?? null,
+        });
+      }
     }
   } catch {
     /* single-org / legacy: everything resolves by exact team name */

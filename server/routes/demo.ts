@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { validate } from '../lib/validation.js';
@@ -78,10 +79,12 @@ router.post(
       }
 
       // 2. Load scenario teams
-      const { data: scenarioTeams } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name, team_description')
-        .eq('scenario_id', scenarioId);
+      const { data: scenarioTeams } = await activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, team_description')
+          .eq('scenario_id', scenarioId),
+      );
 
       const teamNames = (scenarioTeams ?? []).map((t: { team_name: string }) => t.team_name);
 

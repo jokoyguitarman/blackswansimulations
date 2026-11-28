@@ -5,6 +5,7 @@
 
 import type { Server as SocketServer } from 'socket.io';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../../lib/templateRows.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { sessionMinuteAt, type CommsDelivery, type CommsState } from '../ledger/injectLedgerCore.js';
@@ -564,14 +565,16 @@ async function publishConditional(
   key: string,
 ): Promise<boolean> {
   if (!input.scenarioId) return false;
-  const { data, error } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, trigger_time_minutes')
-    .eq('scenario_id', input.scenarioId)
-    .is('session_id', null)
-    .eq('delivery_config->>inject_key', key)
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('id, trigger_time_minutes')
+      .eq('scenario_id', input.scenarioId)
+      .is('session_id', null)
+      .eq('delivery_config->>inject_key', key)
+      .limit(1)
+      .maybeSingle(),
+  );
   if (error || !data || data.trigger_time_minutes != null) return false;
   try {
     const { publishInjectToSession } = await import('../../routes/injects.js');
@@ -922,11 +925,13 @@ export async function inspectMoodLadder(input: {
 }): Promise<MoodIssue[]> {
   const structural = validateMoodLadder({ ladder: input.ladder });
   if (structural.length > 0) return structural;
-  const { data, error } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('delivery_config, trigger_time_minutes')
-    .eq('scenario_id', input.scenarioId)
-    .is('session_id', null);
+  const { data, error } = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('delivery_config, trigger_time_minutes')
+      .eq('scenario_id', input.scenarioId)
+      .is('session_id', null),
+  );
   if (error || !data) return [];
   const known = (data ?? [])
     .map((row) => {

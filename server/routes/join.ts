@@ -3,6 +3,7 @@ import { normalizeSessionTeamName } from '../lib/sessionTeamName.js';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { isBoothJoinToken } from '../lib/boothLink.js';
@@ -63,11 +64,13 @@ router.get('/:joinToken', async (req, res) => {
     }
 
     // Load teams from scenario_teams
-    const { data: teams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('id, team_name, team_description, org_key')
-      .eq('scenario_id', session.scenario_id)
-      .order('team_name', { ascending: true });
+    const { data: teams } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('id, team_name, team_description, org_key')
+        .eq('scenario_id', session.scenario_id)
+        .order('team_name', { ascending: true }),
+    );
 
     // Booth visitors are only offered teams of player-run organisations; the AI runs the others.
     const aiOrgs = isBoothJoinToken(joinToken)
@@ -137,10 +140,12 @@ router.post(
       }
 
       // 4. Validate team_name against scenario_teams
-      const { data: scenarioTeams } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name, max_participants, org_key, function_key, charter')
-        .eq('scenario_id', session.scenario_id);
+      const { data: scenarioTeams } = await activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, max_participants, org_key, function_key, charter')
+          .eq('scenario_id', session.scenario_id),
+      );
 
       const validTeamNames = (scenarioTeams || []).map((t) => t.team_name);
 

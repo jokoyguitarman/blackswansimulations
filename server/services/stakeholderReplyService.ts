@@ -10,6 +10,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
+import { orgsForSession } from '../lib/templateRows.js';
 import type { Stakeholder, TeamIdentity } from '../lib/stakeholderContract.js';
 import { firstNameOf } from '../lib/identity.js';
 import { getTeamIdentity } from './orgRegistryService.js';
@@ -97,13 +98,27 @@ export async function resolvePlayerRef(
   let orgDisplay: string | null = null;
   if (identity?.org_key) {
     try {
-      const scenarioId = await getSessionScenarioId(sessionId);
-      if (scenarioId) {
-        const { getOrgRegistry } = await import('./orgRegistryService.js');
-        orgDisplay =
-          (await getOrgRegistry(scenarioId)).find((o) => o.org_key === identity.org_key)
-            ?.display_name ?? null;
+      const { data: sessionRow } = await supabaseAdmin
+        .from('sessions')
+        .select('start_time, current_state, scenario_id')
+        .eq('id', sessionId)
+        .maybeSingle();
+      let liveInitial: unknown;
+      const startedAt = (sessionRow?.start_time as string | null) ?? null;
+      if (!startedAt && sessionRow?.scenario_id) {
+        const { data: scenarioRow } = await supabaseAdmin
+          .from('scenarios')
+          .select('initial_state')
+          .eq('id', sessionRow.scenario_id as string)
+          .maybeSingle();
+        liveInitial = scenarioRow?.initial_state;
       }
+      orgDisplay =
+        orgsForSession({
+          start_time: startedAt,
+          current_state: sessionRow?.current_state,
+          initial_state: liveInitial,
+        }).find((org) => org.org_key === identity.org_key)?.display_name ?? null;
     } catch {
       orgDisplay = null;
     }

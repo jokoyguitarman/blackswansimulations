@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -187,10 +188,9 @@ export async function getConditionConfigForScenario(
     }
   }
 
-  const { data: teams } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name')
-    .eq('scenario_id', scenarioId);
+  const { data: teams } = await activeTeams(
+    supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+  );
 
   const teamNames = (teams ?? []).map((t) => (t as { team_name: string }).team_name);
 

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams, activeTemplateInjects } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
@@ -648,15 +649,17 @@ export class InjectSchedulerService {
 
     // Get time-based injects for this scenario (trigger_time_minutes <= elapsed)
     // Include template injects (session_id IS NULL) and this session's runtime injects
-    const { data: injectsRaw, error: injectsError } = await supabaseAdmin
-      .from('scenario_injects')
-      .select(
-        'id, trigger_time_minutes, title, content, type, severity, required_gate_id, required_gate_not_met_id, target_teams, inject_scope, delivery_config, conditions_to_appear',
-      )
-      .eq('scenario_id', session.scenario_id)
-      .or(`session_id.is.null,session_id.eq.${session.id}`)
-      .not('trigger_time_minutes', 'is', null)
-      .lte('trigger_time_minutes', elapsedMinutes);
+    const { data: injectsRaw, error: injectsError } = await activeTemplateInjects(
+      supabaseAdmin
+        .from('scenario_injects')
+        .select(
+          'id, trigger_time_minutes, title, content, type, severity, required_gate_id, required_gate_not_met_id, target_teams, inject_scope, delivery_config, conditions_to_appear',
+        )
+        .eq('scenario_id', session.scenario_id)
+        .or(`session_id.is.null,session_id.eq.${session.id}`)
+        .not('trigger_time_minutes', 'is', null)
+        .lte('trigger_time_minutes', elapsedMinutes),
+    );
 
     if (injectsError) {
       logger.error(
@@ -939,15 +942,17 @@ export class InjectSchedulerService {
     // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
     let conditionalPublished = 0;
     try {
-      const { data: condInjectsRaw } = await supabaseAdmin
-        .from('scenario_injects')
-        .select(
-          'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
-        )
-        .eq('scenario_id', session.scenario_id)
-        .or(`session_id.is.null,session_id.eq.${session.id}`)
-        .not('conditions_to_appear', 'is', null)
-        .is('trigger_time_minutes', null);
+      const { data: condInjectsRaw } = await activeTemplateInjects(
+        supabaseAdmin
+          .from('scenario_injects')
+          .select(
+            'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
+          )
+          .eq('scenario_id', session.scenario_id)
+          .or(`session_id.is.null,session_id.eq.${session.id}`)
+          .not('conditions_to_appear', 'is', null)
+          .is('trigger_time_minutes', null),
+      );
 
       const condInjects = (condInjectsRaw ?? []).filter(
         (inj: { id: string; eligible_after_minutes?: number | null }) =>
@@ -1393,12 +1398,14 @@ export class InjectSchedulerService {
       .single();
     if (!sessionRow) return;
 
-    const { data: bombTeam } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name')
-      .eq('scenario_id', sessionRow.scenario_id)
-      .ilike('team_name', '%bomb%')
-      .limit(1);
+    const { data: bombTeam } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name')
+        .eq('scenario_id', sessionRow.scenario_id)
+        .ilike('team_name', '%bomb%')
+        .limit(1),
+    );
     if (!bombTeam || bombTeam.length === 0) return;
 
     const { data: allAssets } = await supabaseAdmin
@@ -1608,10 +1615,9 @@ export class InjectSchedulerService {
     const PATIENTS_PER_TICK = 3;
     if (elapsedMinutes < PATIENT_START_MINUTE) return;
 
-    const { data: allTeams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name')
-      .eq('scenario_id', scenarioId);
+    const { data: allTeams } = await activeTeams(
+      supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+    );
     if (!allTeams?.length) return;
 
     const teamNames = allTeams.map((t) => (t as Record<string, unknown>).team_name as string);
@@ -1960,10 +1966,9 @@ export class InjectSchedulerService {
       if (meta?.hazard_id) processedHazards.add(meta.hazard_id as string);
     }
 
-    const { data: allTeams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name')
-      .eq('scenario_id', scenarioId);
+    const { data: allTeams } = await activeTeams(
+      supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+    );
     const teamNames = (allTeams ?? []).map(
       (t) => (t as Record<string, unknown>).team_name as string,
     );
@@ -2249,10 +2254,9 @@ export class InjectSchedulerService {
       });
 
       // Fire universal inject — a detonation affects all teams
-      const { data: allTeams } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name')
-        .eq('scenario_id', scenarioId);
+      const { data: allTeams } = await activeTeams(
+        supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', scenarioId),
+      );
       const allTeamNames = (allTeams ?? []).map(
         (t) => (t as Record<string, unknown>).team_name as string,
       );

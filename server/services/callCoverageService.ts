@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTemplateInjects } from '../lib/templateRows.js';
 import { env } from '../env.js';
 import { isBoothJoinToken } from '../lib/boothLink.js';
 import {
@@ -41,11 +42,13 @@ export async function getSessionCallCoverage(sessionId: string): Promise<CallCov
   const gate = initial.call_coverage_gate === 'enforce' || initial.call_coverage_gate === 'warn'
     ? initial.call_coverage_gate
     : null;
-  const { data: injectRows } = await supabaseAdmin
-    .from('scenario_injects')
-    .select('id, title, trigger_time_minutes, conditions_to_appear, trigger_condition, inject_scope, target_teams, delivery_config')
-    .eq('scenario_id', session.scenario_id)
-    .is('session_id', null);
+  const { data: injectRows } = await activeTemplateInjects(
+    supabaseAdmin
+      .from('scenario_injects')
+      .select('id, title, trigger_time_minutes, conditions_to_appear, trigger_condition, inject_scope, target_teams, delivery_config')
+      .eq('scenario_id', session.scenario_id)
+      .is('session_id', null),
+  );
   const stakeholders = Array.isArray(initial.stakeholders) ? initial.stakeholders : [];
   const { data: teamRows } = await supabaseAdmin
     .from('session_teams')

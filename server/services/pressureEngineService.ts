@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
@@ -550,10 +551,12 @@ export async function flipUnstaffedOrgsToAi(sessionId: string): Promise<string[]
     .from('session_teams')
     .select('team_name, user_id')
     .eq('session_id', sessionId);
-  const { data: scenarioTeams } = await supabaseAdmin
-    .from('scenario_teams')
-    .select('team_name, org_key')
-    .eq('scenario_id', scenario?.id as string);
+  const { data: scenarioTeams } = await activeTeams(
+    supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name, org_key')
+      .eq('scenario_id', scenario?.id as string),
+  );
   const staffedTeams = new Set((teams || []).map((t) => String(t.team_name)));
   const [{ data: controllerRows }, { data: participantRows }] = await Promise.all([
     supabaseAdmin

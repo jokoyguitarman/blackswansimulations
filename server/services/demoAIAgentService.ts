@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson } from './ai/chatClient.js';
@@ -2581,10 +2582,12 @@ export class DemoAIAgentService {
 
       if (!scenario) return null;
 
-      const { data: teams } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('team_name, team_description')
-        .eq('scenario_id', scenarioId);
+      const { data: teams } = await activeTeams(
+        supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, team_description')
+          .eq('scenario_id', scenarioId),
+      );
 
       const ik = (scenario as Record<string, unknown>).insider_knowledge as Record<
         string,

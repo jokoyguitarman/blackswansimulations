@@ -9,6 +9,7 @@
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { addObjectivePenalty } from './objectiveTrackingService.js';
 import { getWebSocketService } from './websocketService.js';
@@ -463,10 +464,12 @@ async function handleAdversarySighting(
 
   // Open response tracking windows for investigative teams
   try {
-    const { data: teams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name, is_investigative')
-      .eq('scenario_id', session.scenario_id);
+    const { data: teams } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name, is_investigative')
+        .eq('scenario_id', session.scenario_id),
+    );
 
     let investigativeTeams = (teams ?? []).filter(
       (t) => (t as Record<string, unknown>).is_investigative === true,
@@ -769,10 +772,9 @@ async function penalizeContainmentFailure(sessionId: string): Promise<void> {
       .single();
     if (!session) return;
 
-    const { data: teams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name')
-      .eq('scenario_id', session.scenario_id);
+    const { data: teams } = await activeTeams(
+      supabaseAdmin.from('scenario_teams').select('team_name').eq('scenario_id', session.scenario_id),
+    );
 
     const policeTeam = (teams ?? []).find((t) => {
       const n = (((t as Record<string, unknown>).team_name as string) || '').toLowerCase();

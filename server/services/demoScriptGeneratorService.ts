@@ -1,6 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { activeTeams } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
@@ -126,10 +127,12 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
 
     if (!scenario) return null;
 
-    const { data: teams } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name, team_description')
-      .eq('scenario_id', scenarioId);
+    const { data: teams } = await activeTeams(
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name, team_description')
+        .eq('scenario_id', scenarioId),
+    );
 
     const { data: injects } = await supabaseAdmin
       .from('scenario_injects')

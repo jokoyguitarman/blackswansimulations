@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { SocialCrisisPayload } from './socialCrisisGeneratorService.js';
@@ -6,6 +7,8 @@ import { functionKeyForTeamRow } from './scenarioOrgModel.js';
 import { validateScenarioPayload } from './scenarioValidationService.js';
 import { retainKnownConditions } from './conditions/conditionCatalog.js';
 import { stampGeneratedInjectKeys } from '../lib/injectKey.js';
+import { applyInjectGenStamp } from '../lib/injectFingerprint.js';
+import { stampOrgIdentity } from '../lib/templateRows.js';
 
 const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -63,38 +66,70 @@ export { functionKeyForTeamRow };
 // Postgres says "column X does not exist"; PostgREST says "Could not find the 'X' column ... in the schema cache".
 const MISSING_ORG_COLUMN =
   /(column .*(org_key|function_key).* does not exist|could not find the '(org_key|function_key)' column)/i;
+const MISSING_TEAM_UID_COLUMN =
+  /(column .*team_uid.* does not exist|could not find the 'team_uid' column)/i;
 
 export const MIGRATION_197_HINT =
   'migration 197 (scenario_teams.org_key/function_key) must be applied before multi-organisation scenarios can be compiled';
 
+let teamUidColumnWarned = false;
+
 /**
- * Insert scenario_teams rows carrying org_key/function_key (migration 197). If the
- * database has not been migrated yet, retry without the two columns and log loudly:
- * a lagging migration must never take compiles down, but multi-org scenarios DO need
- * the columns, so the retry refuses when any row actually has an org_key.
+ * Insert scenario_teams rows carrying org_key/function_key (migration 197) and,
+ * when the caller set it, team_uid (migration 275). A missing optional column is
+ * stripped and the insert retried. Multi-org rows still refuse to drop org_key.
+ * `dropped` receives column names that were removed so the caller can avoid
+ * citing a team_uid the table did not store.
  */
 export async function insertTeamRowsWithOrgColumns(
   rows: Array<Record<string, unknown> & { org_key: string | null; function_key: string | null }>,
   scenarioId: string,
+  dropped?: Set<string>,
 ): Promise<string | null> {
-  const { error } = await supabaseAdmin.from('scenario_teams').insert(rows);
-  if (!error) return null;
-  if (!MISSING_ORG_COLUMN.test(error.message)) return error.message;
-  if (rows.some((r) => r.org_key !== null)) {
-    return `${error.message} — ${MIGRATION_197_HINT}`;
+  let payload = rows.map((row) => ({ ...row }));
+  let lastMessage = 'scenario_teams insert failed';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { error } = await supabaseAdmin.from('scenario_teams').insert(payload);
+    if (!error) return null;
+    lastMessage = error.message;
+
+    if (MISSING_TEAM_UID_COLUMN.test(error.message) && payload.some((row) => 'team_uid' in row)) {
+      if (!teamUidColumnWarned) {
+        teamUidColumnWarned = true;
+        logger.warn(
+          { scenarioId, event: 'team_uid_column_unavailable' },
+          'scenario_teams.team_uid is absent because migration 275 is not applied; teams were inserted without it',
+        );
+      }
+      dropped?.add('team_uid');
+      payload = payload.map((row) => {
+        const rest: Record<string, unknown> = { ...row };
+        delete rest.team_uid;
+        return rest as typeof row;
+      });
+      continue;
+    }
+
+    if (MISSING_ORG_COLUMN.test(error.message) && payload.some((row) => 'org_key' in row || 'function_key' in row)) {
+      if (payload.some((row) => row.org_key != null)) {
+        return `${error.message} — ${MIGRATION_197_HINT}`;
+      }
+      logger.error(
+        { scenarioId },
+        'MIGRATION 197 NOT APPLIED: scenario_teams.org_key/function_key missing — inserting teams without organisation identity. Apply migrations/197_scenario_teams_org_function.sql.',
+      );
+      payload = payload.map((row) => {
+        const rest: Record<string, unknown> = { ...row };
+        delete rest.org_key;
+        delete rest.function_key;
+        return rest as typeof row;
+      });
+      continue;
+    }
+
+    return error.message;
   }
-  logger.error(
-    { scenarioId },
-    'MIGRATION 197 NOT APPLIED: scenario_teams.org_key/function_key missing — inserting teams without organisation identity. Apply migrations/197_scenario_teams_org_function.sql.',
-  );
-  const stripped = rows.map((row) => {
-    const rest: Record<string, unknown> = { ...row };
-    delete rest.org_key;
-    delete rest.function_key;
-    return rest;
-  });
-  const retry = await supabaseAdmin.from('scenario_teams').insert(stripped);
-  return retry.error ? retry.error.message : null;
+  return lastMessage;
 }
 
 export async function persistSocialCrisisScenario(
@@ -107,6 +142,7 @@ export async function persistSocialCrisisScenario(
 
   // Contract §9 acceptance checklist: fail loudly BEFORE any row is written.
   validateScenarioPayload(payload, teamCharters ?? []);
+  const initialState = stampOrgIdentity(scenario.initial_state);
 
   const { data: scenarioRow, error: scenarioErr } = await supabaseAdmin
     .from('scenarios')
@@ -118,8 +154,8 @@ export async function persistSocialCrisisScenario(
       difficulty: scenario.difficulty,
       duration_minutes: scenario.duration_minutes,
       objectives: objectives.map((o) => o.objective_name),
-      initial_state: scenario.initial_state,
-      blueprint: scenario.initial_state.blueprint ?? null,
+      initial_state: initialState,
+      blueprint: initialState.blueprint ?? null,
       created_by: createdBy,
     })
     .select('id')
@@ -133,6 +169,8 @@ export async function persistSocialCrisisScenario(
   const scenarioId = scenarioRow.id;
 
   const validTeamNames = new Set(teams.map((t) => t.team_name));
+  const teamUidByName = new Map<string, string>();
+  let persistTeamUid = false;
 
   try {
     if (teams.length > 0) {
@@ -141,8 +179,11 @@ export async function persistSocialCrisisScenario(
       );
       const teamRows = teams.map((t) => {
         const charter = charterByName.get(t.team_name);
+        const teamUid = randomUUID();
+        teamUidByName.set(t.team_name, teamUid);
         return {
           scenario_id: scenarioId,
+          team_uid: teamUid,
           team_name: t.team_name,
           team_description: t.team_description,
           required_roles: [],
@@ -165,8 +206,10 @@ export async function persistSocialCrisisScenario(
           scoring_rubric: charter ? charter.scoring_rubric : null,
         };
       });
-      const teamsErr = await insertTeamRowsWithOrgColumns(teamRows, scenarioId);
+      const droppedTeamColumns = new Set<string>();
+      const teamsErr = await insertTeamRowsWithOrgColumns(teamRows, scenarioId, droppedTeamColumns);
       if (teamsErr) throw new Error(`scenario_teams: ${teamsErr}`);
+      persistTeamUid = !droppedTeamColumns.has('team_uid');
     }
 
     if (objectives.length > 0) {
@@ -215,6 +258,7 @@ export async function persistSocialCrisisScenario(
         state_effect: inj.state_effect || null,
         ai_generated: true,
         generation_source: 'war_room',
+        gen_layer: inj.gen_layer,
       })),
       ...condition_injects.flatMap((inj) => {
         const retained = retainKnownConditions(inj.conditions_to_appear, inj.conditions_to_cancel);
@@ -248,6 +292,7 @@ export async function persistSocialCrisisScenario(
             state_effect: inj.state_effect || null,
             ai_generated: true,
             generation_source: 'war_room',
+            gen_layer: inj.gen_layer,
           },
         ];
       }),
@@ -264,10 +309,13 @@ export async function persistSocialCrisisScenario(
         delivery_config: inj.delivery_config || null,
         ai_generated: true,
         generation_source: 'war_room',
+        gen_layer: inj.gen_layer,
       })),
     ];
 
-    const stampedInjects = stampGeneratedInjectKeys(allInjects);
+    const stampedInjects = stampGeneratedInjectKeys(allInjects).map((row) =>
+      applyInjectGenStamp(row, { teamUidByName, persistTeamUid }),
+    );
     if (stampedInjects.length > 0) {
       const { error: injectsErr } = await supabaseAdmin
         .from('scenario_injects')

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { teamsValidAt } from '../lib/templateRows.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
@@ -98,12 +99,10 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
 
   const [teamsRes, membershipRes, participantsRes, actionsRes, postsRes, emailsRes] =
     await Promise.all([
-      supabaseAdmin
-        .from('scenario_teams')
-        // '*' so function_key / org_key (migration 197) are available once they exist.
-        .select('*')
-        .eq('scenario_id', session.scenario_id)
-        .order('team_name', { ascending: true }),
+      teamsValidAt(
+        String(session.scenario_id),
+        (session.start_time as string | null) ?? new Date(),
+      ),
       supabaseAdmin
         .from('session_teams')
         .select('user_id, team_name, assigned_at')
