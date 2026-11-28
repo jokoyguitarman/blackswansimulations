@@ -2,9 +2,31 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chatJson } from './ai/chatClient.js';
+import { loadSessionTopicPhase } from './peace/sessionTopicPhase.js';
 import { getWebSocketService } from './websocketService.js';
 import { sanitizeEmailCategory } from './feedEngineService.js';
 import { pickResponders, resolveStakeholderRecipients } from '../lib/stakeholderRecipients.js';
+import {
+  emailFallbackRespondent,
+  formatEmailFacts,
+  formatEmailThread,
+  type EmailHistoryRow,
+} from './topic/channelPromptShared.js';
+import { buildLegacyEmailReplyMessages } from './topic/legacyChannelPrompts.js';
+import {
+  asModelRecord,
+  buildTopicEmailMessages,
+  channelPhase,
+  channelTopicResult,
+  screenChannelReply,
+  screenStakeholderReply,
+  singleResponderStance,
+  type ChannelChatClient,
+  type ChannelPhase,
+  type ChannelScreenResult,
+  type ChannelTopicResult,
+} from './topic/channelTopicCore.js';
+import { leakTermsFromInitialState } from './topic/topicPromptCore.js';
 
 interface NPCPersona {
   handle: string;
@@ -23,7 +45,7 @@ interface SenderRecord {
   email_category: string | null;
 }
 
-interface PlayerEmail {
+export interface PlayerEmail {
   id: string;
   to_addresses: string[];
   subject: string;
@@ -294,11 +316,23 @@ function scheduleStakeholderEmailReply(args: {
   }, delayMs);
 }
 
+export interface NpcEmailReplyOptions {
+  phase?: ChannelPhase;
+  client?: ChannelChatClient;
+}
+
 export async function triggerNPCEmailReply(
   sessionId: string,
   playerEmail: PlayerEmail,
-): Promise<void> {
-  if (!env.aiEnabled) return;
+  options?: NpcEmailReplyOptions,
+): Promise<ChannelTopicResult | null> {
+  if (!env.aiEnabled) return null;
+
+  const phase = channelPhase(options?.phase ?? (await loadSessionTopicPhase(sessionId)));
+  const topicAware = env.enableTopicAwareReplies;
+  const finish = (screen: ChannelScreenResult | null = null) =>
+    channelTopicResult(topicAware, playerEmail.id, screen);
+  let outcome: ChannelScreenResult | null = null;
 
   try {
     // Anti-loop: check if this email already got an NPC reply
@@ -311,7 +345,7 @@ export async function triggerNPCEmailReply(
 
     if ((existingReplies || 0) > 0) {
       logger.debug({ emailId: playerEmail.id }, 'NPC email reply already exists, skipping');
-      return;
+      return finish();
     }
 
     // Load scenario context
@@ -321,7 +355,7 @@ export async function triggerNPCEmailReply(
       .eq('id', sessionId)
       .single();
 
-    if (!session?.scenario_id) return;
+    if (!session?.scenario_id) return finish();
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
@@ -329,7 +363,7 @@ export async function triggerNPCEmailReply(
       .eq('id', session.scenario_id)
       .single();
 
-    if (!scenario) return;
+    if (!scenario) return finish();
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
@@ -363,7 +397,7 @@ export async function triggerNPCEmailReply(
 
     // Match recipient
     const toAddress = playerEmail.to_addresses[0];
-    if (!toAddress) return;
+    if (!toAddress) return finish();
 
     let respondentName: string | null = null;
     let respondentAddress: string | null = null;
@@ -391,6 +425,14 @@ export async function triggerNPCEmailReply(
       );
 
       if (recipients.primary || recipients.all.length > 0) {
+        const topic =
+          topicAware || phase === 'peace'
+            ? {
+                phase,
+                thread: `Subject: ${playerEmail.subject}\n${playerEmail.body_text}`,
+                isReply: Boolean(playerEmail.replied_to_id || playerEmail.thread_id),
+              }
+            : undefined;
         const messageCtx = {
           sessionId,
           channel: 'email' as const,
@@ -399,6 +441,8 @@ export async function triggerNPCEmailReply(
           subject: playerEmail.subject,
           refTable: 'sim_emails',
           refId: playerEmail.id,
+          ...(topic ? { topic } : {}),
+          ...(options?.client ? { client: options.client } : {}),
         };
         const primary = recipients.primary;
         const responders = pickResponders(recipients.all, primary, playerEmail.id);
@@ -420,13 +464,29 @@ export async function triggerNPCEmailReply(
           void (async () => {
             const plan = await handlePlayerMessage({ ...messageCtx, stakeholder: s });
             if (s.relationship === 'media') return; // verdicts + log only for cc'd journalists
-            if (!plan.should_reply) return;
+            let text = plan.text;
+            if (topic) {
+              const screened = screenStakeholderReply({
+                phase,
+                classification: plan.classification,
+                replyText: plan.text,
+                authorHandle: s.handle,
+                leakTerms: leakTermsFromInitialState(initialState),
+                playerText: playerEmail.body_text,
+                isReply: topic.isReply === true,
+                minConfidence: env.topicBridgeMinConfidence,
+              });
+              text = screened.replyText;
+              if (screened.dropped) return;
+            }
+            if (!plan.should_reply || !text) return;
+            const replyPlan = text === plan.text ? plan : { ...plan, text };
             const delayMs =
               Math.max(10, Math.min(90, plan.delay_seconds)) * 1000 + (idx + 1) * 25_000;
             scheduleStakeholderEmailReply({
               sessionId,
               stakeholder: s,
-              plan,
+              plan: replyPlan,
               playerEmail,
               delayMs,
               recordNpcReply,
@@ -451,13 +511,35 @@ export async function triggerNPCEmailReply(
             respondentHandle = primary.handle;
             void planPromise; // verdicts + log only; the legacy call below writes the reply
           } else {
-            const plan = await planPromise;
-            if (!plan.should_reply) {
+            let plan = await planPromise;
+            let screened: ChannelScreenResult | null = null;
+            if (topic) {
+              screened = screenStakeholderReply({
+                phase,
+                classification: plan.classification,
+                replyText: plan.text,
+                authorHandle: primary.handle,
+                leakTerms: leakTermsFromInitialState(initialState),
+                playerText: playerEmail.body_text,
+                isReply: topic.isReply === true,
+                minConfidence: env.topicBridgeMinConfidence,
+              });
+              outcome = screened;
+              plan = { ...plan, text: screened.replyText };
+              if (screened.dropped) {
+                logger.info(
+                  { sessionId, stakeholderId: primary.id },
+                  'Dropped topic reply that matched leak terms',
+                );
+                return finish(screened);
+              }
+            }
+            if (!plan.should_reply || !plan.text) {
               logger.debug(
                 { sessionId, stakeholderId: primary.id },
                 'Stakeholder chose not to reply by email',
               );
-              return;
+              return finish(screened);
             }
             scheduleStakeholderEmailReply({
               sessionId,
@@ -467,10 +549,10 @@ export async function triggerNPCEmailReply(
               delayMs: Math.max(10, Math.min(90, plan.delay_seconds)) * 1000,
               recordNpcReply,
             });
-            return;
+            return finish(screened);
           }
         } else if (primary?.kind === 'group') {
-          return; // a distribution list never answers itself; sampled members reply above
+          return finish(); // a distribution list never answers itself; sampled members reply above
         }
         // `!primary` (first address is a legacy persona, later ones are stakeholders): the
         // stakeholders are handled; the persona still gets its legacy reply below.
@@ -496,10 +578,11 @@ export async function triggerNPCEmailReply(
         { threadId },
         `NPC email thread reply limit reached (${LEGACY_THREAD_CAP}), skipping`,
       );
-      return;
+      return finish();
     }
 
-    if (await legacyReplyBudgetExceeded(sessionId, playerEmail.sender_user_id ?? null)) return;
+    if (await legacyReplyBudgetExceeded(sessionId, playerEmail.sender_user_id ?? null))
+      return finish();
 
     // Step 1: exact match against sender registry
     const exactMatch = findExactSenderMatch(toAddress, senderRegistry);
@@ -549,128 +632,120 @@ export async function triggerNPCEmailReply(
       toAddress.includes('@news.') ||
       toAddress.includes('@press.');
 
-    // Load thread context
-    let threadContext = '';
+    // Load thread context. Flag off keeps master's oldest-10 query. Flag on loads the latest 3.
+    let history: EmailHistoryRow[] = [];
     if (playerEmail.replied_to_id || playerEmail.thread_id) {
       const lookupId = playerEmail.thread_id || playerEmail.replied_to_id;
-      const { data: threadEmails } = await supabaseAdmin
-        .from('sim_emails')
-        .select('from_name, from_address, direction, subject, body_text, created_at')
-        .eq('session_id', sessionId)
-        .or(`thread_id.eq.${lookupId},replied_to_id.eq.${lookupId},id.eq.${lookupId}`)
-        .order('created_at', { ascending: true })
-        .limit(10);
-
-      if (threadEmails && threadEmails.length > 0) {
-        threadContext =
-          '\n\nEMAIL THREAD HISTORY (oldest first):\n' +
-          threadEmails
-            .map(
-              (e) =>
-                `[${e.direction === 'inbound' ? 'FROM' : 'TO'}: ${e.from_name}] Subject: ${e.subject}\n${String(e.body_text).substring(0, 300)}`,
-            )
-            .join('\n---\n');
-      }
+      const { data: threadEmails } = topicAware
+        ? await supabaseAdmin
+            .from('sim_emails')
+            .select('from_name, from_address, direction, subject, body_text, created_at')
+            .eq('session_id', sessionId)
+            .or(`thread_id.eq.${lookupId},replied_to_id.eq.${lookupId},id.eq.${lookupId}`)
+            .order('created_at', { ascending: false })
+            .limit(3)
+        : await supabaseAdmin
+            .from('sim_emails')
+            .select('from_name, from_address, direction, subject, body_text, created_at')
+            .eq('session_id', sessionId)
+            .or(`thread_id.eq.${lookupId},replied_to_id.eq.${lookupId},id.eq.${lookupId}`)
+            .order('created_at', { ascending: true })
+            .limit(10);
+      const rows = topicAware ? [...(threadEmails ?? [])].reverse() : (threadEmails ?? []);
+      history = rows.map((row) => ({
+        from_name: row.from_name,
+        direction: row.direction ?? '',
+        subject: row.subject,
+        body_text: row.body_text ?? '',
+      }));
     }
-
-    // Build fact sheet context
-    let factsContext = '';
-    if (factSheet) {
-      const confirmed = (factSheet.confirmed_facts || []).slice(0, 6).join('; ');
-      const claims = (factSheet.unconfirmed_claims || [])
-        .slice(0, 4)
-        .map((c) => `"${c.claim}" (${c.status})`)
-        .join('; ');
-      if (confirmed || claims) {
-        factsContext = `\n\nFACT SHEET:\nConfirmed: ${confirmed}\nUnverified claims: ${claims}`;
-      }
-    }
+    const threadContext = formatEmailThread(topicAware ? [] : history);
+    const factsContext = formatEmailFacts(factSheet);
 
     // Build AI prompt
     const respondentInfo = useAiFallback
-      ? `The player is emailing "${toAddress}". Based on the crisis context and this email address, determine:
-1. Whether someone at this address would realistically respond (set should_reply to false if not)
-2. Who that person would be (invent a realistic name and title — if this is an internal/organisational address, the respondent is GROUND-LEVEL OPERATIONAL STAFF such as a duty manager, shift supervisor, or operations coordinator, never a C-suite executive)
-3. How they would respond given the crisis situation`
+      ? emailFallbackRespondent(toAddress, phase === 'peace' ? 'peace' : 'crisis')
       : `You are ${respondentName} (${respondentAddress}).
 ${respondentRole ? `Role/Title: ${respondentRole}` : ''}
 ${respondentPersonality ? `Personality: ${respondentPersonality}` : ''}`;
 
-    const parsed = await chatJson<Record<string, unknown>>({
-      tier: 'standard',
-      json: true,
+    const emailInput = {
+      respondentInfo,
+      crisisDescription: String(scenario.description || ''),
+      orgName,
+      factsContext,
+      threadContext,
+      isMedia: isMediaNPC,
+      fromName: playerEmail.from_name,
+      fromAddress: playerEmail.from_address,
+      toAddress,
+      ccAddresses: playerEmail.cc_addresses,
+      subject: playerEmail.subject,
+      body: playerEmail.body_text,
+    };
+    const stanceSource = personas.find((persona) => persona.handle === respondentHandle);
+    const emailStance = topicAware
+      ? singleResponderStance(
+          {
+            handle: stanceSource?.handle || respondentHandle || toAddress,
+            type: stanceSource?.type || respondentType || 'npc_public',
+            personality: stanceSource?.personality || respondentPersonality || '',
+            bias: stanceSource?.bias ?? '',
+          },
+          playerEmail.id,
+          env.topicBridgeStayShare,
+        ).stance
+      : 'stay';
+    const prompted = topicAware
+      ? buildTopicEmailMessages({
+          ...emailInput,
+          phase,
+          history,
+          stanceLine: `${stanceSource?.handle || respondentHandle || toAddress} (${respondentName || toAddress}): ${stanceSource?.personality || respondentPersonality}, bias: ${stanceSource?.bias || 'none'}, type: ${stanceSource?.type || respondentType || 'npc_public'}. If bridge: ${emailStance}.`,
+        })
+      : buildLegacyEmailReplyMessages({ ...emailInput, phase });
+    const request = {
+      tier: 'standard' as const,
+      json: true as const,
       temperature: 0.8,
       maxTokens: isMediaNPC ? 4000 : 1000,
       label: 'npcEmailReply.generate',
       messages: [
-        {
-          role: 'system',
-          content: `You are generating an NPC email reply during a crisis simulation. The player sent an email and you must respond in character.
-
-${respondentInfo}
-
-Crisis context: ${String(scenario.description || '').substring(0, 400)}${orgName ? `\nOrganization under crisis: ${orgName}` : ''}
-${factsContext}
-${threadContext}
-
-RULES:
-- Reply in character as this specific person. Use appropriate formality for email.
-- If this is an internal colleague or supervisor, reply at WORKING LEVEL (duty manager, ops coordinator, shift lead): share verified facts, request status, flag operational constraints. C-suite executives do not personally answer email during a crisis — if the address clearly belongs to an executive, the reply comes from their operations desk or assistant on their behalf. Internal replies must NEVER provide draft statements, talking points, suggested messaging, or PR strategy.
-- If this is a community leader or external contact, reflect their concerns and needs.
-- If this is media, be professional and guarded.
-- Keep the reply realistic: 2-6 sentences for quick replies, longer for substantive responses.
-- Determine if this email even warrants a reply (a "thank you" or FYI email might not need one).
-- Assign an email_category for your reply. Valid categories: "general", "verified_facts", "sitrep_request", "leak_notice". Use "verified_facts" only to share confirmed information; use "general" for press/external correspondence; do NOT issue communication red lines, approval chains, or comms-process instructions.
-- Assign a delay_seconds (10-90) based on how busy this person would realistically be. Executives: 30-90s. Community leaders: 15-60s. Media: 10-30s.
-- Do NOT contradict confirmed facts from the fact sheet.
-- ANTI-COACHING: If you are a senior leader, executive, or internal authority, you must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, or PR strategy. You may share verified facts, set constraints (what NOT to do), request updates, and authorize resources — but the team must craft their own public response.
-${
-  isMediaNPC
-    ? `
-MEDIA/JOURNALIST PUBLICATION RULES (1-2 STEPS MAX — do NOT gatekeep):
-- You are a journalist who PUBLISHES quickly based on whatever the source provides.
-- If the player's email contains ANY usable information, a statement, or a request to cover something: set "should_publish" to true on this FIRST email. Do NOT demand documentation, multiple confirmations, or quotable statements as a precondition.
-- Only send ONE clarifying reply (without publishing) if the email contains NO usable information at all (e.g. it is purely a question to you). After that single exchange, publish with whatever you have.
-- Publish based ONLY on what the player actually provided. If the info is incomplete, vague, or unverified, write a SHORTER, more speculative or critical article that reflects the gaps — e.g. note that "[the organization] did not provide specifics", "key questions remain unanswered", or lean on unverified public claims. Incomplete or weak input MUST result in an incomplete or unflattering article, not a request for more.
-- When publishing, write a professional news article with headline, subheadline, and body. Quote the source appropriately ("a spokesperson for [org]", "according to the crisis response team").
-- Your reply email should mention the story is being published.
-- If the player is just asking a question (not providing info for publication), respond normally without publishing.
-`
-    : ''
-}
-Return ONLY valid JSON:
-{
-  "should_reply": true,
-  "delay_seconds": 30,
-  "from_name": "Respondent Name",
-  "from_address": "respondent@example.com",
-  "subject": "RE: ...",
-  "body": "Reply text here...",
-  "email_category": "general",
-  "priority": "normal"${
-    isMediaNPC
-      ? `,
-  "should_publish": false,
-  "article": {
-    "headline": "Headline if publishing",
-    "subheadline": "Optional subheadline",
-    "body": "Full news article body text if publishing",
-    "category": "breaking|developing|analysis"
-  }`
-      : ''
-  }
-}`,
-        },
-        {
-          role: 'user',
-          content: `Player email from ${playerEmail.from_name} (${playerEmail.from_address}):\nTo: ${toAddress}${(playerEmail.cc_addresses ?? []).length > 0 ? `\nCc: ${(playerEmail.cc_addresses ?? []).join(', ')}` : ''}\nSubject: ${playerEmail.subject}\n\n${playerEmail.body_text}`,
-        },
+        { role: 'system' as const, content: prompted.system },
+        { role: 'user' as const, content: prompted.user },
       ],
-    });
+    };
+    const parsed = asModelRecord(
+      options?.client ? await options.client.chatJson(request) : await chatJson(request),
+    );
 
     if (!parsed) {
       logger.warn({ sessionId }, 'NPC email reply request failed or returned no JSON');
-      return;
+      return finish();
+    }
+
+    let personaScreen: ChannelScreenResult | null = null;
+    if (topicAware || phase === 'peace') {
+      personaScreen = screenChannelReply({
+        phase,
+        classification: parsed.classification,
+        replyText: String(parsed.body || ''),
+        authorHandle: stanceSource?.handle || respondentHandle || toAddress,
+        stance: emailStance,
+        leakTerms: leakTermsFromInitialState(initialState),
+        playerText: `${playerEmail.subject}\n${playerEmail.body_text}`,
+        isReply: Boolean(playerEmail.replied_to_id || playerEmail.thread_id),
+        minConfidence: env.topicBridgeMinConfidence,
+      });
+      outcome = personaScreen;
+      parsed.body = personaScreen.replyText;
+      if (personaScreen.dropped) {
+        logger.info(
+          { sessionId, playerEmailId: playerEmail.id },
+          'Dropped topic reply that matched leak terms',
+        );
+        return finish(personaScreen);
+      }
     }
 
     if (!parsed.should_reply) {
@@ -678,11 +753,11 @@ Return ONLY valid JSON:
         { sessionId, toAddress, emailId: playerEmail.id },
         'AI decided no reply warranted',
       );
-      return;
+      return finish(personaScreen);
     }
 
     const replyBody = String(parsed.body || '');
-    if (!replyBody.trim()) return;
+    if (!replyBody.trim()) return finish(personaScreen);
 
     const replyFromName = respondentName || String(parsed.from_name || 'System');
     const replyFromAddress = respondentAddress || String(parsed.from_address || toAddress);
@@ -885,10 +960,12 @@ Return ONLY valid JSON:
       },
       'NPC email reply scheduled',
     );
+    return finish(outcome);
   } catch (err) {
     logger.error(
       { err, sessionId, playerEmailId: playerEmail.id },
       'NPC email reply trigger failed',
     );
+    return finish(outcome);
   }
 }

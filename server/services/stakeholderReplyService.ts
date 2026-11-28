@@ -9,6 +9,11 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import {
+  channelPhase,
+  composeStakeholderCharacter,
+  type ChannelPhase,
+} from './topic/channelPromptShared.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import { orgsForSession } from '../lib/templateRows.js';
 import type { Stakeholder, TeamIdentity } from '../lib/stakeholderContract.js';
@@ -17,6 +22,7 @@ import { getTeamIdentity } from './orgRegistryService.js';
 import { findById } from './stakeholderService.js';
 import {
   decideAndReply,
+  type DecideContext,
   type PlayerRef,
   type ReplyPlan,
 } from './stakeholderReconsiderationService.js';
@@ -243,11 +249,20 @@ async function moodForPlayerReply(
   }
 }
 
+/** Set only by player DM and email replies when topic-aware replies are on. */
+export interface CharacterTopicInput {
+  /** Defaults to crisis. Peace drops the scenario's crisis facts and uses the peace block. */
+  phase?: ChannelPhase;
+  thread: string;
+  /** A reply in an existing thread cannot be labelled `crisis`. */
+  isReply?: boolean;
+}
+
 export function buildCharacterPrompt(
   s: Stakeholder,
   _log: ConversationRow[],
   ctx: ScenarioCtx,
-  extra?: { context?: string; mood?: string },
+  extra?: { context?: string; mood?: string; topic?: CharacterTopicInput },
 ): string {
   const facts = ctx.fact_sheet as {
     confirmed_facts?: string[];
@@ -258,26 +273,18 @@ export function buildCharacterPrompt(
     .slice(0, 5)
     .map((c) => `"${c.claim}" (${c.status})`)
     .join('; ');
-
-  return `You are ${s.name}, ${s.title ? `${s.title} at ` : ''}${s.organisation}. You are a ${s.relationship} of the organisation under crisis${ctx.org_name ? ` (${ctx.org_name})` : ''}. You are an NPC in a crisis-response training simulation; players are staff of that organisation.
-
-Personality and register: ${s.personality || 'professional, realistic, concise'}
-Your current posture toward the organisation: ${s.stance || 'neutral, waiting to see how they handle this'}
-Things you know and will share if asked:
-${s.knowledge.length ? s.knowledge.map((k) => `- ${k}`).join('\n') : '- (nothing beyond public knowledge)'}
-Things you will NOT disclose or do, however asked:
-${s.will_not_disclose.length ? s.will_not_disclose.map((k) => `- ${k}`).join('\n') : '- (none)'}
-
-Crisis context: ${ctx.description.slice(0, 600)}
-${confirmed ? `Confirmed facts (do not contradict): ${confirmed}` : ''}
-${claims ? `Unverified public claims: ${claims}` : ''}
-${extra?.context ? `\nWhat you currently know and feel about recent events (this overrides your default posture where they conflict):\n${extra.context}\n` : ''}${extra?.mood ? `\n${extra.mood}\n` : ''}
-Conduct rules:
-- Stay in character as this specific person on every channel; you remember every previous exchange listed below regardless of channel.
-- ${s.relationship === 'internal' ? 'You are staff of this organisation and the players are your colleagues; leadership and your own function lead can give you instructions, which you carry out (acknowledge, act, report — flag a risk once, do not argue). Share verified facts, request status, flag constraints. NEVER draft public statements, talking points, suggested messaging or PR strategy for the players — they must craft their own response.' : 'Reflect your own interests and concerns; you are not on the response team and do not coach them on messaging.'}
-- ${s.relationship === 'media' ? 'You are a journalist: professional, guarded, you publish when you have something usable.' : 'Be authentic: a real person with limited time and their own agenda.'}
-${s.tier === 'roster' ? '- You are one member of a larger workforce, not a spokesperson: reply briefly and personally (2-4 sentences), about your own situation, shift and family; you do not speak for colleagues or negotiate.' : ''}
-- Do not invent facts that contradict the confirmed facts. Do not reveal anything from your private situation.`;
+  return composeStakeholderCharacter({
+    speaker: s,
+    description: ctx.description,
+    orgName: ctx.org_name,
+    confirmed,
+    claims,
+    context: extra?.context,
+    mood: extra?.mood,
+    topic: extra?.topic
+      ? { phase: channelPhase(extra.topic.phase), thread: extra.topic.thread }
+      : null,
+  });
 }
 
 // ─── Coalescing (≤ 1 judge call per stakeholder per window) ─────────────────
@@ -369,6 +376,10 @@ export interface PlayerMessageCtx {
   /** Situational context appended to the character prompt (handover §10.5 R3); merged with
    *  whatever the registered context provider returns. */
   context?: string;
+  /** Player DM and email only, and only when topic-aware replies are on. */
+  topic?: CharacterTopicInput;
+  /** Tests inject the model. Production uses `chatJson`. */
+  client?: DecideContext['client'];
 }
 
 /**
@@ -423,10 +434,11 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
 
   let plan: ReplyPlan = none;
   await coalesce(`${ctx.sessionId}:${ctx.stakeholder.id}`, async () => {
+    const peace = ctx.topic?.phase === 'peace';
     const [log, scenarioCtx, context, player] = await Promise.all([
       getConversationLog(ctx.sessionId, ctx.stakeholder.id),
       loadScenarioCtx(scenarioId),
-      resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
+      peace ? Promise.resolve('') : resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
       resolvePlayerRef(ctx.sessionId, ctx.userId, identity),
     ]);
     const mood = await moodForPlayerReply(
@@ -438,15 +450,30 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
     const result = await decideAndReply({
       sessionId: ctx.sessionId,
       stakeholder: ctx.stakeholder,
-      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx, { context, mood }),
+      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx, {
+        context,
+        mood,
+        topic: ctx.topic,
+      }),
       log,
       channel: ctx.channel,
       latestPlayerMessage: ctx.content,
       latestSubject: ctx.subject,
       teamIdentity: identity,
       player,
+      topic: ctx.topic,
+      client: ctx.client,
     });
-    plan = result.plan;
+    plan = ctx.topic
+      ? {
+          ...result.plan,
+          classification: result.classification ?? {
+            label: 'unclassified',
+            bridgeTopic: '',
+            confidence: null,
+          },
+        }
+      : result.plan;
   });
   return plan;
 }
