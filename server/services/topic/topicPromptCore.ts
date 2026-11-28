@@ -270,9 +270,27 @@ export interface TopicPromptInput {
 const PERSONAL_AUTHOR_BLOCK =
   "This is an individual. Personas treat it as one person's opinion: friends-and-followers tone, less formality. Media rarely pick it up unless it is inflammatory. Nobody treats it as the organisation's position, unless the person identifies themselves as staff.";
 
-function peaceBlock(orgName: string): string {
+/** The §5.3 peace block. DM, email and stakeholder prompts use this same sentence. */
+export function topicPeaceBlock(orgName: string): string {
   const org = orgName.trim() || 'the organisation';
   return `Ordinary day. Nothing unusual has happened to ${org}. If someone mentions an incident, a recall, an accident or a scandal you have not heard of, react with mild confusion, ask what they mean, or ignore it. Never invent details.`;
+}
+
+export const TOPIC_CLASSIFICATION_OBJECT =
+  '{ "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }';
+
+/** Missing or invalid classification, including `crisis` on a reply. */
+export function readTopicClassification(
+  raw: unknown,
+  isReply: boolean,
+): { label: TopicLabel; bridgeTopic: string; confidence: number | null } {
+  return (
+    parseClassification(raw, isReply) ?? {
+      label: 'unclassified',
+      bridgeTopic: '',
+      confidence: null,
+    }
+  );
 }
 
 function authorBlock(authorIsPage: boolean, orgName: string): string {
@@ -337,7 +355,7 @@ ${personaLines}`;
 
   const crisisOrPeace =
     input.phase === 'peace'
-      ? `PEACE:\n${peaceBlock(input.orgName)}`
+      ? `PEACE:\n${topicPeaceBlock(input.orgName)}`
       : `CRISIS CONTEXT: use ONLY if you label the comment \`bridge\`, and ONLY for personas whose stance is \`engage\`. Personas with \`stay\` reply about the post as if the remark were a passing jab (ignore it, deflect, or tease back about the post). For \`on_topic\` or \`off_topic\`, never mention the crisis.
 ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`;
 
@@ -366,7 +384,7 @@ Each reaction should be 1-3 sentences, feel like a real social media reply/post.
 ${MEDIA_REACT_LINE}
 
 Return ONLY valid JSON:
-{ "classification": { "label": "on_topic|bridge|off_topic|crisis", "bridge_topic": "short phrase or empty", "confidence": 0.0 }, "reactions": [${REACTION_ITEM_SCHEMA}] }`;
+{ "classification": ${TOPIC_CLASSIFICATION_OBJECT}, "reactions": [${REACTION_ITEM_SCHEMA}] }`;
 
   const user = `Player post by ${input.playerHandle}:\n"${input.playerContent}"${input.imagePrompt ? `\n\n[Attached media: ${input.imagePrompt}]` : ''}`;
   return { system, user };

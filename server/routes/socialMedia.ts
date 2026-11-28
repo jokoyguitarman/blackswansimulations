@@ -19,6 +19,7 @@ import {
   gradeIfCrisisActivity,
   routeGradesPlayerPost,
 } from '../services/topic/gradeIfCrisisActivity.js';
+import { gradeOutboundEmail } from '../services/topic/gradeOutboundEmail.js';
 import { reactAndGradePlayerPost } from '../services/topic/playerTopicGrade.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
@@ -1370,61 +1371,27 @@ router.post(
 
       // Grade the outbound email against the case facts (non-blocking). Rewards using verified
       // facts in outgoing comms - e.g. a takedown/correction request that cites confirmed facts.
-      void (async () => {
-        try {
-          const { data: sessionData } = await supabaseAdmin
-            .from('sessions')
-            .select('scenario_id, start_time')
-            .eq('id', session_id)
-            .single();
-          if (!sessionData) return;
-          const { data: scenario } = await supabaseAdmin
-            .from('scenarios')
-            .select('description, initial_state')
-            .eq('id', sessionData.scenario_id)
-            .single();
-          if (!scenario) return;
-          const is = (scenario.initial_state || {}) as Record<string, unknown>;
-          const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
-          const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
-          const elapsedMinutes = crisisElapsedMinutes(sessionData.start_time ?? null);
-          const { gradePlayerContent } = await import('../services/contentGraderService.js');
-          const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
-          const teamCtx = await getPlayerTeamContext(session_id, user.id);
-          // The public-voice team's emails are held to the official-statement
-          // rubric; other teams' emails (supplier/customer/regulator
-          // correspondence) are graded as professional text against their own
-          // charter. The flag lives on the charter (legacy scenarios fall back
-          // to Communications inside getPlayerTeamContext).
-          const emailFormat =
-            teamCtx?.charter && !teamCtx.charter.can_post_publicly ? 'text' : 'official_statement';
-          const grade = await gradePlayerContent(`${subject}\n\n${body_text}`, {
-            crisis_description: scenario.description || '',
-            confirmed_facts: confirmedFacts,
-            post_format: emailFormat,
-            elapsed_minutes: elapsedMinutes,
-            org_name: (is.org_name as string) || undefined,
-            team_charter: teamCtx?.charter
-              ? {
-                  team_name: teamCtx.team_name,
-                  mission: teamCtx.charter.mission,
-                  scoring_rubric: teamCtx.charter.scoring_rubric,
-                  out_of_lane: teamCtx.charter.out_of_lane,
-                }
-              : undefined,
-          });
-          await supabaseAdmin
-            .from('sim_emails')
-            .update({ sop_compliance_score: grade })
-            .eq('id', email.id);
-
-          // Refresh team scores now that a new grade landed (throttled inside).
-          const { snapshotTeamScores } = await import('../services/teamScoreService.js');
-          void snapshotTeamScores(session_id);
-        } catch (gradeErr) {
-          logger.warn({ err: gradeErr, emailId: email.id }, 'Outbound email grading failed');
-        }
-      })();
+      // Flag off, or AI off, or a player recipient: grade here, not awaited, before the
+      // decision detector. Flag on with an NPC recipient: the reply call classifies first
+      // and grades from there, so this does not start a second grade.
+      const gradeHere =
+        !env.enableTopicAwareReplies ||
+        !env.aiEnabled ||
+        resolveAddressesToPlayers([toList[0] || ''], directory).some((p) => p.user_id !== user.id);
+      if (gradeHere) {
+        void gradeOutboundEmail({
+          sessionId: session_id,
+          emailId: String(email.id),
+          userId: user.id,
+          subject,
+          bodyText: body_text,
+          topicAware: env.enableTopicAwareReplies,
+          label: 'unclassified',
+          phase: 'crisis',
+          postKind: 'crisis',
+          columnsAvailable: true,
+        });
+      }
 
       // Organic executive decisions (docs/executive-decisions-organic-plan.md §6.1; touch point,
       // generator agent): every outbound mail — including player-to-player — is a detection

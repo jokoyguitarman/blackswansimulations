@@ -5,6 +5,19 @@ import { skipForPeace } from '../lib/peaceGate.js';
 import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
+import { formatDmConversation } from './topic/channelPromptShared.js';
+import { buildLegacyDmReplyMessages } from './topic/legacyChannelPrompts.js';
+import {
+  asModelRecord,
+  buildTopicDmMessages,
+  leakTermsFromState,
+  screenChannelReply,
+  singleResponderStance,
+  type ChannelChatClient,
+  type ChannelPhase,
+} from './topic/channelTopicCore.js';
+import { writePlayerChannelTopic } from './topic/channelTopicLabel.js';
+import type { TopicLabel } from './topic/topicPromptCore.js';
 
 interface NPCPersona {
   handle: string;
@@ -14,6 +27,7 @@ interface NPCPersona {
   bias: string;
   follower_count: number;
   specific_claims: string[];
+  tier?: string;
 }
 
 interface GeneratedDM {
@@ -134,8 +148,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     }
 
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
 
     const personaList = personas
       .map(
@@ -321,14 +334,54 @@ export async function sendNPCDirectMessage(
   }
 }
 
+interface DmThreadRow {
+  id?: string;
+  sender_handle: string;
+  recipient_handle: string;
+  content: string;
+  recipient_user_id: string | null;
+}
+
+/** Flag off keeps the original column list. The id is only read when a label will be stored. */
+async function loadDmThread(threadId: string, withId: boolean): Promise<DmThreadRow[]> {
+  if (!withId) {
+    const { data } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .select('sender_handle, recipient_handle, content, recipient_user_id')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+      .limit(10);
+    return data ?? [];
+  }
+  const { data } = await supabaseAdmin
+    .from('sim_direct_messages')
+    .select('id, sender_handle, recipient_handle, content, recipient_user_id')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true })
+    .limit(10);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    sender_handle: row.sender_handle,
+    recipient_handle: row.recipient_handle,
+    content: row.content,
+    recipient_user_id: row.recipient_user_id,
+  }));
+}
+
 export async function triggerNPCDMReply(
   sessionId: string,
   threadId: string,
   recipientHandle: string,
   playerMessage: string,
   playerUserId?: string,
+  options?: { phase?: ChannelPhase; client?: ChannelChatClient },
 ): Promise<void> {
-  if (!env.aiEnabled) return;
+  if (!env.aiEnabled && !options?.client) return;
+
+  const phase: ChannelPhase = options?.phase === 'peace' ? 'peace' : 'crisis';
+  const topicAware = env.enableTopicAwareReplies;
+  let playerRowId: string | null = null;
+  let topicLabel: TopicLabel = 'unclassified';
 
   try {
     const { data: session } = await supabaseAdmin
@@ -350,12 +403,21 @@ export async function triggerNPCDMReply(
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
 
-    const { data: threadMessages } = await supabaseAdmin
-      .from('sim_direct_messages')
-      .select('sender_handle, recipient_handle, content, recipient_user_id')
-      .eq('thread_id', threadId)
-      .order('created_at', { ascending: true })
-      .limit(10);
+    const threadRows = await loadDmThread(threadId, topicAware);
+    if (topicAware) {
+      const playerRows = threadRows.filter(
+        (row) => row.sender_handle !== recipientHandle && String(row.content) === playerMessage,
+      );
+      const last = playerRows[playerRows.length - 1] as { id?: string } | undefined;
+      playerRowId = last?.id ? String(last.id) : null;
+    }
+    const isReply = threadRows.some(
+      (row) => row.sender_handle === recipientHandle || String(row.content) !== playerMessage,
+    );
+    const conversation = formatDmConversation(threadRows);
+    const topic = topicAware
+      ? { phase, thread: conversation || playerMessage, isReply }
+      : undefined;
 
     // Stakeholder record (contract §3): in-character reply from the record + inject verdicts.
     if (env.enableStakeholderEngine) {
@@ -363,15 +425,12 @@ export async function triggerNPCDMReply(
       const stakeholder = await findByHandle(session.scenario_id, recipientHandle);
       if (stakeholder) {
         const playerHandle =
-          (threadMessages || []).find((m) => m.sender_handle !== stakeholder.handle)
-            ?.sender_handle ||
-          (threadMessages || [])[0]?.recipient_handle ||
+          threadRows.find((m) => m.sender_handle !== stakeholder.handle)?.sender_handle ||
+          threadRows[0]?.recipient_handle ||
           '';
         const userId =
           playerUserId ||
-          ((threadMessages || []).find((m) => m.recipient_user_id)?.recipient_user_id as
-            | string
-            | undefined) ||
+          threadRows.find((m) => m.recipient_user_id)?.recipient_user_id ||
           (await resolveRecipientUserId(sessionId, playerHandle));
         if (!userId) return;
 
@@ -384,9 +443,39 @@ export async function triggerNPCDMReply(
           userId,
           content: playerMessage,
           refTable: 'sim_direct_messages',
-          refId: null,
+          refId: playerRowId,
+          topic,
         });
-        if (!plan.should_reply) return;
+        let replyText = plan.text;
+        if (topic) {
+          const screened = screenChannelReply({
+            phase,
+            classification: plan.classification
+              ? {
+                  label: plan.classification.label,
+                  bridge_topic: plan.classification.bridgeTopic,
+                  confidence: plan.classification.confidence,
+                }
+              : undefined,
+            replyText: plan.text,
+            authorHandle: stakeholder.handle,
+            stance: 'engage',
+            leakTerms: leakTermsFromState(initialState),
+            playerText: playerMessage,
+            isReply,
+            minConfidence: env.topicBridgeMinConfidence,
+          });
+          topicLabel = screened.label;
+          replyText = screened.replyText;
+          if (screened.dropped) {
+            logger.info(
+              { sessionId, threadId, handle: stakeholder.handle },
+              'Dropped topic reply that matched leak terms',
+            );
+            return;
+          }
+        }
+        if (!plan.should_reply || !replyText) return;
 
         const senderType =
           stakeholder.relationship === 'media'
@@ -404,7 +493,7 @@ export async function triggerNPCDMReply(
             sender_type: senderType,
             recipient_handle: playerHandle,
             recipient_user_id: userId,
-            content: plan.text,
+            content: replyText,
             platform: 'facebook',
           })
           .select()
@@ -419,7 +508,7 @@ export async function triggerNPCDMReply(
             sessionId,
             stakeholderId: stakeholder.id,
             channel: 'messenger',
-            content: plan.text,
+            content: replyText,
             refTable: 'sim_direct_messages',
             refId: String(inserted.id),
           });
@@ -438,47 +527,74 @@ export async function triggerNPCDMReply(
     const orgName = String(initialState.org_name || '');
 
     const replyToHandle =
-      (threadMessages || []).find((m) => m.sender_handle !== npc.handle)?.sender_handle ||
-      (threadMessages || [])[0]?.recipient_handle ||
+      threadRows.find((m) => m.sender_handle !== npc.handle)?.sender_handle ||
+      threadRows[0]?.recipient_handle ||
       '';
 
-    const conversationContext = (threadMessages || [])
-      .map((m) => `${m.sender_handle}: ${String(m.content).substring(0, 150)}`)
-      .join('\n');
-
-    const parsed = await chatJson<{ reply?: string }>({
-      tier: 'standard',
-      json: true,
+    const dmInput = {
+      handle: npc.handle,
+      name: npc.name,
+      personality: npc.personality,
+      bias: npc.bias,
+      type: npc.type,
+      crisisDescription: String(scenario.description || ''),
+      orgName,
+      conversation,
+      playerMessage,
+    };
+    const dmStance = singleResponderStance(
+      {
+        handle: npc.handle,
+        type: npc.type,
+        personality: npc.personality,
+        bias: npc.bias,
+        tier: npc.tier,
+      },
+      threadId,
+      env.topicBridgeStayShare,
+    ).stance;
+    const prompted = topicAware
+      ? buildTopicDmMessages({ ...dmInput, phase, stance: dmStance })
+      : buildLegacyDmReplyMessages(dmInput);
+    const request = {
+      tier: 'standard' as const,
+      json: true as const,
       temperature: 0.85,
       maxTokens: 300,
       label: 'npcMessenger.reply',
       messages: [
-        {
-          role: 'system',
-          content: `You are ${npc.handle} (${npc.name}), an NPC in a crisis simulation. Reply to a direct message in character.
-
-Your personality: ${npc.personality}
-Your bias: ${npc.bias}
-Your type: ${npc.type}
-Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
-
-Conversation so far:
-${conversationContext}
-
-Reply in 1-3 sentences. Stay in character. Be authentic to your personality and bias.
-
-Return ONLY valid JSON:
-{ "reply": "your reply text" }`,
-        },
-        {
-          role: 'user',
-          content: `The player just sent you this DM: "${playerMessage}"`,
-        },
+        { role: 'system' as const, content: prompted.system },
+        { role: 'user' as const, content: prompted.user },
       ],
-    });
+    };
+    const parsed = asModelRecord(
+      options?.client ? await options.client.chatJson(request) : await chatJson(request),
+    );
 
     if (!parsed) return;
-    const replyText = String(parsed.reply || '');
+    let replyText = typeof parsed.reply === 'string' ? parsed.reply : '';
+    if (topicAware) {
+      const screened = screenChannelReply({
+        phase,
+        classification: parsed.classification,
+        replyText,
+        authorHandle: npc.handle,
+        stance: dmStance,
+        leakTerms: leakTermsFromState(initialState),
+        playerText: playerMessage,
+        isReply,
+        minConfidence: env.topicBridgeMinConfidence,
+      });
+      topicLabel = screened.label;
+      replyText = screened.replyText;
+      if (screened.dropped) {
+        logger.info(
+          { sessionId, threadId, handle: npc.handle },
+          'Dropped topic reply that matched leak terms',
+        );
+        return;
+      }
+    }
     if (!replyText) return;
 
     const { data: inserted, error } = await supabaseAdmin
@@ -506,5 +622,9 @@ Return ONLY valid JSON:
     }
   } catch (err) {
     logger.warn({ err, sessionId, threadId }, 'NPC DM reply failed');
+  } finally {
+    if (topicAware && playerRowId) {
+      await writePlayerChannelTopic('sim_direct_messages', playerRowId, topicLabel);
+    }
   }
 }
