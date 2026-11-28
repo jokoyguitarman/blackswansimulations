@@ -282,8 +282,8 @@ export async function runEscalationChains(input: {
   comms: CommsState | null;
   remainingCap: number;
   io: SocketServer | null;
-}): Promise<void> {
-  if (chainsOff()) return;
+}): Promise<number> {
+  if (chainsOff()) return 0;
   try {
     const { data, error } = await supabaseAdmin
       .from('escalation_chains')
@@ -292,9 +292,9 @@ export async function runEscalationChains(input: {
       .eq('status', 'active');
     if (isEscalationSchemaMissing(error)) {
       noteEscalationUnavailable();
-      return;
+      return 0;
     }
-    if (error || !data || data.length === 0) return;
+    if (error || !data || data.length === 0) return 0;
     const rows = [...data].sort((a, b) => {
       const due = Number(a.next_due_minute ?? 0) - Number(b.next_due_minute ?? 0);
       return due || String(a.root_key).localeCompare(String(b.root_key));
@@ -352,9 +352,11 @@ export async function runEscalationChains(input: {
       });
       remaining -= spent;
     }
+    return Math.max(0, input.remainingCap - remaining);
   } catch (err) {
     if (isEscalationSchemaMissing(err)) noteEscalationUnavailable();
     else logger.warn({ err, sessionId: input.sessionId }, 'escalation chain tick failed');
+    return 0;
   }
 }
 

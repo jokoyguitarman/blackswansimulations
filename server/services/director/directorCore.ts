@@ -345,6 +345,8 @@ export interface DirectorTurnInput {
   wakeSeq: number;
   budgetKey: string;
   lastQuiet: QuietLog | null;
+  /** Trainer "ask the director". Forces one call when the mode is not off. */
+  request?: { team?: string; hint?: string } | null;
 }
 
 export interface DirectorDraft {
@@ -705,17 +707,41 @@ export function buildDirectorPrompt(observation: DirectorObservation): {
   return { system: DIRECTOR_SYSTEM_PROMPT, user: observation.text };
 }
 
+export interface CheckProposalOptions {
+  stopBefore?: 'fairness';
+  /**
+   * Reject only on these guard ids. A schema failure (`invalid`) always rejects.
+   * Publish-time rechecks pass `cap`, `target`, `pile_on` and `fairness`.
+   */
+  only?: readonly string[];
+  /** G11 fails open: the trainer's reason is logged and the event may publish. */
+  fairnessOverride?: boolean;
+  /** Approve re-runs G1–G9, G11 and G12, not the consistency call. */
+  skipConsistency?: boolean;
+}
+
 export function checkProposal(
   raw: unknown,
   ctx: GuardContext,
-  options?: { stopBefore?: 'fairness' },
+  options?: CheckProposalOptions,
 ): GuardrailReport {
   const results: GuardrailResult[] = [];
   let rejected = false;
   const stop = () => rejected;
+  const only = options?.only ? new Set(options.only) : null;
 
   const push = (result: GuardrailResult) => {
     if (stop()) return;
+    if (only && result.id !== 'invalid' && !only.has(result.id)) return;
+    if (!result.ok && result.id === 'fairness' && options?.fairnessOverride) {
+      results.push({
+        ...result,
+        ok: true,
+        warning: true,
+        detail: `${result.detail} (trainer override)`,
+      });
+      return;
+    }
     if (!result.ok && !isHard(result.id, ctx.mode)) {
       results.push({ ...result, warning: true });
       return;
@@ -811,7 +837,7 @@ export function checkProposal(
 
   if (options?.stopBefore === 'fairness') return report(results);
 
-  if (ctx.consistency && ctx.consistency.status !== 'skipped') {
+  if (!options?.skipConsistency && ctx.consistency && ctx.consistency.status !== 'skipped') {
     if (ctx.consistency.status === 'consistent') {
       push({
         id: 'consistent',
@@ -856,10 +882,13 @@ export function prepareDirectorWake(input: DirectorTurnInput): PreparedWake {
     pendingByTeam: input.pendingByTeam,
     minute: input.clock.minute,
   });
-  const decision = shouldWake(input.clock, signals, {
-    lull,
-    fairnessImbalance: fairnessImbalance(fairness, signals),
-  });
+  const requested = input.request != null && input.clock.mode !== 'off' && !input.clock.paused;
+  const decision = requested
+    ? { wake: true as const, log: true as const, reason: 'signals' as const, wakeReason: null }
+    : shouldWake(input.clock, signals, {
+        lull,
+        fairnessImbalance: fairnessImbalance(fairness, signals),
+      });
   const mode = input.clock.mode === 'off' ? null : input.clock.mode;
   const base = blankDraft(input, signals, mode);
   if (!decision.wake && !decision.log)
@@ -874,13 +903,23 @@ export function prepareDirectorWake(input: DirectorTurnInput): PreparedWake {
     fairnessLine,
   );
   const focus = chooseFocus(signals, fairness, input.seed, input.wakeSeq, input.clock.minute);
-  const prompt = buildDirectorPrompt(observation);
+  const built = buildDirectorPrompt(observation);
+  const requestLines = input.request
+    ? [
+        'TRAINER REQUEST (still needs a real cause):',
+        input.request.team ? `Focus team: ${input.request.team}` : '',
+        input.request.hint ? `Hint: ${input.request.hint}` : '',
+      ].filter(Boolean)
+    : [];
+  const prompt = requestLines.length
+    ? { system: built.system, user: `${built.user}\n${requestLines.join('\n')}` }
+    : built;
   const guard = assembleGuard(input, signals, fairness);
   const draft: DirectorDraft = {
     ...base,
     log: true,
     status: decision.wake ? null : 'no_action',
-    wake_reason: decision.wakeReason,
+    wake_reason: input.request ? 'trainer_request' : decision.wakeReason,
     reason: decision.wake ? null : decision.reason,
     observation,
     promptText: `${prompt.system}\n\n${prompt.user}`,
