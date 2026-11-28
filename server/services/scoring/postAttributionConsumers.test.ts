@@ -683,8 +683,8 @@ describe('post attribution consumers, flag off', () => {
     assert.ok(gradeQuery);
     assert.deepEqual(gradeQuery.ops, [
       { op: 'eq', column: 'session_id', value: SESSION },
-      { op: 'eq', column: 'author_type', value: 'player' },
       { op: 'not', column: 'sop_compliance_score', operator: 'is', value: null },
+      { op: 'eq', column: 'author_type', value: 'player' },
     ]);
     // Author-type player only. Page posts are not in the average. 70+55+90+20+80+25 = 340.
     assert.equal(report.content_quality.posts_created, 6);

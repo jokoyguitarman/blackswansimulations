@@ -151,7 +151,7 @@ export async function loadTeamSignalFacts(
       roles,
     ] = await Promise.all([
       loadTrainerIds(sessionId),
-      loadDutyActions(sessionId, actionTypes, roster.known),
+      loadDutyActions(sessionId, actionTypes, roster.known, startTime),
       loadActionActivity(sessionId, teamNames),
       loadChatActivity(sessionId, [...membership.teamByPlayer.keys()]),
       env.teamScorePostAttributionFix
@@ -364,6 +364,7 @@ async function loadDutyActions(
   sessionId: string,
   actionTypes: readonly string[],
   rosterKnown: boolean,
+  startTime: string | null,
 ): Promise<{
   rows: ObservedAction[];
   known: boolean;
@@ -371,9 +372,10 @@ async function loadDutyActions(
 }> {
   if (!rosterKnown) return { rows: [], known: false, truncated: false };
   if (actionTypes.length === 0) return { rows: [], known: true, truncated: false };
-  const grouped = await loadDutyCompletions(sessionId, actionTypes);
+  const crisisStart = env.enablePeacePeriod ? startTime : null;
+  const grouped = await loadDutyCompletions(sessionId, actionTypes, crisisStart);
   if (grouped) return grouped;
-  return scanDutyActions(sessionId, actionTypes);
+  return scanDutyActions(sessionId, actionTypes, crisisStart);
 }
 
 /**
@@ -384,6 +386,7 @@ async function loadDutyActions(
 async function loadDutyCompletions(
   sessionId: string,
   actionTypes: readonly string[],
+  crisisStart: string | null,
 ): Promise<{
   rows: ObservedAction[];
   known: boolean;
@@ -391,12 +394,13 @@ async function loadDutyCompletions(
 } | null> {
   if (aggregatesUnavailable) return null;
   try {
-    const { data, error } = await supabaseAdmin
+    let dutyQuery = supabaseAdmin
       .from('player_actions')
       .select('team_at_action, player_id, action_type, metadata, first_at:created_at.min()')
       .eq('session_id', sessionId)
-      .in('action_type', [...actionTypes])
-      .limit(DUTY_ACTION_CAP + 1);
+      .in('action_type', [...actionTypes]);
+    if (crisisStart) dutyQuery = dutyQuery.gte('created_at', crisisStart);
+    const { data, error } = await dutyQuery.limit(DUTY_ACTION_CAP + 1);
     if (error) {
       if (schemaMissing(error)) {
         warnOnce(
@@ -450,17 +454,20 @@ function actionsFromEarliest(rows: readonly Record<string, unknown>[]): Observed
 async function scanDutyActions(
   sessionId: string,
   actionTypes: readonly string[],
+  crisisStart: string | null,
 ): Promise<{
   rows: ObservedAction[];
   known: boolean;
   truncated: boolean;
 }> {
   try {
-    const { data, error } = await supabaseAdmin
+    let dutyQuery = supabaseAdmin
       .from('player_actions')
       .select('player_id, action_type, team_at_action, metadata, created_at')
       .eq('session_id', sessionId)
-      .in('action_type', [...actionTypes])
+      .in('action_type', [...actionTypes]);
+    if (crisisStart) dutyQuery = dutyQuery.gte('created_at', crisisStart);
+    const { data, error } = await dutyQuery
       .order('created_at', { ascending: true })
       .limit(DUTY_ACTION_CAP + 1);
     if (error) {

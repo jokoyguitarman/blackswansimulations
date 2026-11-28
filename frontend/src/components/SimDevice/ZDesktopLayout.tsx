@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { withViewAsHeaders } from '../../lib/viewAsFrame';
 import SocialFeedApp from './SocialFeedApp';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -15,10 +16,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface TrendingHashtag {

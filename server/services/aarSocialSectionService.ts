@@ -9,13 +9,9 @@ import type { SectionEntry } from './aarSectionService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
-import { rosterValidAt } from '../lib/peaceGate.js';
+import { countsOnCrisisClock, crisisMinute, rosterValidAt } from '../lib/peaceGate.js';
 import { loadSharedAarSections } from './aar/aarCrossTeamService.js';
-import {
-  buildBeforeCrisisSection,
-  onCrisisTimeline,
-  type BeforeCrisisSection,
-} from './scoring/crisisActivityCore.js';
+import { buildBeforeCrisisSection, type BeforeCrisisSection } from './scoring/crisisActivityCore.js';
 import { loadPeaceActivityRows } from './scoring/crisisActivityLookup.js';
 
 /**
@@ -197,15 +193,10 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   const startMs = startIso ? new Date(startIso).getTime() : null;
   const endMs = session?.end_time ? new Date(session.end_time as string).getTime() : Date.now();
   const durationMinutes = startMs ? Math.max(0, Math.round((endMs - startMs) / 60000)) : null;
-  const peaceClock = env.enablePeacePeriod;
-  const tPlus = (iso: string | null | undefined): number | null => {
-    if (!startMs || !iso) return null;
-    const deltaMs = new Date(iso).getTime() - startMs;
-    if (peaceClock && deltaMs < 0) return null;
-    return Math.max(0, Math.round(deltaMs / 60000));
-  };
+  const tPlus = (iso: string | null | undefined): number | null =>
+    crisisMinute(iso, startMs, 'round');
   const crisisRow = (iso: string | null | undefined): boolean =>
-    onCrisisTimeline(iso, startMs, peaceClock);
+    countsOnCrisisClock(iso, startIso);
 
   let scenarioTitle = '';
   let scenarioDescription = '';
@@ -269,7 +260,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       .eq('session_id', sessionId),
   ]);
 
-  const crisisLedger = peaceClock
+  const crisisLedger = env.enablePeacePeriod
     ? {
         ...ledger,
         players: ledger.players.map((player) => ({
@@ -876,7 +867,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     analysis: null,
   };
 
-  if (peaceClock) {
+  if (env.enablePeacePeriod) {
     const peace = await beforeCrisisSection(sessionId, session);
     if (peace) {
       sections.before_the_crisis = {

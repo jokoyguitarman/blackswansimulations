@@ -43,6 +43,42 @@ function turnOff(err: unknown): void {
   warnOnce(err, true);
 }
 
+export interface StaffViewStampRow {
+  staffUserId: string;
+  lastAt: string;
+}
+
+/**
+ * Rows for the admin "Viewed by" line. A missing table turns audit off and
+ * returns nothing; the caller still shows the view-as controls.
+ */
+export async function listStaffViews(sessionId: string): Promise<StaffViewStampRow[]> {
+  if (disabled) return [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('staff_view_audit')
+      .select('staff_user_id, last_at')
+      .eq('session_id', sessionId);
+    if (error) {
+      if (schemaMissing(error)) turnOff(error);
+      else warnOnce(error, false);
+      return [];
+    }
+    const rows = Array.isArray(data) ? data : [];
+    const stamps: StaffViewStampRow[] = [];
+    for (const row of rows) {
+      const staffUserId = typeof row.staff_user_id === 'string' ? row.staff_user_id : '';
+      const lastAt = typeof row.last_at === 'string' ? row.last_at : '';
+      if (staffUserId && lastAt) stamps.push({ staffUserId, lastAt });
+    }
+    return stamps;
+  } catch (err) {
+    if (schemaMissing(err)) turnOff(err);
+    else warnOnce(err, false);
+    return [];
+  }
+}
+
 function memoryKey(input: StaffViewAuditInput): string {
   return `${input.sessionId}|${input.staffUserId}|${input.subjectUserId ?? ''}|${input.mode}`;
 }

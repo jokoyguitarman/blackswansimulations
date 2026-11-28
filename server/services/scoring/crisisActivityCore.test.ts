@@ -3,6 +3,7 @@ import { afterEach, describe, test } from 'node:test';
 import { env } from '../../env.js';
 import { resetPeaceColumnsForTests } from '../../lib/peaceSchema.js';
 import { resetTopicSchemaForTests } from '../topic/topicColumns.js';
+import { countsOnCrisisClock, crisisFiltersActive, crisisMinute } from '../../lib/peaceGate.js';
 import { dropUnavailableColumns } from './crisisActivityLookup.js';
 import {
   MASTER_EMAIL_GRADE_SELECT,
@@ -14,7 +15,6 @@ import {
   buildBeforeCrisisSection,
   buildContentIndex,
   contentRefsFromPosts,
-  crisisEventMinute,
   emailGradeSelect,
   playerTopicLabels,
   postGradePlan,
@@ -257,14 +257,9 @@ describe('flags off match master scoring', () => {
     });
     assert.equal(firstDuty(false), '2026-06-01T11:57:00.000Z');
     assert.deepEqual(countedMessages(false), MESSAGES);
-    assert.equal(
-      crisisEventMinute('2026-06-01T11:56:00.000Z', START_MS, { peace: false, round: 'floor' }),
-      0,
-    );
-    assert.equal(
-      crisisEventMinute('2026-06-01T12:10:00.000Z', START_MS, { peace: false, round: 'floor' }),
-      10,
-    );
+    env.enablePeacePeriod = false;
+    assert.equal(crisisMinute('2026-06-01T11:56:00.000Z', START_MS, 'floor'), 0);
+    assert.equal(crisisMinute('2026-06-01T12:10:00.000Z', START_MS, 'floor'), 10);
     assert.equal(
       buildBeforeCrisisSection({ openedAt: OPENED, crisisStart: START, rows: [] }),
       null,
@@ -281,8 +276,9 @@ describe('flags off match master scoring', () => {
       const at = Date.parse(iso);
       const floor = Math.max(0, Math.floor((at - START_MS) / 60000));
       const round = Math.max(0, Math.round((at - START_MS) / 60000));
-      assert.equal(crisisEventMinute(iso, START_MS, { peace: false, round: 'floor' }), floor);
-      assert.equal(crisisEventMinute(iso, START_MS, { peace: false, round: 'round' }), round);
+      env.enablePeacePeriod = false;
+      assert.equal(crisisMinute(iso, START_MS, 'floor'), floor);
+      assert.equal(crisisMinute(iso, START_MS, 'round'), round);
     }
   });
 });
@@ -300,14 +296,10 @@ describe('crisis activity and attribution', () => {
       '2026-06-01T12:10:00.000Z',
       '2026-06-01T12:20:00.000Z',
     ]);
-    assert.equal(
-      crisisEventMinute('2026-06-01T11:56:00.000Z', START_MS, { peace: true, round: 'floor' }),
-      null,
-    );
-    assert.equal(
-      crisisEventMinute('2026-06-01T12:10:00.000Z', START_MS, { peace: true, round: 'round' }),
-      10,
-    );
+    env.enablePeacePeriod = true;
+    assert.equal(crisisMinute('2026-06-01T11:56:00.000Z', START_MS, 'floor'), null);
+    assert.equal(crisisMinute('2026-06-01T12:10:00.000Z', START_MS, 'round'), 10);
+    assert.equal(crisisFiltersActive(), true);
   });
 
   test('topic replies without a peace period still drop off-topic rows', () => {
@@ -402,49 +394,57 @@ describe('AAR peace section and topic labels', () => {
   });
 
   test('topic labels are attached only when a comment, email or DM has one', () => {
-    const labels = playerTopicLabels(
-      [
-        {
-          kind: 'comment',
-          at: '2026-06-01T12:30:00.000Z',
-          who: 'Sam',
-          content: 'Nice deal',
-          topic_class: 'off_topic',
-        },
-        {
-          kind: 'email',
-          at: '2026-06-01T12:10:00.000Z',
-          who: 'Sam',
-          content: 'The recall',
-          topic_class: 'bridge',
-        },
-        {
-          kind: 'dm',
-          at: '2026-06-01T11:58:00.000Z',
-          who: 'Sam',
-          content: 'Coffee?',
-          topic_class: 'on_topic',
-        },
-        {
-          kind: 'comment',
-          at: '2026-06-01T12:20:00.000Z',
-          who: 'Sam',
-          content: 'Noted',
-          topic_class: null,
-        },
-      ],
-      START_MS,
-      true,
-    );
+    env.enablePeacePeriod = true;
+    const rows = [
+      {
+        kind: 'comment' as const,
+        at: '2026-06-01T12:30:00.000Z',
+        who: 'Sam',
+        content: 'Nice deal',
+        topic_class: 'off_topic',
+      },
+      {
+        kind: 'email' as const,
+        at: '2026-06-01T12:10:00.000Z',
+        who: 'Sam',
+        content: 'The recall',
+        topic_class: 'bridge',
+      },
+      {
+        kind: 'dm' as const,
+        at: '2026-06-01T11:58:00.000Z',
+        who: 'Sam',
+        content: 'Coffee?',
+        topic_class: 'on_topic',
+      },
+      {
+        kind: 'comment' as const,
+        at: '2026-06-01T12:20:00.000Z',
+        who: 'Sam',
+        content: 'Noted',
+        topic_class: null,
+      },
+    ].filter((row) => countsOnCrisisClock(row.at, START));
+    const labels = playerTopicLabels(rows, START_MS);
     assert.deepEqual(labels, [
       { kind: 'comment', minute: 30, who: 'Sam', topic_class: 'off_topic', content: 'Nice deal' },
       { kind: 'email', minute: 10, who: 'Sam', topic_class: 'bridge', content: 'The recall' },
     ]);
-    assert.deepEqual(playerTopicLabels([], START_MS, false), []);
+    assert.deepEqual(playerTopicLabels([], START_MS), []);
   });
 });
 
 describe('unapplied topic and peace columns', () => {
+  test('an unrelated missing column is not treated as migration 282', () => {
+    assert.equal(
+      dropUnavailableColumns('id, topic_class, created_at', {
+        code: '42703',
+        message: 'column created_at does not exist',
+      }),
+      null,
+    );
+  });
+
   test('a missing topic column narrows the select and warns once', () => {
     const next = dropUnavailableColumns('id, topic_class, topic_kind', {
       code: '42703',

@@ -12,11 +12,6 @@ export interface ScoringFlags {
   attribution: boolean;
 }
 
-/** Filters run when either feature that produces peace rows or topic labels is on. */
-export function crisisFiltersActive(flags: Pick<ScoringFlags, 'peace' | 'topic'>): boolean {
-  return flags.peace || flags.topic;
-}
-
 export const MASTER_POST_GRADE_SELECT = 'id, posted_by_user_id, sop_compliance_score';
 export const MASTER_EMAIL_GRADE_SELECT = 'id, sent_by_player_id, sop_compliance_score';
 
@@ -40,7 +35,7 @@ export function postGradePlan(flags: ScoringFlags): PostGradePlan {
   const columns = ['id'];
   if (flags.attribution) columns.push('user_id', 'author_type');
   columns.push('posted_by_user_id', 'sop_compliance_score');
-  if (crisisFiltersActive(flags)) columns.push('created_at');
+  if (flags.peace || flags.topic) columns.push('created_at');
   return {
     select: columns.join(', '),
     authorTypes: flags.attribution ? ['player', 'official_account'] : ['player'],
@@ -48,7 +43,7 @@ export function postGradePlan(flags: ScoringFlags): PostGradePlan {
 }
 
 export function emailGradeSelect(flags: Pick<ScoringFlags, 'peace' | 'topic'>): string {
-  if (!crisisFiltersActive(flags)) return MASTER_EMAIL_GRADE_SELECT;
+  if (!flags.peace && !flags.topic) return MASTER_EMAIL_GRADE_SELECT;
   return PEACE_EMAIL_GRADE_SELECT;
 }
 
@@ -244,39 +239,15 @@ export function contentRefsFromChannels(
   }));
 }
 
-export function crisisEventMinute(
+/** Floor minute from a clock, clamped at 0. No flag: callers filter with peaceGate first. */
+export function clampedFloorMinute(
   iso: string | null | undefined,
   startMs: number | null,
-  options: { peace: boolean; round: 'floor' | 'round' },
 ): number | null {
   if (typeof iso !== 'string' || startMs == null) return null;
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return null;
-  if (options.peace && at < startMs) return null;
-  const raw = (at - startMs) / 60000;
-  const value = options.round === 'round' ? Math.round(raw) : Math.floor(raw);
-  return Math.max(0, value);
-}
-
-export function openedMinute(
-  iso: string | null | undefined,
-  openedMs: number | null,
-): number | null {
-  if (typeof iso !== 'string' || openedMs == null) return null;
-  const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return null;
-  return Math.max(0, Math.floor((at - openedMs) / 60000));
-}
-
-export function onCrisisTimeline(
-  iso: string | null | undefined,
-  startMs: number | null,
-  peace: boolean,
-): boolean {
-  if (!peace || startMs == null || typeof iso !== 'string') return true;
-  const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return true;
-  return at >= startMs;
+  return Math.max(0, Math.floor((at - startMs) / 60000));
 }
 
 /** Peace feed rows, plus player activity from room open until crisis start. */
@@ -346,7 +317,7 @@ export function buildBeforeCrisisSection(input: {
     if (!inPeaceWindow(row.at, input.openedAt, input.crisisStart, row.peaceRef)) continue;
     const label = storedLabel(row.topic_class);
     items.push({
-      minute_from_open: openedMinute(row.at, Number.isFinite(openedMs) ? openedMs : null),
+      minute_from_open: clampedFloorMinute(row.at, Number.isFinite(openedMs) ? openedMs : null),
       kind: row.kind,
       author: row.author || 'Unknown',
       content: clip(row.content, PEACE_TEXT_CAP),
@@ -385,21 +356,21 @@ export interface PlayerTopicLabel {
   content: string;
 }
 
-/** Labels that were actually stored. Omitted entirely when none exist. */
+/**
+ * Labels that were actually stored. The caller drops pre-crisis rows with
+ * `countsOnCrisisClock` when the peace flag is on.
+ */
 export function playerTopicLabels(
   rows: readonly PlayerTopicSource[],
   startMs: number | null,
-  peace: boolean,
 ): PlayerTopicLabel[] {
   const labels: PlayerTopicLabel[] = [];
   for (const row of rows) {
     const label = storedLabel(row.topic_class);
     if (!label) continue;
-    const minute = crisisEventMinute(row.at, startMs, { peace, round: 'floor' });
-    if (peace && minute == null) continue;
     labels.push({
       kind: row.kind,
-      minute,
+      minute: clampedFloorMinute(row.at, startMs),
       who: row.who || 'Unknown',
       topic_class: label,
       content: clip(row.content, 160),

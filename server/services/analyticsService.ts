@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { crisisFiltersActive } from '../lib/peaceGate.js';
 import { rowCountsAsCrisisActivity } from './scoring/crisisActivityCore.js';
-import { scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 
 /**
  * Analytics Service
@@ -218,7 +218,7 @@ export async function calculateCommunicationMetrics(
     }
 
     let messageList = messages || [];
-    if (scoringFiltersActive()) {
+    if (crisisFiltersActive()) {
       const clock = await supabaseAdmin
         .from('sessions')
         .select('start_time')

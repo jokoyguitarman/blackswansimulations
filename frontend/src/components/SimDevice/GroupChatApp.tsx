@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { readAppIntent } from '../../lib/appIntents';
@@ -10,7 +10,10 @@ import { IncomingCallToast } from '../Chat/IncomingCallToast';
 import { ChatListScreen } from './TeamChat/ChatListScreen';
 import { ConversationScreen } from './TeamChat/ConversationScreen';
 import { colorFor, groupIcon, initials } from './TeamChat/avatars';
+import { WhenWritable } from './surfaceReadOnly';
 import type { ChatListItem, ChatScreenState, ChatVariant } from './TeamChat/types';
+
+void React;
 
 /**
  * TeamChat — WhatsApp-style chat list → conversation. Shared by the phone (route
@@ -224,16 +227,18 @@ export default function GroupChatApp() {
         <span className="font-semibold text-[18px] flex-1" style={{ color: headerFg }}>
           TeamChat
         </span>
-        <button
-          onClick={() => setScreen({ screen: 'calls' })}
-          className="px-3 py-1 rounded-full text-[12px] font-medium"
-          style={{
-            backgroundColor: isWA ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
-            color: headerFg,
-          }}
-        >
-          {webrtc.state.isInCall ? 'In call' : 'Calls'}
-        </button>
+        <WhenWritable>
+          <button
+            onClick={() => setScreen({ screen: 'calls' })}
+            className="px-3 py-1 rounded-full text-[12px] font-medium"
+            style={{
+              backgroundColor: isWA ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+              color: headerFg,
+            }}
+          >
+            {webrtc.state.isInCall ? 'In call' : 'Calls'}
+          </button>
+        </WhenWritable>
       </>
     );
   };

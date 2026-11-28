@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { withViewAsHeaders } from '../../lib/viewAsFrame';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useBoothBriefing } from './BriefingApp';
@@ -16,10 +17,10 @@ async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return {
+  return withViewAsHeaders({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session?.access_token || ''}`,
-  };
+  });
 }
 
 interface AppDef {

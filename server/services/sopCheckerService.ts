@@ -1,8 +1,9 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { crisisElapsedFractionalMinutes } from '../lib/sessionPhase.js';
+import { crisisFiltersActive } from '../lib/peaceGate.js';
 import { actionCountsAsCrisisActivity, EMPTY_CONTENT_INDEX } from './scoring/crisisActivityCore.js';
-import { loadContentIndex, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
+import { loadContentIndex } from './scoring/crisisActivityLookup.js';
 import { getPlayerTeamName } from './teamCharterService.js';
 
 export interface SOPComplianceResult {
@@ -36,23 +37,21 @@ export async function evaluateSOPCompliance(
 
   const elapsedMinutes = crisisElapsedFractionalMinutes(String(session.start_time)) ?? 0;
 
-  const filtersActive = scoringFiltersActive();
-  const { data: actions } = filtersActive
-    ? await supabaseAdmin
-        .from('player_actions')
-        .select('player_id, action_type, target_id, sop_step_matched, created_at, metadata')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true })
-    : await supabaseAdmin
-        .from('player_actions')
-        .select('action_type, sop_step_matched, created_at, metadata')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true });
+  const filtersActive = crisisFiltersActive();
+  const { data: actions } = await supabaseAdmin
+    .from('player_actions')
+    .select(
+      (filtersActive
+        ? 'player_id, action_type, target_id, sop_step_matched, created_at, metadata'
+        : 'action_type, sop_step_matched, created_at, metadata') as 'action_type, sop_step_matched, created_at, metadata',
+    )
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
 
   const contentIndex = filtersActive ? await loadContentIndex(sessionId) : EMPTY_CONTENT_INDEX;
   const countableActions = (actions || []).filter((action) => {
     if (!filtersActive) return true;
-    const row = action as {
+    const row = action as unknown as {
       player_id?: string | null;
       target_id?: string | null;
       action_type: string;
