@@ -91,7 +91,11 @@ function renameWorld(): RemapPlannerInput {
     content: 'Legal wrote this.',
     target_teams: ['Legal'],
     conditions_to_appear: { all: ['responded:briefing_mail_hist|team=legal'] },
-    delivery_config: { stakeholder_team: 'Legal', parent_target_teams: ['Legal'], org_key: 'primary' },
+    delivery_config: {
+      stakeholder_team: 'Legal',
+      parent_target_teams: ['Legal'],
+      org_key: 'primary',
+    },
   });
   return input({
     delta: delta({
@@ -202,7 +206,9 @@ function removalWorld(): RemapPlannerInput {
         id: 'inj-mixed',
         inject_key: 'mixed_mail',
         target_teams: ['Legal', 'Communications'],
-        conditions_to_appear: { all: ['inject_fired:only_legal', 'responded:mixed_mail|team=legal'] },
+        conditions_to_appear: {
+          all: ['inject_fired:only_legal', 'responded:mixed_mail|team=legal'],
+        },
         delivery_config: {
           org_key: 'primary',
           stakeholder_team: 'Legal',
@@ -214,7 +220,9 @@ function removalWorld(): RemapPlannerInput {
             on_exhausted: { publish_inject_key: 'only_legal' },
           },
           mood_ladder: {
-            rungs: [{ id: 'angry', consequences: [{ type: 'publish_inject', inject_key: 'only_legal' }] }],
+            rungs: [
+              { id: 'angry', consequences: [{ type: 'publish_inject', inject_key: 'only_legal' }] },
+            ],
           },
         },
       }),
@@ -367,9 +375,25 @@ function swapEdited(primaryUid: string) {
 
 function swapTeams(): PlannerTeam[] {
   return [
-    team({ id: 'a-comms', team_uid: 'uid-a-comms', team_name: 'Communications', org_key: 'primary', charter: { org_key: null, mission: 'Acme voice' } }),
-    team({ id: 'b-comms', team_uid: 'uid-b-comms', team_name: 'Communications — BRAVO', org_key: 'org_bravo_my' }),
-    team({ id: 'c-comms', team_uid: 'uid-c-comms', team_name: 'Communications — CHAS', org_key: 'org_charlie_sg' }),
+    team({
+      id: 'a-comms',
+      team_uid: 'uid-a-comms',
+      team_name: 'Communications',
+      org_key: 'primary',
+      charter: { org_key: null, mission: 'Acme voice' },
+    }),
+    team({
+      id: 'b-comms',
+      team_uid: 'uid-b-comms',
+      team_name: 'Communications — BRAVO',
+      org_key: 'org_bravo_my',
+    }),
+    team({
+      id: 'c-comms',
+      team_uid: 'uid-c-comms',
+      team_name: 'Communications — CHAS',
+      org_key: 'org_charlie_sg',
+    }),
   ];
 }
 
@@ -420,9 +444,30 @@ function swapState(): Record<string, unknown> {
     ],
     org_page: {
       orgs: [
-        { org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', is_primary: true, logo_url: 'logo-acme', role: 'protagonist' },
-        { org_uid: 'uid-b', org_key: 'org_bravo_my', display_name: 'Bravo', is_primary: false, logo_url: 'logo-bravo', role: 'protagonist' },
-        { org_uid: 'uid-c', org_key: 'org_charlie_sg', display_name: 'Charlie', is_primary: false, logo_url: 'logo-charlie', role: 'protagonist' },
+        {
+          org_uid: 'uid-a',
+          org_key: 'primary',
+          display_name: 'Acme',
+          is_primary: true,
+          logo_url: 'logo-acme',
+          role: 'protagonist',
+        },
+        {
+          org_uid: 'uid-b',
+          org_key: 'org_bravo_my',
+          display_name: 'Bravo',
+          is_primary: false,
+          logo_url: 'logo-bravo',
+          role: 'protagonist',
+        },
+        {
+          org_uid: 'uid-c',
+          org_key: 'org_charlie_sg',
+          display_name: 'Charlie',
+          is_primary: false,
+          logo_url: 'logo-charlie',
+          role: 'protagonist',
+        },
         {
           org_uid: 'uid-union',
           org_key: 'org_pressure_union_sg',
@@ -437,7 +482,12 @@ function swapState(): Record<string, unknown> {
       { id: 'stk_b', name: 'Bo', owning_team: 'Communications — BRAVO', org_key: 'org_bravo_my' },
     ],
     org_key_history: history(),
-    decision_context: { leakiness: 0.2, labour_signal: false, product_safety_signal: false, note: { org_key: 'primary' } },
+    decision_context: {
+      leakiness: 0.2,
+      labour_signal: false,
+      product_safety_signal: false,
+      note: { org_key: 'primary' },
+    },
     sop_steps: [{ step_id: 'notify', org_key: 'org_bravo_my' }],
   };
 }
@@ -480,18 +530,26 @@ describe('remap planner', () => {
     assert.equal(successor.from_name, 'Legal');
     assert.equal(successor.source_id, 'team-legal');
     assert.equal(plan.teams.retire.find((row) => row.team_uid === 'uid-legal')?.reason, 'renamed');
-    assert.equal(plan.teams.retire.find((row) => row.team_uid === 'uid-legal')?.source_id, successor.source_id);
+    assert.equal(
+      plan.teams.retire.find((row) => row.team_uid === 'uid-legal')?.source_id,
+      successor.source_id,
+    );
     assert.equal(successor.scoring_rubric, 'Be precise');
     assert.deepEqual(successor.expected_actions, [{ action_id: 'notify' }]);
     assert.equal((successor.charter as { team_name: string }).team_name, 'Counsel');
-    assert.equal(plan.teams.successors.some((row) => row.team_uid === 'uid-comms'), false);
+    assert.equal(
+      plan.teams.successors.some((row) => row.team_uid === 'uid-comms'),
+      false,
+    );
 
     const live = plan.injects.rewrite_in_place.find((row) => row.inject_id === 'inj-live');
     assert.ok(live);
     assert.equal(live.has_history, false);
     assert.equal(live.inject_key, 'briefing_mail');
     assert.deepEqual(live.changes.target_teams, ['Counsel', 'Communications']);
-    assert.deepEqual(live.changes.conditions_to_appear, { all: ['responded:briefing_mail|team=counsel'] });
+    assert.deepEqual(live.changes.conditions_to_appear, {
+      all: ['responded:briefing_mail|team=counsel'],
+    });
     assert.deepEqual(live.changes.conditions_to_cancel, ['responded:other_mail|team=counsel']);
     assert.equal(live.changes.title, 'Ask Counsel now');
     assert.equal(live.changes.content, 'The Counsel team acts. Legally fine.');
@@ -502,35 +560,56 @@ describe('remap planner', () => {
     };
     assert.equal(liveConfig.stakeholder_team, 'Counsel');
     assert.deepEqual(liveConfig.parent_target_teams, ['Counsel']);
-    assert.equal(liveConfig.org_key, 'primary', 'a team rename does not re-key delivery_config.org_key');
+    assert.equal(
+      liveConfig.org_key,
+      'primary',
+      'a team rename does not re-key delivery_config.org_key',
+    );
 
     const historic = plan.injects.cow.find((row) => row.source_id === 'inj-hist');
     assert.ok(historic, 'an inject with history is copy-on-write');
     assert.equal(historic.inject_key, 'briefing_mail_hist');
     assert.equal(historic.has_history, true);
     assert.deepEqual(historic.changes.target_teams, ['Counsel']);
-    assert.equal(plan.injects.rewrite_in_place.some((row) => row.inject_id === 'inj-hist'), false);
-    assert.equal(plan.injects.cow.some((row) => row.source_id === 'inj-live'), false);
+    assert.equal(
+      plan.injects.rewrite_in_place.some((row) => row.inject_id === 'inj-hist'),
+      false,
+    );
+    assert.equal(
+      plan.injects.cow.some((row) => row.source_id === 'inj-live'),
+      false,
+    );
 
     const roles = replaced(plan, '/player_roles') as Array<{ role_id: string; team_name: string }>;
     assert.equal(roles.find((role) => role.role_id === 'cs_head')?.team_name, 'Counsel');
     assert.equal(roles.find((role) => role.role_id === 'press')?.team_name, 'Communications');
 
-    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; owning_team: string }>;
+    const stakeholders = replaced(plan, '/stakeholders') as Array<{
+      id: string;
+      owning_team: string;
+    }>;
     assert.equal(stakeholders.find((row) => row.id === 'stk_counsel')?.owning_team, 'Counsel');
     assert.equal(stakeholders.find((row) => row.id === 'stk_fn')?.owning_team, 'Operations');
 
-    const benchmarks = replaced(plan, '/strategic_benchmarks') as Array<{ team: string; consequence_if_done?: string }>;
+    const benchmarks = replaced(plan, '/strategic_benchmarks') as Array<{
+      team: string;
+      consequence_if_done?: string;
+    }>;
     const legalBench = benchmarks.find((row) => row.team === 'Counsel');
     assert.ok(legalBench);
     assert.equal(legalBench.consequence_if_done, 'Counsel fulfilled: notify');
-    assert.equal(benchmarks.some((row) => row.team === 'Legal'), false);
+    assert.equal(
+      benchmarks.some((row) => row.team === 'Legal'),
+      false,
+    );
 
     const dependencies = replaced(plan, '/team_dependencies') as {
       edges: Array<{ upstream: { team_name: string }; broken_when: { all: string[] } }>;
     };
     assert.equal(dependencies.edges[0].upstream.team_name, 'Counsel');
-    assert.deepEqual(dependencies.edges[0].broken_when.all, ['responded:briefing_mail|team=counsel']);
+    assert.deepEqual(dependencies.edges[0].broken_when.all, [
+      'responded:briefing_mail|team=counsel',
+    ]);
 
     const session = plan.scheduled_sessions.find((row) => row.session_id === 'sess-scheduled');
     assert.ok(session);
@@ -551,7 +630,10 @@ describe('remap planner', () => {
     const encoded = JSON.stringify(plan);
     assert.equal(encoded.includes('sess-completed-9f3a'), false);
     assert.equal(encoded.includes('completed-user-9f3a'), false);
-    assert.equal(plan.scheduled_sessions.some((row) => row.session_id === 'sess-completed-9f3a'), false);
+    assert.equal(
+      plan.scheduled_sessions.some((row) => row.session_id === 'sess-completed-9f3a'),
+      false,
+    );
   });
 
   test('removing a team retires single-target injects, trims mixed targets, and lists orphans', () => {
@@ -561,9 +643,18 @@ describe('remap planner', () => {
       ['uid-legal'],
     );
     assert.equal(plan.teams.successors.length, 0);
-    assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-only')?.reason, 'targets_only_removed');
-    assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-layer')?.reason, 'team_layer');
-    assert.equal(plan.injects.retire.some((row) => row.inject_id === 'inj-mixed'), false);
+    assert.equal(
+      plan.injects.retire.find((row) => row.inject_id === 'inj-only')?.reason,
+      'targets_only_removed',
+    );
+    assert.equal(
+      plan.injects.retire.find((row) => row.inject_id === 'inj-layer')?.reason,
+      'team_layer',
+    );
+    assert.equal(
+      plan.injects.retire.some((row) => row.inject_id === 'inj-mixed'),
+      false,
+    );
 
     const mixed = plan.injects.rewrite_in_place.find((row) => row.inject_id === 'inj-mixed');
     assert.ok(mixed);
@@ -577,23 +668,58 @@ describe('remap planner', () => {
     assert.equal(config.stakeholder_team, undefined);
     assert.deepEqual(config.parent_target_teams, ['Communications']);
     assert.equal(config.org_key, 'primary');
-    assert.equal(config.escalation.steps[0].target_team, 'Legal', 'a chain step aimed at a removed team stays for the trainer');
+    assert.equal(
+      config.escalation.steps[0].target_team,
+      'Legal',
+      'a chain step aimed at a removed team stays for the trainer',
+    );
     assert.equal(config.escalation.steps[0].cc_team, 'Communications');
 
     assert.ok(plan.orphans.some((row) => row.kind === 'player_role' && row.role_id === 'cs_head'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'condition' && row.condition_key === 'responded:mixed_mail|team=legal'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'condition' && row.target_key === 'only_legal'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'stakeholder' && row.stakeholder_id === 'stk_ada'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'chain_target' && row.target_key === 'only_legal'));
+    assert.ok(
+      plan.orphans.some(
+        (row) =>
+          row.kind === 'condition' && row.condition_key === 'responded:mixed_mail|team=legal',
+      ),
+    );
+    assert.ok(
+      plan.orphans.some((row) => row.kind === 'condition' && row.target_key === 'only_legal'),
+    );
+    assert.ok(
+      plan.orphans.some((row) => row.kind === 'stakeholder' && row.stakeholder_id === 'stk_ada'),
+    );
+    assert.ok(
+      plan.orphans.some((row) => row.kind === 'chain_target' && row.target_key === 'only_legal'),
+    );
     assert.ok(plan.orphans.some((row) => row.kind === 'chain_target' && row.team_name === 'Legal'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'mood_consequence' && row.target_key === 'only_legal'));
-    assert.ok(plan.orphans.some((row) => row.kind === 'team_dependency' && row.dependency_id === 'dep_brief'));
-    assert.ok(plan.warnings.some((row) => row.code === 'retired_role_fallback' && row.role_id === 'cs_head'));
+    assert.ok(
+      plan.orphans.some(
+        (row) => row.kind === 'mood_consequence' && row.target_key === 'only_legal',
+      ),
+    );
+    assert.ok(
+      plan.orphans.some(
+        (row) => row.kind === 'team_dependency' && row.dependency_id === 'dep_brief',
+      ),
+    );
+    assert.ok(
+      plan.warnings.some(
+        (row) => row.code === 'retired_role_fallback' && row.role_id === 'cs_head',
+      ),
+    );
 
-    const roles = patchOr(plan, '/player_roles', [{ role_id: 'cs_head', team_name: 'Legal' }]) as Array<{ role_id: string }>;
-    assert.ok(roles.some((role) => role.role_id === 'cs_head'), 'the role stays until the trainer decides');
+    const roles = patchOr(plan, '/player_roles', [
+      { role_id: 'cs_head', team_name: 'Legal' },
+    ]) as Array<{ role_id: string }>;
+    assert.ok(
+      roles.some((role) => role.role_id === 'cs_head'),
+      'the role stays until the trainer decides',
+    );
     const benchmarks = replaced(plan, '/strategic_benchmarks') as Array<{ team: string }>;
-    assert.deepEqual(benchmarks.map((row) => row.team), ['Communications']);
+    assert.deepEqual(
+      benchmarks.map((row) => row.team),
+      ['Communications'],
+    );
 
     const session = plan.scheduled_sessions.find((row) => row.session_id === 'sess-scheduled');
     assert.ok(session);
@@ -607,111 +733,189 @@ describe('remap planner', () => {
   });
 
   test('removing an organisation retires its registry, page, stakeholders and scoped injects', () => {
-    const plan = planRemap(input({
-      delta: delta({
-        removed_orgs: ['org_bravo_my'],
-        removed_teams: [{ team_uid: 'uid-b-comms', team_name: 'Communications — BRAVO' }],
-        removed_pressure: ['org_pressure_only_sg'],
-        vacated_countries: ['Malaysia'],
-      }),
-      edited: snapshot(
-        [snapshotOrg({ org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', short_name: 'ACME', country: 'Singapore', is_primary: true })],
-        {
-          pressure_organisations: [
+    const plan = planRemap(
+      input({
+        delta: delta({
+          removed_orgs: ['org_bravo_my'],
+          removed_teams: [{ team_uid: 'uid-b-comms', team_name: 'Communications — BRAVO' }],
+          removed_pressure: ['org_pressure_only_sg'],
+          vacated_countries: ['Malaysia'],
+        }),
+        edited: snapshot(
+          [
+            snapshotOrg({
+              org_uid: 'uid-a',
+              org_key: 'primary',
+              display_name: 'Acme',
+              short_name: 'ACME',
+              country: 'Singapore',
+              is_primary: true,
+            }),
+          ],
+          {
+            pressure_organisations: [
+              {
+                org_uid: 'uid-press',
+                org_key: 'org_pressure_press_sg',
+                display_name: 'Press',
+                country: 'Singapore',
+                targets_org_keys: ['org_bravo_my'],
+              },
+            ],
+          },
+        ),
+        teams: [
+          team({ id: 'a', team_uid: 'uid-a-comms', team_name: 'Legal', org_key: 'primary' }),
+          team({
+            id: 'b',
+            team_uid: 'uid-b-comms',
+            team_name: 'Communications — BRAVO',
+            org_key: 'org_bravo_my',
+          }),
+        ],
+        injects: [
+          inject({
+            id: 'inj-b',
+            inject_key: 'bravo_mail',
+            delivery_config: { org_key: 'org_bravo_my' },
+          }),
+          inject({
+            id: 'inj-pressure',
+            inject_key: 'pressure_mail',
+            delivery_config: {
+              org_key: 'org_pressure_only_sg',
+              gen: { layer: 'pressure:org_pressure_only_sg', edit: 0, hash: 'abc' },
+            },
+          }),
+        ],
+        sessions: [
+          emptySession({
+            session_id: 'sess-scheduled',
+            page_controllers: [{ org_key: 'org_bravo_my', user_id: 'page-user' }],
+            org_pages: [{ org_key: 'org_bravo_my' }],
+          }),
+        ],
+        initial_state: {
+          country: 'Singapore',
+          org_name: 'Acme',
+          orgs: [
+            acme(),
+            bravo(),
             {
               org_uid: 'uid-press',
               org_key: 'org_pressure_press_sg',
               display_name: 'Press',
+              side: 'pressure',
               country: 'Singapore',
               targets_org_keys: ['org_bravo_my'],
             },
+            {
+              org_uid: 'uid-only',
+              org_key: 'org_pressure_only_sg',
+              display_name: 'Only',
+              side: 'pressure',
+              country: 'Singapore',
+              spokesperson_stakeholder_id: 'stk_spoke',
+            },
           ],
-        },
-      ),
-      teams: [
-        team({ id: 'a', team_uid: 'uid-a-comms', team_name: 'Legal', org_key: 'primary' }),
-        team({ id: 'b', team_uid: 'uid-b-comms', team_name: 'Communications — BRAVO', org_key: 'org_bravo_my' }),
-      ],
-      injects: [
-        inject({ id: 'inj-b', inject_key: 'bravo_mail', delivery_config: { org_key: 'org_bravo_my' } }),
-        inject({
-          id: 'inj-pressure',
-          inject_key: 'pressure_mail',
-          delivery_config: { org_key: 'org_pressure_only_sg', gen: { layer: 'pressure:org_pressure_only_sg', edit: 0, hash: 'abc' } },
-        }),
-      ],
-      sessions: [
-        emptySession({
-          session_id: 'sess-scheduled',
-          page_controllers: [{ org_key: 'org_bravo_my', user_id: 'page-user' }],
-          org_pages: [{ org_key: 'org_bravo_my' }],
-        }),
-      ],
-      initial_state: {
-        country: 'Singapore',
-        org_name: 'Acme',
-        orgs: [
-          acme(),
-          bravo(),
-          {
-            org_uid: 'uid-press',
-            org_key: 'org_pressure_press_sg',
-            display_name: 'Press',
-            side: 'pressure',
-            country: 'Singapore',
-            targets_org_keys: ['org_bravo_my'],
+          org_page: {
+            orgs: [
+              { org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', role: 'protagonist' },
+              {
+                org_uid: 'uid-b',
+                org_key: 'org_bravo_my',
+                display_name: 'Bravo',
+                logo_url: 'logo-bravo',
+                role: 'protagonist',
+              },
+              {
+                org_uid: 'uid-only',
+                org_key: 'org_pressure_only_sg',
+                display_name: 'Only',
+                role: 'pressure',
+              },
+            ],
           },
-          {
-            org_uid: 'uid-only',
-            org_key: 'org_pressure_only_sg',
-            display_name: 'Only',
-            side: 'pressure',
-            country: 'Singapore',
-            spokesperson_stakeholder_id: 'stk_spoke',
-          },
-        ],
-        org_page: {
-          orgs: [
-            { org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', role: 'protagonist' },
-            { org_uid: 'uid-b', org_key: 'org_bravo_my', display_name: 'Bravo', logo_url: 'logo-bravo', role: 'protagonist' },
-            { org_uid: 'uid-only', org_key: 'org_pressure_only_sg', display_name: 'Only', role: 'pressure' },
+          stakeholders: [
+            {
+              id: 'stk_gone',
+              name: 'Gone',
+              owning_team: 'Communications — BRAVO',
+              org_key: 'org_bravo_my',
+            },
+            { id: 'stk_kept', name: 'Kept', owning_team: 'Legal', org_key: 'org_bravo_my' },
+            {
+              id: 'stk_spoke',
+              name: 'Spoke',
+              owning_team: 'Only',
+              org_key: 'org_pressure_only_sg',
+            },
           ],
+          countries: [
+            { name: 'Singapore', code: 'SG' },
+            { name: 'Malaysia', code: 'MY' },
+          ],
+          personas: [{ id: 'persona-my', country: 'Malaysia', backstory: 'Reporter' }],
         },
-        stakeholders: [
-          { id: 'stk_gone', name: 'Gone', owning_team: 'Communications — BRAVO', org_key: 'org_bravo_my' },
-          { id: 'stk_kept', name: 'Kept', owning_team: 'Legal', org_key: 'org_bravo_my' },
-          { id: 'stk_spoke', name: 'Spoke', owning_team: 'Only', org_key: 'org_pressure_only_sg' },
-        ],
-        countries: [
-          { name: 'Singapore', code: 'SG' },
-          { name: 'Malaysia', code: 'MY' },
-        ],
-        personas: [{ id: 'persona-my', country: 'Malaysia', backstory: 'Reporter' }],
-      },
-    }));
+      }),
+    );
 
     const orgs = replaced(plan, '/orgs') as OrgRow[];
-    assert.equal(orgs.some((org) => org.org_key === 'org_bravo_my'), false);
-    assert.equal(orgs.some((org) => org.org_key === 'org_pressure_only_sg'), false);
+    assert.equal(
+      orgs.some((org) => org.org_key === 'org_bravo_my'),
+      false,
+    );
+    assert.equal(
+      orgs.some((org) => org.org_key === 'org_pressure_only_sg'),
+      false,
+    );
     assert.ok(orgs.some((org) => org.org_key === 'primary'));
-    const movedOrg = plan.initial_state.move_to_retired.find((row) => row.bucket === 'orgs' && row.key === 'org_bravo_my');
-    const movedPage = plan.initial_state.move_to_retired.find((row) => row.bucket === 'org_page_orgs' && row.key === 'org_bravo_my');
+    const movedOrg = plan.initial_state.move_to_retired.find(
+      (row) => row.bucket === 'orgs' && row.key === 'org_bravo_my',
+    );
+    const movedPage = plan.initial_state.move_to_retired.find(
+      (row) => row.bucket === 'org_page_orgs' && row.key === 'org_bravo_my',
+    );
     assert.equal((movedPage?.value as OrgRow).logo_url, 'logo-bravo');
     assert.ok(movedOrg);
-    const movedStakeholders = plan.initial_state.move_to_retired.filter((row) => row.bucket === 'stakeholders');
+    const movedStakeholders = plan.initial_state.move_to_retired.filter(
+      (row) => row.bucket === 'stakeholders',
+    );
     assert.ok(movedStakeholders.some((row) => row.key === 'stk_gone'));
     assert.ok(movedStakeholders.some((row) => row.key === 'stk_spoke'));
-    assert.equal(movedStakeholders.some((row) => row.key === 'stk_kept'), false);
-    assert.ok(plan.orphans.some((row) => row.kind === 'stakeholder' && row.stakeholder_id === 'stk_kept'));
+    assert.equal(
+      movedStakeholders.some((row) => row.key === 'stk_kept'),
+      false,
+    );
+    assert.ok(
+      plan.orphans.some((row) => row.kind === 'stakeholder' && row.stakeholder_id === 'stk_kept'),
+    );
 
     assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-b')?.reason, 'org_key');
-    assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-b')?.org_key, 'org_bravo_my');
-    assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-pressure')?.reason, 'pressure_layer');
-    assert.ok(plan.orphans.some((row) => row.kind === 'pressure_targets' && row.org_key === 'org_pressure_press_sg'));
+    assert.equal(
+      plan.injects.retire.find((row) => row.inject_id === 'inj-b')?.org_key,
+      'org_bravo_my',
+    );
+    assert.equal(
+      plan.injects.retire.find((row) => row.inject_id === 'inj-pressure')?.reason,
+      'pressure_layer',
+    );
+    assert.ok(
+      plan.orphans.some(
+        (row) => row.kind === 'pressure_targets' && row.org_key === 'org_pressure_press_sg',
+      ),
+    );
 
     const countries = replaced(plan, '/countries') as Array<{ name: string }>;
-    assert.deepEqual(countries.map((row) => row.name), ['Singapore']);
-    assert.ok(plan.initial_state.move_to_retired.some((row) => row.bucket === 'countries' && row.key === 'Malaysia'));
+    assert.deepEqual(
+      countries.map((row) => row.name),
+      ['Singapore'],
+    );
+    assert.ok(
+      plan.initial_state.move_to_retired.some(
+        (row) => row.bucket === 'countries' && row.key === 'Malaysia',
+      ),
+    );
     const personas = replaced(plan, '/personas') as Array<{ country?: string; backstory: string }>;
     assert.equal(personas[0].country, undefined);
     assert.match(personas[0].backstory, /Based in Malaysia/);
@@ -725,9 +929,30 @@ describe('remap planner', () => {
   });
 
   test('removing a rival from the middle leaves the other rivals untouched', () => {
-    const north = { org_uid: 'uid-n', org_key: 'org_antagonist_north_1', name: 'North', country: 'Singapore', role: 'antagonist', logo_url: 'logo-north' };
-    const mid = { org_uid: 'uid-m', org_key: 'org_antagonist_mid_2', name: 'Mid', country: 'Singapore', role: 'antagonist', logo_url: 'logo-mid' };
-    const south = { org_uid: 'uid-s', org_key: 'org_antagonist_south_3', name: 'South', country: 'Singapore', role: 'antagonist', logo_url: 'logo-south' };
+    const north = {
+      org_uid: 'uid-n',
+      org_key: 'org_antagonist_north_1',
+      name: 'North',
+      country: 'Singapore',
+      role: 'antagonist',
+      logo_url: 'logo-north',
+    };
+    const mid = {
+      org_uid: 'uid-m',
+      org_key: 'org_antagonist_mid_2',
+      name: 'Mid',
+      country: 'Singapore',
+      role: 'antagonist',
+      logo_url: 'logo-mid',
+    };
+    const south = {
+      org_uid: 'uid-s',
+      org_key: 'org_antagonist_south_3',
+      name: 'South',
+      country: 'Singapore',
+      role: 'antagonist',
+      logo_url: 'logo-south',
+    };
     const registry = [north, mid, south].map((org) => ({
       org_uid: org.org_uid,
       org_key: org.org_key,
@@ -737,22 +962,43 @@ describe('remap planner', () => {
       kind: 'company',
     }));
     const pages = [north, mid, south].map((org) => ({ ...org }));
-    const plan = planRemap(input({
-      delta: delta({ removed_rivals: ['org_antagonist_mid_2'] }),
-      edited: snapshot(
-        [snapshotOrg({ org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', is_primary: true })],
-        {
-          competitors: [
-            { org_uid: 'uid-n', org_key: 'org_antagonist_north_1', name: 'North', country: 'Singapore', auto_generated: false },
-            { org_uid: 'uid-s', org_key: 'org_antagonist_south_3', name: 'South', country: 'Singapore', auto_generated: false },
+    const plan = planRemap(
+      input({
+        delta: delta({ removed_rivals: ['org_antagonist_mid_2'] }),
+        edited: snapshot(
+          [
+            snapshotOrg({
+              org_uid: 'uid-a',
+              org_key: 'primary',
+              display_name: 'Acme',
+              is_primary: true,
+            }),
           ],
+          {
+            competitors: [
+              {
+                org_uid: 'uid-n',
+                org_key: 'org_antagonist_north_1',
+                name: 'North',
+                country: 'Singapore',
+                auto_generated: false,
+              },
+              {
+                org_uid: 'uid-s',
+                org_key: 'org_antagonist_south_3',
+                name: 'South',
+                country: 'Singapore',
+                auto_generated: false,
+              },
+            ],
+          },
+        ),
+        initial_state: {
+          orgs: registry,
+          org_page: { orgs: pages },
         },
-      ),
-      initial_state: {
-        orgs: registry,
-        org_page: { orgs: pages },
-      },
-    }));
+      }),
+    );
     const page = replaced(plan, '/org_page') as { orgs: typeof pages };
     assert.deepEqual(page.orgs, [pages[0], pages[2]]);
     assert.deepEqual(
@@ -760,36 +1006,42 @@ describe('remap planner', () => {
       ['org_antagonist_north_1', 'org_antagonist_south_3'],
     );
     assert.equal(
-      (plan.initial_state.move_to_retired.find((row) => row.bucket === 'org_page_orgs')?.value as { logo_url: string }).logo_url,
+      (
+        plan.initial_state.move_to_retired.find((row) => row.bucket === 'org_page_orgs')?.value as {
+          logo_url: string;
+        }
+      ).logo_url,
       'logo-mid',
     );
   });
 
   test('a text-only rename of a hand-edited inject warns and does not rewrite it', () => {
-    const plan = planRemap(input({
-      delta: delta({ renamed_teams: [{ team_uid: 'uid-legal', from: 'Legal', to: 'Counsel' }] }),
-      edited: snapshot([
-        snapshotOrg({
-          org_uid: 'uid-a',
-          org_key: 'primary',
-          display_name: 'Acme',
-          is_primary: true,
-          teams: [snapshotTeam({ team_uid: 'uid-legal', team_name: 'Counsel' })],
-        }),
-      ]),
-      teams: [team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' })],
-      injects: [
-        inject({
-          id: 'inj-hand',
-          inject_key: 'hand_note',
-          generation_source: 'trainer',
-          title: 'Note',
-          content: 'Tell Legal today',
-          target_teams: ['Communications'],
-          delivery_config: { org_key: 'primary' },
-        }),
-      ],
-    }));
+    const plan = planRemap(
+      input({
+        delta: delta({ renamed_teams: [{ team_uid: 'uid-legal', from: 'Legal', to: 'Counsel' }] }),
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            is_primary: true,
+            teams: [snapshotTeam({ team_uid: 'uid-legal', team_name: 'Counsel' })],
+          }),
+        ]),
+        teams: [team({ id: 'team-legal', team_uid: 'uid-legal', team_name: 'Legal' })],
+        injects: [
+          inject({
+            id: 'inj-hand',
+            inject_key: 'hand_note',
+            generation_source: 'trainer',
+            title: 'Note',
+            content: 'Tell Legal today',
+            target_teams: ['Communications'],
+            delivery_config: { org_key: 'primary' },
+          }),
+        ],
+      }),
+    );
     assert.equal(plan.injects.rewrite_in_place.length, 0);
     assert.equal(plan.injects.cow.length, 0);
     assert.equal(plan.warnings.length, 1);
@@ -824,8 +1076,14 @@ describe('remap planner', () => {
     assert.equal(plan.primary_swap?.new_primary_previous_key, 'org_bravo_my');
     assert.deepEqual(plan.primary_swap?.map, { org_bravo_my: 'primary', primary: fresh });
     assert.equal(plan.primary_swap?.story.severity, 'story');
-    assert.match(plan.primary_swap?.story.premise ?? '', /Bravo is now the organisation at the centre of the crisis/);
-    assert.equal(history().some((row) => (row as { org_key: string }).org_key === fresh), false);
+    assert.match(
+      plan.primary_swap?.story.premise ?? '',
+      /Bravo is now the organisation at the centre of the crisis/,
+    );
+    assert.equal(
+      history().some((row) => (row as { org_key: string }).org_key === fresh),
+      false,
+    );
 
     const orgs = replaced(plan, '/orgs') as OrgRow[];
     const keys = orgs.map((org) => org.org_key);
@@ -835,10 +1093,22 @@ describe('remap planner', () => {
     assert.equal(orgs.find((org) => org.org_uid === 'uid-a')?.org_key, fresh);
     assert.equal(orgs.find((org) => org.org_uid === 'uid-a')?.is_primary, false);
     assert.equal(orgs.find((org) => org.org_uid === 'uid-c')?.org_key, 'org_charlie_sg');
-    assert.equal(orgs.find((org) => org.org_uid === 'uid-a')?.sites?.[0].site_key, 'acme_singapore');
-    assert.equal(orgs.find((org) => org.org_uid === 'uid-b')?.sites?.[0].site_key, 'hq_kualalumpur');
-    assert.equal(orgs.find((org) => org.org_uid === 'uid-c')?.sites?.[0].site_key, 'chas_singapore');
-    assert.deepEqual(orgs.find((org) => org.org_key === 'org_pressure_union_sg')?.targets_org_keys, [fresh, 'org_charlie_sg']);
+    assert.equal(
+      orgs.find((org) => org.org_uid === 'uid-a')?.sites?.[0].site_key,
+      'acme_singapore',
+    );
+    assert.equal(
+      orgs.find((org) => org.org_uid === 'uid-b')?.sites?.[0].site_key,
+      'hq_kualalumpur',
+    );
+    assert.equal(
+      orgs.find((org) => org.org_uid === 'uid-c')?.sites?.[0].site_key,
+      'chas_singapore',
+    );
+    assert.deepEqual(
+      orgs.find((org) => org.org_key === 'org_pressure_union_sg')?.targets_org_keys,
+      [fresh, 'org_charlie_sg'],
+    );
 
     const pages = (replaced(plan, '/org_page') as { orgs: OrgRow[] }).orgs;
     const acmePage = pages.find((org) => org.org_uid === 'uid-a');
@@ -849,23 +1119,64 @@ describe('remap planner', () => {
     assert.equal(bravoPage?.org_key, 'primary');
     assert.equal(bravoPage?.logo_url, 'logo-bravo');
     assert.equal(bravoPage?.is_primary, true);
-    assert.deepEqual(
-      pages.find((org) => org.org_uid === 'uid-union')?.posture?.targets_org_keys,
-      [fresh, 'org_charlie_sg'],
-    );
+    assert.deepEqual(pages.find((org) => org.org_uid === 'uid-union')?.posture?.targets_org_keys, [
+      fresh,
+      'org_charlie_sg',
+    ]);
 
     assert.equal(replaced(plan, '/country'), 'Malaysia');
     assert.equal(replaced(plan, '/org_name'), 'Bravo');
     const context = replaced(plan, '/decision_context') as { note: { org_key: string } };
     assert.equal(context.note.org_key, fresh);
-    assert.equal((replaced(plan, '/sop_steps') as Array<{ org_key: string }>)[0].org_key, 'primary');
+    assert.equal(
+      (replaced(plan, '/sop_steps') as Array<{ org_key: string }>)[0].org_key,
+      'primary',
+    );
 
-    const rows = replaced(plan, '/org_key_history') as Array<{ org_uid: string; org_key: string; from_edit: string | null; until_edit: string | null }>;
-    assert.ok(rows.some((row) => row.org_uid === 'uid-a' && row.org_key === 'primary' && row.until_edit === EDIT_TOKEN));
-    assert.ok(rows.some((row) => row.org_uid === 'uid-b' && row.org_key === 'org_bravo_my' && row.until_edit === EDIT_TOKEN));
-    assert.ok(rows.some((row) => row.org_uid === 'uid-a' && row.org_key === fresh && row.from_edit === EDIT_TOKEN && row.until_edit == null));
-    assert.ok(rows.some((row) => row.org_uid === 'uid-b' && row.org_key === 'primary' && row.from_edit === EDIT_TOKEN && row.until_edit == null));
-    assert.ok(rows.some((row) => row.org_uid === 'uid-c' && row.org_key === 'org_charlie_sg' && row.until_edit == null));
+    const rows = replaced(plan, '/org_key_history') as Array<{
+      org_uid: string;
+      org_key: string;
+      from_edit: string | null;
+      until_edit: string | null;
+    }>;
+    assert.ok(
+      rows.some(
+        (row) =>
+          row.org_uid === 'uid-a' && row.org_key === 'primary' && row.until_edit === EDIT_TOKEN,
+      ),
+    );
+    assert.ok(
+      rows.some(
+        (row) =>
+          row.org_uid === 'uid-b' &&
+          row.org_key === 'org_bravo_my' &&
+          row.until_edit === EDIT_TOKEN,
+      ),
+    );
+    assert.ok(
+      rows.some(
+        (row) =>
+          row.org_uid === 'uid-a' &&
+          row.org_key === fresh &&
+          row.from_edit === EDIT_TOKEN &&
+          row.until_edit == null,
+      ),
+    );
+    assert.ok(
+      rows.some(
+        (row) =>
+          row.org_uid === 'uid-b' &&
+          row.org_key === 'primary' &&
+          row.from_edit === EDIT_TOKEN &&
+          row.until_edit == null,
+      ),
+    );
+    assert.ok(
+      rows.some(
+        (row) =>
+          row.org_uid === 'uid-c' && row.org_key === 'org_charlie_sg' && row.until_edit == null,
+      ),
+    );
 
     const acmeTeam = plan.teams.successors.find((row) => row.team_uid === 'uid-a-comms');
     const bravoTeam = plan.teams.successors.find((row) => row.team_uid === 'uid-b-comms');
@@ -873,7 +1184,10 @@ describe('remap planner', () => {
     assert.equal(acmeTeam?.team_uid, 'uid-a-comms');
     assert.equal((acmeTeam?.charter as { org_key: string }).org_key, fresh);
     assert.equal(bravoTeam?.org_key, 'primary');
-    assert.equal(plan.teams.successors.some((row) => row.team_uid === 'uid-c-comms'), false);
+    assert.equal(
+      plan.teams.successors.some((row) => row.team_uid === 'uid-c-comms'),
+      false,
+    );
 
     const acmeInject = plan.injects.rewrite_in_place.find((row) => row.inject_id === 'inj-a');
     const bravoInject = plan.injects.cow.find((row) => row.source_id === 'inj-b');
@@ -883,7 +1197,11 @@ describe('remap planner', () => {
     const hand = plan.injects.rewrite_in_place.find((row) => row.inject_id === 'inj-hand');
     assert.equal(hand?.changes.content, undefined);
     assert.equal(hand?.changes.title, undefined);
-    assert.ok(plan.warnings.some((row) => row.code === 'hand_edit_names_former_primary' && row.inject_id === 'inj-hand'));
+    assert.ok(
+      plan.warnings.some(
+        (row) => row.code === 'hand_edit_names_former_primary' && row.inject_id === 'inj-hand',
+      ),
+    );
     assert.equal(plan.applicable, true);
   });
 
@@ -901,44 +1219,63 @@ describe('remap planner', () => {
     ];
     const plan = planRemap(source);
     const fresh = plan.primary_swap?.old_primary_new_key;
-    assert.equal(plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.org_key, fresh);
-    assert.equal((plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.charter as { org_key: string }).org_key, fresh);
-    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; org_key: string | null }>;
+    assert.equal(
+      plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.org_key,
+      fresh,
+    );
+    assert.equal(
+      (
+        plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.charter as {
+          org_key: string;
+        }
+      ).org_key,
+      fresh,
+    );
+    const stakeholders = replaced(plan, '/stakeholders') as Array<{
+      id: string;
+      org_key: string | null;
+    }>;
     assert.equal(stakeholders.find((row) => row.id === 'stk_null')?.org_key, null);
     assert.equal(stakeholders.find((row) => row.id === 'stk_b')?.org_key, 'primary');
 
-    const single = planRemap(input({
-      delta: delta({ primary_swap: { from_org_uid: 'uid-a', to_org_uid: 'uid-d', to_is_new: true } }),
-      edited: snapshot([
-        snapshotOrg({
-          org_uid: 'uid-a',
-          org_key: 'primary',
-          display_name: 'Acme',
-          short_name: 'ACME',
-          country: 'Singapore',
-          is_primary: false,
-          teams: [snapshotTeam({ team_uid: 'uid-a', team_name: 'Legal' })],
+    const single = planRemap(
+      input({
+        delta: delta({
+          primary_swap: { from_org_uid: 'uid-a', to_org_uid: 'uid-d', to_is_new: true },
         }),
-        snapshotOrg({
-          org_uid: 'uid-d',
-          org_key: 'org_delta_id',
-          display_name: 'Delta',
-          short_name: 'DELTA',
-          country: 'Indonesia',
-          is_primary: true,
-          teams: [snapshotTeam({ team_uid: 'uid-d', team_name: 'Communications' })],
-        }),
-      ]),
-      initial_state: {
-        orgs: [acme()],
-        stakeholders: [{ id: 'stk_only', name: 'Pat', owning_team: 'Legal', org_key: null }],
-        org_key_history: [{ org_uid: 'uid-a', org_key: 'primary', from_edit: null, until_edit: null }],
-      },
-      teams: [team({ id: 'a', team_uid: 'uid-a', team_name: 'Legal', org_key: null })],
-    }));
-    const only = (replaced(single, '/stakeholders') as Array<{ id: string; org_key: string | null }>).find(
-      (row) => row.id === 'stk_only',
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            short_name: 'ACME',
+            country: 'Singapore',
+            is_primary: false,
+            teams: [snapshotTeam({ team_uid: 'uid-a', team_name: 'Legal' })],
+          }),
+          snapshotOrg({
+            org_uid: 'uid-d',
+            org_key: 'org_delta_id',
+            display_name: 'Delta',
+            short_name: 'DELTA',
+            country: 'Indonesia',
+            is_primary: true,
+            teams: [snapshotTeam({ team_uid: 'uid-d', team_name: 'Communications' })],
+          }),
+        ]),
+        initial_state: {
+          orgs: [acme()],
+          stakeholders: [{ id: 'stk_only', name: 'Pat', owning_team: 'Legal', org_key: null }],
+          org_key_history: [
+            { org_uid: 'uid-a', org_key: 'primary', from_edit: null, until_edit: null },
+          ],
+        },
+        teams: [team({ id: 'a', team_uid: 'uid-a', team_name: 'Legal', org_key: null })],
+      }),
     );
+    const only = (
+      replaced(single, '/stakeholders') as Array<{ id: string; org_key: string | null }>
+    ).find((row) => row.id === 'stk_only');
     assert.equal(only?.org_key, single.primary_swap?.old_primary_new_key);
     assert.notEqual(only?.org_key, null);
     assert.notEqual(only?.org_key, 'primary');
@@ -953,7 +1290,11 @@ describe('remap planner', () => {
           { org_key: 'primary', user_id: 'page-user-o' },
           { org_key: 'org_bravo_my', user_id: 'page-user-p' },
         ],
-        org_pages: [{ org_key: 'primary' }, { org_key: 'org_bravo_my' }, { org_key: 'org_charlie_sg' }],
+        org_pages: [
+          { org_key: 'primary' },
+          { org_key: 'org_bravo_my' },
+          { org_key: 'org_charlie_sg' },
+        ],
       }),
       emptySession({
         session_id: 'sess-completed-11',
@@ -1003,16 +1344,39 @@ describe('remap planner', () => {
     const fresh = plan.primary_swap?.old_primary_new_key ?? '';
     assert.ok(plan.phases.indexOf('swap') < plan.phases.indexOf('remove'));
     assert.equal(plan.injects.retire.find((row) => row.inject_id === 'inj-a')?.org_key, fresh);
-    assert.equal(plan.injects.retire.some((row) => row.inject_id === 'inj-b'), false);
-    assert.equal((plan.injects.cow.find((row) => row.source_id === 'inj-b')?.changes.delivery_config as { org_key: string }).org_key, 'primary');
+    assert.equal(
+      plan.injects.retire.some((row) => row.inject_id === 'inj-b'),
+      false,
+    );
+    assert.equal(
+      (
+        plan.injects.cow.find((row) => row.source_id === 'inj-b')?.changes.delivery_config as {
+          org_key: string;
+        }
+      ).org_key,
+      'primary',
+    );
     const orgs = replaced(plan, '/orgs') as OrgRow[];
-    assert.equal(orgs.some((org) => org.org_uid === 'uid-a'), false);
+    assert.equal(
+      orgs.some((org) => org.org_uid === 'uid-a'),
+      false,
+    );
     assert.equal(orgs.find((org) => org.org_uid === 'uid-b')?.org_key, 'primary');
-    const retired = plan.initial_state.move_to_retired.find((row) => row.bucket === 'orgs' && (row.value as OrgRow).org_uid === 'uid-a');
+    const retired = plan.initial_state.move_to_retired.find(
+      (row) => row.bucket === 'orgs' && (row.value as OrgRow).org_uid === 'uid-a',
+    );
     assert.equal((retired?.value as OrgRow).org_key, fresh);
     assert.notEqual(fresh, 'primary');
-    assert.equal(plan.teams.retire.some((row) => row.team_uid === 'uid-a-comms' && row.org_key === fresh), true);
-    assert.equal(plan.teams.successors.some((row) => row.team_uid === 'uid-b-comms' && row.org_key === 'primary'), true);
+    assert.equal(
+      plan.teams.retire.some((row) => row.team_uid === 'uid-a-comms' && row.org_key === fresh),
+      true,
+    );
+    assert.equal(
+      plan.teams.successors.some(
+        (row) => row.team_uid === 'uid-b-comms' && row.org_key === 'primary',
+      ),
+      true,
+    );
   });
 
   test('a swap to a newly added organisation creates it as primary', () => {
@@ -1038,37 +1402,63 @@ describe('remap planner', () => {
     assert.equal(deltaOrg?.is_primary, true);
     assert.equal(deltaOrg?.display_name, 'Delta');
     assert.equal(orgs.find((org) => org.org_uid === 'uid-a')?.org_key === 'primary', false);
-    assert.equal(Object.prototype.hasOwnProperty.call(plan.primary_swap?.map ?? {}, 'org_delta_id'), false);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(plan.primary_swap?.map ?? {}, 'org_delta_id'),
+      false,
+    );
     assert.equal(plan.primary_swap?.new_primary_previous_key, null);
-    assert.equal(plan.teams.successors.some((row) => row.org_key === 'org_delta_id'), false);
+    assert.equal(
+      plan.teams.successors.some((row) => row.org_key === 'org_delta_id'),
+      false,
+    );
     assert.equal(replaced(plan, '/country'), 'Indonesia');
     assert.equal(replaced(plan, '/org_name'), 'Delta');
     assert.ok(plan.phases.includes('add'));
-    const rows = replaced(plan, '/org_key_history') as Array<{ org_uid: string; org_key: string; until_edit: string | null }>;
-    assert.ok(rows.some((row) => row.org_uid === 'uid-d' && row.org_key === 'primary' && row.until_edit == null));
+    const rows = replaced(plan, '/org_key_history') as Array<{
+      org_uid: string;
+      org_key: string;
+      until_edit: string | null;
+    }>;
+    assert.ok(
+      rows.some(
+        (row) => row.org_uid === 'uid-d' && row.org_key === 'primary' && row.until_edit == null,
+      ),
+    );
   });
 
   test('a pressure group that exists only on the page is an orphan when every target is removed', () => {
-    const plan = planRemap(input({
-      delta: delta({ removed_orgs: ['org_bravo_my'] }),
-      edited: snapshot([
-        snapshotOrg({ org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', short_name: 'ACME', is_primary: true }),
-      ]),
-      initial_state: {
-        orgs: [acme()],
-        org_page: {
-          orgs: [
-            {
-              org_key: 'org_pressure_page_sg',
-              display_name: 'Page Press',
-              role: 'pressure',
-              targets_org_keys: ['org_bravo_my'],
-            },
-          ],
+    const plan = planRemap(
+      input({
+        delta: delta({ removed_orgs: ['org_bravo_my'] }),
+        edited: snapshot([
+          snapshotOrg({
+            org_uid: 'uid-a',
+            org_key: 'primary',
+            display_name: 'Acme',
+            short_name: 'ACME',
+            is_primary: true,
+          }),
+        ]),
+        initial_state: {
+          orgs: [acme()],
+          org_page: {
+            orgs: [
+              {
+                org_key: 'org_pressure_page_sg',
+                display_name: 'Page Press',
+                role: 'pressure',
+                targets_org_keys: ['org_bravo_my'],
+              },
+            ],
+          },
         },
-      },
-    }));
-    assert.ok(plan.orphans.some((row) => row.kind === 'pressure_targets' && row.org_key === 'org_pressure_page_sg'));
+      }),
+    );
+    assert.ok(
+      plan.orphans.some(
+        (row) => row.kind === 'pressure_targets' && row.org_key === 'org_pressure_page_sg',
+      ),
+    );
   });
 
   test('a resolution for every orphan kind is applied and the plan becomes applicable', () => {
@@ -1087,22 +1477,35 @@ describe('remap planner', () => {
     source.delta = delta({ ...source.delta, removed_orgs: ['org_gone'] });
     const open = planRemap(source);
     const kinds = new Set(open.orphans.map((row) => row.kind));
-    for (const kind of ['player_role', 'condition', 'stakeholder', 'pressure_targets', 'chain_target', 'mood_consequence', 'team_dependency']) {
+    for (const kind of [
+      'player_role',
+      'condition',
+      'stakeholder',
+      'pressure_targets',
+      'chain_target',
+      'mood_consequence',
+      'team_dependency',
+    ]) {
       assert.ok(kinds.has(kind as 'player_role'), kind);
     }
     const resolutions: Record<string, OrphanResolution> = {};
     for (const orphan of open.orphans) {
-      if (orphan.kind === 'player_role') resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
+      if (orphan.kind === 'player_role')
+        resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
       else if (orphan.kind === 'condition' && orphan.condition_key?.includes('|team=')) {
         resolutions[orphan.id] = { choice: 'retarget', team_name: 'Communications' };
       } else if (orphan.kind === 'condition') resolutions[orphan.id] = { choice: 'keep' };
-      else if (orphan.kind === 'stakeholder') resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
-      else if (orphan.kind === 'pressure_targets') resolutions[orphan.id] = { choice: 'retarget', org_keys: ['primary'] };
+      else if (orphan.kind === 'stakeholder')
+        resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
+      else if (orphan.kind === 'pressure_targets')
+        resolutions[orphan.id] = { choice: 'retarget', org_keys: ['primary'] };
       else if (orphan.kind === 'chain_target' && orphan.target_key) {
         resolutions[orphan.id] = { choice: 'retarget', inject_key: 'mixed_mail' };
-      } else if (orphan.kind === 'chain_target') resolutions[orphan.id] = { choice: 'retarget', team_name: 'Communications' };
+      } else if (orphan.kind === 'chain_target')
+        resolutions[orphan.id] = { choice: 'retarget', team_name: 'Communications' };
       else if (orphan.kind === 'mood_consequence') resolutions[orphan.id] = { choice: 'clear' };
-      else if (orphan.kind === 'team_dependency' && !orphan.target_key) resolutions[orphan.id] = { choice: 'remove' };
+      else if (orphan.kind === 'team_dependency' && !orphan.target_key)
+        resolutions[orphan.id] = { choice: 'remove' };
       else if (orphan.kind === 'team_dependency') resolutions[orphan.id] = { choice: 'clear' };
     }
     const plan = planRemap({ ...source, resolutions });
@@ -1119,12 +1522,23 @@ describe('remap planner', () => {
     assert.deepEqual(mixed.changes.conditions_to_appear, {
       all: ['inject_fired:only_legal', 'responded:mixed_mail|team=communications'],
     });
-    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; owning_team: string }>;
+    const stakeholders = replaced(plan, '/stakeholders') as Array<{
+      id: string;
+      owning_team: string;
+    }>;
     assert.equal(stakeholders.find((row) => row.id === 'stk_ada')?.owning_team, 'Communications');
-    const page = replaced(plan, '/org_page') as { orgs: Array<{ org_key: string; targets_org_keys?: string[] }> };
-    assert.deepEqual(page.orgs.find((row) => row.org_key === 'org_pressure_page_sg')?.targets_org_keys, ['primary']);
+    const page = replaced(plan, '/org_page') as {
+      orgs: Array<{ org_key: string; targets_org_keys?: string[] }>;
+    };
+    assert.deepEqual(
+      page.orgs.find((row) => row.org_key === 'org_pressure_page_sg')?.targets_org_keys,
+      ['primary'],
+    );
     const config = mixed.changes.delivery_config as {
-      escalation: { on_exhausted?: { publish_inject_key?: string }; steps: Array<{ target_team?: string }> };
+      escalation: {
+        on_exhausted?: { publish_inject_key?: string };
+        steps: Array<{ target_team?: string }>;
+      };
       mood_ladder: { rungs: Array<{ consequences: unknown[] }> };
     };
     assert.equal(config.escalation.on_exhausted?.publish_inject_key, 'mixed_mail');

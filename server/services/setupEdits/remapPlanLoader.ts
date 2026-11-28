@@ -53,7 +53,10 @@ interface QueryResult {
   error: { code?: string; message?: string } | null;
 }
 
-async function readOptional(table: string, query: PromiseLike<QueryResult>): Promise<Record<string, unknown>[]> {
+async function readOptional(
+  table: string,
+  query: PromiseLike<QueryResult>,
+): Promise<Record<string, unknown>[]> {
   try {
     const result = await query;
     if (result.error) {
@@ -92,11 +95,15 @@ async function loadTeams(scenarioId: string): Promise<PlannerTeam[]> {
   const first = await activeTeams(
     supabaseAdmin.from('scenario_teams').select(TEAM_COLUMNS).eq('scenario_id', scenarioId),
   );
-  const result = first.error && isRemapTableMissing(first.error)
-    ? await activeTeams(
-        supabaseAdmin.from('scenario_teams').select(TEAM_COLUMNS_LEGACY).eq('scenario_id', scenarioId),
-      )
-    : first;
+  const result =
+    first.error && isRemapTableMissing(first.error)
+      ? await activeTeams(
+          supabaseAdmin
+            .from('scenario_teams')
+            .select(TEAM_COLUMNS_LEGACY)
+            .eq('scenario_id', scenarioId),
+        )
+      : first;
   if (result.error) throw result.error;
   const rows = Array.isArray(result.data) ? (result.data as Record<string, unknown>[]) : [];
   return rows.map(asTeam);
@@ -206,39 +213,65 @@ async function loadScheduledSessions(scenarioId: string): Promise<LobbySession[]
   const [teams, channels, messages, lines, takers, roles, controllers, pages] = await Promise.all([
     readOptional(
       'session_teams',
-      supabaseAdmin.from('session_teams').select('session_id, user_id, team_name').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('session_teams')
+        .select('session_id, user_id, team_name')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'chat_channels',
-      supabaseAdmin.from('chat_channels').select('id, session_id, team_name').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('chat_channels')
+        .select('id, session_id, team_name')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'chat_messages',
-      supabaseAdmin.from('chat_messages').select('channel_id, session_id').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('chat_messages')
+        .select('channel_id, session_id')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'session_call_lines',
-      supabaseAdmin.from('session_call_lines').select('session_id, team_name').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('session_call_lines')
+        .select('session_id, team_name')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'session_call_takers',
-      supabaseAdmin.from('session_call_takers').select('session_id, team_name, user_id').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('session_call_takers')
+        .select('session_id, team_name, user_id')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'session_role_assignments',
-      supabaseAdmin.from('session_role_assignments').select('session_id, role_id, user_id').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('session_role_assignments')
+        .select('session_id, role_id, user_id')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'session_page_controllers',
-      supabaseAdmin.from('session_page_controllers').select('session_id, org_key, user_id').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('session_page_controllers')
+        .select('session_id, org_key, user_id')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
     readOptional(
       'sim_org_pages',
-      supabaseAdmin.from('sim_org_pages').select('session_id, org_key').in('session_id', ids) as PromiseLike<QueryResult>,
+      supabaseAdmin
+        .from('sim_org_pages')
+        .select('session_id, org_key')
+        .in('session_id', ids) as PromiseLike<QueryResult>,
     ),
   ]);
 
-  const busyChannels = new Set(messages.map((row) => text(row.channel_id)).filter((id) => id.length > 0));
+  const busyChannels = new Set(
+    messages.map((row) => text(row.channel_id)).filter((id) => id.length > 0),
+  );
   return ids.map((sessionId) => ({
     session_id: sessionId,
     status: 'scheduled',
@@ -294,15 +327,22 @@ function asInject(row: Record<string, unknown>, hasHistory: boolean): PlannerInj
     content: typeof row.content === 'string' ? row.content : null,
     type: typeof row.type === 'string' ? row.type : null,
     severity: typeof row.severity === 'string' ? row.severity : null,
-    trigger_time_minutes: typeof row.trigger_time_minutes === 'number' ? row.trigger_time_minutes : null,
-    eligible_after_minutes: typeof row.eligible_after_minutes === 'number' ? row.eligible_after_minutes : null,
-    target_teams: Array.isArray(row.target_teams) ? row.target_teams.filter((item): item is string => typeof item === 'string') : [],
+    trigger_time_minutes:
+      typeof row.trigger_time_minutes === 'number' ? row.trigger_time_minutes : null,
+    eligible_after_minutes:
+      typeof row.eligible_after_minutes === 'number' ? row.eligible_after_minutes : null,
+    target_teams: Array.isArray(row.target_teams)
+      ? row.target_teams.filter((item): item is string => typeof item === 'string')
+      : [],
     inject_scope: typeof row.inject_scope === 'string' ? row.inject_scope : null,
     requires_response: typeof row.requires_response === 'boolean' ? row.requires_response : null,
     conditions_to_appear: row.conditions_to_appear,
     conditions_to_cancel: row.conditions_to_cancel,
     trigger_condition: typeof row.trigger_condition === 'string' ? row.trigger_condition : null,
-    delivery_config: config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>) : null,
+    delivery_config:
+      config && typeof config === 'object' && !Array.isArray(config)
+        ? (config as Record<string, unknown>)
+        : null,
     generation_source: typeof row.generation_source === 'string' ? row.generation_source : null,
     has_history: hasHistory,
   };
