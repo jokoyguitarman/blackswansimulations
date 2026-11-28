@@ -9,6 +9,13 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { isAdmin } from '../services/creditService.js';
 import { canEditScenario, type EditabilityResult } from '../services/scenarioEditService.js';
 import {
+  applySetupEdit,
+  createApplyDeps,
+  type ApplySetupEditRequest,
+  type ApplySetupEditResult,
+} from '../services/setupEdits/applySetupEdit.js';
+import type { OrphanResolution } from '../services/setupEdits/remapPlanner.js';
+import {
   setupEditService,
   type AttachDraftContext,
   type AttachDraftResult,
@@ -35,6 +42,24 @@ const abandonParams = z.object({
   }),
 });
 
+const orphanDecision = z.object({
+  choice: z.enum(['keep', 'retire', 'retarget', 'reassign', 'move_to_retired', 'clear', 'remove']),
+  inject_key: z.string().optional(),
+  team_name: z.string().optional(),
+  org_keys: z.array(z.string()).optional(),
+});
+
+const applyBody = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+    editId: z.string().uuid(),
+  }),
+  body: z.object({
+    build_id: z.string().uuid(),
+    orphan_decisions: z.record(z.string(), orphanDecision).optional(),
+  }),
+});
+
 export interface SetupEditApi {
   get(scenarioId: string): Promise<SetupEditSnapshot>;
   open(scenarioId: string, user: { id: string; role?: string }): Promise<OpenSetupEditResult>;
@@ -54,6 +79,7 @@ export interface ScenarioSetupEditsDeps {
   loadCategory: (scenarioId: string) => Promise<string | null>;
   canEdit: (scenarioId: string, user: { id: string; role?: string }) => Promise<EditabilityResult>;
   service: SetupEditApi;
+  apply: (request: ApplySetupEditRequest) => Promise<ApplySetupEditResult>;
 }
 
 function unavailable(res: Response): void {
@@ -317,6 +343,66 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
     },
   );
 
+  router.post('/:editId/apply', deps.authMiddleware, validate(applyBody), async (req, res) => {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      if (!user) {
+        res.status(401).json({ error: 'Missing authorization header' });
+        return;
+      }
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        res.status(403).json({ error: 'Only trainers can edit a scenario setup' });
+        return;
+      }
+      if (!deps.enabled()) {
+        unavailable(res);
+        return;
+      }
+      const owner = await deps.assertOwner(req.params.id, user);
+      if (!owner.ok) {
+        res.status(owner.status).json({ error: owner.error });
+        return;
+      }
+      const category = await deps.loadCategory(req.params.id);
+      if (category == null) {
+        res.status(404).json({ error: 'Scenario not found' });
+        return;
+      }
+      if (category !== SOCIAL) {
+        res.status(404).json({
+          error: 'Setup edits apply to social-crisis scenarios only.',
+          code: 'SETUP_EDIT_UNAVAILABLE',
+        });
+        return;
+      }
+      const editability = await deps.canEdit(req.params.id, user);
+      if (!editability.editable) {
+        locked(res, editability.reason);
+        return;
+      }
+      const decisions = (req.body.orphan_decisions ?? {}) as Record<string, OrphanResolution>;
+      const result = await deps.apply({
+        scenarioId: req.params.id,
+        editId: req.params.editId,
+        user,
+        buildId: req.body.build_id,
+        orphanDecisions: decisions,
+      });
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error, code: result.code });
+        return;
+      }
+      res.json({
+        summary: result.summary,
+        remaining: result.remaining,
+        scheduled_sessions: result.scheduled_sessions,
+      });
+    } catch (err) {
+      logger.error({ err }, 'Setup edit apply failed');
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
   return router;
 }
 
@@ -328,4 +414,5 @@ export const scenarioSetupEditsRouter = createScenarioSetupEditsRouter({
   loadCategory: loadScenarioCategory,
   canEdit: canEditScenario,
   service: setupEditService,
+  apply: (request) => applySetupEdit(request, createApplyDeps()),
 });

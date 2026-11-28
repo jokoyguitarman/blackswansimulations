@@ -354,6 +354,7 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
           return { editable: true, reason: 'ok', session_credits: 1, live_session_id: null };
         },
         service,
+        apply: async () => ({ ok: false, status: 404, code: 'NOT_FOUND', error: 'Setup edit not found' }),
       }),
     );
     server = createServer(app);

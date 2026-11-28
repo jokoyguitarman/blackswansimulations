@@ -1,4 +1,5 @@
 import { canonicalJson } from '../../../shared/canonicalJson.js';
+import { asRecord, objectList, stringList as listedStrings, textOf } from './jsonValue.js';
 import { countryCode, countrySlug } from '../../../shared/countries.js';
 import { formatConditionKey, slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { matchTeamRef, type ActiveTeam } from '../../../shared/teamDependencies.js';
@@ -36,6 +37,11 @@ export interface PlannerTeam {
   charter: unknown;
   expected_actions: unknown;
   scoring_rubric: unknown;
+  required_roles?: string[] | null;
+  min_participants?: number | null;
+  max_participants?: number | null;
+  counter_definitions?: unknown;
+  is_investigative?: boolean | null;
 }
 
 export interface PlannerInject {
@@ -55,12 +61,26 @@ export interface PlannerInject {
   delivery_config?: Record<string, unknown> | null;
   generation_source?: string | null;
   has_history: boolean;
+  affected_roles?: unknown;
+  ai_generated?: boolean | null;
+  requires_coordination?: boolean | null;
+  triggered_by_user_id?: string | null;
+  required_gate_id?: string | null;
+  required_gate_not_met_id?: string | null;
+  objective_penalty?: unknown;
+  state_effect?: unknown;
+  response_type?: string | null;
 }
 
 export interface LobbySession {
   session_id: string;
   status: string;
   start_time: string | null;
+  /**
+   * `sessions` has no title column. This is `scheduled_start_time` (migration 005).
+   * Null when the session was not given a start.
+   */
+  scheduled_start_time?: string | null;
   teams: Array<{ user_id: string; team_name: string }>;
   channels: Array<{ team_name: string | null; message_count: number }>;
   call_lines: Array<{ team_name: string }>;
@@ -2915,29 +2935,11 @@ function sameJson(left: unknown, right: unknown): boolean {
 }
 
 function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
-}
-
-function objectList(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is Record<string, unknown> =>
-      !!item && typeof item === 'object' && !Array.isArray(item),
-  );
+  return listedStrings(value).filter((item) => item.length > 0);
 }
 
 function pageOrgList(state: Record<string, unknown>): Record<string, unknown>[] {
   return objectList(asRecord(state.org_page)?.orgs);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function textOf(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
 }
 
 function isProtagonist(org: Record<string, unknown>): boolean {
