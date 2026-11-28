@@ -1,4 +1,8 @@
 import type { TeamDependencies } from '../../shared/teamDependencies.js';
+import {
+  SPILLOVER_PERSONAS,
+  spilloverCountryNames,
+} from '../../shared/generationBudgets.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import {
@@ -234,10 +238,6 @@ export interface NpcsPipelineResult {
   footprint: CrisisFootprint;
 }
 
-/** Spillover crowd size for a footprint country that hosts no protagonist organisation. */
-const SPILLOVER_PERSONAS = 40;
-const MAX_SPILLOVER_COUNTRIES = 2;
-
 export async function runNpcsPipeline(
   orgsResult: Extract<OrganisationsValidation, { ok: true }>,
   crisis: CrisisContext,
@@ -268,15 +268,11 @@ export async function runNpcsPipeline(
 
   // Footprint countries without a protagonist org (incident / regulatory) still get a crowd —
   // emitted UNSCOPED (no persona.country) so the players present see it as regional spillover.
-  const spilloverCountries = (footprint?.countries || [])
-    .filter(
-      (c) =>
-        (c.role === 'incident_location' || c.role === 'regulatory') &&
-        !countries.includes(c.name) &&
-        !pressureOrgs.some((p) => p.country === c.name && countries.includes(p.country)),
-    )
-    .map((c) => c.name)
-    .slice(0, MAX_SPILLOVER_COUNTRIES);
+  const spilloverCountries = spilloverCountryNames(
+    footprint?.countries ?? [],
+    countries,
+    pressureOrgs.map((org) => org.country),
+  );
 
   const [perCountry, spillover] = await Promise.all([
     limitConcurrency(countries, env.warroomGenConcurrency, (country) =>

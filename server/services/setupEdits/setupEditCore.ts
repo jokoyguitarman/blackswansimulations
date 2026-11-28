@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../../shared/canonicalJson.js';
+import {
+  SETUP_EDIT_ALLOWANCE_IDS_MAX,
+  SETUP_EDIT_HISTORY_LIMIT,
+} from '../../../shared/setupEditAllowance.js';
 import type { BaselineIdentity } from './setupSnapshotCore.js';
+
+export { SETUP_EDIT_ALLOWANCE_IDS_MAX, SETUP_EDIT_HISTORY_LIMIT };
 
 /** PostgREST / Postgres codes that mean migration 274 is not in this database. */
 const SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
@@ -91,6 +97,54 @@ export function historyForViewer<T extends { status: string }>(edits: readonly T
   return edits.filter((edit) => !TRAINER_HIDDEN.has(edit.status));
 }
 
+/**
+ * Keep the first `limit` rows of each scenario. Rows must already be newest-first,
+ * which is the order the history query uses.
+ */
+export function capRowsPerScenario<T extends { scenario_id: string }>(
+  rowsNewestFirst: readonly T[],
+  limit: number,
+): T[] {
+  const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  if (cap === 0) return [];
+  const seen = new Map<string, number>();
+  const kept: T[] = [];
+  for (const row of rowsNewestFirst) {
+    const count = seen.get(row.scenario_id) ?? 0;
+    if (count >= cap) continue;
+    seen.set(row.scenario_id, count + 1);
+    kept.push(row);
+  }
+  return kept;
+}
+
+const ALLOWANCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type AllowanceIdParse =
+  | { ok: true; ids: string[] }
+  | { ok: false; reason: 'empty' | 'invalid' | 'too_many' };
+
+/** Comma-separated scenario ids for the library allowance read. Duplicates are dropped. */
+export function parseAllowanceIds(raw: string): AllowanceIdParse {
+  const parts = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) return { ok: false, reason: 'empty' };
+  if (parts.length > SETUP_EDIT_ALLOWANCE_IDS_MAX) return { ok: false, reason: 'too_many' };
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    if (!ALLOWANCE_ID.test(part)) return { ok: false, reason: 'invalid' };
+    const key = part.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ids.push(part);
+  }
+  if (ids.length === 0) return { ok: false, reason: 'empty' };
+  return { ok: true, ids };
+}
+
 export type OpenSetupEditOutcome = 'opened' | 'existing' | 'busy' | 'limit_reached' | 'not_found';
 
 export type SetupEditSnapshot =
@@ -103,3 +157,12 @@ export type OpenSetupEditResult =
 
 export type AbandonSetupEditResult =
   { available: false } | { available: true; outcome: 'abandoned' | 'not_found' | 'not_open' };
+
+export interface SetupEditAllowanceRows {
+  used: number;
+  edits: SetupEditSummary[];
+}
+
+export type ListAllowancesResult =
+  | { available: false }
+  | { available: true; byId: Record<string, SetupEditAllowanceRows> };

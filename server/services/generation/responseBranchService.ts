@@ -3,6 +3,7 @@
  * injects. Tests pass a fake client; the default client is the shared chat client.
  */
 
+import { MOOD_LADDER_BATCH } from '../../../shared/generationBudgets.js';
 import { logger } from '../../lib/logger.js';
 import { stampGeneratedInjectKeys } from '../../lib/injectKey.js';
 import { catalogPromptBlock } from '../conditions/conditionCatalog.js';
@@ -37,7 +38,7 @@ import {
 
 const BRANCH_PLATFORMS = ['email', 'call', 'chat', 'dm', 'social', 'cross', 'stakeholder'] as const;
 const BATCH_SIZE = 10;
-const LADDER_BATCH = 6;
+const LADDER_BATCH = MOOD_LADDER_BATCH;
 
 export interface BranchStakeholder {
   id: string;

@@ -72,6 +72,9 @@ describe('setup edit plan route', { concurrency: false }, () => {
           async abandon() {
             return { available: true, outcome: 'not_found' };
           },
+          async listAllowances() {
+            return { available: true, byId: {} };
+          },
           async attachOpenedDraft() {
             return { available: true, ok: false, reason: 'not_found' };
           },

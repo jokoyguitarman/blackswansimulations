@@ -12,7 +12,12 @@ export type {
   BuildEstimateInput,
   BuildEstimateOptions,
 } from '../../../shared/buildEstimate.js';
-export { stakeholderCallsFor } from '../../../shared/buildEstimate.js';
+export {
+  ladderStakeholderCount,
+  moodLadderCalls,
+  spilloverPersonaCalls,
+  stakeholderCallsFor,
+} from '../../../shared/buildEstimate.js';
 
 function envOptions(over?: Partial<BuildEstimateOptions>): BuildEstimateOptions {
   return {

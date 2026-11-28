@@ -23,6 +23,14 @@ import {
   type TakenIdentifiers,
 } from './multiOrgGenerationService.js';
 import { countryDialPrefix, countrySlug } from '../../shared/countries.js';
+import {
+  COMMON_STAKEHOLDERS_MAX,
+  COMMON_STAKEHOLDERS_MIN,
+  STAKEHOLDERS_PER_TEAM_MAX,
+  STAKEHOLDERS_PER_TEAM_MIN,
+  STAKEHOLDERS_PER_TEAM_RETRY_MAX,
+  STAKEHOLDERS_PER_TEAM_RETRY_MIN,
+} from '../../shared/generationBudgets.js';
 
 /**
  * Stakeholder characters (contract §3) and the injects they author (§4).
@@ -128,7 +136,7 @@ export async function generateCommonStakeholders(
   const raw = await callSocialCrisisAI(
     `You are creating COMMON STAKEHOLDERS for a crisis simulation: named people or desks that EVERY organisation in the exercise has a relationship with — the affected family's spokesperson, a national broadcaster's crisis desk, an embassy duty officer, a national regulator, a community figure. NOT internal staff of any one organisation.
 
-Create 3-6 common stakeholders. For each, choose "owning_function" from exactly this list of functions that exist in the exercise: ${functionsAnywhere.join(', ')} — the function whose teams (in every organisation) would own this relationship.
+Create ${COMMON_STAKEHOLDERS_MIN}-${COMMON_STAKEHOLDERS_MAX} common stakeholders. For each, choose "owning_function" from exactly this list of functions that exist in the exercise: ${functionsAnywhere.join(', ')} — the function whose teams (in every organisation) would own this relationship.
 
 ${STAKEHOLDER_FIELD_SPEC}
 
@@ -247,13 +255,23 @@ Return ONLY valid JSON: { "stakeholders": [ { ...fields..., "owning_function": "
 
   // First attempt asks for the full contact book; if the model fails (typically a
   // truncated JSON body), retry once with a smaller ask rather than shipping fillers.
-  let raw = await callSocialCrisisAI(prompt('6-8'), userPrompt, 12000, 0.8);
+  let raw = await callSocialCrisisAI(
+    prompt(`${STAKEHOLDERS_PER_TEAM_MIN}-${STAKEHOLDERS_PER_TEAM_MAX}`),
+    userPrompt,
+    12000,
+    0.8,
+  );
   if (!raw || !Array.isArray(raw.stakeholders) || (raw.stakeholders as unknown[]).length === 0) {
     logger.warn(
       { orgKey: org.org_key, teams: charters.map((c) => c.team_name) },
       'stakeholder_call_retry',
     );
-    raw = await callSocialCrisisAI(prompt('4-5'), userPrompt, 12000, 0.7);
+    raw = await callSocialCrisisAI(
+      prompt(`${STAKEHOLDERS_PER_TEAM_RETRY_MIN}-${STAKEHOLDERS_PER_TEAM_RETRY_MAX}`),
+      userPrompt,
+      12000,
+      0.7,
+    );
   }
 
   const out: StakeholderGenerationResult = { stakeholders: [], injects: [], personaTwins: [] };

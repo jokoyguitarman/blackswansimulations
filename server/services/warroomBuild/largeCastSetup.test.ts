@@ -82,6 +82,8 @@ describe('a 20-organisation cast with 7-team rosters', () => {
       customTeams: 40,
       alliesAndRivals: 19,
       pressureCountries: 0,
+      pressureOrgs: 0,
+      spilloverCountries: 0,
       injectsEstimate: 0,
     });
     assert.equal(
@@ -96,6 +98,8 @@ describe('a 20-organisation cast with 7-team rosters', () => {
         ),
         alliesAndRivals: result.orgs.length - 1,
         pressureCountries: 0,
+        pressureOrgs: 0,
+        spilloverCountries: 0,
         injectsEstimate: 0,
       }),
     );

@@ -748,8 +748,8 @@ export const SocialCrisisWizard = () => {
   const setupIssueIndex = useMemo(() => indexIssues(setupIssues), [setupIssues]);
   const issueAt = (field: string) => pickIssue(setupIssueIndex.get(field), revealIssues);
   const buildCost = useMemo(
-    () => setupCost(setupSnapshot, estimateOptions),
-    [setupSnapshot, estimateOptions],
+    () => setupCost(setupSnapshot, estimateOptions, footprint),
+    [setupSnapshot, estimateOptions, footprint],
   );
 
   const orgLaneCards = useMemo<LaneCardRef[]>(() => {

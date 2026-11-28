@@ -3,6 +3,7 @@ import {
   type BuildEstimateInput,
   type BuildEstimateOptions,
 } from '@shared/buildEstimate';
+import { spilloverCountryNames, type SpilloverCountry } from '@shared/generationBudgets';
 import type { OrganisationDraft, RosterEntry } from './OrganisationRosterBuilder';
 import { PRESET_TEAM_NAMES, isSendablePressureOrg, type SetupSnapshot } from './setupValidation';
 
@@ -26,28 +27,33 @@ function customCount(roster: RosterEntry[]): number {
  * Response-branch parents do not exist yet, so `injectsEstimate` is 0 and the
  * line does not include those compile calls.
  */
-export function setupEstimateInput(snapshot: SetupSnapshot): BuildEstimateInput {
+export function setupEstimateInput(
+  snapshot: SetupSnapshot,
+  footprint?: { countries: readonly SpilloverCountry[] } | null,
+): BuildEstimateInput {
   const extras: OrganisationDraft[] = snapshot.extras;
   const rosters = [snapshot.primary.roster, ...extras.map((org) => org.team_roster)];
   const teams = rosters.reduce((sum, roster) => sum + roster.length, 0);
-  const countries = new Set(
-    [snapshot.primary.country, ...extras.map((org) => org.country)]
-      .map((country) => country.trim())
-      .filter(Boolean),
-  );
+  const protagonistCountries = [snapshot.primary.country, ...extras.map((org) => org.country)]
+    .map((country) => country.trim())
+    .filter(Boolean);
+  const pressure = snapshot.pressure.filter(isSendablePressureOrg);
   const pressureCountries = new Set(
-    snapshot.pressure
-      .filter(isSendablePressureOrg)
-      .map((group) => group.country.trim())
-      .filter(Boolean),
+    pressure.map((group) => group.country.trim()).filter(Boolean),
   );
   return {
-    countries: countries.size,
+    countries: new Set(protagonistCountries).size,
     orgs: extras.length + 1,
     teams,
     customTeams: rosters.reduce((sum, roster) => sum + customCount(roster), 0),
     alliesAndRivals: extras.length + snapshot.competitors.length,
     pressureCountries: pressureCountries.size,
+    pressureOrgs: pressure.length,
+    spilloverCountries: spilloverCountryNames(
+      footprint?.countries ?? [],
+      protagonistCountries,
+      pressure.map((group) => group.country.trim()),
+    ).length,
     injectsEstimate: 0,
   };
 }
@@ -70,8 +76,9 @@ export function formatSetupCost(calls: number, playerTeams: number): string {
 export function setupCost(
   snapshot: SetupSnapshot,
   options?: Partial<BuildEstimateOptions>,
+  footprint?: { countries: readonly SpilloverCountry[] } | null,
 ): SetupCost {
-  const input = setupEstimateInput(snapshot);
+  const input = setupEstimateInput(snapshot, footprint);
   return {
     calls: estimateBuildCalls(input, options),
     playerTeams: playerRunTeams(snapshot),

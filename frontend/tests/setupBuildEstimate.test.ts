@@ -72,7 +72,17 @@ describe('setup cost line', () => {
     assert.equal(cost.input.customTeams, 1);
     assert.equal(cost.input.alliesAndRivals, 2);
     assert.equal(cost.input.pressureCountries, 1);
+    assert.equal(cost.input.pressureOrgs, 1);
+    assert.equal(cost.input.spilloverCountries, 0);
     assert.equal(cost.input.injectsEstimate, 0);
+    const withFootprint = setupEstimateInput(setup, {
+      countries: [
+        { name: 'Singapore', role: 'decision_centre' },
+        { name: 'Indonesia', role: 'incident_location' },
+        { name: 'Thailand', role: 'spillover_market' },
+      ],
+    });
+    assert.equal(withFootprint.spilloverCountries, 1);
     assert.equal(
       formatSetupCost(cost.calls, cost.playerTeams),
       `About ${cost.calls} AI calls · 3 player-run teams (needs at least 3 players)`,
