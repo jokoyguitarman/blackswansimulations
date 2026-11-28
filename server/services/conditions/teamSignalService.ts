@@ -312,6 +312,90 @@ async function loadDutyActions(sessionId: string): Promise<{
   known: boolean;
   truncated: boolean;
 }> {
+  const grouped = await loadDutyCompletions(sessionId);
+  if (grouped) return grouped;
+  return scanDutyActions(sessionId);
+}
+
+/**
+ * Earliest completion of each charter action. One row per
+ * (team, player, action type, metadata) with `min(created_at)`.
+ * A failed aggregate falls back to the row scan.
+ */
+async function loadDutyCompletions(sessionId: string): Promise<{
+  rows: ObservedAction[];
+  known: boolean;
+  truncated: boolean;
+} | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('player_actions')
+      .select('team_at_action, player_id, action_type, metadata, first_at:created_at.min()')
+      .eq('session_id', sessionId)
+      .limit(DUTY_ACTION_CAP + 1);
+    if (error) {
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_signal_duties_unavailable',
+          error,
+          'Charter duties are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      warnOnce(
+        'team_signal_duty_aggregate_failed',
+        error,
+        'Grouped duty completions failed; scanning player_actions instead',
+      );
+      return null;
+    }
+    const raw = (data ?? []) as Array<Record<string, unknown>>;
+    const truncated = raw.length > DUTY_ACTION_CAP;
+    if (truncated) {
+      warnOnce(
+        'team_signal_duties_truncated',
+        null,
+        'Duty history exceeded the condition-key cap; missed-duty keys stay false',
+      );
+    }
+    const kept = truncated ? raw.slice(0, DUTY_ACTION_CAP) : raw;
+    return { rows: actionsFromEarliest(kept), known: true, truncated };
+  } catch (err) {
+    warnOnce(
+      'team_signal_duty_aggregate_failed',
+      err,
+      'Grouped duty completions failed; scanning player_actions instead',
+    );
+    return null;
+  }
+}
+
+function actionsFromEarliest(rows: readonly Record<string, unknown>[]): ObservedAction[] {
+  const actions: ObservedAction[] = [];
+  for (const row of rows) {
+    const created = instantOf(row.first_at);
+    if (!created) continue;
+    const metadata = row.metadata;
+    actions.push({
+      player_id: row.player_id ? String(row.player_id) : '',
+      action_type: typeof row.action_type === 'string' ? row.action_type : '',
+      team_at_action: typeof row.team_at_action === 'string' ? row.team_at_action : null,
+      metadata:
+        metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : null,
+      created_at: created,
+    });
+  }
+  actions.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  return actions;
+}
+
+async function scanDutyActions(sessionId: string): Promise<{
+  rows: ObservedAction[];
+  known: boolean;
+  truncated: boolean;
+}> {
   try {
     const { data, error } = await supabaseAdmin
       .from('player_actions')
@@ -498,11 +582,7 @@ function actionHits(
   return hits;
 }
 
-function hitMinute(
-  startTime: string | null,
-  at: string,
-  slug: string,
-): ActivityHit | null {
+function hitMinute(startTime: string | null, at: string, slug: string): ActivityHit | null {
   if (!slug || !at) return null;
   const minute = activityMinute(startTime, at);
   if (minute == null) return null;
@@ -529,6 +609,99 @@ function chatHits(
 }
 
 async function loadGradeRows(
+  sessionId: string,
+  table: 'social_posts' | 'sim_emails',
+  userColumn: 'posted_by_user_id' | 'sent_by_player_id',
+  extra: { author_type?: string },
+): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean }> {
+  const counted = await loadGradeCounts(sessionId, table, userColumn, extra);
+  if (counted) return counted;
+  return scanGradeRows(sessionId, table, userColumn, extra);
+}
+
+/**
+ * Count of each overall score per player. Expanded back into the same grade
+ * rows the scan produces, so `content_failed` counts every threshold the same way.
+ */
+async function loadGradeCounts(
+  sessionId: string,
+  table: 'social_posts' | 'sim_emails',
+  userColumn: 'posted_by_user_id' | 'sent_by_player_id',
+  extra: { author_type?: string },
+): Promise<{ rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean } | null> {
+  try {
+    let query = supabaseAdmin
+      .from(table)
+      .select(`${userColumn}, overall:sop_compliance_score->>overall, n:id.count()`)
+      .eq('session_id', sessionId)
+      .not(userColumn, 'is', null)
+      .not('sop_compliance_score', 'is', null)
+      .limit(GRADE_CAP + 1);
+    if (extra.author_type) query = query.eq('author_type', extra.author_type);
+    const { data, error } = await query;
+    if (error) {
+      if (schemaMissing(error)) {
+        warnOnce(
+          'team_signal_grades_unavailable',
+          error,
+          'Content-grade conditions are off for this process',
+        );
+        return { rows: [], known: false, truncated: false };
+      }
+      warnOnce(
+        'team_signal_grade_aggregate_failed',
+        error,
+        'Grouped content grades failed; scanning rows instead',
+      );
+      return null;
+    }
+    return rowsFromGradeCounts(userColumn, (data ?? []) as Array<Record<string, unknown>>);
+  } catch (err) {
+    warnOnce(
+      'team_signal_grade_aggregate_failed',
+      err,
+      'Grouped content grades failed; scanning rows instead',
+    );
+    return null;
+  }
+}
+
+function rowsFromGradeCounts(
+  userColumn: string,
+  data: readonly Record<string, unknown>[],
+): { rows: Array<Record<string, unknown>>; known: boolean; truncated: boolean } {
+  const rows: Array<Record<string, unknown>> = [];
+  let truncated = false;
+  for (const row of data) {
+    const score = row.overall;
+    const copies = gradeCount(row.n);
+    if (copies === 0 || score == null || score === '') continue;
+    for (let i = 0; i < copies; i += 1) {
+      if (rows.length >= GRADE_CAP) {
+        truncated = true;
+        break;
+      }
+      rows.push({ [userColumn]: row[userColumn], sop_compliance_score: { overall: score } });
+    }
+    if (truncated) break;
+  }
+  if (truncated) {
+    warnOnce(
+      'team_signal_grades_truncated',
+      null,
+      'Graded content exceeded the condition-key cap; only the loaded grades count',
+    );
+  }
+  return { rows, known: true, truncated };
+}
+
+function gradeCount(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+async function scanGradeRows(
   sessionId: string,
   table: 'social_posts' | 'sim_emails',
   userColumn: 'posted_by_user_id' | 'sent_by_player_id',

@@ -26,6 +26,28 @@ export function needsTeamSignalFacts(keys: Iterable<string>): boolean {
   return false;
 }
 
+export interface KeyedInject {
+  id: string;
+  keys: readonly string[];
+}
+
+/**
+ * Team-signal reads stay off unless an inject that can still fire uses one of
+ * the keys. Published and cancelled injects do not count.
+ */
+export function teamSignalReadsNeeded(
+  injects: readonly KeyedInject[],
+  publishedIds: ReadonlySet<string>,
+  cancelledIds: ReadonlySet<string>,
+): boolean {
+  const keys: string[] = [];
+  for (const inject of injects) {
+    if (publishedIds.has(inject.id) || cancelledIds.has(inject.id)) continue;
+    for (const key of inject.keys) keys.push(key);
+  }
+  return needsTeamSignalFacts(keys);
+}
+
 export interface ActivityHit {
   team_slug: string;
   minute: number;

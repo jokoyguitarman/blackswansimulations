@@ -41,7 +41,7 @@ import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.j
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
 import { isBoothJoinToken } from '../lib/boothLink.js';
 import { collectConditionKeys } from './conditions/conditionCatalog.js';
-import { needsTeamSignalFacts } from './conditions/teamSignalsCore.js';
+import { teamSignalReadsNeeded } from './conditions/teamSignalsCore.js';
 import { conditionsToAppearIsEmpty } from './conditions/injectTriggerShape.js';
 import { adversaryAdaptationAllowed, cancellationGateFor } from './conditions/cancellationGate.js';
 import { buildConditionEvaluationContext } from './conditions/conditionContextService.js';
@@ -56,11 +56,13 @@ import {
 } from './conditions/injectTriggerService.js';
 import { dependencyTriggerCause } from './dependencies/dependencyConditionsCore.js';
 import {
-  loadScenarioDependencyEdges,
+  loadDependencyTick,
   rememberDependencySources,
   updateDependencyStates,
   withDependencySession,
+  type DependencyTickLoad,
 } from './dependencies/dependencyService.js';
+import { directorDiscoveryDue } from './director/directorRuntime.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -257,9 +259,12 @@ export class InjectSchedulerService {
   private readonly checkIntervalMs: number;
   private readonly enabled: boolean;
   private io: SocketServer | null = null;
+  private lastDirectorDiscoveryMs = 0;
+  private readonly now: () => number;
 
-  constructor(io?: SocketServer) {
+  constructor(io?: SocketServer, now?: () => number) {
     this.io = io || null;
+    this.now = now ?? Date.now;
     // Get configuration from environment
     this.checkIntervalMs = env.injectSchedulerIntervalMs;
     this.enabled = env.enableAutoInjects;
@@ -294,14 +299,8 @@ export class InjectSchedulerService {
     void this.boot();
   }
 
-  /** Discover pending director rows once, then tick. A tick itself does not discover. */
+  /** Start the loop. Pending-proposal discovery runs inside the loop, not per session. */
   private async boot(): Promise<void> {
-    try {
-      const { discoverPendingDirectorProposals } = await import('./director/directorService.js');
-      await discoverPendingDirectorProposals();
-    } catch (err) {
-      logger.warn({ err }, 'director pending proposals were not discovered');
-    }
     if (!this.isRunning) return;
     this.checkAndPublishInjects().catch((err) => {
       logger.error({ error: err }, 'Error in initial inject check');
@@ -328,7 +327,29 @@ export class InjectSchedulerService {
   /**
    * Check active sessions and publish injects that should be triggered
    */
+  /**
+   * Re-read pending director proposals on a fixed interval. This stays outside
+   * processSession so a session tick's query list does not change.
+   */
+  private async discoverDirectorPendingIfDue(): Promise<void> {
+    const now = this.now();
+    if (!directorDiscoveryDue(this.lastDirectorDiscoveryMs, now)) return;
+    try {
+      const { discoverPendingDirectorProposals } = await import('./director/directorService.js');
+      const found = await discoverPendingDirectorProposals();
+      if (found) this.lastDirectorDiscoveryMs = now;
+    } catch (err) {
+      logger.warn({ err }, 'director pending proposals were not discovered');
+    }
+  }
+
+  /** One scheduler loop. Tests use this so discovery stays outside a session tick. */
+  async runLoopForTests(): Promise<void> {
+    await this.checkAndPublishInjects();
+  }
+
   private async checkAndPublishInjects(): Promise<void> {
+    await this.discoverDirectorPendingIfDue();
     try {
       // Get all active sessions with start_time (current_state for condition evaluator context)
       const { data: sessions, error: sessionsError } = await supabaseAdmin
@@ -1007,20 +1028,29 @@ export class InjectSchedulerService {
       );
       if (error) throw error;
       condInjectsRaw = data ?? [];
-      const signalKeys: string[] = [];
-      for (const inj of condInjectsRaw) {
-        signalKeys.push(
-          ...collectConditionKeys(inj.conditions_to_appear, inj.conditions_to_cancel),
-        );
-      }
-      teamSignals = needsTeamSignalFacts(signalKeys);
+      teamSignals = teamSignalReadsNeeded(
+        condInjectsRaw.map((inj) => ({
+          id: inj.id,
+          keys: collectConditionKeys(inj.conditions_to_appear, inj.conditions_to_cancel),
+        })),
+        publishedInjectIds,
+        cancelledInjectIds,
+      );
     } catch (err) {
       logger.warn({ err, sessionId: session.id }, 'conditional inject load failed');
     }
 
+    let rememberedInitialState: unknown;
+    let initialStateKnown = false;
     try {
       // Recomputed every tick for the evaluator. Not written to sessions.current_state.
-      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes, { teamSignals });
+      nextState.comms_state = await loadCommsState(session.id, elapsedMinutes, {
+        teamSignals,
+        rememberInitialState(state) {
+          rememberedInitialState = state;
+          initialStateKnown = true;
+        },
+      });
       const { attachCoverageFacts } = await import('./roles/roleService.js');
       nextState.comms_state = await attachCoverageFacts(
         session.id,
@@ -1030,10 +1060,17 @@ export class InjectSchedulerService {
       logger.warn({ err, sessionId: session.id }, 'comms_state load failed');
     }
 
-    let dependencyEdges: Awaited<ReturnType<typeof loadScenarioDependencyEdges>> = [];
+    let dependencyTick: DependencyTickLoad | null = null;
     if (env.crossTeamDependencies) {
-      dependencyEdges = await loadScenarioDependencyEdges(session.scenario_id);
-      if (dependencyEdges.length === 0) rememberDependencySources(session.id, new Map());
+      dependencyTick = await loadDependencyTick({
+        sessionId: session.id,
+        scenarioId: session.scenario_id,
+        initialState: rememberedInitialState,
+        initialStateKnown,
+      });
+      if (!dependencyTick || dependencyTick.edges.length === 0) {
+        rememberDependencySources(session.id, new Map());
+      }
     }
     let sharedEvalContext: ReturnType<typeof buildConditionEvaluationContext> | null = null;
     const evaluationContext = (): ReturnType<typeof buildConditionEvaluationContext> => {
@@ -1049,12 +1086,13 @@ export class InjectSchedulerService {
             elapsedMinutes,
             currentState: nextState,
             conditionSources: condInjectsRaw ?? [],
+            ...(dependencyTick ? { dependencyTick } : {}),
           },
         );
       }
       return sharedEvalContext;
     };
-    if (dependencyEdges.length > 0) {
+    if (dependencyTick && dependencyTick.edges.length > 0) {
       try {
         const dependencyState = await updateDependencyStates(
           {
@@ -1065,7 +1103,7 @@ export class InjectSchedulerService {
           },
           await evaluationContext(),
           elapsedMinutes,
-          dependencyEdges,
+          dependencyTick,
         );
         if (dependencyState) nextState.dependency_state = dependencyState;
       } catch (err) {
@@ -2470,6 +2508,11 @@ export class InjectSchedulerService {
       );
     }
   }
+}
+
+/** One scheduler loop, including director rediscovery. Not one session. */
+export async function runSchedulerLoopForTests(scheduler: InjectSchedulerService): Promise<void> {
+  await scheduler.runLoopForTests();
 }
 
 /** Exercises one session tick. The peace lane returns before any crisis query. */

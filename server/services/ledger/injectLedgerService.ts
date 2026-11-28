@@ -400,9 +400,14 @@ export async function setDeliveryCallState(input: {
 export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,
-  options?: { teamSignals?: boolean },
+  options?: {
+    teamSignals?: boolean;
+    /** Called with scenarios.initial_state when this load already read it. */
+    rememberInitialState?: (initialState: unknown) => void;
+  },
 ): Promise<CommsState> {
   const teamSignals = options?.teamSignals !== false;
+  const rememberInitialState = options?.rememberInitialState;
   if (ledgerTablesMissing()) {
     return attachCommsFacts(
       sessionId,
@@ -410,6 +415,8 @@ export async function loadCommsState(
       null,
       emptyCommsState(elapsedMinutes),
       teamSignals,
+      undefined,
+      rememberInitialState,
     );
   }
   try {
@@ -438,6 +445,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
+        rememberInitialState,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -448,6 +456,7 @@ export async function loadCommsState(
         emptyCommsState(elapsedMinutes),
         teamSignals,
         clock.openedAt,
+        rememberInitialState,
       );
     }
     const built = buildCommsState({
@@ -465,6 +474,7 @@ export async function loadCommsState(
       built,
       teamSignals,
       clock.openedAt,
+      rememberInitialState,
     );
   } catch (err) {
     failLedger(err, 'loadCommsState');
@@ -474,6 +484,8 @@ export async function loadCommsState(
       null,
       emptyCommsState(elapsedMinutes),
       teamSignals,
+      undefined,
+      rememberInitialState,
     );
   }
 }
@@ -640,6 +652,7 @@ async function attachCommsFacts(
   state: CommsState,
   teamSignals = true,
   openedAt?: string | null,
+  rememberInitialState?: (initialState: unknown) => void,
 ): Promise<CommsState> {
   try {
     const needClock = startTime == null || (env.enablePeacePeriod && openedAt === undefined);
@@ -650,7 +663,7 @@ async function attachCommsFacts(
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
       loadActionCounts(sessionId, clockStart),
-      loadScenarioStakeholders(sessionId),
+      loadScenarioStakeholders(sessionId, rememberInitialState),
       simCallsAvailable(),
       teamSignals
         ? loadTeamSignalFacts(sessionId, clockStart, { openedAt: opened })
@@ -937,7 +950,10 @@ async function loadEmailSentFacts(
   }
 }
 
-async function loadScenarioStakeholders(sessionId: string): Promise<{
+async function loadScenarioStakeholders(
+  sessionId: string,
+  rememberInitialState?: (initialState: unknown) => void,
+): Promise<{
   stakeholders: Array<{ id: string; email?: string | null }>;
   known: boolean;
 }> {
@@ -956,6 +972,7 @@ async function loadScenarioStakeholders(sessionId: string): Promise<{
       .maybeSingle();
     if (scenarioError) return { stakeholders: [], known: false };
     if (!scenario) return { stakeholders: [], known: true };
+    rememberInitialState?.(scenario.initial_state ?? null);
     const initial = scenario.initial_state as { stakeholders?: unknown } | null;
     if (!Array.isArray(initial?.stakeholders)) return { stakeholders: [], known: true };
     const stakeholders: Array<{ id: string; email?: string | null }> = [];

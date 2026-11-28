@@ -15,7 +15,7 @@ import {
   registerSourceTeamResolver,
 } from '../conditions/crossTeamCore.js';
 import type { EvaluationContext } from '../conditionEvaluatorService.js';
-import type { TeamDependencyEdge, TeamRef } from '../../../shared/teamDependencies.js';
+import type { ActiveTeam, TeamDependencyEdge, TeamRef } from '../../../shared/teamDependencies.js';
 import { resolveTeamRef } from '../../../shared/teamDependencies.js';
 import { teamDependenciesSchema } from './dependencySchema.js';
 import { loadScenarioTeams } from './dependencyContext.js';
@@ -180,6 +180,13 @@ export function sessionMinute(startTime: string | null | undefined, now = Date.n
   return crisisElapsedMinutes(startTime, now);
 }
 
+export function edgesFromInitialState(initialState: unknown): TeamDependencyEdge[] {
+  if (!initialState || typeof initialState !== 'object') return [];
+  const initial = initialState as { team_dependencies?: unknown };
+  const parsed = teamDependenciesSchema.safeParse(initial.team_dependencies);
+  return parsed.success ? parsed.data.edges : [];
+}
+
 export async function loadScenarioDependencyEdges(
   scenarioId: string,
 ): Promise<TeamDependencyEdge[]> {
@@ -193,13 +200,53 @@ export async function loadScenarioDependencyEdges(
       if (error) logger.warn({ err: error, scenarioId }, 'dependency edges were not loaded');
       return [];
     }
-    const initial = data.initial_state as { team_dependencies?: unknown } | null;
-    const parsed = teamDependenciesSchema.safeParse(initial?.team_dependencies);
-    return parsed.success ? parsed.data.edges : [];
+    return edgesFromInitialState(data.initial_state);
   } catch (err) {
     logger.warn({ err, scenarioId }, 'dependency edges were not loaded');
     return [];
   }
+}
+
+/** One tick's dependency reads. `rows` stays null when the scenario has no edges. */
+export interface DependencyTickLoad {
+  edges: TeamDependencyEdge[];
+  rows: StoredDependencyRow[] | null;
+  teams: ActiveTeam[];
+  missing: boolean;
+}
+
+/**
+ * Read dependency rows once for this tick.
+ * Pass `initialStateKnown` when the tick already loaded `scenarios.initial_state`
+ * so this does not read it again. No `session_dependency_states` or team read
+ * when that state has no `team_dependencies`.
+ */
+export async function loadDependencyTick(input: {
+  sessionId: string;
+  scenarioId: string;
+  initialState?: unknown;
+  initialStateKnown?: boolean;
+}): Promise<DependencyTickLoad | null> {
+  if (!env.crossTeamDependencies) return null;
+  const edges = input.initialStateKnown
+    ? edgesFromInitialState(input.initialState)
+    : await loadScenarioDependencyEdges(input.scenarioId);
+  if (edges.length === 0) {
+    return { edges: [], rows: null, teams: [], missing: false };
+  }
+  const stored = await loadRows(input.sessionId);
+  if (stored.missing) return { edges, rows: null, teams: [], missing: true };
+  const teams = await loadTeams(input.scenarioId);
+  return { edges, rows: stored.rows, teams, missing: false };
+}
+
+/** Projection for a context that was given this tick's load. Null leaves state unset. */
+export function dependencyStateFromTick(
+  tick: DependencyTickLoad,
+): Record<string, DependencyRuntimeState> | null {
+  if (tick.missing) return {};
+  if (tick.edges.length === 0 || tick.rows == null) return null;
+  return projectDependencyStates(tick.edges, tick.rows, tick.teams);
 }
 
 async function loadRows(
@@ -380,18 +427,26 @@ export async function updateDependencyStates(
   session: DependencySession,
   ctx: EvaluationContext,
   elapsed: number,
-  edges?: readonly TeamDependencyEdge[],
+  preloaded?: readonly TeamDependencyEdge[] | DependencyTickLoad,
 ): Promise<Record<string, DependencyRuntimeState> | null> {
   if (!env.crossTeamDependencies) return null;
-  const list = edges ? [...edges] : await loadScenarioDependencyEdges(session.scenario_id);
+  const tick = isDependencyTick(preloaded) ? preloaded : null;
+  const suppliedEdges = Array.isArray(preloaded) ? preloaded : null;
+  const list = tick
+    ? [...tick.edges]
+    : suppliedEdges
+      ? [...suppliedEdges]
+      : await loadScenarioDependencyEdges(session.scenario_id);
   if (list.length === 0) {
     rememberDependencySources(session.id, new Map());
     rememberDependencyReferences(session.id, new Map());
     return null;
   }
-  const stored = await loadRows(session.id);
+  const stored = tick
+    ? { missing: tick.missing, rows: tick.rows ?? [] }
+    : await loadRows(session.id);
   if (stored.missing) return publishMap(ctx, session.id, {});
-  const teams = await loadTeams(session.scenario_id);
+  const teams = tick ? tick.teams : await loadTeams(session.scenario_id);
   const rowsById = new Map(stored.rows.map((row) => [row.dep_id, row]));
   const evidenceById = new Map<string, readonly { key: string }[]>(
     stored.rows.map((row) => [row.dep_id, row.evidence]),
@@ -424,6 +479,12 @@ export async function updateDependencyStates(
     if (state) emitChanged(session.trainer_id, session.id, depId, state);
   }
   return map;
+}
+
+function isDependencyTick(
+  value: readonly TeamDependencyEdge[] | DependencyTickLoad | undefined,
+): value is DependencyTickLoad {
+  return value != null && !Array.isArray(value) && 'missing' in value && 'teams' in value;
 }
 
 /** Map for a context that does not already carry one. Null leaves the caller's state alone. */

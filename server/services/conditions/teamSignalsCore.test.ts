@@ -8,6 +8,7 @@ import {
   overallGrade,
   roleTeamSlugs,
   teamLabelMap,
+  teamSignalReadsNeeded,
 } from './teamSignalsCore.js';
 
 describe('team signal facts', () => {
@@ -25,6 +26,47 @@ describe('team signal facts', () => {
     assert.equal(needsTeamSignalFacts(['team_silent:10|team=legal']), true);
     assert.equal(needsTeamSignalFacts(['content_failed:2:50|team=comms']), true);
     assert.equal(needsTeamSignalFacts(['decision_made:public_position|team=comms']), true);
+  });
+
+  test('fired and cancelled injects do not keep the team-signal reads on', () => {
+    const published = new Set(['fired']);
+    const cancelled = new Set(['cancelled']);
+    assert.equal(
+      teamSignalReadsNeeded(
+        [
+          { id: 'fired', keys: ['duty_missed:review|team=legal'] },
+          {
+            id: 'cancelled',
+            keys: ['team_silent:10|team=legal', 'content_failed:2:50|team=legal'],
+          },
+        ],
+        published,
+        cancelled,
+      ),
+      false,
+    );
+    assert.equal(
+      teamSignalReadsNeeded(
+        [
+          { id: 'fired', keys: ['duty_missed:review|team=legal'] },
+          { id: 'open', keys: ['unresponded:k:5|team=legal'] },
+        ],
+        published,
+        cancelled,
+      ),
+      false,
+    );
+    assert.equal(
+      teamSignalReadsNeeded(
+        [
+          { id: 'fired', keys: ['duty_missed:review|team=legal'] },
+          { id: 'open', keys: ['decision_made:public_position|team=comms'] },
+        ],
+        published,
+        cancelled,
+      ),
+      true,
+    );
   });
 
   test('activity keeps the later minute per team', () => {
