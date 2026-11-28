@@ -183,9 +183,17 @@ function readAppear(value: unknown): {
   keys: string[];
 } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as { all?: unknown; conditions?: unknown; threshold?: unknown };
+  const record = value as {
+    all?: unknown;
+    any?: unknown;
+    conditions?: unknown;
+    threshold?: unknown;
+  };
   if (Array.isArray(record.all)) {
     return { quantifier: 'all', threshold: 1, keys: stringsOf(record.all) };
+  }
+  if (Array.isArray(record.any) && !Array.isArray(record.conditions)) {
+    return { quantifier: 'any', threshold: 1, keys: stringsOf(record.any) };
   }
   if (Array.isArray(record.conditions)) {
     const threshold = typeof record.threshold === 'number' ? record.threshold : 1;
@@ -201,11 +209,19 @@ function readAppear(value: unknown): {
   return null;
 }
 
+export interface ConditionParseOptions {
+  /** `|team=@upstream` and `|team=@downstream` inside a dependency. */
+  allowPlaceholders?: boolean;
+  /** An empty appear list is valid (a dependency with no "resolved when"). */
+  allowEmpty?: boolean;
+}
+
 function rowFromKey(
   key: string,
   defs: readonly ConditionDefSpec[],
+  options?: ConditionParseOptions,
 ): { row: ConditionRow } | { error: string } {
-  const parsed = keyToBuilderModel(key, defs);
+  const parsed = keyToBuilderModel(key, defs, options);
   if ('error' in parsed) return parsed;
   const model = parsed.model;
   return {
@@ -214,7 +230,7 @@ function rowFromKey(
       platform: model.platform,
       event: model.event,
       args: model.args,
-      team: model.scope?.team ?? '',
+      team: model.scope?.team ?? model.scope?.team_placeholder ?? '',
       role: model.scope?.role ?? '',
     },
   };
@@ -238,6 +254,7 @@ export function draftFromStored(
   cancel: unknown,
   eligible: number | null,
   defs: readonly ConditionDefSpec[],
+  options?: ConditionParseOptions,
 ): ConditionDraft {
   const base = emptyDraft();
   base.eligibleAfter = eligible != null ? String(eligible) : '';
@@ -250,7 +267,7 @@ export function draftFromStored(
   }
   const appearRows: ConditionRow[] = [];
   for (const key of shape.keys) {
-    const row = rowFromKey(key, defs);
+    const row = rowFromKey(key, defs, options);
     if ('error' in row) {
       base.raw = true;
       return base;
@@ -259,7 +276,7 @@ export function draftFromStored(
   }
   const cancelRows: ConditionRow[] = [];
   for (const key of stringsOf(cancel)) {
-    const row = rowFromKey(key, defs);
+    const row = rowFromKey(key, defs, options);
     if ('error' in row) {
       base.raw = true;
       return base;
@@ -273,15 +290,31 @@ export function draftFromStored(
   return base;
 }
 
+/**
+ * A dependency row keeps a placeholder it already has. A new row, or one
+ * whose event lost its team, takes the fixed scope. `@downstream` is not
+ * rewritten to `@upstream`.
+ */
+export function withDependencyTeamScope(
+  row: ConditionRow,
+  def: ConditionDefSpec | undefined,
+  fixed: '@upstream' | '@downstream',
+): ConditionRow {
+  if (!def?.teamScope) return { ...row, team: '', role: '' };
+  if (row.team === '@upstream' || row.team === '@downstream') return { ...row, role: '' };
+  return { ...row, team: fixed, role: '' };
+}
+
 export function rowToModel(row: ConditionRow): BuilderModel {
   const scope: BuilderModel['scope'] = {};
-  if (row.team) scope.team = row.team;
+  if (row.team === '@upstream' || row.team === '@downstream') scope.team_placeholder = row.team;
+  else if (row.team) scope.team = row.team;
   else if (row.role) scope.role = row.role;
   return {
     platform: row.platform,
     event: row.event,
     args: row.args,
-    ...(scope.team || scope.role ? { scope } : {}),
+    ...(scope.team || scope.role || scope.team_placeholder ? { scope } : {}),
   };
 }
 
@@ -310,7 +343,9 @@ function clauseFor(
     return raw;
   });
   let text = applyLabelTokens(def.label, def.params ?? [], shown);
-  if (row.team) text += ` (team ${names.teamName(row.team) || row.team})`;
+  if (row.team === '@upstream') text += ' (upstream team)';
+  else if (row.team === '@downstream') text += ' (downstream team)';
+  else if (row.team) text += ` (team ${names.teamName(row.team) || row.team})`;
   else if (row.role) text += ` (role ${names.roleTitle(row.role) || row.role})`;
   return text;
 }
@@ -326,6 +361,7 @@ function rawDocument(
   draft: ConditionDraft,
   defs: readonly ConditionDefSpec[],
   extraKeys: ReadonlySet<string>,
+  options?: ConditionParseOptions,
 ): { appear: unknown; cancel: unknown; errors: string[] } {
   const errors: string[] = [];
   let appear: unknown = null;
@@ -355,7 +391,7 @@ function rawDocument(
   const keys = [...shape.keys, ...stringsOf(cancel)];
   for (const key of keys) {
     if (extraKeys.has(key)) continue;
-    const parsed = keyToBuilderModel(key, defs);
+    const parsed = keyToBuilderModel(key, defs, options);
     if ('error' in parsed) errors.push(`${key}: ${parsed.error}`);
   }
   return { appear, cancel, errors };
@@ -367,6 +403,7 @@ export function compileDraft(
   names: ConditionNames,
   extraKeys: readonly string[] = [],
   injects: readonly TimedInjectRef[] = [],
+  options?: ConditionParseOptions,
 ): CompiledConditions {
   const extra = new Set(extraKeys);
   const errors: string[] = [];
@@ -378,7 +415,7 @@ export function compileDraft(
   const cancelClauses: string[] = [];
 
   if (draft.raw) {
-    const doc = rawDocument(draft, defs, extra);
+    const doc = rawDocument(draft, defs, extra, options);
     errors.push(...doc.errors);
     const shape = errors.length === 0 ? readAppear(doc.appear) : null;
     if (shape) {
@@ -386,8 +423,8 @@ export function compileDraft(
       threshold = shape.threshold;
       appearKeys = shape.keys;
       cancelKeys = stringsOf(doc.cancel);
-      for (const key of appearKeys) appearClauses.push(clauseForKey(key, defs, names));
-      for (const key of cancelKeys) cancelClauses.push(clauseForKey(key, defs, names));
+      for (const key of appearKeys) appearClauses.push(clauseForKey(key, defs, names, options));
+      for (const key of cancelKeys) cancelClauses.push(clauseForKey(key, defs, names, options));
     }
   } else {
     for (const row of draft.appear) {
@@ -415,7 +452,9 @@ export function compileDraft(
     }
   }
 
-  if (appearKeys.length === 0) errors.push('A conditional inject needs at least one condition');
+  if (appearKeys.length === 0 && !options?.allowEmpty) {
+    errors.push('A conditional inject needs at least one condition');
+  }
 
   const eligible = eligibleNumber(draft.eligibleAfter);
   if ('error' in eligible) errors.push(eligible.error);
@@ -425,7 +464,7 @@ export function compileDraft(
       ? { all: appearKeys }
       : { threshold: quantifier === 'any' ? 1 : threshold, conditions: appearKeys };
 
-  const warnings = timingWarnings([...appearKeys, ...cancelKeys], defs, injects);
+  const warnings = timingWarnings([...appearKeys, ...cancelKeys], defs, injects, options);
   const preview = conditionPreviewSentence({
     quantifier,
     threshold,
@@ -448,8 +487,9 @@ function clauseForKey(
   key: string,
   defs: readonly ConditionDefSpec[],
   names: ConditionNames,
+  options?: ConditionParseOptions,
 ): string {
-  const parsed = keyToBuilderModel(key, defs);
+  const parsed = keyToBuilderModel(key, defs, options);
   if ('error' in parsed) return key;
   return clauseFor(
     {
@@ -457,7 +497,7 @@ function clauseForKey(
       platform: parsed.model.platform,
       event: parsed.model.event,
       args: parsed.model.args,
-      team: parsed.model.scope?.team ?? '',
+      team: parsed.model.scope?.team ?? parsed.model.scope?.team_placeholder ?? '',
       role: parsed.model.scope?.role ?? '',
     },
     defs,
@@ -469,12 +509,13 @@ export function timingWarnings(
   keys: readonly string[],
   defs: readonly ConditionDefSpec[],
   injects: readonly TimedInjectRef[],
+  options?: ConditionParseOptions,
 ): string[] {
   const byKey = new Map(injects.map((inject) => [inject.inject_key, inject]));
   const warnings: string[] = [];
   const seen = new Set<string>();
   for (const key of keys) {
-    const parsed = keyToBuilderModel(key, defs);
+    const parsed = keyToBuilderModel(key, defs, options);
     if ('error' in parsed) continue;
     const def = defById(defs, parsed.model.event);
     (def?.params ?? []).forEach((param, index) => {
