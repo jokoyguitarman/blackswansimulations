@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { COUNTRIES } from '../../shared/countries.js';
 import {
   validateOrganisations,
   buildOrgRegistry,
@@ -7,6 +8,7 @@ import {
   defaultRegisterFor,
   type OrganisationInput,
   type PressureOrgInput,
+  type RosterEntryInput,
 } from './scenarioOrgModel.js';
 
 const roster = [{ team_name: 'Communications', is_public_voice: true }, { team_name: 'Legal' }];
@@ -64,7 +66,7 @@ describe('pressure organisations (MO-PRS-001..003)', () => {
     assert.deepEqual(ngo.targets_org_keys, ['primary'], 'unknown targets dropped');
     assert.equal(defaultRegisterFor('community_group'), 'grassroots');
   });
-  test('rejects unknown kinds, unknown countries, duplicate names and > 6 entries', () => {
+  test('rejects unknown kinds, unknown countries and duplicate names', () => {
     const bad = (list: PressureOrgInput[]) => {
       const r = validateOrganisations(orgs, [], list);
       return r.ok ? null : r.code;
@@ -86,16 +88,23 @@ describe('pressure organisations (MO-PRS-001..003)', () => {
       'MO-PRS-001',
       'name clash with a protagonist',
     );
-    assert.equal(
-      bad(
-        Array.from({ length: 7 }, (_, i) => ({
-          display_name: `Body ${i}`,
-          kind: 'ngo' as const,
-          country: 'Malaysia',
-        })),
-      ),
-      'MO-PRS-001',
-    );
+  });
+  test('accepts 7 pressure groups, and 60', () => {
+    const list = (count: number): PressureOrgInput[] =>
+      Array.from({ length: count }, (_, i) => ({
+        display_name: `Watch body ${i}`,
+        kind: 'ngo' as const,
+        country: 'Malaysia',
+      }));
+    const seven = validateOrganisations(orgs, [], list(7));
+    assert.ok(seven.ok);
+    if (!seven.ok) return;
+    assert.equal(seven.pressureOrgs.length, 7);
+    const sixty = validateOrganisations(orgs, [], list(60));
+    assert.ok(sixty.ok);
+    if (!sixty.ok) return;
+    assert.equal(sixty.pressureOrgs.length, 60);
+    assert.equal(new Set(sixty.pressureOrgs.map((group) => group.org_key)).size, 60);
   });
   test('keys never collide', () => {
     const taken = new Set<string>();
@@ -146,6 +155,97 @@ describe('registry (contract §5.1 + v3.2)', () => {
     assert.equal(pressure.kind, 'regulator');
     assert.equal(pressure.spokesperson_stakeholder_id, 'stk_mohr');
     assert.equal(registry.filter((e) => e.side === 'antagonist').length, 1);
+  });
+});
+
+function rosterOf(count: number): RosterEntryInput[] {
+  const presets = [
+    'Communications',
+    'Legal',
+    'Stakeholder Engagement',
+    'Shareholder Engagement',
+    'Executive',
+  ];
+  const teams: RosterEntryInput[] = presets
+    .slice(0, Math.min(count, presets.length))
+    .map((team_name) => ({
+      team_name,
+      is_public_voice: team_name === 'Communications',
+    }));
+  for (let i = teams.length; i < count; i++) {
+    teams.push({
+      team_name: `Desk ${i}`,
+      description: `Handles the day to day work of desk ${i}`,
+      is_custom: true,
+      is_public_voice: false,
+    });
+  }
+  return teams;
+}
+
+describe('large casts', () => {
+  test('12 protagonists with 9 teams each get unique keys and composed names', () => {
+    const input: OrganisationInput[] = COUNTRIES.slice(0, 12).map((country, index) => ({
+      display_name: `${country.name} Response`,
+      short_name: `R${index}`,
+      country: country.name,
+      is_primary: index === 0,
+      team_roster: rosterOf(9),
+    }));
+    const result = validateOrganisations(input, []);
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.equal(result.orgs.length, 12);
+    assert.equal(new Set(result.orgs.map((org) => org.org_key)).size, 12);
+    assert.equal(result.orgs[0].org_key, 'primary');
+    const names = result.orgs.flatMap((org) => org.teams.map((team) => team.team_name));
+    assert.equal(names.length, 12 * 9);
+    assert.equal(new Set(names.map((name) => name.toLowerCase())).size, names.length);
+    assert.ok(names.every((name) => name.includes('—')));
+  });
+
+  test('30 rivals get unique antagonist keys', () => {
+    const rivals = Array.from({ length: 30 }, (_, index) => ({
+      name: `Rival Brand ${index}`,
+      country: 'Singapore',
+    }));
+    const result = validateOrganisations([orgs[0]], rivals);
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    const keys = result.competitors.map((rival) => rival.org_key);
+    assert.equal(keys.length, 30);
+    assert.ok(keys.every((key) => key.startsWith('org_antagonist_')));
+    assert.equal(new Set(keys).size, 30);
+  });
+
+  test('one pressure group can target 20 protagonists', () => {
+    const input: OrganisationInput[] = COUNTRIES.slice(0, 20).map((country, index) => ({
+      display_name: `${country.name} Desk`,
+      short_name: `D${index}`,
+      country: country.name,
+      is_primary: index === 0,
+      team_roster: roster,
+    }));
+    const cast = validateOrganisations(input, []);
+    assert.ok(cast.ok);
+    if (!cast.ok) return;
+    const keys = cast.orgs.map((org) => org.org_key);
+    const pressed = validateOrganisations(
+      input,
+      [],
+      [
+        {
+          display_name: 'Regional Watch',
+          kind: 'ngo',
+          country: input[0].country,
+          targets_org_keys: keys,
+        },
+      ],
+    );
+    assert.ok(pressed.ok);
+    if (!pressed.ok) return;
+    assert.equal(pressed.pressureOrgs[0].targets_org_keys.length, 20);
+    assert.deepEqual(new Set(pressed.pressureOrgs[0].targets_org_keys), new Set(keys));
   });
 });
 

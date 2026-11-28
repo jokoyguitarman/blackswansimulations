@@ -44,6 +44,7 @@ import {
   isOnMap,
   mergeSpokespersonLinks,
   parseDismissedProposals,
+  RADAR_RUN_ADD_CAP,
   recordDismissal,
   selectFootprintAdditions,
   type DismissedProposal,
@@ -57,6 +58,18 @@ import {
   issueClass,
   jumpToField,
 } from '../components/Scenario/SetupIssues';
+import {
+  LANE_PAGE_SIZE,
+  ROSTER_COLLAPSE_AT,
+  filterLane,
+  laneShowsSearch,
+  locateField,
+  takeLanePages,
+  type LaneCardRef,
+  type LaneName,
+} from '../components/Scenario/lanePaging';
+import { formatSetupCost, setupCost } from '../components/Scenario/setupBuildEstimate';
+import type { BuildEstimateOptions } from '@shared/buildEstimate';
 import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
 import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
 import { OriginBadge } from '../components/UI/OriginBadge';
@@ -475,6 +488,49 @@ export const SocialCrisisWizard = () => {
     loadCatalog();
   }, []);
 
+  const [orgPages, setOrgPages] = useState(1);
+  const [pressurePages, setPressurePages] = useState(1);
+  const [rivalPages, setRivalPages] = useState(1);
+  const [orgQuery, setOrgQuery] = useState('');
+  const [pressureQuery, setPressureQuery] = useState('');
+  const [rivalQuery, setRivalQuery] = useState('');
+  const [rosterExpanded, setRosterExpanded] = useState<Record<string, boolean>>({});
+  const [largeConfirmCalls, setLargeConfirmCalls] = useState(150);
+  const [estimateOptions, setEstimateOptions] = useState<Partial<BuildEstimateOptions>>({});
+  const [largeConfirmOpen, setLargeConfirmOpen] = useState(false);
+  const largeBuildConfirmed = useRef(false);
+
+  useEffect(() => {
+    const loadLimits = async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/limits'), { headers });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data?: {
+            large_build_confirm_calls?: number;
+            org_page_batch?: number;
+            personas_total_max?: number;
+          };
+        };
+        const data = json.data;
+        if (!data) return;
+        if (typeof data.large_build_confirm_calls === 'number') {
+          setLargeConfirmCalls(data.large_build_confirm_calls);
+        }
+        setEstimateOptions({
+          ...(typeof data.org_page_batch === 'number' ? { pageBatch: data.org_page_batch } : {}),
+          ...(typeof data.personas_total_max === 'number'
+            ? { personasTotalMax: data.personas_total_max }
+            : {}),
+        });
+      } catch {
+        /* the defaults match the server */
+      }
+    };
+    void loadLimits();
+  }, []);
+
   // Roster of antagonist competitor brands defined in Setup (each in its own country).
   const [competitorEntries, setCompetitorEntries] = useState<CompetitorDraft[]>([]);
   const [autoAntagonist, setAutoAntagonist] = useState(true);
@@ -620,9 +676,62 @@ export const SocialCrisisWizard = () => {
   );
   const setupIssueIndex = useMemo(() => indexIssues(setupIssues), [setupIssues]);
   const issueAt = (field: string) => pickIssue(setupIssueIndex.get(field), revealIssues);
+  const buildCost = useMemo(
+    () => setupCost(setupSnapshot, estimateOptions),
+    [setupSnapshot, estimateOptions],
+  );
+
+  const orgLaneCards = useMemo<LaneCardRef[]>(() => {
+    const rosterText = (roster: RosterEntry[]) => roster.map((team) => team.team_name).join(' ');
+    return [
+      {
+        id: PRIMARY_ORG_ID,
+        fieldPrefixes: [`org:${PRIMARY_ORG_ID}`, `team:${PRIMARY_ORG_ID}`],
+        search: [orgName, country, primaryCity, primaryKind, rosterText(teamRoster)].join(' '),
+        teamCount: teamRoster.length,
+      },
+      ...extraOrganisations.map((org) => ({
+        id: org.id,
+        fieldPrefixes: [`org:${org.id}`, `team:${org.id}`],
+        search: [
+          org.display_name,
+          org.short_name,
+          org.country,
+          org.city,
+          org.kind,
+          rosterText(org.team_roster),
+        ].join(' '),
+        teamCount: org.team_roster.length,
+      })),
+    ];
+  }, [orgName, country, primaryCity, primaryKind, teamRoster, extraOrganisations]);
+  const pressureLaneCards = useMemo<LaneCardRef[]>(
+    () =>
+      pressureOrgs.map((group) => ({
+        id: group.id,
+        fieldPrefixes: [`pressure:${group.id}`],
+        search: [group.display_name, group.country, group.city, group.kind, group.wants].join(' '),
+      })),
+    [pressureOrgs],
+  );
+  const rivalLaneCards = useMemo<LaneCardRef[]>(
+    () =>
+      competitorEntries.map((rival) => ({
+        id: rival.id,
+        fieldPrefixes: [`rival:${rival.id}`],
+        search: [
+          rival.name,
+          rival.country,
+          rival.facebook_handle ?? '',
+          rival.x_handle ?? '',
+          rival.description,
+        ].join(' '),
+      })),
+    [competitorEntries],
+  );
 
   // Jumps run after the render that shows the notes, so the scroll lands on the final layout.
-  // A null field means "the first error on the page".
+  // A null field means "the first error on the page". A card past the first page is revealed first.
   const pendingJump = useRef<{ field: string | null } | null>(null);
   const [jumpRequest, setJumpRequest] = useState(0);
   const requestJump = useCallback((field: string | null = null) => {
@@ -632,10 +741,59 @@ export const SocialCrisisWizard = () => {
   useEffect(() => {
     const pending = pendingJump.current;
     if (!pending || step !== 1) return;
-    pendingJump.current = null;
     const target = pending.field ?? setupErrors.find((i) => i.field)?.field ?? null;
-    if (!target || !jumpToField(target)) setIssuePanelOpen(true);
-  }, [jumpRequest, setupErrors, step]);
+    if (!target) {
+      pendingJump.current = null;
+      setIssuePanelOpen(true);
+      return;
+    }
+    const place = locateField(target, {
+      orgs: orgLaneCards,
+      pressure: pressureLaneCards,
+      rivals: rivalLaneCards,
+    });
+    if (place) {
+      const pages = place.page + 1;
+      const query =
+        place.lane === 'orgs' ? orgQuery : place.lane === 'pressure' ? pressureQuery : rivalQuery;
+      const shown =
+        place.lane === 'orgs' ? orgPages : place.lane === 'pressure' ? pressurePages : rivalPages;
+      const rosterClosed = place.rosterId != null && !rosterExpanded[place.rosterId];
+      if (query || shown < pages || rosterClosed) {
+        if (place.lane === 'orgs') {
+          if (query) setOrgQuery('');
+          if (shown < pages) setOrgPages(pages);
+        } else if (place.lane === 'pressure') {
+          if (query) setPressureQuery('');
+          if (shown < pages) setPressurePages(pages);
+        } else {
+          if (query) setRivalQuery('');
+          if (shown < pages) setRivalPages(pages);
+        }
+        if (rosterClosed && place.rosterId) {
+          const rosterId = place.rosterId;
+          setRosterExpanded((prev) => ({ ...prev, [rosterId]: true }));
+        }
+        return;
+      }
+    }
+    pendingJump.current = null;
+    if (!jumpToField(target)) setIssuePanelOpen(true);
+  }, [
+    jumpRequest,
+    setupErrors,
+    step,
+    orgLaneCards,
+    pressureLaneCards,
+    rivalLaneCards,
+    orgQuery,
+    pressureQuery,
+    rivalQuery,
+    orgPages,
+    pressurePages,
+    rivalPages,
+    rosterExpanded,
+  ]);
 
   /** Pins a 400 from the footprint or build endpoints onto Setup; false when it had no details. */
   const showServerIssues = useCallback(
@@ -699,8 +857,8 @@ export const SocialCrisisWizard = () => {
           pressure: pressureOrgs,
         };
         const picked = selectFootprintAdditions(fp, lists, dismissedProposals, {
-          offices: 5 - extraOrganisations.length,
-          pressure: 6 - pressureOrgs.length,
+          offices: RADAR_RUN_ADD_CAP,
+          pressure: RADAR_RUN_ADD_CAP,
         });
         const addedOrgs: OrganisationDraft[] = picked.offices.map((o) => ({
           ...newOrganisationDraft(o.country),
@@ -723,10 +881,26 @@ export const SocialCrisisWizard = () => {
           proposed_reason: p.reason,
           proposed_from: p.display_name,
         }));
-        if (addedOrgs.length > 0)
-          setExtraOrganisations((prev) => [...prev, ...addedOrgs].slice(0, 5));
-        if (addedPressure.length > 0)
-          setPressureOrgs((prev) => [...prev, ...addedPressure].slice(0, 6));
+        if (addedOrgs.length > 0) {
+          setExtraOrganisations((prev) => [...prev, ...addedOrgs]);
+          setOrgQuery('');
+          setOrgPages((current) =>
+            Math.max(
+              current,
+              Math.ceil((1 + extraOrganisations.length + addedOrgs.length) / LANE_PAGE_SIZE),
+            ),
+          );
+        }
+        if (addedPressure.length > 0) {
+          setPressureOrgs((prev) => [...prev, ...addedPressure]);
+          setPressureQuery('');
+          setPressurePages((current) =>
+            Math.max(
+              current,
+              Math.ceil((pressureOrgs.length + addedPressure.length) / LANE_PAGE_SIZE),
+            ),
+          );
+        }
         const countries = fp.countries
           .map((c) => `${c.name} (${c.role.replace('_', ' ')})`)
           .join(', ');
@@ -739,9 +913,7 @@ export const SocialCrisisWizard = () => {
           );
         }
         if (picked.noRoom.length > 0) {
-          notice.push(
-            `No room for ${picked.noRoom.join(', ')}: the map takes 6 organisations and 6 pressure groups.`,
-          );
+          notice.push(`${picked.noRoom.length} more stayed as chips — add any you want.`);
         }
         if (addedOrgs.length + addedPressure.length > 0) {
           notice.push('Remove anything that does not belong.');
@@ -2457,6 +2629,28 @@ export const SocialCrisisWizard = () => {
     }
     // Leaving Setup (or Blueprint Review) kicks off the Build step, which auto-advances.
     if (step === 1 || step === 3) {
+      const confirmed = largeBuildConfirmed.current;
+      largeBuildConfirmed.current = false;
+      if (!confirmed && buildCost.calls > largeConfirmCalls) {
+        setLargeConfirmOpen(true);
+        return;
+      }
+      if (confirmed && buildCost.calls > largeConfirmCalls) {
+        try {
+          const headers = await authHeaders();
+          await fetchJSON(apiUrl('/api/warroom/social-crisis/large-build-confirm'), {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              calls: buildCost.calls,
+              player_teams: buildCost.playerTeams,
+            }),
+            signal: AbortSignal.timeout(4_000),
+          });
+        } catch {
+          /* the build still starts; the log is best-effort */
+        }
+      }
       await saveDraftState(2);
       setStep(2);
       void generateAll();
@@ -2567,7 +2761,6 @@ export const SocialCrisisWizard = () => {
       dismissCards('office', o.display_name, matching);
       return;
     }
-    if (extraOrganisations.length + 1 >= 6) return;
     setDismissedProposals((prev) => clearDismissal(prev, 'office', o.display_name));
     setExtraOrganisations((prev) => [
       ...prev,
@@ -2592,7 +2785,6 @@ export const SocialCrisisWizard = () => {
       dismissCards('pressure', p.display_name, matching);
       return;
     }
-    if (pressureOrgs.length >= 6) return;
     setDismissedProposals((prev) => clearDismissal(prev, 'pressure', p.display_name));
     setPressureOrgs((prev) => [
       ...prev,
@@ -2918,6 +3110,62 @@ export const SocialCrisisWizard = () => {
     </aside>
   );
 
+  const revealLanePage = (lane: LaneName, cardCount: number) => {
+    const pages = Math.max(1, Math.ceil(cardCount / LANE_PAGE_SIZE));
+    if (lane === 'orgs') {
+      setOrgQuery('');
+      setOrgPages((current) => Math.max(current, pages));
+    } else if (lane === 'pressure') {
+      setPressureQuery('');
+      setPressurePages((current) => Math.max(current, pages));
+    } else {
+      setRivalQuery('');
+      setRivalPages((current) => Math.max(current, pages));
+    }
+  };
+
+  const visibleLaneIds = (cards: LaneCardRef[], query: string, pages: number) =>
+    new Set(takeLanePages(filterLane(cards, query), pages).map((card) => card.id));
+
+  const laneTools = (
+    lane: LaneName,
+    total: number,
+    query: string,
+    setQuery: (value: string) => void,
+    setPages: (value: number | ((current: number) => number)) => void,
+  ) => {
+    const cards =
+      lane === 'orgs' ? orgLaneCards : lane === 'pressure' ? pressureLaneCards : rivalLaneCards;
+    const filtered = filterLane(cards, query);
+    if (!laneShowsSearch(total) && !(query.trim() && filtered.length === 0)) return null;
+    const label =
+      lane === 'orgs'
+        ? 'Search organisations'
+        : lane === 'pressure'
+          ? 'Search pressure groups'
+          : 'Search rivals';
+    return (
+      <div className="wr-lanetools">
+        {laneShowsSearch(total) && (
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPages(1);
+            }}
+            placeholder="Search this lane"
+            aria-label={label}
+            className="wr-field"
+          />
+        )}
+        {query.trim() && filtered.length === 0 && (
+          <span className="text-[11px] text-muted">No matches</span>
+        )}
+      </div>
+    );
+  };
+
   /* ── Step 1: Scenario Setup — the map (three lanes) ─────────────────── */
 
   const renderStep1 = () => (
@@ -2935,14 +3183,14 @@ export const SocialCrisisWizard = () => {
             </h2>
             <p>HQ and every office or partner agency responding with you.</p>
             <span className="cnt">
-              {orgCount} of 6 · {teamCount} teams
+              {orgCount} {orgCount === 1 ? 'organisation' : 'organisations'} · {teamCount}{' '}
+              {teamCount === 1 ? 'team' : 'teams'}
             </span>
             <button
-              onClick={() =>
-                extraOrganisations.length + 1 < 6 &&
-                setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
-              }
-              disabled={extraOrganisations.length + 1 >= 6}
+              onClick={() => {
+                setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)]);
+                revealLanePage('orgs', extraOrganisations.length + 2);
+              }}
               className="wr-btn mt-2.5 w-full"
             >
               <WrIcon name="plus" /> Add organisation
@@ -2950,152 +3198,182 @@ export const SocialCrisisWizard = () => {
           </div>
         </div>
         <div>
+          {laneTools('orgs', orgLaneCards.length, orgQuery, setOrgQuery, setOrgPages)}
           <div className="space-y-3.5">
             {/* HQ node */}
-            <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
-              <div className="kicker">
-                <WrIcon name="building" size={12} /> Headquarters · players
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
-                <div className="sm:col-span-6" data-field={orgField(PRIMARY_ORG_ID, 'name')}>
-                  <label className="wr-lbl">
-                    Organisation name {extraOrganisations.length === 0 ? '(optional)' : ''}
-                  </label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="e.g., Meridian Technologies, Acme Corp"
-                    className={`wr-field ${issueClass(primaryNameIssue)}`}
-                    aria-invalid={primaryNameIssue?.severity === 'error' || undefined}
-                  />
-                  {primaryNameIssue ? (
-                    <FieldNote issue={primaryNameIssue} />
-                  ) : (
-                    <div className="wr-help">
-                      {extraOrganisations.length === 0
-                        ? 'Leave blank to let the AI generate a company name.'
-                        : 'Required when several organisations take part — it names the primary one.'}
+            {visibleLaneIds(orgLaneCards, orgQuery, orgPages).has(PRIMARY_ORG_ID) && (
+              <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
+                <div className="kicker">
+                  <WrIcon name="building" size={12} /> Headquarters · players
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
+                  <div className="sm:col-span-6" data-field={orgField(PRIMARY_ORG_ID, 'name')}>
+                    <label className="wr-lbl">
+                      Organisation name {extraOrganisations.length === 0 ? '(optional)' : ''}
+                    </label>
+                    <input
+                      type="text"
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      placeholder="e.g., Meridian Technologies, Acme Corp"
+                      className={`wr-field ${issueClass(primaryNameIssue)}`}
+                      aria-invalid={primaryNameIssue?.severity === 'error' || undefined}
+                    />
+                    {primaryNameIssue ? (
+                      <FieldNote issue={primaryNameIssue} />
+                    ) : (
+                      <div className="wr-help">
+                        {extraOrganisations.length === 0
+                          ? 'Leave blank to let the AI generate a company name.'
+                          : 'Required when several organisations take part — it names the primary one.'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="sm:col-span-3" data-field={orgField(PRIMARY_ORG_ID, 'country')}>
+                    <label className="wr-lbl">Country (headquarters)</label>
+                    <CountrySelect
+                      value={country}
+                      onChange={setCountry}
+                      className={`wr-field ${issueClass(primaryCountryIssue)}`}
+                    />
+                    <FieldNote issue={primaryCountryIssue} />
+                  </div>
+                  <div className="sm:col-span-2" data-field={orgField(PRIMARY_ORG_ID, 'city')}>
+                    <label className="wr-lbl">City (optional)</label>
+                    <input
+                      type="text"
+                      value={primaryCity}
+                      onChange={(e) => setPrimaryCity(e.target.value)}
+                      placeholder="e.g. Singapore"
+                      className={`wr-field ${issueClass(primaryCityIssue)}`}
+                      aria-invalid={primaryCityIssue?.severity === 'error' || undefined}
+                    />
+                    <FieldNote issue={primaryCityIssue} />
+                  </div>
+                  <div className="sm:col-span-1" data-field={orgField(PRIMARY_ORG_ID, 'kind')}>
+                    <label className="wr-lbl">Type</label>
+                    <select
+                      value={primaryKind}
+                      onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
+                      className={`wr-field ${issueClass(primaryKindIssue)}`}
+                    >
+                      {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
+                        <option key={k} value={k}>
+                          {ORG_KIND_LABELS[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {primaryKindIssue && (
+                    <div className="sm:col-span-6 -mt-1">
+                      <FieldNote issue={primaryKindIssue} />
                     </div>
                   )}
                 </div>
-                <div className="sm:col-span-3" data-field={orgField(PRIMARY_ORG_ID, 'country')}>
-                  <label className="wr-lbl">Country (headquarters)</label>
-                  <CountrySelect
-                    value={country}
-                    onChange={setCountry}
-                    className={`wr-field ${issueClass(primaryCountryIssue)}`}
-                  />
-                  <FieldNote issue={primaryCountryIssue} />
-                </div>
-                <div className="sm:col-span-2" data-field={orgField(PRIMARY_ORG_ID, 'city')}>
-                  <label className="wr-lbl">City (optional)</label>
-                  <input
-                    type="text"
-                    value={primaryCity}
-                    onChange={(e) => setPrimaryCity(e.target.value)}
-                    placeholder="e.g. Singapore"
-                    className={`wr-field ${issueClass(primaryCityIssue)}`}
-                    aria-invalid={primaryCityIssue?.severity === 'error' || undefined}
-                  />
-                  <FieldNote issue={primaryCityIssue} />
-                </div>
-                <div className="sm:col-span-1" data-field={orgField(PRIMARY_ORG_ID, 'kind')}>
-                  <label className="wr-lbl">Type</label>
-                  <select
-                    value={primaryKind}
-                    onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
-                    className={`wr-field ${issueClass(primaryKindIssue)}`}
-                  >
-                    {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
-                      <option key={k} value={k}>
-                        {ORG_KIND_LABELS[k]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {primaryKindIssue && (
-                  <div className="sm:col-span-6 -mt-1">
-                    <FieldNote issue={primaryKindIssue} />
-                  </div>
-                )}
-              </div>
 
-              {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
-              <div className="border-t border-dashed border-border pt-3">
-                <label className="wr-lbl">
-                  Response teams
-                  {extraOrganisations.length > 0
-                    ? ` — ${orgName.trim() || 'primary organisation'}`
-                    : ''}{' '}
-                  ({teamRoster.length}/6)
-                </label>
-                <p className="text-[11.5px] text-muted mb-2.5">
-                  Every company divides differently — pick from the preset teams and/or add your own
-                  divisions. Each team&apos;s name and description shape its storyline pressure,
-                  injects, stakeholder contacts, and scoring. Mark exactly one team as the{' '}
-                  <b>public voice</b>. Add <b>Executive</b> when real leadership joins as players:
-                  their decisions trigger SOP obligations and stakeholder reactions.
-                </p>
-                <RosterBuilder
-                  roster={teamRoster}
-                  onChange={setTeamRoster}
-                  presetCatalog={presetCatalog}
-                  orgId={PRIMARY_ORG_ID}
-                />
+                {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
+                <div className="border-t border-dashed border-border pt-3">
+                  <label className="wr-lbl">
+                    Response teams
+                    {extraOrganisations.length > 0
+                      ? ` — ${orgName.trim() || 'primary organisation'}`
+                      : ''}{' '}
+                    ({teamRoster.length} {teamRoster.length === 1 ? 'team' : 'teams'})
+                  </label>
+                  <p className="text-[11.5px] text-muted mb-2.5">
+                    Every company divides differently — pick from the preset teams and/or add your
+                    own divisions. Each team&apos;s name and description shape its storyline
+                    pressure, injects, stakeholder contacts, and scoring. Mark exactly one team as
+                    the <b>public voice</b>. Add <b>Executive</b> when real leadership joins as
+                    players: their decisions trigger SOP obligations and stakeholder reactions.
+                  </p>
+                  <RosterBuilder
+                    roster={teamRoster}
+                    onChange={setTeamRoster}
+                    presetCatalog={presetCatalog}
+                    orgId={PRIMARY_ORG_ID}
+                    expanded={
+                      teamRoster.length <= ROSTER_COLLAPSE_AT || !!rosterExpanded[PRIMARY_ORG_ID]
+                    }
+                    onExpandedChange={(open) =>
+                      setRosterExpanded((prev) => ({ ...prev, [PRIMARY_ORG_ID]: open }))
+                    }
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Additional organisations: each in its own country with its own team roster */}
-            {extraOrganisations.map((org, i) => (
-              <div
-                key={org.id}
-                className={`wr-node ${org.operation === 'ai' ? 'ai' : ''}`}
-                style={
-                  {
-                    '--g': org.operation === 'ai' ? 'var(--f-ai)' : 'var(--f-org)',
-                  } as CSSProperties
-                }
-              >
-                <div className="kicker">
-                  <WrIcon name={org.operation === 'ai' ? 'sparkle' : 'office'} size={12} />{' '}
-                  {org.operation === 'ai' ? 'Office · AI-operated' : 'Office · players'}
-                </div>
-                <OrganisationCard
-                  org={org}
-                  index={i}
-                  presetCatalog={presetCatalog}
-                  onChange={(next) =>
-                    setExtraOrganisations((prev) => prev.map((o) => (o.id === org.id ? next : o)))
-                  }
-                  onRemove={() => {
-                    setDismissedProposals((prev) => recordDismissal(prev, 'office', org));
-                    setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id));
-                  }}
-                />
-              </div>
-            ))}
+            {extraOrganisations
+              .filter((org) => visibleLaneIds(orgLaneCards, orgQuery, orgPages).has(org.id))
+              .map((org) => {
+                const i = extraOrganisations.findIndex((item) => item.id === org.id);
+                return (
+                  <div
+                    key={org.id}
+                    className={`wr-node ${org.operation === 'ai' ? 'ai' : ''}`}
+                    style={
+                      {
+                        '--g': org.operation === 'ai' ? 'var(--f-ai)' : 'var(--f-org)',
+                      } as CSSProperties
+                    }
+                  >
+                    <div className="kicker">
+                      <WrIcon name={org.operation === 'ai' ? 'sparkle' : 'office'} size={12} />{' '}
+                      {org.operation === 'ai' ? 'Office · AI-operated' : 'Office · players'}
+                    </div>
+                    <OrganisationCard
+                      org={org}
+                      index={i}
+                      presetCatalog={presetCatalog}
+                      rosterExpanded={
+                        org.team_roster.length <= ROSTER_COLLAPSE_AT || !!rosterExpanded[org.id]
+                      }
+                      onRosterExpandedChange={(open) =>
+                        setRosterExpanded((prev) => ({ ...prev, [org.id]: open }))
+                      }
+                      onChange={(next) =>
+                        setExtraOrganisations((prev) =>
+                          prev.map((o) => (o.id === org.id ? next : o)),
+                        )
+                      }
+                      onRemove={() => {
+                        setDismissedProposals((prev) => recordDismissal(prev, 'office', org));
+                        setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id));
+                      }}
+                    />
+                  </div>
+                );
+              })}
 
-            {extraOrganisations.length + 1 < 6 && (
+            {takeLanePages(filterLane(orgLaneCards, orgQuery), orgPages).length <
+              filterLane(orgLaneCards, orgQuery).length && (
               <button
                 type="button"
-                className="wr-add"
-                style={{ '--g': 'var(--f-org)', minHeight: 84 } as CSSProperties}
-                onClick={() =>
-                  setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
-                }
+                className="wr-btn"
+                onClick={() => setOrgPages((current) => current + 1)}
               >
-                <div className="flex items-center gap-3 text-left">
-                  <WrIcon name="office" size={24} />
-                  <div>
-                    <div>Add an office, subsidiary or partner agency</div>
-                    <small className="mt-0.5">
-                      Own page, teams and contacts in its own country
-                    </small>
-                  </div>
-                </div>
+                Show more
               </button>
             )}
+
+            <button
+              type="button"
+              className="wr-add"
+              style={{ '--g': 'var(--f-org)', minHeight: 84 } as CSSProperties}
+              onClick={() => {
+                setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)]);
+                revealLanePage('orgs', extraOrganisations.length + 2);
+              }}
+            >
+              <div className="flex items-center gap-3 text-left">
+                <WrIcon name="office" size={24} />
+                <div>
+                  <div>Add an office, subsidiary or partner agency</div>
+                  <small className="mt-0.5">Own page, teams and contacts in its own country</small>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -3115,7 +3393,10 @@ export const SocialCrisisWizard = () => {
               Regulators, unions, NGOs, communities, politicians. One spokesperson each — engage
               them and they stand down, ignore them and they escalate.
             </p>
-            <span className="cnt">{pressureOrgs.length} of 6</span>
+            <span className="cnt">
+              {pressureOrgs.length}{' '}
+              {pressureOrgs.length === 1 ? 'pressure group' : 'pressure groups'}
+            </span>
             <div className="flex flex-wrap gap-1.5 mt-2.5">
               {(
                 ['regulator', 'union', 'ngo', 'community_group', 'political'] as PressureKind[]
@@ -3123,10 +3404,10 @@ export const SocialCrisisWizard = () => {
                 <button
                   key={k}
                   type="button"
-                  disabled={pressureOrgs.length >= 6}
-                  onClick={() =>
-                    setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, k)])
-                  }
+                  onClick={() => {
+                    setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, k)]);
+                    revealLanePage('pressure', pressureOrgs.length + 1);
+                  }}
                   className="wr-btn sm icon"
                   title={`Add ${PRESSURE_KIND_LABEL[k]}`}
                   aria-label={`Add ${PRESSURE_KIND_LABEL[k]}`}
@@ -3138,49 +3419,69 @@ export const SocialCrisisWizard = () => {
           </div>
         </div>
         <div>
+          {laneTools(
+            'pressure',
+            pressureLaneCards.length,
+            pressureQuery,
+            setPressureQuery,
+            setPressurePages,
+          )}
           <div className="wr-cards">
-            {pressureOrgs.map((p) => (
-              <div
-                key={p.id}
-                className="wr-node"
-                style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
-              >
-                <div className="kicker">
-                  <WrIcon name={PRESSURE_KIND_ICON[p.kind] ?? 'landmark'} size={12} />{' '}
-                  {PRESSURE_KIND_LABEL[p.kind] ?? p.kind} · {p.register}
+            {pressureOrgs
+              .filter((group) =>
+                visibleLaneIds(pressureLaneCards, pressureQuery, pressurePages).has(group.id),
+              )
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="wr-node"
+                  style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+                >
+                  <div className="kicker">
+                    <WrIcon name={PRESSURE_KIND_ICON[p.kind] ?? 'landmark'} size={12} />{' '}
+                    {PRESSURE_KIND_LABEL[p.kind] ?? p.kind} · {p.register}
+                  </div>
+                  <PressureOrgCard
+                    org={p}
+                    onChange={(next) =>
+                      setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
+                    }
+                    onRemove={() => {
+                      setDismissedProposals((prev) => recordDismissal(prev, 'pressure', p));
+                      setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id));
+                    }}
+                  />
                 </div>
-                <PressureOrgCard
-                  org={p}
-                  onChange={(next) =>
-                    setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
-                  }
-                  onRemove={() => {
-                    setDismissedProposals((prev) => recordDismissal(prev, 'pressure', p));
-                    setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id));
-                  }}
-                />
-              </div>
-            ))}
-            {pressureOrgs.length < 6 && (
+              ))}
+            {takeLanePages(filterLane(pressureLaneCards, pressureQuery), pressurePages).length <
+              filterLane(pressureLaneCards, pressureQuery).length && (
               <button
                 type="button"
-                className="wr-add"
-                style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
-                onClick={() =>
-                  setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, 'regulator')])
-                }
+                className="wr-btn"
+                onClick={() => setPressurePages((current) => current + 1)}
               >
-                <div>
-                  <WrIcon name="plus" size={24} />
-                  <div className="mt-2">Pressure group</div>
-                  <small>
-                    {footprint
-                      ? 'Or accept a proposal from the radar'
-                      : 'Or let the radar propose them from your description'}
-                  </small>
-                </div>
+                Show more
               </button>
             )}
+            <button
+              type="button"
+              className="wr-add"
+              style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+              onClick={() => {
+                setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, 'regulator')]);
+                revealLanePage('pressure', pressureOrgs.length + 1);
+              }}
+            >
+              <div>
+                <WrIcon name="plus" size={24} />
+                <div className="mt-2">Pressure group</div>
+                <small>
+                  {footprint
+                    ? 'Or accept a proposal from the radar'
+                    : 'Or let the radar propose them from your description'}
+                </small>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -3213,27 +3514,32 @@ export const SocialCrisisWizard = () => {
           </div>
         </div>
         <div>
+          {laneTools('rivals', rivalLaneCards.length, rivalQuery, setRivalQuery, setRivalPages)}
           <div className="wr-cards">
-            {competitorEntries.map((e) => (
-              <div
-                key={e.id}
-                className="wr-node"
-                style={{ '--g': 'var(--f-rival)' } as CSSProperties}
-              >
-                <div className="kicker">
-                  <WrIcon name="swords" size={12} /> Competitor
+            {competitorEntries
+              .filter((entry) =>
+                visibleLaneIds(rivalLaneCards, rivalQuery, rivalPages).has(entry.id),
+              )
+              .map((e) => (
+                <div
+                  key={e.id}
+                  className="wr-node"
+                  style={{ '--g': 'var(--f-rival)' } as CSSProperties}
+                >
+                  <div className="kicker">
+                    <WrIcon name="swords" size={12} /> Competitor
+                  </div>
+                  <RivalOrgCard
+                    rival={e}
+                    onChange={(next) =>
+                      setCompetitorEntries((prev) => prev.map((x) => (x.id === e.id ? next : x)))
+                    }
+                    onRemove={() =>
+                      setCompetitorEntries((prev) => prev.filter((x) => x.id !== e.id))
+                    }
+                  />
                 </div>
-                <RivalOrgCard
-                  rival={e}
-                  onChange={(next) =>
-                    setCompetitorEntries((prev) => prev.map((x) => (x.id === e.id ? next : x)))
-                  }
-                  onRemove={() =>
-                    setCompetitorEntries((prev) => prev.filter((x) => x.id !== e.id))
-                  }
-                />
-              </div>
-            ))}
+              ))}
             {competitorEntries.length === 0 && autoAntagonist && (
               <div
                 className="wr-node"
@@ -3244,15 +3550,28 @@ export const SocialCrisisWizard = () => {
                 </div>
                 <div className="text-xs text-muted">
                   A hostile competitor page will be invented from the story. Name real rivals here
-                  to stack the pressure (up to 10).
+                  to stack the pressure.
                 </div>
               </div>
+            )}
+            {takeLanePages(filterLane(rivalLaneCards, rivalQuery), rivalPages).length <
+              filterLane(rivalLaneCards, rivalQuery).length && (
+              <button
+                type="button"
+                className="wr-btn"
+                onClick={() => setRivalPages((current) => current + 1)}
+              >
+                Show more
+              </button>
             )}
             <button
               type="button"
               className="wr-add"
               style={{ '--g': 'var(--f-rival)' } as CSSProperties}
-              onClick={() => setCompetitorEntries((prev) => [...prev, newRivalDraft(country)])}
+              onClick={() => {
+                setCompetitorEntries((prev) => [...prev, newRivalDraft(country)]);
+                revealLanePage('rivals', competitorEntries.length + 1);
+              }}
             >
               <div>
                 <WrIcon name="plus" size={24} />
@@ -4813,6 +5132,11 @@ export const SocialCrisisWizard = () => {
           </section>
 
           <div className="wr-ctabar sticky">
+            {(step === 1 || step === 3) && (
+              <span className="hint" style={{ flexBasis: '100%' }}>
+                {formatSetupCost(buildCost.calls, buildCost.playerTeams)}
+              </span>
+            )}
             {step === 1 && (
               <>
                 <div className="s">
@@ -4855,6 +5179,7 @@ export const SocialCrisisWizard = () => {
                 warnings={setupWarnings}
                 open={issuePanelOpen}
                 onOpenChange={setIssuePanelOpen}
+                onJump={(field) => requestJump(field)}
               />
             )}
             {step === 1 && (
@@ -4893,6 +5218,38 @@ export const SocialCrisisWizard = () => {
             )}
           </div>
         </main>
+        {largeConfirmOpen && (
+          <div className="wr-confirm-back">
+            <div
+              className="wr-confirm"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="large-build-title"
+            >
+              <h2 id="large-build-title">This build is large</h2>
+              <p>
+                {formatSetupCost(buildCost.calls, buildCost.playerTeams)}. It still costs one
+                scenario credit. Build it?
+              </p>
+              <div className="actions">
+                <button type="button" className="wr-btn" onClick={() => setLargeConfirmOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="wr-btn accent"
+                  onClick={() => {
+                    largeBuildConfirmed.current = true;
+                    setLargeConfirmOpen(false);
+                    void goNext();
+                  }}
+                >
+                  Build anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </SetupIssuesProvider>
   );

@@ -171,6 +171,33 @@ export interface CommsState {
     fallback_used: boolean;
     offline_minutes: number | null;
   }>;
+  /**
+   * Charter duties per team slug. Absent until loaded. `duties_known: false`
+   * means the read failed or the table is missing, and duty keys stay false.
+   * `duties_truncated` means the action cap was hit, so a miss cannot be proved.
+   */
+  duties?: Record<
+    string,
+    Array<{ action_id: string; benchmark_minute: number | null; completed_minute: number | null }>
+  >;
+  duties_known?: boolean;
+  duties_truncated?: boolean;
+  /** Latest player action or team-member message, in session minutes. */
+  team_activity?: Record<string, { last_minute: number | null }>;
+  team_activity_known?: boolean;
+  team_activity_truncated?: boolean;
+  /** Overall AI grades on the team's posts and emails. */
+  content_grades?: Record<string, number[]>;
+  content_grades_known?: boolean;
+  content_grades_truncated?: boolean;
+  /** Organic decision ledger. Keys stay false when executive decisions are off. */
+  decisions?: Array<{ team_slug: string; category: string; minute: number }>;
+  decisions_enabled?: boolean;
+  decisions_known?: boolean;
+  /** role_id → team slug, from the scenario's player roles. */
+  role_teams?: Record<string, string>;
+  /** team slug → display name. */
+  team_labels?: Record<string, string>;
 }
 
 export const COMMS_DELIVERY_CAP = 2000;

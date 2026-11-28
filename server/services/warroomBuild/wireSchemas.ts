@@ -17,38 +17,34 @@ export const organisationInputSchema = z.object({
   x_handle: z.string().max(60).optional(),
   logo_url: z.string().max(2000).optional(),
   is_primary: z.boolean(),
-  team_roster: z
-    .array(
-      z.object({
-        team_name: z.string().min(1).max(60),
-        description: z.string().max(2000).optional(),
-        is_custom: z.boolean().optional(),
-        is_public_voice: z.boolean().optional(),
-      }),
-    )
-    .max(6),
+  team_roster: z.array(
+    z.object({
+      team_name: z.string().min(1).max(60),
+      description: z.string().max(2000).optional(),
+      is_custom: z.boolean().optional(),
+      is_public_voice: z.boolean().optional(),
+    }),
+  ),
   operation: z.enum(['players', 'ai']).optional(),
 });
 
-export const organisationsSchema = z.array(organisationInputSchema).min(1).max(6);
+export const organisationsSchema = z.array(organisationInputSchema).min(1);
 
-export const pressureOrganisationsSchema = z
-  .array(
-    z.object({
-      org_key: z.string().optional(),
-      display_name: z.string().min(1).max(120),
-      kind: z.enum(['union', 'regulator', 'ngo', 'community_group', 'political']),
-      country: z.string().min(1).max(80),
-      city: z.string().max(80).optional(),
-      register: z.enum(['statutory', 'advocacy', 'grassroots', 'political']).optional(),
-      wants: z.string().max(300).optional(),
-      facebook_handle: z.string().max(60).optional(),
-      x_handle: z.string().max(60).optional(),
-      spokesperson_stakeholder_id: z.string().max(80).optional(),
-      targets_org_keys: z.array(z.string()).max(6).optional(),
-    }),
-  )
-  .max(6);
+export const pressureOrganisationsSchema = z.array(
+  z.object({
+    org_key: z.string().optional(),
+    display_name: z.string().min(1).max(120),
+    kind: z.enum(['union', 'regulator', 'ngo', 'community_group', 'political']),
+    country: z.string().min(1).max(80),
+    city: z.string().max(80).optional(),
+    register: z.enum(['statutory', 'advocacy', 'grassroots', 'political']).optional(),
+    wants: z.string().max(300).optional(),
+    facebook_handle: z.string().max(60).optional(),
+    x_handle: z.string().max(60).optional(),
+    spokesperson_stakeholder_id: z.string().max(80).optional(),
+    targets_org_keys: z.array(z.string()).optional(),
+  }),
+);
 
 export const competitorsSchema = z.array(
   z.object({
@@ -71,8 +67,7 @@ export const teamRosterSchema = z
       is_public_voice: z.boolean().optional(),
     }),
   )
-  .min(2)
-  .max(6);
+  .min(2);
 
 export const teamCharterWireSchema = z.object({
   team_name: z.string(),

@@ -5,6 +5,7 @@ import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { getIntelManifest } from './intelSharingService.js';
+import { evaluateTeamTasks, type ObservedAction } from './teamTasksCore.js';
 
 /**
  * Live per-team scoring for the social media crisis module.
@@ -69,16 +70,6 @@ export interface TeamScoreReport {
   unassigned: Array<{ user_id: string; display_name: string }>;
   elapsed_minutes: number | null;
   computed_at: string;
-}
-
-/** Loose subset match of detection hints against action metadata. */
-function hintsMatch(
-  hints: Record<string, unknown> | undefined,
-  metadata: Record<string, unknown> | null,
-): boolean {
-  if (!hints) return true;
-  if (!metadata) return false;
-  return Object.entries(hints).every(([key, value]) => metadata[key] === value);
 }
 
 export async function computeTeamScores(sessionId: string): Promise<TeamScoreReport> {
@@ -207,6 +198,13 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
   }
 
   const actions = actionsRes.data || [];
+  const observedActions: ObservedAction[] = actions.map((row) => ({
+    player_id: String(row.player_id),
+    action_type: String(row.action_type),
+    team_at_action: row.team_at_action ? String(row.team_at_action) : null,
+    metadata: (row.metadata as Record<string, unknown> | null) || null,
+    created_at: String(row.created_at),
+  }));
 
   // Cross-team intel: which keys each team held, and when each key was shared.
   // Derived from scenario_injects (cached) + intel_shared actions already loaded.
@@ -225,7 +223,6 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
   const teams: TeamScore[] = scenarioTeams.map((teamRow) => {
     const teamName = String(teamRow.team_name);
     const memberIds = membersByTeam.get(teamName) || [];
-    const memberSet = new Set(memberIds);
     const charterJson = (teamRow.charter || {}) as Record<string, unknown>;
     const catalogFallback = getCatalogCharter(
       resolveTeamFunction({
@@ -244,76 +241,29 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       catalogFallback?.expected_actions ||
       [];
 
-    // An action counts for this team when it was stamped with the team at
-    // write time, or (legacy rows without a stamp) when its author is a
-    // current member.
-    const teamActions = actions.filter((a) => {
-      if (a.team_at_action) return String(a.team_at_action) === teamName;
-      return memberSet.has(String(a.player_id));
-    });
-
     const unstaffed = memberIds.length === 0;
 
-    const tasks: TeamTaskStatus[] = expectedActions.map((expected) => {
-      if (unstaffed) {
-        return {
-          action_id: expected.action_id,
-          description: expected.description,
-          tier: expected.tier,
-          weight: expected.weight,
-          detection_action_type: expected.detection_action_type,
-          timing_benchmark_minutes: expected.timing_benchmark_minutes,
-          status: 'unstaffed',
-          completed_at: null,
-          completed_by: null,
-          on_time: null,
-        };
-      }
-
-      const match = teamActions.find(
-        (a) =>
-          String(a.action_type) === expected.detection_action_type &&
-          hintsMatch(expected.detection_hints, (a.metadata as Record<string, unknown>) || null),
-      );
-
-      if (match) {
-        const completedMinutes = startTime
-          ? (new Date(String(match.created_at)).getTime() - startTime) / 60000
-          : null;
-        const onTime =
-          expected.timing_benchmark_minutes != null && completedMinutes != null
-            ? completedMinutes <= expected.timing_benchmark_minutes
-            : true;
-        return {
-          action_id: expected.action_id,
-          description: expected.description,
-          tier: expected.tier,
-          weight: expected.weight,
-          detection_action_type: expected.detection_action_type,
-          timing_benchmark_minutes: expected.timing_benchmark_minutes,
-          status: 'done',
-          completed_at: String(match.created_at),
-          completed_by: String(match.player_id),
-          on_time: onTime,
-        };
-      }
-
-      const overdue =
-        expected.timing_benchmark_minutes != null &&
-        elapsedMinutes != null &&
-        elapsedMinutes > expected.timing_benchmark_minutes;
-
+    const evaluated = evaluateTeamTasks({
+      expected: expectedActions,
+      actions: observedActions,
+      memberIds,
+      teamName,
+      startMs: startTime,
+      elapsedMinutes,
+    });
+    const tasks: TeamTaskStatus[] = evaluated.map((task, index) => {
+      const expected = expectedActions[index];
       return {
-        action_id: expected.action_id,
-        description: expected.description,
-        tier: expected.tier,
-        weight: expected.weight,
-        detection_action_type: expected.detection_action_type,
-        timing_benchmark_minutes: expected.timing_benchmark_minutes,
-        status: overdue ? 'overdue' : 'pending',
-        completed_at: null,
-        completed_by: null,
-        on_time: null,
+        action_id: task.action_id,
+        description: expected?.description ?? '',
+        tier: expected?.tier ?? 1,
+        weight: expected?.weight ?? 1,
+        detection_action_type: expected?.detection_action_type ?? '',
+        timing_benchmark_minutes: expected?.timing_benchmark_minutes ?? null,
+        status: task.status,
+        completed_at: task.completed_at,
+        completed_by: task.completed_by,
+        on_time: task.on_time,
       };
     });
 
