@@ -47,6 +47,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
+import { PeacePeriodCard } from './PeacePeriodCard';
 import { WrSection, WrFold, useSectionIndex, countryCode } from '../UI/Collapsible';
 import { WrIcon, type WrIconName } from '../UI/WarRoomIcon';
 import { OriginBadge, originOf, ORIGINS, type Origin } from '../UI/OriginBadge';
@@ -659,6 +660,18 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               initialState={initialState}
               saveInitialState={saveInitialState}
               locked={locked}
+            />
+            <PeacePeriodCard
+              scenarioId={scenarioId}
+              locked={locked}
+              onPeacePeriod={(peace) => {
+                setScen((current) => {
+                  const initial = { ...((current.initial_state ?? {}) as Record<string, unknown>) };
+                  if (peace) initial.peace_period = peace;
+                  else delete initial.peace_period;
+                  return { ...current, initial_state: initial };
+                });
+              }}
             />
             <InjectsSection
               scenarioId={scenarioId}
