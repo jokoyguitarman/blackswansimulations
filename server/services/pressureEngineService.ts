@@ -135,22 +135,33 @@ export function selectLeastRecentlyPosted<T>(
 }
 
 /**
- * Walk least-recent-first. A page that does not act (it has stood down, finished
- * its ladder, or otherwise returns false) does not consume the cap.
+ * What one page did on a tick.
+ * `called` means the model was asked, including an empty reply, a thrown call
+ * and a failed insert. A skip before the model is `called: false`.
+ */
+export interface PageTickOutcome {
+  posted: boolean;
+  called: boolean;
+}
+
+/**
+ * Walk least-recent-first and stop after `maxCalls` model calls.
+ * A page that skips before the model does not consume the cap, so finished
+ * pages are still passed over. Empty replies count, so a tick never makes
+ * more model calls than the cap.
  */
 export async function actWithinCap<T>(
   leastRecentFirst: readonly T[],
-  max: number,
-  act: (page: T) => Promise<boolean>,
+  maxCalls: number,
+  act: (page: T) => Promise<PageTickOutcome>,
 ): Promise<void> {
-  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  const cap = Number.isFinite(maxCalls) && maxCalls > 0 ? Math.floor(maxCalls) : 0;
   if (cap === 0) return;
-  let acted = 0;
+  let called = 0;
   for (const page of leastRecentFirst) {
-    if (await act(page)) {
-      acted += 1;
-      if (acted >= cap) return;
-    }
+    if (called >= cap) return;
+    const outcome = await act(page);
+    if (outcome.called) called += 1;
   }
 }
 
@@ -246,7 +257,7 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
   const ordered = orderLeastRecentlyPosted(rotated, (orgKey) => lastPosted.get(orgKey) ?? null);
   await actWithinCap(ordered, env.pressureEngineMaxPagesPerTick, async (orgKey) => {
     const cfg = configByKey.get(orgKey);
-    if (!cfg) return false;
+    if (!cfg) return { posted: false, called: false };
     const rows = pageRows.filter((r) => r.org_key === orgKey);
     try {
       return await runPage(
@@ -260,7 +271,7 @@ export async function runPressureEngine(sessionId: string, elapsedMinutes: numbe
       );
     } catch (err) {
       logger.warn({ err, sessionId, orgKey }, 'pressure engine: page tick failed');
-      return false;
+      return { posted: false, called: false };
     }
   });
 }
@@ -294,7 +305,14 @@ async function lastPostedAtByOrg(
   return last;
 }
 
-async function runPage(
+type PressureModel = (
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens?: number,
+  temperature?: number,
+) => Promise<Record<string, unknown> | null>;
+
+export async function runPage(
   sessionId: string,
   scenarioId: string,
   elapsedMinutes: number,
@@ -302,7 +320,8 @@ async function runPage(
   rows: PageRow[],
   initialState: Record<string, unknown>,
   escalationRisk: number,
-): Promise<boolean> {
+  model: PressureModel = callSocialCrisisAI,
+): Promise<PageTickOutcome> {
   const posture = cfg.posture!;
   const handles = rows.map((r) => r.page_handle);
 
@@ -377,7 +396,7 @@ async function runPage(
     escalationRisk,
   };
   const move = chooseMove(posture.register, progress);
-  if (move === 'skip') return false;
+  if (move === 'skip') return { posted: false, called: false };
 
   const platform =
     rows.some((r) => r.platform === 'x_twitter') &&
@@ -408,8 +427,10 @@ async function runPage(
     aligned_follow_hq: `Local update that mirrors headquarters' published line (below) for this site's audience, adding one local detail.`,
     aligned_clarify: `Local clarification correcting an inaccurate claim about this site, factual and short.`,
   };
-  const result = await callSocialCrisisAI(
-    `You run the official social media account of "${cfg.display_name}" (${ident.page_handle}) in a crisis simulation. Register: ${posture.register} — ${registerVoice[posture.register]}.
+  let result: Record<string, unknown> | null;
+  try {
+    result = await model(
+      `You run the official social media account of "${cfg.display_name}" (${ident.page_handle}) in a crisis simulation. Register: ${posture.register} — ${registerVoice[posture.register]}.
 Mandate: ${posture.mandate}
 Demands: ${posture.demands.join(' | ') || '(none — aligned office)'}
 Stand-down signals: ${posture.stand_down_signals.join(' | ')}
@@ -419,12 +440,16 @@ ${hqLine ? `Headquarters' published line:\n${hqLine}` : 'Headquarters has not pu
 MOVE: ${moveBrief[move]}
 Write ONE ${platform === 'facebook' ? 'Facebook post (2-4 sentences)' : 'X post (<= 260 characters, 0-2 hashtags)'} in character. Never mock, never sell, never amplify rumour.
 Return ONLY valid JSON: { "content": "..." }`,
-    `Elapsed: T+${Math.round(elapsedMinutes)} min. Escalation risk ${escalationRisk}. Write the post.`,
-    700,
-    0.7,
-  );
+      `Elapsed: T+${Math.round(elapsedMinutes)} min. Escalation risk ${escalationRisk}. Write the post.`,
+      700,
+      0.7,
+    );
+  } catch (err) {
+    logger.warn({ err, sessionId, orgKey: cfg.org_key }, 'pressure engine: model call failed');
+    return { posted: false, called: true };
+  }
   const content = String(result?.content || '').trim();
-  if (!content) return false;
+  if (!content) return { posted: false, called: true };
 
   // Contract §4.1 stamps page posts with the page's country — but only when humans play there;
   // otherwise the post is unscoped so the players present see it (pressure plan §11).
@@ -467,7 +492,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     .single();
   if (error || !post) {
     logger.warn({ error, sessionId, orgKey: cfg.org_key }, 'pressure post insert failed');
-    return false;
+    return { posted: false, called: true };
   }
   await emitSessionEvent(
     sessionId,
@@ -494,7 +519,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     { sessionId, orgKey: cfg.org_key, move, register: posture.register },
     'pressure engine posted',
   );
-  return true;
+  return { posted: true, called: true };
 }
 
 async function protagonistPostsSince(
