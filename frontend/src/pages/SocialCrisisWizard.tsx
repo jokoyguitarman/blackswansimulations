@@ -963,6 +963,7 @@ export const SocialCrisisWizard = () => {
   const [perCountryCounts, setPerCountryCounts] = useState<Record<string, number>>({});
   const [sopSteps, setSopSteps] = useState<SopStepWire[]>([]);
   const [decisionContext, setDecisionContext] = useState<Record<string, unknown> | null>(null);
+  const [teamDependencies, setTeamDependencies] = useState<Record<string, unknown> | null>(null);
 
   /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
@@ -1067,6 +1068,7 @@ export const SocialCrisisWizard = () => {
       per_country_counts: perCountryCounts,
       sop_steps: sopSteps,
       decision_context: decisionContext,
+      team_dependencies: teamDependencies,
       last_build_id: lastBuildId,
     }),
     [
@@ -1105,6 +1107,7 @@ export const SocialCrisisWizard = () => {
       perCountryCounts,
       sopSteps,
       decisionContext,
+      teamDependencies,
       lastBuildId,
     ],
   );
@@ -1249,6 +1252,8 @@ export const SocialCrisisWizard = () => {
     if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps as SopStepWire[]);
     if (input.decision_context && typeof input.decision_context === 'object')
       setDecisionContext(input.decision_context as Record<string, unknown>);
+    if (input.team_dependencies && typeof input.team_dependencies === 'object')
+      setTeamDependencies(input.team_dependencies as Record<string, unknown>);
 
     if (typeof input.last_build_id === 'string' && input.last_build_id) {
       setLastBuildId(input.last_build_id);
@@ -1971,6 +1976,9 @@ export const SocialCrisisWizard = () => {
         // Cross-team intel emails: merge into the holder teams' storylines so
         // they compile as ordinary team-scoped injects.
         const intel = d.intel_injects as Record<string, SocialInject[]> | undefined;
+        if (d.team_dependencies && typeof d.team_dependencies === 'object') {
+          setTeamDependencies(d.team_dependencies as Record<string, unknown>);
+        }
         if (intel && typeof intel === 'object') {
           setTeamStorylines((prev) => {
             const next = { ...prev };
@@ -2473,6 +2481,7 @@ export const SocialCrisisWizard = () => {
           stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
           sop_steps: sopSteps.length > 0 ? sopSteps : undefined,
           decision_context: decisionContext ?? undefined,
+          team_dependencies: teamDependencies ?? undefined,
           build_id: lastBuildId ?? undefined,
         }),
       });
@@ -2589,6 +2598,7 @@ export const SocialCrisisWizard = () => {
     stakeholderInjects,
     sopSteps,
     decisionContext,
+    teamDependencies,
     lastBuildId,
   ]);
 

@@ -180,7 +180,9 @@ export function sessionMinute(startTime: string | null | undefined, now = Date.n
   return crisisElapsedMinutes(startTime, now);
 }
 
-export async function loadScenarioDependencyEdges(scenarioId: string): Promise<TeamDependencyEdge[]> {
+export async function loadScenarioDependencyEdges(
+  scenarioId: string,
+): Promise<TeamDependencyEdge[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('scenarios')
@@ -463,17 +465,32 @@ function viewOf(
   };
 }
 
-export async function listSessionDependencies(
+/**
+ * One read of session_dependency_states. `missing` is true when migration 280
+ * is not applied, so the trainer panel can hide without a second select.
+ * The edges are still returned, projected as pending, for the list route.
+ */
+export async function loadSessionDependencyViews(
   session: DependencySession,
-): Promise<SessionDependencyView[]> {
+  options?: { history?: boolean },
+): Promise<{ missing: boolean; edges: SessionDependencyView[] }> {
   const edges = await loadScenarioDependencyEdges(session.scenario_id);
   const teams = await loadTeams(session.scenario_id);
-  const stored =
-    env.crossTeamDependencies && !tableMissing ? await loadRows(session.id) : { missing: true, rows: [] };
+  const readStates = (options?.history || env.crossTeamDependencies) && !tableMissing;
+  const stored = readStates ? await loadRows(session.id) : { missing: true, rows: [] };
   const rows = stored.missing ? [] : stored.rows;
   const map = projectDependencyStates(edges, rows, teams);
   const evidenceById = new Map(rows.map((row) => [row.dep_id, row.evidence]));
-  return edges.map((edge) => viewOf(edge, map[edge.id], evidenceById.get(edge.id) ?? [], teams));
+  return {
+    missing: stored.missing,
+    edges: edges.map((edge) => viewOf(edge, map[edge.id], evidenceById.get(edge.id) ?? [], teams)),
+  };
+}
+
+export async function listSessionDependencies(
+  session: DependencySession,
+): Promise<SessionDependencyView[]> {
+  return (await loadSessionDependencyViews(session)).edges;
 }
 
 export type DependencyCommandResult =
@@ -506,7 +523,11 @@ export async function waiveDependency(
   if (current.status === 'waived') return { ok: true, state: current };
   const upcoming: DependencyRuntimeState = { ...current, status: 'waived' };
   const evidence: DependencyEvidence[] = [
-    { key: `dependency_waived:${depId}`, detail: 'The trainer waived this dependency', minute: elapsed },
+    {
+      key: `dependency_waived:${depId}`,
+      detail: 'The trainer waived this dependency',
+      minute: elapsed,
+    },
   ];
   const plan = planDependencyWrite(
     stored.rows.find((row) => row.dep_id === depId)?.status ?? null,

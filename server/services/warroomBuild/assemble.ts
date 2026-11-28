@@ -51,6 +51,7 @@ export interface ConvergenceStageInput {
   factSheet: CharactersOutput['fact_sheet'];
   stakeholders: StorylineOutput['stakeholders'];
   stakeholderInjects: SocialInject[];
+  teamCharters?: StorylineOutput['team_charters'];
   brief_diff?: unknown;
   swap_premise?: string | null;
   prior_retired_keys?: string[];
@@ -159,6 +160,7 @@ export function stageInput(
       factSheet: characters.fact_sheet,
       stakeholders: storyline.stakeholders ?? [],
       stakeholderInjects: storyline.stakeholder_injects ?? [],
+      teamCharters: storyline.team_charters ?? [],
       ...(editBase
         ? { ...editBase, prior_retired_keys: [...retiredSoFar, ...retiredInjectKeys(storyline)] }
         : {}),
@@ -283,5 +285,8 @@ export function assembleReview(request: BuildRequest, outputs: StageOutputs): Re
     dimension_labels: dimensionLabels(convergence),
     org_page: pages?.org_page ?? null,
     ...(peace ? { peace_period: peace } : {}),
+    ...(convergence?.team_dependencies
+      ? { team_dependencies: convergence.team_dependencies }
+      : {}),
   };
 }

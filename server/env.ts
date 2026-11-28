@@ -56,6 +56,15 @@ function envSeverity(name: string, fallback: 'low' | 'medium' | 'high'): 'low' |
   return fallback;
 }
 
+function envDirectorMode(
+  name: string,
+  fallback: 'off' | 'suggest' | 'auto',
+): 'off' | 'suggest' | 'auto' {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === 'off' || raw === 'suggest' || raw === 'auto') return raw;
+  return fallback;
+}
+
 const runBackgroundEngines =
   process.env.RUN_BACKGROUND_ENGINES === 'true' ||
   (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false');
@@ -176,6 +185,12 @@ export const env = {
   // Large-cast generation (scenario re-edit WP1). No per-build call budget.
   warroomGenConcurrency: envInt('WARROOM_GEN_CONCURRENCY', 4),
   warroomOrgPageBatch: envInt('WARROOM_ORG_PAGE_BATCH', 4),
+  /** Playable teams above this get one dependency-map call per organisation plus one cross-org call. */
+  warroomDependencyMapBatchTeams: envInt('WARROOM_DEPENDENCY_MAP_BATCH_TEAMS', 16),
+  /** Max upstream edges per downstream team during dependency generation. */
+  warroomDependencyUpstreamPerTeam: envInt('WARROOM_DEPENDENCY_UPSTREAM_PER_TEAM', 3),
+  /** Dependency edges per consequence-generation call. */
+  warroomDependencyConsequenceBatch: envInt('WARROOM_DEPENDENCY_CONSEQUENCE_BATCH', 8),
   // Estimate above which the wizard asks before Build (scenario re-edit WP2). 0 asks every time.
   warroomLargeBuildConfirmCalls: envNonNegativeInt('WARROOM_LARGE_BUILD_CONFIRM_CALLS', 150),
   socialPersonasTotalMax: envInt('SOCIAL_PERSONAS_TOTAL_MAX', 800),
@@ -218,8 +233,12 @@ export const env = {
   crossTeamLoopWindowMinutes: envInt('CROSS_TEAM_LOOP_WINDOW_MINUTES', 20),
   crossTeamMaxCascadeDepth: envInt('CROSS_TEAM_MAX_CASCADE_DEPTH', 3),
   // AI director (consequence director). Dormant until migration 279 is applied and AI is enabled.
-  // Mode ceiling and the default-mode env vars belong to the publishing work.
   directorEnabled: process.env.DIRECTOR_ENABLED !== 'false',
+  directorModeMax: envDirectorMode('DIRECTOR_MODE_MAX', 'auto'),
+  directorDefaultMode: envDirectorMode('DIRECTOR_DEFAULT_MODE', 'auto'),
+  directorAutoMaxSeverity: envSeverity('DIRECTOR_AUTO_MAX_SEVERITY', 'medium'),
+  directorAutoGraceSeconds: envInt('DIRECTOR_AUTO_GRACE_SECONDS', 60),
+  directorSuggestionTtlMinutes: envInt('DIRECTOR_SUGGESTION_TTL_MINUTES', 5),
   directorTemperature: envUnitFloat('DIRECTOR_TEMPERATURE', 0.4),
   directorSeedSalt: process.env.DIRECTOR_SEED_SALT ?? '',
   directorFairnessTolerance: envNonNegativeInt('DIRECTOR_FAIRNESS_TOLERANCE', 2),
