@@ -11,6 +11,7 @@ import {
   type Draft,
   type FeedPost,
   type NewsArticle,
+  type OrgPage,
   type SimEmail,
   type TeamAssignment,
 } from './apiClient.js';
@@ -317,6 +318,16 @@ export interface PerceiveInput {
   teamMemberIds?: Set<string>;
 }
 
+/** Handles of protagonist pages. A missing role counts as protagonist, as before. */
+export function protagonistHandlesOf(pages: readonly OrgPage[]): Set<string> {
+  return new Set(
+    pages
+      .filter((page) => (page.role ?? 'protagonist') === 'protagonist')
+      .flatMap((page) => [page.x_twitter?.page_handle, page.facebook?.page_handle])
+      .filter((handle): handle is string => Boolean(handle)),
+  );
+}
+
 export async function perceive(input: PerceiveInput): Promise<Situation> {
   const { api, userId, displayName, memory, charter, sessionCtx } = input;
   const now = Date.now();
@@ -381,12 +392,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
   // Page control.
   const myPage = pages.find((p) => (p.controllers ?? []).includes(userId)) ?? null;
   const pageHandle = myPage?.x_twitter?.page_handle ?? myPage?.facebook?.page_handle ?? null;
-  const protagonistHandles = new Set(
-    pages
-      .filter((p) => (p.role ?? 'protagonist') === 'protagonist')
-      .flatMap((p) => [p.x_twitter?.page_handle, p.facebook?.page_handle])
-      .filter((h): h is string => Boolean(h)),
-  );
+  const protagonistHandles = protagonistHandlesOf(pages);
 
   // Feed.
   const repliesByTeam = new Set<string>();

@@ -12,6 +12,7 @@ import type {
 import type { PageCoverage } from '@shared/sessionPageCoverage';
 import type { ConditionDefSpec } from '@shared/conditionKeyGrammar';
 import type { PeaceFeed } from '@shared/peaceFeed';
+import { spectatorRequestHeaders } from './simSpectator';
 
 export type SessionPageCoverageDTO = PageCoverage & { applies: boolean };
 
@@ -102,18 +103,26 @@ const apiUrl = (path: string) => {
   return cleanPath;
 };
 
-const getAuthHeaders = async () => {
+/** Spectator frame for one call. Absent means today's Authorization header only. */
+export interface SpectatorFrame {
+  sessionId: string;
+  spectator: true;
+}
+
+export async function getAuthHeaders(frame?: SpectatorFrame) {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) {
     throw new Error('Not authenticated');
   }
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${session.access_token}`,
     'Content-Type': 'application/json',
   };
-};
+  if (frame?.spectator) Object.assign(headers, spectatorRequestHeaders(frame.sessionId));
+  return headers;
+}
 
 /** For multipart uploads: the browser must set Content-Type itself to add the boundary. */
 const getAuthHeadersMultipart = async () => {

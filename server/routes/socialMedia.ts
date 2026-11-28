@@ -27,6 +27,7 @@ import type { TopicPhase } from '../services/topic/topicPromptCore.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
+import { projectSessionPages } from '../lib/pageExplorer.js';
 import {
   generatePostImage,
   generateVideo,
@@ -53,7 +54,7 @@ import {
 } from '../services/playerDirectoryService.js';
 import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSharingService.js';
 import { normalizeRecipients } from '../../shared/emailRecipients.js';
-import { isSessionStaff } from '../lib/socialAccess.js';
+import { canSpectate, isSessionStaff } from '../lib/socialAccess.js';
 import {
   requirePlayerWrite,
   requireSocialRead,
@@ -2698,7 +2699,9 @@ const videoPreviewCache = new Map<
   string,
   { status: string; url: string | null; media_type: string }
 >();
-setInterval(
+// Unref so importing this router does not pin the process open. The server
+// stays up on its own listen socket; the sweep still runs while it does.
+const previewCacheSweep = setInterval(
   () => {
     const cutoff = Date.now() - 30 * 60 * 1000;
     for (const [key] of videoPreviewCache) {
@@ -2707,6 +2710,7 @@ setInterval(
   },
   5 * 60 * 1000,
 );
+previewCacheSweep.unref();
 
 router.get('/media/preview/:previewId', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { previewId } = req.params;
@@ -2954,7 +2958,8 @@ router.get('/pages/session/:sessionId', requireAuth, async (req: AuthenticatedRe
   try {
     const { sessionId } = req.params;
     const user = req.user!;
-    if (!(await requireSocialRead(res, sessionId, user))) return;
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
     const [pagesResult, controllersResult] = await Promise.all([
       supabaseAdmin.from('sim_org_pages').select('*').eq('session_id', sessionId),
       supabaseAdmin
@@ -2976,7 +2981,19 @@ router.get('/pages/session/:sessionId', requireAuth, async (req: AuthenticatedRe
         .map((c) => c.user_id as string),
     }));
 
-    res.json({ data: withControllers });
+    // Flag off: the same objects as before. On: participants lose internal fields
+    // on pages they do not control, except role. Staff still receive every page
+    // in full. GET /org-page/session is not projected.
+    let data: unknown = withControllers;
+    if (env.enableStaffPageExplorer) {
+      const staff = canSpectate(user, session);
+      data = projectSessionPages(withControllers, {
+        staff,
+        controlledOrgKey: staff ? null : await getControlledOrgKey(sessionId, user.id),
+      });
+    }
+
+    res.json({ data });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /social/pages/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });

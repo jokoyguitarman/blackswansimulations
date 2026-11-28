@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyInjectGenStamp,
   fingerprintInject,
+  inferLayer,
   injectProvenance,
   isAiOwned,
   type FingerprintInject,
@@ -83,6 +84,42 @@ describe('isAiOwned', () => {
       delivery_config: { ...base.delivery_config, gen: { hash: fingerprintInject(base), edit: 0, layer: 'shared' } },
     });
     assert.equal(isAiOwned(trainer), false);
+  });
+
+  test('an unedited promoted inject is AI-owned until its text changes', () => {
+    const base = row({
+      generation_source: 'trainer',
+      delivery_config: {
+        ...row().delivery_config,
+        promoted_from: 'proposal-1',
+      },
+    });
+    const hash = fingerprintInject(base);
+    const promoted = row({
+      generation_source: 'trainer',
+      delivery_config: {
+        ...base.delivery_config,
+        gen: { layer: 'promoted', edit: 0, hash },
+      },
+    });
+    assert.equal(isAiOwned(promoted), true);
+    assert.equal(injectProvenance(promoted), 'ai_owned');
+    assert.equal(inferLayer(base), 'promoted');
+    const edited = row({
+      generation_source: 'trainer',
+      content: 'Trainer changed the wording',
+      delivery_config: promoted.delivery_config,
+    });
+    assert.equal(isAiOwned(edited), false);
+    assert.equal(injectProvenance(edited), 'hand_edited');
+    const marked = row({
+      generation_source: 'trainer',
+      delivery_config: {
+        ...base.delivery_config,
+        gen: { layer: 'promoted', edit: 1 },
+      },
+    });
+    assert.equal(isAiOwned(marked), false);
   });
 
   test('a legacy war-room row with no gen hash is AI-owned and unverified', () => {

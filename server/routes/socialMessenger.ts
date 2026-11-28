@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { staffViewer } from '../middleware/viewer.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -8,17 +8,53 @@ import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { attributeMessengerReply } from '../services/ledger/injectLedgerService.js';
-import { getControlledOrgPage } from '../services/orgPageService.js';
+import {
+  getControlledOrgKey,
+  getControlledOrgPage,
+  getOrgPage,
+} from '../services/orgPageService.js';
 import { randomUUID } from 'crypto';
-import { directThreadVisible, isSessionStaff, messengerHandleFilter } from '../lib/socialAccess.js';
+import {
+  canSpectate,
+  directThreadVisible,
+  isSessionStaff,
+  messengerHandleFilter,
+} from '../lib/socialAccess.js';
+import { summariseMessengerThreads } from '../lib/messengerThreads.js';
+import {
+  pageInboxDecision,
+  parsePageInboxQuery,
+  parsePageThreadOrgKey,
+  threadBelongsToPage,
+} from '../lib/pageExplorer.js';
 import {
   loadInboxPageHandles,
   requirePlayerWrite,
   requireSocialRead,
+  type SocialSession,
 } from '../lib/socialSessionGuard.js';
 
 const router = Router();
 router.use(staffViewer('socialMessenger'));
+
+type MessengerUser = NonNullable<AuthenticatedRequest['user']>;
+
+/** Controllers of the org, and staff who may spectate. Sends 403 when neither. */
+async function pageInboxAllowed(
+  res: Response,
+  sessionId: string,
+  user: MessengerUser,
+  session: SocialSession,
+  orgKey: string,
+): Promise<boolean> {
+  const staff = canSpectate(user, session);
+  const controlledOrgKey = staff ? null : await getControlledOrgKey(sessionId, user.id);
+  if (pageInboxDecision({ spectatingStaff: staff, controlledOrgKey, orgKey }) === 'allow') {
+    return true;
+  }
+  res.status(403).json({ error: 'Access denied' });
+  return false;
+}
 
 // ─── List Conversation Threads ───────────────────────────────────────────────
 
@@ -38,7 +74,6 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     // Players see their own threads plus pages they control. The first org page in the
     // table is not an inbox everyone shares. Session staff see every page on this platform.
     const pageHandles = await loadInboxPageHandles(sessionId, user, session, platform);
-    const pageHandleSet = new Set(pageHandles);
     const handleFilter = messengerHandleFilter(playerHandle, pageHandles);
     if (!handleFilter) return res.json({ data: [] });
 
@@ -61,58 +96,7 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       return res.status(500).json({ error: 'Failed to fetch DM threads' });
     }
 
-    const threadMap = new Map<
-      string,
-      {
-        thread_id: string;
-        latest_message: (typeof messages)[0];
-        unread_count: number;
-        other_participant: { handle: string; display_name: string };
-        is_org_page_thread: boolean;
-      }
-    >();
-
-    for (const msg of messages || []) {
-      const existing = threadMap.get(msg.thread_id);
-      const isOrgThread =
-        pageHandleSet.has(msg.sender_handle) || pageHandleSet.has(msg.recipient_handle);
-      const isIncoming = isOrgThread
-        ? pageHandleSet.has(msg.recipient_handle)
-        : msg.recipient_handle === playerHandle;
-      const otherHandle = isIncoming ? msg.sender_handle : msg.recipient_handle;
-      const otherDisplayName = isIncoming ? msg.sender_display_name : otherHandle;
-
-      if (!existing) {
-        threadMap.set(msg.thread_id, {
-          thread_id: msg.thread_id,
-          latest_message: msg,
-          unread_count: isIncoming && !msg.is_read ? 1 : 0,
-          other_participant: { handle: otherHandle, display_name: otherDisplayName },
-          is_org_page_thread: !!isOrgThread,
-        });
-      } else {
-        if (new Date(msg.created_at) > new Date(existing.latest_message.created_at)) {
-          existing.latest_message = msg;
-        }
-        if (isIncoming && !msg.is_read) {
-          existing.unread_count += 1;
-        }
-        if (
-          !existing.other_participant.display_name ||
-          existing.other_participant.display_name === existing.other_participant.handle
-        ) {
-          if (otherDisplayName && otherDisplayName !== otherHandle) {
-            existing.other_participant.display_name = otherDisplayName;
-          }
-        }
-      }
-    }
-
-    const threads = Array.from(threadMap.values()).sort(
-      (a, b) =>
-        new Date(b.latest_message.created_at).getTime() -
-        new Date(a.latest_message.created_at).getTime(),
-    );
+    const threads = summariseMessengerThreads(messages || [], pageHandles, playerHandle);
 
     res.json({ data: threads });
   } catch (err) {
@@ -451,6 +435,93 @@ router.get('/unread-count/:sessionId', requireAuth, async (req: AuthenticatedReq
     res.json({ data: { unread_count: count || 0 } });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /messenger/unread-count/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── One organisation page's inbox (staff explorer and that page's controllers) ──
+
+router.get('/page-inbox/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.enableStaffPageExplorer) return res.status(404).json({ error: 'Not found' });
+    const { sessionId } = req.params;
+    const user = req.user!;
+    const parsed = parsePageInboxQuery(req.query.org_key, req.query.platform);
+    if (!parsed) {
+      return res.status(400).json({ error: 'org_key and platform are required' });
+    }
+
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    if (!(await pageInboxAllowed(res, sessionId, user, session, parsed.orgKey))) return;
+
+    const page = await getOrgPage(sessionId, parsed.orgKey, parsed.platform);
+    if (!page) return res.status(404).json({ error: 'Org page not found' });
+
+    const handleFilter = messengerHandleFilter('', [page.page_handle]);
+    if (!handleFilter) return res.json({ data: [] });
+
+    const { data: messages, error } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .or(handleFilter)
+      .eq('platform', parsed.platform)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, sessionId }, 'Failed to fetch page inbox');
+      return res.status(500).json({ error: 'Failed to fetch DM threads' });
+    }
+
+    res.json({
+      data: summariseMessengerThreads(messages || [], [page.page_handle], ''),
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /messenger/page-inbox/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/page-thread/:threadId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.enableStaffPageExplorer) return res.status(404).json({ error: 'Not found' });
+    const { threadId } = req.params;
+    const user = req.user!;
+    const orgKey = parsePageThreadOrgKey(req.query.org_key);
+    if (!orgKey) return res.status(400).json({ error: 'org_key is required' });
+
+    const { data, error } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      logger.error({ error, threadId }, 'Failed to fetch page thread');
+      return res.status(500).json({ error: 'Failed to fetch thread messages' });
+    }
+
+    const rows = data || [];
+    if (rows.length === 0) return res.status(404).json({ error: 'Thread not found' });
+    const sessionId = rows[0].session_id;
+    if (typeof sessionId !== 'string' || !sessionId) {
+      return res.status(500).json({ error: 'Failed to fetch thread messages' });
+    }
+    const session = await requireSocialRead(res, sessionId, user);
+    if (!session) return;
+    if (!(await pageInboxAllowed(res, sessionId, user, session, orgKey))) return;
+
+    const platform = typeof rows[0].platform === 'string' ? rows[0].platform : 'facebook';
+    const page = await getOrgPage(sessionId, orgKey, platform);
+    if (!page) return res.status(404).json({ error: 'Org page not found' });
+    if (!threadBelongsToPage(page.page_handle, rows)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json({ data: rows });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /messenger/page-thread/:threadId');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
