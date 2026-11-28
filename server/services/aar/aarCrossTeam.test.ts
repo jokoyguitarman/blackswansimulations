@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  AAR_STORED_CAP,
   buildCrossTeamSection,
-  inferCrossTeamTriggers,
   type CrossTeamEdgeInput,
   type CrossTeamTriggerInput,
 } from '../../../shared/crossTeamAar.js';
+import { inferCrossTeamTriggers } from './aarCrossTeamInfer.js';
+import { triggerInput } from './aarCrossTeamService.js';
+import { rosterWithRoles } from '../conditions/injectTriggerService.js';
+import type { TriggerHistoryRow } from '../crossTeam/crossTeamReads.js';
+import { parsePlayerRoles } from '../roles/roleCore.js';
 import {
   applyFiredMinutes,
   AT_RISK_WITHIN_MINUTES,
@@ -19,7 +24,6 @@ import {
   type PanelEdgeInput,
 } from '../../../shared/crossTeamPanel.js';
 import { buildCommsResponsesSection } from '../aarCommsResponses.js';
-import { CROSS_TEAM_READ_LIMITS } from '../crossTeam/crossTeamReads.js';
 
 const edges: CrossTeamEdgeInput[] = [
   {
@@ -286,7 +290,11 @@ describe('cross-team cause chains', () => {
         published_minute: 23,
       },
     ];
-    const inferred = inferCrossTeamTriggers(published, [edges[0]!]);
+    const inferred = inferCrossTeamTriggers(
+      published,
+      [edges[0]!],
+      rosterWithRoles(['Operations', 'Communications', 'Legal'], []),
+    );
     assert.deepEqual(
       inferred.map((item) => item.inject_key),
       ['comms_reporter_presses'],
@@ -319,30 +327,46 @@ describe('cross-team cause chains', () => {
     assert.equal(communications?.pressure.cross_team, 1);
   });
 
-  test('a silence or missed duty in parent_inject_keys is a signal, not a missing inject', () => {
-    const section = buildCrossTeamSection({
-      triggers: [
-        trigger({
-          inject_key: 'comms_ceo_asks',
-          title: "CEO's office asks why there's still no statement",
-          minute: 27,
-          origin: 'dependency',
-          source_teams: ['Legal'],
-          target_teams: ['Communications'],
-          dep_id: 'dep_legal_statement_comms_cs',
-          cause_depth: 1,
-          parent_inject_keys: [
-            'duty_missed:legal_review_statement|team=legal',
-            'team_silent:12|team=legal',
-          ],
-        }),
+  test('a silence or missed duty is a catalogue signal, not a missing inject', () => {
+    const row: TriggerHistoryRow = {
+      inject_id: 'inj-ceo',
+      inject_key: 'comms_ceo_asks',
+      minute: 27,
+      origin: 'dependency',
+      source_teams: ['Legal'],
+      target_teams: ['Communications'],
+      dep_id: 'dep_legal_statement_comms_cs',
+      cause_depth: 1,
+      met_keys: [],
+      parent_inject_keys: [
+        'duty_missed:legal_review_statement|team=legal',
+        'team_silent:12|team=legal',
+        'legal_approval_request',
       ],
-      edges: [
+      key_details: [
         {
-          ...edges[1]!,
-          evidence: [{ detail: 'Legal: was silent for 12 min' }],
+          key: 'duty_missed:legal_review_statement|team=legal',
+          label: 'Duty legal review statement was not completed on time',
+          detail: '',
+          teams: ['Legal'],
+        },
+        {
+          key: 'team_silent:12|team=legal',
+          label: 'The team has been silent for 12 minutes',
+          detail: 'Legal: was silent for 12 min',
+          teams: ['Legal'],
         },
       ],
+    };
+    const input = triggerInput(row, new Map([['comms_ceo_asks', "CEO's office asks"]]));
+    assert.deepEqual(input.parent_inject_keys, ['legal_approval_request']);
+    assert.deepEqual(input.signals, [
+      'Duty legal review statement was not completed on time',
+      'Legal: was silent for 12 min',
+    ]);
+    const section = buildCrossTeamSection({
+      triggers: [input],
+      edges: [{ ...edges[1]!, evidence: [{ detail: 'Legal: was silent for 12 min' }] }],
       replies: [],
       inject_keys: ['comms_ceo_asks', 'legal_approval_request'],
     });
@@ -351,8 +375,50 @@ describe('cross-team cause chains', () => {
     assert.doesNotMatch(text, /was not recorded/);
     assert.match(text, /^T\+24 Legal was silent for 12 min/);
     assert.doesNotMatch(text, /Legal Legal/);
-    assert.match(text, /missed duty legal review statement/);
+    assert.match(text, /Duty legal review statement was not completed on time/);
     assert.match(text, /T\+27 Communications receives/);
+  });
+
+  test('a role scope names the team that owns the role', () => {
+    const teams = rosterWithRoles(
+      ['Legal', 'Communications'],
+      parsePlayerRoles([{ role_id: 'counsel', title: 'Counsel', team_name: 'Legal' }]),
+    );
+    const inferred = inferCrossTeamTriggers(
+      [
+        {
+          inject_key: 'comms_ceo_asks',
+          title: "CEO's office asks why there's still no statement",
+          target_teams: ['Communications'],
+          trigger_time_minutes: null,
+          published_minute: 27,
+          conditions_to_appear: { all: ['team_silent:12|role=counsel'] },
+        },
+      ],
+      [edges[1]!],
+      teams,
+    );
+    assert.equal(inferred.length, 1);
+    assert.deepEqual(inferred[0]?.source_teams, ['Legal']);
+    assert.equal(inferred[0]?.minute, 27);
+  });
+
+  test('a team that is not on the edge still resolves from the roster, not the slug', () => {
+    const inferred = inferCrossTeamTriggers(
+      [
+        {
+          inject_key: 'note_to_comms',
+          title: 'Note',
+          target_teams: ['Communications'],
+          trigger_time_minutes: null,
+          published_minute: 10,
+          conditions_to_appear: { all: ['team_silent:12|team=legal'] },
+        },
+      ],
+      [],
+      rosterWithRoles(['Legal', 'Communications'], []),
+    );
+    assert.deepEqual(inferred[0]?.source_teams, ['Legal']);
   });
 
   test('a null trigger list is the same inferred fallback', () => {
@@ -672,15 +738,24 @@ describe('dependency panel state', () => {
   });
 });
 
-describe('cross-team read limits', () => {
-  test('trigger, state, reply, chain-step and name reads are capped', () => {
-    for (const limit of Object.values(CROSS_TEAM_READ_LIMITS)) {
-      assert.equal(Number.isFinite(limit), true);
-      assert.ok(limit > 0);
-      assert.ok(limit <= 2000);
-    }
-    assert.equal(CROSS_TEAM_READ_LIMITS.chainSteps, 2000);
-    assert.equal(CROSS_TEAM_READ_LIMITS.names, 2000);
-    assert.equal(CROSS_TEAM_READ_LIMITS.triggers, 2000);
+describe('stored row cap', () => {
+  test('the section keeps at most the stored cap of chains', () => {
+    const triggers = Array.from({ length: AAR_STORED_CAP + 40 }, (_, index) =>
+      trigger({
+        inject_key: `dir_${index}`,
+        title: `Unscripted ${index}`,
+        minute: index,
+        origin: 'director',
+        source_teams: [],
+        target_teams: ['Legal'],
+        dep_id: null,
+        cause_depth: 0,
+        parent_inject_keys: [],
+      }),
+    );
+    const section = buildCrossTeamSection({ triggers, edges: [], replies: [] });
+    assert.equal(section.chains.length, AAR_STORED_CAP);
+    assert.equal(section.chains[0]?.minute, 0);
+    assert.equal(section.chains.at(-1)?.minute, AAR_STORED_CAP - 1);
   });
 });

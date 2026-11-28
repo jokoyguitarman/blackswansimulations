@@ -9,26 +9,10 @@ import {
   type PanelStatus,
   type PressureEvent,
 } from '@shared/crossTeamPanel';
-import { supabase } from '../../lib/supabase';
+import { ApiError, api } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
-
-function apiUrl(path: string): string {
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  if (API_BASE_URL) return `${API_BASE_URL.replace(/\/$/, '')}${cleanPath}`;
-  return cleanPath;
-}
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${session?.access_token || ''}`,
-  };
-}
+const PANEL_POLL_MS = 30_000;
 
 export interface EdgePayload {
   id: string;
@@ -295,13 +279,7 @@ export default function DependenciesPanel({
 
   const load = useCallback(async () => {
     try {
-      const headers = await authHeaders();
-      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/dependencies/panel`), { headers });
-      if (!res.ok) {
-        setPayload(null);
-        return;
-      }
-      const json = (await res.json()) as { data?: PanelPayload };
+      const json = await api.sessions.dependencyPanel<PanelPayload>(sessionId);
       if (json.data) setPayload(json.data);
     } catch {
       setPayload(null);
@@ -311,7 +289,7 @@ export default function DependenciesPanel({
   useEffect(() => {
     void load();
     if (readOnly) return;
-    const id = setInterval(() => void load(), 30000);
+    const id = setInterval(() => void load(), PANEL_POLL_MS);
     return () => clearInterval(id);
   }, [load, readOnly]);
 
@@ -356,19 +334,11 @@ export default function DependenciesPanel({
       setBusyId(depId);
       setError(null);
       try {
-        const headers = await authHeaders();
-        const res = await fetch(
-          apiUrl(`/api/sessions/${sessionId}/dependencies/${encodeURIComponent(depId)}/${action}`),
-          { method: 'POST', headers },
+        const json = await api.sessions.dependencyCommand<EdgePayload['state']>(
+          sessionId,
+          depId,
+          action,
         );
-        const json = (await res.json().catch(() => ({}))) as {
-          data?: EdgePayload['state'];
-          error?: string;
-        };
-        if (!res.ok || !json.data) {
-          setError(json.error || 'That dependency could not be updated.');
-          return;
-        }
         const next = json.data;
         setPayload((current) => {
           if (!current) return current;
@@ -379,8 +349,8 @@ export default function DependenciesPanel({
             ),
           };
         });
-      } catch {
-        setError('That dependency could not be updated.');
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'That dependency could not be updated.');
       } finally {
         setBusyId(null);
       }

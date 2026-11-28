@@ -4,6 +4,7 @@
  * is marked inferred. No database access.
  */
 
+import { isInjectKey } from './injectKeySlug.js';
 import type { DependencyDue } from './teamDependencies.js';
 import {
   countPressure,
@@ -16,14 +17,8 @@ import {
   type TeamPressure,
 } from './crossTeamPanel.js';
 
-export const CROSS_TEAM_STORED_CAP = 200;
-
-/** Same shape `delivery_config.inject_key` uses. Condition keys contain `:` or `|`. */
-const INJECT_KEY = /^[a-z0-9_]{1,60}$/;
-
-export function isInjectKey(value: string): boolean {
-  return INJECT_KEY.test(value);
-}
+/** Stored rows kept on the after-action report, including the response timeline. */
+export const AAR_STORED_CAP = 200;
 
 export type CrossTeamProvenance = 'recorded' | 'inferred';
 
@@ -38,7 +33,10 @@ export interface CrossTeamTriggerInput {
   target_teams: string[];
   dep_id: string | null;
   cause_depth: number;
+  /** Inject keys only. Condition keys are `signals`. */
   parent_inject_keys: string[];
+  /** Catalogue phrases for the condition keys that caused this row. */
+  signals?: readonly string[];
 }
 
 export interface CrossTeamReplyInput {
@@ -158,8 +156,8 @@ export function buildCrossTeamSection(input: CrossTeamSectionInput): CrossTeamSe
   const teams = teamCounts(triggers);
   return {
     provenance,
-    edges: edges.slice(0, CROSS_TEAM_STORED_CAP),
-    chains: chains.slice(0, CROSS_TEAM_STORED_CAP),
+    edges: edges.slice(0, AAR_STORED_CAP),
+    chains: chains.slice(0, AAR_STORED_CAP),
     teams,
   };
 }
@@ -259,7 +257,7 @@ function segmentsOf(
       ordered.flatMap((trigger) => trigger.parent_inject_keys).filter((key) => !keys.includes(key)),
     );
     const parents = listed.filter((key) => isInjectKey(key));
-    const signals = listed.filter((key) => !isInjectKey(key));
+    const signals = unique(ordered.flatMap((trigger) => trigger.signals ?? []));
     const depth = ordered.reduce((max, trigger) => Math.max(max, trigger.cause_depth), 0);
     segments.push({
       id,
@@ -558,144 +556,12 @@ function withoutRepeatedTeam(team: string, detail: string): string {
 function signalPhrases(signals: readonly string[], already: string): string[] {
   const phrases: string[] = [];
   const haystack = already.toLowerCase();
-  for (const key of signals) {
-    const phrase = signalPhrase(key);
-    if (!phrase || haystack.includes(phrase.toLowerCase()) || phrases.includes(phrase)) continue;
-    phrases.push(phrase);
+  for (const phrase of signals) {
+    const trimmed = phrase.trim();
+    if (!trimmed || haystack.includes(trimmed.toLowerCase()) || phrases.includes(trimmed)) continue;
+    phrases.push(trimmed);
   }
   return phrases;
-}
-
-function signalPhrase(key: string): string {
-  const body = (key.split('|')[0] ?? key).trim();
-  const [name, ...args] = body.split(':');
-  if (name === 'team_silent') {
-    return args[0] ? `silent for ${args[0]} min` : 'silent';
-  }
-  if (name === 'duty_missed') {
-    const duty = (args[0] ?? '').replace(/_/g, ' ');
-    return duty ? `missed duty ${duty}` : 'missed a duty';
-  }
-  if (name === 'duty_late') {
-    const duty = (args[0] ?? '').replace(/_/g, ' ');
-    return duty ? `completed duty ${duty} late` : 'completed a duty late';
-  }
-  return body.replace(/[_:]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Consequences that can be seen without trigger rows. Only published injects
- * are passed in. A same-team timed inject is not a chain and is not pressure.
- */
-export function inferCrossTeamTriggers(
-  injects: readonly PublishedInjectInput[],
-  edges: readonly CrossTeamEdgeInput[],
-): CrossTeamTriggerInput[] {
-  const known = new Set(
-    injects.map((inject) => inject.inject_key).filter((key) => isInjectKey(key)),
-  );
-  const byConsequence = new Map<string, CrossTeamEdgeInput>();
-  for (const edge of edges) {
-    for (const key of edge.consequence_keys) byConsequence.set(key, edge);
-  }
-  const triggers: CrossTeamTriggerInput[] = [];
-  for (const inject of injects) {
-    if (!isInjectKey(inject.inject_key)) continue;
-    const appear = [inject.conditions_to_appear];
-    const edge = byConsequence.get(inject.inject_key) ?? edgeFromConditions(appear, edges);
-    const source = sourceTeams(appear, edges, edge);
-    const cross = teamsDiffer(source, inject.target_teams);
-    if (!edge && !cross) continue;
-    triggers.push({
-      inject_key: inject.inject_key,
-      title: inject.title || inject.inject_key,
-      minute: inferredMinute(inject),
-      origin: edge ? 'dependency' : 'conditional',
-      source_teams: source,
-      target_teams: inject.target_teams,
-      dep_id: edge?.id ?? null,
-      cause_depth: 1,
-      parent_inject_keys: referencedParents(
-        [inject.conditions_to_appear, inject.conditions_to_cancel],
-        known,
-      ),
-    });
-  }
-  return triggers;
-}
-
-function inferredMinute(inject: PublishedInjectInput): number | null {
-  if (inject.trigger_time_minutes == null) return inject.published_minute ?? null;
-  return inject.trigger_time_minutes;
-}
-
-function sourceTeams(
-  conditions: readonly unknown[],
-  edges: readonly CrossTeamEdgeInput[],
-  edge: CrossTeamEdgeInput | undefined,
-): string[] {
-  const names = new Map<string, string>();
-  for (const item of edges) {
-    for (const name of [item.upstream, ...item.downstream]) {
-      const key = teamKey(name);
-      if (key && !names.has(key)) names.set(key, name);
-    }
-  }
-  const scoped: string[] = [];
-  for (const key of collectStrings(conditions)) {
-    const match = /\|team=([^|\s]+)/.exec(key);
-    const slug = match?.[1];
-    if (!slug || slug.startsWith('@')) continue;
-    const label = names.get(teamKey(slug)) ?? slug;
-    if (!scoped.includes(label)) scoped.push(label);
-  }
-  if (scoped.length > 0) return scoped;
-  return edge ? [edge.upstream] : [];
-}
-
-function edgeFromConditions(
-  conditions: readonly unknown[],
-  edges: readonly CrossTeamEdgeInput[],
-): CrossTeamEdgeInput | undefined {
-  const ids = new Set(edges.map((edge) => edge.id));
-  for (const key of collectStrings(conditions)) {
-    const body = key.split('|')[0] ?? key;
-    if (!body.startsWith('dependency_')) continue;
-    for (const token of body.split(':')) {
-      if (ids.has(token)) return edges.find((edge) => edge.id === token);
-    }
-  }
-  return undefined;
-}
-
-function referencedParents(conditions: readonly unknown[], known: ReadonlySet<string>): string[] {
-  const parents: string[] = [];
-  for (const key of collectStrings(conditions)) {
-    const body = key.split('|')[0] ?? key;
-    for (const token of body.split(':')) {
-      if (known.has(token) && isInjectKey(token) && !parents.includes(token)) parents.push(token);
-    }
-  }
-  return parents;
-}
-
-function collectStrings(values: readonly unknown[]): string[] {
-  const out: string[] = [];
-  const walk = (value: unknown) => {
-    if (typeof value === 'string') {
-      if (value.trim()) out.push(value);
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) walk(item);
-      return;
-    }
-    if (value && typeof value === 'object') {
-      for (const item of Object.values(value)) walk(item);
-    }
-  };
-  for (const value of values) walk(value);
-  return out;
 }
 
 function unique(values: readonly string[]): string[] {

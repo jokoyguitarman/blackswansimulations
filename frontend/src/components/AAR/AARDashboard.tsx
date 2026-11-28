@@ -10,6 +10,7 @@ import {
   SocialExecutiveSectionData,
   socialSectionsPresent,
 } from './SocialAARCharts';
+import { AAR_STORED_CAP } from '@shared/crossTeamAar';
 import { CrossTeamSection } from './CrossTeamSection';
 
 const AAR_SECTION_KEYS = [
@@ -617,15 +618,13 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
   );
 }
 
-const COMMS_TIMELINE_CAP = 200;
-
 function CommsTimelineTable({ rows }: { rows: unknown[] }) {
   const shown = rows
     .filter(
       (row): row is Record<string, unknown> =>
         !!row && typeof row === 'object' && !Array.isArray(row),
     )
-    .slice(0, COMMS_TIMELINE_CAP);
+    .slice(0, AAR_STORED_CAP);
   const columns = ['minute', 'event', 'inject', 'channel', 'who', 'origin', 'detail'] as const;
   return (
     <div className="overflow-x-auto">

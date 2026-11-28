@@ -10,7 +10,7 @@ import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { orgsForSession, teamsValidAt } from '../lib/templateRows.js';
 import { openedAtOf, selectSession, type SessionClockFields } from '../lib/peaceSchema.js';
 import { rosterValidAt } from '../lib/peaceGate.js';
-import { loadCrossTeamSection } from './aar/aarCrossTeamService.js';
+import { loadSharedAarSections } from './aar/aarCrossTeamService.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -213,6 +213,8 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     if (dl) dimensionLabels = { ...dimensionLabels, ...dl };
   }
 
+  const shared = await loadSharedAarSections(sessionId);
+
   const [
     social,
     ledger,
@@ -222,7 +224,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     { data: disputes },
     { count: participantCount },
   ] = await Promise.all([
-    buildSocialMediaAARData(sessionId),
+    buildSocialMediaAARData(sessionId, shared.comms),
     buildPlayerLedger(sessionId),
     getIntelStatus(sessionId).catch(() => [] as IntelStatusEntry[]),
     supabaseAdmin
@@ -510,7 +512,7 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
   };
 
   sections.cross_team = {
-    data: await loadCrossTeamSection(sessionId),
+    data: shared.crossTeam,
     analysis: null,
   };
 

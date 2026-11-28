@@ -472,13 +472,12 @@ function viewOf(
  */
 export async function loadSessionDependencyViews(
   session: DependencySession,
+  options?: { history?: boolean },
 ): Promise<{ missing: boolean; edges: SessionDependencyView[] }> {
   const edges = await loadScenarioDependencyEdges(session.scenario_id);
   const teams = await loadTeams(session.scenario_id);
-  const stored =
-    env.crossTeamDependencies && !tableMissing
-      ? await loadRows(session.id)
-      : { missing: true, rows: [] };
+  const readStates = (options?.history || env.crossTeamDependencies) && !tableMissing;
+  const stored = readStates ? await loadRows(session.id) : { missing: true, rows: [] };
   const rows = stored.missing ? [] : stored.rows;
   const map = projectDependencyStates(edges, rows, teams);
   const evidenceById = new Map(rows.map((row) => [row.dep_id, row.evidence]));

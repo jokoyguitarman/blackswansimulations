@@ -1,98 +1,138 @@
 /**
- * Loads the cross-team AAR section. A missing trigger table, or a session
- * with no trigger rows, falls back to static parent links marked inferred.
+ * Cross-team after-action section. Injects, deliveries and replies come from
+ * the comms timeline loader. Dependency rows come from the dependency service.
  */
 
-import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { logger } from '../../lib/logger.js';
-import { teamDependenciesSchema } from '../dependencies/dependencySchema.js';
-import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import { isInjectKey } from '../../../shared/injectKeySlug.js';
 import {
   buildCrossTeamSection,
-  inferCrossTeamTriggers,
   type CrossTeamEdgeInput,
   type CrossTeamReplyInput,
   type CrossTeamSection,
   type CrossTeamTriggerInput,
+  type PublishedInjectInput,
 } from '../../../shared/crossTeamAar.js';
+import { crisisElapsedMinutes } from '../../lib/sessionPhase.js';
+import { formatConditionLabel, parseConditionKey } from '../conditions/conditionCatalog.js';
+import { loadRoster } from '../conditions/injectTriggerService.js';
 import {
-  readCrossTeamReplies,
-  readDependencyStateRows,
-  readInjectTriggers,
-  readSessionInjects,
-  type StoredStateRow,
-  type TriggerHistoryRow,
-} from '../crossTeam/crossTeamReads.js';
+  loadSessionDependencyViews,
+  type SessionDependencyView,
+} from '../dependencies/dependencyService.js';
+import {
+  buildCommsResponsesSection,
+  loadAarSessionParts,
+  type AarInject,
+  type AarResponse,
+  type AarSessionParts,
+} from '../aarCommsResponses.js';
+import type { TriggerHistoryRow } from '../crossTeam/crossTeamReads.js';
+import { inferCrossTeamTriggers } from './aarCrossTeamInfer.js';
 
 export function emptyCrossTeamSection(): CrossTeamSection {
   return { provenance: 'inferred', edges: [], chains: [], teams: [] };
 }
 
 export async function loadCrossTeamSection(sessionId: string): Promise<CrossTeamSection> {
+  const parts = await loadAarSessionParts(sessionId);
+  if (!parts) return emptyCrossTeamSection();
+  return loadCrossTeamSectionFromParts(parts);
+}
+
+export async function loadCrossTeamSectionFromParts(
+  parts: AarSessionParts,
+): Promise<CrossTeamSection> {
   try {
-    const session = await loadSession(sessionId);
-    if (!session) return emptyCrossTeamSection();
-    const [triggers, states, injects, replies] = await Promise.all([
-      readInjectTriggers(sessionId),
-      readDependencyStateRows(sessionId),
-      readSessionInjects(session.scenarioId, sessionId, session.validAt),
-      readCrossTeamReplies(sessionId),
-    ]);
-    const titles = new Map(
-      injects.catalog.map((brief) => [brief.inject_key, brief.title || brief.inject_key]),
+    if (!parts.scenarioId) return emptyCrossTeamSection();
+    const views = await loadSessionDependencyViews(
+      { id: parts.sessionId, scenario_id: parts.scenarioId, start_time: parts.startTime },
+      { history: true },
     );
-    const recorded = triggers.missing
-      ? null
-      : triggers.rows.map((row) => triggerInput(row, titles));
-    const edgeList = edgeInputs(session.edges, states.missing ? [] : states.rows, triggers.rows);
-    const hasTriggers = recorded != null && recorded.length > 0;
-    return buildCrossTeamSection({
-      triggers: recorded,
-      edges: edgeList,
-      replies: replies.map(replyInput).filter((reply) => reply.inject_key !== ''),
-      inferred: hasTriggers ? [] : inferCrossTeamTriggers(injects.published, edgeList),
-      inject_keys: injects.catalog.map((brief) => brief.inject_key),
-    });
+    return sectionFrom(parts, views.edges, await loadRoster(parts.scenarioId, true));
   } catch (err) {
     logger.warn(
-      { err, event: 'aar_cross_team_failed', sessionId },
+      { err, event: 'aar_cross_team_failed', sessionId: parts.sessionId },
       'Cross-team cause and effect omitted',
     );
     return emptyCrossTeamSection();
   }
 }
 
-async function loadSession(
-  sessionId: string,
-): Promise<{ scenarioId: string; validAt: string; edges: TeamDependencyEdge[] } | null> {
-  const { data, error } = await supabaseAdmin
-    .from('sessions')
-    .select('scenario_id, start_time, created_at')
-    .eq('id', sessionId)
-    .maybeSingle();
-  if (error || !data || typeof data.scenario_id !== 'string') return null;
-  const validAt =
-    (typeof data.start_time === 'string' && data.start_time) ||
-    (typeof data.created_at === 'string' && data.created_at) ||
-    new Date().toISOString();
-  const scenario = await supabaseAdmin
-    .from('scenarios')
-    .select('initial_state')
-    .eq('id', data.scenario_id)
-    .maybeSingle();
-  const initial = scenario.data?.initial_state as { team_dependencies?: unknown } | null;
-  const parsed = teamDependenciesSchema.safeParse(initial?.team_dependencies);
+/** Comms timeline and the cross-team section share one load of the session. */
+export async function loadSharedAarSections(sessionId: string): Promise<{
+  comms: ReturnType<typeof buildCommsResponsesSection>;
+  crossTeam: CrossTeamSection;
+}> {
+  const parts = await loadAarSessionParts(sessionId);
+  if (!parts) {
+    return {
+      comms: buildCommsResponsesSection({}),
+      crossTeam: emptyCrossTeamSection(),
+    };
+  }
   return {
-    scenarioId: data.scenario_id,
-    validAt,
-    edges: parsed.success ? parsed.data.edges : [],
+    comms: buildCommsResponsesSection(parts),
+    crossTeam: await loadCrossTeamSectionFromParts(parts),
   };
 }
 
-function triggerInput(
+function sectionFrom(
+  parts: AarSessionParts,
+  views: readonly SessionDependencyView[],
+  teams: Awaited<ReturnType<typeof loadRoster>>,
+): CrossTeamSection {
+  const edges = views.map(edgeFromView);
+  const titles = new Map(
+    parts.injects.map((inject) => [
+      inject.inject_key ?? '',
+      inject.title || inject.inject_key || '',
+    ]),
+  );
+  const known = new Set(
+    parts.injects.map((inject) => inject.inject_key ?? '').filter((key) => isInjectKey(key)),
+  );
+  const recorded =
+    parts.triggerRows == null ? null : parts.triggerRows.map((row) => triggerInput(row, titles));
+  const hasTriggers = recorded != null && recorded.length > 0;
+  return buildCrossTeamSection({
+    triggers: recorded,
+    edges,
+    replies: parts.responses.map(replyFrom).filter((reply) => reply.inject_key !== ''),
+    inferred: hasTriggers ? [] : inferCrossTeamTriggers(publishedInjects(parts), edges, teams),
+    inject_keys: [...known],
+  });
+}
+
+function edgeFromView(view: SessionDependencyView): CrossTeamEdgeInput {
+  const downstream =
+    view.state.downstream.length > 0
+      ? view.state.downstream
+      : view.downstream.map((team) => team.team_name);
+  return {
+    id: view.id,
+    upstream: view.state.upstream || view.upstream.team_name,
+    downstream,
+    deliverable: view.deliverable,
+    due: view.due,
+    consequence_keys: view.consequence_keys,
+    status: view.state.status,
+    broken_minute: view.state.broken_minute,
+    met_minute: view.state.met_minute,
+    recovered_minute: view.state.recovered_minute,
+    evidence: view.state.evidence.map((item) => ({ detail: item.detail })),
+  };
+}
+
+export function triggerInput(
   row: TriggerHistoryRow,
   titles: ReadonlyMap<string, string>,
 ): CrossTeamTriggerInput {
+  const parents: string[] = [];
+  for (const key of row.parent_inject_keys) {
+    if (!isInjectKey(key) || parents.includes(key)) continue;
+    parents.push(key);
+  }
   return {
     inject_key: row.inject_key,
     title: titles.get(row.inject_key) || row.inject_key,
@@ -102,70 +142,78 @@ function triggerInput(
     target_teams: row.target_teams,
     dep_id: row.dep_id,
     cause_depth: row.cause_depth,
-    parent_inject_keys: row.parent_inject_keys,
+    parent_inject_keys: parents,
+    signals: signalPhrases(row),
   };
 }
 
-function edgeInputs(
-  edges: readonly TeamDependencyEdge[],
-  states: readonly StoredStateRow[],
-  triggers: readonly TriggerHistoryRow[],
-): CrossTeamEdgeInput[] {
-  const byId = new Map(states.map((row) => [row.dep_id, row]));
-  return edges.map((edge) => {
-    const state = byId.get(edge.id);
-    const status = isStatus(state?.status) ? state.status : 'pending';
-    const evidence = state?.evidence ?? [];
-    const fallback =
-      evidence.length > 0
-        ? evidence
-        : triggers.filter((row) => row.dep_id === edge.id).flatMap((row) => row.key_details);
-    return {
-      id: edge.id,
-      upstream: edge.upstream.team_name,
-      downstream: edge.downstream.map((team) => team.team_name),
-      deliverable: edge.deliverable,
-      due: edge.due,
-      consequence_keys: edge.consequence_keys,
-      status,
-      broken_minute: state?.broken_minute ?? null,
-      met_minute: state?.met_minute ?? null,
-      recovered_minute: state?.recovered_minute ?? null,
-      evidence: fallback.map((item) => ({ detail: item.detail })),
-    };
+function signalPhrases(row: TriggerHistoryRow): string[] {
+  const phrases: string[] = [];
+  const push = (phrase: string) => {
+    const trimmed = phrase.trim();
+    if (trimmed && !phrases.includes(trimmed)) phrases.push(trimmed);
+  };
+  for (const detail of row.key_details) {
+    if (isInjectKey(detail.key)) continue;
+    push(detail.detail || detail.label || catalogueLabel(detail.key));
+  }
+  for (const key of row.parent_inject_keys) {
+    if (isInjectKey(key) || row.key_details.some((detail) => detail.key === key)) continue;
+    push(catalogueLabel(key));
+  }
+  return phrases;
+}
+
+function catalogueLabel(key: string): string {
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed) return '';
+  return formatConditionLabel(parsed);
+}
+
+function publishedInjects(parts: AarSessionParts): PublishedInjectInput[] {
+  const minuteById = new Map<string, number>();
+  const published = new Set<string>();
+  for (const delivery of parts.deliveries) {
+    published.add(delivery.inject_id);
+    const current = minuteById.get(delivery.inject_id);
+    if (current == null || delivery.delivered_minute < current) {
+      minuteById.set(delivery.inject_id, delivery.delivered_minute);
+    }
+  }
+  for (const claim of parts.publications) {
+    published.add(claim.inject_id);
+    if (minuteById.has(claim.inject_id) || !claim.claimed_at) continue;
+    const at = Date.parse(claim.claimed_at);
+    if (!Number.isFinite(at)) continue;
+    minuteById.set(claim.inject_id, crisisElapsedMinutes(parts.startTime, at));
+  }
+  return parts.injects.flatMap((inject) => {
+    if (!published.has(inject.id)) return [];
+    return [injectInput(inject, minuteById.get(inject.id) ?? null)];
   });
 }
 
-function replyInput(row: {
-  inject_key: string;
-  team_name: string | null;
-  response_minute: number;
-  judgement: unknown;
-}): CrossTeamReplyInput {
-  const judgement =
-    row.judgement && typeof row.judgement === 'object' && !Array.isArray(row.judgement)
-      ? (row.judgement as { tone?: unknown; criteria?: unknown })
-      : null;
-  const criteria = Array.isArray(judgement?.criteria) ? judgement.criteria : [];
-  const met = criteria.filter(
-    (item) => !!item && typeof item === 'object' && (item as { met?: unknown }).met === true,
-  ).length;
+function injectInput(inject: AarInject, publishedMinute: number | null): PublishedInjectInput {
   return {
-    inject_key: row.inject_key,
-    team: row.team_name ?? '',
-    minute: row.response_minute,
-    tone: typeof judgement?.tone === 'string' ? judgement.tone : null,
-    criteria_met: criteria.length > 0 ? met : null,
-    criteria_total: criteria.length > 0 ? criteria.length : null,
+    inject_key: inject.inject_key ?? '',
+    title: inject.title || inject.inject_key || '',
+    target_teams: inject.target_teams ?? [],
+    conditions_to_appear: inject.conditions_to_appear,
+    conditions_to_cancel: inject.conditions_to_cancel,
+    trigger_time_minutes: inject.trigger_time_minutes ?? null,
+    published_minute: publishedMinute,
   };
 }
 
-function isStatus(value: string | undefined): value is CrossTeamEdgeInput['status'] {
-  return (
-    value === 'pending' ||
-    value === 'met' ||
-    value === 'broken' ||
-    value === 'recovered' ||
-    value === 'waived'
-  );
+function replyFrom(response: AarResponse): CrossTeamReplyInput {
+  const criteria = response.judgement?.criteria ?? [];
+  const met = criteria.filter((item) => item.met === true).length;
+  return {
+    inject_key: response.inject_key,
+    team: response.team_name ?? '',
+    minute: response.response_minute,
+    tone: response.judgement?.tone ?? null,
+    criteria_met: criteria.length > 0 ? met : null,
+    criteria_total: criteria.length > 0 ? criteria.length : null,
+  };
 }

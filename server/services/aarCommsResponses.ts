@@ -12,23 +12,18 @@ import { rosterValidAt } from '../lib/peaceGate.js';
 import { injectKeyOf } from '../lib/injectKey.js';
 import { collectConditionKeys, parseConditionKey } from './conditions/conditionCatalog.js';
 import type { JudgementV1 } from './ledger/injectLedgerCore.js';
+import { AAR_STORED_CAP } from '../../shared/crossTeamAar.js';
 import { originLabel, teamsDiffer } from '../../shared/crossTeamPanel.js';
-import { CROSS_TEAM_READ_LIMITS, readInjectTriggers } from './crossTeam/crossTeamReads.js';
+import { errorCode, isUnappliedSchema } from '../lib/unappliedSchema.js';
+import {
+  CROSS_TEAM_READ_LIMITS,
+  readInjectTriggers,
+  type TriggerHistoryRow,
+} from './crossTeam/crossTeamReads.js';
 
-const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
+export { isUnappliedSchema };
 
 const warned = new Set<string>();
-
-export function isUnappliedSchema(err: unknown): boolean {
-  const code = errorCode(err);
-  return code != null && SCHEMA_CODES.has(code);
-}
-
-function errorCode(err: unknown): string | null {
-  if (!err || typeof err !== 'object') return null;
-  const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' ? code : null;
-}
 
 function isMissingColumn(err: unknown): boolean {
   const code = errorCode(err);
@@ -174,6 +169,8 @@ export interface AarInject {
   conditions_to_appear?: unknown;
   conditions_to_cancel?: unknown;
   app?: string | null;
+  target_teams?: string[];
+  trigger_time_minutes?: number | null;
 }
 
 export interface AarBranchEvent {
@@ -217,7 +214,7 @@ const EVENT_ORDER = [
   'consequence',
 ];
 
-const TIMELINE_CAP = 200;
+const TIMELINE_CAP = AAR_STORED_CAP;
 
 export function buildCommsResponsesSection(input: CommsResponsesInput): CommsResponsesSection {
   const names = input.names ?? {};
@@ -627,7 +624,11 @@ function minuteAt(iso: unknown, startMs: number | null): number | null {
   return Math.max(0, Math.floor((at - startMs) / 60000));
 }
 
-interface LoadedParts {
+export interface AarSessionParts {
+  sessionId: string;
+  scenarioId: string | null;
+  startTime: string | null;
+  validAt: string;
   deliveries: AarDelivery[];
   responses: AarResponse[];
   calls: AarCall[];
@@ -639,6 +640,9 @@ interface LoadedParts {
   directMessages: AarDirectMessage[];
   names: Record<string, string>;
   triggers: AarTriggerAttribution[] | null;
+  triggerRows: TriggerHistoryRow[] | null;
+  /** Claims from before the response ledger, when a delivery row does not exist. */
+  publications: Array<{ inject_id: string; claimed_at: string | null }>;
 }
 
 const DELIVERY_BASE =
@@ -655,8 +659,12 @@ interface AarSessionClock extends SessionClockFields {
   scenario_id?: string | null;
 }
 
-async function loadParts(sessionId: string): Promise<LoadedParts> {
-  const parts: LoadedParts = {
+async function loadParts(sessionId: string): Promise<AarSessionParts> {
+  const parts: AarSessionParts = {
+    sessionId,
+    scenarioId: null,
+    startTime: null,
+    validAt: new Date().toISOString(),
     deliveries: [],
     responses: [],
     calls: [],
@@ -668,6 +676,8 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
     directMessages: [],
     names: {},
     triggers: null,
+    triggerRows: null,
+    publications: [],
   };
 
   const sessionResult = await selectSessionClock<AarSessionClock>(
@@ -687,28 +697,58 @@ async function loadParts(sessionId: string): Promise<LoadedParts> {
   parts.steps = chains.steps;
   parts.moods = await loadMoods(sessionId);
   parts.directMessages = await loadDirectMessages(sessionId, started);
+  parts.scenarioId = session?.scenario_id ?? null;
+  parts.startTime = typeof session?.start_time === 'string' ? session.start_time : null;
   const validAtRaw = rosterValidAt({
     start_time: session?.start_time ?? null,
     opened_at: openedAtOf(session),
   });
-  const validAt = validAtRaw instanceof Date ? validAtRaw.toISOString() : validAtRaw;
-  parts.injects = await loadInjects(session?.scenario_id ?? null, sessionId, validAt);
+  parts.validAt = validAtRaw instanceof Date ? validAtRaw.toISOString() : validAtRaw;
+  parts.injects = await loadInjects(parts.scenarioId, sessionId, parts.validAt);
+  parts.publications = await loadPublications(sessionId);
   parts.events = await loadBranchEvents(sessionId, started);
   parts.names = await loadNames(collectUserIds(parts));
-  parts.triggers = await loadTriggerAttribution(sessionId);
+  const triggers = await readInjectTriggers(sessionId);
+  parts.triggerRows = triggers.missing ? null : triggers.rows;
+  parts.triggers = parts.triggerRows
+    ? parts.triggerRows.map((row) => ({
+        inject_id: row.inject_id,
+        inject_key: row.inject_key,
+        origin: row.origin,
+        source_teams: row.source_teams,
+        target_teams: row.target_teams,
+      }))
+    : null;
   return parts;
 }
 
-async function loadTriggerAttribution(sessionId: string): Promise<AarTriggerAttribution[] | null> {
-  const loaded = await readInjectTriggers(sessionId);
-  if (loaded.missing) return null;
-  return loaded.rows.map((row) => ({
-    inject_id: row.inject_id,
-    inject_key: row.inject_key,
-    origin: row.origin,
-    source_teams: row.source_teams,
-    target_teams: row.target_teams,
-  }));
+async function loadPublications(
+  sessionId: string,
+): Promise<AarSessionParts['publications']> {
+  const result = await selectSession('inject_publications', 'inject_id, claimed_at', sessionId, 2000);
+  if (result.error) {
+    if (!isUnappliedSchema(result.error)) warnRead('inject_publications', result.error);
+    return [];
+  }
+  const claims: AarSessionParts['publications'] = [];
+  for (const row of asRecords(result.data)) {
+    const id = text(row.inject_id);
+    if (!id) continue;
+    claims.push({ inject_id: id, claimed_at: text(row.claimed_at) });
+  }
+  return claims;
+}
+
+export async function loadAarSessionParts(sessionId: string): Promise<AarSessionParts | null> {
+  try {
+    return await loadParts(sessionId);
+  } catch (err) {
+    logger.warn(
+      { err, event: 'aar_parts_failed', sessionId },
+      'After-action session parts omitted',
+    );
+    return null;
+  }
 }
 
 async function loadDeliveries(sessionId: string, startMs: number | null): Promise<AarDelivery[]> {
@@ -939,7 +979,7 @@ async function loadInjects(
   if (!scenarioId) return [];
   const result = (await templateInjectsValidAt(scenarioId, sessionId, validAt, {
     select:
-      'id, title, requires_response, conditions_to_appear, conditions_to_cancel, delivery_config',
+      'id, title, target_teams, trigger_time_minutes, requires_response, conditions_to_appear, conditions_to_cancel, delivery_config',
     limit: 2000,
   })) as QueryResult;
   if (result.error) {
@@ -959,6 +999,10 @@ async function loadInjects(
       conditions_to_appear: row.conditions_to_appear,
       conditions_to_cancel: row.conditions_to_cancel,
       app: text(config?.app),
+      target_teams: Array.isArray(row.target_teams)
+        ? row.target_teams.filter((team): team is string => typeof team === 'string')
+        : [],
+      trigger_time_minutes: num(row.trigger_time_minutes),
     };
   });
 }
@@ -1001,7 +1045,7 @@ async function loadBranchEvents(
   return events;
 }
 
-function collectUserIds(parts: LoadedParts): string[] {
+function collectUserIds(parts: AarSessionParts): string[] {
   const ids = new Set<string>();
   for (const delivery of parts.deliveries) {
     if (delivery.first_opened_by) ids.add(delivery.first_opened_by);
@@ -1042,8 +1086,8 @@ async function loadNames(ids: string[]): Promise<Record<string, string>> {
 
 export async function loadCommsResponsesSection(sessionId: string): Promise<CommsResponsesSection> {
   try {
-    const parts = await loadParts(sessionId);
-    return buildCommsResponsesSection(parts);
+    const parts = await loadAarSessionParts(sessionId);
+    return buildCommsResponsesSection(parts ?? {});
   } catch (err) {
     logger.warn(
       { err, event: 'aar_comms_responses_failed', sessionId },
