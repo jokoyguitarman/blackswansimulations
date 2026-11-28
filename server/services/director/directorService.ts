@@ -1415,7 +1415,7 @@ function readClaims(initial: Record<string, unknown>): string[] {
     .slice(0, 5);
 }
 
-function readNpcs(initial: Record<string, unknown>): Array<{ handle: string; name?: string }> {
+export function readNpcs(initial: Record<string, unknown>): Array<{ handle: string; name?: string }> {
   const raw = initial.personas ?? initial.npc_personas ?? initial.social_personas;
   if (!Array.isArray(raw)) return [];
   const npcs: Array<{ handle: string; name?: string }> = [];
