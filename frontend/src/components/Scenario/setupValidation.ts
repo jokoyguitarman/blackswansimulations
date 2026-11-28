@@ -27,9 +27,7 @@ export const EXECUTIVE_TEAM = 'Executive';
 export const PRIMARY_ORG_ID = 'primary';
 export const BRIEF_MIN = 50;
 
-const MAX_ORGS = 6;
 const MIN_TEAMS = 2;
-const MAX_TEAMS = 6;
 const NAME_MAX = 120;
 const TEAM_NAME_MAX = 60;
 /** The server title-cases custom team names and keeps the first 40 characters. */
@@ -153,16 +151,6 @@ export function collectSetupIssues(s: SetupSnapshot): SetupIssue[] {
     );
   }
 
-  const orgCount = s.extras.length + 1;
-  if (orgCount > MAX_ORGS) {
-    error(
-      null,
-      'Organisations',
-      `At most ${MAX_ORGS} organisations — remove ${orgCount - MAX_ORGS}.`,
-      'org',
-    );
-  }
-
   /** Every name taken so far, on any side (the server rejects repeats across all of them). */
   const taken = new Map<string, { label: string; side: 'organisation' | 'pressure group' }>();
   const shortNames = new Map<string, string>();
@@ -217,13 +205,6 @@ export function collectSetupIssues(s: SetupSnapshot): SetupIssue[] {
         rosterKey,
         teamsWhere,
         `Pick at least ${MIN_TEAMS} teams — tick a preset card or add your own (${roster.length} so far).`,
-        'org',
-      );
-    } else if (roster.length > MAX_TEAMS) {
-      error(
-        rosterKey,
-        teamsWhere,
-        `At most ${MAX_TEAMS} teams — remove ${roster.length - MAX_TEAMS}.`,
         'org',
       );
     }

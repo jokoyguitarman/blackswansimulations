@@ -12,7 +12,10 @@ import {
   type SetupIssue,
   type SetupSnapshot,
 } from '../src/components/Scenario/setupValidation';
-import type { CompetitorDraft, RosterEntry } from '../src/components/Scenario/OrganisationRosterBuilder';
+import type {
+  CompetitorDraft,
+  RosterEntry,
+} from '../src/components/Scenario/OrganisationRosterBuilder';
 import { newRivalDraft, resumeRivalDraft } from '../src/components/Scenario/rivalDraft';
 import { validateOrganisations } from '../../server/services/scenarioOrgModel.js';
 import {
@@ -36,7 +39,11 @@ function rival(
   country = 'Singapore',
   extra: Partial<CompetitorDraft> = {},
 ): CompetitorDraft {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'x';
+  const slug =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '') || 'x';
   return { id: `riv_${slug}`, name, country, description: '', ...extra };
 }
 
@@ -279,7 +286,10 @@ describe('collectSetupIssues', () => {
       rival('Q', 'Singapore', { id: 'riv_4' }),
     ];
     assert.match(on(warnings(s), rivalField('riv_2', 'name'))[0].message, /listed twice/);
-    assert.match(on(warnings(s), rivalField('riv_3', 'name'))[0].message, /one of your organisations/);
+    assert.match(
+      on(warnings(s), rivalField('riv_3', 'name'))[0].message,
+      /one of your organisations/,
+    );
     assert.match(on(errors(s), rivalField('riv_4', 'name'))[0].message, /at least 2 characters/);
   });
 
@@ -347,14 +357,6 @@ describe('client checks agree with the server', () => {
     'one team only': (s) => {
       s.extras[0].team_roster = [preset('Communications')];
     },
-    'seven teams': (s) => {
-      s.primary.roster.push(
-        preset('Shareholder Engagement'),
-        preset('Executive'),
-        custom('Youth Outreach'),
-        custom('Dealer Relations'),
-      );
-    },
     'duplicate organisation names': (s) => {
       s.extras[0].display_name = 'MERIDIAN TECHNOLOGIES';
     },
@@ -399,6 +401,37 @@ describe('client checks agree with the server', () => {
       assert.ok(errors(s).length > 0, 'client should flag it');
     });
   }
+
+  test('seven organisations and nine teams are not errors; one team still is', () => {
+    const s = base();
+    const countries = ['Malaysia', 'Vietnam', 'Indonesia', 'Thailand', 'Philippines', 'Japan'];
+    s.extras = countries.map((country, index) => ({
+      ...s.extras[0],
+      id: `org_${index}`,
+      display_name: `Meridian ${country}`,
+      short_name: `M${index}`,
+      country,
+      city: '',
+    }));
+    s.primary.roster = [
+      preset('Communications'),
+      preset('Legal'),
+      preset('Stakeholder Engagement'),
+      preset('Shareholder Engagement'),
+      preset('Executive'),
+      custom('Youth Outreach'),
+      custom('Dealer Relations'),
+      custom('Facilities'),
+      custom('Site Security'),
+    ];
+    assert.equal(errors(s).length, 0);
+    assert.equal(serverRefusal(s), null);
+
+    const one = base();
+    one.extras[0].team_roster = [preset('Communications')];
+    assert.ok(errors(one).some((issue) => /at least 2 teams/i.test(issue.message)));
+    assert.ok(serverRefusal(one));
+  });
 
   test('both accept the base setup and a 44-character custom name', () => {
     const s = base();

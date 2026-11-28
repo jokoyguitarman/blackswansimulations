@@ -164,7 +164,7 @@ const DEFAULT_ROSTER: RosterEntry[] = FIXED_TEAM_NAMES.map((n) => ({
 }));
 
 /**
- * Validate a trainer-supplied roster: 2-6 unique teams, presets must match
+ * Validate a trainer-supplied roster: at least 2 unique teams, presets must match
  * catalog names, customs need a description, and exactly one team holds the
  * public voice (defaulted to Communications, else the first team).
  */
@@ -172,8 +172,8 @@ function validateRoster(
   input: RosterEntry[],
 ): { ok: true; roster: RosterEntry[] } | { ok: false; error: string } {
   const roster = input.map((r) => ({ ...r, team_name: r.team_name.trim() }));
-  if (roster.length < 2 || roster.length > 6) {
-    return { ok: false, error: 'Choose between 2 and 6 teams' };
+  if (roster.length < 2) {
+    return { ok: false, error: 'Choose at least 2 teams' };
   }
   const lower = roster.map((r) => r.team_name.toLowerCase());
   if (new Set(lower).size !== lower.length) {
@@ -293,6 +293,42 @@ router.get('/team-catalog', requireAuth, (_req: AuthenticatedRequest, res) => {
   });
 });
 
+/** Knobs the wizard reads before Build so the cost line matches this process. */
+router.get('/limits', requireAuth, (_req: AuthenticatedRequest, res) => {
+  res.json({
+    data: {
+      large_build_confirm_calls: env.warroomLargeBuildConfirmCalls,
+      org_page_batch: env.warroomOrgPageBatch,
+      personas_total_max: env.socialPersonasTotalMax,
+    },
+  });
+});
+
+router.post(
+  '/large-build-confirm',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        calls: z.number().int().nonnegative(),
+        player_teams: z.number().int().nonnegative(),
+      }),
+    }),
+  ),
+  (req: AuthenticatedRequest, res) => {
+    logger.info(
+      {
+        event: 'build_large_confirmed',
+        userId: req.user?.id,
+        calls: req.body.calls,
+        player_teams: req.body.player_teams,
+      },
+      'build_large_confirmed',
+    );
+    res.json({ data: { logged: true } });
+  },
+);
+
 /**
  * Start an NDJSON stream and keep it alive. The generation routes hold one HTTP response open
  * for minutes while AI calls of 40–120s run back to back; Cloudflare (in front of onrender.com)
@@ -358,7 +394,6 @@ router.post(
               kind: z.string().max(40).optional(),
             }),
           )
-          .max(12)
           .optional(),
         dismissed: z
           .array(
@@ -1300,7 +1335,9 @@ router.post(
             },
             factSheet: body.fact_sheet as FactSheet,
             stakeholders:
-              multiArtifacts?.stakeholders ?? (body.stakeholders as Stakeholder[] | undefined) ?? [],
+              multiArtifacts?.stakeholders ??
+              (body.stakeholders as Stakeholder[] | undefined) ??
+              [],
             injects: [
               ...((body.storyline_injects as SocialInject[]) || []),
               ...Object.values(

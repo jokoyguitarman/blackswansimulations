@@ -1109,6 +1109,51 @@ textarea.wr-field {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.wr-lanetools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.wr-lanetools .wr-field {
+  flex: 1 1 220px;
+  max-width: 360px;
+  padding: 8px 12px;
+}
+.wr-confirm-back {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.wr-confirm {
+  width: min(440px, 100%);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: var(--wr-shadow-lg);
+}
+.wr-confirm h2 {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+.wr-confirm p {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.wr-confirm .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* CTA bar */
 .wr-ctabar {
