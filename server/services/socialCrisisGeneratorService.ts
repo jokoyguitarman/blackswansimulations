@@ -1,5 +1,8 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { limitConcurrency } from '../lib/limitConcurrency.js';
+import { buildConvergenceStorylineSummary } from './convergenceSummary.js';
+import { batchOrgPages, INVENT_RIVAL_LINE } from './orgPageBatching.js';
 import { chatJson, systemUser } from './ai/chatClient.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import { inferLayer } from '../lib/injectFingerprint.js';
@@ -34,8 +37,7 @@ const SCENARIO_CONDITION_PLATFORMS = [
 const CONSEQUENCE_CHANNEL_GUIDANCE =
   'A consequence lands where a real one would — an ignored supplier emails again, then phones; a community leader posts publicly; a regulator writes a formal email.';
 
-const DELIVERY_APP_SYNTAX =
-  'social_feed|email|group_chat|phone_call|news|messenger_dm|npc_dm';
+const DELIVERY_APP_SYNTAX = 'social_feed|email|group_chat|phone_call|news|messenger_dm|npc_dm';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -85,14 +87,7 @@ export interface TeamDef {
 }
 
 export interface SocialInjectDeliveryConfig {
-  app:
-    | 'social_feed'
-    | 'email'
-    | 'news'
-    | 'group_chat'
-    | 'phone_call'
-    | 'messenger_dm'
-    | 'npc_dm';
+  app: 'social_feed' | 'email' | 'news' | 'group_chat' | 'phone_call' | 'messenger_dm' | 'npc_dm';
   platform?: string;
   author_handle?: string;
   author_display_name?: string;
@@ -1055,13 +1050,11 @@ export async function generateAllTeamStorylines(
 ): Promise<Record<string, SocialInject[]>> {
   const results: Record<string, SocialInject[]> = {};
 
-  await Promise.all(
-    teams.map(async (team) => {
-      const injects = await generateTeamStoryline(team, crisisContext, npcs, factSheet, teams, org);
-      results[team.team_name] = injects;
-      onTeamComplete?.(team.team_name, injects.length);
-    }),
-  );
+  await limitConcurrency(teams, env.warroomGenConcurrency, async (team) => {
+    const injects = await generateTeamStoryline(team, crisisContext, npcs, factSheet, teams, org);
+    results[team.team_name] = injects;
+    onTeamComplete?.(team.team_name, injects.length);
+  });
 
   return results;
 }
@@ -1209,12 +1202,7 @@ export async function generateConvergenceLayer(
     escalation_risk: string;
   };
 }> {
-  const storylineSummary = Object.entries(teamStorylines)
-    .map(
-      ([team, injects]) =>
-        `${team} (${injects.length} injects): ${injects.map((i) => `T+${i.trigger_time_minutes || '?'} ${i.title}`).join(', ')}`,
-    )
-    .join('\n\n');
+  const storylineSummary = buildConvergenceStorylineSummary(teamStorylines);
 
   const npcHandles = npcs
     .map((p) => `${p.handle} (${p.name}, ${p.type}, bias: ${p.bias})`)
@@ -1584,9 +1572,7 @@ Return ONLY valid JSON:
       intelGates.push({
         type: privateApp === 'phone_call' ? 'phone_call' : 'email_inbound',
         title: String(
-          item.negative_gate.private_title ||
-            item.negative_gate.title ||
-            `Intel withheld: ${key}`,
+          item.negative_gate.private_title || item.negative_gate.title || `Intel withheld: ${key}`,
         ),
         content: String(item.negative_gate.private_content || item.negative_gate.content),
         severity: 'high',
@@ -2121,35 +2107,34 @@ Return ONLY valid JSON:
  * antagonist competitors. If no competitors are named and auto_antagonist is
  * not disabled, invent exactly one hostile rival brand.
  */
-async function generateSecondaryOrgPages(
+export async function generateSecondaryOrgPages(
   crisisDescription: string,
   country: string,
   primaryName: string,
   roster: OrgRosterInput | undefined,
   onProgress?: (msg: string) => void,
+  complete?: (systemPrompt: string, userPrompt: string) => Promise<Record<string, unknown> | null>,
 ): Promise<OrgConfig[]> {
   const allies = roster?.allies ?? [];
   const competitors = roster?.competitors ?? [];
   const autoAntagonist = roster?.auto_antagonist !== false;
-  const inventAntagonist = competitors.length === 0 && autoAntagonist;
-
-  if (allies.length === 0 && competitors.length === 0 && !inventAntagonist) {
-    return [];
-  }
+  const batches = batchOrgPages(allies, competitors, env.warroomOrgPageBatch, autoAntagonist);
+  if (batches.length === 0) return [];
 
   onProgress?.('Generating allied and rival brand pages...');
 
   const locLine = (e: OrgRosterEntry) =>
     e.country ? ` — ${e.city ? `${e.city}, ` : ''}${e.country}${e.kind ? ` (${e.kind})` : ''}` : '';
-  // Each requested organisation carries a ref (A1, C2) the model must echo back. Identity is
-  // then assigned from the roster, never from the model's paraphrase of the name.
-  const allyLines = allies
-    .map((a, i) => `  ALLY ${i + 1} [ref A${i + 1}]: ${a.name}${locLine(a)}`)
-    .join('\n');
-  const compLines = competitorPromptSection(competitors);
 
-  const result = await callAI(
-    `You are creating social media presences for the SUPPORTING CAST of organizations around a crisis.
+  const batchPages = await limitConcurrency(batches, env.warroomGenConcurrency, async (batch) => {
+    const inventAntagonist = batch.inventRival;
+    // Refs restart in each batch (A1, C1). Identity still comes from this batch's roster.
+    const allyLines = batch.allies
+      .map((a, i) => `  ALLY ${i + 1} [ref A${i + 1}]: ${a.name}${locLine(a)}`)
+      .join('\n');
+    const compLines = competitorPromptSection(batch.competitors);
+
+    const systemPrompt = `You are creating social media presences for the SUPPORTING CAST of organizations around a crisis.
 Primary organization in crisis: "${primaryName}". Country: ${country}.
 Where an organization lists its own country, make its identity, bio, and branded history authentic to THAT country (institutions, place names, register), not to the primary's.
 
@@ -2160,7 +2145,7 @@ ${allyLines || '  (none)'}
 
 ANTAGONIST COMPETITORS (rival brands that will pressure the primary org; their voice should be competitive and opportunistic):
 ${compLines || '  (none)'}
-${inventAntagonist ? '\nNO competitors were named: INVENT exactly ONE realistic rival/competitor brand appropriate to this crisis. Mark it auto_generated and give it ref "NEW".' : ''}
+${inventAntagonist ? `\n${INVENT_RIVAL_LINE}` : ''}
 
 Produce exactly one entry per organisation listed (plus the invented rival if asked). Do not add organisations that were not listed.
 
@@ -2175,91 +2160,98 @@ For each org provide:
 - branded_history: 4-8 pre-crisis posts: { content, platform ("facebook"|"x_twitter"), post_format ("text"|"infographic"|"video_concept"), days_ago (1-30), media_description }
 
 Return ONLY valid JSON:
-{ "orgs": [{ "ref": "C1", "org_role": "antagonist", "display_name": "...", "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 40000 }, "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 25000 }, "stance": "...", "auto_generated": false, "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }] }] }`,
-    `Crisis scenario: ${crisisDescription.substring(0, 500)}`,
-    9000,
-    0.8,
-  );
+{ "orgs": [{ "ref": "C1", "org_role": "antagonist", "display_name": "...", "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 40000 }, "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 25000 }, "stance": "...", "auto_generated": false, "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }] }] }`;
+    const userPrompt = `Crisis scenario: ${crisisDescription.substring(0, 500)}`;
+    const result = complete
+      ? await complete(systemPrompt, userPrompt)
+      : await callAI(systemPrompt, userPrompt, 9000, 0.8);
 
-  const rawOrgs = (result?.orgs as Array<Record<string, unknown>>) || [];
+    const rawOrgs = (result?.orgs as Array<Record<string, unknown>>) || [];
 
-  // Pair every generated page with the organisation it was generated for (ref → name →
-  // position). The model paraphrases names, so identity comes from the roster, not from
-  // `display_name`; a page that stands for nothing is dropped rather than shipped with a key
-  // the registry does not know (that failed compile with MO-ORG-005).
-  const matched = matchGeneratedOrgsToRoster(rawOrgs, allies, competitors, inventAntagonist);
-  for (const d of matched.dropped) {
-    logger.warn({ reason: d.reason }, 'secondary_org_page_dropped');
-  }
-  for (const u of matched.unmatched) {
-    logger.warn(
-      { role: u.role, name: u.requested.name, org_key: u.requested.org_key },
-      'secondary_org_page_missing',
+    // Pair every generated page with the organisation it was generated for (ref → name →
+    // position). The model paraphrases names, so identity comes from the roster, not from
+    // `display_name`; a page that stands for nothing is dropped rather than shipped with a key
+    // the registry does not know (that failed compile with MO-ORG-005).
+    const matched = matchGeneratedOrgsToRoster(
+      rawOrgs,
+      batch.allies,
+      batch.competitors,
+      inventAntagonist,
     );
-  }
+    for (const d of matched.dropped) {
+      logger.warn({ reason: d.reason }, 'secondary_org_page_dropped');
+    }
+    for (const u of matched.unmatched) {
+      logger.warn(
+        { role: u.role, name: u.requested.name, org_key: u.requested.org_key },
+        'secondary_org_page_missing',
+      );
+    }
 
-  const orgs: OrgConfig[] = [];
-  for (const m of matched.matches) {
-    const i = m.index;
-    const o = rawOrgs[i];
-    const role: OrgRole = m.role;
-    const requested = m.requested ?? undefined;
-    // The trainer's name is the organisation's identity (registry, team names, feeds); the
-    // model's wording survives as the page name inside the platform configs.
-    const displayName = requested?.name || String(o.display_name || `Organization ${i + 1}`);
-    const fbCfg = (o.facebook as OrgPagePlatformConfig) || {
-      page_name: displayName,
-      page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
-      page_bio: '',
-      follower_count: 20000,
-    };
-    const twCfg = (o.x_twitter as OrgPagePlatformConfig) || {
-      page_name: displayName,
-      page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
-      page_bio: '',
-      follower_count: 15000,
-    };
-    if (requested?.facebook_handle) fbCfg.page_handle = requested.facebook_handle;
-    if (requested?.x_handle) twCfg.page_handle = requested.x_handle;
+    const orgs: OrgConfig[] = [];
+    for (const m of matched.matches) {
+      const i = m.index;
+      const o = rawOrgs[i];
+      const role: OrgRole = m.role;
+      const requested = m.requested ?? undefined;
+      // The trainer's name is the organisation's identity (registry, team names, feeds); the
+      // model's wording survives as the page name inside the platform configs.
+      const displayName = requested?.name || String(o.display_name || `Organization ${i + 1}`);
+      const fbCfg = (o.facebook as OrgPagePlatformConfig) || {
+        page_name: displayName,
+        page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
+        page_bio: '',
+        follower_count: 20000,
+      };
+      const twCfg = (o.x_twitter as OrgPagePlatformConfig) || {
+        page_name: displayName,
+        page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
+        page_bio: '',
+        follower_count: 15000,
+      };
+      if (requested?.facebook_handle) fbCfg.page_handle = requested.facebook_handle;
+      if (requested?.x_handle) twCfg.page_handle = requested.x_handle;
 
-    orgs.push({
-      // Registry-provided key wins so org_page.orgs[].org_key === initial_state.orgs[].org_key.
-      org_key:
-        requested?.org_key ||
-        `org_${role}_${displayName.toLowerCase().replace(/[^\w]/g, '_')}_${i}`,
-      display_name: displayName,
-      is_primary: false,
-      role,
-      control_mode: role === 'antagonist' ? 'ai' : 'player',
-      stance:
-        role === 'antagonist'
-          ? stanceFromTrainer(o.stance, requested?.description)
-          : o.stance
-            ? String(o.stance)
-            : undefined,
-      // Only a page that stands for no requested organisation is an invented rival.
-      auto_generated: !requested,
-      ...(requested?.kind ? { kind: requested.kind } : {}),
-      facebook: fbCfg,
-      x_twitter: twCfg,
-      branded_history: (o.branded_history as BrandedHistoryPost[]) || [],
-      country: requested?.country || country,
-      ...(requested?.city ? { city: requested.city } : {}),
-    });
-  }
+      orgs.push({
+        // Registry-provided key wins so org_page.orgs[].org_key === initial_state.orgs[].org_key.
+        org_key:
+          requested?.org_key ||
+          `org_${role}_${displayName.toLowerCase().replace(/[^\w]/g, '_')}_${i}`,
+        display_name: displayName,
+        is_primary: false,
+        role,
+        control_mode: role === 'antagonist' ? 'ai' : 'player',
+        stance:
+          role === 'antagonist'
+            ? stanceFromTrainer(o.stance, requested?.description)
+            : o.stance
+              ? String(o.stance)
+              : undefined,
+        // Only a page that stands for no requested organisation is an invented rival.
+        auto_generated: !requested,
+        ...(requested?.kind ? { kind: requested.kind } : {}),
+        facebook: fbCfg,
+        x_twitter: twCfg,
+        branded_history: (o.branded_history as BrandedHistoryPost[]) || [],
+        country: requested?.country || country,
+        ...(requested?.city ? { city: requested.city } : {}),
+      });
+    }
 
-  logger.info(
-    {
-      allies: orgs.filter((o) => o.role === 'protagonist').length,
-      antagonists: orgs.filter((o) => o.role === 'antagonist').length,
-      matched_via: matched.matches.map((m) => m.via),
-      dropped: matched.dropped.length,
-      missing: matched.unmatched.length,
-    },
-    'Secondary org pages generated',
-  );
+    logger.info(
+      {
+        allies: orgs.filter((o) => o.role === 'protagonist').length,
+        antagonists: orgs.filter((o) => o.role === 'antagonist').length,
+        matched_via: matched.matches.map((m) => m.via),
+        dropped: matched.dropped.length,
+        missing: matched.unmatched.length,
+      },
+      'Secondary org pages generated',
+    );
+    return orgs;
+  });
 
-  return orgs;
+  return batchPages.flat();
 }
 
 // ─── Full Assembly ──────────────────────────────────────────────────────────

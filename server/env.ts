@@ -151,6 +151,11 @@ export const env = {
   warroomBuildUnwatchedPauseMin: envInt('WARROOM_BUILD_UNWATCHED_PAUSE_MIN', 45),
   warroomBuildMaxInterruptions: envInt('WARROOM_BUILD_MAX_INTERRUPTIONS', 3),
   warroomBuildRetentionDays: envInt('WARROOM_BUILD_RETENTION_DAYS', 7),
+  // Large-cast generation (scenario re-edit WP1). No per-build call budget.
+  warroomGenConcurrency: envInt('WARROOM_GEN_CONCURRENCY', 4),
+  warroomOrgPageBatch: envInt('WARROOM_ORG_PAGE_BATCH', 4),
+  socialPersonasTotalMax: envInt('SOCIAL_PERSONAS_TOTAL_MAX', 800),
+  pressureEngineMaxPagesPerTick: envInt('PRESSURE_ENGINE_MAX_PAGES_PER_TICK', 4),
   // Inject scheduler configuration
   // Auto-injects enabled if: explicitly set to 'true' OR (in production and not explicitly 'false')
   // In development: defaults to false unless ENABLE_AUTO_INJECTS='true'
