@@ -268,11 +268,7 @@ export async function runNpcsPipeline(
 
   // Footprint countries without a protagonist org (incident / regulatory) still get a crowd —
   // emitted UNSCOPED (no persona.country) so the players present see it as regional spillover.
-  const spilloverCountries = spilloverCountryNames(
-    footprint?.countries ?? [],
-    countries,
-    pressureOrgs.map((org) => org.country),
-  );
+  const spilloverCountries = spilloverCountryNames(footprint?.countries ?? [], countries);
 
   const [perCountry, spillover] = await Promise.all([
     limitConcurrency(countries, env.warroomGenConcurrency, (country) =>

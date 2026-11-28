@@ -3,10 +3,11 @@ import { canonicalJson } from '../../../shared/canonicalJson.js';
 import {
   SETUP_EDIT_ALLOWANCE_IDS_MAX,
   SETUP_EDIT_HISTORY_LIMIT,
+  SETUP_EDIT_HISTORY_READ_BATCH,
 } from '../../../shared/setupEditAllowance.js';
 import type { BaselineIdentity } from './setupSnapshotCore.js';
 
-export { SETUP_EDIT_ALLOWANCE_IDS_MAX, SETUP_EDIT_HISTORY_LIMIT };
+export { SETUP_EDIT_ALLOWANCE_IDS_MAX, SETUP_EDIT_HISTORY_LIMIT, SETUP_EDIT_HISTORY_READ_BATCH };
 
 /** PostgREST / Postgres codes that mean migration 274 is not in this database. */
 const SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);

@@ -135,44 +135,22 @@ export function selectLeastRecentlyPosted<T>(
 }
 
 /**
- * What one page did on a tick.
- * `called` is an attempted model call, including an empty reply or a failed insert.
- * A skip before the model is `{ posted: false, called: false }` (or `false`).
- */
-export interface PageTickOutcome {
-  posted: boolean;
-  called: boolean;
-}
-
-function asTickOutcome(result: boolean | PageTickOutcome): PageTickOutcome {
-  if (typeof result === 'boolean') return { posted: result, called: result };
-  return { posted: result.posted, called: result.called || result.posted };
-}
-
-/**
- * Walk least-recent-first.
- * A page that skips before the model consumes neither cap, so finished pages
- * are still passed over. A model call consumes the call cap even when the
- * reply is empty. A posted page consumes the post cap. Stop when either cap
- * is reached, so a tick never makes more model calls than `maxCalls`.
- * `maxCalls` defaults to the post cap.
+ * Walk least-recent-first. A page that does not act (it has stood down, finished
+ * its ladder, or otherwise returns false) does not consume the cap.
  */
 export async function actWithinCap<T>(
   leastRecentFirst: readonly T[],
-  maxPosts: number,
-  act: (page: T) => Promise<boolean | PageTickOutcome>,
-  maxCalls = maxPosts,
+  max: number,
+  act: (page: T) => Promise<boolean>,
 ): Promise<void> {
-  const postCap = Number.isFinite(maxPosts) && maxPosts > 0 ? Math.floor(maxPosts) : 0;
-  const callCap = Number.isFinite(maxCalls) && maxCalls > 0 ? Math.floor(maxCalls) : 0;
-  if (postCap === 0 || callCap === 0) return;
-  let posted = 0;
-  let called = 0;
+  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  if (cap === 0) return;
+  let acted = 0;
   for (const page of leastRecentFirst) {
-    if (posted >= postCap || called >= callCap) return;
-    const outcome = asTickOutcome(await act(page));
-    if (outcome.called) called += 1;
-    if (outcome.posted) posted += 1;
+    if (await act(page)) {
+      acted += 1;
+      if (acted >= cap) return;
+    }
   }
 }
 
@@ -324,7 +302,7 @@ async function runPage(
   rows: PageRow[],
   initialState: Record<string, unknown>,
   escalationRisk: number,
-): Promise<boolean | PageTickOutcome> {
+): Promise<boolean> {
   const posture = cfg.posture!;
   const handles = rows.map((r) => r.page_handle);
 
@@ -430,10 +408,8 @@ async function runPage(
     aligned_follow_hq: `Local update that mirrors headquarters' published line (below) for this site's audience, adding one local detail.`,
     aligned_clarify: `Local clarification correcting an inaccurate claim about this site, factual and short.`,
   };
-  let result: Record<string, unknown> | null;
-  try {
-    result = await callSocialCrisisAI(
-      `You run the official social media account of "${cfg.display_name}" (${ident.page_handle}) in a crisis simulation. Register: ${posture.register} — ${registerVoice[posture.register]}.
+  const result = await callSocialCrisisAI(
+    `You run the official social media account of "${cfg.display_name}" (${ident.page_handle}) in a crisis simulation. Register: ${posture.register} — ${registerVoice[posture.register]}.
 Mandate: ${posture.mandate}
 Demands: ${posture.demands.join(' | ') || '(none — aligned office)'}
 Stand-down signals: ${posture.stand_down_signals.join(' | ')}
@@ -443,16 +419,12 @@ ${hqLine ? `Headquarters' published line:\n${hqLine}` : 'Headquarters has not pu
 MOVE: ${moveBrief[move]}
 Write ONE ${platform === 'facebook' ? 'Facebook post (2-4 sentences)' : 'X post (<= 260 characters, 0-2 hashtags)'} in character. Never mock, never sell, never amplify rumour.
 Return ONLY valid JSON: { "content": "..." }`,
-      `Elapsed: T+${Math.round(elapsedMinutes)} min. Escalation risk ${escalationRisk}. Write the post.`,
-      700,
-      0.7,
-    );
-  } catch (err) {
-    logger.warn({ err, sessionId, orgKey: cfg.org_key }, 'pressure engine: model call failed');
-    return { posted: false, called: true };
-  }
+    `Elapsed: T+${Math.round(elapsedMinutes)} min. Escalation risk ${escalationRisk}. Write the post.`,
+    700,
+    0.7,
+  );
   const content = String(result?.content || '').trim();
-  if (!content) return { posted: false, called: true };
+  if (!content) return false;
 
   // Contract §4.1 stamps page posts with the page's country — but only when humans play there;
   // otherwise the post is unscoped so the players present see it (pressure plan §11).
@@ -495,7 +467,7 @@ Return ONLY valid JSON: { "content": "..." }`,
     .single();
   if (error || !post) {
     logger.warn({ error, sessionId, orgKey: cfg.org_key }, 'pressure post insert failed');
-    return { posted: false, called: true };
+    return false;
   }
   await emitSessionEvent(
     sessionId,

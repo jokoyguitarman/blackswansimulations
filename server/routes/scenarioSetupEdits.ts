@@ -88,7 +88,7 @@ const planBody = z.object({
 export interface SetupEditApi {
   get(scenarioId: string): Promise<SetupEditSnapshot>;
   open(scenarioId: string, user: { id: string; role?: string }): Promise<OpenSetupEditResult>;
-  abandon(scenarioId: string, editId: string, userId: string): Promise<AbandonSetupEditResult>;
+  abandon(scenarioId: string, editId: string): Promise<AbandonSetupEditResult>;
   listAllowances(
     scenarioIds: readonly string[],
     user: { id: string; role?: string },
@@ -272,16 +272,16 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
             remaining: remainingEdits(used, deps.limit(), isAdmin(user)),
           });
         } catch (err) {
-          await deps.service.abandon(req.params.id, opened.editId, user.id).catch(() => undefined);
+          await deps.service.abandon(req.params.id, opened.editId).catch(() => undefined);
           throw err;
         }
         if (!attached.available) {
-          await deps.service.abandon(req.params.id, opened.editId, user.id);
+          await deps.service.abandon(req.params.id, opened.editId);
           unavailable(res);
           return;
         }
         if (!attached.ok) {
-          await deps.service.abandon(req.params.id, opened.editId, user.id);
+          await deps.service.abandon(req.params.id, opened.editId);
           if (attached.reason === 'conflict') {
             res.status(409).json({
               error: 'The scenario was saved while the setup edit was opening. Open it again.',
@@ -366,7 +366,7 @@ export function createScenarioSetupEditsRouter(deps: ScenarioSetupEditsDeps): Ro
           res.status(owner.status).json({ error: owner.error });
           return;
         }
-        const result = await deps.service.abandon(req.params.id, req.params.editId, user.id);
+        const result = await deps.service.abandon(req.params.id, req.params.editId);
         if (!result.available) {
           unavailable(res);
           return;

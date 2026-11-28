@@ -49,11 +49,8 @@ export function setupEstimateInput(
     alliesAndRivals: extras.length + snapshot.competitors.length,
     pressureCountries: pressureCountries.size,
     pressureOrgs: pressure.length,
-    spilloverCountries: spilloverCountryNames(
-      footprint?.countries ?? [],
-      protagonistCountries,
-      pressure.map((group) => group.country.trim()),
-    ).length,
+    spilloverCountries: spilloverCountryNames(footprint?.countries ?? [], protagonistCountries)
+      .length,
     injectsEstimate: 0,
   };
 }

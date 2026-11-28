@@ -36,14 +36,11 @@ export interface SpilloverCountry {
 /**
  * Footprint countries that receive a spillover crowd, in footprint order.
  * Incident and regulatory countries with no protagonist organisation, capped
- * at {@link MAX_SPILLOVER_COUNTRIES}. A pressure organisation only blocks a
- * country when that country is already a protagonist country, which the
- * protagonist check has already removed. That is the filter in `runNpcsPipeline`.
+ * at {@link MAX_SPILLOVER_COUNTRIES}. Same filter as `runNpcsPipeline`.
  */
 export function spilloverCountryNames(
   footprintCountries: readonly SpilloverCountry[],
   protagonistCountries: readonly string[],
-  pressureOrgCountries: readonly string[] = [],
   max = MAX_SPILLOVER_COUNTRIES,
 ): string[] {
   const protagonists = new Set(protagonistCountries);
@@ -53,10 +50,6 @@ export function spilloverCountryNames(
   for (const country of footprintCountries) {
     if (country.role !== 'incident_location' && country.role !== 'regulatory') continue;
     if (protagonists.has(country.name)) continue;
-    const blocked = pressureOrgCountries.some(
-      (pressureCountry) => pressureCountry === country.name && protagonists.has(pressureCountry),
-    );
-    if (blocked) continue;
     names.push(country.name);
     if (names.length >= cap) break;
   }

@@ -53,7 +53,6 @@ interface FakeEdit {
   baselineHash: string;
   draftId: string | null;
   createdAt: string;
-  abandonedBy?: string;
 }
 
 interface FakeDraft {
@@ -305,13 +304,12 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
       edit.draftId = draft.id;
       return { available: true, ok: true, draftId: draft.id, baselineHash: hash };
     },
-    async abandon(scenarioId, editId, userId): Promise<AbandonSetupEditResult> {
+    async abandon(scenarioId, editId): Promise<AbandonSetupEditResult> {
       if (scenarioId === BROKE) return { available: false };
       const edit = edits.find((row) => row.id === editId && row.scenarioId === scenarioId);
       if (!edit) return { available: true, outcome: 'not_found' };
       if (edit.status !== 'open') return { available: true, outcome: 'not_open' };
       edit.status = 'abandoned';
-      edit.abandonedBy = userId;
       return { available: true, outcome: 'abandoned' };
     },
     async listAllowances(ids, user) {
@@ -663,7 +661,6 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     const dropped = await abandon(SOCIAL, editId);
     assert.equal(dropped.status, 200);
     assert.equal(dropped.json.status, 'abandoned');
-    assert.equal(edits[0].abandonedBy, TRAINER.id);
     assert.equal(scenarios.get(SOCIAL)?.used, 0);
     assert.equal(edits[0].status, 'abandoned');
     const again = await post(SOCIAL);
@@ -672,15 +669,6 @@ describe('scenario setup edit routes', { concurrency: false }, () => {
     const closed = await abandon(SOCIAL, editId);
     assert.equal(closed.status, 409);
     assert.equal(closed.json.code, 'SETUP_EDIT_NOT_OPEN');
-  });
-
-  test('an admin abandoning someone else’s edit is recorded as that admin', async () => {
-    seed();
-    const opened = await post(SOCIAL);
-    const dropped = await abandon(SOCIAL, opened.json.edit_id as string, ADMIN);
-    assert.equal(dropped.status, 200);
-    assert.equal(edits[0].abandonedBy, ADMIN.id);
-    assert.equal(edits[0].openedBy, TRAINER.id);
   });
 
   async function allowances(ids: string[], user?: { id: string; role: string }) {

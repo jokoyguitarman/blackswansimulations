@@ -93,24 +93,6 @@ describe('pressure tick cap', () => {
     });
     assert.deepEqual(posts, ['live-a', 'live-b']);
   });
-
-  test('empty model replies count toward the call cap and finished pages do not', async () => {
-    const calls: string[] = [];
-    const posts: string[] = [];
-    await actWithinCap(
-      ['finished', 'empty', 'live-a', 'live-b', 'live-c'],
-      3,
-      async (page) => {
-        if (page === 'finished') return false;
-        calls.push(page);
-        if (page === 'empty') return { posted: false, called: true };
-        posts.push(page);
-        return true;
-      },
-    );
-    assert.deepEqual(calls, ['empty', 'live-a', 'live-b']);
-    assert.deepEqual(posts, ['live-a', 'live-b']);
-  });
 });
 
 describe('pressure registers', () => {

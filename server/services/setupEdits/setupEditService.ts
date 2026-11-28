@@ -9,6 +9,7 @@ import {
   capRowsPerScenario,
   isSetupEditSchemaMissing,
   SETUP_EDIT_HISTORY_LIMIT,
+  SETUP_EDIT_HISTORY_READ_BATCH,
   staleApplyIds,
   type AbandonSetupEditResult,
   type ListAllowancesResult,
@@ -46,9 +47,6 @@ const LIBRARY_EDIT_COLUMNS =
   'id, scenario_id, opened_by, opened_by_admin, status, edit_number, counted, error, created_at, applied_at, draft_id, applied_summary';
 
 const SOCIAL_CATEGORY = 'social_media_crisis';
-
-/** Null until the first abandon learns whether `abandoned_by` exists. Migration 274 does not add it. */
-let abandonedBySupported: boolean | null = null;
 
 const OPEN_OUTCOMES = new Set<OpenSetupEditOutcome>([
   'opened',
@@ -365,9 +363,15 @@ export async function openSetupEdit(
 export async function abandonSetupEdit(
   scenarioId: string,
   editId: string,
-  userId: string,
 ): Promise<AbandonSetupEditResult> {
-  const updated = await markAbandoned(scenarioId, editId, userId);
+  const updated = await supabaseAdmin
+    .from('scenario_setup_edits')
+    .update({ status: 'abandoned' })
+    .eq('id', editId)
+    .eq('scenario_id', scenarioId)
+    .eq('status', 'open')
+    .select('id')
+    .maybeSingle<{ id: string }>();
   if (updated.error) {
     if (isSetupEditSchemaMissing(updated.error)) {
       noteSetupEditsUnavailable();
@@ -396,30 +400,25 @@ export async function abandonSetupEdit(
   return { available: true, outcome: 'not_open' };
 }
 
-/**
- * Set status to abandoned. When `abandoned_by` exists, store the caller.
- * Migration 274 has no such column, so the first missing-column error retries
- * without it and later abandons in this process skip the column.
- */
-async function markAbandoned(scenarioId: string, editId: string, userId: string) {
-  const recordActor = abandonedBySupported !== false && userId.length > 0;
-  const patch = recordActor
-    ? { status: 'abandoned' as const, abandoned_by: userId }
-    : { status: 'abandoned' as const };
-  const updated = await supabaseAdmin
+/** Newest history rows for one scenario. One query, capped under PostgREST's row limit. */
+async function listScenarioEditHistory(
+  scenarioId: string,
+): Promise<Array<Record<string, unknown>> | 'unavailable'> {
+  const listed = await supabaseAdmin
     .from('scenario_setup_edits')
-    .update(patch)
-    .eq('id', editId)
+    .select(LIBRARY_EDIT_COLUMNS)
     .eq('scenario_id', scenarioId)
-    .eq('status', 'open')
-    .select('id')
-    .maybeSingle<{ id: string }>();
-  if (updated.error && recordActor && columnMissing(updated.error, 'abandoned_by')) {
-    abandonedBySupported = false;
-    return markAbandoned(scenarioId, editId, userId);
+    .order('created_at', { ascending: false })
+    .limit(SETUP_EDIT_HISTORY_LIMIT);
+  if (listed.error) {
+    if (isSetupEditSchemaMissing(listed.error)) {
+      noteSetupEditsUnavailable();
+      return 'unavailable';
+    }
+    logger.error({ error: listed.error, scenarioId }, 'Failed to list setup edit allowances');
+    throw new Error(`Setup edit allowance failed: ${listed.error.message}`);
   }
-  if (!updated.error && recordActor) abandonedBySupported = true;
-  return updated;
+  return (listed.data ?? []) as Array<Record<string, unknown>>;
 }
 
 /**
@@ -462,22 +461,17 @@ export async function listSetupEditAllowances(
   const ownedIds = Object.keys(byId);
   if (ownedIds.length === 0) return { available: true, byId };
 
-  const listed = await supabaseAdmin
-    .from('scenario_setup_edits')
-    .select(LIBRARY_EDIT_COLUMNS)
-    .in('scenario_id', ownedIds)
-    .order('created_at', { ascending: false })
-    .limit(ownedIds.length * SETUP_EDIT_HISTORY_LIMIT);
-  if (listed.error) {
-    if (isSetupEditSchemaMissing(listed.error)) {
-      noteSetupEditsUnavailable();
-      return { available: false };
+  const historyRows: Array<Record<string, unknown>> = [];
+  for (let offset = 0; offset < ownedIds.length; offset += SETUP_EDIT_HISTORY_READ_BATCH) {
+    const slice = ownedIds.slice(offset, offset + SETUP_EDIT_HISTORY_READ_BATCH);
+    const pages = await Promise.all(slice.map((scenarioId) => listScenarioEditHistory(scenarioId)));
+    for (const page of pages) {
+      if (page === 'unavailable') return { available: false };
+      historyRows.push(...page);
     }
-    logger.error({ error: listed.error }, 'Failed to list setup edit allowances');
-    throw new Error(`Setup edit allowance failed: ${listed.error.message}`);
   }
 
-  const tagged = ((listed.data ?? []) as Array<Record<string, unknown>>).flatMap((row) => {
+  const tagged = historyRows.flatMap((row) => {
     const scenarioId = typeof row.scenario_id === 'string' ? row.scenario_id : '';
     return scenarioId ? [{ scenario_id: scenarioId, row }] : [];
   });
