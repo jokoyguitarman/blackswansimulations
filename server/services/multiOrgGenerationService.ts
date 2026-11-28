@@ -236,7 +236,7 @@ async function personasForNamedGroups(
   targetCount: number,
   groups: readonly string[],
 ): Promise<NPCPersona[]> {
-  const count = Math.max(1, Math.min(targetCount, groups.length > 0 ? targetCount : 1));
+  const count = Math.max(1, targetCount);
   const raw = await callSocialCrisisAI(
     `Create at most ${count} social-media personas for these newly named groups. Do not reuse handles already in use. Return JSON { "personas": [ { "handle": "@name", "name": "...", "type": "npc_public|npc_media|npc_politician|npc_influencer", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": [] } ] }.`,
     `Groups: ${groups.join('; ')}\nCrisis: ${crisis.crisisType}\nCountry: ${country}\nFacts: ${factSheet.confirmed_facts.slice(0, 6).join('; ')}\nTaken handles: ${[...taken.handles].slice(0, 40).join(' ')}`,

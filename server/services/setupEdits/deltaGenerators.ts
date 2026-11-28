@@ -28,11 +28,18 @@ import { emptyBriefDiff, type BriefDiff } from './affectedLayers.js';
 import {
   DELTA_PROMPT_MAX_TOKENS,
   MAX_GATES,
+  MAX_LAYER_INJECTS,
   MAX_NEW_GROUP_PERSONAS,
   MAX_SHARED_INJECTS,
 } from './briefRevisionCore.js';
 import type { DeltaBuildContext, DeltaGenerators, LayerRevisionResult } from './deltaBuildTypes.js';
 import type { SetupSnapshot, SnapshotOrg } from './setupSnapshotCore.js';
+
+/** Custom-charter fallback, matching synthesizeTeamCharter when the catalogue has no row. */
+const DEFAULT_MIN_PARTICIPANTS = 1;
+const DEFAULT_MAX_PARTICIPANTS = 4;
+/** Build-request default when the edited crisis stores no duration. */
+const DEFAULT_CRISIS_DURATION_MINUTES = 60;
 
 const briefDiffSchema = z.object({
   severity: z.enum(['cosmetic', 'facts', 'story']).catch('facts'),
@@ -238,15 +245,15 @@ export function createDeltaGenerators(): DeltaGenerators {
         {
           team_name: input.teamName,
           team_description: team?.description || input.teamName,
-          min_participants: 1,
-          max_participants: 4,
+          min_participants: DEFAULT_MIN_PARTICIPANTS,
+          max_participants: DEFAULT_MAX_PARTICIPANTS,
         },
         {
           crisisType: input.ctx.edited.crisis.crisis_type,
           location: org?.city || '',
           country: input.country || org?.country || input.ctx.edited.crisis.country,
           context: input.ctx.edited.crisis.context,
-          duration: input.ctx.edited.crisis.duration ?? 60,
+          duration: input.ctx.edited.crisis.duration ?? DEFAULT_CRISIS_DURATION_MINUTES,
           orgName: org?.display_name,
         },
         input.ctx.personas,
@@ -293,7 +300,7 @@ export function createDeltaGenerators(): DeltaGenerators {
     },
     async reviseLayer(input) {
       const raw = await ask(
-        'Revise this one layer. For each ai_owned id return decision keep, revise, or retire. revise includes title, content, and optional trigger_time_minutes. Do not change inject_key or app. Ignore hand_edited. Add at most 3 injects for added premises. Return JSON {decisions: [{inject_id, decision, title, content, trigger_time_minutes, reason}], new_injects: []}.',
+        `Revise this one layer. For each ai_owned id return decision keep, revise, or retire. revise includes title, content, and optional trigger_time_minutes. Do not change inject_key or app. Ignore hand_edited. Add at most ${MAX_LAYER_INJECTS} injects for added premises. Return JSON {decisions: [{inject_id, decision, title, content, trigger_time_minutes, reason}], new_injects: []}.`,
         `Layer: ${input.layer}\nCountry: ${input.country ?? ''}\nDiff: ${clip(JSON.stringify(input.diff), 1500)}\nOwned: ${clip(JSON.stringify(input.owned), 4000)}\nHand-edited context: ${clip(JSON.stringify(input.handEdited), 1500)}`,
         'setupEdit.reviseLayer',
       );
@@ -301,7 +308,7 @@ export function createDeltaGenerators(): DeltaGenerators {
       if (!parsed.success) throw new Error('setupEdit.reviseLayer returned no decisions');
       const result: LayerRevisionResult = {
         decisions: parsed.data.decisions,
-        new_injects: parsed.data.new_injects.slice(0, 3).map(toSocialInject),
+        new_injects: parsed.data.new_injects.slice(0, MAX_LAYER_INJECTS).map(toSocialInject),
       };
       return result;
     },
@@ -556,7 +563,7 @@ function crisisOf(ctx: DeltaBuildContext) {
   return {
     crisisType: ctx.edited.crisis.crisis_type,
     context: ctx.edited.crisis.context,
-    duration: ctx.edited.crisis.duration ?? 60,
+    duration: ctx.edited.crisis.duration ?? DEFAULT_CRISIS_DURATION_MINUTES,
     orgName: ctx.edited.crisis.org_name,
   };
 }
@@ -625,8 +632,8 @@ function chartersFor(org: SnapshotOrg): OrgTeamCharter[] {
       expected_actions: catalog?.expected_actions ?? [],
       scoring_rubric: catalog?.scoring_rubric ?? '',
       out_of_lane: catalog?.out_of_lane ?? [],
-      min_participants: catalog?.min_participants ?? 1,
-      max_participants: catalog?.max_participants ?? 4,
+      min_participants: catalog?.min_participants ?? DEFAULT_MIN_PARTICIPANTS,
+      max_participants: catalog?.max_participants ?? DEFAULT_MAX_PARTICIPANTS,
       is_custom: team.is_custom,
       can_post_publicly: team.is_public_voice,
       sentiment_dimension: catalog?.sentiment_dimension ?? 'public_trust',
@@ -643,8 +650,8 @@ function teamDefs(ctx: DeltaBuildContext): TeamDef[] {
     org.teams.map((team) => ({
       team_name: team.team_name,
       team_description: team.description,
-      min_participants: 1,
-      max_participants: 4,
+      min_participants: DEFAULT_MIN_PARTICIPANTS,
+      max_participants: DEFAULT_MAX_PARTICIPANTS,
     })),
   );
 }

@@ -104,6 +104,36 @@ export function attributedPlayerId(row: GradeAuthor, attributionFix: boolean): s
   return null;
 }
 
+export function gradeAuthorOf(row: {
+  author_type?: unknown;
+  user_id?: unknown;
+  posted_by_user_id?: unknown;
+  created_at?: unknown;
+}): GradeAuthor & { created_at: string | null } {
+  return {
+    author_type: typeof row.author_type === 'string' ? row.author_type : null,
+    user_id: typeof row.user_id === 'string' ? row.user_id : null,
+    posted_by_user_id: typeof row.posted_by_user_id === 'string' ? row.posted_by_user_id : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : null,
+  };
+}
+
+/**
+ * Who a post counts for.
+ * With the fix off this is `posted_by_user_id`, as today.
+ * With the fix on, a page post counts only when that person is on a session
+ * team, so an Adversary Console post is not credited to the trainer.
+ */
+export function playerCreditId(
+  row: GradeAuthor,
+  attributionFix: boolean,
+  teamMemberIds: { has(id: string): boolean } | null,
+): string | null {
+  const playerId = attributedPlayerId(row, attributionFix);
+  if (!playerId || !attributionFix || row.author_type !== 'official_account') return playerId;
+  return teamMemberIds?.has(playerId) ? playerId : null;
+}
+
 export interface ContentRef {
   table: 'post' | 'email' | 'dm';
   id: string;
