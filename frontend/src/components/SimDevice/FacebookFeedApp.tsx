@@ -143,12 +143,12 @@ function getReactionEmoji(reactionType: string | undefined): string {
   return map[reactionType || ''] || '👍';
 }
 
-export default function FacebookFeedApp() {
+export default function FacebookFeedApp({ initialPosts }: { initialPosts?: SocialPost[] } = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
   const deviceNav = useDeviceNav('facebook');
   const { isTrainer } = useRoleVisibility();
-  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [posts, setPosts] = useState<SocialPost[]>(() => initialPosts ?? []);
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
@@ -159,7 +159,7 @@ export default function FacebookFeedApp() {
   const [reporting, setReporting] = useState(false);
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialPosts?.length);
   const [feedSort, setFeedSort] = useState<'top' | 'recent'>('top');
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
@@ -927,6 +927,7 @@ export default function FacebookFeedApp() {
   }
 
   function openReportModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setReportPost(post);
     setReportCategory('');
     setReportReason('');
@@ -934,7 +935,7 @@ export default function FacebookFeedApp() {
   }
 
   async function submitReport() {
-    if (!reportPost || !reportCategory) return;
+    if (surfaceReadOnly || !reportPost || !reportCategory) return;
     setReporting(true);
     const postId = reportPost.id;
     try {
@@ -962,6 +963,7 @@ export default function FacebookFeedApp() {
   }
 
   function openDisputeModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setDisputePost(post);
     setDisputeNote('');
     setDisputeStatus(null);
@@ -2295,6 +2297,7 @@ export default function FacebookFeedApp() {
                             </div>
                             <div className="flex items-center">
                               <button
+                                disabled={surfaceReadOnly}
                                 onClick={() => openDisputeModal(post)}
                                 className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
                                 title="Dispute with facts"
@@ -2315,6 +2318,7 @@ export default function FacebookFeedApp() {
                                 </svg>
                               </button>
                               <button
+                                disabled={surfaceReadOnly}
                                 onClick={() => openReportModal(post)}
                                 className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
                                 title="Report post"
@@ -2593,86 +2597,35 @@ export default function FacebookFeedApp() {
                           </div>
 
                           {/* Action Buttons */}
-                          <WhenWritable>
-                            <div
-                              className="flex items-center justify-around px-1 py-0.5"
-                              style={{
-                                borderBottom: '1px solid #CED0D4',
-                                backgroundColor: '#FFFFFF',
-                              }}
-                            >
-                              <div className="relative flex-1">
-                                {(() => {
-                                  const rxKey = pageMode ? `page:${post.id}` : post.id;
-                                  const myRx = myReactions[rxKey];
-                                  const rxInfo = myRx
-                                    ? REACTIONS.find((r) => r.type === myRx)
-                                    : null;
-                                  const rxColor =
-                                    myRx === 'like'
-                                      ? '#1877F2'
-                                      : myRx === 'love'
-                                        ? '#F33E58'
-                                        : myRx === 'angry'
-                                          ? '#E9710F'
-                                          : myRx
-                                            ? '#F7B928'
-                                            : '#65676B';
-                                  return (
-                                    <button
-                                      data-testid={`fb-react-${post.id}`}
-                                      onClick={() => handleReaction(post.id, 'like')}
-                                      onMouseEnter={() => {
-                                        if (reactionTimeoutRef.current)
-                                          clearTimeout(reactionTimeoutRef.current);
-                                        setShowReactions(post.id);
-                                      }}
-                                      onMouseLeave={() => {
-                                        reactionTimeoutRef.current = setTimeout(
-                                          () => setShowReactions(null),
-                                          600,
-                                        );
-                                      }}
-                                      className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                                      style={{
-                                        color: (pageMode ? post.page_liked_by_me : post.liked_by_me)
-                                          ? rxColor
-                                          : '#65676B',
-                                      }}
-                                    >
-                                      {rxInfo ? (
-                                        <span className="text-[18px] leading-none">
-                                          {rxInfo.emoji}
-                                        </span>
-                                      ) : (
-                                        <svg
-                                          width="18"
-                                          height="18"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                        >
-                                          <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-                                        </svg>
-                                      )}
-                                      <span className="text-[14px] font-semibold">
-                                        {rxInfo
-                                          ? rxInfo.type.charAt(0).toUpperCase() +
-                                            rxInfo.type.slice(1)
-                                          : 'Like'}
-                                      </span>
-                                    </button>
-                                  );
-                                })()}
-                                {showReactions === post.id && (
-                                  <div
-                                    className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
-                                    style={{
-                                      backgroundColor: '#FFFFFF',
-                                      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                                    }}
+                          <div
+                            className="flex items-center justify-around px-1 py-0.5"
+                            style={{
+                              borderBottom: '1px solid #CED0D4',
+                              backgroundColor: '#FFFFFF',
+                            }}
+                          >
+                            <div className="relative flex-1">
+                              {(() => {
+                                const rxKey = pageMode ? `page:${post.id}` : post.id;
+                                const myRx = myReactions[rxKey];
+                                const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
+                                const rxColor =
+                                  myRx === 'like'
+                                    ? '#1877F2'
+                                    : myRx === 'love'
+                                      ? '#F33E58'
+                                      : myRx === 'angry'
+                                        ? '#E9710F'
+                                        : myRx
+                                          ? '#F7B928'
+                                          : '#65676B';
+                                return (
+                                  <button
+                                    disabled={surfaceReadOnly}
+                                    data-testid={`fb-react-${post.id}`}
+                                    onClick={() => handleReaction(post.id, 'like')}
                                     onMouseEnter={() => {
+                                      if (surfaceReadOnly) return;
                                       if (reactionTimeoutRef.current)
                                         clearTimeout(reactionTimeoutRef.current);
                                       setShowReactions(post.id);
@@ -2680,32 +2633,103 @@ export default function FacebookFeedApp() {
                                     onMouseLeave={() => {
                                       reactionTimeoutRef.current = setTimeout(
                                         () => setShowReactions(null),
-                                        300,
+                                        600,
                                       );
                                     }}
+                                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                                    style={{
+                                      color: (pageMode ? post.page_liked_by_me : post.liked_by_me)
+                                        ? rxColor
+                                        : '#65676B',
+                                    }}
                                   >
-                                    {REACTIONS.map((r) => (
-                                      <button
-                                        key={r.type}
-                                        data-testid={`fb-react-${post.id}-${r.type}`}
-                                        onClick={() => handleReaction(post.id, r.type)}
-                                        className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
-                                        style={{ fontSize: 28, lineHeight: 1 }}
-                                        title={r.type}
+                                    {rxInfo ? (
+                                      <span className="text-[18px] leading-none">
+                                        {rxInfo.emoji}
+                                      </span>
+                                    ) : (
+                                      <svg
+                                        width="18"
+                                        height="18"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
                                       >
-                                        {r.emoji}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                                        <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                                      </svg>
+                                    )}
+                                    <span className="text-[14px] font-semibold">
+                                      {rxInfo
+                                        ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
+                                        : 'Like'}
+                                    </span>
+                                  </button>
+                                );
+                              })()}
+                              {showReactions === post.id && !surfaceReadOnly && (
+                                <div
+                                  className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
+                                  style={{
+                                    backgroundColor: '#FFFFFF',
+                                    boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                                  }}
+                                  onMouseEnter={() => {
+                                    if (reactionTimeoutRef.current)
+                                      clearTimeout(reactionTimeoutRef.current);
+                                    setShowReactions(post.id);
+                                  }}
+                                  onMouseLeave={() => {
+                                    reactionTimeoutRef.current = setTimeout(
+                                      () => setShowReactions(null),
+                                      300,
+                                    );
+                                  }}
+                                >
+                                  {REACTIONS.map((r) => (
+                                    <button
+                                      key={r.type}
+                                      disabled={surfaceReadOnly}
+                                      data-testid={`fb-react-${post.id}-${r.type}`}
+                                      onClick={() => handleReaction(post.id, r.type)}
+                                      className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
+                                      style={{ fontSize: 28, lineHeight: 1 }}
+                                      title={r.type}
+                                    >
+                                      {r.emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              disabled={surfaceReadOnly}
+                              data-testid={`fb-comment-${post.id}`}
+                              onClick={() => {
+                                setExpandedComments((prev) => new Set([...prev, post.id]));
+                                setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
+                              }}
+                              className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                              style={{ color: '#65676B' }}
+                            >
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                              </svg>
+                              <span className="text-[14px] font-semibold">Comment</span>
+                            </button>
+                            <div style={{ position: 'relative', flex: 1 }}>
                               <button
-                                data-testid={`fb-comment-${post.id}`}
-                                onClick={() => {
-                                  setExpandedComments((prev) => new Set([...prev, post.id]));
-                                  setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
-                                }}
-                                className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                                disabled={surfaceReadOnly}
+                                data-testid={`fb-share-${post.id}`}
+                                onClick={() => handleShare(post.id)}
+                                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
                                 style={{ color: '#65676B' }}
                               >
                                 <svg
@@ -2716,44 +2740,24 @@ export default function FacebookFeedApp() {
                                   stroke="currentColor"
                                   strokeWidth="2"
                                 >
-                                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
                                 </svg>
-                                <span className="text-[14px] font-semibold">Comment</span>
+                                <span className="text-[14px] font-semibold">Share</span>
                               </button>
-                              <div style={{ position: 'relative', flex: 1 }}>
-                                <button
-                                  data-testid={`fb-share-${post.id}`}
-                                  onClick={() => handleShare(post.id)}
-                                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                                  style={{ color: '#65676B' }}
-                                >
-                                  <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                  >
-                                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
-                                  </svg>
-                                  <span className="text-[14px] font-semibold">Share</span>
-                                </button>
-                                {shareMenuPostId === post.id && (
-                                  <ShareMenu
-                                    postId={post.id}
-                                    sessionId={sessionId!}
-                                    platform="facebook"
-                                    authorHandle={post.author_handle}
-                                    authorDisplayName={post.author_display_name}
-                                    contentPreview={post.content}
-                                    onClose={() => setShareMenuPostId(null)}
-                                    onReposted={(repost) => handleReposted(post.id, repost)}
-                                  />
-                                )}
-                              </div>
+                              {shareMenuPostId === post.id && !surfaceReadOnly && (
+                                <ShareMenu
+                                  postId={post.id}
+                                  sessionId={sessionId!}
+                                  platform="facebook"
+                                  authorHandle={post.author_handle}
+                                  authorDisplayName={post.author_display_name}
+                                  contentPreview={post.content}
+                                  onClose={() => setShareMenuPostId(null)}
+                                  onReposted={(repost) => handleReposted(post.id, repost)}
+                                />
+                              )}
                             </div>
-                          </WhenWritable>
+                          </div>
 
                           {/* Inline Comments */}
                           {(() => {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,6 +9,9 @@ import EmailApp from '../src/components/SimDevice/EmailApp.tsx';
 import OrgPageView from '../src/components/SimDevice/OrgPageView.tsx';
 import FacebookMessengerView from '../src/components/SimDevice/FacebookMessengerView.tsx';
 import PhoneApp from '../src/components/SimDevice/PhoneApp/PhoneApp.tsx';
+import SocialFeedApp from '../src/components/SimDevice/SocialFeedApp.tsx';
+import FacebookFeedApp from '../src/components/SimDevice/FacebookFeedApp.tsx';
+import GroupChatApp from '../src/components/SimDevice/GroupChatApp.tsx';
 import { ViewAsBanner } from '../src/components/SimDevice/ViewAsBanner.tsx';
 import { ViewAsSelect } from '../src/components/SimDevice/ViewAsMenu.tsx';
 import { SurfaceReadOnlyProvider } from '../src/components/SimDevice/surfaceReadOnly.tsx';
@@ -236,4 +240,94 @@ describe('view-as banner and read-only composers', () => {
     assert.equal(phoneOff.includes('Call back'), false);
     assert.equal(phoneOff.includes('Act as'), false);
   });
+
+  test('a read-only social post keeps counts and the liked state, with the controls disabled', () => {
+    const post = feedPost('x_twitter');
+    const readOnly = shell(createElement(SocialFeedApp, { initialPosts: [post] }), true);
+    const writable = shell(createElement(SocialFeedApp, { initialPosts: [post] }), false);
+    assert.equal(buttonHas(readOnly, 'post-like-p1', 'disabled'), true);
+    assert.equal(buttonHas(writable, 'post-like-p1', 'disabled'), false);
+    assert.match(readOnly, /fill="#F91880"/);
+    assert.match(readOnly, />3</);
+    assert.match(readOnly, />2</);
+    assert.match(readOnly, />4</);
+    assert.match(readOnly, />9</);
+    assert.equal(readOnly.includes('Submit report'), false);
+    assert.match(writable, /data-testid="post-like-p1"/);
+
+    const thread = shell(
+      createElement(SocialFeedApp, { initialPosts: [post], openPostId: 'p1' }),
+      true,
+    );
+    assert.match(thread, /Likes/);
+    assert.match(thread, /<button disabled=""[^>]*title="Report post"/);
+    assert.match(thread, /<button disabled=""[^>]*title="Dispute with facts"/);
+    assert.equal(thread.includes('Submit report'), false);
+    assert.equal(thread.includes('Report this post'), false);
+  });
+
+  test('a read-only facebook post keeps the reaction control visible and disabled', () => {
+    const post = feedPost('facebook');
+    const readOnly = shell(createElement(FacebookFeedApp, { initialPosts: [post] }), true);
+    const writable = shell(createElement(FacebookFeedApp, { initialPosts: [post] }), false);
+    assert.equal(buttonHas(readOnly, 'fb-react-p1', 'disabled'), true);
+    assert.equal(buttonHas(writable, 'fb-react-p1', 'disabled'), false);
+    assert.match(readOnly, />Like</);
+    assert.match(readOnly, />Comment</);
+    assert.equal(readOnly.includes('Submit report'), false);
+  });
+
+  test('read-only group chat still shows the conversation list and hides the call control', () => {
+    const readOnly = shell(createElement(GroupChatApp), true);
+    const writable = shell(createElement(GroupChatApp), false);
+    assert.match(readOnly, /TeamChat/);
+    assert.equal(readOnly.includes('>Calls<'), false);
+    assert.match(writable, />Calls</);
+    assert.equal(readOnly.includes('Act as'), false);
+  });
+
+  test('read-only hooks are not called after a short-circuit', () => {
+    for (const file of [
+      'components/SimDevice/OrgPageView.tsx',
+      'components/SimDevice/FacebookMessengerView.tsx',
+      'components/SimDevice/surfaceReadOnly.tsx',
+    ]) {
+      const src = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+      assert.equal(/\|\|\s*useSurfaceReadOnly\(/.test(src), false, file);
+      assert.equal(src.includes('useSurfaceIsReadOnly'), false, file);
+    }
+  });
 });
+
+function buttonHas(html: string, testId: string, attr: string): boolean {
+  const match = html.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`));
+  return !!match && match[0].includes(attr);
+}
+
+function feedPost(platform: string) {
+  return {
+    id: 'p1',
+    author_handle: '@ada',
+    author_display_name: 'Ada',
+    author_type: 'player',
+    content: 'Hello from Ada',
+    hashtags: [],
+    like_count: 3,
+    repost_count: 2,
+    reply_count: 4,
+    view_count: 9,
+    sentiment: 'neutral',
+    content_flags: {},
+    is_flagged_by_player: false,
+    flagged_by_me: false,
+    requires_response: false,
+    responded_at: null,
+    is_repost: false,
+    created_at: '2026-01-01T00:00:00Z',
+    platform,
+    virality_score: 1,
+    reply_to_post_id: null,
+    liked_by_me: true,
+    media_urls: [],
+  };
+}

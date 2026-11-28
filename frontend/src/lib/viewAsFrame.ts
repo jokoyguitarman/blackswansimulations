@@ -7,7 +7,6 @@ export interface ViewAsFrame {
 
 let frame: ViewAsFrame | null = null;
 let generation = 0;
-const listeners = new Set<() => void>();
 
 function sameFrame(a: ViewAsFrame | null, b: ViewAsFrame | null): boolean {
   if (a == null || b == null) return a === b;
@@ -17,7 +16,6 @@ function sameFrame(a: ViewAsFrame | null, b: ViewAsFrame | null): boolean {
 export function setViewAsFrame(next: ViewAsFrame | null): void {
   if (sameFrame(frame, next)) return;
   frame = next;
-  for (const listener of listeners) listener();
 }
 
 /**
@@ -40,13 +38,6 @@ export function currentViewAsFrame(): ViewAsFrame | null {
 
 export function viewAsSubjectId(): string | null {
   return frame?.userId ?? null;
-}
-
-export function subscribeViewAsFrame(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 export function viewAsRequestHeaders(current: ViewAsFrame): Record<string, string> {

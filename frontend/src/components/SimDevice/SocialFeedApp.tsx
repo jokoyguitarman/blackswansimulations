@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useDeviceNav } from '../../lib/deviceNav';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -13,6 +13,8 @@ import ShareMenu from './ShareMenu';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import DisputeModal from './DisputeModal';
 import ReportModal from './ReportModal';
+
+void React;
 
 const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
@@ -130,12 +132,19 @@ export default function SocialFeedApp({
   externalFilter,
   openPostId,
   triggerCompose,
-}: { externalFilter?: string; openPostId?: string; triggerCompose?: number } = {}) {
+  initialPosts,
+}: {
+  externalFilter?: string;
+  openPostId?: string;
+  triggerCompose?: number;
+  /** Seeds the feed for a read-only render. Omitted in the player shell. */
+  initialPosts?: SocialPost[];
+} = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
   const deviceNav = useDeviceNav('social');
   const { isTrainer } = useRoleVisibility();
-  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [posts, setPosts] = useState<SocialPost[]>(() => initialPosts ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [postingAsPage, setPostingAsPage] = useState(false);
   const { setIsPageMode } = usePageMode();
@@ -225,13 +234,17 @@ export default function SocialFeedApp({
     }
     prevExternalFilter.current = externalFilter;
   }, [externalFilter]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialPosts?.length);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [replyingTo, setReplyingTo] = useState<SocialPost | null>(null);
   const [activeTab, setActiveTab] = useState<'foryou' | 'latest'>('foryou');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
-  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(() =>
+    openPostId && initialPosts
+      ? (initialPosts.find((post) => post.id === openPostId) ?? null)
+      : null,
+  );
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
@@ -855,6 +868,7 @@ export default function SocialFeedApp({
   }
 
   function openReportModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setReportPost(post);
     setReportCategory('');
     setReportReason('');
@@ -862,7 +876,7 @@ export default function SocialFeedApp({
   }
 
   async function submitReport() {
-    if (!reportPost || !reportCategory) return;
+    if (surfaceReadOnly || !reportPost || !reportCategory) return;
     setReporting(true);
     const postId = reportPost.id;
     try {
@@ -893,10 +907,12 @@ export default function SocialFeedApp({
   }
 
   function handleShareMenu(postId: string) {
+    if (surfaceReadOnly) return;
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
 
   function openDisputeModal(post: SocialPost) {
+    if (surfaceReadOnly) return;
     setDisputePost(post);
     setDisputeNote('');
     setDisputeStatus(null);
@@ -1136,6 +1152,7 @@ export default function SocialFeedApp({
             >
               {/* Reply */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => {
                   setReplyingTo(selectedPost);
                   setComposeText(`${selectedPost.author_handle} `);
@@ -1159,6 +1176,7 @@ export default function SocialFeedApp({
               </button>
               {/* Like */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => handleLike(selectedPost.id)}
                 className="ios-btn-bounce p-2 transition-colors"
                 style={{ color: selectedPost.liked_by_me ? '#F91880' : '#71767B' }}
@@ -1178,6 +1196,7 @@ export default function SocialFeedApp({
               </button>
               {/* Report (with reason) */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => openReportModal(selectedPost)}
                 className="ios-btn-bounce p-2 transition-colors"
                 style={{ color: selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B' }}
@@ -1199,6 +1218,7 @@ export default function SocialFeedApp({
               </button>
               {/* Dispute with facts */}
               <button
+                disabled={surfaceReadOnly}
                 onClick={() => openDisputeModal(selectedPost)}
                 className="ios-btn-bounce p-2 transition-colors hover:text-[#F4212E]"
                 style={{ color: '#71767B' }}
@@ -1222,6 +1242,7 @@ export default function SocialFeedApp({
               {/* Share */}
               <div style={{ position: 'relative' }}>
                 <button
+                  disabled={surfaceReadOnly}
                   onClick={() => handleShareMenu(selectedPost.id)}
                   className="ios-btn-bounce p-2 transition-colors hover:text-[#1D9BF0]"
                   style={{ color: '#71767B' }}
@@ -1241,7 +1262,7 @@ export default function SocialFeedApp({
                     <line x1="12" y1="2" x2="12" y2="15" />
                   </svg>
                 </button>
-                {shareMenuPostId === selectedPost.id && (
+                {shareMenuPostId === selectedPost.id && !surfaceReadOnly && (
                   <ShareMenu
                     postId={selectedPost.id}
                     sessionId={sessionId!}
@@ -1327,6 +1348,7 @@ export default function SocialFeedApp({
                       )}
                       <div className="flex items-center gap-5 mt-2">
                         <button
+                          disabled={surfaceReadOnly}
                           onClick={() => {
                             setReplyingTo(reply);
                             setComposeText(`${reply.author_handle} `);
@@ -1349,6 +1371,7 @@ export default function SocialFeedApp({
                           </svg>
                         </button>
                         <button
+                          disabled={surfaceReadOnly}
                           onClick={() => handleLike(reply.id)}
                           className="ios-btn-bounce flex items-center gap-1"
                           style={{ color: reply.liked_by_me ? '#F91880' : '#71767B' }}
@@ -1737,7 +1760,7 @@ export default function SocialFeedApp({
           )}
         </WhenWritable>
 
-        {reportPost && (
+        {reportPost && !surfaceReadOnly && (
           <ReportModal
             authorName={reportPost.author_display_name}
             authorHandle={reportPost.author_handle}
@@ -2360,19 +2383,147 @@ export default function SocialFeedApp({
                 </div>
 
                 {/* Engagement bar */}
-                <WhenWritable>
-                  <div
-                    className="flex items-center justify-evenly mt-2 -mx-2"
-                    style={{ color: '#71767B' }}
+                <div
+                  className="flex items-center justify-evenly mt-2 -mx-2"
+                  style={{ color: '#71767B' }}
+                >
+                  <button
+                    disabled={surfaceReadOnly}
+                    data-testid={`post-reply-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReplyingTo(post);
+                      setComposing(true);
+                    }}
+                    className="flex items-center gap-1 group transition-colors hover:text-[#1D9BF0]"
                   >
+                    <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
+                    </span>
+                  </button>
+                  <button
+                    disabled={surfaceReadOnly}
+                    data-testid={`post-repost-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRepost(post.id);
+                    }}
+                    className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M17 1l4 4-4 4" />
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                        <path d="M7 23l-4-4 4-4" />
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
+                    </span>
+                  </button>
+                  <button
+                    disabled={surfaceReadOnly}
+                    data-testid={`post-like-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLike(post.id);
+                    }}
+                    className={`flex items-center gap-1 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill={post.liked_by_me ? '#F91880' : 'none'}
+                        stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.like_count > 0 ? formatCount(post.like_count) : ''}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <div className="p-1">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 20V10M12 20V4M6 20v-6" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.view_count > 0 ? formatCount(post.view_count) : ''}
+                    </span>
+                  </div>
+                  <button
+                    disabled={surfaceReadOnly}
+                    data-testid={`post-flag-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFlag(post.id);
+                    }}
+                    className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill={post.flagged_by_me ? '#F59E0B' : 'none'}
+                        stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                        <line x1="4" y1="22" x2="4" y2="15" />
+                      </svg>
+                    </div>
+                  </button>
+                  <div style={{ position: 'relative' }}>
                     <button
-                      data-testid={`post-reply-${post.id}`}
+                      disabled={surfaceReadOnly}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setReplyingTo(post);
-                        setComposing(true);
+                        handleShareMenu(post.id);
                       }}
-                      className="flex items-center gap-1 group transition-colors hover:text-[#1D9BF0]"
+                      className="flex items-center group transition-colors hover:text-[#1D9BF0]"
                     >
                       <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
                         <svg
@@ -2385,151 +2536,26 @@ export default function SocialFeedApp({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
-                      </span>
-                    </button>
-                    <button
-                      data-testid={`post-repost-${post.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRepost(post.id);
-                      }}
-                      className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M17 1l4 4-4 4" />
-                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                          <path d="M7 23l-4-4 4-4" />
-                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
-                      </span>
-                    </button>
-                    <button
-                      data-testid={`post-like-${post.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleLike(post.id);
-                      }}
-                      className={`flex items-center gap-1 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={post.liked_by_me ? '#F91880' : 'none'}
-                          stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.like_count > 0 ? formatCount(post.like_count) : ''}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <div className="p-1">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M18 20V10M12 20V4M6 20v-6" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.view_count > 0 ? formatCount(post.view_count) : ''}
-                      </span>
-                    </div>
-                    <button
-                      data-testid={`post-flag-${post.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFlag(post.id);
-                      }}
-                      className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={post.flagged_by_me ? '#F59E0B' : 'none'}
-                          stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                          <line x1="4" y1="22" x2="4" y2="15" />
+                          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                          <polyline points="16 6 12 2 8 6" />
+                          <line x1="12" y1="2" x2="12" y2="15" />
                         </svg>
                       </div>
                     </button>
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleShareMenu(post.id);
-                        }}
-                        className="flex items-center group transition-colors hover:text-[#1D9BF0]"
-                      >
-                        <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                            <polyline points="16 6 12 2 8 6" />
-                            <line x1="12" y1="2" x2="12" y2="15" />
-                          </svg>
-                        </div>
-                      </button>
-                      {shareMenuPostId === post.id && (
-                        <ShareMenu
-                          postId={post.id}
-                          sessionId={sessionId!}
-                          platform="x_twitter"
-                          authorHandle={post.author_handle}
-                          authorDisplayName={post.author_display_name}
-                          contentPreview={post.content}
-                          onClose={() => setShareMenuPostId(null)}
-                          onReposted={(repost) => handleReposted(post.id, repost)}
-                        />
-                      )}
-                    </div>
+                    {shareMenuPostId === post.id && !surfaceReadOnly && (
+                      <ShareMenu
+                        postId={post.id}
+                        sessionId={sessionId!}
+                        platform="x_twitter"
+                        authorHandle={post.author_handle}
+                        authorDisplayName={post.author_display_name}
+                        contentPreview={post.content}
+                        onClose={() => setShareMenuPostId(null)}
+                        onReposted={(repost) => handleReposted(post.id, repost)}
+                      />
+                    )}
                   </div>
-                </WhenWritable>
+                </div>
               </div>
             );
           })

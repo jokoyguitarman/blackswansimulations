@@ -95,6 +95,10 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+function playerHandleFromName(name: string): string {
+  return `@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+}
+
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -116,7 +120,8 @@ function FacebookMessengerView({
   orgKey,
   platform = 'facebook',
 }: FacebookMessengerViewProps) {
-  const readOnly = readOnlyProp || useSurfaceReadOnly();
+  const shellReadOnly = useSurfaceReadOnly();
+  const readOnly = readOnlyProp || shellReadOnly;
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -180,7 +185,7 @@ function FacebookMessengerView({
         } = await supabase.auth.getSession();
         const viewedName = currentViewAsFrame()?.name;
         if (viewedName) {
-          setPlayerHandle(`@${viewedName.replace(/[@.\s+,]/g, '_').toLowerCase()}`);
+          setPlayerHandle(playerHandleFromName(viewedName));
           return;
         }
         const metaName = session?.user?.user_metadata?.full_name as string | undefined;
@@ -194,7 +199,7 @@ function FacebookMessengerView({
           name = data?.full_name || session?.user?.email || '';
         }
         if (!name) name = session?.user?.email || 'Player';
-        setPlayerHandle(`@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`);
+        setPlayerHandle(playerHandleFromName(name));
       } catch {
         /* ignore */
       }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { readAppIntent } from '../../lib/appIntents';
@@ -11,8 +11,9 @@ import { ChatListScreen } from './TeamChat/ChatListScreen';
 import { ConversationScreen } from './TeamChat/ConversationScreen';
 import { colorFor, groupIcon, initials } from './TeamChat/avatars';
 import { WhenWritable } from './surfaceReadOnly';
-import { viewAsSubjectId } from '../../lib/viewAsFrame';
 import type { ChatListItem, ChatScreenState, ChatVariant } from './TeamChat/types';
+
+void React;
 
 /**
  * TeamChat — WhatsApp-style chat list → conversation. Shared by the phone (route
@@ -29,7 +30,7 @@ export default function GroupChatApp() {
   const [screen, setScreen] = useState<ChatScreenState>({ screen: 'list' });
   const [membersOpen, setMembersOpen] = useState(false);
   const [participants, setParticipants] = useState<Array<{ id: string; full_name: string }>>([]);
-  const webrtc = useWebRTC(viewAsSubjectId() ?? user?.id);
+  const webrtc = useWebRTC(user?.id);
   const isWA = variant === 'whatsapp';
 
   useEffect(() => {

@@ -122,7 +122,8 @@ export default function OrgPageView({
   const [composeText, setComposeText] = useState('');
   // Viewing a page the player does not control (e.g. a rival brand) hides composers.
   const [viewOnly, setViewOnly] = useState(false);
-  const readOnly = forceReadOnly || viewOnly || useSurfaceReadOnly();
+  const shellReadOnly = useSurfaceReadOnly();
+  const readOnly = forceReadOnly || viewOnly || shellReadOnly;
 
   async function authHeaders(): Promise<Record<string, string>> {
     if (forceReadOnly && sessionId) {
