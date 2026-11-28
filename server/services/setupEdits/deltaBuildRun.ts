@@ -1,5 +1,6 @@
 import { env } from '../../env.js';
 import { limitConcurrency } from '../../lib/limitConcurrency.js';
+import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import type { FactSheet, ObjectiveDef, SocialInject } from '../socialCrisisGeneratorService.js';
 import { EMPTY_DECISION } from '../warroomBuild/assemble.js';
 import { listDeltaCalls, stageOfCall, type DeltaCall, type DeltaStageName } from './deltaCalls.js';
@@ -39,6 +40,7 @@ import type {
   TextUpdate,
 } from './deltaBuildTypes.js';
 import { blankGenerated } from './deltaBuildTypes.js';
+import { revisePeaceForEdit } from './peaceDelta.js';
 import type { SetupCrisis } from './setupSnapshotCore.js';
 
 export type { DeltaCall, DeltaStageName } from './deltaCalls.js';
@@ -51,11 +53,17 @@ export interface DeltaCarry {
   retiredKeys: string[];
 }
 
+export interface DeltaStageHooks {
+  /** Trainer-facing build log, the same channel the create-mode peace step uses. */
+  warn?: (message: string) => void;
+}
+
 export async function runDeltaStage(
   stage: DeltaStageName,
   ctx: DeltaBuildContext,
   generators: DeltaGenerators,
   carry?: DeltaCarry,
+  hooks?: DeltaStageHooks,
 ): Promise<SetupEditStageOutput> {
   const state = startState(ctx, carry);
   let diff = carry?.briefDiff ?? null;
@@ -109,6 +117,11 @@ export async function runDeltaStage(
     await runCalls(calls, ctx, generators, diff, state);
   }
 
+  if (stage === 'pages') {
+    const peace = await revisePeaceForEdit(ctx, state.generated.pages, hooks?.warn);
+    if (peace) state.peace_period = peace;
+  }
+
   if (stage !== 'characters') await regenerateStageBranches(ctx, generators, diff, state);
   state.revisions = downgradeReferencedRetires(
     state.revisions,
@@ -123,25 +136,26 @@ export async function runDeltaStage(
 export async function runDeltaBuild(
   ctx: DeltaBuildContext,
   generators: DeltaGenerators,
+  hooks?: DeltaStageHooks,
 ): Promise<Record<DeltaStageName, SetupEditStageOutput>> {
-  const characters = await runDeltaStage('characters', ctx, generators);
+  const characters = await runDeltaStage('characters', ctx, generators, undefined, hooks);
   const afterCharacters = retiredKeysOf(characters);
   const storyline = await runDeltaStage('storyline', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: afterCharacters,
-  });
+  }, hooks);
   const afterStoryline = [...afterCharacters, ...retiredKeysOf(storyline)];
   const convergence = await runDeltaStage('convergence', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: afterStoryline,
-  });
+  }, hooks);
   const pages = await runDeltaStage('pages', ctx, generators, {
     briefDiff: characters.brief_diff,
     swapPremise: characters.swap_premise,
     retiredKeys: [...afterStoryline, ...retiredKeysOf(convergence)],
-  });
+  }, hooks);
   return { characters, storyline, convergence, pages };
 }
 
@@ -156,6 +170,7 @@ interface RunState {
   stakeholder_updates: StakeholderTextUpdate[];
   priorRetired: Set<string>;
   factSheet?: FactSheet;
+  peace_period?: PeaceFeed;
 }
 
 async function runCalls(
@@ -857,6 +872,7 @@ function finish(
     generated.pages.length > 0 ||
     generated.branches.length > 0 ||
     generated.pressure_injects.length > 0 ||
+    state.peace_period != null ||
     diff != null;
   return {
     revisions: state.revisions,
@@ -906,5 +922,6 @@ function finish(
     dimensionLabels: null,
     org_page: generated.pages.length > 0 ? { orgs: generated.pages } : null,
     pressure_injects: generated.pressure_injects,
+    ...(state.peace_period ? { peace_period: state.peace_period } : {}),
   };
 }

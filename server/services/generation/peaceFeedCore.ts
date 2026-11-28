@@ -40,6 +40,16 @@ export {
 export const PEACE_ORDINARY_LIFE_RULE =
   'Posts must be about ordinary life and ordinary business. Do not hint at, foreshadow or allude to the crisis.';
 
+/** Shared with the leak-term-only prompt so a brief edit does not ask for posts. */
+export const PEACE_LEAK_TERM_ONLY =
+  'The crisis brief is given only so you can list leak_terms. Never use those terms, or the crisis, in a post or comment.';
+
+export const PEACE_LEAK_TERM_RULE =
+  'leak_terms are the short words and phrases a reader would recognise as the crisis (product, incident, injury, recall). They are matched whole-word, so prefer the specific phrase.';
+
+export const PEACE_LEAK_TERM_SOURCE_HEADER =
+  'LEAK TERM SOURCE (use this only to choose leak_terms. Do not mention, hint at, foreshadow or allude to any of it in posts or comments):';
+
 export const PEACE_FEED_EMPTY_WARNING =
   'Peace feed could not be generated — the scenario compiles without one.';
 
@@ -574,12 +584,12 @@ export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): {
   const system = [
     'You write the pre-crisis social feed for a crisis-simulation scenario.',
     PEACE_ORDINARY_LIFE_RULE,
-    'The crisis brief is given only so you can list leak_terms. Never use those terms, or the crisis, in a post or comment.',
+    PEACE_LEAK_TERM_ONLY,
     `Return JSON: { "leak_terms": string[], "posts": [ { "ref": "P1", "author": { "kind": "page", "org_key": "...", "platform": "facebook"|"x_twitter" } | { "kind": "persona", "handle": "@..." }, "platform": "facebook"|"x_twitter", "post_format": "text", "content": "...", "media_description": "", "offset_seconds": number, "comments": [ { "author_handle": "@...", "content": "...", "offset_seconds": number } ] } ] }`,
     `Write ${PEACE_POST_MIN} to ${PEACE_POST_MAX} posts. Every offset is an integer from 0 to ${maxOffset}. At most ${PEACE_COMMENT_MAX} comments on a post.`,
     'Every playable protagonist page listed below needs at least 2 posts on that platform. Rival pages and pressure pages must each appear at least once. At least 6 distinct personas appear as authors or commenters, or every persona when the cast is smaller.',
     "A persona post must be about that persona's normal_interests. Page posts sound like that page's branded history.",
-    'leak_terms are the short words and phrases a reader would recognise as the crisis (product, incident, injury, recall). They are matched whole-word, so prefer the specific phrase.',
+    PEACE_LEAK_TERM_RULE,
   ].join('\n');
 
   const personas = input.cast.personas
@@ -609,9 +619,368 @@ export function buildPeaceFeedPrompt(input: PeaceFeedPromptInput): {
     'Pages:',
     pages || '(none)',
     '',
-    'LEAK TERM SOURCE (use this only to choose leak_terms. Do not mention, hint at, foreshadow or allude to any of it in posts or comments):',
+    PEACE_LEAK_TERM_SOURCE_HEADER,
     input.crisisBrief.trim() || '(no brief)',
     errors,
   ].join('\n');
   return { system, user };
+}
+
+/** The leak-term sentences of {@link buildPeaceFeedPrompt}, with no post request. */
+export function buildPeaceLeakTermsPrompt(crisisBrief: string): { system: string; user: string } {
+  return {
+    system: [PEACE_LEAK_TERM_ONLY, PEACE_LEAK_TERM_RULE, 'Return JSON: { "leak_terms": string[] }.'].join(
+      '\n',
+    ),
+    user: [PEACE_LEAK_TERM_SOURCE_HEADER, crisisBrief.trim() || '(no brief)'].join('\n'),
+  };
+}
+
+export function leakTermsFromReply(raw: unknown): string[] {
+  const record = unwrapFeed(raw) ?? asRecord(raw);
+  if (!record) return [];
+  return cleanTerms(record.leak_terms);
+}
+
+export interface PeaceAddedPostsPrompt {
+  cast: PeaceCast;
+  seconds: number;
+  leakTerms: readonly string[];
+  room: number;
+}
+
+/** Posts for organisations added in this edit. Does not ask the model to rewrite the feed. */
+export function buildPeaceAddedPostsPrompt(input: PeaceAddedPostsPrompt): {
+  system: string;
+  user: string;
+} {
+  const maxOffset = Math.max(0, input.seconds - PEACE_OFFSET_TAIL_SECONDS);
+  const room = Math.max(0, Math.floor(input.room));
+  const system = [
+    'You write extra pre-crisis posts for organisations just added to a crisis-simulation scenario.',
+    PEACE_ORDINARY_LIFE_RULE,
+    'Write posts only for the pages listed below. Do not write posts for any other organisation, and do not return leak_terms.',
+    `Return JSON: { "posts": [ { "author": { "kind": "page", "org_key": "...", "platform": "facebook"|"x_twitter" }, "platform": "facebook"|"x_twitter", "post_format": "text", "content": "...", "media_description": "", "offset_seconds": number, "comments": [ { "author_handle": "@...", "content": "...", "offset_seconds": number } ] } ] }`,
+    `Write at most ${room} posts. Every offset is an integer from 0 to ${maxOffset}. At most ${PEACE_COMMENT_MAX} comments on a post.`,
+    'Every playable protagonist page listed below needs at least 2 posts on that platform when the room allows it. A rival or pressure page needs at least 1.',
+    'Never use a leak term, and never hint at the crisis.',
+  ].join('\n');
+  const personas = input.cast.personas
+    .map((persona) => {
+      const interests = (persona.normal_interests ?? []).filter(Boolean).join(', ') || '(none)';
+      return `- ${persona.handle} (${persona.type || 'persona'}) interests: ${interests}`;
+    })
+    .join('\n');
+  const pages = input.cast.pages
+    .map((page) => {
+      const quota = page.playable ? 'playable protagonist, at least 2 posts' : page.role;
+      return `- ${page.org_key} ${canonicalPlatform(page.platform)} ${page.handle} (${page.name || page.org_key}, ${quota})`;
+    })
+    .join('\n');
+  const blocked = input.leakTerms.map((term) => term.trim()).filter(Boolean);
+  const user = [
+    'CAST',
+    'Personas (comments only; do not give them a new top-level post):',
+    personas || '(none)',
+    'Pages to post as:',
+    pages || '(none)',
+    '',
+    'Do not use these leak terms:',
+    blocked.join(', ') || '(none)',
+  ].join('\n');
+  return { system, user };
+}
+
+export interface PeaceHandleRename {
+  from: string;
+  to: string;
+}
+
+export interface PeacePeriodRewrite {
+  mapKey: (orgKey: string) => string;
+  /** Org keys whose page posts leave the feed. Checked before and after `mapKey`. */
+  dropOrgKeys: ReadonlySet<string>;
+  handleRenames: readonly PeaceHandleRename[];
+  /** Page handles of removed organisations. Their comments on surviving posts are dropped. */
+  dropCommentHandles?: readonly string[];
+}
+
+/**
+ * Rewrites one stored peace feed. Org re-keys and the primary swap update page
+ * authors. A removed org's posts are dropped, and so are comments that page
+ * left on other posts. A renamed handle updates persona authors and comment
+ * authors. Returns the same value when nothing changes.
+ */
+export function rewritePeacePeriod(value: unknown, rewrite: PeacePeriodRewrite): unknown {
+  const feed = asRecord(value);
+  if (!feed || !Array.isArray(feed.posts)) return value;
+  const handles = handleMapOf(rewrite.handleRenames);
+  const dropComments = new Set(
+    (rewrite.dropCommentHandles ?? []).map((handle) => handleKey(handle)).filter((handle) => handle.length > 0),
+  );
+  let changed = false;
+  const posts: unknown[] = [];
+  for (const raw of feed.posts) {
+    const next = rewriteOnePost(raw, rewrite, handles, dropComments);
+    if (next === undefined) {
+      changed = true;
+      continue;
+    }
+    if (next !== raw) changed = true;
+    posts.push(next);
+  }
+  if (!changed) return value;
+  return { ...feed, posts };
+}
+
+/** Page and persona handles that differ between the feed's current cast and the planned one. */
+export function peaceHandleRenames(input: {
+  orgPageBefore: unknown;
+  orgPageAfter: unknown;
+  personasBefore: unknown;
+  personasAfter: unknown;
+}): PeaceHandleRename[] {
+  const renames: PeaceHandleRename[] = [];
+  const beforeOrgs = indexBy(orgRecords(input.orgPageBefore), orgIdentity);
+  const afterOrgs = indexBy(orgRecords(input.orgPageAfter), orgIdentity);
+  for (const [id, before] of beforeOrgs) {
+    const after = afterOrgs.get(id);
+    if (!after) continue;
+    for (const field of HANDLE_FIELDS) {
+      const from = handleField(before, field);
+      const to = handleField(after, field);
+      if (from && to && handleKey(from) !== handleKey(to)) renames.push({ from, to });
+    }
+  }
+  const beforePeople = indexBy(personaRecords(input.personasBefore), personaIdentity);
+  const afterPeople = indexBy(personaRecords(input.personasAfter), personaIdentity);
+  for (const [id, before] of beforePeople) {
+    const after = afterPeople.get(id);
+    if (!after) continue;
+    const from = typeof before.handle === 'string' ? before.handle : '';
+    const to = typeof after.handle === 'string' ? after.handle : '';
+    if (from && to && handleKey(from) !== handleKey(to)) renames.push({ from, to });
+  }
+  return renames;
+}
+
+/**
+ * Replaces leak terms and drops posts that now match them, the same drop
+ * `dropOffendingPosts` uses. An empty reply, or a reply that would remove
+ * every post, leaves the feed as it was so the result still stores.
+ */
+export function replacePeaceLeakTerms(feed: PeaceFeed, terms: readonly string[]): PeaceFeed {
+  const cleaned = cleanTerms(terms);
+  if (cleaned.length === 0) return feed;
+  if (
+    cleaned.length === feed.leak_terms.length &&
+    cleaned.every((term, index) => term === feed.leak_terms[index])
+  ) {
+    return feed;
+  }
+  const dropped = dropOffendingPosts({ ...feed, leak_terms: cleaned }, []);
+  if (dropped.posts.length === 0) return feed;
+  if (dropped.posts.length === feed.posts.length) return { ...feed, leak_terms: cleaned };
+  return dropped;
+}
+
+/**
+ * Appends page posts for `addedOrgKeys` and leaves every existing post in place.
+ * The reply is normalised and checked with the same rules as a full feed.
+ * Existing posts fill the feed first; nothing is added once the feed is full.
+ */
+export function mergeAddedPeacePosts(
+  feed: PeaceFeed,
+  raw: unknown,
+  cast: PeaceCast,
+  addedOrgKeys: ReadonlySet<string>,
+): PeaceFeed {
+  const room = PEACE_POST_MAX - feed.posts.length;
+  if (room <= 0 || addedOrgKeys.size === 0) return feed;
+  const normalised = normalisePeaceFeed(raw, cast, {
+    seconds: feed.seconds,
+    enabled: feed.enabled,
+  });
+  if (!normalised) return feed;
+  const candidates = normalised.posts.filter(
+    (post) => post.author.kind === 'page' && addedOrgKeys.has(post.author.org_key),
+  );
+  if (candidates.length === 0) return feed;
+  const probe = { ...feed, posts: candidates };
+  const checked = dropOffendingPosts(probe, checkPeaceFeed(probe, cast));
+  const used = new Set(feed.posts.map((post) => post.ref));
+  const added: PeaceFeedPost[] = [];
+  for (const post of checked.posts) {
+    if (added.length >= room) break;
+    const ref = used.has(post.ref) ? nextPeaceRef(used) : post.ref;
+    used.add(ref);
+    added.push(ref === post.ref ? post : { ...post, ref });
+  }
+  if (added.length === 0) return feed;
+  return { ...feed, posts: [...feed.posts, ...added] };
+}
+
+/** Handles of organisation pages whose key `drop` accepts, from a page document or a list of orgs. */
+export function pageHandlesOf(source: unknown, drop: (orgKey: string) => boolean): string[] {
+  const rows = Array.isArray(source) ? source.filter(isOrgRecord) : orgRecords(source);
+  const handles: string[] = [];
+  for (const org of rows) {
+    const key = typeof org.org_key === 'string' ? org.org_key.trim() : '';
+    if (!key || !drop(key)) continue;
+    for (const field of HANDLE_FIELDS) {
+      const handle = handleField(org, field);
+      if (handle) handles.push(handle);
+    }
+  }
+  return handles;
+}
+
+function isOrgRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+const HANDLE_FIELDS = ['facebook_handle', 'x_handle', 'facebook.page_handle', 'x_twitter.page_handle'] as const;
+
+function handleField(org: Record<string, unknown>, field: (typeof HANDLE_FIELDS)[number]): string {
+  if (field === 'facebook_handle' || field === 'x_handle') {
+    return typeof org[field] === 'string' ? org[field].trim() : '';
+  }
+  const [parent, child] = field.split('.');
+  const nested = asRecord(org[parent]);
+  return nested && typeof nested[child] === 'string' ? nested[child].trim() : '';
+}
+
+function orgRecords(value: unknown): Record<string, unknown>[] {
+  const page = asRecord(value);
+  if (!page || !Array.isArray(page.orgs)) return [];
+  return page.orgs.filter(
+    (item): item is Record<string, unknown> =>
+      !!item && typeof item === 'object' && !Array.isArray(item),
+  );
+}
+
+function personaRecords(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      !!item && typeof item === 'object' && !Array.isArray(item),
+  );
+}
+
+function orgIdentity(org: Record<string, unknown>): string {
+  if (typeof org.org_uid === 'string' && org.org_uid.trim()) return `uid:${org.org_uid.trim()}`;
+  if (typeof org.org_key === 'string' && org.org_key.trim()) return `key:${org.org_key.trim()}`;
+  return '';
+}
+
+function personaIdentity(persona: Record<string, unknown>): string {
+  if (typeof persona.id === 'string' && persona.id.trim()) return `id:${persona.id.trim()}`;
+  if (typeof persona.name === 'string' && persona.name.trim()) return `name:${persona.name.trim()}`;
+  return '';
+}
+
+function indexBy(
+  rows: Record<string, unknown>[],
+  identity: (row: Record<string, unknown>) => string,
+): Map<string, Record<string, unknown>> {
+  const indexed = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const id = identity(row);
+    if (id && !indexed.has(id)) indexed.set(id, row);
+  }
+  return indexed;
+}
+
+function handleKey(handle: string): string {
+  return canonicalHandle(handle).toLowerCase();
+}
+
+function handleMapOf(renames: readonly PeaceHandleRename[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const rename of renames) {
+    const from = handleKey(rename.from);
+    const to = canonicalHandle(rename.to);
+    if (!from || !to || from === handleKey(to)) continue;
+    map.set(from, to);
+  }
+  return map;
+}
+
+function renamedHandle(handle: string, handles: ReadonlyMap<string, string>): string | null {
+  const next = handles.get(handleKey(handle));
+  return next ?? null;
+}
+
+function rewriteOnePost(
+  raw: unknown,
+  rewrite: PeacePeriodRewrite,
+  handles: ReadonlyMap<string, string>,
+  dropComments: ReadonlySet<string>,
+): unknown | undefined {
+  const post = asRecord(raw);
+  if (!post) return raw;
+  const author = asRecord(post.author);
+  if (author?.kind === 'page' && typeof author.org_key === 'string') {
+    const original = author.org_key.trim();
+    const mapped = rewrite.mapKey(original);
+    if (rewrite.dropOrgKeys.has(original) || rewrite.dropOrgKeys.has(mapped)) return undefined;
+    const authorNext = mapped !== author.org_key ? { ...author, org_key: mapped } : author;
+    const comments = rewriteComments(post.comments, handles, dropComments);
+    if (authorNext === author && comments === post.comments) return raw;
+    return postWith(post, authorNext, comments);
+  }
+  const comments = rewriteComments(post.comments, handles, dropComments);
+  let authorNext = author;
+  if (author?.kind === 'persona' && typeof author.handle === 'string') {
+    const next = renamedHandle(author.handle, handles);
+    if (next && next !== author.handle) authorNext = { ...author, handle: next };
+  }
+  if (authorNext === author && comments === post.comments) return raw;
+  return postWith(post, authorNext, comments);
+}
+
+function postWith(
+  post: Record<string, unknown>,
+  author: Record<string, unknown> | null,
+  comments: unknown,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...post };
+  if (author && author !== post.author) next.author = author;
+  if (comments !== post.comments) next.comments = comments;
+  return next;
+}
+
+function rewriteComments(
+  value: unknown,
+  handles: ReadonlyMap<string, string>,
+  dropComments: ReadonlySet<string>,
+): unknown {
+  if (!Array.isArray(value)) return value;
+  let changed = false;
+  const comments = [];
+  for (const item of value) {
+    const comment = asRecord(item);
+    if (!comment || typeof comment.author_handle !== 'string') {
+      comments.push(item);
+      continue;
+    }
+    if (dropComments.has(handleKey(comment.author_handle))) {
+      changed = true;
+      continue;
+    }
+    const next = renamedHandle(comment.author_handle, handles);
+    if (!next || next === comment.author_handle) {
+      comments.push(item);
+      continue;
+    }
+    changed = true;
+    comments.push({ ...comment, author_handle: next });
+  }
+  return changed ? comments : value;
+}
+
+function nextPeaceRef(used: ReadonlySet<string>): string {
+  let index = 1;
+  while (used.has(`P${index}`)) index += 1;
+  return `P${index}`;
 }

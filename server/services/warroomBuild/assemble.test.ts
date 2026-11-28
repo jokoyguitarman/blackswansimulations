@@ -318,9 +318,42 @@ describe('A7 pages skipped', () => {
     assert.equal(skipped.decision_context.labour_signal, true);
     assert.equal(skipped.sop_steps[0]?.step_id, 'notify');
     assert.equal(skipped.pressure_links[0]?.spokesperson_stakeholder_id, 'stk_mol');
+    assert.equal(skipped.peace_period, undefined);
 
     const absent = assembleReview(req, outputs({ pages: undefined }));
     assert.equal(absent.org_page, null);
+    assert.equal(absent.peace_period, undefined);
     assert.equal(absent.team_charters[0]?.team_name, 'Legal');
+  });
+
+  test('a pages stage that ran contributes its peace feed', () => {
+    const review = assembleReview(
+      request(),
+      outputs({
+        pages: {
+          org_page: { page_name: 'Meridian' },
+          peace_period: {
+            version: 1,
+            seconds: 300,
+            enabled: true,
+            leak_terms: ['recall'],
+            posts: [
+              {
+                ref: 'P1',
+                author: { kind: 'page', org_key: 'primary', platform: 'facebook' },
+                platform: 'facebook',
+                post_format: 'text',
+                content: 'Saturday breakfast',
+                media_description: '',
+                offset_seconds: 20,
+                comments: [],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    assert.equal(review.org_page?.page_name, 'Meridian');
+    assert.equal(review.peace_period?.posts[0]?.content, 'Saturday breakfast');
   });
 });
