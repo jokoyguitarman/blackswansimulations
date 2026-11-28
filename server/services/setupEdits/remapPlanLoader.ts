@@ -117,22 +117,78 @@ async function loadInjects(scenarioId: string): Promise<PlannerInject[]> {
   return rows.map((row) => asInject(row, history.has(text(row.id))));
 }
 
-async function injectsWithHistory(ids: string[]): Promise<Set<string>> {
+export const HISTORY_ID_BATCH = 100;
+export const HISTORY_PAGE_SIZE = 1000;
+
+export type HistoryTable = 'inject_publications' | 'inject_deliveries';
+
+export interface HistoryPage {
+  data: Array<{ inject_id?: unknown }> | null;
+  error: { code?: string; message?: string } | null;
+}
+
+/** `from`/`to` are an inclusive PostgREST range over rows for this id batch. */
+export type HistoryPageQuery = (
+  table: HistoryTable,
+  ids: readonly string[],
+  from: number,
+  to: number,
+) => Promise<HistoryPage>;
+
+/**
+ * Distinct inject ids that already have a publication or a delivery.
+ * Ids are requested in batches so the filter stays inside URL limits, and each
+ * batch is paged so PostgREST's row cap cannot hide a later session.
+ */
+export async function collectInjectsWithHistory(
+  ids: readonly string[],
+  query: HistoryPageQuery,
+  options?: { batchSize?: number; pageSize?: number },
+): Promise<Set<string>> {
   const found = new Set<string>();
-  if (ids.length === 0) return found;
-  const published = await readOptional(
-    'inject_publications',
-    supabaseAdmin.from('inject_publications').select('inject_id').in('inject_id', ids) as PromiseLike<QueryResult>,
-  );
-  const delivered = await readOptional(
-    'inject_deliveries',
-    supabaseAdmin.from('inject_deliveries').select('inject_id').in('inject_id', ids) as PromiseLike<QueryResult>,
-  );
-  for (const row of [...published, ...delivered]) {
-    const id = text(row.inject_id);
-    if (id) found.add(id);
+  const batchSize = options?.batchSize ?? HISTORY_ID_BATCH;
+  const pageSize = options?.pageSize ?? HISTORY_PAGE_SIZE;
+  const unique = [...new Set(ids.filter((id) => id.length > 0))];
+  const tables: HistoryTable[] = ['inject_publications', 'inject_deliveries'];
+  for (let index = 0; index < unique.length; index += batchSize) {
+    const batch = unique.slice(index, index + batchSize);
+    for (const table of tables) {
+      let from = 0;
+      for (;;) {
+        const page = await query(table, batch, from, from + pageSize - 1);
+        if (page.error) {
+          if (isRemapTableMissing(page.error)) {
+            warnMissing(table);
+            break;
+          }
+          throw page.error;
+        }
+        const rows = page.data ?? [];
+        for (const row of rows) {
+          const id = text(row.inject_id);
+          if (id) found.add(id);
+        }
+        if (rows.length < pageSize) break;
+        from += pageSize;
+      }
+    }
   }
   return found;
+}
+
+async function injectsWithHistory(ids: string[]): Promise<Set<string>> {
+  return collectInjectsWithHistory(ids, async (table, batch, from, to) => {
+    const result = await supabaseAdmin
+      .from(table)
+      .select('inject_id')
+      .in('inject_id', [...batch])
+      .order('inject_id', { ascending: true })
+      .range(from, to);
+    return {
+      data: (result.data ?? null) as HistoryPage['data'],
+      error: result.error,
+    };
+  });
 }
 
 async function loadScheduledSessions(scenarioId: string): Promise<LobbySession[]> {

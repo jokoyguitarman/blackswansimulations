@@ -7,12 +7,13 @@ import {
   EDIT_TOKEN,
   planRemap,
   type JsonPatch,
+  type OrphanResolution,
   type PlannerInject,
   type PlannerTeam,
   type RemapPlan,
   type RemapPlannerInput,
 } from './remapPlanner.js';
-import { isRemapTableMissing } from './remapPlanLoader.js';
+import { collectInjectsWithHistory, isRemapTableMissing } from './remapPlanLoader.js';
 import {
   delta,
   emptySession,
@@ -478,6 +479,8 @@ describe('remap planner', () => {
     assert.equal(successor.team_name, 'Counsel');
     assert.equal(successor.from_name, 'Legal');
     assert.equal(successor.source_id, 'team-legal');
+    assert.equal(plan.teams.retire.find((row) => row.team_uid === 'uid-legal')?.reason, 'renamed');
+    assert.equal(plan.teams.retire.find((row) => row.team_uid === 'uid-legal')?.source_id, successor.source_id);
     assert.equal(successor.scoring_rubric, 'Be precise');
     assert.deepEqual(successor.expected_actions, [{ action_id: 'notify' }]);
     assert.equal((successor.charter as { team_name: string }).team_name, 'Counsel');
@@ -884,7 +887,7 @@ describe('remap planner', () => {
     assert.equal(plan.applicable, true);
   });
 
-  test('null org keys that mean primary follow the old primary', () => {
+  test('null stakeholder keys stay shared in multi-org and follow the old primary when it was the only one', () => {
     const source = swapInput();
     source.teams = [
       team({
@@ -900,10 +903,45 @@ describe('remap planner', () => {
     const fresh = plan.primary_swap?.old_primary_new_key;
     assert.equal(plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.org_key, fresh);
     assert.equal((plan.teams.successors.find((row) => row.team_uid === 'uid-a-null')?.charter as { org_key: string }).org_key, fresh);
-    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; org_key: string }>;
-    assert.equal(stakeholders.find((row) => row.id === 'stk_null')?.org_key, fresh);
+    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; org_key: string | null }>;
+    assert.equal(stakeholders.find((row) => row.id === 'stk_null')?.org_key, null);
     assert.equal(stakeholders.find((row) => row.id === 'stk_b')?.org_key, 'primary');
-    assert.notEqual(fresh, 'primary');
+
+    const single = planRemap(input({
+      delta: delta({ primary_swap: { from_org_uid: 'uid-a', to_org_uid: 'uid-d', to_is_new: true } }),
+      edited: snapshot([
+        snapshotOrg({
+          org_uid: 'uid-a',
+          org_key: 'primary',
+          display_name: 'Acme',
+          short_name: 'ACME',
+          country: 'Singapore',
+          is_primary: false,
+          teams: [snapshotTeam({ team_uid: 'uid-a', team_name: 'Legal' })],
+        }),
+        snapshotOrg({
+          org_uid: 'uid-d',
+          org_key: 'org_delta_id',
+          display_name: 'Delta',
+          short_name: 'DELTA',
+          country: 'Indonesia',
+          is_primary: true,
+          teams: [snapshotTeam({ team_uid: 'uid-d', team_name: 'Communications' })],
+        }),
+      ]),
+      initial_state: {
+        orgs: [acme()],
+        stakeholders: [{ id: 'stk_only', name: 'Pat', owning_team: 'Legal', org_key: null }],
+        org_key_history: [{ org_uid: 'uid-a', org_key: 'primary', from_edit: null, until_edit: null }],
+      },
+      teams: [team({ id: 'a', team_uid: 'uid-a', team_name: 'Legal', org_key: null })],
+    }));
+    const only = (replaced(single, '/stakeholders') as Array<{ id: string; org_key: string | null }>).find(
+      (row) => row.id === 'stk_only',
+    );
+    assert.equal(only?.org_key, single.primary_swap?.old_primary_new_key);
+    assert.notEqual(only?.org_key, null);
+    assert.notEqual(only?.org_key, 'primary');
   });
 
   test('a swap remaps scheduled page controllers and re-seeds pages', () => {
@@ -1008,6 +1046,115 @@ describe('remap planner', () => {
     assert.ok(plan.phases.includes('add'));
     const rows = replaced(plan, '/org_key_history') as Array<{ org_uid: string; org_key: string; until_edit: string | null }>;
     assert.ok(rows.some((row) => row.org_uid === 'uid-d' && row.org_key === 'primary' && row.until_edit == null));
+  });
+
+  test('a pressure group that exists only on the page is an orphan when every target is removed', () => {
+    const plan = planRemap(input({
+      delta: delta({ removed_orgs: ['org_bravo_my'] }),
+      edited: snapshot([
+        snapshotOrg({ org_uid: 'uid-a', org_key: 'primary', display_name: 'Acme', short_name: 'ACME', is_primary: true }),
+      ]),
+      initial_state: {
+        orgs: [acme()],
+        org_page: {
+          orgs: [
+            {
+              org_key: 'org_pressure_page_sg',
+              display_name: 'Page Press',
+              role: 'pressure',
+              targets_org_keys: ['org_bravo_my'],
+            },
+          ],
+        },
+      },
+    }));
+    assert.ok(plan.orphans.some((row) => row.kind === 'pressure_targets' && row.org_key === 'org_pressure_page_sg'));
+  });
+
+  test('a resolution for every orphan kind is applied and the plan becomes applicable', () => {
+    const source = removalWorld();
+    const state = source.initial_state as Record<string, unknown>;
+    state.org_page = {
+      orgs: [
+        {
+          org_key: 'org_pressure_page_sg',
+          display_name: 'Page Press',
+          role: 'pressure',
+          targets_org_keys: ['org_gone'],
+        },
+      ],
+    };
+    source.delta = delta({ ...source.delta, removed_orgs: ['org_gone'] });
+    const open = planRemap(source);
+    const kinds = new Set(open.orphans.map((row) => row.kind));
+    for (const kind of ['player_role', 'condition', 'stakeholder', 'pressure_targets', 'chain_target', 'mood_consequence', 'team_dependency']) {
+      assert.ok(kinds.has(kind as 'player_role'), kind);
+    }
+    const resolutions: Record<string, OrphanResolution> = {};
+    for (const orphan of open.orphans) {
+      if (orphan.kind === 'player_role') resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
+      else if (orphan.kind === 'condition' && orphan.condition_key?.includes('|team=')) {
+        resolutions[orphan.id] = { choice: 'retarget', team_name: 'Communications' };
+      } else if (orphan.kind === 'condition') resolutions[orphan.id] = { choice: 'keep' };
+      else if (orphan.kind === 'stakeholder') resolutions[orphan.id] = { choice: 'reassign', team_name: 'Communications' };
+      else if (orphan.kind === 'pressure_targets') resolutions[orphan.id] = { choice: 'retarget', org_keys: ['primary'] };
+      else if (orphan.kind === 'chain_target' && orphan.target_key) {
+        resolutions[orphan.id] = { choice: 'retarget', inject_key: 'mixed_mail' };
+      } else if (orphan.kind === 'chain_target') resolutions[orphan.id] = { choice: 'retarget', team_name: 'Communications' };
+      else if (orphan.kind === 'mood_consequence') resolutions[orphan.id] = { choice: 'clear' };
+      else if (orphan.kind === 'team_dependency' && !orphan.target_key) resolutions[orphan.id] = { choice: 'remove' };
+      else if (orphan.kind === 'team_dependency') resolutions[orphan.id] = { choice: 'clear' };
+    }
+    const plan = planRemap({ ...source, resolutions });
+    assert.equal(plan.orphans.length, 0);
+    assert.equal(plan.applicable, true);
+    const roles = replaced(plan, '/player_roles') as Array<{ role_id: string; team_name: string }>;
+    assert.equal(roles.find((row) => row.role_id === 'cs_head')?.team_name, 'Communications');
+    const session = plan.scheduled_sessions.find((row) => row.session_id === 'sess-scheduled');
+    assert.ok(session);
+    assert.equal(session.retire_roles.includes('cs_head'), false);
+    assert.deepEqual(session.reassign_roles, [{ role_id: 'cs_head', team_name: 'Communications' }]);
+    const mixed = plan.injects.rewrite_in_place.find((row) => row.inject_id === 'inj-mixed');
+    assert.ok(mixed);
+    assert.deepEqual(mixed.changes.conditions_to_appear, {
+      all: ['inject_fired:only_legal', 'responded:mixed_mail|team=communications'],
+    });
+    const stakeholders = replaced(plan, '/stakeholders') as Array<{ id: string; owning_team: string }>;
+    assert.equal(stakeholders.find((row) => row.id === 'stk_ada')?.owning_team, 'Communications');
+    const page = replaced(plan, '/org_page') as { orgs: Array<{ org_key: string; targets_org_keys?: string[] }> };
+    assert.deepEqual(page.orgs.find((row) => row.org_key === 'org_pressure_page_sg')?.targets_org_keys, ['primary']);
+    const config = mixed.changes.delivery_config as {
+      escalation: { on_exhausted?: { publish_inject_key?: string }; steps: Array<{ target_team?: string }> };
+      mood_ladder: { rungs: Array<{ consequences: unknown[] }> };
+    };
+    assert.equal(config.escalation.on_exhausted?.publish_inject_key, 'mixed_mail');
+    assert.equal(config.escalation.steps[0].target_team, 'Communications');
+    assert.deepEqual(config.mood_ladder.rungs[0].consequences, []);
+    const dependencies = replaced(plan, '/team_dependencies') as { edges: unknown[] };
+    assert.deepEqual(dependencies.edges, []);
+  });
+
+  test('history lookup batches ids and pages past a row cap', async () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `id-${String(index).padStart(2, '0')}`);
+    const publications = ids.flatMap((id) => Array.from({ length: 8 }, () => ({ inject_id: id })));
+    const calls: Array<{ ids: readonly string[]; from: number; to: number }> = [];
+    const found = await collectInjectsWithHistory(
+      ids,
+      async (table, batch, from, to) => {
+        calls.push({ ids: batch, from, to });
+        if (batch.length > 4) throw new Error('id batch exceeded the URL-sized limit');
+        if (to - from + 1 > 10) throw new Error('page exceeded the row cap');
+        const pool = table === 'inject_publications' ? publications : [];
+        const matched = pool
+          .filter((row) => batch.includes(row.inject_id))
+          .sort((a, b) => a.inject_id.localeCompare(b.inject_id));
+        return { data: matched.slice(from, to + 1), error: null };
+      },
+      { batchSize: 4, pageSize: 10 },
+    );
+    for (const id of ids) assert.equal(found.has(id), true, id);
+    assert.ok(calls.every((call) => call.ids.length <= 4));
+    assert.ok(calls.some((call) => call.from > 0));
   });
 
   test('missing lobby tables are recognised without a database', () => {

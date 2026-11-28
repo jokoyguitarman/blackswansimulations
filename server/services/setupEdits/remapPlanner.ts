@@ -70,6 +70,8 @@ export interface RemapPlannerInput {
   teams: readonly PlannerTeam[];
   injects: readonly PlannerInject[];
   sessions: readonly LobbySession[];
+  /** Trainer decisions for orphan ids. Applied before `applicable` is set. */
+  resolutions?: Readonly<Record<string, OrphanResolution>>;
 }
 
 export interface TeamRetire {
@@ -78,7 +80,11 @@ export interface TeamRetire {
   team_name: string;
   /** Key the removal acted on, after the swap. */
   org_key: string | null;
-  reason: 'removed';
+  /**
+   * `removed` drops the team. Any other reason retires the source row of the
+   * successor with the same `source_id`. WP10 retires every entry here.
+   */
+  reason: 'removed' | 'renamed' | 'rekeyed' | 'renamed_rekeyed';
 }
 
 export interface TeamSuccessor {
@@ -92,6 +98,10 @@ export interface TeamSuccessor {
   charter: unknown;
   expected_actions: unknown;
   scoring_rubric: unknown;
+  /**
+   * Replacement for `source_id`. That source is also listed in `teams.retire`
+   * with this same reason, and applying the successor retires it.
+   */
   reason: 'renamed' | 'rekeyed' | 'renamed_rekeyed';
 }
 
@@ -118,7 +128,7 @@ export interface InjectSuccessor {
   changes: InjectFieldPatch;
 }
 
-export type InjectRetireReason = 'targets_only_removed' | 'team_layer' | 'org_key' | 'pressure_layer';
+export type InjectRetireReason = 'targets_only_removed' | 'team_layer' | 'org_key' | 'pressure_layer' | 'dependent';
 
 export interface InjectRetire {
   inject_id: string;
@@ -135,7 +145,7 @@ export interface JsonPatch {
   value: unknown;
 }
 
-export type RetiredBucket = 'orgs' | 'org_page_orgs' | 'stakeholders' | 'countries';
+export type RetiredBucket = 'orgs' | 'org_page_orgs' | 'stakeholders' | 'countries' | 'player_roles';
 
 export interface RetiredEntry {
   bucket: RetiredBucket;
@@ -165,6 +175,8 @@ export interface ScheduledSessionPlan {
   delete_channels: string[];
   remove_org_keys: string[];
   retire_roles: string[];
+  /** Assignments kept because the role moved to another team instead of being retired. */
+  reassign_roles: Array<{ role_id: string; team_name: string }>;
   unassigned_players: Array<{ user_id: string; team_name: string }>;
   /** Simultaneous org-key map, one entry per controller row that changes. */
   remap_page_controllers: Array<{ from: string; to: string; user_id: string }>;
@@ -181,6 +193,28 @@ export type OrphanKind =
   | 'chain_target'
   | 'mood_consequence'
   | 'team_dependency';
+
+export type OrphanChoice =
+  | 'keep'
+  | 'retire'
+  | 'retarget'
+  | 'reassign'
+  | 'move_to_retired'
+  | 'clear'
+  | 'remove';
+
+/**
+ * One trainer decision for an orphan id.
+ * `keep` leaves the reference. `retire` retires the dependent inject, stakeholder, or pressure group.
+ * `retarget` uses `inject_key`, `team_name`, or `org_keys`. `reassign` moves a role or stakeholder onto `team_name`.
+ * `move_to_retired` parks a role or stakeholder. `clear` drops a chain, mood, or dependency reference. `remove` drops a dependency edge or pressure group.
+ */
+export interface OrphanResolution {
+  choice: OrphanChoice;
+  inject_key?: string;
+  team_name?: string;
+  org_keys?: string[];
+}
 
 export interface Orphan {
   id: string;
@@ -261,6 +295,8 @@ interface Working {
   nameMap: Map<string, string>;
   slugMap: Map<string, string>;
   uidName: Map<string, string>;
+  /** True when the scenario had exactly one protagonist before this edit. */
+  singleProtagonist: boolean;
   warnings: Warning[];
   orphans: Orphan[];
   retiredInjectKeys?: Set<string>;
@@ -293,7 +329,7 @@ export function planRemap(input: RemapPlannerInput): RemapPlan {
   const phases = phasesOf(working, teamPlan, injectPlan, statePlan);
   sortOrphans(working.orphans);
   sortWarnings(working.warnings);
-  return {
+  const plan: RemapPlan = {
     teams: teamPlan,
     injects: injectPlan,
     initial_state: statePlan,
@@ -305,6 +341,405 @@ export function planRemap(input: RemapPlannerInput): RemapPlan {
     primary_swap: working.swap?.plan ?? null,
     vacated_countries: [...input.delta.vacated_countries],
   };
+  return applyResolutions(plan, input);
+}
+
+function applyResolutions(plan: RemapPlan, input: RemapPlannerInput): RemapPlan {
+  const resolutions = input.resolutions;
+  if (!resolutions || plan.orphans.length === 0) return plan;
+  const state = asRecord(input.initial_state) ?? {};
+  const kept: Orphan[] = [];
+  for (const orphan of plan.orphans) {
+    const resolution = resolutions[orphan.id];
+    if (!resolution || !resolutionApplies(orphan, resolution)) {
+      kept.push(orphan);
+      continue;
+    }
+    if (resolution.choice !== 'keep') applyOneResolution(plan, input, state, orphan, resolution);
+  }
+  plan.orphans = kept;
+  plan.applicable = kept.length === 0;
+  plan.initial_state.move_to_retired.sort((a, b) => a.bucket.localeCompare(b.bucket) || a.key.localeCompare(b.key));
+  plan.scheduled_sessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
+  return plan;
+}
+
+function resolutionApplies(orphan: Orphan, resolution: OrphanResolution): boolean {
+  const choice = resolution.choice;
+  if (choice === 'keep') return true;
+  if (orphan.kind === 'player_role') {
+    return choice === 'move_to_retired' || (choice === 'reassign' && !!resolution.team_name);
+  }
+  if (orphan.kind === 'condition') {
+    return choice === 'retire' || (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key));
+  }
+  if (orphan.kind === 'stakeholder') {
+    return choice === 'retire' || choice === 'move_to_retired' || (choice === 'reassign' && !!resolution.team_name);
+  }
+  if (orphan.kind === 'pressure_targets') {
+    return choice === 'remove' || (choice === 'retarget' && (resolution.org_keys?.length ?? 0) > 0);
+  }
+  if (orphan.kind === 'chain_target') {
+    return choice === 'clear' || (choice === 'retarget' && !!(resolution.inject_key || resolution.team_name));
+  }
+  if (orphan.kind === 'mood_consequence') {
+    return choice === 'clear' || (choice === 'retarget' && !!resolution.inject_key);
+  }
+  if (orphan.kind === 'team_dependency') {
+    return choice === 'remove' || choice === 'clear' || (choice === 'retarget' && !!(resolution.team_name || resolution.inject_key));
+  }
+  return false;
+}
+
+function applyOneResolution(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  if (orphan.kind === 'player_role') applyRoleResolution(plan, input, state, orphan, resolution);
+  else if (orphan.kind === 'condition') applyConditionResolution(plan, input, orphan, resolution);
+  else if (orphan.kind === 'stakeholder') applyStakeholderResolution(plan, state, orphan, resolution);
+  else if (orphan.kind === 'pressure_targets') applyPressureResolution(plan, state, orphan, resolution);
+  else if (orphan.kind === 'chain_target') applyChainResolution(plan, input, orphan, resolution);
+  else if (orphan.kind === 'mood_consequence') applyMoodResolution(plan, input, state, orphan, resolution);
+  else if (orphan.kind === 'team_dependency') applyDependencyResolution(plan, state, orphan, resolution);
+}
+
+function applyRoleResolution(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const roles = objectList(structuredClone(patchValue(plan, '/player_roles', state.player_roles)));
+  const role = roles.find((row) => textOf(row.role_id) === orphan.role_id);
+  if (!role || !orphan.role_id) return;
+  if (resolution.choice === 'reassign' && resolution.team_name) {
+    role.team_name = resolution.team_name;
+    upsertPatch(plan, '/player_roles', roles);
+    for (const session of input.sessions) {
+      if (!isScheduled(session)) continue;
+      if (!session.role_assignments.some((row) => row.role_id === orphan.role_id)) continue;
+      const planned = ensureSessionPlan(plan, session);
+      planned.retire_roles = planned.retire_roles.filter((id) => id !== orphan.role_id);
+      if (!planned.reassign_roles.some((row) => row.role_id === orphan.role_id)) {
+        planned.reassign_roles.push({ role_id: orphan.role_id, team_name: resolution.team_name });
+      }
+    }
+    plan.warnings = plan.warnings.filter(
+      (warning) => !(warning.code === 'retired_role_fallback' && warning.role_id === orphan.role_id),
+    );
+    return;
+  }
+  if (resolution.choice === 'move_to_retired') {
+    upsertPatch(plan, '/player_roles', roles.filter((row) => textOf(row.role_id) !== orphan.role_id));
+    plan.initial_state.move_to_retired.push({ bucket: 'player_roles', key: orphan.role_id, value: role });
+  }
+}
+
+function applyConditionResolution(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const inject = input.injects.find((row) => row.id === orphan.inject_id);
+  if (!inject) return;
+  if (resolution.choice === 'retire') {
+    retireDependentInject(plan, inject);
+    return;
+  }
+  if (resolution.choice !== 'retarget' || !orphan.condition_key) return;
+  if (plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
+  const nextKey = retargetConditionKey(orphan.condition_key, resolution);
+  const changes = ensureInjectChanges(plan, inject);
+  const appear = 'conditions_to_appear' in changes ? changes.conditions_to_appear : inject.conditions_to_appear;
+  const cancel = 'conditions_to_cancel' in changes ? changes.conditions_to_cancel : inject.conditions_to_cancel;
+  changes.conditions_to_appear = mapConditionContainer(appear, (key) => (key === orphan.condition_key ? nextKey : key));
+  changes.conditions_to_cancel = mapConditionContainer(cancel, (key) => (key === orphan.condition_key ? nextKey : key));
+}
+
+function retargetConditionKey(key: string, resolution: OrphanResolution): string {
+  const parsed = parseConditionKey(key);
+  if ('error' in parsed) return key;
+  let args = [...parsed.args];
+  let scope = parsed.scope ? { ...parsed.scope } : undefined;
+  if (resolution.team_name && scope?.team) scope = { ...scope, team: slugifyTeamName(resolution.team_name) };
+  if (resolution.inject_key) {
+    const refs = new Set(referencedInjectKeys(parsed));
+    if (refs.size > 0) args = args.map((arg) => (refs.has(arg) ? resolution.inject_key ?? arg : arg));
+  }
+  const formatted = formatConditionKey(parsed.def, args, scope);
+  return 'error' in formatted ? key : formatted.key;
+}
+
+function applyStakeholderResolution(
+  plan: RemapPlan,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const rows = objectList(structuredClone(patchValue(plan, '/stakeholders', state.stakeholders)));
+  const index = rows.findIndex((row) => textOf(row.id) === orphan.stakeholder_id);
+  if (index < 0) return;
+  if (resolution.choice === 'reassign' && resolution.team_name) {
+    rows[index].owning_team = resolution.team_name;
+    upsertPatch(plan, '/stakeholders', rows);
+    return;
+  }
+  if (resolution.choice === 'retire' || resolution.choice === 'move_to_retired') {
+    const [removed] = rows.splice(index, 1);
+    upsertPatch(plan, '/stakeholders', rows);
+    plan.initial_state.move_to_retired.push({
+      bucket: 'stakeholders',
+      key: orphan.stakeholder_id || textOf(removed.id),
+      value: removed,
+    });
+  }
+}
+
+function applyPressureResolution(
+  plan: RemapPlan,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const key = orphan.org_key ?? '';
+  if (!key) return;
+  const orgs = structuredClone(patchValue(plan, '/orgs', state.orgs));
+  const page = structuredClone(patchValue(plan, '/org_page', state.org_page));
+  if (resolution.choice === 'retarget') {
+    const keys = [...(resolution.org_keys ?? [])];
+    for (const org of objectList(orgs)) {
+      if (textOf(org.org_key) === key && Array.isArray(org.targets_org_keys)) org.targets_org_keys = keys;
+    }
+    for (const org of objectList(asRecord(page)?.orgs)) {
+      if (textOf(org.org_key) !== key) continue;
+      if (Array.isArray(org.targets_org_keys)) org.targets_org_keys = [...keys];
+      const posture = asRecord(org.posture);
+      if (posture && Array.isArray(posture.targets_org_keys)) posture.targets_org_keys = [...keys];
+    }
+    if (orgs !== undefined) upsertPatch(plan, '/orgs', orgs);
+    if (page !== undefined) upsertPatch(plan, '/org_page', page);
+    return;
+  }
+  if (resolution.choice !== 'remove') return;
+  const liveOrgs = objectList(orgs).filter((org) => textOf(org.org_key) !== key);
+  const removedOrgs = objectList(orgs).filter((org) => textOf(org.org_key) === key);
+  for (const org of removedOrgs) {
+    plan.initial_state.move_to_retired.push({ bucket: 'orgs', key, value: org });
+  }
+  if (Array.isArray(orgs)) upsertPatch(plan, '/orgs', liveOrgs);
+  const pageRecord = asRecord(page);
+  if (pageRecord && Array.isArray(pageRecord.orgs)) {
+    const removedPages = objectList(pageRecord.orgs).filter((org) => textOf(org.org_key) === key);
+    pageRecord.orgs = objectList(pageRecord.orgs).filter((org) => textOf(org.org_key) !== key);
+    for (const org of removedPages) {
+      plan.initial_state.move_to_retired.push({ bucket: 'org_page_orgs', key, value: org });
+    }
+    upsertPatch(plan, '/org_page', pageRecord);
+  }
+}
+
+function applyChainResolution(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const inject = input.injects.find((row) => row.id === orphan.inject_id);
+  if (!inject || plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
+  const changes = ensureInjectChanges(plan, inject);
+  const config = ensureConfig(changes, inject);
+  const escalation = asRecord(config.escalation);
+  if (!escalation) return;
+  const step = /^chain:.*:step:(\d+):(target_team|cc_team)$/.exec(orphan.id);
+  if (step && Array.isArray(escalation.steps)) {
+    const record = asRecord(escalation.steps[Number(step[1])]);
+    if (!record) return;
+    const field = step[2];
+    if (resolution.choice === 'clear') delete record[field];
+    else if (resolution.team_name) record[field] = resolution.team_name;
+    escalation.steps[Number(step[1])] = record;
+    config.escalation = escalation;
+    return;
+  }
+  const exhausted = asRecord(escalation.on_exhausted) ?? {};
+  if (resolution.choice === 'clear') delete exhausted.publish_inject_key;
+  else if (resolution.inject_key) exhausted.publish_inject_key = resolution.inject_key;
+  if (Object.keys(exhausted).length === 0) delete escalation.on_exhausted;
+  else escalation.on_exhausted = exhausted;
+  config.escalation = escalation;
+}
+
+function applyMoodResolution(
+  plan: RemapPlan,
+  input: RemapPlannerInput,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const target = orphan.target_key ?? '';
+  if (!target) return;
+  if (orphan.inject_id) {
+    const inject = input.injects.find((row) => row.id === orphan.inject_id);
+    if (!inject || plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
+    const changes = ensureInjectChanges(plan, inject);
+    const config = ensureConfig(changes, inject);
+    config.mood_ladder = rewriteMoodLadder(config.mood_ladder, target, resolution);
+    return;
+  }
+  if (!orphan.stakeholder_id) return;
+  const rows = objectList(structuredClone(patchValue(plan, '/stakeholders', state.stakeholders)));
+  const row = rows.find((item) => textOf(item.id) === orphan.stakeholder_id);
+  if (!row) return;
+  row.mood_ladder = rewriteMoodLadder(row.mood_ladder, target, resolution);
+  upsertPatch(plan, '/stakeholders', rows);
+}
+
+function rewriteMoodLadder(ladder: unknown, target: string, resolution: OrphanResolution): unknown {
+  const record = asRecord(structuredClone(ladder));
+  if (!record || !Array.isArray(record.rungs)) return ladder;
+  for (const rung of record.rungs) {
+    const rungRecord = asRecord(rung);
+    if (!rungRecord || !Array.isArray(rungRecord.consequences)) continue;
+    const next = [];
+    for (const consequence of rungRecord.consequences) {
+      const item = asRecord(consequence);
+      if (!item || item.type !== 'publish_inject' || item.inject_key !== target) {
+        next.push(consequence);
+        continue;
+      }
+      if (resolution.choice === 'clear') continue;
+      if (resolution.inject_key) next.push({ ...item, inject_key: resolution.inject_key });
+      else next.push(consequence);
+    }
+    rungRecord.consequences = next;
+  }
+  return record;
+}
+
+function applyDependencyResolution(
+  plan: RemapPlan,
+  state: Record<string, unknown>,
+  orphan: Orphan,
+  resolution: OrphanResolution,
+): void {
+  const doc = asRecord(structuredClone(patchValue(plan, '/team_dependencies', state.team_dependencies)));
+  if (!doc || !Array.isArray(doc.edges)) return;
+  doc.edges = doc.edges.flatMap((raw) => {
+    const edge = asRecord(raw);
+    if (!edge || textOf(edge.id) !== orphan.dependency_id) return [raw];
+    if (resolution.choice === 'remove') return [];
+    if (resolution.choice === 'clear' && orphan.target_key) {
+      edge.consequence_keys = stringList(edge.consequence_keys).filter((key) => key !== orphan.target_key);
+    }
+    if (resolution.choice === 'retarget') {
+      if (resolution.team_name) {
+        edge.upstream = retargetRemovedRef(edge.upstream, resolution.team_name);
+        if (Array.isArray(edge.downstream)) {
+          edge.downstream = edge.downstream.map((ref) => retargetRemovedRef(ref, resolution.team_name ?? ''));
+        }
+      }
+      if (resolution.inject_key && orphan.target_key) {
+        edge.consequence_keys = stringList(edge.consequence_keys).map((key) =>
+          key === orphan.target_key ? resolution.inject_key ?? key : key,
+        );
+      }
+    }
+    return [edge];
+  });
+  upsertPatch(plan, '/team_dependencies', doc);
+}
+
+function retargetRemovedRef(value: unknown, teamName: string): unknown {
+  const ref = asRecord(value);
+  if (!ref || !teamName) return value;
+  return { ...ref, team_name: teamName };
+}
+
+function retireDependentInject(plan: RemapPlan, inject: PlannerInject): void {
+  if (plan.injects.retire.some((row) => row.inject_id === inject.id)) return;
+  plan.injects.rewrite_in_place = plan.injects.rewrite_in_place.filter((row) => row.inject_id !== inject.id);
+  plan.injects.cow = plan.injects.cow.filter((row) => row.source_id !== inject.id);
+  plan.injects.retire.push({
+    inject_id: inject.id,
+    inject_key: injectKeyOf(inject),
+    reason: 'dependent',
+  });
+  plan.injects.retire.sort((a, b) => a.inject_id.localeCompare(b.inject_id));
+}
+
+function ensureInjectChanges(plan: RemapPlan, inject: PlannerInject): InjectFieldPatch {
+  const live = plan.injects.rewrite_in_place.find((row) => row.inject_id === inject.id);
+  if (live) return live.changes;
+  const cow = plan.injects.cow.find((row) => row.source_id === inject.id);
+  if (cow) return cow.changes;
+  const changes: InjectFieldPatch = {};
+  if (inject.has_history) {
+    plan.injects.cow.push({
+      source_id: inject.id,
+      inject_key: injectKeyOf(inject),
+      has_history: true,
+      changes,
+    });
+    plan.injects.cow.sort((a, b) => a.source_id.localeCompare(b.source_id));
+  } else {
+    plan.injects.rewrite_in_place.push({
+      inject_id: inject.id,
+      inject_key: injectKeyOf(inject),
+      has_history: false,
+      changes,
+    });
+    plan.injects.rewrite_in_place.sort((a, b) => a.inject_id.localeCompare(b.inject_id));
+  }
+  return changes;
+}
+
+function ensureConfig(changes: InjectFieldPatch, inject: PlannerInject): Record<string, unknown> {
+  if (!changes.delivery_config) changes.delivery_config = structuredClone(inject.delivery_config ?? {});
+  return changes.delivery_config;
+}
+
+function ensureSessionPlan(plan: RemapPlan, session: LobbySession): ScheduledSessionPlan {
+  const existing = plan.scheduled_sessions.find((row) => row.session_id === session.session_id);
+  if (existing) return existing;
+  const created: ScheduledSessionPlan = {
+    session_id: session.session_id,
+    rename: { team_names: [], channels: [], call_lines: [] },
+    remove_teams: [],
+    delete_call_lines: [],
+    delete_channels: [],
+    remove_org_keys: [],
+    retire_roles: [],
+    reassign_roles: [],
+    unassigned_players: [],
+    remap_page_controllers: [],
+    delete_sim_org_pages: false,
+    reseed_org_pages: false,
+  };
+  plan.scheduled_sessions.push(created);
+  return created;
+}
+
+function patchValue(plan: RemapPlan, path: string, fallback: unknown): unknown {
+  const patch = plan.initial_state.patch.find((item) => item.path === path);
+  return patch ? patch.value : fallback;
+}
+
+function upsertPatch(plan: RemapPlan, path: string, value: unknown): void {
+  const existing = plan.initial_state.patch.find((item) => item.path === path);
+  if (existing) {
+    existing.value = value;
+    return;
+  }
+  plan.initial_state.patch.push({ op: 'replace', path, value });
+  plan.initial_state.patch.sort(
+    (a, b) => PATCH_PATHS.indexOf(a.path as (typeof PATCH_PATHS)[number]) - PATCH_PATHS.indexOf(b.path as (typeof PATCH_PATHS)[number]),
+  );
 }
 
 function buildWorking(input: RemapPlannerInput, state: Record<string, unknown>): Working {
@@ -351,9 +786,18 @@ function buildWorking(input: RemapPlannerInput, state: Record<string, unknown>):
     nameMap,
     slugMap,
     uidName,
+    singleProtagonist: protagonistCount(state) === 1,
     warnings: [],
     orphans: [],
   };
+}
+
+function protagonistCount(state: Record<string, unknown>): number {
+  const registry = objectList(state.orgs).filter(isProtagonist);
+  if (registry.length > 0) return registry.length;
+  const pages = pageOrgList(state).filter(isProtagonist);
+  if (pages.length > 0) return pages.length;
+  return 1;
 }
 
 function orgKeyOfTeam(team: PlannerTeam, swap: SwapResolved | null): string {
@@ -474,6 +918,14 @@ function planTeams(working: Working): RemapPlan['teams'] {
     const functionChanged = nextFunction !== (team.function_key ?? null);
     if (!rename && !keyChanged && !functionChanged) continue;
     const nextName = rename?.to ?? team.team_name;
+    const reason = rename && keyChanged ? 'renamed_rekeyed' : rename ? 'renamed' : 'rekeyed';
+    retire.push({
+      source_id: team.id,
+      team_uid: team.team_uid,
+      team_name: team.team_name,
+      org_key: working.swap ? actedKey : storedKey,
+      reason,
+    });
     successors.push({
       source_id: team.id,
       team_uid: team.team_uid,
@@ -485,7 +937,7 @@ function planTeams(working: Working): RemapPlan['teams'] {
       charter: retargetCharter(team.charter, nextName, working),
       expected_actions: cloneJson(team.expected_actions),
       scoring_rubric: team.scoring_rubric ?? null,
-      reason: rename && keyChanged ? 'renamed_rekeyed' : rename ? 'renamed' : 'rekeyed',
+      reason,
     });
   }
   retire.sort((a, b) => a.team_uid.localeCompare(b.team_uid));
@@ -826,7 +1278,6 @@ function rewriteInjectText(
 ): { title?: string; content?: string } {
   const title = inject.title ?? '';
   const content = inject.content ?? '';
-  if (working.renames.length === 0 && !working.swap) return {};
   if (!owned || working.renames.length === 0) return {};
   const nextTitle = substituteNames(title, working.renames);
   const nextContent = substituteNames(content, working.renames);
@@ -1170,18 +1621,31 @@ function retargetPressure(org: Record<string, unknown>, working: Working): void 
   const original = stringList(org.targets_org_keys);
   const mapped = original.map((key) => working.mapKey(key));
   const kept = mapped.filter((key) => !working.removedOrgKeys.has(key));
-  if (original.length > 0 && kept.length === 0) {
+  if (noteEmptyPressureTargets(working, org, original, kept)) {
     org.targets_org_keys = mapped;
-    working.orphans.push({
-      id: `pressure:${textOf(org.org_key)}`,
-      kind: 'pressure_targets',
-      message: `Pressure group ${textOf(org.display_name) || textOf(org.org_key)} only targeted organisations that are being removed.`,
-      choices: ['retarget', 'remove'],
-      org_key: textOf(org.org_key),
-    });
     return;
   }
   org.targets_org_keys = kept;
+}
+
+function noteEmptyPressureTargets(
+  working: Working,
+  org: Record<string, unknown>,
+  original: string[],
+  kept: string[],
+): boolean {
+  if (original.length === 0 || kept.length > 0) return false;
+  const key = textOf(org.org_key);
+  if (key && !working.orphans.some((row) => row.id === `pressure:${key}`)) {
+    working.orphans.push({
+      id: `pressure:${key}`,
+      kind: 'pressure_targets',
+      message: `Pressure group ${textOf(org.display_name) || key} only targeted organisations that are being removed.`,
+      choices: ['retarget', 'remove'],
+      org_key: key,
+    });
+  }
+  return true;
 }
 
 function applyEditedIdentity(org: Record<string, unknown>, working: Working): void {
@@ -1281,14 +1745,14 @@ function retargetPagePressure(org: Record<string, unknown>, working: Working): v
     const original = stringList(posture.targets_org_keys);
     const mapped = original.map((key) => working.mapKey(key));
     const kept = mapped.filter((key) => !working.removedOrgKeys.has(key));
-    posture.targets_org_keys = original.length > 0 && kept.length === 0 ? mapped : kept;
+    posture.targets_org_keys = noteEmptyPressureTargets(working, org, original, kept) ? mapped : kept;
     org.posture = posture;
   }
   if (Array.isArray(org.targets_org_keys)) {
     const original = stringList(org.targets_org_keys);
     const mapped = original.map((key) => working.mapKey(key));
     const kept = mapped.filter((key) => !working.removedOrgKeys.has(key));
-    org.targets_org_keys = original.length > 0 && kept.length === 0 ? mapped : kept;
+    org.targets_org_keys = noteEmptyPressureTargets(working, org, original, kept) ? mapped : kept;
   }
 }
 
@@ -1338,7 +1802,8 @@ function planStakeholders(
     const id = textOf(row.id);
     if (working.swap) {
       const current = typeof row.org_key === 'string' ? row.org_key.trim() : '';
-      row.org_key = current ? working.mapKey(current) : working.swap.plan.old_primary_new_key;
+      if (current) row.org_key = working.mapKey(current);
+      else if (working.singleProtagonist) row.org_key = working.swap.plan.old_primary_new_key;
     }
     const owning = typeof row.owning_team === 'string' ? row.owning_team : '';
     if (owning && working.nameMap.has(owning) && !working.removedTeamNames.has(owning)) {
@@ -1787,6 +2252,7 @@ function sessionPlan(
     delete_channels: deleteChannels,
     remove_org_keys: uniqueRemoveOrg,
     retire_roles: retireRoles,
+    reassign_roles: [],
     unassigned_players: unassigned,
     remap_page_controllers: remapControllers,
     delete_sim_org_pages: doReseed,
