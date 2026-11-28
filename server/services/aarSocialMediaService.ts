@@ -1,3 +1,4 @@
+import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { countsOnCrisisClock, crisisFiltersActive } from '../lib/peaceGate.js';
 import { logger } from '../lib/logger.js';
@@ -6,6 +7,8 @@ import { computeTeamScores } from './teamScoreService.js';
 import {
   actionCountsAsCrisisActivity,
   contentKey,
+  gradeAuthorOf,
+  playerCreditId,
   rowCountsAsCrisisActivity,
 } from './scoring/crisisActivityCore.js';
 import { loadContentIndex } from './scoring/crisisActivityLookup.js';
@@ -190,6 +193,20 @@ export interface SocialMediaAARData {
   comms_responses: CommsResponsesSection;
 }
 
+/** Same session_teams read the player ledger uses for membership. */
+async function reportTeamMemberIds(sessionId: string): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('session_teams')
+    .select('user_id, team_name, assigned_at')
+    .eq('session_id', sessionId)
+    .order('assigned_at', { ascending: true });
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.user_id) ids.add(String(row.user_id));
+  }
+  return ids;
+}
+
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
 const TIER2_ACTIONS = [
   'post_created',
@@ -319,9 +336,17 @@ export async function buildSocialMediaAARData(
     };
   });
 
-  const playerPosts = posts.filter(
-    (p: Record<string, unknown>) => p.author_type === 'player' && p.sop_compliance_score,
-  );
+  const teamMemberIds = env.teamScorePostAttributionFix
+    ? await reportTeamMemberIds(sessionId)
+    : null;
+  const playerPosts = env.teamScorePostAttributionFix
+    ? posts.filter((p: Record<string, unknown>) => {
+        const playerId = playerCreditId(gradeAuthorOf(p), true, teamMemberIds);
+        return Boolean(p.sop_compliance_score && playerId);
+      })
+    : posts.filter(
+        (p: Record<string, unknown>) => p.author_type === 'player' && p.sop_compliance_score,
+      );
   const grades = playerPosts.map((p: Record<string, unknown>) => {
     const grade = (p.sop_compliance_score || {}) as Record<string, number>;
     return {
@@ -525,7 +550,10 @@ export async function buildSocialMediaAARData(
         if (!worst || overall < worst.overall) worst = { content: preview, overall };
       };
       for (const p of posts) {
-        consider(p.posted_by_user_id, p.content, p.sop_compliance_score);
+        const author = env.teamScorePostAttributionFix
+          ? playerCreditId(gradeAuthorOf(p), true, memberIds)
+          : p.posted_by_user_id;
+        consider(author, p.content, p.sop_compliance_score);
       }
       for (const e of emails) {
         consider(

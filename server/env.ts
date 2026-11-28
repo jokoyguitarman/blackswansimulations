@@ -355,8 +355,9 @@ export const env = {
   // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
   // When off, reaction prompts, grading and post inserts match today.
   enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',
-  // Team-score post attribution (peace spec §4.4). Off until trainers are told
-  // scores will change: player posts count by user_id, page posts by posted_by_user_id.
+  // Post attribution (peace spec §4.4). Off until trainers are told scores, the
+  // player ledger, team-signal content grades and the social report will change:
+  // player posts count by user_id, page posts by posted_by_user_id.
   teamScorePostAttributionFix: process.env.TEAM_SCORE_POST_ATTRIBUTION_FIX === 'true',
   // Page profiles and page inboxes in the trainer console (peace spec §7.6).
   // Off: the new messenger routes answer 404 and page lists are unchanged.
