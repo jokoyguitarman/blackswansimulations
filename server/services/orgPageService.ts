@@ -41,14 +41,18 @@ export async function getControlledOrgKey(
   return (data?.org_key as string) ?? null;
 }
 
-/** The org page row (for a platform) that a player controls, or null if none. */
-export async function getControlledOrgPage(
+export interface OrgPageRef {
+  page_name: string;
+  page_handle: string;
+  org_key: string;
+}
+
+/** One org's page on a platform, or null when that row does not exist. */
+export async function getOrgPage(
   sessionId: string,
-  userId: string,
+  orgKey: string,
   platform: string,
-): Promise<{ page_name: string; page_handle: string; org_key: string } | null> {
-  const orgKey = await getControlledOrgKey(sessionId, userId);
-  if (!orgKey) return null;
+): Promise<OrgPageRef | null> {
   const { data } = await supabaseAdmin
     .from('sim_org_pages')
     .select('page_name, page_handle, org_key')
@@ -56,7 +60,23 @@ export async function getControlledOrgPage(
     .eq('org_key', orgKey)
     .eq('platform', platform)
     .maybeSingle();
-  return (data as { page_name: string; page_handle: string; org_key: string }) ?? null;
+  if (!data?.page_handle || !data.org_key) return null;
+  return {
+    page_name: data.page_name ?? '',
+    page_handle: data.page_handle,
+    org_key: data.org_key,
+  };
+}
+
+/** The org page row (for a platform) that a player controls, or null if none. */
+export async function getControlledOrgPage(
+  sessionId: string,
+  userId: string,
+  platform: string,
+): Promise<OrgPageRef | null> {
+  const orgKey = await getControlledOrgKey(sessionId, userId);
+  if (!orgKey) return null;
+  return getOrgPage(sessionId, orgKey, platform);
 }
 
 /** All user_ids who control the page that owns a given page handle in a session. */

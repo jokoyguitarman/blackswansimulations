@@ -330,6 +330,9 @@ export const env = {
   // Topic-aware replies (peace spec §6, §8). Off in every environment until turned on.
   // When off, reaction prompts, grading and post inserts match today.
   enableTopicAwareReplies: process.env.ENABLE_TOPIC_AWARE_REPLIES === 'true',
+  // Page profiles and page inboxes in the trainer console (peace spec §7.6).
+  // Off: the new messenger routes answer 404 and page lists are unchanged.
+  enableStaffPageExplorer: process.env.ENABLE_STAFF_PAGE_EXPLORER === 'true',
   topicBridgeStayShare: envUnit('TOPIC_BRIDGE_STAY_SHARE', 0.4),
   topicBridgeMinConfidence: envUnit('TOPIC_BRIDGE_MIN_CONFIDENCE', 0.6),
 };

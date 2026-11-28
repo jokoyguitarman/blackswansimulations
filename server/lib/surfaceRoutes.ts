@@ -198,6 +198,13 @@ export const SURFACE_ROUTES: SurfaceRoute[] = [
     'player',
   ),
   route('socialMessenger', 'GET', '/unread-count/:sessionId', sessionParam),
+  route('socialMessenger', 'GET', '/page-inbox/:sessionId', sessionParam),
+  route(
+    'socialMessenger',
+    'GET',
+    '/page-thread/:threadId',
+    row('sim_direct_messages', 'threadId', 'thread_id'),
+  ),
 
   // channels
   route('channels', 'GET', '/session/:sessionId', sessionParam),

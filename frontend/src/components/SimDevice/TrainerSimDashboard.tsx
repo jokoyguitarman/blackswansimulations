@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
+import { StaffPageExplorer } from './StaffPageExplorer';
 import { LiveCallsPanel } from './LiveCallsPanel';
 import { LinesRolesPanel } from './LinesRolesPanel';
 import { TeammateConsole } from './TeammateConsole';
@@ -340,7 +341,12 @@ function ExecDecisionCard({ d, onDismiss }: { d: ExecDecisionView; onDismiss: ()
 /** Stakeholder reconsideration outcomes (docs/stakeholder-runtime-plan.md §3.6). */
 interface StakeholderEvent {
   id: string;
-  event_type: 'inject_cancelled' | 'inject_modified' | 'inject_delayed' | 'stakeholder_verdict' | 'stakeholder_mood';
+  event_type:
+    | 'inject_cancelled'
+    | 'inject_modified'
+    | 'inject_delayed'
+    | 'stakeholder_verdict'
+    | 'stakeholder_mood';
   description: string;
   metadata: {
     inject_id?: string;
@@ -1582,9 +1588,7 @@ export default function TrainerSimDashboard() {
             </h1>
             <p className="text-[11px]" style={{ color: '#64748b' }}>
               Session {sessionId ? truncate(sessionId, 12) : '—'}
-              {beforeCrisis
-                ? ''
-                : ` · ${elapsedMinutes}m ${isReview ? 'total' : 'elapsed'}`}
+              {beforeCrisis ? '' : ` · ${elapsedMinutes}m ${isReview ? 'total' : 'elapsed'}`}
             </p>
           </div>
         </div>
@@ -2244,6 +2248,7 @@ export default function TrainerSimDashboard() {
 
         {/* ============ ADVERSARY CONSOLE ROW: full width ============ */}
         <AdversaryConsole sessionId={sessionId || ''} />
+        {sessionId ? <StaffPageExplorer sessionId={sessionId} /> : null}
 
         {/* ============ TEAMMATE CONSOLE ROW: AI allies (docs/ai-teammate-bots-plan.md) ============ */}
         <TeammateConsole sessionId={sessionId || ''} />
