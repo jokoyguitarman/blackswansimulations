@@ -2,8 +2,12 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LANE_PAGE_SIZE,
+  ROSTER_COLLAPSE_AT,
+  laneSearchVisible,
+  laneVisibleIds,
   locateField,
   pageForField,
+  rosterExpandOnGrow,
   type LaneCardRef,
 } from '../src/components/Scenario/lanePaging';
 
@@ -57,5 +61,29 @@ describe('lane paging', () => {
       rivals: cards('rival', 1),
     });
     assert.deepEqual(rival, { lane: 'rivals', page: 0, rosterId: null });
+  });
+
+  test('adding the team that crosses the collapse line keeps the roster open', () => {
+    assert.equal(ROSTER_COLLAPSE_AT, 8);
+    assert.equal(rosterExpandOnGrow(8, 9, true), true);
+    assert.equal(rosterExpandOnGrow(4, 12, true), true);
+    assert.equal(rosterExpandOnGrow(8, 9, false), false);
+    assert.equal(rosterExpandOnGrow(7, 8, true), false);
+    assert.equal(rosterExpandOnGrow(9, 10, true), false);
+    assert.equal(rosterExpandOnGrow(10, 8, true), false);
+  });
+
+  test('a search stays available while it is filtering a lane of 12 or fewer', () => {
+    assert.equal(laneSearchVisible(13, ''), true);
+    assert.equal(laneSearchVisible(12, ''), false);
+    assert.equal(laneSearchVisible(12, '   '), false);
+    assert.equal(laneSearchVisible(12, 'acme'), true);
+    assert.equal(laneSearchVisible(1, 'acme'), true);
+
+    const lane = cards('org', 14);
+    lane[1].search = 'acme office';
+    assert.deepEqual([...laneVisibleIds(lane, 'acme', 1)], ['org_1']);
+    assert.equal(laneVisibleIds(lane, '', 1).size, LANE_PAGE_SIZE);
+    assert.equal(laneVisibleIds(lane, '', 2).size, 14);
   });
 });

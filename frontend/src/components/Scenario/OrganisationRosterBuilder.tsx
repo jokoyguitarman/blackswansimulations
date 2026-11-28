@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { COUNTRIES, isKnownCountry } from '@shared/countries';
-import { ROSTER_COLLAPSE_AT } from './lanePaging';
+import { ROSTER_COLLAPSE_AT, rosterExpandOnGrow } from './lanePaging';
 import { FieldNote, issueClass, useIssueLookup } from './SetupIssues';
 import {
   EXECUTIVE_TEAM,
@@ -252,12 +252,10 @@ export function RivalOrgCard({
   rival,
   onChange,
   onRemove,
-  badge,
 }: {
   rival: CompetitorDraft;
   onChange: (next: CompetitorDraft) => void;
   onRemove: () => void;
-  badge?: string;
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
@@ -269,10 +267,7 @@ export function RivalOrgCard({
   const descriptionIssue = issueAt(rivalField(rival.id, 'description'));
   return (
     <div className="border border-danger/30 rounded p-3 bg-surface">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] terminal-text text-danger uppercase tracking-wider">
-          Rival page{badge ? ` · ${badge}` : ''}
-        </div>
+      <div className="flex justify-end mb-2">
         <button
           type="button"
           onClick={onRemove}
@@ -474,6 +469,10 @@ export function RosterBuilder({
   const issueAt = useIssueLookup();
   const collapsible = roster.length > ROSTER_COLLAPSE_AT;
   const open = !collapsible || expanded;
+  const commitRoster = (next: RosterEntry[]) => {
+    if (rosterExpandOnGrow(roster.length, next.length, open)) onExpandedChange?.(true);
+    onChange(next);
+  };
   const presets: PresetTeamCard[] =
     presetCatalog.length > 0
       ? presetCatalog
@@ -501,7 +500,7 @@ export function RosterBuilder({
             is_public_voice: false,
           },
         ];
-    onChange(withOnePublicVoice(next));
+    commitRoster(withOnePublicVoice(next));
   };
 
   const rosterIssue = issueAt(orgField(orgId, 'roster'));
@@ -677,7 +676,7 @@ export function RosterBuilder({
         <button
           type="button"
           onClick={() =>
-            onChange([
+            commitRoster([
               ...roster,
               { team_name: '', description: '', is_custom: true, is_public_voice: false },
             ])

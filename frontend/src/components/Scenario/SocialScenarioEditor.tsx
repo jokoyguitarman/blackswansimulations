@@ -265,6 +265,8 @@ const StringListEditor = ({
 const inputCls =
   'w-full text-xs bg-surface border border-border rounded px-2 py-1.5 text-ink disabled:opacity-60';
 const labelCls = 'text-[11px] text-muted font-medium block mb-0.5';
+/** Organisations drawn on the hero before the rest are counted as "+N more". */
+const HERO_CAST_LIMIT = 6;
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
@@ -506,7 +508,7 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               <p className="desc">{scen.description}</p>
               {orgsRegistry.length > 0 && (
                 <div className="wr-cast onDark">
-                  {orgsRegistry.slice(0, 6).map((o) => (
+                  {orgsRegistry.slice(0, HERO_CAST_LIMIT).map((o) => (
                     <span key={o.org_key} className="o">
                       {o.side === 'pressure' ? (
                         <WrIcon name={o.kind === 'union' ? 'fist' : 'landmark'} size={12} />
@@ -520,6 +522,9 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
                       {o.operation === 'ai' && o.side === 'protagonist' ? ' · AI-operated' : ''}
                     </span>
                   ))}
+                  {orgsRegistry.length > HERO_CAST_LIMIT && (
+                    <span className="o">+{orgsRegistry.length - HERO_CAST_LIMIT} more</span>
+                  )}
                 </div>
               )}
               <div className="meta">
