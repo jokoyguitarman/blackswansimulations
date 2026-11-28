@@ -74,8 +74,11 @@ export interface LobbySession {
   session_id: string;
   status: string;
   start_time: string | null;
-  /** Scheduled start, the session's own label. Empty when it was not set. */
-  title?: string | null;
+  /**
+   * `sessions` has no title column. This is `scheduled_start_time` (migration 005).
+   * Null when the session was not given a start.
+   */
+  scheduled_start_time?: string | null;
   teams: Array<{ user_id: string; team_name: string }>;
   channels: Array<{ team_name: string | null; message_count: number }>;
   call_lines: Array<{ team_name: string }>;

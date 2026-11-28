@@ -60,7 +60,8 @@ describe('setup edit apply route', { concurrency: false }, () => {
       stateMd5: 'state-md5-from-the-loaded-row',
       sessions: [{
         id: 'sess-1',
-        title: '2026-07-01T09:00:00+00',
+        title: null,
+        scheduled_start_time: '2026-07-01T09:00:00+00',
         reseed: true,
         unassigned_players: [],
       }],
@@ -208,8 +209,9 @@ describe('setup edit apply route', { concurrency: false }, () => {
     assert.equal(rpcCalls[0]?.isAdmin, true);
     assert.equal(rpcCalls[0]?.md5, 'state-md5-from-the-loaded-row');
     assert.equal(used, 0);
-    const sessions = res.json.scheduled_sessions as Array<{ title: string }>;
-    assert.equal(sessions[0]?.title, '2026-07-01T09:00:00+00');
+    const sessions = res.json.scheduled_sessions as Array<{ title: string | null; scheduled_start_time: string | null }>;
+    assert.equal(sessions[0]?.title, null);
+    assert.equal(sessions[0]?.scheduled_start_time, '2026-07-01T09:00:00+00');
     assert.deepEqual(reseeded, ['sess-1']);
     assert.equal(consumed, 0);
   });

@@ -254,6 +254,8 @@ export interface StakeholderTextUpdate {
 }
 
 export interface SetupEditStageOutput {
+  /** Pipeline stage this row came from. Peace is read from `pages`, not from array position. */
+  stage?: string;
   revisions: SetupRevision[];
   flags: SetupFlag[];
   generated: GeneratedRows;
@@ -329,6 +331,7 @@ export function stageOutputFromUnknown(raw: unknown, stage: string): SetupEditSt
   const narrative = asRecord(row.narrative_update);
   const fact = asRecord(row.fact_sheet);
   return {
+    stage,
     revisions: Array.isArray(row.revisions) ? (row.revisions as SetupEditStageOutput['revisions']) : [],
     flags: Array.isArray(row.flags) ? (row.flags as SetupEditStageOutput['flags']) : [],
     generated: generated ? { ...blankGenerated(), ...(generated as Partial<GeneratedRows>) } : blankGenerated(),

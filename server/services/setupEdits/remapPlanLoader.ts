@@ -276,7 +276,8 @@ async function loadScheduledSessions(scenarioId: string): Promise<LobbySession[]
     session_id: sessionId,
     status: 'scheduled',
     start_time: null,
-    title: text(sessions.find((row) => text(row.id) === sessionId)?.scheduled_start_time),
+    scheduled_start_time:
+      text(sessions.find((row) => text(row.id) === sessionId)?.scheduled_start_time) || null,
     teams: teams
       .filter((row) => text(row.session_id) === sessionId)
       .map((row) => ({ user_id: text(row.user_id), team_name: text(row.team_name) })),

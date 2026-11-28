@@ -7,18 +7,30 @@ import { MultiOrgValidationError } from '../scenarioValidationService.js';
 import type { SocialInject } from '../socialCrisisGeneratorService.js';
 import type { PeaceFeed } from '../../../shared/peaceFeed.js';
 import { computeDelta } from './setupDeltaCore.js';
-import { planRemap, EDIT_TOKEN, type RemapPlannerInput } from './remapPlanner.js';
+import {
+  planRemap,
+  EDIT_TOKEN,
+  type NameMap,
+  type RemapPlannerInput,
+  type ScheduledSessionPlan,
+} from './remapPlanner.js';
 import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 import {
-  applySqlRecordColumns,
   mergeSetupEdit,
   orgPagesSeededBy,
   SetupMergeError,
   threeWayText,
   type ApplyBundle,
+  type InjectInsert,
+  type InjectPatchWrite,
+  type InjectRetireWrite,
   type MergeInjectRow,
   type MergeObjective,
   type MergeTeamRow,
+  type ObjectiveInsert,
+  type ObjectiveUpdate,
+  type TeamInsert,
+  type TeamRetireWrite,
 } from './setupMergeCore.js';
 import {
   acmeSnapshot,
@@ -358,7 +370,11 @@ describe('peace period on apply', () => {
     const stage = peaceFeed('Hawker centre lunch', 'warehouse fire');
     const planned = peaceFeed('Planner draft only', 'old leak');
     const outputs = emptyOutputs();
-    outputs[3].peace_period = stage;
+    const pages = outputs.find((output) => output.stage === 'pages');
+    assert.ok(pages);
+    pages.peace_period = stage;
+    outputs.splice(outputs.indexOf(pages), 1);
+    outputs.unshift(pages);
     const bundle = bundleOf({
       outputs,
       plan: emptyPlan({
@@ -564,10 +580,12 @@ describe('dependency rows on apply', () => {
     assert.equal(bundle.teams.insert.some((row) => row.team_name === 'Counsel'), true);
     assert.equal(bundle.teams.insert.some((row) => row.team_name === 'Operations'), true);
     const state = bundle.scenario.initial_state as { team_dependencies: { v: number; edges: TeamDependencyEdge[] } };
-    assert.deepEqual(
-      state.team_dependencies.edges.map((edge) => edge.id),
-      ['dep_comms_legal', 'dep_counsel_ops'],
-    );
+    const [kept, added] = state.team_dependencies.edges;
+    assert.equal(kept?.id, 'dep_comms_legal');
+    assert.equal(kept?.downstream[0]?.team_name, 'Counsel');
+    assert.equal(added?.id, 'dep_counsel_ops');
+    assert.equal(added?.upstream.team_name, 'Counsel');
+    assert.equal(added?.downstream[0]?.team_name, 'Operations');
     const created = bundle.injects.insert.find((row) => row.title === 'Counsel missed the handoff');
     assert.ok(created);
     assert.equal(created.response_type, 'standard');
@@ -628,6 +646,106 @@ describe('apply migration guards', () => {
     assert.deepEqual(Object.keys(controller).sort(), ['from', 'to', 'user_id']);
   });
 });
+
+/** JSON keys each jsonb_to_recordset in migration 277 must declare. */
+function applySqlRecordColumns(): Record<string, readonly string[]> {
+  const rename = { from: 'from', to: 'to' } satisfies NameMap['team_names'][number];
+  const controller = {
+    from: 'from',
+    to: 'to',
+    user_id: 'user',
+  } satisfies ScheduledSessionPlan['remap_page_controllers'][number];
+  const teamRetire = { id: 'id', reason: 'removed', superseded_by: null } satisfies TeamRetireWrite;
+  const teamInsert = {
+    id: 'id',
+    team_name: 'name',
+    team_description: null,
+    required_roles: [],
+    min_participants: 1,
+    max_participants: null,
+    counter_definitions: null,
+    is_investigative: false,
+    charter: null,
+    expected_actions: null,
+    scoring_rubric: null,
+    org_key: null,
+    function_key: null,
+    team_uid: 'uid',
+  } satisfies TeamInsert;
+  const injectPatch = {
+    id: 'id',
+    title: 't',
+    content: 'c',
+    type: 'social_post',
+    severity: 'low',
+    trigger_time_minutes: null,
+    trigger_condition: null,
+    inject_scope: 'universal',
+    target_teams: [],
+    requires_response: false,
+    conditions_to_appear: null,
+    conditions_to_cancel: null,
+    eligible_after_minutes: null,
+    delivery_config: {},
+    state_effect: null,
+    generation_source: null,
+  } satisfies InjectPatchWrite;
+  const injectRetire = { id: 'id', reason: 'removed', superseded_by: null } satisfies InjectRetireWrite;
+  const injectInsert = {
+    id: 'id',
+    trigger_time_minutes: null,
+    trigger_condition: null,
+    type: 'social_post',
+    title: 't',
+    content: 'c',
+    affected_roles: [],
+    severity: 'low',
+    requires_response: false,
+    ai_generated: true,
+    inject_scope: 'universal',
+    target_teams: [],
+    requires_coordination: false,
+    triggered_by_user_id: null,
+    required_gate_id: null,
+    required_gate_not_met_id: null,
+    conditions_to_appear: null,
+    conditions_to_cancel: null,
+    eligible_after_minutes: null,
+    objective_penalty: null,
+    state_effect: null,
+    generation_source: 'war_room',
+    delivery_config: {},
+    response_type: 'standard',
+  } satisfies InjectInsert;
+  const objectiveUpdate = {
+    id: 'id',
+    objective_name: 'name',
+    description: 'd',
+    weight: 1,
+  } satisfies ObjectiveUpdate;
+  const objectiveInsert = {
+    id: 'id',
+    objective_id: 'slug',
+    objective_name: 'name',
+    description: 'd',
+    weight: 1,
+    success_criteria: {},
+  } satisfies ObjectiveInsert;
+  return {
+    "COALESCE(p_bundle->'teams'->'retire', '[]'::jsonb)": Object.keys(teamRetire),
+    "COALESCE(p_bundle->'teams'->'insert', '[]'::jsonb)": Object.keys(teamInsert),
+    "COALESCE(p_bundle->'injects'->'patch', '[]'::jsonb)": Object.keys(injectPatch),
+    "COALESCE(p_bundle->'injects'->'retire', '[]'::jsonb)": Object.keys(injectRetire),
+    "COALESCE(p_bundle->'injects'->'insert', '[]'::jsonb)": Object.keys(injectInsert),
+    "COALESCE(p_bundle->'objectives'->'update', '[]'::jsonb)": Object.keys(objectiveUpdate),
+    "COALESCE(p_bundle->'objectives'->'retire', '[]'::jsonb)": ['id'],
+    "COALESCE(p_bundle->'objectives'->'insert', '[]'::jsonb)": Object.keys(objectiveInsert),
+    v_renames: Object.keys(rename),
+    "COALESCE(v_session->'rename'->'channels', '[]'::jsonb)": Object.keys(rename),
+    "COALESCE(v_session->'remap_page_controllers', '[]'::jsonb)": Object.keys(controller),
+    $1: Object.keys(rename),
+  };
+}
 
 function parseRecordsetColumns(sql: string): Map<string, string[]> {
   const found = new Map<string, string[]>();

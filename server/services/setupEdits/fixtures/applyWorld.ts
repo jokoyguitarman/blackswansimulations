@@ -23,7 +23,8 @@ const MOOD = {
 const RUBRIC = { criteria: ['Acknowledge the caller'] };
 
 export function emptyOutputs(): SetupEditStageOutput[] {
-  return ['characters', 'storyline', 'convergence', 'pages'].map(() => ({
+  return ['characters', 'storyline', 'convergence', 'pages'].map((stage) => ({
+    stage,
     revisions: [],
     flags: [],
     generated: blankGenerated(),

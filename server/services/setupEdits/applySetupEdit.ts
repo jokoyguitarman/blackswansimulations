@@ -54,7 +54,9 @@ export interface ApplySetupEditRequest {
 
 export interface ScheduledSessionResult {
   id: string;
-  title: string;
+  /** Sessions have no title column, so this stays null. */
+  title: null;
+  scheduled_start_time: string | null;
   unassigned_players: Array<{ user_id: string; team_name: string }>;
   new_teams: string[];
 }
@@ -73,7 +75,8 @@ export interface PreparedApply {
   input: MergeSetupEditInput;
   sessions: Array<{
     id: string;
-    title: string;
+    title: null;
+    scheduled_start_time: string | null;
     reseed: boolean;
     unassigned_players: Array<{ user_id: string; team_name: string }>;
   }>;
@@ -189,7 +192,8 @@ export async function applySetupEdit(
           remaining: remainingEdits(used, deps.limit(), isAdmin(request.user)),
           scheduled_sessions: prepared.sessions.map((session) => ({
             id: session.id,
-            title: session.title,
+            title: null,
+            scheduled_start_time: session.scheduled_start_time,
             unassigned_players: session.unassigned_players,
             new_teams: bundle.new_team_names,
           })),
@@ -410,7 +414,9 @@ async function prepareApply(
   });
   const objectives = await readObjectives(request.scenarioId);
   const outputs = await loadStageOutputs(request.buildId);
-  const titles = new Map(source.remap.sessions.map((session) => [session.session_id, session.title ?? '']));
+  const starts = new Map(
+    source.remap.sessions.map((session) => [session.session_id, session.scheduled_start_time ?? null]),
+  );
   const input: MergeSetupEditInput = {
     current: {
       scenario: {
@@ -437,7 +443,8 @@ async function prepareApply(
     stateMd5: applyState.state_md5,
     sessions: plan.scheduled_sessions.map((session) => ({
       id: session.session_id,
-      title: titles.get(session.session_id) ?? '',
+      title: null,
+      scheduled_start_time: starts.get(session.session_id) ?? null,
       reseed: session.reseed_org_pages,
       unassigned_players: session.unassigned_players,
     })),
