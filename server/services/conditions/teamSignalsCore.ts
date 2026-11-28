@@ -97,9 +97,7 @@ export function directorNeedsTeamSignals(input: {
   const hasState =
     input.initialStateKnown && state != null && typeof state === 'object' && !Array.isArray(state);
   if (!hasState && (input.sessionMode == null || input.sessionMode === '')) return false;
-  const director = hasState
-    ? (state as { director?: { mode?: unknown } }).director
-    : null;
+  const director = hasState ? (state as { director?: { mode?: unknown } }).director : null;
   const scenarioMode = typeof director?.mode === 'string' ? director.mode : null;
   return (
     resolveDirectorMode(

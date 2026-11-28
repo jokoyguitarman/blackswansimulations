@@ -120,10 +120,7 @@ export async function loadTeamSignalFacts(
     );
     const membership = await loadMembership(sessionId);
     const actionTypes = charterDetectionTypes(roster.teams);
-    const teamNames = [
-      ...roster.teams.map((team) => team.team_name),
-      ...membership.byTeam.keys(),
-    ];
+    const teamNames = [...roster.teams.map((team) => team.team_name), ...membership.byTeam.keys()];
     const [
       participants,
       dutyActions,
@@ -330,7 +327,9 @@ async function loadTrainerIds(sessionId: string): Promise<Set<string>> {
   }
 }
 
-function charterDetectionTypes(teams: readonly { expected: readonly { detection_action_type: string }[] }[]): string[] {
+function charterDetectionTypes(
+  teams: readonly { expected: readonly { detection_action_type: string }[] }[],
+): string[] {
   const types = new Set<string>();
   for (const team of teams) {
     for (const action of team.expected) {

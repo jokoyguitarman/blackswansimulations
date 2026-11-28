@@ -76,16 +76,18 @@ describe('team signal facts', () => {
     const cancelled = new Set<string>();
     const fired = [{ id: 'fired', keys: ['duty_missed:review|team=legal'] }];
     const edges = [
-      { broken_when: { all: ['team_silent:15|team=@upstream'] }, met_when: { all: ['duty_done:review|team=@upstream'] } },
+      {
+        broken_when: { all: ['team_silent:15|team=@upstream'] },
+        met_when: { all: ['duty_done:review|team=@upstream'] },
+      },
     ];
     assert.equal(
-      teamSignalReadsNeeded(fired, published, cancelled, { extraKeys: dependencySignalKeys(edges) }),
+      teamSignalReadsNeeded(fired, published, cancelled, {
+        extraKeys: dependencySignalKeys(edges),
+      }),
       true,
     );
-    assert.equal(
-      teamSignalReadsNeeded(fired, published, cancelled, { directorOn: true }),
-      true,
-    );
+    assert.equal(teamSignalReadsNeeded(fired, published, cancelled, { directorOn: true }), true);
     assert.equal(teamSignalReadsNeeded(fired, published, cancelled), false);
     assert.equal(
       directorNeedsTeamSignals({

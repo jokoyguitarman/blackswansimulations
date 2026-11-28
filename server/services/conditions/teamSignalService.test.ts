@@ -293,14 +293,18 @@ describe('narrowed team-signal queries', () => {
     assert.equal(aggregated.team_activity.legal?.last_minute === 50, false);
     assert.ok(selects.some((line) => line.includes('->>overall')));
     assert.equal(
-      selects.some((line) => line.includes('social_posts') && line.endsWith('sop_compliance_score')),
+      selects.some(
+        (line) => line.includes('social_posts') && line.endsWith('sop_compliance_score'),
+      ),
       false,
     );
 
     selects.length = 0;
     const again = await loadTeamSignalFacts(SESSION, START);
     assert.equal(
-      selects.some((line) => line.includes('.min()') || line.includes('.max()') || line.includes('.count()')),
+      selects.some(
+        (line) => line.includes('.min()') || line.includes('.max()') || line.includes('.count()'),
+      ),
       false,
     );
     assert.deepEqual(again.duties, expectedDuties);
