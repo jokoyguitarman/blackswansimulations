@@ -218,4 +218,92 @@ describe('validateConditionalInjects', () => {
       result.issues.some((issue) => issue.code === 'MO-COND-008' && issue.severity === 'warning'),
     );
   });
+
+  test('chain and ladder rules report errors, and a late gave-up is only a warning', () => {
+    const result = validateConditionalInjects({
+      duration_minutes: 60,
+      stakeholders: [
+        {
+          id: 'stk_a',
+          mood_ladder: {
+            gave_up_after_minutes: 90,
+            escalated_variant: 'upset',
+            recovery: 'one_rung_per_good_reply',
+            rungs: [
+              {
+                id: 'calm',
+                label: 'Calm',
+                when: { any: [{ wait_minutes_gte: 1 }] },
+                reply_style: 'Polite.',
+                script: { opening: null, lines: [] },
+                consequences: [],
+              },
+              {
+                id: 'upset',
+                label: 'Upset',
+                when: { any: [{ wait_minutes_gte: 12 }] },
+                reply_style: 'Short.',
+                script: { opening: 'I have been waiting.', lines: [] },
+                consequences: [],
+              },
+              {
+                id: 'gave_up',
+                label: 'Gave up',
+                terminal: true,
+                when: { all: [{ wait_minutes_gte: 'gave_up_after' }] },
+                reply_style: 'Cold.',
+                script: { opening: 'I stopped waiting.', lines: [] },
+                consequences: [{ type: 'publish_inject', inject_key: 'missing_press' }],
+              },
+            ],
+          },
+        },
+      ],
+      injects: [
+        {
+          title: 'Root',
+          trigger_time_minutes: 5,
+          delivery_config: {
+            app: 'email',
+            inject_key: 'root_mail',
+            stakeholder_id: 'stk_a',
+            escalation: {
+              max_steps: 2,
+              scope: 'per_team',
+              stop_on: 'any_response',
+              steps: [
+                { after_minutes: 5, urgency: 'urgent', app: 'email', content_mode: 'template' },
+                { after_minutes: 5, urgency: 'follow_up', app: 'social_feed', content_mode: 'template' },
+              ],
+            },
+          },
+        },
+        {
+          title: 'Hand chaser',
+          delivery_config: { app: 'email', inject_key: 'hand_chaser' },
+          conditions_to_appear: { all: ['email_unreplied:root_mail:10'] },
+        },
+      ],
+    });
+    assert.ok(
+      result.issues.some(
+        (issue) => issue.code === 'MO-CHAIN-001' && issue.message.includes('decreases'),
+      ),
+    );
+    assert.ok(
+      result.issues.some((issue) => issue.code === 'MO-CHAIN-002' && issue.severity === 'warning'),
+    );
+    assert.ok(
+      result.issues.some(
+        (issue) => issue.code === 'MO-MOOD-001' && issue.message.includes('when must be'),
+      ),
+    );
+    assert.ok(
+      result.issues.some(
+        (issue) => issue.code === 'MO-MOOD-001' && issue.message.includes('missing_press'),
+      ),
+    );
+    const gaveUp = result.issues.find((issue) => issue.code === 'MO-MOOD-002');
+    assert.equal(gaveUp?.severity, 'warning');
+  });
 });

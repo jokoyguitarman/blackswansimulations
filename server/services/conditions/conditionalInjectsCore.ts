@@ -5,7 +5,10 @@
  */
 
 import { logger } from '../../lib/logger.js';
+import { env } from '../../env.js';
 import { phoneConfigError } from '../calls/callCore.js';
+import { validateEscalation } from '../escalation/escalationCore.js';
+import { validateMoodLadder } from '../mood/moodCore.js';
 import { validateInjectTriggerShape } from './injectTriggerShape.js';
 import {
   collectConditionKeys,
@@ -94,6 +97,7 @@ const RESPONSE_CONDITION_IDS = new Set([
 export function validateConditionalInjects<T extends ConditionalInjectInput>(scenario: {
   duration_minutes?: number | null;
   injects: readonly T[];
+  stakeholders?: readonly { id: string; mood_ladder?: unknown }[] | null;
 }): ConditionalInjectValidation<T> {
   const issues: ConditionalInjectIssue[] = [];
   const duration = scenario.duration_minutes;
@@ -115,6 +119,7 @@ export function validateConditionalInjects<T extends ConditionalInjectInput>(sce
     reportNpcDm(inject, path, issues);
   });
   reportCycles(withParents, apps, issues);
+  reportChainsAndLadders(withParents, scenario.stakeholders, scenario.duration_minutes, issues);
 
   return { injects: [...withParents], issues };
 }
@@ -458,6 +463,100 @@ function reportNpcDm(
     severity: 'error',
     message: `Inject "${inject.title ?? ''}" is an npc_dm and has no stakeholder_id`,
   });
+}
+
+function reportChainsAndLadders(
+  injects: readonly ConditionalInjectInput[],
+  stakeholders: readonly { id: string; mood_ladder?: unknown }[] | null | undefined,
+  duration: number | null | undefined,
+  issues: ConditionalInjectIssue[],
+): void {
+  const known = injects
+    .map((inject) => {
+      const key = inject.delivery_config?.inject_key;
+      if (typeof key !== 'string' || !key) return null;
+      return {
+        key,
+        trigger_time_minutes: inject.trigger_time_minutes ?? null,
+        conditional: inject.trigger_time_minutes == null,
+        condition_keys: collectConditionKeys(inject.conditions_to_appear, inject.conditions_to_cancel),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+  const durationArg = typeof duration === 'number' && Number.isFinite(duration) ? duration : null;
+  const listed = stakeholders ?? [];
+  const stakeholderIds = stakeholders == null ? null : listed.map((stakeholder) => stakeholder.id);
+
+  injects.forEach((inject, index) => {
+    const path = injectPath(inject, index);
+    const escalation = inject.delivery_config?.escalation;
+    if (escalation != null) {
+      const rootKey = typeof inject.delivery_config?.inject_key === 'string' ? inject.delivery_config.inject_key : null;
+      for (const issue of validateEscalation({
+        escalation,
+        rootApp: typeof inject.delivery_config?.app === 'string' ? inject.delivery_config.app : null,
+        rootStakeholderId:
+          typeof inject.delivery_config?.stakeholder_id === 'string'
+            ? inject.delivery_config.stakeholder_id
+            : null,
+        stakeholderIds,
+        durationMinutes: durationArg,
+        rootKey,
+        rootTriggerMinute: inject.trigger_time_minutes ?? null,
+        otherInjects: known.filter((row) => row.key !== rootKey),
+      })) {
+        issues.push({
+          code: issue.level === 'error' ? 'MO-CHAIN-001' : 'MO-CHAIN-002',
+          path,
+          severity: issue.level,
+          message: issue.message,
+        });
+      }
+    }
+    if (inject.delivery_config?.mood_ladder != null) {
+      reportLadder(inject.delivery_config.mood_ladder, path, known, durationArg, issues);
+    }
+  });
+
+  for (const stakeholder of listed) {
+    if (stakeholder.mood_ladder == null) continue;
+    reportLadder(stakeholder.mood_ladder, `stakeholders.${stakeholder.id}`, known, durationArg, issues);
+  }
+}
+
+function reportLadder(
+  ladder: unknown,
+  path: string,
+  known: readonly { key: string; conditional: boolean }[],
+  duration: number | null,
+  issues: ConditionalInjectIssue[],
+): void {
+  for (const issue of validateMoodLadder({
+    ladder,
+    knownInjects: known.map((row) => ({ key: row.key, conditional: row.conditional })),
+  })) {
+    issues.push({
+      code: 'MO-MOOD-001',
+      path,
+      severity: 'error',
+      message: issue.message,
+    });
+  }
+  const record = ladder && typeof ladder === 'object' ? (ladder as { gave_up_after_minutes?: unknown }) : null;
+  const explicit = record?.gave_up_after_minutes;
+  const effective =
+    typeof explicit === 'number' && Number.isFinite(explicit) ? explicit : env.callbackWindowMinutes;
+  if (duration != null && duration > 0 && effective >= duration) {
+    issues.push({
+      code: 'MO-MOOD-002',
+      path,
+      severity: 'warning',
+      message:
+        explicit == null
+          ? `gave_up_after_minutes falls back to the ${env.callbackWindowMinutes}-minute call-back window, which is not shorter than the ${duration}-minute scenario, so this stakeholder can never give up`
+          : `gave_up_after_minutes ${explicit} is not shorter than the ${duration}-minute scenario, so this stakeholder can never give up`,
+    });
+  }
 }
 
 function reportCycles(
