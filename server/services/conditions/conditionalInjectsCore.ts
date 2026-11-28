@@ -19,7 +19,7 @@ import {
   type ParsedCondition,
 } from './conditionCatalog.js';
 import { validateDependencies, type ActiveTeam } from '../dependencies/dependencyCore.js';
-import type { TeamDependencyEdge } from '../../../shared/teamDependencies.js';
+import { dependencyIdInKey, type TeamDependencyEdge } from '../../../shared/teamDependencies.js';
 
 export interface ConditionalInjectIssue {
   code: string;
@@ -673,9 +673,7 @@ function reportLadder(
 }
 
 function dependencyIdFromKey(key: string): string | null {
-  const parsed = parseConditionKey(key);
-  if ('error' in parsed || !parsed.def.id.startsWith('dependency_')) return null;
-  return parsed.args[0] || null;
+  return dependencyIdInKey(key);
 }
 
 function brokenWhenKeys(edge: TeamDependencyEdge): string[] {

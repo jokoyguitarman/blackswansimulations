@@ -16,7 +16,9 @@ import {
   DEPENDENCY_ID,
   DEPENDENCY_KINDS,
   DEPENDENCY_SEVERITIES,
+  consequenceInjectDraft,
   matchTeamRef,
+  sameTeam,
   type DependencyKind,
   type DependencySeverity,
   type TeamDependencyEdge,
@@ -135,14 +137,6 @@ export function signalTemplatePrompt(): string {
     'intel + intel_key → intel_missing:<intel_key> (met by intel_shared:<intel_key>; no team scope)',
     'A signal may set "scope" to "@downstream" when the reply belongs to a downstream team.',
   ].join('\n');
-}
-
-export function defaultCancelKeys(depId: string): string[] {
-  return [`dependency_resolved:${depId}`, `dependency_waived:${depId}`];
-}
-
-export function brokenForKey(depId: string, lagMinutes: number): string {
-  return `dependency_broken_for:${depId}:${lagMinutes}`;
 }
 
 /**
@@ -290,21 +284,22 @@ export function buildConsequenceInjects(
     const app = consequenceApp(row.app, row.sender, stakeholders);
     const injectKey = allocateInjectKey(text(row.inject_key), title, taken);
     const rubric = readAuthoredRubric(row.response_rubric);
-    consequences.push({
-      type: typeForApp(app),
+    const { trigger_time_minutes: _minute, ...drafted } = consequenceInjectDraft({
+      edge,
+      team: downstream.team_name,
+      injectKey,
       title,
       content,
+    });
+    consequences.push({
+      ...drafted,
+      type: typeForApp(app),
       severity: severityOf(row.severity, edge.severity),
-      inject_scope: 'team_specific',
-      target_teams: [downstream.team_name],
       requires_response: row.requires_response === true,
-      conditions_to_appear: { all: [brokenForKey(edge.id, edge.lag_minutes)] },
-      conditions_to_cancel: defaultCancelKeys(edge.id),
       gen_layer: layer,
       delivery_config: {
+        ...drafted.delivery_config,
         app,
-        inject_key: injectKey,
-        cause: { kind: 'dependency', dep_id: edge.id },
         gen: { layer },
         ...senderFields(row.sender, stakeholders),
         ...(rubric ? { response_rubric: rubric } : {}),
@@ -322,20 +317,27 @@ export function buildConsequenceInjects(
     const title = text(row.title) || `${edge.deliverable} delivered`;
     const app = consequenceApp(row.app, row.sender, stakeholders);
     const injectKey = allocateInjectKey(text(row.inject_key), title, taken);
-    positives.push({
-      type: typeForApp(app),
+    const {
+      conditions_to_cancel: _cancel,
+      trigger_time_minutes: _minute,
+      ...positive
+    } = consequenceInjectDraft({
+      edge,
+      team: downstream.team_name,
+      injectKey,
       title,
       content,
+    });
+    positives.push({
+      ...positive,
+      type: typeForApp(app),
       severity: severityOf(row.severity, 'low'),
-      inject_scope: 'team_specific',
-      target_teams: [downstream.team_name],
       requires_response: false,
       conditions_to_appear: { all: [`dependency_met:${edge.id}`] },
       gen_layer: layer,
       delivery_config: {
+        ...positive.delivery_config,
         app,
-        inject_key: injectKey,
-        cause: { kind: 'dependency', dep_id: edge.id },
         gen: { layer },
         ...senderFields(row.sender, stakeholders),
       },
@@ -386,7 +388,7 @@ export function registerIntelEdges(
         if (!team || (holder && teamIdentity(teamRef(team)) === teamIdentity(teamRef(holder))))
           continue;
         downstream.push(teamRef(team));
-      } else if (slugifyTeamName(name) !== slugifyTeamName(holderName)) {
+      } else if (!sameTeam(name, holderName)) {
         downstream.push(refOf(name));
       }
       if (downstream.length === 3) break;
