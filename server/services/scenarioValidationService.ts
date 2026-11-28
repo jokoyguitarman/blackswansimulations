@@ -115,6 +115,10 @@ export function validateScenarioPayload(
   const conditional = validateConditionalInjects({
     duration_minutes: payload.scenario.duration_minutes,
     injects,
+    stakeholders: stakeholders.map((stakeholder) => ({
+      id: stakeholder.id,
+      mood_ladder: stakeholder.mood_ladder,
+    })),
   });
   const keepConditional = new Set(conditional.injects);
   if (keepConditional.size !== injects.length) {

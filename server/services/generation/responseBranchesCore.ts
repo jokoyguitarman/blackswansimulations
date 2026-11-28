@@ -72,6 +72,10 @@ export interface ProcessedBranches {
 export interface CoverageReport {
   by_platform: Record<string, number>;
   gaps: string[];
+  chained_roots: number;
+  redialing_calls: number;
+  stakeholders_with_ladder: number;
+  gave_up_consequences: number;
 }
 
 export function isDeliveryApp(value: unknown): value is DeliveryApp {
@@ -193,20 +197,61 @@ export function postProcessResponseBranches(
   return { branches, rubrics };
 }
 
-export function coverageReport(injects: readonly BranchInject[]): CoverageReport {
+export function coverageReport(
+  injects: readonly BranchInject[],
+  stakeholders: readonly { mood_ladder?: unknown }[] = [],
+): CoverageReport {
   const used = new Set<string>();
   const conditional = new Map<string, number>();
+  let chained_roots = 0;
+  let redialing_calls = 0;
+  let gave_up_consequences = 0;
   for (const inject of injects) {
-    const app = text(inject.delivery_config?.app);
-    if (!app) continue;
-    used.add(app);
-    if (!isConditionalInject(inject)) continue;
-    conditional.set(app, (conditional.get(app) ?? 0) + 1);
+    const config = inject.delivery_config;
+    const app = text(config?.app);
+    if (app) {
+      used.add(app);
+      if (isConditionalInject(inject)) conditional.set(app, (conditional.get(app) ?? 0) + 1);
+    }
+    if (app === 'phone_call' && redialAttempts(config?.redial) > 1) redialing_calls += 1;
+    const escalation = config?.escalation;
+    if (escalation && typeof escalation === 'object' && !Array.isArray(escalation)) {
+      const steps = (escalation as { steps?: unknown }).steps;
+      if (Array.isArray(steps) && steps.length > 0 && !config?.branch) chained_roots += 1;
+      if (Array.isArray(steps)) {
+        for (const step of steps) {
+          if (!step || typeof step !== 'object') continue;
+          const row = step as { app?: unknown; redial?: unknown };
+          if (row.app === 'phone_call' && redialAttempts(row.redial) > 1) redialing_calls += 1;
+        }
+      }
+    }
+    const appear = [
+      ...(inject.conditions_to_appear?.all ?? []),
+      ...(inject.conditions_to_appear?.conditions ?? []),
+    ];
+    if (appear.some((key) => (key.split('|')[0] ?? '').startsWith('stakeholder_gave_up:'))) {
+      gave_up_consequences += 1;
+    }
   }
   const by_platform: Record<string, number> = {};
   for (const app of used) by_platform[app] = conditional.get(app) ?? 0;
   const gaps = [...used].filter((app) => by_platform[app] === 0);
-  return { by_platform, gaps };
+  const stakeholders_with_ladder = stakeholders.filter((stakeholder) => stakeholder.mood_ladder != null).length;
+  return {
+    by_platform,
+    gaps,
+    chained_roots,
+    redialing_calls,
+    stakeholders_with_ladder,
+    gave_up_consequences,
+  };
+}
+
+function redialAttempts(value: unknown): number {
+  if (!value || typeof value !== 'object') return 1;
+  const attempts = (value as { attempts?: unknown }).attempts;
+  return typeof attempts === 'number' && Number.isFinite(attempts) ? attempts : 1;
 }
 
 export function parentAlreadyBranched(
@@ -283,6 +328,8 @@ function finishConditions(
   if (config.app === 'npc_dm' && parent.stakeholder_id && !text(config.stakeholder_id)) {
     config.stakeholder_id = parent.stakeholder_id;
   }
+  delete config.escalation;
+  delete config.mood_ladder;
   branch.delivery_config = config;
   return branch;
 }
