@@ -14,6 +14,13 @@ export interface DismissedProposal {
 
 export const MAX_DISMISSED = 50;
 
+/**
+ * Offices and pressure groups one radar run may add. Further proposals stay as
+ * chips. This is not a lane cap: the trainer can add the rest, and later runs
+ * can add another batch.
+ */
+export const RADAR_RUN_ADD_CAP = 6;
+
 export interface SetupLists {
   primary: { display_name: string; country: string };
   offices: Array<{ display_name: string; country: string; proposed_from?: string }>;

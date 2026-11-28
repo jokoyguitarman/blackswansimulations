@@ -32,6 +32,7 @@ import {
 import { failLedger, isLedgerSchemaMissing, ledgerTablesMissing } from './ledgerSchema.js';
 import { enqueueJudgement } from '../judging/judgeService.js';
 import { slugifyTeamName } from '../conditions/conditionCatalog.js';
+import { loadTeamSignalFacts } from '../conditions/teamSignalService.js';
 import {
   firstEmailMinuteByStakeholder,
   summariseActionCounts,
@@ -215,7 +216,11 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
         team: input.recipientTeams?.length === 1 ? input.recipientTeams[0] : undefined,
         at: deliveredAt,
       });
-      if (input.escalation && input.chainStep == null && (input.attemptNo == null || input.attemptNo <= 1)) {
+      if (
+        input.escalation &&
+        input.chainStep == null &&
+        (input.attemptNo == null || input.attemptNo <= 1)
+      ) {
         try {
           const { startChainForDelivery } = await import('../escalation/escalationService.js');
           await startChainForDelivery({
@@ -393,9 +398,17 @@ export async function setDeliveryCallState(input: {
 export async function loadCommsState(
   sessionId: string,
   elapsedMinutes: number,
+  options?: { teamSignals?: boolean },
 ): Promise<CommsState> {
+  const teamSignals = options?.teamSignals !== false;
   if (ledgerTablesMissing()) {
-    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+    return attachCommsFacts(
+      sessionId,
+      elapsedMinutes,
+      null,
+      emptyCommsState(elapsedMinutes),
+      teamSignals,
+    );
   }
   try {
     const [deliveriesResult, responsesResult, clock] = await Promise.all([
@@ -421,6 +434,7 @@ export async function loadCommsState(
         elapsedMinutes,
         clock.startTime,
         emptyCommsState(elapsedMinutes),
+        teamSignals,
       );
     }
     if (failLedger(responsesResult.error, 'loadCommsState.responses')) {
@@ -429,6 +443,7 @@ export async function loadCommsState(
         elapsedMinutes,
         clock.startTime,
         emptyCommsState(elapsedMinutes),
+        teamSignals,
       );
     }
     const built = buildCommsState({
@@ -439,10 +454,16 @@ export async function loadCommsState(
       countBots: env.injectLedgerCountBots,
     });
     await enrichRoleDeliveryColumns(built);
-    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built);
+    return attachCommsFacts(sessionId, elapsedMinutes, clock.startTime, built, teamSignals);
   } catch (err) {
     failLedger(err, 'loadCommsState');
-    return attachCommsFacts(sessionId, elapsedMinutes, null, emptyCommsState(elapsedMinutes));
+    return attachCommsFacts(
+      sessionId,
+      elapsedMinutes,
+      null,
+      emptyCommsState(elapsedMinutes),
+      teamSignals,
+    );
   }
 }
 
@@ -481,10 +502,15 @@ async function enrichRoleDeliveryColumns(state: CommsState): Promise<void> {
     if (delivery.channel === 'call' && extra.ref_id) callRefs.push(String(extra.ref_id));
   }
   if (callRefs.length === 0) return;
-  const calls = await supabaseAdmin.from('sim_calls').select('id, missed_reason').in('id', callRefs);
+  const calls = await supabaseAdmin
+    .from('sim_calls')
+    .select('id, missed_reason')
+    .in('id', callRefs);
   if (calls.error && (calls.error.code === '42703' || calls.error.code === 'PGRST204')) return;
   if (calls.error || !calls.data) return;
-  const reasons = new Map(calls.data.map((row) => [String(row.id), (row.missed_reason as string | null) ?? null]));
+  const reasons = new Map(
+    calls.data.map((row) => [String(row.id), (row.missed_reason as string | null) ?? null]),
+  );
   for (const delivery of deliveries) {
     const extra = byId.get(delivery.delivery_id);
     const refId = extra?.ref_id ? String(extra.ref_id) : '';
@@ -537,7 +563,9 @@ async function simCallsAvailable(): Promise<boolean> {
   }
 }
 
-async function loadMoodIndexSafe(sessionId: string): Promise<Pick<CommsState, 'moods' | 'mood_stops'>> {
+async function loadMoodIndexSafe(
+  sessionId: string,
+): Promise<Pick<CommsState, 'moods' | 'mood_stops'>> {
   try {
     const { loadMoodIndex } = await import('../mood/moodService.js');
     return await loadMoodIndex(sessionId);
@@ -547,7 +575,10 @@ async function loadMoodIndexSafe(sessionId: string): Promise<Pick<CommsState, 'm
   }
 }
 
-async function stampDeliveryMood(input: RecordDeliveryInput, minute: number): Promise<RecordDeliveryInput> {
+async function stampDeliveryMood(
+  input: RecordDeliveryInput,
+  minute: number,
+): Promise<RecordDeliveryInput> {
   if (!input.stakeholderId || input.moodRung) return input;
   try {
     const { rungForDelivery } = await import('../mood/moodService.js');
@@ -596,15 +627,19 @@ async function attachCommsFacts(
   elapsedMinutes: number,
   startTime: string | null,
   state: CommsState,
+  teamSignals = true,
 ): Promise<CommsState> {
   try {
     const clockStart = startTime ?? (await loadSessionClock(sessionId)).startTime;
-    const [contacts, verdicts, actions, stakeholders, callsAvailable] = await Promise.all([
+    const [contacts, verdicts, actions, stakeholders, callsAvailable, signals] = await Promise.all([
       loadPlayerContacts(sessionId),
       loadLatestVerdicts(sessionId),
       loadActionCounts(sessionId, clockStart),
       loadScenarioStakeholders(sessionId),
       simCallsAvailable(),
+      teamSignals
+        ? loadTeamSignalFacts(sessionId, clockStart)
+        : Promise.resolve(null),
     ]);
     const email = actions.email ?? (await loadEmailSentFacts(sessionId));
     const emailKnown = email.known && stakeholders.known && actions.known;
@@ -629,6 +664,7 @@ async function attachCommsFacts(
       action_counts_truncated: actions.known && actions.truncated,
       chains,
       ...moods,
+      ...(signals ?? {}),
     };
   } catch (err) {
     warnFactOnce('comms_facts_failed', err, 'Extra condition facts could not be loaded');

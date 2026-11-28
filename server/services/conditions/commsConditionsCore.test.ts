@@ -10,7 +10,13 @@ import {
   firstEmailMinuteByStakeholder,
   selectPublishable,
 } from './commsConditionsCore.js';
-import { CATALOG_ACTION_TYPES, CONDITION_CATALOG, parseConditionKey } from './conditionCatalog.js';
+import {
+  CATALOG_ACTION_TYPES,
+  CONDITION_CATALOG,
+  formatConditionLabel,
+  parseConditionKey,
+} from './conditionCatalog.js';
+import { builderModelToKey, keyToBuilderModel } from '../../../shared/conditionKeyGrammar.js';
 
 function delivery(
   partial: Partial<CommsDelivery> & { delivery_id: string; inject_key: string },
@@ -520,6 +526,187 @@ describe('consistency keys use the crisis-standards score', () => {
       }),
       false,
     );
+  });
+});
+
+describe('team signal keys', () => {
+  const duties = comms([], {
+    duties: {
+      legal: [
+        { action_id: 'legal_review_statement', benchmark_minute: 15, completed_minute: null },
+      ],
+    },
+    role_teams: { legal_head: 'legal' },
+    team_labels: { legal: 'Legal' },
+  });
+
+  test('duty_missed is false before the benchmark, true after, and false when completed on time', () => {
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', duties, 15), false);
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', duties, 16), true);
+    assert.equal(met('duty_done:legal_review_statement|team=legal', duties, 16), false);
+    assert.equal(met('duty_late:legal_review_statement|team=legal', duties, 16), false);
+
+    const onTime = comms([], {
+      duties: {
+        legal: [
+          { action_id: 'legal_review_statement', benchmark_minute: 15, completed_minute: 15 },
+        ],
+      },
+    });
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', onTime, 20), false);
+    assert.equal(met('duty_done:legal_review_statement|team=legal', onTime, 20), true);
+    assert.equal(met('duty_late:legal_review_statement|team=legal', onTime, 20), false);
+
+    const late = comms([], {
+      duties: {
+        legal: [
+          { action_id: 'legal_review_statement', benchmark_minute: 15, completed_minute: 18 },
+        ],
+      },
+    });
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', late, 20), true);
+    assert.equal(met('duty_late:legal_review_statement|team=legal', late, 20), true);
+    assert.equal(met('duty_done:legal_review_statement|team=legal', late, 20), true);
+    assert.equal(met('duty_missed:legal_review_statement:8|team=legal', duties, 8), false);
+    assert.equal(met('duty_missed:legal_review_statement:8|team=legal', duties, 9), true);
+    assert.equal(met('duty_missed:legal_review_statement|role=legal_head', duties, 16), true);
+  });
+
+  test('team_silent:10|team=legal is false before minute 10, true after 10 quiet minutes, and false after a message', () => {
+    const quiet = comms([], { team_activity: { legal: { last_minute: null } } });
+    assert.equal(met('team_silent:10|team=legal', quiet, 9), false);
+    assert.equal(met('team_silent:10|team=legal', quiet, 10), true);
+
+    const spoke = comms([], {
+      team_activity: { legal: { last_minute: 14 } },
+      team_labels: { legal: 'Legal' },
+    });
+    assert.equal(met('team_silent:10|team=legal', spoke, 14), false);
+    assert.equal(met('team_silent:10|team=legal', spoke, 23), false);
+    assert.equal(met('team_silent:10|team=legal', spoke, 24), true);
+    const explained = explainCommsKey(mustParse('team_silent:10|team=legal'), spoke, 26);
+    assert.equal(explained?.detail, 'Legal: no action since T+14 (12 min)');
+    assert.equal(
+      met(
+        'team_silent:10|role=cs_head',
+        comms([], {
+          team_activity: { legal: { last_minute: 14 } },
+          role_teams: { cs_head: 'legal' },
+        }),
+        14,
+      ),
+      false,
+    );
+  });
+
+  test("content_failed:2:50 counts only that team's grades below 50", () => {
+    const graded = comms([], {
+      content_grades: {
+        legal: [40, 49, 50, 80],
+        comms: [10, 20],
+      },
+    });
+    assert.equal(met('content_failed:2:50|team=legal', graded, 20), true);
+    assert.equal(met('content_failed:3:50|team=legal', graded, 20), false);
+    assert.equal(met('content_failed:2:40|team=legal', graded, 20), false);
+    assert.equal(met('content_failed:2:50|team=comms', graded, 20), true);
+    assert.equal(met('content_failed:3:50|team=comms', graded, 20), false);
+  });
+
+  test('decision_made reads the fixture ledger and stays false when executive decisions are off', () => {
+    const ledger = comms([], {
+      decisions_enabled: true,
+      decisions: [
+        { team_slug: 'comms', category: 'public_position', minute: 12 },
+        { team_slug: 'legal', category: 'legal_action', minute: 4 },
+      ],
+    });
+    assert.equal(met('decision_made:public_position|team=comms', ledger, 20), true);
+    assert.equal(met('decision_made:public_position|team=legal', ledger, 20), false);
+    assert.equal(met('decision_made:legal_action|team=legal', ledger, 20), true);
+    assert.equal(met('decision_made:public_position|team=comms', ledger, 11), false);
+    const off = comms([], {
+      decisions_enabled: false,
+      decisions: [{ team_slug: 'comms', category: 'public_position', minute: 12 }],
+    });
+    assert.equal(met('decision_made:public_position|team=comms', off, 20), false);
+  });
+
+  test('a missing team or role scope is parse error MO-COND-010', () => {
+    for (const key of [
+      'duty_missed:legal_review_statement',
+      'duty_done:legal_review_statement',
+      'duty_late:legal_review_statement',
+      'team_silent:10',
+      'content_failed:2:50',
+      'decision_made:public_position',
+    ]) {
+      const parsed = parseConditionKey(key);
+      assert.ok('error' in parsed, key);
+      if ('error' in parsed) assert.match(parsed.error, /MO-COND-010/, key);
+    }
+    const tooShort = parseConditionKey('team_silent:4|team=legal');
+    assert.ok('error' in tooShort);
+    if ('error' in tooShort) assert.equal(tooShort.error.includes('MO-COND-010'), false);
+    const unavailable = comms([], {
+      duties_known: false,
+      team_activity_known: false,
+      content_grades_known: false,
+      decisions_enabled: true,
+      decisions_known: false,
+    });
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', unavailable, 30), false);
+    assert.equal(met('team_silent:10|team=legal', unavailable, 30), false);
+    assert.equal(met('content_failed:1:50|team=legal', unavailable, 30), false);
+    assert.equal(met('decision_made:other|team=legal', unavailable, 30), false);
+    const truncated = comms([], {
+      duties: {
+        legal: [
+          { action_id: 'legal_review_statement', benchmark_minute: 15, completed_minute: null },
+        ],
+      },
+      duties_truncated: true,
+      team_activity: { legal: { last_minute: null } },
+      team_activity_truncated: true,
+    });
+    assert.equal(met('duty_missed:legal_review_statement|team=legal', truncated, 30), false);
+    assert.equal(met('team_silent:10|team=legal', truncated, 30), false);
+  });
+
+  test('catalogue round trip for every new team signal key', () => {
+    const examples = [
+      'duty_missed:legal_review_statement|team=legal',
+      'duty_missed:legal_review_statement:15|team=legal',
+      'duty_done:legal_review_statement|team=legal',
+      'duty_late:legal_review_statement|role=legal_head',
+      'team_silent:10|team=legal',
+      'content_failed:2:50|team=legal',
+      'decision_made:public_position|team=comms',
+    ];
+    for (const key of examples) {
+      const parsed = parseConditionKey(key);
+      assert.ok(!('error' in parsed), 'error' in parsed ? `${key}: ${parsed.error}` : key);
+      if ('error' in parsed) continue;
+      assert.equal(parsed.def.requiresScope, true, key);
+      assert.equal(parsed.def.teamScope, true, key);
+      const model = keyToBuilderModel(key, CONDITION_CATALOG);
+      assert.ok(!('error' in model), key);
+      if ('error' in model) continue;
+      const formatted = builderModelToKey(model.model, CONDITION_CATALOG);
+      assert.ok(!('error' in formatted), key);
+      if ('error' in formatted) continue;
+      assert.equal(formatted.key, key);
+      const label = formatConditionLabel(parsed);
+      assert.ok(label.length > parsed.def.id.length, label);
+    }
+    const silent = parseConditionKey('team_silent:10|team=legal');
+    assert.ok(!('error' in silent));
+    if (!('error' in silent)) {
+      assert.equal(
+        formatConditionLabel(silent),
+        'The team has been silent for 10 minutes (team legal)',
+      );
+    }
   });
 });
 
