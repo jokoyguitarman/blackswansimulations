@@ -5,8 +5,10 @@ import { loadCommsResponsesSection, type CommsResponsesSection } from './aarComm
 import { computeTeamScores } from './teamScoreService.js';
 import {
   actionCountsAsCrisisActivity,
+  attributedPlayerId,
   contentKey,
   rowCountsAsCrisisActivity,
+  type GradeAuthor,
 } from './scoring/crisisActivityCore.js';
 import { loadContentIndex, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 import { orgsForSession } from '../lib/templateRows.js';
@@ -190,6 +192,14 @@ export interface SocialMediaAARData {
   comms_responses: CommsResponsesSection;
 }
 
+function gradeAuthor(post: Record<string, unknown>): GradeAuthor {
+  return {
+    author_type: typeof post.author_type === 'string' ? post.author_type : null,
+    user_id: typeof post.user_id === 'string' ? post.user_id : null,
+    posted_by_user_id: typeof post.posted_by_user_id === 'string' ? post.posted_by_user_id : null,
+  };
+}
+
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
 const TIER2_ACTIONS = [
   'post_created',
@@ -318,9 +328,14 @@ export async function buildSocialMediaAARData(
     };
   });
 
-  const playerPosts = posts.filter(
-    (p: Record<string, unknown>) => p.author_type === 'player' && p.sop_compliance_score,
-  );
+  const playerPosts = env.teamScorePostAttributionFix
+    ? posts.filter(
+        (p: Record<string, unknown>) =>
+          p.sop_compliance_score && attributedPlayerId(gradeAuthor(p), true) != null,
+      )
+    : posts.filter(
+        (p: Record<string, unknown>) => p.author_type === 'player' && p.sop_compliance_score,
+      );
   const grades = playerPosts.map((p: Record<string, unknown>) => {
     const grade = (p.sop_compliance_score || {}) as Record<string, number>;
     return {
@@ -524,7 +539,10 @@ export async function buildSocialMediaAARData(
         if (!worst || overall < worst.overall) worst = { content: preview, overall };
       };
       for (const p of posts) {
-        consider(p.posted_by_user_id, p.content, p.sop_compliance_score);
+        const author = env.teamScorePostAttributionFix
+          ? attributedPlayerId(gradeAuthor(p), true)
+          : p.posted_by_user_id;
+        consider(author, p.content, p.sop_compliance_score);
       }
       for (const e of emails) {
         consider(

@@ -15,6 +15,7 @@ import { resolveTeamFunction } from '../../lib/stakeholderContract.js';
 import { parsePlayerRoles } from '../roles/roleCore.js';
 import { slugifyTeamName } from '../../../shared/conditionKeyGrammar.js';
 import { dutiesByTeam, type CharterAction, type ObservedAction } from '../teamTasksCore.js';
+import { attributedPlayerId, type GradeAuthor } from '../scoring/crisisActivityCore.js';
 import {
   decisionFacts,
   gradesByTeam,
@@ -153,7 +154,9 @@ export async function loadTeamSignalFacts(
       loadDutyActions(sessionId, actionTypes, roster.known),
       loadActionActivity(sessionId, teamNames),
       loadChatActivity(sessionId, [...membership.teamByPlayer.keys()]),
-      loadGradeRows(sessionId, 'social_posts', 'posted_by_user_id', { author_type: 'player' }),
+      env.teamScorePostAttributionFix
+        ? loadAttributedPostGrades(sessionId)
+        : loadGradeRows(sessionId, 'social_posts', 'posted_by_user_id', { author_type: 'player' }),
       loadGradeRows(sessionId, 'sim_emails', 'sent_by_player_id', {}),
       enabled
         ? loadDecisionRows(sessionId)
@@ -720,6 +723,138 @@ function chatHits(
     hits.push(minute);
   }
   return hits;
+}
+
+/**
+ * Process start, or the first tick that sees the flag after a test turns it on.
+ * Back-credited grades older than this stay out of live signals.
+ */
+let attributionEpochMs: number | null = env.teamScorePostAttributionFix ? Date.now() : null;
+
+export function resetTeamSignalAttributionEpochForTests(at: number | null): void {
+  attributionEpochMs = at;
+}
+
+function attributionEpoch(): number | null {
+  if (!env.teamScorePostAttributionFix) return null;
+  if (attributionEpochMs == null) attributionEpochMs = Date.now();
+  return attributionEpochMs;
+}
+
+/**
+ * Who a graded post counts for in team signals when the attribution fix is on.
+ * A player post that already had posted_by_user_id was in the pre-fix query, so
+ * it still counts (by user_id, once). Personal posts and page posts were not
+ * in that query. They count only at or after the flag was observed, because
+ * signals are rebuilt from the whole history each tick: dropping the backlog
+ * in at once would flip content_failed for every team on the same tick.
+ */
+export function signalGradePlayerId(
+  row: GradeAuthor & { created_at?: string | null },
+  epochMs: number,
+): string | null {
+  const playerId = attributedPlayerId(row, true);
+  if (!playerId) return null;
+  if (row.author_type === 'player' && row.posted_by_user_id) return playerId;
+  const created = typeof row.created_at === 'string' ? Date.parse(row.created_at) : Number.NaN;
+  if (!Number.isFinite(created) || created < epochMs) return null;
+  return playerId;
+}
+
+interface AttributedGradeRow {
+  user_id?: unknown;
+  author_type?: unknown;
+  posted_by_user_id?: unknown;
+  created_at?: unknown;
+  overall?: unknown;
+}
+
+function attributedGradeAuthor(
+  row: AttributedGradeRow,
+): GradeAuthor & { created_at?: string | null } {
+  return {
+    author_type: typeof row.author_type === 'string' ? row.author_type : null,
+    user_id: typeof row.user_id === 'string' ? row.user_id : null,
+    posted_by_user_id: typeof row.posted_by_user_id === 'string' ? row.posted_by_user_id : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : null,
+  };
+}
+
+/**
+ * Personal posts (user_id) and page posts (posted_by_user_id), one scan each.
+ * Aggregates cannot apply the two attribution columns and the epoch together.
+ */
+async function loadAttributedPostGrades(sessionId: string): Promise<{
+  rows: Array<Record<string, unknown>>;
+  known: boolean;
+  truncated: boolean;
+}> {
+  const epoch = attributionEpoch();
+  if (epoch == null) return { rows: [], known: false, truncated: false };
+  const [players, pages] = await Promise.all([
+    scanAttributedGrades(sessionId, 'player', 'user_id'),
+    scanAttributedGrades(sessionId, 'official_account', 'posted_by_user_id'),
+  ]);
+  if (!players.known || !pages.known) return { rows: [], known: false, truncated: false };
+  const rows: Array<Record<string, unknown>> = [];
+  let truncated = players.truncated || pages.truncated;
+  for (const row of [...players.rows, ...pages.rows]) {
+    const playerId = signalGradePlayerId(attributedGradeAuthor(row), epoch);
+    if (!playerId || row.overall == null || row.overall === '') continue;
+    if (rows.length >= GRADE_CAP) {
+      truncated = true;
+      break;
+    }
+    rows.push({
+      posted_by_user_id: playerId,
+      sop_compliance_score: { overall: row.overall },
+    });
+  }
+  if (truncated) {
+    warnOnce(
+      'team_signal_grades_truncated',
+      null,
+      'Graded content exceeded the condition-key cap; only the loaded grades count',
+    );
+  }
+  return { rows, known: true, truncated };
+}
+
+async function scanAttributedGrades(
+  sessionId: string,
+  authorType: 'player' | 'official_account',
+  userColumn: 'user_id' | 'posted_by_user_id',
+): Promise<{ rows: AttributedGradeRow[]; known: boolean; truncated: boolean }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('social_posts')
+      .select(
+        'user_id, author_type, posted_by_user_id, created_at, overall:sop_compliance_score->>overall',
+      )
+      .eq('session_id', sessionId)
+      .eq('author_type', authorType)
+      .not(userColumn, 'is', null)
+      .not('sop_compliance_score', 'is', null)
+      .limit(GRADE_CAP + 1);
+    if (error) {
+      warnOnce(
+        'team_signal_grades_unavailable',
+        error,
+        'Content-grade conditions are off for this process',
+      );
+      return { rows: [], known: false, truncated: false };
+    }
+    const raw = (data ?? []) as AttributedGradeRow[];
+    const truncated = raw.length > GRADE_CAP;
+    return { rows: truncated ? raw.slice(0, GRADE_CAP) : raw, known: true, truncated };
+  } catch (err) {
+    warnOnce(
+      'team_signal_grades_unavailable',
+      err,
+      'Content-grade conditions are off for this process',
+    );
+    return { rows: [], known: false, truncated: false };
+  }
 }
 
 async function loadGradeRows(

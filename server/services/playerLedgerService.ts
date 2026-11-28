@@ -1,5 +1,7 @@
+import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { attributedPlayerId, type GradeAuthor } from './scoring/crisisActivityCore.js';
 import { selectTolerant, scoringFiltersActive } from './scoring/crisisActivityLookup.js';
 
 /**
@@ -91,25 +93,55 @@ function topicOf(row: { topic_class?: unknown }): { topic_class?: string } {
   return { topic_class: label };
 }
 
+function ledgerAuthor(post: {
+  author_type?: unknown;
+  user_id?: unknown;
+  posted_by_user_id?: unknown;
+}): GradeAuthor {
+  return {
+    author_type: typeof post.author_type === 'string' ? post.author_type : null,
+    user_id: typeof post.user_id === 'string' ? post.user_id : null,
+    posted_by_user_id: typeof post.posted_by_user_id === 'string' ? post.posted_by_user_id : null,
+  };
+}
+
 export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger> {
   const filtersActive = scoringFiltersActive();
+  const attributionFix = env.teamScorePostAttributionFix;
+  const postsQuery = attributionFix
+    ? filtersActive
+      ? selectTolerant(
+          (columns) =>
+            supabaseAdmin
+              .from('social_posts')
+              .select(columns)
+              .eq('session_id', sessionId)
+              .in('author_type', ['player', 'official_account']) as unknown as TopicQuery,
+          `${LEDGER_POSTS}, user_id, author_type, topic_class`,
+        ).then((data) => ({ data }))
+      : supabaseAdmin
+          .from('social_posts')
+          .select(`${LEDGER_POSTS}, user_id, author_type`)
+          .eq('session_id', sessionId)
+          .in('author_type', ['player', 'official_account'])
+    : filtersActive
+      ? selectTolerant(
+          (columns) =>
+            supabaseAdmin
+              .from('social_posts')
+              .select(columns)
+              .eq('session_id', sessionId)
+              .eq('author_type', 'player') as unknown as TopicQuery,
+          `${LEDGER_POSTS}, topic_class`,
+        ).then((data) => ({ data }))
+      : supabaseAdmin
+          .from('social_posts')
+          .select(LEDGER_POSTS)
+          .eq('session_id', sessionId)
+          .eq('author_type', 'player');
   const [postsRes, emailsRes, dmsRes, actionsRes, disputesRes, snapsRes, consRes, teamsRes] =
     await Promise.all([
-      filtersActive
-        ? selectTolerant(
-            (columns) =>
-              supabaseAdmin
-                .from('social_posts')
-                .select(columns)
-                .eq('session_id', sessionId)
-                .eq('author_type', 'player') as unknown as TopicQuery,
-            `${LEDGER_POSTS}, topic_class`,
-          ).then((data) => ({ data }))
-        : supabaseAdmin
-            .from('social_posts')
-            .select(LEDGER_POSTS)
-            .eq('session_id', sessionId)
-            .eq('author_type', 'player'),
+      postsQuery,
       filtersActive
         ? selectTolerant(
             (columns) =>
@@ -169,7 +201,18 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
         .order('assigned_at', { ascending: true }),
     ]);
 
-  const posts = postsRes.data || [];
+  const posts = (postsRes.data || []) as Array<{
+    id: unknown;
+    user_id?: unknown;
+    author_type?: unknown;
+    posted_by_user_id?: unknown;
+    content?: unknown;
+    sop_compliance_score?: unknown;
+    sentiment?: unknown;
+    reply_to_post_id?: unknown;
+    created_at?: unknown;
+    topic_class?: unknown;
+  }>;
   const emails = emailsRes.data || [];
   const dms = dmsRes.data || [];
   const actions = actionsRes.data || [];
@@ -196,7 +239,10 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   // players with no activity yet, so the trainer sees the full roster), then
   // resolve names.
   const playerIds = new Set<string>();
-  for (const p of posts) if (p.posted_by_user_id) playerIds.add(String(p.posted_by_user_id));
+  for (const p of posts) {
+    const playerId = attributedPlayerId(ledgerAuthor(p), attributionFix);
+    if (playerId) playerIds.add(playerId);
+  }
   for (const e of emails) if (e.sent_by_player_id) playerIds.add(String(e.sent_by_player_id));
   for (const a of actions) if (a.player_id) playerIds.add(String(a.player_id));
   for (const d of disputes) if (d.requested_by) playerIds.add(String(d.requested_by));
@@ -228,8 +274,9 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   };
 
   for (const p of posts) {
-    if (!p.posted_by_user_id) continue;
-    push(String(p.posted_by_user_id), {
+    const playerId = attributedPlayerId(ledgerAuthor(p), attributionFix);
+    if (!playerId) continue;
+    push(playerId, {
       id: String(p.id),
       kind: p.reply_to_post_id ? 'reply' : 'post',
       timestamp: String(p.created_at),
