@@ -4,7 +4,7 @@ import { env } from '../../env.js';
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { resetPeaceColumnsForTests } from '../../lib/peaceSchema.js';
 import { resetTopicSchemaForTests } from '../topic/topicColumns.js';
-import { publishPeaceFeed } from './peacePublisher.js';
+import { publishPeaceFeed, resetPeaceScenarioCacheForTests } from './peacePublisher.js';
 
 const SESSION = '11111111-1111-4111-8111-111111111111';
 const OPENED = '2026-06-01T12:00:00.000Z';
@@ -169,6 +169,7 @@ afterEach(() => {
   env.enablePeacePeriod = originalPeace;
   resetPeaceColumnsForTests();
   resetTopicSchemaForTests();
+  resetPeaceScenarioCacheForTests();
 });
 
 test('flag off does not read or publish', async () => {
@@ -198,6 +199,30 @@ test('publishes due rows in parent-then-comment order, skips the rest, and is id
   await publishPeaceFeed({ id: SESSION }, { engage: db.engage, now });
   assert.equal(db.rows.length, 3);
   assert.deepEqual(db.engaged, [{ id: SESSION, ambient: false }]);
+});
+
+test('a short authored length does not hide posts that fit the live peace', async () => {
+  env.enablePeacePeriod = true;
+  const short = feed();
+  short.seconds = 40;
+  const db = install(short);
+  await publishPeaceFeed({ id: SESSION }, { engage: db.engage, now: OPENED_MS + 80_000 });
+  assert.deepEqual(
+    db.rows.map((row) => row.peace_ref),
+    ['P1', 'P1#0', 'P3'],
+  );
+});
+
+test('a feed without seconds still publishes inside the live peace', async () => {
+  env.enablePeacePeriod = true;
+  const bare = feed() as { seconds?: number };
+  delete bare.seconds;
+  const db = install(bare);
+  await publishPeaceFeed({ id: SESSION }, { engage: db.engage, now: OPENED_MS + 80_000 });
+  assert.deepEqual(
+    db.rows.map((row) => row.peace_ref),
+    ['P1', 'P1#0', 'P3'],
+  );
 });
 
 test('a disabled feed publishes nothing and still runs engagement without ambient posts', async () => {

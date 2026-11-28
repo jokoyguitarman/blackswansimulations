@@ -92,8 +92,18 @@ router.get(
         ? openingParagraph(scenario.description)
         : null;
 
-      const body: Record<string, unknown> = {
-        general_briefing: scenario.briefing || scenario.description,
+      const body: {
+        general_briefing: string;
+        role_specific_briefing: string | null;
+        scenario_title: string;
+        user_role: string | null;
+        team_name: string | null;
+        vicinity_map_url: null;
+        layout_image_url: null;
+        booth: { situation: string; goals: string | null } | null;
+        crisis_starts_at?: string | null;
+      } = {
+        general_briefing: scenario.briefing || scenario.description || '',
         role_specific_briefing: roleSpecificBrief,
         scenario_title: scenario.title,
         user_role: userRole,

@@ -21,6 +21,7 @@ import {
 } from '../services/topic/gradeIfCrisisActivity.js';
 import { reactAndGradePlayerPost } from '../services/topic/playerTopicGrade.js';
 import { loadSessionTopicPhase } from '../services/peace/sessionTopicPhase.js';
+import { mediaScenarioContext } from '../services/peace/mediaContext.js';
 import type { TopicPhase } from '../services/topic/topicPromptCore.js';
 import { env } from '../env.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
@@ -649,28 +650,30 @@ router.post(
             const isVideo = post_format === 'video_concept';
             let mediaUrl: string | null = null;
 
-            // Fetch scenario context for realistic media generation
-            let mediaScenarioContext: string | undefined;
-            const { data: mediaSession } = await supabaseAdmin
-              .from('sessions')
-              .select('scenario_id')
-              .eq('id', session_id)
-              .single();
-            if (mediaSession?.scenario_id) {
-              const { data: mediaScenario } = await supabaseAdmin
-                .from('scenarios')
-                .select('description')
-                .eq('id', mediaSession.scenario_id)
+            // Peace sends no crisis text to the media model, and does not load the brief.
+            let scenarioContext: string | undefined;
+            if (peacePhase !== 'peace') {
+              const { data: mediaSession } = await supabaseAdmin
+                .from('sessions')
+                .select('scenario_id')
+                .eq('id', session_id)
                 .single();
-              mediaScenarioContext = mediaScenario?.description?.substring(0, 200) || undefined;
+              if (mediaSession?.scenario_id) {
+                const { data: mediaScenario } = await supabaseAdmin
+                  .from('scenarios')
+                  .select('description')
+                  .eq('id', mediaSession.scenario_id)
+                  .single();
+                scenarioContext = mediaScenarioContext(peacePhase, mediaScenario?.description);
+              }
             }
 
             if (isVideo) {
-              mediaUrl = await generateVideo(promptText, 10, '16:9', mediaScenarioContext);
+              mediaUrl = await generateVideo(promptText, 10, '16:9', scenarioContext);
               if (!mediaUrl) mediaUrl = await generateVideoThumbnail(promptText);
             } else {
               const style = imageStyle || 'social_media_photo';
-              mediaUrl = await generatePostImage(promptText, style, mediaScenarioContext);
+              mediaUrl = await generatePostImage(promptText, style, scenarioContext);
             }
 
             if (mediaUrl) {

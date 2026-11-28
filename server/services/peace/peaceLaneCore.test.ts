@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PEACE_OFFSET_TAIL_SECONDS } from '../../../shared/peaceFeed.js';
 import type { PeaceFeedPost } from '../../../shared/peaceFeed.js';
-import { peaceCommentRef, peaceOffsetLimit, planPeacePublications } from './peaceLaneCore.js';
+import { peaceCommentRef, peaceOffsetLimit, peaceWindowSeconds, planPeacePublications } from './peaceLaneCore.js';
 
 const OPENED = Date.parse('2026-06-01T12:00:00.000Z');
 const SECONDS = 300;
@@ -31,11 +31,41 @@ function plan(
     openedAtMs: OPENED,
     now,
     already: new Set(already),
-    postAuthorResolved: (author) =>
-      author.kind === 'page' ? author.org_key === 'primary' : resolved(author.handle),
-    commentAuthorResolved: resolved,
+    postAuthor: (author) =>
+      (author.kind === 'page' ? author.org_key === 'primary' : resolved(author.handle)) ? 'ok' : null,
+    commentAuthor: (handle) => (resolved(handle) ? 'ok' : null),
   });
 }
+
+test('the window is the live peace, and a feed without seconds does not collapse to zero', () => {
+  assert.equal(
+    peaceWindowSeconds({
+      openedAtMs: OPENED,
+      startTime: new Date(OPENED + 600_000).toISOString(),
+      feedSeconds: 40,
+      fallbackSeconds: 300,
+    }),
+    600,
+  );
+  assert.equal(
+    peaceWindowSeconds({
+      openedAtMs: OPENED,
+      startTime: null,
+      feedSeconds: null,
+      fallbackSeconds: 300,
+    }),
+    300,
+  );
+  assert.equal(
+    peaceWindowSeconds({
+      openedAtMs: OPENED,
+      startTime: null,
+      feedSeconds: 120,
+      fallbackSeconds: 300,
+    }),
+    120,
+  );
+});
 
 test('the tail limit is seconds minus the shared tail, and late offsets are skipped', () => {
   assert.equal(peaceOffsetLimit(SECONDS), SECONDS - PEACE_OFFSET_TAIL_SECONDS);

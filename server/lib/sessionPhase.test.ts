@@ -7,6 +7,7 @@ import {
   crisisElapsedRoundedMinutes,
   isCrisisPhase,
   isOnOrAfterCrisis,
+  peaceLobbyOffer,
   resolvePeaceSeconds,
   sessionPhase,
   sessionValidAt,
@@ -161,6 +162,24 @@ describe('resolvePeaceSeconds', () => {
         ...limits,
       }),
       0,
+    );
+    assert.equal(
+      peaceLobbyOffer(
+        { peace_period: { posts: [{ ref: 'P1' }], seconds: 180, leak_terms: ['recall'] } },
+        true,
+        PEACE_PERIOD_DEFAULT_SECONDS,
+        PEACE_PERIOD_MAX_SECONDS,
+      )?.seconds,
+      180,
+    );
+    assert.equal(
+      peaceLobbyOffer(
+        { peace_period: { enabled: false, posts: [{ ref: 'P1' }], seconds: 180 } },
+        true,
+        PEACE_PERIOD_DEFAULT_SECONDS,
+        PEACE_PERIOD_MAX_SECONDS,
+      ),
+      null,
     );
   });
 

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { PEACE_PERIOD_MAX_SECONDS, type PeaceFeed } from '@shared/peaceFeed';
-import { ApiError, api } from '../../lib/api';
-import { lobbyPeaceMinutes, lobbyPeaceSeconds, lobbyPeaceVisible } from '../../lib/peaceLobby';
+import { PEACE_PERIOD_MAX_SECONDS } from '@shared/peaceFeed';
+import { lobbyPeaceMinutes, lobbyPeaceSeconds, lobbyPeaceVisible, type LobbyPeace } from '../../lib/peaceLobby';
 
 const MAX_MINUTES = PEACE_PERIOD_MAX_SECONDS / 60;
 
@@ -39,49 +38,24 @@ export function PeaceLobbyFields({
 }
 
 interface Props {
-  scenarioId: string | null | undefined;
   social: boolean;
   trainer: boolean;
+  /** From the session payload. Absent when the flag is off or there is no feed. */
+  peace: LobbyPeace | null | undefined;
   onSeconds: (seconds: number | undefined) => void;
 }
 
-/**
- * Start-panel peace switch. Hidden unless the peace-feed route answers and
- * the scenario has a feed the editor left on. A 404 (flag off) renders nothing.
- */
-export function PeaceLobbyControl({ scenarioId, social, trainer, onSeconds }: Props) {
-  const [feed, setFeed] = useState<PeaceFeed | null>(null);
-  const [probeStatus, setProbeStatus] = useState<number | null>(null);
+/** Start-panel peace switch. It does not fetch; the session load already has the offer. */
+export function PeaceLobbyControl({ social, trainer, peace, onSeconds }: Props) {
+  const shown = lobbyPeaceVisible({ social, trainer, peace });
   const [enabled, setEnabled] = useState(true);
-  const [minutes, setMinutes] = useState(lobbyPeaceMinutes(null));
+  const [minutes, setMinutes] = useState(() => lobbyPeaceMinutes(peace));
 
   useEffect(() => {
-    if (!social || !trainer || !scenarioId) {
-      setProbeStatus(null);
-      setFeed(null);
-      return;
-    }
-    let cancelled = false;
-    api.scenarios
-      .getPeaceFeed(scenarioId)
-      .then((res) => {
-        if (cancelled) return;
-        setProbeStatus(200);
-        setFeed(res.data.peace_period);
-        setEnabled(res.data.peace_period?.enabled !== false);
-        setMinutes(lobbyPeaceMinutes(res.data.peace_period));
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setProbeStatus(err instanceof ApiError ? err.status : 0);
-        setFeed(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scenarioId, social, trainer]);
+    setMinutes(lobbyPeaceMinutes(peace));
+    setEnabled(true);
+  }, [peace]);
 
-  const shown = lobbyPeaceVisible({ social, trainer, probeStatus, feed });
   const seconds = lobbyPeaceSeconds({ shown, enabled, minutes });
 
   useEffect(() => {

@@ -5,27 +5,19 @@ import { lobbyPeaceMinutes, lobbyPeaceSeconds, lobbyPeaceVisible } from '../src/
 import { peaceCountdownLabel } from '../src/lib/peaceCountdown.ts';
 import { crisisBriefLocked, showCrisisBriefSection } from '../src/lib/briefingLock.ts';
 
-const feed = { seconds: 300, enabled: true, posts: [{ ref: 'P1' }] };
+const offer = { seconds: 300 };
 
 describe('lobby peace control', () => {
-  test('flag off (404), a non-social session, and a disabled feed show nothing', () => {
-    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, probeStatus: 404, feed }), false);
-    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, probeStatus: null, feed }), false);
-    assert.equal(lobbyPeaceVisible({ social: false, trainer: true, probeStatus: 200, feed }), false);
-    assert.equal(lobbyPeaceVisible({ social: true, trainer: false, probeStatus: 200, feed }), false);
-    assert.equal(
-      lobbyPeaceVisible({ social: true, trainer: true, probeStatus: 200, feed: { ...feed, enabled: false } }),
-      false,
-    );
-    assert.equal(
-      lobbyPeaceVisible({ social: true, trainer: true, probeStatus: 200, feed: { posts: [] } }),
-      false,
-    );
+  test('no offer, a non-social session, and a player show nothing', () => {
+    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, peace: null }), false);
+    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, peace: undefined }), false);
+    assert.equal(lobbyPeaceVisible({ social: false, trainer: true, peace: offer }), false);
+    assert.equal(lobbyPeaceVisible({ social: true, trainer: false, peace: offer }), false);
   });
 
-  test('a social trainer with a feed gets minutes, and off sends zero seconds', () => {
-    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, probeStatus: 200, feed }), true);
-    assert.equal(lobbyPeaceMinutes(feed), 5);
+  test('a social trainer with an offer gets minutes, and off sends zero seconds', () => {
+    assert.equal(lobbyPeaceVisible({ social: true, trainer: true, peace: offer }), true);
+    assert.equal(lobbyPeaceMinutes(offer), 5);
     assert.equal(lobbyPeaceMinutes(null), PEACE_PERIOD_DEFAULT_SECONDS / 60);
     assert.equal(lobbyPeaceSeconds({ shown: false, enabled: true, minutes: 5 }), undefined);
     assert.equal(lobbyPeaceSeconds({ shown: true, enabled: false, minutes: 5 }), 0);

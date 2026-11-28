@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import { gradePlayerPostFromReactions } from './playerTopicGrade.js';
 import { shouldSkipGrade } from './gradeIfCrisisActivity.js';
 import { triggerNPCReactions, type ReactionChatClient } from '../npcReactionService.js';
+import { mediaScenarioContext } from '../peace/mediaContext.js';
 import type { GradeRuntime } from './gradeIfCrisisActivity.js';
 
 const originalFrom = supabaseAdmin.from.bind(supabaseAdmin);
@@ -160,6 +161,14 @@ afterEach(() => {
   env.enablePeacePeriod = originalPeace;
   env.enableTopicAwareReplies = originalTopic;
   Math.random = originalRandom;
+});
+
+test('peace media gets no crisis description; any other phase keeps the slice', () => {
+  const description = 'A battery recall after units overheated in the warehouse.';
+  assert.equal(mediaScenarioContext('peace', description), undefined);
+  assert.equal(mediaScenarioContext('crisis', description), description.substring(0, 200));
+  assert.equal(mediaScenarioContext(undefined, description), description.substring(0, 200));
+  assert.equal(mediaScenarioContext('crisis', ''), undefined);
 });
 
 test('flags off keeps the crisis prompt even when start_time is in the future', async () => {

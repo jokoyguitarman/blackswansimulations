@@ -77,6 +77,34 @@ function getImageSize(style: string): string {
   return '1536x1024';
 }
 
+/**
+ * Turn a media description into an image or thumbnail and store it on the post.
+ * Branded history and the peace lane share this so the style choice stays one place.
+ */
+export function attachGeneratedPostMedia(
+  postId: string,
+  description: string,
+  postFormat: string,
+  failureLabel: string,
+): void {
+  if (!description) return;
+  void (async () => {
+    try {
+      const isVideo = /video|clip|footage|recording/i.test(description) || postFormat === 'video_concept';
+      const url = isVideo
+        ? await generateVideoThumbnail(description)
+        : await generatePostImage(
+            description,
+            postFormat === 'infographic' ? 'infographic' : 'social_media_photo',
+          );
+      if (!url) return;
+      await supabaseAdmin.from('social_posts').update({ media_urls: [url] }).eq('id', postId);
+    } catch (err) {
+      logger.warn({ err, postId }, failureLabel);
+    }
+  })();
+}
+
 export async function generatePostImage(
   prompt: string,
   style: ImageStyle | string = 'meme',

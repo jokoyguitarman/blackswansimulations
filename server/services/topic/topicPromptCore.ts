@@ -284,6 +284,11 @@ export function peaceContextBlock(orgName: string): string {
   return `Ordinary day. Nothing unusual has happened to ${org}. If someone mentions an incident, a recall, an accident or a scandal you have not heard of, react with mild confusion, ask what they mean, or ignore it. Never invent details.`;
 }
 
+/** The peace section both reply prompts use in place of the crisis brief. */
+export function peacePromptSection(orgName: string): string {
+  return `PEACE:\n${peaceContextBlock(orgName)}`;
+}
+
 function authorBlock(authorIsPage: boolean, orgName: string): string {
   if (!authorIsPage) return PERSONAL_AUTHOR_BLOCK;
   const org = orgName.trim() || 'the organisation';
@@ -346,7 +351,7 @@ ${personaLines}`;
 
   const crisisOrPeace =
     input.phase === 'peace'
-      ? `PEACE:\n${peaceContextBlock(input.orgName)}`
+      ? peacePromptSection(input.orgName)
       : `CRISIS CONTEXT: use ONLY if you label the comment \`bridge\`, and ONLY for personas whose stance is \`engage\`. Personas with \`stay\` reply about the post as if the remark were a passing jab (ignore it, deflect, or tease back about the post). For \`on_topic\` or \`off_topic\`, never mention the crisis.
 ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`;
 

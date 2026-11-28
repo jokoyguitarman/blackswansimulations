@@ -71,9 +71,15 @@ export function stripTopicColumns(row: Record<string, unknown>): Record<string, 
 export async function insertSocialPost<T>(
   row: Record<string, unknown>,
   exec: (payload: Record<string, unknown>) => PromiseLike<{ data: T; error: unknown }>,
+  /**
+   * Which errors mean "the topic columns are not there". The default treats
+   * every missing-column code that way. A peace insert passes a narrower check
+   * so a missing `peace_ref` is not recorded as migration 282.
+   */
+  topicColumnMissing: (err: unknown) => boolean = isTopicSchemaMissing,
 ): Promise<{ data: T; error: unknown }> {
   const first = await exec(row);
-  if (first.error && rowHasTopicColumn(row) && isTopicSchemaMissing(first.error)) {
+  if (first.error && rowHasTopicColumn(row) && topicColumnMissing(first.error)) {
     noteTopicSchemaMissing();
     return exec(stripTopicColumns(row));
   }

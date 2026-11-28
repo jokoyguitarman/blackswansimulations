@@ -1,28 +1,26 @@
 import { PEACE_PERIOD_DEFAULT_SECONDS, PEACE_PERIOD_MAX_SECONDS } from '@shared/peaceFeed';
 
-export interface LobbyPeaceFeed {
-  seconds?: number;
-  enabled?: boolean;
-  posts?: unknown[];
+export interface LobbyPeace {
+  seconds: number;
 }
 
-/** The lobby control is for a trainer starting a social session that has a feed. */
+/**
+ * The lobby control is for the trainer starting a social session whose
+ * payload already carries a peace offer. No network probe: the flag-off
+ * session response simply omits `peace`.
+ */
 export function lobbyPeaceVisible(input: {
   social: boolean;
   trainer: boolean;
-  probeStatus: number | null;
-  feed: LobbyPeaceFeed | null;
+  peace: LobbyPeace | null | undefined;
 }): boolean {
-  if (!input.social || !input.trainer) return false;
-  if (input.probeStatus == null || input.probeStatus === 404) return false;
-  if (!input.feed || !Array.isArray(input.feed.posts) || input.feed.posts.length === 0) return false;
-  if (input.feed.enabled === false) return false;
-  return true;
+  if (!input.social || !input.trainer || !input.peace) return false;
+  return Number.isFinite(input.peace.seconds);
 }
 
-export function lobbyPeaceMinutes(feed: LobbyPeaceFeed | null): number {
+export function lobbyPeaceMinutes(peace: LobbyPeace | null | undefined): number {
   const seconds =
-    feed && Number.isFinite(feed.seconds) ? Number(feed.seconds) : PEACE_PERIOD_DEFAULT_SECONDS;
+    peace && Number.isFinite(peace.seconds) ? Number(peace.seconds) : PEACE_PERIOD_DEFAULT_SECONDS;
   return Math.max(0, Math.round(seconds / 60));
 }
 

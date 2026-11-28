@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
 import { websocketClient } from '../../lib/websocketClient';
 import { crisisBriefLocked, showCrisisBriefSection } from '../../lib/briefingLock';
-import { BriefingCrisisSection } from './BriefingCrisisSection';
+import { BRIEF_LABEL, BriefingCrisisSection } from './BriefingCrisisSection';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -68,18 +68,63 @@ function useBriefingPayload(sessionId: string | undefined): BriefingPayload | nu
   return payload;
 }
 
+/**
+ * True once the crisis has started: the websocket event, or the clock reaching
+ * `crisis_starts_at`. No subscription when the server did not send a clock.
+ */
+function useCrisisOpened(sessionId: string | undefined, crisisStartsAt: string | null | undefined): boolean {
+  const [opened, setOpened] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const scheduled = typeof crisisStartsAt === 'string' ? crisisStartsAt : null;
+  const stillAhead = scheduled != null && crisisBriefLocked({ crisis_starts_at: scheduled }, now);
+
+  useEffect(() => {
+    if (!sessionId || !stillAhead) return;
+    let unsubscribe = () => {};
+    let cancelled = false;
+    void websocketClient
+      .connect()
+      .then(() => websocketClient.joinSession(sessionId))
+      .then(() => {
+        if (cancelled) return;
+        unsubscribe = websocketClient.on('session.crisis_started', (event) => {
+          const data = event.data as { session_id?: string } | undefined;
+          if (!data?.session_id || data.session_id === sessionId) setOpened(true);
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [sessionId, stillAhead]);
+
+  useEffect(() => {
+    if (!scheduled || opened) return;
+    const delay = Date.parse(scheduled) - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0) return;
+    const timer = setTimeout(() => setNow(Date.now()), delay);
+    return () => clearTimeout(timer);
+  }, [scheduled, opened]);
+
+  if (opened) return true;
+  if (!scheduled) return false;
+  return !crisisBriefLocked({ crisis_starts_at: scheduled }, now);
+}
+
 /** Booth worlds only: the opening situation and the goals every team shares. Null elsewhere. */
 export function useBoothBriefing(sessionId: string | undefined): BoothBriefing | null {
   const payload = useBriefingPayload(sessionId);
+  const revealed = useCrisisOpened(sessionId, payload?.crisisStartsAt);
   return useMemo(() => {
     if (!payload?.booth) return null;
-    const locked = crisisBriefLocked({ crisis_starts_at: payload.crisisStartsAt });
+    const locked = !revealed && crisisBriefLocked({ crisis_starts_at: payload.crisisStartsAt });
     if (!locked) return payload.booth;
     return { situation: '', goals: null };
-  }, [payload]);
+  }, [payload, revealed]);
 }
 
-const LABEL = 'text-[11px] font-semibold uppercase tracking-wider mb-1.5';
+const LABEL = BRIEF_LABEL;
 
 /** The desktop's Briefing window: the same briefing the phone shows on its home screen. */
 export default function BriefingApp() {
@@ -88,27 +133,10 @@ export default function BriefingApp() {
   const booth = briefing?.booth ?? null;
   const [team, setTeam] = useState<MyTeamBriefing | null>(null);
   const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(() => Date.now());
-  const [crisisOpened, setCrisisOpened] = useState(false);
   const clock = briefing ? { crisis_starts_at: briefing.crisisStartsAt } : null;
   const peaceClock = showCrisisBriefSection(clock);
-  const locked = peaceClock && !crisisOpened && crisisBriefLocked(clock, now);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    return websocketClient.on('session.crisis_started', (event) => {
-      const data = event.data as { session_id?: string } | undefined;
-      if (!data?.session_id || data.session_id === sessionId) setCrisisOpened(true);
-    });
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!briefing?.crisisStartsAt || crisisOpened) return;
-    const delay = Date.parse(briefing.crisisStartsAt) - Date.now();
-    if (!Number.isFinite(delay) || delay <= 0) return;
-    const timer = setTimeout(() => setNow(Date.now()), delay);
-    return () => clearTimeout(timer);
-  }, [briefing?.crisisStartsAt, crisisOpened]);
+  const revealed = useCrisisOpened(sessionId, briefing?.crisisStartsAt);
+  const locked = peaceClock && !revealed;
 
   useEffect(() => {
     if (!sessionId) return;

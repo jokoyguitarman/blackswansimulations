@@ -24,6 +24,7 @@ const originalPeace = env.enablePeacePeriod;
 describe('session start route', () => {
   const updates: Array<Record<string, unknown>> = [];
   const startedPayloads: Array<Record<string, unknown>> = [];
+  const tables: string[] = [];
   let server: ReturnType<typeof createServer>;
   let base = '';
   let failPeaceColumns = false;
@@ -58,6 +59,7 @@ describe('session start route', () => {
       }),
     };
     (supabaseAdmin as { from: (table: string) => unknown }).from = (table: string) => {
+      tables.push(table);
       let op = 'select';
       let payload: Record<string, unknown> | null = null;
       const builder: Record<string, unknown> = {};
@@ -141,6 +143,39 @@ describe('session start route', () => {
     const json = (await response.json()) as { data?: Record<string, unknown>; error?: string };
     return { status: response.status, json };
   }
+
+  async function getSession() {
+    tables.length = 0;
+    const response = await fetch(`${base}/api/sessions/${SESSION}`, {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    const json = (await response.json()) as { data?: Record<string, unknown>; error?: string };
+    return { status: response.status, json, tables: [...tables] };
+  }
+
+  test('the session trainer sees the peace offer without owning the scenario', async () => {
+    scenarioRow = {
+      category: 'social_media_crisis',
+      created_by: '99999999-9999-4999-8999-999999999999',
+      initial_state: {
+        peace_period: { posts: [{ ref: 'P1' }], seconds: 180, leak_terms: ['recall'] },
+      },
+    };
+    sessionRow.sim_mode = 'social_media';
+    sessionRow.trainer_id = TRAINER;
+    env.enablePeacePeriod = false;
+    const off = await getSession();
+    assert.equal(off.status, 200, JSON.stringify(off.json));
+    assert.equal('peace' in (off.json.data ?? {}), false);
+    assert.equal(off.tables.includes('scenarios'), false);
+
+    env.enablePeacePeriod = true;
+    const on = await getSession();
+    assert.equal(on.status, 200, JSON.stringify(on.json));
+    assert.deepEqual(on.json.data?.peace, { seconds: 180 });
+    const state = on.json.data?.current_state as { peace_period?: { leak_terms?: unknown } } | undefined;
+    assert.equal(state?.peace_period?.leak_terms, undefined);
+  });
 
   test('flag off writes start_time and no peace columns', async () => {
     env.enablePeacePeriod = false;

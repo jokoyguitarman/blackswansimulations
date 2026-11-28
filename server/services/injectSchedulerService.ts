@@ -467,7 +467,8 @@ export class InjectSchedulerService {
     join_token?: string | null;
   }): Promise<void> {
     // Peace is a future start_time. The flag check is first so a tick with the
-    // flag off does not parse the clock or query anything extra. WP3 fills the lane.
+    // flag off does not parse the clock or query anything extra. The lane publishes
+    // the peace feed and then runs engagement without ambient posts.
     if (skipForPeace(session)) {
       await runPeaceLane(session);
       return;

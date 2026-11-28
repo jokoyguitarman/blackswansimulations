@@ -1,3 +1,5 @@
+export const BRIEF_LABEL = 'text-[11px] font-semibold uppercase tracking-wider mb-1.5';
+
 interface Props {
   locked: boolean;
   text: string | null;
@@ -11,7 +13,7 @@ export function BriefingCrisisSection({ locked, text }: Props) {
   if (locked) {
     return (
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <div className={BRIEF_LABEL} style={{ color: 'rgba(255,255,255,0.4)' }}>
           Crisis brief
         </div>
         <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
@@ -23,7 +25,7 @@ export function BriefingCrisisSection({ locked, text }: Props) {
   if (!text) return null;
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+      <div className={BRIEF_LABEL} style={{ color: 'rgba(255,255,255,0.4)' }}>
         Crisis brief
       </div>
       <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>

@@ -2,7 +2,7 @@
  * The reaction prompt shipped on master, moved here unchanged.
  * `ENABLE_TOPIC_AWARE_REPLIES` off uses this and nothing else.
  */
-import { peaceContextBlock, type TopicPhase } from './topicPromptCore.js';
+import { peacePromptSection, type TopicPhase } from './topicPromptCore.js';
 import {
   MEDIA_REACT_LINE,
   reactionTypesAndRules,
@@ -41,7 +41,7 @@ ${reactionTypesAndRules(input.playerHandle, input.isOfficialComms)}
 ${input.phase === 'peace' ? '' : input.officialScrutinyBlock}
 ${
   input.phase === 'peace'
-    ? `PEACE:\n${peaceContextBlock(input.orgName)}`
+    ? peacePromptSection(input.orgName)
     : `Crisis context: ${input.crisisDescription}${input.orgName ? `\nOrganization: ${input.orgName}` : ''}`
 }
 ${input.threadContext}

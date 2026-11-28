@@ -49,7 +49,7 @@ interface SessionLobbyProps {
   };
   onStartSession?: (override?: boolean, peaceSeconds?: number) => Promise<void> | void;
   onSessionUpdate?: () => void;
-  scenarioId?: string | null;
+  peace?: { seconds: number } | null;
 }
 
 export const SessionLobby = ({
@@ -57,7 +57,7 @@ export const SessionLobby = ({
   session,
   onStartSession,
   onSessionUpdate,
-  scenarioId,
+  peace,
 }: SessionLobbyProps) => {
   const { isTrainer } = useRoleVisibility();
   const { user } = useAuth();
@@ -510,14 +510,12 @@ export const SessionLobby = ({
                 </button>
               </div>
             )}
-            {isTrainer && (
-              <PeaceLobbyControl
-                scenarioId={scenarioId}
-                social={isSocialSim}
-                trainer={isTrainer}
-                onSeconds={setPeaceSeconds}
-              />
-            )}
+            <PeaceLobbyControl
+              social={isSocialSim}
+              trainer={isTrainer}
+              peace={peace}
+              onSeconds={setPeaceSeconds}
+            />
             <button
               onClick={handleStartSession}
               disabled={starting || !readyStatus.all_ready}

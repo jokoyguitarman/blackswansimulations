@@ -173,5 +173,12 @@ describe('POST /sessions/:id/end-peace', () => {
     const crisis = await endPeace();
     assert.equal(crisis.status, 409);
     assert.equal(updates.length, 0);
+
+    sessionRow.status = 'completed';
+    sessionRow.start_time = new Date(Date.now() + 5 * 60_000).toISOString();
+    const done = await endPeace();
+    assert.equal(done.status, 409);
+    assert.equal(updates.length, 0);
+    sessionRow.status = 'in_progress';
   });
 });

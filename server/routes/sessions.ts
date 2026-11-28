@@ -54,7 +54,7 @@ import {
   peaceColumnsMissing,
   startClaimWithoutPeaceColumns,
 } from '../lib/peaceSchema.js';
-import { resolvePeaceSeconds, sessionPhase, startClaimFields } from '../lib/sessionPhase.js';
+import { peaceLobbyOffer, resolvePeaceSeconds, sessionPhase, startClaimFields } from '../lib/sessionPhase.js';
 import { withoutSessionLeakTerms } from '../lib/peacePayload.js';
 
 const router = Router();
@@ -91,6 +91,28 @@ const updateSessionSchema = z.object({
     peace_seconds: z.number().optional(),
   }),
 });
+
+/** Lobby fields for the trainer who owns this session. No leak terms. Flag-off callers never reach it. */
+async function peaceOfferForSession(session: {
+  scenario_id?: string | null;
+  sim_mode?: string | null;
+}): Promise<{ seconds: number } | null> {
+  const scenarioId = session.scenario_id;
+  if (!scenarioId) return null;
+  const { data: scenario } = await supabaseAdmin
+    .from('scenarios')
+    .select('category, initial_state')
+    .eq('id', scenarioId)
+    .maybeSingle();
+  const social =
+    session.sim_mode === 'social_media' || scenario?.category === 'social_media_crisis';
+  return peaceLobbyOffer(
+    scenario?.initial_state,
+    social,
+    env.peacePeriodDefaultSeconds,
+    env.peacePeriodMaxSeconds,
+  );
+}
 
 async function peaceSecondsForStart(
   sessionId: string,
@@ -1323,6 +1345,11 @@ router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedR
     const payload: Record<string, unknown> = { ...session, participants: participants || [] };
     if (env.enablePeacePeriod) {
       payload.crisis_starts_at = (session as { start_time?: string | null }).start_time ?? null;
+      const ownsSession = user.role === 'admin' || session.trainer_id === user.id;
+      if (ownsSession) {
+        const offer = await peaceOfferForSession(session);
+        if (offer) payload.peace = offer;
+      }
     }
     res.json({ data: env.enablePeacePeriod ? withoutSessionLeakTerms(payload) : payload });
   } catch (err) {
@@ -1512,7 +1539,8 @@ router.post(
         return res.status(access.status).json({ error: access.error });
       }
       const startTime = typeof access.session?.start_time === 'string' ? access.session.start_time : null;
-      if (sessionPhase({ start_time: startTime }) !== 'peace') {
+      const status = typeof access.session?.status === 'string' ? access.session.status : null;
+      if (status !== 'in_progress' || sessionPhase({ start_time: startTime }) !== 'peace') {
         return res.status(409).json({ error: 'Session is not in a peace period' });
       }
       const now = new Date().toISOString();
@@ -1520,6 +1548,7 @@ router.post(
         .from('sessions')
         .update({ start_time: now })
         .eq('id', id)
+        .eq('status', 'in_progress')
         .gt('start_time', now)
         .select()
         .maybeSingle();

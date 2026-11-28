@@ -10,18 +10,12 @@ import {
 } from '../../lib/peaceSchema.js';
 import { canonicalHandle, canonicalPlatform, usablePeaceFeed } from '../generation/peaceFeedCore.js';
 import { runEngagementTick } from '../engagementAlgorithmService.js';
-import { generatePostImage, generateVideoThumbnail } from '../mediaGenerationService.js';
+import { attachGeneratedPostMedia } from '../mediaGenerationService.js';
 import { getWebSocketService } from '../websocketService.js';
-import {
-  isTopicSchemaMissing,
-  noteTopicSchemaMissing,
-  stripTopicColumns,
-  topicKindColumns,
-  topicSchemaMissing,
-} from '../topic/topicColumns.js';
-import type { PeaceFeedAuthor } from '../../../shared/peaceFeed.js';
+import { insertSocialPost, isTopicSchemaMissing, topicKindColumns, topicSchemaMissing } from '../topic/topicColumns.js';
+import type { PeaceFeed, PeaceFeedAuthor } from '../../../shared/peaceFeed.js';
 import type { PeaceLaneSession } from './peaceLane.js';
-import { planPeacePublications, type PlannedPeaceItem } from './peaceLaneCore.js';
+import { peaceWindowSeconds, planPeacePublications, type PlannedPeaceItem } from './peaceLaneCore.js';
 
 interface OrgPageRow {
   org_key: string;
@@ -53,6 +47,41 @@ function errorText(err: unknown): string {
   return `${record.message ?? ''} ${record.details ?? ''} ${record.hint ?? ''}`;
 }
 
+interface ScenarioPeaceCache {
+  scenarioId: string;
+  untilMs: number;
+  feed: PeaceFeed | null;
+  personas: PersonaRow[];
+}
+
+const scenarioCache = new Map<string, ScenarioPeaceCache>();
+
+/** Tests change the scenario between calls. A live process keeps one read per peace. */
+export function resetPeaceScenarioCacheForTests(): void {
+  scenarioCache.clear();
+}
+
+async function loadScenarioPeace(
+  sessionId: string,
+  scenarioId: string,
+  untilMs: number,
+): Promise<{ feed: PeaceFeed | null; personas: PersonaRow[] }> {
+  const hit = scenarioCache.get(sessionId);
+  if (hit && hit.scenarioId === scenarioId && hit.untilMs === untilMs) {
+    return { feed: hit.feed, personas: hit.personas };
+  }
+  const { data: scenario } = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state')
+    .eq('id', scenarioId)
+    .maybeSingle();
+  const initial = (scenario?.initial_state || {}) as Record<string, unknown>;
+  const feed = usablePeaceFeed(initial.peace_period);
+  const personas = (Array.isArray(initial.npc_personas) ? initial.npc_personas : []) as PersonaRow[];
+  scenarioCache.set(sessionId, { scenarioId, untilMs, feed, personas });
+  return { feed, personas };
+}
+
 function isUniqueViolation(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { code?: string }).code === '23505';
 }
@@ -82,16 +111,6 @@ function personaAuthor(persona: PersonaRow): PeaceAuthor {
   };
 }
 
-function resolveItemAuthor(
-  item: PlannedPeaceItem,
-  pages: readonly OrgPageRow[],
-  personas: readonly PersonaRow[],
-): PeaceAuthor | null {
-  if (item.kind === 'post') return resolvePostAuthor(item.author, pages, personas);
-  const persona = personaFor(personas, item.authorHandle);
-  return persona ? personaAuthor(persona) : null;
-}
-
 function resolvePostAuthor(
   author: PeaceFeedAuthor,
   pages: readonly OrgPageRow[],
@@ -109,16 +128,9 @@ function resolvePostAuthor(
 async function insertPeaceRow(row: Record<string, unknown>): Promise<{ id: string | null; stop: boolean }> {
   const run = (payload: Record<string, unknown>) =>
     supabaseAdmin.from('social_posts').insert(payload).select('id').single();
-  let result = await run(row);
-  if (
-    result.error &&
-    row.topic_kind &&
-    isTopicSchemaMissing(result.error) &&
-    errorText(result.error).includes('topic_kind')
-  ) {
-    noteTopicSchemaMissing();
-    result = await run(stripTopicColumns(row));
-  }
+  const result = await insertSocialPost(row, run, (err) =>
+    isTopicSchemaMissing(err) && errorText(err).includes('topic_kind'),
+  );
   if (!result.error && result.data?.id) return { id: String(result.data.id), stop: false };
   if (result.error && isUniqueViolation(result.error)) return { id: null, stop: false };
   if (result.error && isPeaceSchemaMissing(result.error)) {
@@ -139,25 +151,6 @@ function broadcastPost(sessionId: string, post: Record<string, unknown>): void {
   } catch (err) {
     logger.debug({ err, sessionId }, 'Peace post broadcast skipped');
   }
-}
-
-function attachMedia(postId: string, description: string, postFormat: string): void {
-  if (!env.peaceFeedMedia || !description) return;
-  void (async () => {
-    try {
-      const isVideo = /video|clip|footage|recording/i.test(description) || postFormat === 'video_concept';
-      const url = isVideo
-        ? await generateVideoThumbnail(description)
-        : await generatePostImage(
-            description,
-            postFormat === 'infographic' ? 'infographic' : 'social_media_photo',
-          );
-      if (!url) return;
-      await supabaseAdmin.from('social_posts').update({ media_urls: [url] }).eq('id', postId);
-    } catch (err) {
-      logger.warn({ err, postId }, 'Peace post media generation failed');
-    }
-  })();
 }
 
 async function loadExisting(sessionId: string): Promise<Map<string, string> | null> {
@@ -183,11 +176,11 @@ async function loadExisting(sessionId: string): Promise<Map<string, string> | nu
 
 function rowFor(
   sessionId: string,
-  item: PlannedPeaceItem,
-  author: PeaceAuthor,
+  item: PlannedPeaceItem<PeaceAuthor>,
   openedAtMs: number,
   parentId: string | undefined,
 ): Record<string, unknown> {
+  const author = item.author;
   return {
     session_id: sessionId,
     platform: canonicalPlatform(item.platform),
@@ -233,22 +226,20 @@ export async function publishPeaceFeed(session: PeaceLaneSession, deps: PeacePub
   }>('scenario_id, start_time', (query) => query.eq('id', session.id).maybeSingle());
   const openedAt = openedAtOf(clock.data);
   const scenarioId = clock.data?.scenario_id ? String(clock.data.scenario_id) : null;
+  const startTime = typeof clock.data?.start_time === 'string' ? clock.data.start_time : null;
   if (!openedAt || !scenarioId) {
     await finish();
     return;
   }
 
-  const { data: scenario } = await supabaseAdmin
-    .from('scenarios')
-    .select('initial_state')
-    .eq('id', scenarioId)
-    .maybeSingle();
-  const initial = (scenario?.initial_state || {}) as Record<string, unknown>;
-  const feed = usablePeaceFeed(initial.peace_period);
+  const untilMs = startTime ? Date.parse(startTime) : Number.NaN;
+  const cached = await loadScenarioPeace(session.id, scenarioId, untilMs);
+  const feed = cached.feed;
   if (!feed || feed.enabled === false) {
     await finish();
     return;
   }
+  const personas = cached.personas;
 
   const [{ data: pageRows }, known] = await Promise.all([
     supabaseAdmin
@@ -263,16 +254,23 @@ export async function publishPeaceFeed(session: PeaceLaneSession, deps: PeacePub
   }
 
   const pages = (pageRows || []) as OrgPageRow[];
-  const personas = (Array.isArray(initial.npc_personas) ? initial.npc_personas : []) as PersonaRow[];
   const openedAtMs = Date.parse(openedAt);
   const plan = planPeacePublications({
     posts: feed.posts,
-    seconds: feed.seconds,
+    seconds: peaceWindowSeconds({
+      openedAtMs,
+      startTime,
+      feedSeconds: typeof feed.seconds === 'number' ? feed.seconds : null,
+      fallbackSeconds: env.peacePeriodDefaultSeconds,
+    }),
     openedAtMs,
     now,
     already: new Set(known.keys()),
-    postAuthorResolved: (author) => resolvePostAuthor(author, pages, personas) != null,
-    commentAuthorResolved: (handle) => personaFor(personas, handle) != null,
+    postAuthor: (author) => resolvePostAuthor(author, pages, personas),
+    commentAuthor: (handle) => {
+      const persona = personaFor(personas, handle);
+      return persona ? personaAuthor(persona) : null;
+    },
   });
 
   for (const ref of plan.skippedUnresolved) {
@@ -281,11 +279,9 @@ export async function publishPeaceFeed(session: PeaceLaneSession, deps: PeacePub
 
   let published = 0;
   for (const item of plan.publish) {
-    const author = resolveItemAuthor(item, pages, personas);
-    if (!author) continue;
     const parentId = item.kind === 'comment' ? known.get(item.parentRef) : undefined;
     if (item.kind === 'comment' && !parentId) continue;
-    const row = rowFor(session.id, item, author, openedAtMs, parentId);
+    const row = rowFor(session.id, item, openedAtMs, parentId);
     const inserted = await insertPeaceRow(row);
     if (inserted.stop) break;
     if (!inserted.id) continue;
@@ -301,7 +297,9 @@ export async function publishPeaceFeed(session: PeaceLaneSession, deps: PeacePub
       await supabaseAdmin.from('social_posts').update({ reply_count: replyCount + 1 }).eq('id', parentId);
     }
     broadcastPost(session.id, { ...row, id: inserted.id });
-    if (item.kind === 'post') attachMedia(inserted.id, item.mediaDescription, item.postFormat);
+    if (item.kind === 'post' && env.peaceFeedMedia) {
+      attachGeneratedPostMedia(inserted.id, item.mediaDescription, item.postFormat, 'Peace post media generation failed');
+    }
   }
 
   if (published > 0) logger.info({ sessionId: session.id, published }, 'Peace feed rows published');
