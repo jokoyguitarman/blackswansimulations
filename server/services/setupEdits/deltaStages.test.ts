@@ -470,6 +470,114 @@ describe('delta stages', () => {
       true,
     );
   });
+
+  test('a colliding dependency id is renamed and existing edges count toward the cap', async () => {
+    const teams: GenerationTeam[] = [
+      { team_name: 'Communications', team_uid: 'uid-comms', org_key: 'acme', org_name: 'Acme', playable: true },
+      { team_name: 'Legal', team_uid: 'uid-legal', org_key: 'acme', org_name: 'Acme', playable: true },
+      { team_name: 'Audit', team_uid: 'uid-audit', org_key: 'acme', org_name: 'Acme', playable: true },
+    ];
+    const client = {
+      async complete(request: DependencyChatRequest) {
+        if (request.label !== 'generator.dependencyMap') return { consequences: [], positives: [] };
+        return {
+          edges: [
+            modelEdge('dep_audit_legal', 'Audit', 'Legal'),
+            modelEdge('dep_audit_comms', 'Audit', 'Communications'),
+          ],
+        };
+      },
+    };
+    const result = await generateDependencyDelta(
+      {
+        teams,
+        addedTeams: [teams[2] as GenerationTeam],
+        existingEdges: [
+          existingEdge(),
+          { ...existingEdge(), id: 'dep_audit_legal' },
+        ],
+        idSources: [
+          {
+            conditions_to_appear: { all: ['dependency_broken:dep_retired_edge'] },
+            delivery_config: { cause: { kind: 'dependency', dep_id: 'dep_audit_comms' } },
+          },
+        ],
+        crisis: { crisisType: 'Plant fire', duration: 60 },
+        facts: [],
+        storylines: {},
+      },
+      { client, mapBatchTeams: 16, upstreamPerTeam: 1 },
+    );
+    const ids = result.team_dependencies.edges.map((edge) => edge.id);
+    assert.equal(ids.includes('dep_audit_legal'), false);
+    assert.equal(ids.includes('dep_audit_comms'), false);
+    assert.equal(
+      result.team_dependencies.edges.some((edge) => edge.downstream[0]?.team_name === 'Legal'),
+      true,
+    );
+    assert.equal(
+      result.team_dependencies.edges.some(
+        (edge) => edge.downstream[0]?.team_name === 'Communications',
+      ),
+      false,
+      'Communications already has its upstream cap from the existing edge',
+    );
+  });
+
+  test('a re-keyed ask rewrites the edge condition and due key', async () => {
+    const { generators } = recording();
+    const custom: DeltaGenerators = {
+      ...generators,
+      async dependencyDelta() {
+        return {
+          edges: [
+            {
+              ...existingEdge(),
+              id: 'dep_audit_ask',
+              upstream: { team_uid: 'uid-audit', team_name: 'Audit' },
+              downstream: [{ team_uid: 'uid-legal', team_name: 'Legal' }],
+              broken_when: { all: ['unresponded:audit_ask:10|team=@upstream'] },
+              met_when: { all: ['responded_relevant:audit_ask|team=@upstream'] },
+              due: { after_inject_key: 'audit_ask', within_minutes: 10 },
+            },
+          ],
+          consequences: [],
+          positives: [],
+          asks: [
+            {
+              title: 'Ask Audit',
+              content: 'Send the figure',
+              type: 'email',
+              severity: 'medium',
+              inject_scope: 'team_specific',
+              target_teams: ['Audit'],
+              delivery_config: {
+                app: 'email',
+                inject_key: 'audit_ask',
+                gen: { layer: 'dependency:dep_audit_ask' },
+              },
+              gen_layer: 'dependency:dep_audit_ask',
+            },
+          ],
+        };
+      },
+    };
+    const built = context({ added_teams: [{ org_key: 'primary', team_name: 'Audit' }] });
+    built.active_keys = ['audit_ask'];
+    const result = await runDeltaBuild(built, custom);
+    const edge = result.storyline.generated.dependency_edges[0];
+    const ask = result.storyline.generated.team_storylines.Audit?.find((inject) =>
+      inject.title.includes('Ask Audit'),
+    );
+    const askKey = ask?.delivery_config.inject_key;
+    assert.equal(typeof askKey, 'string');
+    assert.notEqual(askKey, 'audit_ask');
+    assert.equal(edge?.due && 'after_inject_key' in edge.due && edge.due.after_inject_key, askKey);
+    const appear = edge?.broken_when && 'all' in edge.broken_when ? edge.broken_when.all[0] : '';
+    assert.equal(appear, `unresponded:${askKey}:10|team=@upstream`);
+    const met = edge?.met_when && 'all' in edge.met_when ? edge.met_when.all[0] : '';
+    assert.equal(met, `responded_relevant:${askKey}|team=@upstream`);
+  });
 });
 
 function existingEdge(): TeamDependencyEdge {

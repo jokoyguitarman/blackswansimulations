@@ -42,31 +42,9 @@ export interface LayeredInject {
 }
 
 const STOP = new Set([
-  'that',
-  'this',
-  'with',
-  'from',
-  'have',
-  'been',
-  'were',
-  'they',
-  'their',
-  'about',
-  'into',
-  'after',
-  'before',
-  'which',
-  'while',
-  'where',
-  'there',
-  'these',
-  'those',
-  'will',
-  'would',
-  'could',
-  'should',
-  'your',
-  'their',
+  'that', 'this', 'with', 'from', 'have', 'been', 'were', 'they', 'their',
+  'about', 'into', 'after', 'before', 'which', 'while', 'where', 'there',
+  'these', 'those', 'will', 'would', 'could', 'should', 'your', 'their',
 ]);
 
 export function emptyBriefDiff(severity: BriefDiff['severity'] = 'cosmetic'): BriefDiff {
@@ -79,20 +57,9 @@ export function emptyBriefDiff(severity: BriefDiff['severity'] = 'cosmetic'): Br
   };
 }
 
-/**
- * Branch and dependency layers are revised with their parent, not as their own
- * brief-revision call. `branch:<parent_key>` follows the parent inject.
- * `dependency:<id>` follows the dependency edge.
- */
-export function revisesWithParent(layer: string): boolean {
-  return layer.startsWith('branch:') || layer.startsWith('dependency:');
-}
-
 /** Layers whose injects mention a removed premise or a changed fact, or that the model flagged. */
 export function affectedLayers(diff: BriefDiff, injects: readonly LayeredInject[]): string[] {
-  const present = new Set(
-    injects.map((inject) => inject.layer).filter((layer) => layer.length > 0),
-  );
+  const present = new Set(injects.map((inject) => inject.layer).filter((layer) => layer.length > 0));
   const flagged = new Set((diff.affected_layers ?? []).filter((layer) => present.has(layer)));
   const found = new Set<string>();
   if (diff.severity === 'story') {

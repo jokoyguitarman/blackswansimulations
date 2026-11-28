@@ -358,6 +358,11 @@ export function createDeltaGenerators(): DeltaGenerators {
         teams,
         addedTeams: added,
         existingEdges: input.existingEdges,
+        idSources: input.ctx.injects.map((inject) => ({
+          conditions_to_appear: inject.conditions_to_appear,
+          conditions_to_cancel: inject.conditions_to_cancel,
+          delivery_config: inject.delivery_config,
+        })),
         crisis: crisisOf(input.ctx),
         facts: input.ctx.fact_sheet.confirmed_facts,
         storylines: storylinesFrom(input.ctx),

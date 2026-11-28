@@ -13,6 +13,8 @@ import type { SocialInject } from '../socialCrisisGeneratorService.js';
 import {
   matchTeamRef,
   sameTeam,
+  takenDependencyIds,
+  type DependencyIdSource,
   type TeamDependencies,
   type TeamDependencyEdge,
 } from '../../../shared/teamDependencies.js';
@@ -212,8 +214,10 @@ function intelDeadline(key: string, gates: readonly SocialInject[]): number | nu
 export interface GenerateDependencyDeltaInput extends GenerateTeamDependenciesInput {
   /** Teams this edit adds. Only edges that touch one of them are kept. */
   addedTeams: readonly GenerationTeam[];
-  /** Edges already on the scenario. Their ids are not reused and they are not regenerated. */
+  /** Edges already on the scenario. Their ids are reserved and they count toward the cap. */
   existingEdges?: readonly TeamDependencyEdge[];
+  /** Injects whose conditions or cause.dep_id already reserve a dependency id. */
+  idSources?: readonly DependencyIdSource[];
 }
 
 /**
@@ -230,12 +234,14 @@ export async function generateDependencyDelta(
   return runTeamDependencyGeneration({ ...input, teams }, options, {
     addedTeams: added,
     existingEdges: input.existingEdges ?? [],
+    idSources: input.idSources ?? [],
   });
 }
 
 interface DependencyFocus {
   addedTeams: readonly GenerationTeam[];
   existingEdges: readonly TeamDependencyEdge[];
+  idSources: readonly DependencyIdSource[];
 }
 
 export async function generateTeamDependencies(
@@ -292,7 +298,15 @@ async function runTeamDependencyGeneration(
     input.teams,
     known,
     duration,
-    { upstreamPerTeam: cap },
+    {
+      upstreamPerTeam: cap,
+      ...(focus
+        ? {
+            takenIds: takenDependencyIds(focus.existingEdges, focus.idSources),
+            existingEdges: focus.existingEdges,
+          }
+        : {}),
+    },
     input.stakeholders,
   );
   if (processed.dropped.length > 0) {
@@ -302,16 +316,12 @@ async function runTeamDependencyGeneration(
     );
   }
 
-  const existingIds = new Set((focus?.existingEdges ?? []).map((edge) => edge.id));
   const edgesForConsequences = focus
-    ? processed.edges.filter(
-        (edge) => !existingIds.has(edge.id) && edgeTouchesAdded(edge, focus.addedTeams),
-      )
+    ? processed.edges.filter((edge) => edgeTouchesAdded(edge, focus.addedTeams))
     : processed.edges;
+  const keptEdgeIds = new Set(edgesForConsequences.map((edge) => edge.id));
   const asks = focus
-    ? processed.asks.filter((ask) =>
-        edgesForConsequences.some((edge) => ask.target_teams.includes(edge.upstream.team_name)),
-      )
+    ? processed.asks.filter((ask) => keptEdgeIds.has(askDependencyId(ask)))
     : processed.asks;
   const batches = chunk(edgesForConsequences, consequenceBatch);
   const teamNames = input.teams.map((team) => team.team_name);
@@ -738,6 +748,11 @@ function focusNote(focus: DependencyFocus | undefined): string {
       ? `\nExisting dependencies, do not repeat them:\n${dependencyEdgeSummary(focus.existingEdges)}`
       : '';
   return `Only return dependencies that include at least one of these added teams: ${names}. Do not return a dependency that only connects the other teams.${existing}`;
+}
+
+function askDependencyId(ask: SocialInject): string {
+  const layer = ask.delivery_config.gen?.layer ?? ask.gen_layer ?? '';
+  return layer.startsWith('dependency:') ? layer.slice('dependency:'.length) : '';
 }
 
 function edgeTouchesAdded(edge: TeamDependencyEdge, added: readonly GenerationTeam[]): boolean {

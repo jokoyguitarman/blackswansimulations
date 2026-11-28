@@ -1,9 +1,4 @@
-import {
-  affectedLayers,
-  mentionsBriefChange,
-  revisesWithParent,
-  type BriefDiff,
-} from './affectedLayers.js';
+import { affectedLayers, mentionsBriefChange, type BriefDiff } from './affectedLayers.js';
 import { mentionsCentreRole } from './briefRevisionCore.js';
 import type { DeltaBuildContext } from './deltaBuildTypes.js';
 
@@ -130,6 +125,15 @@ export function stageOfCall(call: DeltaCall): DeltaStageName {
     return 'characters';
   }
   return 'storyline';
+}
+
+/**
+ * Branch and dependency layers are revised with their parent, not as their own
+ * brief-revision call. `branch:<parent_key>` follows the parent inject.
+ * `dependency:<id>` follows the dependency edge.
+ */
+function revisesWithParent(layer: string): boolean {
+  return layer.startsWith('branch:') || layer.startsWith('dependency:');
 }
 
 function stakeholdersAffected(ctx: DeltaBuildContext, diff: BriefDiff): boolean {

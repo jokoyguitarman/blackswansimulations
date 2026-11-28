@@ -288,17 +288,41 @@ async function executeCall(
     const consequences = stampDependencyInjects(ctx, result.consequences, state);
     const positives = stampDependencyInjects(ctx, result.positives, state);
     state.generated.dependency_injects.push(...consequences, ...positives);
+    const askRenames: Array<{ depId: string; from: string; to: string }> = [];
+    const takenAskKeys = new Set(ctx.active_keys);
+    for (const existing of Object.values(state.generated.team_storylines).flat()) {
+      const key = keyOf(existing);
+      if (key) takenAskKeys.add(key);
+    }
     for (const ask of result.asks) {
       const team = ask.target_teams[0] ?? '';
       if (!team) continue;
+      const before = keyOf(ask);
+      const depId = askDependencyId(ask);
+      const colliding = !!before && takenAskKeys.has(before);
+      const prepared = colliding
+        ? { ...ask, delivery_config: { ...ask.delivery_config, inject_key: undefined } }
+        : ask;
       const layer = `team:${teamUid(ctx, team) || team}`;
-      const stamped = stampNew(ctx, [ask], layer, state);
+      const stamped = stampNew(ctx, [prepared], layer, state);
+      const after = keyOf(stamped[0] ?? ask);
+      if (after) takenAskKeys.add(after);
+      if (depId && before && after && before !== after) {
+        askRenames.push({ depId, from: before, to: after });
+      }
       state.generated.team_storylines[team] = [
         ...(state.generated.team_storylines[team] ?? []),
         ...stamped,
       ];
     }
-    state.generated.dependency_edges.push(...syncConsequenceKeys(result.edges, consequences));
+    const rebound = askRenames.reduce(
+      (edges, rename) =>
+        edges.map((edge) =>
+          edge.id === rename.depId ? rewriteEdgeInjectKey(edge, rename.from, rename.to) : edge,
+        ),
+      result.edges,
+    );
+    state.generated.dependency_edges.push(...syncConsequenceKeys(rebound, consequences));
     return;
   }
   if (call.op === 'convergence_delta') {
@@ -717,25 +741,71 @@ function flagFor(inject: DeltaInject, diff: BriefDiff, ctx: DeltaBuildContext): 
   };
 }
 
+function dependencyLayerOf(inject: SocialInject): string | null {
+  const config = inject.delivery_config as { gen?: { layer?: unknown } };
+  if (typeof config.gen?.layer === 'string' && config.gen.layer) return config.gen.layer;
+  return inject.gen_layer || null;
+}
+
+function askDependencyId(ask: SocialInject): string {
+  const layer = dependencyLayerOf(ask) ?? '';
+  return layer.startsWith('dependency:') ? layer.slice('dependency:'.length) : '';
+}
+
 function stampDependencyInjects(
   ctx: DeltaBuildContext,
   injects: SocialInject[],
   state: RunState,
 ): SocialInject[] {
-  return injects.flatMap((inject) => stampNew(ctx, [inject], dependencyLayerOf(inject), state));
+  return injects.flatMap((inject) => {
+    const layer = dependencyLayerOf(inject);
+    if (!layer) return [];
+    return stampNew(ctx, [inject], layer, state);
+  });
 }
 
-function dependencyLayerOf(inject: SocialInject): string {
-  const config = inject.delivery_config as {
-    gen?: { layer?: unknown };
-    cause?: { dep_id?: unknown };
+function rewriteEdgeInjectKey(
+  edge: DeltaBuildContext['team_dependencies'][number],
+  from: string,
+  to: string,
+): DeltaBuildContext['team_dependencies'][number] {
+  if (!from || from === to) return edge;
+  const due =
+    'after_inject_key' in edge.due && edge.due.after_inject_key === from
+      ? { ...edge.due, after_inject_key: to }
+      : edge.due;
+  return {
+    ...edge,
+    due,
+    broken_when: rewriteConditionKeys(edge.broken_when, from, to) as typeof edge.broken_when,
+    met_when: edge.met_when
+      ? (rewriteConditionKeys(edge.met_when, from, to) as typeof edge.met_when)
+      : edge.met_when,
   };
-  if (typeof config.gen?.layer === 'string' && config.gen.layer) return config.gen.layer;
-  if (inject.gen_layer) return inject.gen_layer;
-  if (typeof config.cause?.dep_id === 'string' && config.cause.dep_id) {
-    return `dependency:${config.cause.dep_id}`;
+}
+
+function rewriteConditionKeys(value: unknown, from: string, to: string): unknown {
+  if (typeof value === 'string') return replaceInjectKeyToken(value, from, to);
+  if (Array.isArray(value)) return value.map((item) => rewriteConditionKeys(item, from, to));
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  const copy: Record<string, unknown> = { ...record };
+  for (const field of ['all', 'any', 'conditions'] as const) {
+    if (Array.isArray(record[field])) copy[field] = rewriteConditionKeys(record[field], from, to);
   }
-  return 'dependency';
+  return copy;
+}
+
+function replaceInjectKeyToken(key: string, from: string, to: string): string {
+  if (key === from) return to;
+  return key
+    .split(':')
+    .map((part) => {
+      const [head, ...rest] = part.split('|');
+      if (head !== from) return part;
+      return [to, ...rest].join('|');
+    })
+    .join(':');
 }
 
 function syncConsequenceKeys(
